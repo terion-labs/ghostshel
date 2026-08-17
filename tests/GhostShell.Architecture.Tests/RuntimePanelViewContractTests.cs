@@ -651,6 +651,9 @@ public sealed class RuntimePanelViewContractTests
         Assert.Equal("OnCloseClick", AttributeValue(chrome, "CloseRequested"));
         Assert.Equal("OnSplitRequested", AttributeValue(chrome, "SplitRequested"));
         Assert.Equal("{Binding IsActive}", AttributeValue(chrome, "IsActive"));
+        Assert.Equal(
+            "{Binding IsAgentActive}",
+            AttributeValue(chrome, "IsAgentActive"));
         Assert.Equal("{Binding IsZoomed}", AttributeValue(chrome, "IsZoomed"));
         Assert.NotNull(AttributeValue(chrome, "Title"));
 
@@ -795,6 +798,29 @@ public sealed class RuntimePanelViewContractTests
                 "Dismiss",
             ],
             splits);
+
+        Assert.DoesNotContain(
+            theme.Descendants(),
+            element => element.Name.LocalName == "SymbolIcon"
+                && AttributeValue(element, "Symbol") == "Bot");
+
+        var agentGlow = Assert.Single(
+            theme.Descendants(),
+            element => element.Name.LocalName == "Border"
+                && HasClass(element, "PanelAgentGlow"));
+        Assert.Equal(
+            "{TemplateBinding IsAgentActive}",
+            AttributeValue(agentGlow, "IsVisible"));
+        Assert.Equal(
+            "{DynamicResource ShellAgentPanelGlowShadow}",
+            AttributeValue(agentGlow, "BoxShadow"));
+        Assert.Equal(
+            "{DynamicResource ShellAgentPanelGlowBrush}",
+            AttributeValue(agentGlow, "Background"));
+        Assert.Null(AttributeValue(agentGlow, "Margin"));
+        Assert.Equal(
+            "{Binding CornerRadius, ElementName=PART_PanelSurface}",
+            AttributeValue(agentGlow, "CornerRadius"));
 
         var chrome = File.ReadAllText(Path.Combine(
             ApplicationViews.RepositoryRoot,
@@ -1474,6 +1500,23 @@ public sealed class RuntimePanelViewContractTests
                     AttributeValue(element, "AutomationProperties.Name"),
                     "File provider profile",
                     StringComparison.Ordinal));
+        var sortHeaders = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["Sort files by name"] = "OnSortNameClick",
+            ["Sort files by size"] = "OnSortSizeClick",
+            ["Sort files by modified date"] = "OnSortModifiedClick",
+        };
+        foreach (var (accessibleName, handler) in sortHeaders)
+        {
+            var button = Assert.Single(
+                root.Descendants(),
+                element => element.Name.LocalName == "Button"
+                    && string.Equals(
+                        AttributeValue(element, "AutomationProperties.Name"),
+                        accessibleName,
+                        StringComparison.Ordinal));
+            Assert.Equal(handler, AttributeValue(button, "Click"));
+        }
         Assert.Equal(
             3,
             root.Descendants().Count(element =>

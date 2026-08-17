@@ -57,16 +57,16 @@ digest, and approval presentation from the same typed value. An explicit
 navigation binds the complete bounded URL; provider-defined operation names or
 argument shapes cannot extend the set.
 
-The broker evaluates trusted risk before the browser-specific domain gate. All
+The broker evaluates trusted risk before the browser-specific host gate. All
 five `BrowserNavigation` tools are cataloged as mutations, so `Auto` escalates
 them to an exact `HumanApproval`; setting `BrowserNavigation=Auto` does not make
-same-origin navigation approval-free. `browser.read_state` and
+navigation approval-free. `browser.read_state` and
 `browser.snapshot` are the operations that can normally receive an `AutoPolicy`
 authorization. Click, fill, and check are cataloged as mutations, and the broker
 escalates `BrowserInteraction=Auto` to an exact `HumanApproval`. The host still
 handles every authorization source as defense in depth: all three interactions
-accept only `HumanApproval`, while every `YoloPolicy` browser request fails
-closed.
+accept `HumanApproval` or explicitly confirmed run-local `YoloPolicy` and
+continue to reject `AutoPolicy`.
 
 For an exact panel or connection-session target, the provider schema omits
 `panel_id`; the host-owned target supplies that identity. For a broader
@@ -132,7 +132,7 @@ and stop. Snapshot, click, fill, and check remain in the explicit full-automatio
 candidate profile until the named native adapter satisfies
 [ADR 0026](0026-native-browser-capability-conformance-gate.md).
 
-### First-slice domain policy
+### Browser action authorization
 
 The host evaluates this policy after consuming the one-action authorization and
 again immediately before renderer dispatch:
@@ -140,16 +140,16 @@ again immediately before renderer dispatch:
 | Authorization source | Host decision |
 |---|---|
 | `HumanApproval` | The approval is the one-use allow decision for that exact typed browser action and its bound arguments. |
-| `AutoPolicy` + `read_state`, `snapshot`, `reload`, or `stop` | Allowed by the browser domain gate. Under the current broker, only the observations can normally receive this source; mutation risk escalates reload/stop to `HumanApproval`. |
+| `AutoPolicy` + `read_state`, `snapshot`, `wait`, `navigate`, `reload`, or `stop` | Accepted by the host. Under the current broker, mutation risk still escalates navigation and reload to `HumanApproval`, so this is defense in depth rather than an approval bypass. |
 | `AutoPolicy` + `click`, `fill`, or `check` | Denied. Browser interaction requires exact human approval even if the configured `BrowserInteraction` permission is `Auto`. |
-| `AutoPolicy` + explicit `navigate` | Allowed only when the requested destination has the same HTTP(S) origin as the current page: case-insensitive scheme, IDN-normalized host, and effective port must match. |
 | `AutoPolicy` + `back` or `forward` | Denied because this slice cannot determine the history destination origin before dispatch. |
-| `AutoPolicy` + explicit `navigate` from or to `about:blank` | Allowed only for `about:blank` to `about:blank`; it cannot bootstrap an arbitrary origin. |
-| `YoloPolicy` | Denied for every browser action. |
+| `YoloPolicy` | Allowed only for the explicitly confirmed live run and still subject to the exact typed request, starting document/revision, reference, input-barrier, and session checks. |
 
-Every domain-policy denial uses the stable code
-`browser_domain_policy_denied` and is completion-audited as a failed consumed
-action. Browser YOLO is not exposed by the desktop runtime.
+An authorization-source denial uses the stable code
+`browser_action_not_authorized` and is completion-audited as a failed consumed
+action. The host does not impose a same-origin browsing policy: an authorized
+navigation may move between any addresses accepted by `BrowserAddress`,
+including leaving `about:blank` or following a cross-origin link.
 
 This decision originally governed only the requested top-level operation.
 [ADR 0022](0022-governed-browser-origin-containment.md) adds one-action
@@ -162,7 +162,7 @@ and short-lived opaque references.
 
 [ADR 0024](0024-governed-browser-element-click.md) adds one human-approved
 exact-object reference consumer with conservative DOM-mutation invalidation,
-origin containment, and non-retryable outcome-unknown quarantine.
+starting-document binding, and non-retryable outcome-unknown quarantine.
 
 [ADR 0025](0025-governed-browser-element-fill.md) adds a second
 human-approved, exact-object reference consumer for bounded non-secret text,
@@ -179,9 +179,10 @@ application and session-host ports.
 
 ## Consequences
 
-- Production agents can read state and perform guarded navigation in the same
-  embedded browser the user sees. Snapshot, click, fill, and check contracts remain
-  continuously tested without being advertised by production.
+- Production agents can read state, capture semantic snapshots, wait, and
+  perform guarded navigation and bounded input in the same embedded browser
+  the user sees, including while its panel is in an inactive tab. The renderer
+  attachment follows panel lifetime rather than visual-tree lifetime.
 - Browser data and navigation can be configured and audited independently.
 - Broad Workspace and internal `OpenTab` scopes remain explicit at the provider
   schema, refresh eligible topology between rounds, and are narrowed to one

@@ -20,6 +20,10 @@ public sealed class AgentFileActionComposer
     public const int MaximumRelativePathBytes = 4 * 1024;
     public const int MaximumAgentFileNameBytes = 1024;
     public const int MaximumAgentMediaTypeBytes = 256;
+    public const int MaximumAgentSearchQueryBytes = 256;
+    public const int MaximumAgentSearchResults = 100;
+    public const int MaximumAgentAccessGrants = 100;
+    public const int MaximumAgentTransfers = 100;
 
     private static readonly UTF8Encoding StrictUtf8 = new(
         encoderShouldEmitUTF8Identifier: false,
@@ -133,6 +137,20 @@ public sealed class AgentFileActionComposer
         return Math.Min(metadata.MaximumPreviewBytes, MaximumAgentReadBytes);
     }
 
+    public static bool SupportsProviderCapability(
+        string toolName,
+        FilePanelCapability available,
+        FilePanelCapability required) =>
+        toolName switch
+        {
+            BuiltInAgentTools.FilesAccessRead =>
+                (available & (
+                    FilePanelCapability.Permissions
+                    | FilePanelCapability.AccessControlLists)) != 0,
+            BuiltInAgentTools.FilesTransfers => true,
+            _ => available.HasFlag(required),
+        };
+
     private static OperationDescriptor DescribeOperation(AgentFileRequest request) =>
         request switch
         {
@@ -141,6 +159,11 @@ public sealed class AgentFileActionComposer
                 SessionCapabilities.FilesList,
                 FilePanelCapability.List,
                 list.SessionId),
+            AgentFileRequest.Search search => new(
+                BuiltInAgentTools.FilesSearch,
+                SessionCapabilities.FilesSearch,
+                FilePanelCapability.Search,
+                search.SessionId),
             AgentFileRequest.Stat stat => new(
                 BuiltInAgentTools.FilesStat,
                 SessionCapabilities.FilesStat,
@@ -151,12 +174,28 @@ public sealed class AgentFileActionComposer
                 SessionCapabilities.FilesPreview,
                 FilePanelCapability.RangedRead,
                 read.SessionId),
+            AgentFileRequest.AccessRead accessRead => new(
+                BuiltInAgentTools.FilesAccessRead,
+                SessionCapabilities.FilesReadAccessControl,
+                FilePanelCapability.None,
+                accessRead.SessionId),
+            AgentFileRequest.Transfers transfers => new(
+                BuiltInAgentTools.FilesTransfers,
+                SessionCapabilities.FilesTransfersRead,
+                FilePanelCapability.None,
+                transfers.SessionId),
             AgentFileRequest.CreateDirectory createDirectory => new(
                 BuiltInAgentTools.FilesCreateDirectory,
                 SessionCapabilities.FilesCreateDirectory,
                 FilePanelCapability.CreateDirectory
                 | FilePanelCapability.GovernedCreateDirectory,
                 createDirectory.SessionId),
+            AgentFileRequest.Move move => new(
+                BuiltInAgentTools.FilesMove,
+                SessionCapabilities.FilesRename,
+                FilePanelCapability.Rename
+                | FilePanelCapability.GovernedRename,
+                move.SessionId),
             AgentFileRequest.Delete delete => new(
                 BuiltInAgentTools.FilesDelete,
                 SessionCapabilities.FilesDelete,
@@ -181,12 +220,35 @@ public sealed class AgentFileActionComposer
         var relativePath = RequestPath(request);
         if (request is AgentFileRequest.Read
             or AgentFileRequest.CreateDirectory
+            or AgentFileRequest.Move
             or AgentFileRequest.Delete)
         {
             RequireNonRootPath(relativePath);
         }
 
         _ = ResolveLocation(metadata, relativePath);
+        if (request is AgentFileRequest.Move move)
+        {
+            RequireNonRootPath(move.DestinationRelativePath);
+            _ = ResolveLocation(metadata, move.DestinationRelativePath);
+            if (move.DestinationRelativePath.SequenceEqual(move.RelativePath))
+            {
+                throw new ArgumentException(
+                    "A governed file move requires different source and destination paths.",
+                    nameof(request));
+            }
+        }
+        if (request is AgentFileRequest.Search search)
+        {
+            _ = RequireSearchQuery(search.Query);
+            if (!Enum.IsDefined(search.Scope)
+                || search.MaximumResults is < 1 or > MaximumAgentSearchResults)
+            {
+                throw new ArgumentException(
+                    "The agent file search bounds are invalid.",
+                    nameof(request));
+            }
+        }
         var root = (FilePanelAddress.Hierarchical)metadata.TrustedRoot.Address;
         var rootDisplay = DisplayPath(root.Path.Segments, isRelative: false);
         var relativeDisplay = DisplayPath(relativePath, isRelative: true);
@@ -216,6 +278,16 @@ public sealed class AgentFileActionComposer
                 arguments.Add(Argument("first_page_only", "true"));
                 arguments.Add(Argument("show_hidden", "false"));
                 break;
+            case AgentFileRequest.Search searchRequest:
+                arguments.Add(Argument("query", searchRequest.Query));
+                arguments.Add(Argument(
+                    "scope",
+                    SearchScopeName(searchRequest.Scope)));
+                arguments.Add(Argument(
+                    "maximum_results",
+                    Invariant(searchRequest.MaximumResults)));
+                arguments.Add(Argument("show_hidden", "false"));
+                break;
             case AgentFileRequest.Read:
                 arguments.Add(Argument(
                     "maximum_bytes",
@@ -224,13 +296,32 @@ public sealed class AgentFileActionComposer
                     "preview_kinds",
                     "text,structured_text"));
                 break;
+            case AgentFileRequest.AccessRead:
+                arguments.Add(Argument("observation", "access_control"));
+                arguments.Add(Argument(
+                    "maximum_grants",
+                    Invariant(MaximumAgentAccessGrants)));
+                break;
+            case AgentFileRequest.Transfers:
+                arguments.Add(Argument("owned_by_session", "true"));
+                arguments.Add(Argument(
+                    "maximum_results",
+                    Invariant(MaximumAgentTransfers)));
+                break;
             case AgentFileRequest.CreateDirectory:
                 arguments.Add(Argument("effect", "create_directory"));
                 arguments.Add(Argument("precondition", "must_not_exist"));
                 break;
-            case AgentFileRequest.Delete:
+            case AgentFileRequest.Move moveRequest:
+                arguments.Add(Argument(
+                    "destination_relative_path",
+                    DisplayPath(moveRequest.DestinationRelativePath, isRelative: true)));
+                arguments.Add(Argument("effect", "move_or_rename"));
+                arguments.Add(Argument("destination_precondition", "must_not_exist"));
+                break;
+            case AgentFileRequest.Delete delete:
                 arguments.Add(Argument("effect", "permanent_delete"));
-                arguments.Add(Argument("recursive", "false"));
+                arguments.Add(Argument("recursive", delete.Recursive ? "true" : "false"));
                 arguments.Add(Argument("precondition", "must_exist"));
                 break;
         }
@@ -245,10 +336,14 @@ public sealed class AgentFileActionComposer
         request switch
         {
             AgentFileRequest.List list => list.RelativePath,
+            AgentFileRequest.Search search => search.RelativePath,
             AgentFileRequest.Stat stat => stat.RelativePath,
             AgentFileRequest.Read read => read.RelativePath,
+            AgentFileRequest.AccessRead accessRead => accessRead.RelativePath,
+            AgentFileRequest.Transfers => [],
             AgentFileRequest.CreateDirectory createDirectory =>
                 createDirectory.RelativePath,
+            AgentFileRequest.Move move => move.RelativePath,
             AgentFileRequest.Delete delete => delete.RelativePath,
             _ => throw new ArgumentOutOfRangeException(
                 nameof(request),
@@ -363,7 +458,10 @@ public sealed class AgentFileActionComposer
             ?? throw new ArgumentException(
                 "The File Viewer session has no trusted provider scope.",
                 nameof(context));
-        if (!metadata.Capabilities.HasFlag(operation.ProviderCapability))
+        if (!SupportsProviderCapability(
+                operation.ToolName,
+                metadata.Capabilities,
+                operation.ProviderCapability))
         {
             throw new ArgumentException(
                 $"The file provider does not support "
@@ -780,6 +878,33 @@ public sealed class AgentFileActionComposer
 
     private static string Invariant(int value) =>
         value.ToString(CultureInfo.InvariantCulture);
+
+    private static string RequireSearchQuery(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)
+            || !string.Equals(value, value.Trim(), StringComparison.Ordinal)
+            || GetStrictUtf8ByteCount(value, nameof(value))
+                > MaximumAgentSearchQueryBytes)
+        {
+            throw new ArgumentException(
+                "An agent file search query must be printable and bounded.",
+                nameof(value));
+        }
+
+        RequirePrintableNonSecret(value, "file search query");
+        return string.Concat(value);
+    }
+
+    private static string SearchScopeName(FilePanelDiscoveryScope scope) =>
+        scope switch
+        {
+            FilePanelDiscoveryScope.CurrentDirectory => "current_directory",
+            FilePanelDiscoveryScope.Subtree => "subtree",
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(scope),
+                scope,
+                null),
+        };
 
     private sealed record OperationDescriptor(
         string ToolName,

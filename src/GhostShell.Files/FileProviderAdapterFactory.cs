@@ -67,7 +67,11 @@ internal sealed class FileProviderAdapterFactory(
             provider,
             HierarchicalRoot(provider),
             LocalFamily(),
-            FilePanelCapability.None);
+            OperatingSystem.IsWindows()
+                ? FilePanelCapability.None
+                : FilePanelCapability.GovernedCreateDirectory
+                    | FilePanelCapability.GovernedDelete
+                    | FilePanelCapability.GovernedRename);
     }
 
     private OwnedFileProviderRegistration CreateS3(

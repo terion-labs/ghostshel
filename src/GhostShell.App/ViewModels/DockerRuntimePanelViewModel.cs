@@ -18,6 +18,9 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
     private readonly IDockerEngineClient _client;
     private readonly ConnectionProfile _connection;
     private readonly CancellationTokenSource _lifetime = new();
+    private HostedPanelSessionLink? _hostedSession;
+    private ISessionHostClient? _hostSessionClient;
+    private Task _hostInitialization = Task.CompletedTask;
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
     private readonly SemaphoreSlim _logGate = new(1, 1);
     private readonly AsyncActionCommand _refreshCommand;
@@ -113,6 +116,36 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
     }
 
     public Task Initialization { get; }
+
+    public SessionId? HostedSessionId => _hostedSession?.SessionId;
+
+    public CapabilitySet HostedCapabilities =>
+        _hostedSession?.Capabilities ?? CapabilitySet.Empty;
+
+    public bool HasHostedSession => _hostedSession?.IsLinked == true;
+
+    public Task StartHostingAsync(
+        ISessionHostClient sessionClient,
+        ClientId clientId,
+        SessionOwner owner)
+    {
+        ArgumentNullException.ThrowIfNull(sessionClient);
+        ArgumentNullException.ThrowIfNull(owner);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_hostedSession is not null)
+        {
+            return _hostInitialization;
+        }
+
+        _hostSessionClient = sessionClient;
+        _hostedSession = new HostedPanelSessionLink(
+            sessionClient,
+            clientId,
+            owner,
+            PanelKind.Docker);
+        _hostInitialization = InitializeHostedSessionAsync();
+        return _hostInitialization;
+    }
 
     public ConnectionId ConnectionId => _connection.Id;
 
@@ -788,6 +821,7 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
                     && string.Equals(item.Resource.Id, selected.Id, StringComparison.Ordinal))
                     ?? Resources.FirstOrDefault();
             StatusText = $"{RunningContainerCount} running · Docker {EngineVersion}";
+            QueueHostedSessionEnsure();
             if (Section == DockerPanelSection.Volumes)
             {
                 StartVolumeUsageLoad();
@@ -811,6 +845,7 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
         }
 
         _disposed = true;
+        _hostedSession?.Dispose();
         _lifetime.Cancel();
         CancelVolumeUsageLoad();
         _detailCancellation?.Cancel();
@@ -833,6 +868,59 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
         FileBrowser = null;
         _lifetime.Dispose();
         base.Dispose();
+    }
+
+    private async Task InitializeHostedSessionAsync()
+    {
+        try
+        {
+            await Initialization.ConfigureAwait(true);
+            if (_disposed || Snapshot is null || _hostedSession?.IsLinked == true)
+            {
+                return;
+            }
+
+            await EnsureHostedSessionAsync(_lifetime.Token).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+        catch
+        {
+            // Docker's direct human client is independent of the governed
+            // hosted projection, so the panel stays usable when hosting fails.
+        }
+    }
+
+    private void QueueHostedSessionEnsure()
+    {
+        if (_hostedSession is not null && _hostSessionClient is not null)
+        {
+            _ = EnsureHostedSessionAsync(_lifetime.Token);
+        }
+    }
+
+    private Task<bool> EnsureHostedSessionAsync(CancellationToken cancellationToken)
+    {
+        var hosted = _hostedSession;
+        var sessionClient = _hostSessionClient;
+        if (hosted is null || sessionClient is null || _disposed)
+        {
+            return Task.FromResult(false);
+        }
+
+        var target = new DockerSessionTarget(_connection, bindingRevision: 0);
+        return hosted.EnsureAsync(
+            (sessionId, context, token) =>
+                sessionClient.EnsureDockerSessionAsync(
+                    new EnsureDockerSessionRequest(
+                        sessionId,
+                        hosted.Owner,
+                        Title,
+                        target),
+                    context,
+                    token),
+            cancellationToken);
     }
 
     private AsyncActionCommand ActionCommand(

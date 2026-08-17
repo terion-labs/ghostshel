@@ -14,7 +14,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             1 => CapabilityToolCall(
                 "process-capability",
                 IntrinsicAgentTools.RequestCapability,
-                """{"capability":"process_control"}"""),
+                """{"capability":"process_data"}"""),
             2 when request.Messages.Any(message =>
                 message.ToolResult?.ProviderCallId == "process-capability"
                 && message.ToolResult.Status
@@ -46,10 +46,10 @@ public sealed partial class GovernedAgentRuntimeProcessTests
                 fixture.Runtime.Snapshot.PendingCapabilityRequest);
 
         Assert.Equal(
-            AgentCapability.ProcessControl,
+            AgentCapability.ProcessData,
             capabilityRequest.Capability);
         Assert.Equal(
-            AgentCapabilityProtocol.ProcessControl,
+            AgentCapabilityProtocol.ProcessData,
             capabilityRequest.CapabilityToken);
         Assert.Equal("Process inspection", capabilityRequest.DisplayTitle);
         Assert.Equal("Process Monitor", capabilityRequest.TargetTitle);
@@ -63,7 +63,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             initialRequest.Tools,
             tool => tool.Name == IntrinsicAgentTools.RequestCapability);
         Assert.Equal(
-            [AgentCapabilityProtocol.ProcessControl],
+            [AgentCapabilityProtocol.ProcessData],
             intrinsic.InputSchema
                 .GetProperty("properties")
                 .GetProperty("capability")
@@ -92,7 +92,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             message => message.ToolResult?.ProviderCallId
                 == "process-capability").ToolResult!;
         Assert.Equal(
-            """{"ok":true,"capability":"process_control","permission":"ask","scope":"run","action_approval_required":true}""",
+            """{"ok":true,"capability":"process_data","permission":"ask","scope":"run","action_approval_required":true}""",
             receipt.Value.Content);
         Assert.DoesNotContain(
             provider.Requests.ToArray()[1].Tools,

@@ -2,12 +2,16 @@ namespace GhostShell.Application;
 
 public enum TerminalWaitOutcomeKind
 {
+    Elapsed,
     Matched,
     Changed,
     Stable,
+    PromptReady,
+    CommandFinished,
     Timeout,
     Cancelled,
     SessionEnded,
+    Unsupported,
 }
 
 public sealed record TerminalWaitOutcome
@@ -15,7 +19,8 @@ public sealed record TerminalWaitOutcome
     public TerminalWaitOutcome(
         TerminalWaitOutcomeKind Kind,
         TerminalScreenSnapshot? Snapshot,
-        long? InitialContentRevision)
+        long? InitialContentRevision,
+        TerminalShellIntegrationEvent? ObservedShellEvent = null)
     {
         if (!Enum.IsDefined(Kind))
         {
@@ -27,9 +32,12 @@ public sealed record TerminalWaitOutcome
             throw new ArgumentOutOfRangeException(nameof(InitialContentRevision));
         }
 
-        if ((Kind is TerminalWaitOutcomeKind.Matched
+        if ((Kind is TerminalWaitOutcomeKind.Elapsed
+                or TerminalWaitOutcomeKind.Matched
                 or TerminalWaitOutcomeKind.Changed
-                or TerminalWaitOutcomeKind.Stable)
+                or TerminalWaitOutcomeKind.Stable
+                or TerminalWaitOutcomeKind.PromptReady
+                or TerminalWaitOutcomeKind.CommandFinished)
             && Snapshot is null)
         {
             throw new ArgumentException(
@@ -37,9 +45,12 @@ public sealed record TerminalWaitOutcome
                 nameof(Snapshot));
         }
 
-        if ((Kind is TerminalWaitOutcomeKind.Matched
+        if ((Kind is TerminalWaitOutcomeKind.Elapsed
+                or TerminalWaitOutcomeKind.Matched
                 or TerminalWaitOutcomeKind.Changed
-                or TerminalWaitOutcomeKind.Stable)
+                or TerminalWaitOutcomeKind.Stable
+                or TerminalWaitOutcomeKind.PromptReady
+                or TerminalWaitOutcomeKind.CommandFinished)
             && InitialContentRevision is null)
         {
             throw new ArgumentException(
@@ -56,9 +67,33 @@ public sealed record TerminalWaitOutcome
                 nameof(Snapshot));
         }
 
+        var expectedShellEventKind = Kind switch
+        {
+            TerminalWaitOutcomeKind.PromptReady =>
+                TerminalCommandBoundaryKind.CommandInputStarted,
+            TerminalWaitOutcomeKind.CommandFinished =>
+                TerminalCommandBoundaryKind.CommandFinished,
+            _ => (TerminalCommandBoundaryKind?)null,
+        };
+        if (expectedShellEventKind is { } expectedKind
+            && ObservedShellEvent?.Kind != expectedKind)
+        {
+            throw new ArgumentException(
+                $"A {Kind} wait outcome requires its matching shell-integration event.",
+                nameof(ObservedShellEvent));
+        }
+
+        if (expectedShellEventKind is null && ObservedShellEvent is not null)
+        {
+            throw new ArgumentException(
+                "Only semantic shell-event wait outcomes can carry an observed shell event.",
+                nameof(ObservedShellEvent));
+        }
+
         this.Kind = Kind;
         this.Snapshot = Snapshot;
         this.InitialContentRevision = InitialContentRevision;
+        this.ObservedShellEvent = ObservedShellEvent;
     }
 
     public TerminalWaitOutcomeKind Kind { get; }
@@ -69,10 +104,17 @@ public sealed record TerminalWaitOutcome
 
     public long? ObservedContentRevision => Snapshot?.ContentRevision;
 
+    public TerminalShellIntegrationEvent? ObservedShellEvent { get; }
+
     public static TerminalWaitOutcome Matched(
         TerminalScreenSnapshot snapshot,
         long initialContentRevision) =>
         new(TerminalWaitOutcomeKind.Matched, snapshot, initialContentRevision);
+
+    public static TerminalWaitOutcome Elapsed(
+        TerminalScreenSnapshot snapshot,
+        long initialContentRevision) =>
+        new(TerminalWaitOutcomeKind.Elapsed, snapshot, initialContentRevision);
 
     public static TerminalWaitOutcome Changed(
         TerminalScreenSnapshot snapshot,
@@ -83,6 +125,26 @@ public sealed record TerminalWaitOutcome
         TerminalScreenSnapshot snapshot,
         long initialContentRevision) =>
         new(TerminalWaitOutcomeKind.Stable, snapshot, initialContentRevision);
+
+    public static TerminalWaitOutcome PromptReady(
+        TerminalScreenSnapshot snapshot,
+        long initialContentRevision,
+        TerminalShellIntegrationEvent shellEvent) =>
+        new(
+            TerminalWaitOutcomeKind.PromptReady,
+            snapshot,
+            initialContentRevision,
+            shellEvent);
+
+    public static TerminalWaitOutcome CommandFinished(
+        TerminalScreenSnapshot snapshot,
+        long initialContentRevision,
+        TerminalShellIntegrationEvent shellEvent) =>
+        new(
+            TerminalWaitOutcomeKind.CommandFinished,
+            snapshot,
+            initialContentRevision,
+            shellEvent);
 
     public static TerminalWaitOutcome Timeout(
         TerminalScreenSnapshot? snapshot,
@@ -98,6 +160,22 @@ public sealed record TerminalWaitOutcome
         TerminalScreenSnapshot? snapshot,
         long? initialContentRevision) =>
         new(TerminalWaitOutcomeKind.SessionEnded, snapshot, initialContentRevision);
+
+    public static TerminalWaitOutcome Unsupported(
+        TerminalScreenSnapshot? snapshot = null,
+        long? initialContentRevision = null) =>
+        new(TerminalWaitOutcomeKind.Unsupported, snapshot, initialContentRevision);
+}
+
+public sealed record TerminalWaitForDelayInput
+{
+    public TerminalWaitForDelayInput(TimeSpan Delay)
+    {
+        TerminalWaitLimits.ValidateTimeout(Delay, nameof(Delay));
+        this.Delay = Delay;
+    }
+
+    public TimeSpan Delay { get; }
 }
 
 public sealed record TerminalWaitForTextInput
@@ -166,9 +244,43 @@ public sealed record TerminalWaitForStableInput
     public TimeSpan Timeout { get; }
 }
 
+public sealed record TerminalWaitForPromptReadyInput
+{
+    public TerminalWaitForPromptReadyInput(
+        long AfterShellEventSequence,
+        TimeSpan Timeout)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(AfterShellEventSequence);
+        TerminalWaitLimits.ValidateTimeout(Timeout, nameof(Timeout));
+        this.AfterShellEventSequence = AfterShellEventSequence;
+        this.Timeout = Timeout;
+    }
+
+    public long AfterShellEventSequence { get; }
+
+    public TimeSpan Timeout { get; }
+}
+
+public sealed record TerminalWaitForCommandFinishedInput
+{
+    public TerminalWaitForCommandFinishedInput(
+        long AfterShellEventSequence,
+        TimeSpan Timeout)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(AfterShellEventSequence);
+        TerminalWaitLimits.ValidateTimeout(Timeout, nameof(Timeout));
+        this.AfterShellEventSequence = AfterShellEventSequence;
+        this.Timeout = Timeout;
+    }
+
+    public long AfterShellEventSequence { get; }
+
+    public TimeSpan Timeout { get; }
+}
+
 internal static class TerminalWaitLimits
 {
-    public static readonly TimeSpan MaximumTimeout = TimeSpan.FromMinutes(10);
+    public static readonly TimeSpan MaximumTimeout = TimeSpan.FromHours(1);
 
     public static void ValidateTimeout(TimeSpan timeout, string parameterName)
     {

@@ -102,12 +102,13 @@ internal static class DurableDefinitionFixtures
             new McpServerProfileId(id),
             McpServerProfile.CurrentSchemaVersion,
             name,
-            "/usr/local/bin/mcp-server",
-            ["--stdio"],
-            "/srv/mcp",
-            environmentSecret is { } reference
-                ? [new McpServerEnvironmentVariable("MCP_TOKEN", reference)]
-                : [],
+            new McpServerTransport.Stdio(
+                "/usr/local/bin/mcp-server",
+                ["--stdio"],
+                "/srv/mcp",
+                environmentSecret is { } reference
+                    ? [new McpServerEnvironmentVariable("MCP_TOKEN", reference)]
+                    : []),
             ["status.read"]);
 
     public static PortableDefinitionDocument Document<TDefinition>(TDefinition definition)

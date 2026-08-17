@@ -58,6 +58,38 @@ public sealed class ProviderConversationMaintenanceTests
         Assert.Contains("<conversation>", prompt);
     }
 
+    [Fact]
+    public async Task SplitTurnCompactionSummarizesHistoryAndTurnPrefixSeparately()
+    {
+        var provider = new SequenceTextProvider(
+            "## Goal\nRetain prior work.",
+            "## Original Request\nInspect the workspace.\n\n## Context for Suffix\nContinue the tool chain.");
+        var resolver = new Resolver(provider);
+        var compactor = new ProviderConversationCompactor(
+            resolver,
+            new AgentModelSelection("compact-profile", "compact-model"));
+
+        var summary = await compactor.CompactAsync(
+            new AgentCompactionRequest(
+                new AgentRunId("run-split"),
+                2,
+                [new AgentMessage(AgentMessageRole.User, "Earlier work")],
+                [new AgentMessage(AgentMessageRole.User, "Inspect everything")]),
+            CancellationToken.None);
+
+        Assert.Contains("## Goal", summary.Content);
+        Assert.Contains("**Turn Context (split turn):**", summary.Content);
+        Assert.Contains("## Original Request", summary.Content);
+        Assert.Collection(
+            provider.Requests,
+            request => Assert.Contains(
+                "## Critical Context",
+                request.Messages[^1].Content),
+            request => Assert.Contains(
+                "PREFIX of a turn",
+                request.Messages[^1].Content));
+    }
+
     private sealed class Resolver(IAgentProvider provider) : IAgentProviderResolver
     {
         public Binding Binding { get; } = new(provider);
@@ -103,6 +135,26 @@ public sealed class ProviderConversationMaintenanceTests
             cancellationToken.ThrowIfCancellationRequested();
             yield return new AgentProviderEvent.ResponseStarted();
             yield return new AgentProviderEvent.TextDelta(text);
+            yield return new AgentProviderEvent.ResponseCompleted(
+                AgentProviderStopReason.EndTurn);
+            await Task.Yield();
+        }
+    }
+
+    private sealed class SequenceTextProvider(params string[] texts) : IAgentProvider
+    {
+        private int _index;
+
+        public List<AgentProviderRequest> Requests { get; } = [];
+
+        public async IAsyncEnumerable<AgentProviderEvent> StreamAsync(
+            AgentProviderRequest request,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            Requests.Add(request);
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return new AgentProviderEvent.ResponseStarted();
+            yield return new AgentProviderEvent.TextDelta(texts[_index++]);
             yield return new AgentProviderEvent.ResponseCompleted(
                 AgentProviderStopReason.EndTurn);
             await Task.Yield();

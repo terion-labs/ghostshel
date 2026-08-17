@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Text;
+using System.Text.Json;
 using GhostShell.Agent;
 using GhostShell.Core;
 
@@ -268,12 +269,16 @@ public sealed partial class NativeAgentSessionTests
         Assert.Equal(before.Revision, after.Revision);
         Assert.Equal(before.LastSequence, after.LastSequence);
         Assert.Equal(before.Conversation.Count(), after.Conversation.Count());
+        Assert.Equal(before.Transcript.Count(), after.Transcript.Count());
         Assert.Equal(
             before.Conversation.Select(message => message.Role),
             after.Conversation.Select(message => message.Role));
         Assert.Equal(
             before.Conversation.Select(message => message.Content),
             after.Conversation.Select(message => message.Content));
+        Assert.Equal(
+            before.Transcript.Select(message => message.Content),
+            after.Transcript.Select(message => message.Content));
         var restoredProposal = Assert.Single(after.Conversation[1].ToolCalls);
         Assert.Equal(proposal.Id, restoredProposal.Id);
         Assert.Equal(proposal.ProviderName, restoredProposal.ProviderName);
@@ -305,6 +310,30 @@ public sealed partial class NativeAgentSessionTests
             CancellationToken.None);
         Assert.True(continued.Succeeded);
         Assert.Equal(before.Generation + 1, restoredSession.Snapshot().Generation);
+    }
+
+    [Fact]
+    public async Task CheckpointPreservesFullTranscriptBesideCompactedProviderContext()
+    {
+        var initial = ConversationFixture();
+        var session = CreateSession(initial);
+        Assert.True((await session.CompactAsync(
+            1,
+            new ImmediateCompactor(
+                new AgentMessage(AgentMessageRole.Summary, "summary")),
+            CancellationToken.None)).Succeeded);
+
+        var checkpoint = Assert.IsType<AgentSessionCheckpoint>(
+            session.CaptureCheckpoint().Checkpoint);
+        var restored = Assert.IsType<NativeAgentSession>(
+            NativeAgentSession.RestoreCheckpoint(checkpoint).Session);
+
+        Assert.Equal(
+            ["system", "summary", "current user", "current assistant"],
+            restored.Snapshot().Conversation.Select(message => message.Content));
+        Assert.Equal(
+            initial.Select(message => message.Content),
+            restored.Snapshot().Transcript.Select(message => message.Content));
     }
 
     [Fact]
@@ -345,6 +374,36 @@ public sealed partial class NativeAgentSessionTests
         Assert.Equal(
             "Explain the Roman aqueduct system",
             legacySession.DescribeConversation().Title);
+    }
+
+    [Fact]
+    public async Task RestoredSystemPromptRebasePreservesAndAdvancesDurableRevision()
+    {
+        var session = CreateSession(
+        [
+            new AgentMessage(AgentMessageRole.System, "Original trusted context."),
+        ]);
+        Assert.True((await session.RunTurnAsync(
+            "Inspect the workspace.",
+            [],
+            TextProvider("The workspace is ready."),
+            CancellationToken.None)).Succeeded);
+        var before = Assert.IsType<AgentSessionCheckpoint>(
+            session.CaptureCheckpoint().Checkpoint);
+        var restored = Assert.IsType<NativeAgentSession>(
+            NativeAgentSession.RestoreCheckpoint(before).Session);
+
+        Assert.True(restored.TryRebaseSystemPrompt("Refreshed trusted context."));
+        var after = Assert.IsType<AgentSessionCheckpoint>(
+            restored.CaptureCheckpoint().Checkpoint);
+
+        Assert.Equal(before.RunId, after.RunId);
+        Assert.Equal(before.Revision + 1, after.Revision);
+        Assert.Equal(before.Generation, after.Generation);
+        var conversation = restored.Snapshot().Conversation;
+        Assert.Equal("Refreshed trusted context.", conversation[0].Content);
+        Assert.Equal("Inspect the workspace.", conversation[1].Content);
+        Assert.Equal("The workspace is ready.", conversation[2].Content);
     }
 
     [Fact]
@@ -437,6 +496,97 @@ public sealed partial class NativeAgentSessionTests
         Assert.Equal(
             AgentCheckpointCaptureErrorCode.SessionNotIdle,
             pendingCapture.ErrorCode);
+    }
+
+    [Fact]
+    public void InterruptedCheckpointPreservesAcceptedUserMessageWithoutResumingWork()
+    {
+        var session = CreateSession();
+
+        var captured = session.CaptureInterruptedCheckpoint(
+            "unfinished request",
+            []);
+        var restored = NativeAgentSession.RestoreCheckpoint(
+            Assert.IsType<AgentSessionCheckpoint>(captured.Checkpoint));
+
+        Assert.True(restored.Succeeded);
+        var snapshot = Assert.IsType<NativeAgentSession>(restored.Session).Snapshot();
+        Assert.Equal(NativeAgentSessionState.Ready, snapshot.State);
+        Assert.Collection(
+            snapshot.Conversation,
+            message => Assert.Equal("unfinished request", message.Content),
+            message => Assert.Contains("was interrupted", message.Content));
+        Assert.Empty(snapshot.PendingToolProposals);
+    }
+
+    [Fact]
+    public async Task InterruptedCheckpointRetainsCompletedToolBatchButNoPendingAction()
+    {
+        var session = CreateSession();
+        var tools = ImmutableArray.Create(Tool("terminal.read_screen"));
+        var turn = await session.RunTurnAsync(
+            "Inspect",
+            tools,
+            ToolProvider("terminal.read_screen", "{}"),
+            CancellationToken.None);
+        var proposal = Assert.Single(turn.ToolProposals);
+        var result = SuccessJson(proposal, "{\"text\":\"ready\"}");
+
+        var captured = session.CaptureInterruptedCheckpoint([result]);
+        var restored = NativeAgentSession.RestoreCheckpoint(
+            Assert.IsType<AgentSessionCheckpoint>(captured.Checkpoint));
+
+        Assert.True(restored.Succeeded);
+        var snapshot = Assert.IsType<NativeAgentSession>(restored.Session).Snapshot();
+        Assert.Equal(NativeAgentSessionState.Ready, snapshot.State);
+        Assert.Equal(
+            [
+                AgentMessageRole.User,
+                AgentMessageRole.Assistant,
+                AgentMessageRole.Tool,
+                AgentMessageRole.Assistant,
+            ],
+            snapshot.Conversation.Select(message => message.Role));
+        Assert.Equal("{\"text\":\"ready\"}", snapshot.Conversation[2].Content);
+        Assert.Empty(snapshot.PendingToolProposals);
+    }
+
+    [Fact]
+    public async Task CheckpointRestoreAcceptsEquivalentJsonEscapingInToolContent()
+    {
+        var session = CreateSession();
+        var tools = ImmutableArray.Create(Tool("terminal.read_screen"));
+        var turn = await session.RunTurnAsync(
+            "Inspect",
+            tools,
+            ToolProvider("terminal.read_screen", "{}"),
+            CancellationToken.None);
+        var proposal = Assert.Single(turn.ToolProposals);
+        var result = SuccessJson(
+            proposal,
+            "{\"window_title\":\"\\u2026/project\",\"ready\":true}");
+        var continued = await session.SubmitToolResultsAsync(
+            proposal.Generation,
+            [result],
+            tools,
+            TextProvider("Done."),
+            CancellationToken.None);
+        Assert.True(continued.Succeeded);
+
+        var checkpoint = Assert.IsType<AgentSessionCheckpoint>(
+            session.CaptureCheckpoint().Checkpoint);
+        var restored = NativeAgentSession.RestoreCheckpoint(checkpoint);
+
+        Assert.True(restored.Succeeded);
+        var toolMessage = Assert.Single(
+            Assert.IsType<NativeAgentSession>(restored.Session)
+                .Snapshot()
+                .Conversation,
+            message => message.Role == AgentMessageRole.Tool);
+        using var json = JsonDocument.Parse(toolMessage.Content);
+        Assert.Equal("…/project", json.RootElement
+            .GetProperty("window_title")
+            .GetString());
     }
 
     [Fact]

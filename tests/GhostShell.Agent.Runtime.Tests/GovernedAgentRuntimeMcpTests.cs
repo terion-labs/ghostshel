@@ -12,8 +12,8 @@ public sealed partial class GovernedAgentRuntimeProcessTests
     [InlineData(AgentPermission.Off, false)]
     [InlineData(AgentPermission.Ask, true)]
     [InlineData(AgentPermission.Auto, true)]
-    [InlineData(AgentPermission.Yolo, false)]
-    public void McpDiscoveryAllowsOnlyAskOrAuto(
+    [InlineData(AgentPermission.Yolo, true)]
+    public void McpDiscoveryAllowsEveryEnabledPermission(
         AgentPermission permission,
         bool expected)
     {
@@ -201,7 +201,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
     }
 
     [Fact]
-    public async Task RunLocalYoloClosesMcpAndNeverReopensOrAdvertisesIt()
+    public async Task RunLocalFullAccessReopensMcpUnderTheNewPolicyGeneration()
     {
         var mcp = new McpRuntimeHost(Manifest());
         await using var fixture = ProcessRuntimeFixture.Create(
@@ -225,10 +225,10 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         Assert.True(enabled.IsAccepted);
         Assert.Equal(1, mcp.CloseCount);
         Assert.True((await fixture.Runtime.SendAsync(
-            fixture.Prompt("Continue without MCP."),
+            fixture.Prompt("Continue with full access."),
             CancellationToken.None)).IsSuccess);
-        Assert.Equal(1, mcp.OpenCount);
-        Assert.DoesNotContain(
+        Assert.Equal(2, mcp.OpenCount);
+        Assert.Contains(
             fixture.Provider.Requests.ToArray()[1].Tools,
             tool => tool.Name == mcp.Manifest.ProviderAlias);
     }
@@ -302,7 +302,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
     }
 
     [Fact]
-    public async Task PostDispatchFailureQuarantinesRunAndClosesMcpSession()
+    public async Task PostDispatchFailureReturnsToProviderAndClosesMcpSession()
     {
         var mcp = new McpRuntimeHost(Manifest())
         {
@@ -326,13 +326,14 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             CancellationToken.None);
         var result = await sending.WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.False(result.IsSuccess);
-        Assert.Equal(
-            McpAgentToolResultJson.OutcomeUnknownStableCode,
-            result.Code);
-        Assert.Equal(GovernedAgentState.Failed, fixture.Runtime.Snapshot.State);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(GovernedAgentState.Ready, fixture.Runtime.Snapshot.State);
         Assert.Equal(1, mcp.CallCount);
         Assert.Equal(1, mcp.CloseCount);
+        Assert.Equal(2, fixture.Provider.Requests.Count);
+        Assert.Equal(
+            McpAgentToolResultJson.OutcomeUnknownStableCode,
+            ToolResultFromLastRequest(fixture.Provider).StableCode);
         Assert.Contains(
             fixture.Audit.Events,
             auditEvent =>

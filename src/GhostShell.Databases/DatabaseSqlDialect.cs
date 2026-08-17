@@ -135,9 +135,10 @@ internal sealed class DatabaseSqlDialect
         var predicates = query.Filters
             .Select(filter => BuildPredicate(filter, knownColumns, parameters))
             .ToArray();
-        var selected = columns.Count == 0
+        var projectedColumns = ProjectColumns(columns, query);
+        var selected = projectedColumns.Count == 0
             ? "*"
-            : string.Join(", ", columns.Select(column => QuoteIdentifier(column.Name)));
+            : string.Join(", ", projectedColumns.Select(column => QuoteIdentifier(column.Name)));
         var sql = $"SELECT {selected} FROM {QuoteObject(table)}";
         if (predicates.Length > 0)
         {
@@ -148,6 +149,11 @@ internal sealed class DatabaseSqlDialect
         sql += BuildPageClause(query.Offset, query.Limit);
         return new DatabaseSqlCommand(sql + ';', parameters);
     }
+
+    internal IReadOnlyList<DatabaseColumnSchema> ProjectColumns(
+        IReadOnlyList<DatabaseColumnSchema> columns,
+        DatabaseTableQuery query) =>
+        ResolveProjectedColumns(columns, column => column.Name, query);
 
     public DatabaseSqlCommand BuildCount(
         DatabaseObjectId table,
@@ -221,9 +227,12 @@ internal sealed class DatabaseSqlDialect
         // A materialized CTE preserves the source query boundary and avoids
         // that invalid filter pushdown. The newline also keeps a final line
         // comment in the user's SELECT from consuming generated SQL.
+        var projectedColumns = ProjectColumns(columns, query);
+        var selected = string.Join(", ", projectedColumns.Select(column =>
+            $"{queryAlias}.{QuoteIdentifier(column.Name)}"));
         var sql = Family == DatabaseFamily.DuckDb
-            ? $"WITH {queryAlias} AS MATERIALIZED (\n{source}\n)\nSELECT * FROM {queryAlias}"
-            : $"SELECT * FROM ({source}\n){aliasJoiner}{queryAlias}{derivedColumnAliases}";
+            ? $"WITH {queryAlias} AS MATERIALIZED (\n{source}\n)\nSELECT {selected} FROM {queryAlias}"
+            : $"SELECT {selected} FROM ({source}\n){aliasJoiner}{queryAlias}{derivedColumnAliases}";
         if (predicates.Length > 0)
         {
             sql += " WHERE " + string.Join(" AND ", predicates);
@@ -236,6 +245,62 @@ internal sealed class DatabaseSqlDialect
             appendPrimaryKey: query.Sorts.Count > 0);
         sql += BuildPageClause(query.Offset, query.Limit);
         return new DatabaseSqlCommand(sql + ';', parameters);
+    }
+
+    internal IReadOnlyList<DatabaseColumnDescriptor> ProjectColumns(
+        IReadOnlyList<DatabaseColumnDescriptor> columns,
+        DatabaseTableQuery query) =>
+        ResolveProjectedColumns(columns, column => column.Name, query);
+
+    private static IReadOnlyList<TColumn> ResolveProjectedColumns<TColumn>(
+        IReadOnlyList<TColumn> columns,
+        Func<TColumn, string> getName,
+        DatabaseTableQuery query)
+    {
+        ArgumentNullException.ThrowIfNull(columns);
+        ArgumentNullException.ThrowIfNull(query);
+        var included = query.Columns ?? [];
+        var excluded = query.ExcludeColumns ?? [];
+        if (included.Count > 0 && excluded.Count > 0)
+        {
+            throw new ArgumentException(
+                "A table query cannot include and exclude columns together.",
+                nameof(query));
+        }
+
+        var known = columns.ToDictionary(getName, StringComparer.Ordinal);
+        if (included.Count > 0)
+        {
+            return included.Select(name => known.TryGetValue(name, out var column)
+                    ? column
+                    : throw new ArgumentException(
+                        $"Unknown database column '{name}'.",
+                        nameof(query)))
+                .ToArray();
+        }
+
+        if (excluded.Count == 0)
+        {
+            return columns;
+        }
+
+        var excludedNames = excluded.ToHashSet(StringComparer.Ordinal);
+        if (excludedNames.Any(name => !known.ContainsKey(name)))
+        {
+            throw new ArgumentException(
+                "A table query excludes an unknown database column.",
+                nameof(query));
+        }
+
+        var projected = columns.Where(column => !excludedNames.Contains(getName(column))).ToArray();
+        if (projected.Length == 0)
+        {
+            throw new ArgumentException(
+                "A table query must return at least one column.",
+                nameof(query));
+        }
+
+        return projected;
     }
 
     public DatabaseSqlCommand BuildQueryCount(

@@ -337,7 +337,10 @@ public sealed partial class InMemorySessionHostClient
         var requiredProviderCapability =
             RequiredAgentFileProviderCapability(request);
         if (!files.Capabilities.Contains(requiredSessionCapability)
-            || !metadata.Capabilities.HasFlag(requiredProviderCapability))
+            || !AgentFileActionComposer.SupportsProviderCapability(
+                RequiredAgentFileTool(request),
+                metadata.Capabilities,
+                requiredProviderCapability))
         {
             throw AgentFileDispatchFailure(
                 HostErrorCode.CapabilityNotSupported,
@@ -345,11 +348,18 @@ public sealed partial class InMemorySessionHostClient
         }
 
         FilePanelLocation location;
+        FilePanelLocation? destinationLocation = null;
         try
         {
             location = AgentFileActionComposer.ResolveLocation(
                 metadata,
                 GetAgentFileRelativePath(request));
+            if (request is AgentFileRequest.Move move)
+            {
+                destinationLocation = AgentFileActionComposer.ResolveLocation(
+                    metadata,
+                    move.DestinationRelativePath);
+            }
         }
         catch (ArgumentException)
         {
@@ -368,6 +378,7 @@ public sealed partial class InMemorySessionHostClient
             files,
             metadata,
             location,
+            destinationLocation,
             requiredSessionCapability,
             requiredProviderCapability,
             maximumPageSize,
@@ -487,6 +498,11 @@ public sealed partial class InMemorySessionHostClient
                                 dispatch,
                                 cancellationToken)
                             .ConfigureAwait(false),
+                    AgentFileRequest.Search =>
+                        await SearchAgentFilesAsync(
+                                dispatch,
+                                cancellationToken)
+                            .ConfigureAwait(false),
                     AgentFileRequest.Stat =>
                         await StatAgentFileAsync(
                                 dispatch,
@@ -497,8 +513,20 @@ public sealed partial class InMemorySessionHostClient
                                 dispatch,
                                 cancellationToken)
                             .ConfigureAwait(false),
+                    AgentFileRequest.AccessRead =>
+                        await ReadAgentFileAccessAsync(
+                                dispatch,
+                                cancellationToken)
+                            .ConfigureAwait(false),
+                    AgentFileRequest.Transfers =>
+                        ReadAgentFileTransfers(dispatch),
                     AgentFileRequest.CreateDirectory =>
                         await CreateAgentDirectoryAsync(
+                                dispatch,
+                                cancellationToken)
+                            .ConfigureAwait(false),
+                    AgentFileRequest.Move =>
+                        await MoveAgentFileAsync(
                                 dispatch,
                                 cancellationToken)
                             .ConfigureAwait(false),
@@ -724,7 +752,9 @@ public sealed partial class InMemorySessionHostClient
             .ConfigureAwait(false);
         if (!providerResult.IsSuccess)
         {
-            return FileMutationOutcomeUnknown(dispatch.Revision);
+            return MapAgentFileMutationProviderFailure(
+                providerResult.Error!,
+                dispatch.Revision);
         }
 
         if (!TryNormalizeExactEntry(
@@ -743,6 +773,47 @@ public sealed partial class InMemorySessionHostClient
     }
 
     private static async ValueTask<HostResult<AgentFileActionResult>>
+        MoveAgentFileAsync(
+            AgentFileDispatch dispatch,
+            CancellationToken cancellationToken)
+    {
+        if (dispatch.DestinationLocation is not { } destination)
+        {
+            return InvalidAgentFileAction(
+                "The governed file move has no validated destination.",
+                dispatch.Revision);
+        }
+
+        var providerResult = await dispatch.Files
+            .RenameAsync(
+                new FilePanelRenameRequest(
+                    dispatch.Location,
+                    destination,
+                    FilePanelMutationPrecondition.MustNotExist),
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (!providerResult.IsSuccess)
+        {
+            return MapAgentFileMutationProviderFailure(
+                providerResult.Error!,
+                dispatch.Revision);
+        }
+
+        if (!TryNormalizeExactEntry(
+                providerResult.Value!,
+                destination,
+                dispatch.Metadata.TrustedRoot,
+                out var normalized))
+        {
+            return FileMutationOutcomeUnknown(dispatch.Revision);
+        }
+
+        return HostResult<AgentFileActionResult>.Succeed(
+            new AgentFileActionResult.Moved(normalized!),
+            dispatch.Revision);
+    }
+
+    private static async ValueTask<HostResult<AgentFileActionResult>>
         DeleteAgentFileAsync(
             AgentFileDispatch dispatch,
             CancellationToken cancellationToken)
@@ -751,13 +822,15 @@ public sealed partial class InMemorySessionHostClient
             .DeleteAsync(
                 new FilePanelDeleteRequest(
                     dispatch.Location,
-                    Recursive: false,
+                    Recursive: ((AgentFileRequest.Delete)dispatch.Request).Recursive,
                     FilePanelMutationPrecondition.MustExist),
                 cancellationToken)
             .ConfigureAwait(false);
         if (!providerResult.IsSuccess)
         {
-            return FileMutationOutcomeUnknown(dispatch.Revision);
+            return MapAgentFileMutationProviderFailure(
+                providerResult.Error!,
+                dispatch.Revision);
         }
 
         var receipt = providerResult.Value!;
@@ -775,7 +848,7 @@ public sealed partial class InMemorySessionHostClient
             new AgentFileActionResult.Deleted(
                 new FilePanelDeleteReceipt(
                     dispatch.Location.WithVersion(version: null),
-                    WasDirectory: false)),
+                    receipt.WasDirectory)),
             dispatch.Revision);
     }
 
@@ -851,9 +924,13 @@ public sealed partial class InMemorySessionHostClient
         result switch
         {
             AgentFileActionResult.Page => "files_listed",
+            AgentFileActionResult.SearchResults => "files_searched",
             AgentFileActionResult.Entry => "file_stated",
             AgentFileActionResult.Preview => "file_read",
+            AgentFileActionResult.AccessControl => "file_access_read",
+            AgentFileActionResult.Transfers => "file_transfers_read",
             AgentFileActionResult.CreatedDirectory => "directory_created",
+            AgentFileActionResult.Moved => "file_moved",
             AgentFileActionResult.Deleted => "file_deleted",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(result),
@@ -1077,6 +1154,26 @@ public sealed partial class InMemorySessionHostClient
                     false),
             FilePanelErrorCode.NotFound =>
                 (HostErrorCode.NotFound, "file_not_found", false),
+            FilePanelErrorCode.InvalidLocation =>
+                (HostErrorCode.InvalidRequest, "file_location_invalid", false),
+            FilePanelErrorCode.InvalidName =>
+                (HostErrorCode.InvalidRequest, "file_name_invalid", false),
+            FilePanelErrorCode.OutsideRoot =>
+                (HostErrorCode.InvalidRequest, "file_outside_root", false),
+            FilePanelErrorCode.RootMutationNotAllowed =>
+                (
+                    HostErrorCode.InvalidRequest,
+                    "file_root_mutation_not_allowed",
+                    false),
+            FilePanelErrorCode.AlreadyExists =>
+                (HostErrorCode.InvalidRequest, "file_already_exists", false),
+            FilePanelErrorCode.Conflict =>
+                (HostErrorCode.InvalidRequest, "file_conflict", false),
+            FilePanelErrorCode.PreconditionFailed =>
+                (
+                    HostErrorCode.InvalidRequest,
+                    "file_precondition_failed",
+                    false),
             FilePanelErrorCode.Cancelled =>
                 (HostErrorCode.Cancelled, "operation_cancelled", false),
             FilePanelErrorCode.Offline =>
@@ -1095,6 +1192,19 @@ public sealed partial class InMemorySessionHostClient
                 (HostErrorCode.InvalidRequest, "file_limit_exceeded", false),
             FilePanelErrorCode.AccessDenied =>
                 (HostErrorCode.InvalidRequest, "file_access_denied", false),
+            FilePanelErrorCode.NotDirectory =>
+                (HostErrorCode.InvalidRequest, "file_not_directory", false),
+            FilePanelErrorCode.IsDirectory =>
+                (HostErrorCode.InvalidRequest, "file_is_directory", false),
+            FilePanelErrorCode.DirectoryNotEmpty =>
+                (
+                    HostErrorCode.InvalidRequest,
+                    "file_directory_not_empty",
+                    false),
+            FilePanelErrorCode.LinkNotAllowed =>
+                (HostErrorCode.InvalidRequest, "file_link_not_allowed", false),
+            FilePanelErrorCode.QuotaExceeded =>
+                (HostErrorCode.InvalidRequest, "file_quota_exceeded", false),
             _ =>
                 (HostErrorCode.InvalidRequest, "file_operation_rejected", false),
         };
@@ -1106,6 +1216,23 @@ public sealed partial class InMemorySessionHostClient
                 retryable),
             revision);
     }
+
+    private static HostResult<AgentFileActionResult>
+        MapAgentFileMutationProviderFailure(
+            FilePanelError error,
+            long revision) =>
+        IsAgentFileMutationOutcomeUnknown(error.Code)
+            ? FileMutationOutcomeUnknown(revision)
+            : MapAgentFileProviderFailure(error, revision);
+
+    private static bool IsAgentFileMutationOutcomeUnknown(
+        FilePanelErrorCode code) =>
+        code is
+            FilePanelErrorCode.Cancelled
+            or FilePanelErrorCode.Offline
+            or FilePanelErrorCode.UnexpectedEndOfStream
+            or FilePanelErrorCode.PartialTransfer
+            or FilePanelErrorCode.IoFailure;
 
     private static HostResult<AgentFileActionResult>
         InvalidAgentFileProviderResult(long revision) =>
@@ -1146,6 +1273,7 @@ public sealed partial class InMemorySessionHostClient
 
     private static bool IsAgentFileMutation(AgentFileRequest request) =>
         request is AgentFileRequest.CreateDirectory
+            or AgentFileRequest.Move
             or AgentFileRequest.Delete;
 
     private static bool HasLiveAgentFileCapability(
@@ -1155,7 +1283,9 @@ public sealed partial class InMemorySessionHostClient
         {
             return dispatch.Files.Capabilities.Contains(
                     dispatch.RequiredSessionCapability)
-                && dispatch.Files.Metadata.Capabilities.HasFlag(
+                && AgentFileActionComposer.SupportsProviderCapability(
+                    RequiredAgentFileTool(dispatch.Request),
+                    dispatch.Files.Metadata.Capabilities,
                     dispatch.RequiredProviderCapability);
         }
         catch (Exception)
@@ -1199,10 +1329,14 @@ public sealed partial class InMemorySessionHostClient
         request switch
         {
             AgentFileRequest.List => BuiltInAgentTools.FilesList,
+            AgentFileRequest.Search => BuiltInAgentTools.FilesSearch,
             AgentFileRequest.Stat => BuiltInAgentTools.FilesStat,
             AgentFileRequest.Read => BuiltInAgentTools.FilesRead,
+            AgentFileRequest.AccessRead => BuiltInAgentTools.FilesAccessRead,
+            AgentFileRequest.Transfers => BuiltInAgentTools.FilesTransfers,
             AgentFileRequest.CreateDirectory =>
                 BuiltInAgentTools.FilesCreateDirectory,
+            AgentFileRequest.Move => BuiltInAgentTools.FilesMove,
             AgentFileRequest.Delete => BuiltInAgentTools.FilesDelete,
             _ => throw AgentFileDispatchFailure(
                 HostErrorCode.InvalidRequest,
@@ -1214,10 +1348,16 @@ public sealed partial class InMemorySessionHostClient
         request switch
         {
             AgentFileRequest.List => SessionCapabilities.FilesList,
+            AgentFileRequest.Search => SessionCapabilities.FilesSearch,
             AgentFileRequest.Stat => SessionCapabilities.FilesStat,
             AgentFileRequest.Read => SessionCapabilities.FilesPreview,
+            AgentFileRequest.AccessRead =>
+                SessionCapabilities.FilesReadAccessControl,
+            AgentFileRequest.Transfers =>
+                SessionCapabilities.FilesTransfersRead,
             AgentFileRequest.CreateDirectory =>
                 SessionCapabilities.FilesCreateDirectory,
+            AgentFileRequest.Move => SessionCapabilities.FilesRename,
             AgentFileRequest.Delete => SessionCapabilities.FilesDelete,
             _ => throw AgentFileDispatchFailure(
                 HostErrorCode.InvalidRequest,
@@ -1229,11 +1369,17 @@ public sealed partial class InMemorySessionHostClient
         request switch
         {
             AgentFileRequest.List => FilePanelCapability.List,
+            AgentFileRequest.Search => FilePanelCapability.Search,
             AgentFileRequest.Stat => FilePanelCapability.Stat,
             AgentFileRequest.Read => FilePanelCapability.RangedRead,
+            AgentFileRequest.AccessRead => FilePanelCapability.None,
+            AgentFileRequest.Transfers => FilePanelCapability.None,
             AgentFileRequest.CreateDirectory =>
                 FilePanelCapability.CreateDirectory
                 | FilePanelCapability.GovernedCreateDirectory,
+            AgentFileRequest.Move =>
+                FilePanelCapability.Rename
+                | FilePanelCapability.GovernedRename,
             AgentFileRequest.Delete =>
                 FilePanelCapability.Delete
                 | FilePanelCapability.GovernedDelete,
@@ -1247,10 +1393,14 @@ public sealed partial class InMemorySessionHostClient
         request switch
         {
             AgentFileRequest.List list => list.SessionId,
+            AgentFileRequest.Search search => search.SessionId,
             AgentFileRequest.Stat stat => stat.SessionId,
             AgentFileRequest.Read read => read.SessionId,
+            AgentFileRequest.AccessRead accessRead => accessRead.SessionId,
+            AgentFileRequest.Transfers transfers => transfers.SessionId,
             AgentFileRequest.CreateDirectory createDirectory =>
                 createDirectory.SessionId,
+            AgentFileRequest.Move move => move.SessionId,
             AgentFileRequest.Delete delete => delete.SessionId,
             _ => throw AgentFileDispatchFailure(
                 HostErrorCode.InvalidRequest,
@@ -1262,10 +1412,14 @@ public sealed partial class InMemorySessionHostClient
         request switch
         {
             AgentFileRequest.List list => list.RelativePath,
+            AgentFileRequest.Search search => search.RelativePath,
             AgentFileRequest.Stat stat => stat.RelativePath,
             AgentFileRequest.Read read => read.RelativePath,
+            AgentFileRequest.AccessRead accessRead => accessRead.RelativePath,
+            AgentFileRequest.Transfers => [],
             AgentFileRequest.CreateDirectory createDirectory =>
                 createDirectory.RelativePath,
+            AgentFileRequest.Move move => move.RelativePath,
             AgentFileRequest.Delete delete => delete.RelativePath,
             _ => throw AgentFileDispatchFailure(
                 HostErrorCode.InvalidRequest,
@@ -1322,6 +1476,7 @@ public sealed partial class InMemorySessionHostClient
         IFilePanelSession Files,
         FileSessionMetadata Metadata,
         FilePanelLocation Location,
+        FilePanelLocation? DestinationLocation,
         string RequiredSessionCapability,
         FilePanelCapability RequiredProviderCapability,
         int MaximumPageSize,

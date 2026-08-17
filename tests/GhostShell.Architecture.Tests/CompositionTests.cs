@@ -143,25 +143,29 @@ public sealed class CompositionTests
             SessionCapabilities.BrowserReadState));
         Assert.True(hostHello.Value.Capabilities.Contains(
             SessionCapabilities.BrowserNavigate));
-        Assert.False(hostHello.Value.Capabilities.Contains(
+        Assert.True(hostHello.Value.Capabilities.Contains(
             SessionCapabilities.BrowserSnapshot));
-        Assert.False(hostHello.Value.Capabilities.Contains(
+        Assert.True(hostHello.Value.Capabilities.Contains(
             SessionCapabilities.BrowserClick));
-        Assert.False(hostHello.Value.Capabilities.Contains(
+        Assert.True(hostHello.Value.Capabilities.Contains(
             SessionCapabilities.BrowserFill));
-        Assert.False(hostHello.Value.Capabilities.Contains(
+        Assert.True(hostHello.Value.Capabilities.Contains(
             SessionCapabilities.BrowserCheck));
         Assert.True(hostHello.Value.Capabilities.Contains(
             SessionCapabilities.BrowserOriginGuard));
+        Assert.True(hostHello.Value.Capabilities.Contains(
+            SessionCapabilities.BrowserAgentInputBarrier));
         Assert.Same(concreteAiProfiles, aiProfiles);
         Assert.Null(services.GetService<IAgentChatRuntime>());
         Assert.Null(services.GetService<IGovernedAgentRuntime>());
         using (var firstWorkspaceAgent = workspaceAgentFactory.Create(
                    new WorkspaceInstanceId("composition-workspace-one"),
-                   new AgentConversationScopeId("composition-scope-one")))
+                   new AgentConversationScopeId("composition-scope-one"),
+                   AgentPolicy.Default))
         using (var secondWorkspaceAgent = workspaceAgentFactory.Create(
                    new WorkspaceInstanceId("composition-workspace-two"),
-                   new AgentConversationScopeId("composition-scope-two")))
+                   new AgentConversationScopeId("composition-scope-two"),
+                   AgentPolicy.Default))
         {
             Assert.NotSame(firstWorkspaceAgent, secondWorkspaceAgent);
         }

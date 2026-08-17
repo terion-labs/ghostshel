@@ -88,11 +88,11 @@ public sealed partial class GovernedAgentRuntime
 
         NotifyChanged();
 
-        RunTargetContexts? contexts;
+        AgentContextSnapshot? contexts;
         using var ownedInspectionCancellation = inspectionCancellation;
         try
         {
-            contexts = await InspectRunTargetContextsAsync(
+            contexts = await InspectRunTargetContextAsync(
                     lease.Target,
                     GetOrCreateAgent(),
                     inspectionCancellation.Token)

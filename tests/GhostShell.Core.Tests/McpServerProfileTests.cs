@@ -21,10 +21,11 @@ public sealed class McpServerProfileTests
             new McpServerProfileId("mcp.github"),
             McpServerProfile.CurrentSchemaVersion,
             "GitHub tools",
-            "/usr/local/bin/github-mcp-server",
-            arguments,
-            "/srv/ghostshell",
-            environment,
+            new McpServerTransport.Stdio(
+                "/usr/local/bin/github-mcp-server",
+                arguments,
+                "/srv/ghostshell",
+                environment),
             enabledTools,
             isEnabled: false);
 
@@ -38,13 +39,16 @@ public sealed class McpServerProfileTests
 
         Assert.NotNull(restored);
         Assert.Equal(McpServerProfile.Kind, restored.Key.Kind);
-        Assert.Equal(["--transport", "stdio"], restored.Arguments);
-        Assert.Equal(["A_TOKEN", "Z_TOKEN"], restored.Environment.Select(item => item.Name));
+        var restoredStdio = Assert.IsType<McpServerTransport.Stdio>(
+            restored.Transport);
+        Assert.Equal(["--transport", "stdio"], restoredStdio.Arguments);
+        Assert.Equal(
+            ["A_TOKEN", "Z_TOKEN"],
+            restoredStdio.Environment.Select(item => item.Name));
         Assert.Equal(
             ["issues.list", "repositories.read"],
             restored.EnabledTools);
-        Assert.Equal(secret, restored.Environment[1].Reference);
-        Assert.IsType<McpServerTransport.Stdio>(restored.Transport);
+        Assert.Equal(secret, restoredStdio.Environment[1].Reference);
         Assert.False(restored.IsEnabled);
         Assert.Contains("\"$type\":\"stdio\"", json, StringComparison.Ordinal);
         Assert.Contains(secret.Value, json, StringComparison.Ordinal);
@@ -69,7 +73,9 @@ public sealed class McpServerProfileTests
     {
         var repeated = CreateProfile(arguments: ["--verbose", "--verbose"]);
 
-        Assert.Equal(["--verbose", "--verbose"], repeated.Arguments);
+        Assert.Equal(
+            ["--verbose", "--verbose"],
+            Assert.IsType<McpServerTransport.Stdio>(repeated.Transport).Arguments);
         Assert.Throws<ArgumentException>(() => CreateProfile(
             arguments: Enumerable
                 .Repeat("x", McpServerProfile.MaximumArgumentCount + 1)
@@ -119,10 +125,7 @@ public sealed class McpServerProfileTests
             new McpServerProfileId("mcp.server"),
             McpServerProfile.CurrentSchemaVersion + 1,
             "Server",
-            "server",
-            [],
-            null,
-            [],
+            new McpServerTransport.Stdio("server", [], null, []),
             []));
         Assert.Throws<ArgumentException>(() => CreateProfile(
             executable: new string('x', McpServerProfile.MaximumExecutableBytes + 1)));
@@ -310,9 +313,10 @@ public sealed class McpServerProfileTests
             new McpServerProfileId("mcp.server"),
             McpServerProfile.CurrentSchemaVersion,
             name,
-            executable,
-            arguments ?? [],
-            workingDirectory,
-            environment ?? [],
+            new McpServerTransport.Stdio(
+                executable,
+                arguments ?? [],
+                workingDirectory,
+                environment ?? []),
             enabledTools ?? []);
 }

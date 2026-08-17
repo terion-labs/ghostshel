@@ -97,6 +97,7 @@ public sealed class GovernedAgentSteeringTests
             TargetTitle: "Terminal",
             ContextItems: ImmutableArray<GovernedAgentContextItem>.Empty,
             Messages: Array.Empty<AgentChatMessage>(),
+            EffectivePolicy: AgentPolicy.Default,
             ProvisionalAssistantText: string.Empty,
             Status: "Waiting",
             ActiveTool: activeTool,

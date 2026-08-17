@@ -68,7 +68,11 @@ public sealed class FileProviderAdapterFactoryTests
                     Assert.IsAssignableFrom<LocalFileProvider>(
                         item.Registration.Provider);
                     Assert.Equal(
-                        FilePanelCapability.None,
+                        OperatingSystem.IsWindows()
+                            ? FilePanelCapability.None
+                            : FilePanelCapability.GovernedCreateDirectory
+                                | FilePanelCapability.GovernedDelete
+                                | FilePanelCapability.GovernedRename,
                         item.Registration.GovernedMutationCapabilities);
                 },
                 item =>
@@ -147,12 +151,20 @@ public sealed class FileProviderAdapterFactoryTests
                         FilePanelCapability.Delete));
                 });
             Assert.All(
-                new[] { "files.local", "files.sftp", "files.ftp", "files.smb" },
+                new[] { "files.sftp", "files.ftp", "files.smb" },
                 id => Assert.Equal(
                     FilePanelCapability.None,
                     profileCapabilities[id]
                     & (FilePanelCapability.GovernedCreateDirectory
                         | FilePanelCapability.GovernedDelete)));
+            Assert.Equal(
+                OperatingSystem.IsWindows()
+                    ? FilePanelCapability.None
+                    : FilePanelCapability.GovernedCreateDirectory
+                        | FilePanelCapability.GovernedDelete,
+                profileCapabilities["files.local"]
+                & (FilePanelCapability.GovernedCreateDirectory
+                    | FilePanelCapability.GovernedDelete));
             Assert.Empty(vault.ResolveRequests);
         }
         finally

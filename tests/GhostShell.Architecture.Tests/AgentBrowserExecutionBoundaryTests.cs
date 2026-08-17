@@ -69,12 +69,32 @@ public sealed class AgentBrowserExecutionBoundaryTests
     [Fact]
     public void BrowserRequestsCarryNoAttachmentOrApprovalIdentity()
     {
+        Type[] intendedRequestTypes =
+        [
+            typeof(AgentBrowserRequest.ReadState),
+            typeof(AgentBrowserRequest.Snapshot),
+            typeof(AgentBrowserRequest.Wait),
+            typeof(AgentBrowserRequest.Click),
+            typeof(AgentBrowserRequest.Fill),
+            typeof(AgentBrowserRequest.Check),
+            typeof(AgentBrowserRequest.Mouse),
+            typeof(AgentBrowserRequest.Key),
+            typeof(AgentBrowserRequest.Scroll),
+            typeof(AgentBrowserRequest.Evaluate),
+            typeof(AgentBrowserRequest.Navigate),
+            typeof(AgentBrowserRequest.Back),
+            typeof(AgentBrowserRequest.Forward),
+            typeof(AgentBrowserRequest.Reload),
+            typeof(AgentBrowserRequest.Stop),
+        ];
         var requestTypes = typeof(AgentBrowserRequest)
             .GetNestedTypes()
             .Where(type => !type.IsAbstract)
             .ToArray();
 
-        Assert.Equal(10, requestTypes.Length);
+        Assert.Equal(
+            intendedRequestTypes.OrderBy(type => type.FullName, StringComparer.Ordinal),
+            requestTypes.OrderBy(type => type.FullName, StringComparer.Ordinal));
         Assert.All(
             requestTypes,
             type =>

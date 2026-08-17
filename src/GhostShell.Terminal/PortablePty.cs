@@ -46,9 +46,7 @@ internal sealed class PortaPtyFactory : IPortablePtyFactory
                 $"The terminal working directory does not exist: {workingDirectory}");
         }
 
-        var environment = new Dictionary<string, string>(launch.Environment, StringComparer.Ordinal);
-        environment.TryAdd("TERM", "xterm-256color");
-        environment.TryAdd("COLORTERM", "truecolor");
+        var environment = CreateProcessEnvironment(launch.Environment);
         var connection = await PtyProvider.SpawnAsync(
                 new PtyOptions
                 {
@@ -63,6 +61,19 @@ internal sealed class PortaPtyFactory : IPortablePtyFactory
                 cancellationToken)
             .ConfigureAwait(false);
         return new PortaPtyConnection(connection);
+    }
+
+    internal static Dictionary<string, string> CreateProcessEnvironment(
+        IReadOnlyDictionary<string, string> configured)
+    {
+        var environment = new Dictionary<string, string>(configured, StringComparer.Ordinal);
+        environment.TryAdd("TERM", "xterm-256color");
+        environment.TryAdd("COLORTERM", "truecolor");
+        // This advertises parser support only. Applications still own the state
+        // they emit, and GhostSHELL continues to treat every payload as untrusted.
+        environment[TerminalInteractiveStateProtocol.CapabilityEnvironmentVariable] =
+            TerminalInteractiveStateProtocol.NotificationTitle;
+        return environment;
     }
 
     private static string ResolveDefaultShell()

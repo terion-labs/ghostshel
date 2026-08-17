@@ -65,6 +65,11 @@ public sealed record BrowserError
             "browser_fill_value_not_supported",
         BrowserErrorCode.ElementNotCheckable =>
             "browser_element_not_checkable",
+        BrowserErrorCode.CheckStateNotApplied =>
+            "browser_check_state_not_applied",
+        BrowserErrorCode.ScriptRejected => "browser_script_rejected",
+        BrowserErrorCode.ScriptResultRejected =>
+            "browser_script_result_rejected",
         BrowserErrorCode.InteractionOutcomeUnknown =>
             "browser_interaction_outcome_unknown",
         BrowserErrorCode.NavigationFailed => "navigation_failed",

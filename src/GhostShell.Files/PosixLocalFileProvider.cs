@@ -6,7 +6,7 @@ namespace GhostShell.Files;
 // bound where the interface is first implemented, so a method added further
 // down the hierarchy is not the one that gets called unless the class says it
 // implements the interface itself.
-public sealed class PosixLocalFileProvider : LocalFileProvider, IFileProvider
+public sealed partial class PosixLocalFileProvider : LocalFileProvider, IFileProvider
 {
     public PosixLocalFileProvider(LocalFileProviderOptions options)
         : base(

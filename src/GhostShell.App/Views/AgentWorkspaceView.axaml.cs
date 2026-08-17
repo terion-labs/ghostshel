@@ -6,6 +6,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.VisualTree;
+using GhostShell.App.ViewModels;
 
 namespace GhostShell.App.Views;
 
@@ -26,6 +27,8 @@ public sealed partial class AgentWorkspaceView : UserControl
     private double? _floatingWidth;
     private double? _floatingHeight;
     private double? _dockedWidth;
+    private QueuedFollowUpDrag? _queuedFollowUpDrag;
+    private Grid? _queuedFollowUpDropTarget;
 
     public AgentWorkspaceView()
     {
@@ -224,6 +227,9 @@ public sealed partial class AgentWorkspaceView : UserControl
 
     public event EventHandler<RoutedEventArgs>? LoadOlderAgentAuditRequested;
 
+    public event EventHandler<AgentQueuedFollowUpMoveRequestedEventArgs>?
+        MoveQueuedFollowUpRequested;
+
     public event EventHandler<RoutedEventArgs>? StartNewAgentConversationRequested;
 
     public event EventHandler<RoutedEventArgs>? OpenAgentConversationRequested;
@@ -244,7 +250,7 @@ public sealed partial class AgentWorkspaceView : UserControl
 
     public event EventHandler<RoutedEventArgs>? SendAgentChatRequested;
 
-    public event EventHandler<RoutedEventArgs>? QueueAgentFollowUpRequested;
+    public event EventHandler<RoutedEventArgs>? QueueAgentSteeringRequested;
 
     public event EventHandler<RoutedEventArgs>? AttachAgentImageRequested;
 
@@ -282,6 +288,13 @@ public sealed partial class AgentWorkspaceView : UserControl
 
     private void OnAgentPromptKeyDown(object? sender, KeyEventArgs e)
     {
+        if (ShouldQueueSteering(e.Key, e.KeyModifiers))
+        {
+            e.Handled = true;
+            QueueAgentSteeringRequested?.Invoke(sender, e);
+            return;
+        }
+
         if (!ShouldSubmitPrompt(e.Key, e.KeyModifiers))
         {
             return;
@@ -291,8 +304,207 @@ public sealed partial class AgentWorkspaceView : UserControl
         SendAgentChatRequested?.Invoke(sender, e);
     }
 
+    private void OnQueuedFollowUpDragPressed(
+        object? sender,
+        PointerPressedEventArgs e)
+    {
+        if (_queuedFollowUpDrag is not null
+            || sender is not Control
+            {
+                DataContext: AgentQueuedFollowUpViewModel item,
+            } source
+            || item.IsEditing
+            || !e.Pointer.IsPrimary)
+        {
+            return;
+        }
+
+        var point = e.GetCurrentPoint(source);
+        if (!point.Properties.IsLeftButtonPressed
+            && e.Pointer.Type != PointerType.Touch)
+        {
+            return;
+        }
+
+        var currentIndex = ResolveQueuedFollowUpIndex(item);
+        if (currentIndex < 0 || CountQueuedFollowUpsInGroup(item) < 2)
+        {
+            return;
+        }
+
+        _queuedFollowUpDrag = new QueuedFollowUpDrag(
+            source,
+            point.Position,
+            e.Pointer,
+            item,
+            currentIndex,
+            currentIndex,
+            IsDragging: false);
+        e.Pointer.Capture(source);
+        e.Handled = true;
+    }
+
+    private void OnQueuedFollowUpDragMoved(object? sender, PointerEventArgs e)
+    {
+        if (_queuedFollowUpDrag is not { } drag
+            || !ReferenceEquals(sender, drag.Source)
+            || !ReferenceEquals(e.Pointer, drag.Pointer))
+        {
+            return;
+        }
+
+        var point = e.GetCurrentPoint(drag.Source);
+        if (!point.Properties.IsLeftButtonPressed
+            && e.Pointer.Type != PointerType.Touch)
+        {
+            CancelQueuedFollowUpDrag(drag.Pointer);
+            return;
+        }
+
+        if (!drag.IsDragging)
+        {
+            var delta = point.Position - drag.Origin;
+            if (Math.Abs(delta.X) < 5 && Math.Abs(delta.Y) < 5)
+            {
+                return;
+            }
+
+            drag = drag with { IsDragging = true };
+        }
+
+        var destinationIndex = ResolveQueuedFollowUpDestination(e, drag.Item);
+        drag = drag with { DestinationIndex = destinationIndex };
+        _queuedFollowUpDrag = drag;
+        ShowQueuedFollowUpDropTarget(drag.Item, destinationIndex);
+        e.Handled = true;
+    }
+
+    private void OnQueuedFollowUpDragReleased(
+        object? sender,
+        PointerReleasedEventArgs e)
+    {
+        if (_queuedFollowUpDrag is not { } drag
+            || !ReferenceEquals(sender, drag.Source)
+            || !ReferenceEquals(e.Pointer, drag.Pointer))
+        {
+            return;
+        }
+
+        _queuedFollowUpDrag = null;
+        ClearQueuedFollowUpDropTarget();
+        drag.Pointer.Capture(null);
+        if (drag.IsDragging && drag.DestinationIndex != drag.SourceIndex)
+        {
+            MoveQueuedFollowUpRequested?.Invoke(
+                this,
+                new AgentQueuedFollowUpMoveRequestedEventArgs(
+                    drag.Item,
+                    drag.DestinationIndex));
+        }
+
+        e.Handled = true;
+    }
+
+    private void OnQueuedFollowUpDragCaptureLost(
+        object? sender,
+        PointerCaptureLostEventArgs e)
+    {
+        _ = sender;
+        if (_queuedFollowUpDrag is { } drag
+            && ReferenceEquals(e.Pointer, drag.Pointer))
+        {
+            _queuedFollowUpDrag = null;
+            ClearQueuedFollowUpDropTarget();
+        }
+    }
+
+    private void CancelQueuedFollowUpDrag(IPointer pointer)
+    {
+        _queuedFollowUpDrag = null;
+        ClearQueuedFollowUpDropTarget();
+        pointer.Capture(null);
+    }
+
+    private int ResolveQueuedFollowUpDestination(
+        PointerEventArgs e,
+        AgentQueuedFollowUpViewModel source)
+    {
+        var rows = QueuedFollowUpRows();
+        var compatibleRows = rows
+            .Where(row => row.Item.IsSteering == source.IsSteering)
+            .ToArray();
+        var groupStart = rows.FindIndex(
+            row => row.Item.IsSteering == source.IsSteering);
+        var pointerY = e.GetPosition(AgentQueuedFollowUps).Y;
+        var relativeIndex = compatibleRows.Count(row =>
+            row.Item != source
+            && row.Row.TranslatePoint(
+                new Point(0, row.Row.Bounds.Height / 2),
+                AgentQueuedFollowUps) is { } center
+            && center.Y < pointerY);
+        return groupStart + relativeIndex;
+    }
+
+    private void ShowQueuedFollowUpDropTarget(
+        AgentQueuedFollowUpViewModel source,
+        int destinationIndex)
+    {
+        ClearQueuedFollowUpDropTarget();
+        var rows = QueuedFollowUpRows();
+        var compatibleRows = rows
+            .Where(row => row.Item.IsSteering == source.IsSteering
+                && row.Item != source)
+            .ToArray();
+        var groupStart = rows.FindIndex(
+            row => row.Item.IsSteering == source.IsSteering);
+        var relativeIndex = destinationIndex - groupStart;
+        if (compatibleRows.Length == 0)
+        {
+            return;
+        }
+
+        if (relativeIndex < compatibleRows.Length)
+        {
+            _queuedFollowUpDropTarget = compatibleRows[relativeIndex].Row;
+            _queuedFollowUpDropTarget.Classes.Add("queueDropBefore");
+        }
+        else
+        {
+            _queuedFollowUpDropTarget = compatibleRows[^1].Row;
+            _queuedFollowUpDropTarget.Classes.Add("queueDropAfter");
+        }
+    }
+
+    private void ClearQueuedFollowUpDropTarget()
+    {
+        _queuedFollowUpDropTarget?.Classes.Remove("queueDropBefore");
+        _queuedFollowUpDropTarget?.Classes.Remove("queueDropAfter");
+        _queuedFollowUpDropTarget = null;
+    }
+
+    private int ResolveQueuedFollowUpIndex(AgentQueuedFollowUpViewModel item) =>
+        QueuedFollowUpRows().FindIndex(row => row.Item == item);
+
+    private int CountQueuedFollowUpsInGroup(AgentQueuedFollowUpViewModel item) =>
+        QueuedFollowUpRows().Count(
+            row => row.Item.IsSteering == item.IsSteering);
+
+    private List<QueuedFollowUpRow> QueuedFollowUpRows() =>
+        AgentQueuedFollowUps
+            .GetVisualDescendants()
+            .OfType<Grid>()
+            .Where(row => row.Classes.Contains("agentQueueRow"))
+            .Select(row => new QueuedFollowUpRow(
+                row,
+                (AgentQueuedFollowUpViewModel)row.DataContext!))
+            .OrderBy(row => row.Row.TranslatePoint(default, AgentQueuedFollowUps)?.Y)
+            .ToList();
+
     internal static bool ShouldSubmitPrompt(Key key, KeyModifiers modifiers) =>
         key == Key.Enter && modifiers == KeyModifiers.None;
+
+    internal static bool ShouldQueueSteering(Key key, KeyModifiers modifiers) =>
+        key == Key.Enter && modifiers == KeyModifiers.Meta;
 
     private void OnApproveAgentActionClick(object? sender, RoutedEventArgs e) =>
         ApproveAgentActionRequested?.Invoke(sender, e);
@@ -312,14 +524,20 @@ public sealed partial class AgentWorkspaceView : UserControl
     private void OnDenyAgentActionClick(object? sender, RoutedEventArgs e) =>
         DenyAgentActionRequested?.Invoke(sender, e);
 
-    private void OnDisableAgentYoloClick(object? sender, RoutedEventArgs e) =>
+    private void OnDisableAgentYoloClick(object? sender, RoutedEventArgs e)
+    {
+        AgentAccessModeButton.Flyout?.Hide();
         DisableAgentYoloRequested?.Invoke(sender, e);
+    }
 
     private void OnEnableAgentCapabilityAskClick(object? sender, RoutedEventArgs e) =>
         EnableAgentCapabilityAskRequested?.Invoke(sender, e);
 
-    private void OnEnableAgentYoloClick(object? sender, RoutedEventArgs e) =>
+    private void OnEnableAgentYoloClick(object? sender, RoutedEventArgs e)
+    {
+        AgentAccessModeButton.Flyout?.Hide();
         EnableAgentYoloRequested?.Invoke(sender, e);
+    }
 
     private void OnKeepAgentCapabilityOffClick(object? sender, RoutedEventArgs e) =>
         KeepAgentCapabilityOffRequested?.Invoke(sender, e);
@@ -332,9 +550,6 @@ public sealed partial class AgentWorkspaceView : UserControl
 
     private void OnSendAgentChatClick(object? sender, RoutedEventArgs e) =>
         SendAgentChatRequested?.Invoke(sender, e);
-
-    private void OnQueueAgentFollowUpClick(object? sender, RoutedEventArgs e) =>
-        QueueAgentFollowUpRequested?.Invoke(sender, e);
 
     private void OnAttachAgentImageClick(object? sender, RoutedEventArgs e) =>
         AttachAgentImageRequested?.Invoke(sender, e);
@@ -374,4 +589,26 @@ public sealed partial class AgentWorkspaceView : UserControl
 
     private void OnRefreshModelsClick(object? sender, RoutedEventArgs e) =>
         RefreshAgentModelsRequested?.Invoke(sender, e);
+
+    private sealed record QueuedFollowUpDrag(
+        Control Source,
+        Point Origin,
+        IPointer Pointer,
+        AgentQueuedFollowUpViewModel Item,
+        int SourceIndex,
+        int DestinationIndex,
+        bool IsDragging);
+
+    private sealed record QueuedFollowUpRow(
+        Grid Row,
+        AgentQueuedFollowUpViewModel Item);
+}
+
+public sealed class AgentQueuedFollowUpMoveRequestedEventArgs(
+    AgentQueuedFollowUpViewModel item,
+    int destinationIndex) : EventArgs
+{
+    public AgentQueuedFollowUpViewModel Item { get; } = item;
+
+    public int DestinationIndex { get; } = destinationIndex;
 }

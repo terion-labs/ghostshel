@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using GhostShell.Application;
 using GhostShell.Core;
 
@@ -86,14 +87,49 @@ public sealed class FilePanelSessionTests
             new RecordingTransferQueue());
 
         Assert.True(factory.Capabilities.Contains(SessionCapabilities.FilesList));
+        Assert.True(factory.Capabilities.Contains(SessionCapabilities.FilesSearch));
         Assert.True(factory.Capabilities.Contains(SessionCapabilities.FilesStat));
         Assert.True(factory.Capabilities.Contains(SessionCapabilities.FilesPreview));
+        Assert.True(factory.Capabilities.Contains(
+            SessionCapabilities.FilesReadAccessControl));
+        Assert.True(factory.Capabilities.Contains(
+            SessionCapabilities.FilesTransfersRead));
         Assert.True(factory.Capabilities.Contains(SessionCapabilities.FilesCreateDirectory));
         Assert.True(factory.Capabilities.Contains(SessionCapabilities.FilesRename));
         Assert.True(factory.Capabilities.Contains(SessionCapabilities.FilesDelete));
         Assert.True(factory.Capabilities.Contains(SessionCapabilities.FilesTransferEnqueue));
         Assert.True(factory.Capabilities.Contains(SessionCapabilities.FilesTransferCancel));
         Assert.True(factory.Capabilities.Contains(SessionCapabilities.FilesTransferRetry));
+    }
+
+    [Fact]
+    public async Task SessionForwardsProviderSearchWithoutMaterializingUIState()
+    {
+        var root = Root();
+        var client = new UnusedFilePanelClient(root);
+        var factory = new FilePanelSessionFactory(
+            client,
+            new RecordingTransferQueue());
+        await using var session = await factory.CreateAsync(
+            new SessionId("files-search"),
+            root,
+            CancellationToken.None);
+        var request = new FilePanelSearchRequest(
+            root,
+            "match",
+            FilePanelDiscoveryScope.Subtree,
+            showHidden: false);
+
+        var results = new List<FilePanelResult<FilePanelEntry>>();
+        await foreach (var result in session.SearchAsync(
+            request,
+            CancellationToken.None))
+        {
+            results.Add(result);
+        }
+
+        Assert.Same(request, Assert.Single(client.SearchRequests));
+        Assert.Equal("match.txt", Assert.Single(results).Value?.Name);
     }
 
     [Fact]
@@ -262,6 +298,8 @@ public sealed class FilePanelSessionTests
         FileProviderFamily family = FileProviderFamily.Posix)
         : IFilePanelClient
     {
+        public List<FilePanelSearchRequest> SearchRequests { get; } = [];
+
         public IReadOnlyList<FileProviderProfileDescriptor> Profiles { get; } =
         [
             new FileProviderProfileDescriptor(
@@ -281,6 +319,24 @@ public sealed class FilePanelSessionTests
         public ValueTask<FilePanelResult<FilePanelEntry>> StatAsync(
             FilePanelLocation location,
             CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public async IAsyncEnumerable<FilePanelResult<FilePanelEntry>> SearchAsync(
+            FilePanelSearchRequest request,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            SearchRequests.Add(request);
+            yield return FilePanelResult<FilePanelEntry>.Success(
+                new FilePanelEntry(
+                    request.Location.Child(
+                        new FilePanelPathSegment("match.txt")),
+                    "match.txt",
+                    FilePanelEntryKind.File,
+                    1,
+                    null,
+                    false));
+            await Task.CompletedTask;
+        }
 
         public ValueTask<FilePanelResult<FilePanelPreview>> PreviewAsync(
             FilePanelPreviewRequest request,

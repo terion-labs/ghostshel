@@ -10,7 +10,9 @@ public interface IBrowserRenderer :
     IOriginConstrainedBrowserElementClick,
     IOriginConstrainedBrowserElementFill,
     IOriginConstrainedBrowserElementCheck,
-    IBrowserDocumentReader
+    IOriginConstrainedBrowserAutomation,
+    IBrowserDocumentReader,
+    IBrowserWaitObservation
 {
     CapabilitySet Capabilities { get; }
 

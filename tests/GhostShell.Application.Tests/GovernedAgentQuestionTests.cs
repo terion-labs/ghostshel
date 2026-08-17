@@ -214,6 +214,7 @@ public sealed class GovernedAgentQuestionTests
             TargetTitle: "Target",
             ContextItems: ImmutableArray<GovernedAgentContextItem>.Empty,
             Messages: Array.Empty<AgentChatMessage>(),
+            EffectivePolicy: AgentPolicy.Default,
             ProvisionalAssistantText: string.Empty,
             Status: "Waiting",
             PendingQuestion: question);

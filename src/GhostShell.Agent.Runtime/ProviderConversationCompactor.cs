@@ -35,6 +35,20 @@ internal sealed class ProviderConversationCompactor(
         not discarded. Output only the checkpoint.
         """;
 
+    private const string TurnPrefixInstructions =
+        """
+        This is the PREFIX of a turn that was too large to keep. The SUFFIX (recent work) is retained.
+
+        Summarize the prefix to provide context for the retained suffix using exactly these sections:
+
+        ## Original Request
+        ## Early Progress
+        ## Context for Suffix
+
+        Be concise. Preserve the information needed to understand the retained recent work.
+        Output only the turn-prefix checkpoint.
+        """;
+
     private readonly IAgentProviderResolver _providers =
         providers ?? throw new ArgumentNullException(nameof(providers));
     private readonly AgentModelSelection _selection =
@@ -49,15 +63,38 @@ internal sealed class ProviderConversationCompactor(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var prompt = Serialize(request.Messages);
-        var summary = await ProviderConversationMaintenance.CompleteAsync(
-                _providers,
-                _selection,
-                "compact",
-                SystemPrompt,
-                prompt,
-                cancellationToken)
-            .ConfigureAwait(false);
+        var turnPrefix = request.TurnPrefixMessages.IsDefault
+            ? ImmutableArray<AgentMessage>.Empty
+            : request.TurnPrefixMessages;
+        string summary;
+        if (turnPrefix.IsDefaultOrEmpty)
+        {
+            summary = await CompleteSummaryAsync(
+                    request.Messages,
+                    SummaryInstructions,
+                    "compact",
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        else
+        {
+            var history = request.Messages.IsDefaultOrEmpty
+                ? "No prior history."
+                : await CompleteSummaryAsync(
+                        request.Messages,
+                        SummaryInstructions,
+                        "compact-history",
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            var prefix = await CompleteSummaryAsync(
+                    turnPrefix,
+                    TurnPrefixInstructions,
+                    "compact-turn",
+                    cancellationToken)
+                .ConfigureAwait(false);
+            summary = $"{history}\n\n---\n\n**Turn Context (split turn):**\n\n{prefix}";
+        }
+
         if (string.IsNullOrWhiteSpace(summary))
         {
             throw new InvalidOperationException(
@@ -67,7 +104,26 @@ internal sealed class ProviderConversationCompactor(
         return new AgentMessage(AgentMessageRole.Summary, summary.Trim());
     }
 
-    private static string Serialize(ImmutableArray<AgentMessage> messages)
+    private async ValueTask<string> CompleteSummaryAsync(
+        ImmutableArray<AgentMessage> messages,
+        string instructions,
+        string runPrefix,
+        CancellationToken cancellationToken)
+    {
+        var prompt = Serialize(messages, instructions);
+        return await ProviderConversationMaintenance.CompleteAsync(
+                _providers,
+                _selection,
+                runPrefix,
+                SystemPrompt,
+                prompt,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static string Serialize(
+        ImmutableArray<AgentMessage> messages,
+        string instructions)
     {
         var builder = new StringBuilder();
         builder.AppendLine("<conversation>");
@@ -96,7 +152,7 @@ internal sealed class ProviderConversationCompactor(
 
         builder.AppendLine("</conversation>");
         builder.AppendLine();
-        builder.Append(SummaryInstructions);
+        builder.Append(instructions);
         return builder.ToString();
     }
 }

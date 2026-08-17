@@ -133,6 +133,40 @@ public sealed class DockerLiveSmokeTests
         Assert.Contains("root:", System.Text.Encoding.UTF8.GetString(preview.Content.Span));
     }
 
+    [Fact]
+    public async Task SelectedContainerLogsAcceptOneTimestampCursorThroughProductionRuntime()
+    {
+        if (Environment.GetEnvironmentVariable("GHOSTSHELL_RUN_DOCKER_SMOKE") != "1")
+        {
+            return;
+        }
+
+        var containerName = Environment.GetEnvironmentVariable(
+            "GHOSTSHELL_DOCKER_SMOKE_CONTAINER") ?? "dosvit-grafana-1";
+        var client = new DockerEngineClient(
+            new ConnectionCommandExecutor(new LocalRuntime()),
+            TimeProvider.System);
+        var snapshot = Assert.IsType<DockerResult<DockerEngineSnapshot>.Success>(
+            await client.ReadSnapshotAsync(
+                BuiltInConnections.Local,
+                CancellationToken.None)).Value;
+        var container = Assert.Single(snapshot.Containers, item =>
+            item.Name == containerName);
+
+        var result = await client.ReadContainerLogsAsync(
+            BuiltInConnections.Local,
+            new DockerContainerLogRequest(
+                container.Id,
+                Limit: 30,
+                SinceTimestamp: DateTimeOffset.UtcNow
+                    .AddHours(-1)
+                    .ToString("O", System.Globalization.CultureInfo.InvariantCulture)),
+            CancellationToken.None);
+
+        var page = Assert.IsType<DockerResult<DockerContainerLogPage>.Success>(result).Value;
+        Assert.InRange(page.Lines.Count, 0, 30);
+    }
+
     private sealed class LocalRuntime : IConnectionRuntime
     {
         public ValueTask<ConnectionRuntimeResult<ConnectionOpenPlan>> PlanOpenAsync(

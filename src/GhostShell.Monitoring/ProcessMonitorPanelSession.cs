@@ -62,7 +62,16 @@ internal sealed class ProcessMonitorPanelSession : IProcessMonitorPanelSession
         }
 
         var sample = captured.Value!;
-        var ordered = Order(sample.Processes, query.Sort)
+        var matching = sample.Processes
+            .Where(process => query.ProcessId is null
+                || process.ProcessId == query.ProcessId.Value)
+            .Where(process => query.NameContains is null
+                || process.Name.Contains(
+                    query.NameContains,
+                    StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        var ordered = Order(matching, query.Sort)
+            .Skip(query.Offset)
             .Take(query.MaximumResults)
             .ToArray();
         return MonitorPanelResult<ProcessMonitorSnapshot>.Success(
@@ -72,7 +81,8 @@ internal sealed class ProcessMonitorPanelSession : IProcessMonitorPanelSession
                 sample.EnumeratedProcessCount,
                 sample.ObservedProcessCount,
                 sample.SourceWasTruncated
-                    || sample.Processes.Count > query.MaximumResults));
+                    || matching.Length != ordered.Length,
+                matching.Length));
     }
 
     public ValueTask<PanelSessionSnapshot> SnapshotAsync(CancellationToken cancellationToken) =>

@@ -94,11 +94,6 @@ public sealed class AgentWorkspaceGraphActionComposer
         var workspace = Workspace(graph.Panels[0]);
         AgentWorkspaceGraphActionResult result = action.Request switch
         {
-            AgentWorkspaceGraphRequest.WorkspaceList =>
-                new AgentWorkspaceGraphActionResult.WorkspacesListed(
-                    scopeKind,
-                    scopeLimited,
-                    [workspace]),
             AgentWorkspaceGraphRequest.WorkspaceInspect =>
                 new AgentWorkspaceGraphActionResult.WorkspaceInspected(
                     scopeKind,
@@ -311,8 +306,6 @@ public sealed class AgentWorkspaceGraphActionComposer
     private static string ToolName(AgentWorkspaceGraphRequest request) =>
         request switch
         {
-            AgentWorkspaceGraphRequest.WorkspaceList =>
-                BuiltInAgentTools.WorkspaceList,
             AgentWorkspaceGraphRequest.WorkspaceInspect =>
                 BuiltInAgentTools.WorkspaceInspect,
             AgentWorkspaceGraphRequest.TabList =>
@@ -370,7 +363,6 @@ public sealed class AgentWorkspaceGraphActionComposer
         Append(builder, toolName);
         switch (request)
         {
-            case AgentWorkspaceGraphRequest.WorkspaceList:
             case AgentWorkspaceGraphRequest.WorkspaceInspect:
                 Append(builder, "empty");
                 break;
@@ -443,13 +435,6 @@ public sealed class AgentWorkspaceGraphActionComposer
         budget.AddFixed(2 * 1024);
         switch (result)
         {
-            case AgentWorkspaceGraphActionResult.WorkspacesListed listed:
-                foreach (var workspace in listed.Workspaces)
-                {
-                    budget.Add(workspace);
-                }
-
-                break;
             case AgentWorkspaceGraphActionResult.WorkspaceInspected inspected:
                 budget.Add(inspected.Workspace.Workspace);
                 foreach (var tab in inspected.Workspace.Tabs)

@@ -37,6 +37,36 @@ public sealed class TerminalContractsTests
     }
 
     [Fact]
+    public void Interactive_state_is_expiring_observation_not_authority()
+    {
+        var observedAt = new DateTimeOffset(2026, 8, 17, 10, 0, 0, TimeSpan.Zero);
+        var state = new TerminalInteractiveStateSnapshot(
+            7,
+            TerminalInteractiveStateKind.ApprovalRequired,
+            observedAt,
+            observedAt.AddSeconds(5));
+        var snapshot = new TerminalScreenSnapshot(
+            "Approve?",
+            0,
+            0,
+            1,
+            80,
+            false,
+            null,
+            observedAt,
+            InteractiveState: state);
+
+        Assert.Same(state, snapshot.InteractiveState);
+        Assert.Equal(TerminalInteractiveStateKind.ApprovalRequired, state.Kind);
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new TerminalInteractiveStateSnapshot(
+                8,
+                TerminalInteractiveStateKind.Working,
+                observedAt,
+                observedAt));
+    }
+
+    [Fact]
     public void Screen_snapshot_rejects_cells_outside_the_declared_viewport()
     {
         var row = new TerminalScreenRow(

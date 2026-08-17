@@ -10,7 +10,7 @@ namespace GhostShell.Agent.Runtime.Tests;
 public sealed class ProcessAgentToolContractTests
 {
     [Fact]
-    public void ExactSchemaExposesOnlyClosedSortAndLimitOptions()
+    public void ExactSchemaExposesOnlyClosedSortPagingAndFilterOptions()
     {
         var panel = ProcessPanel("exact");
 
@@ -22,7 +22,7 @@ public sealed class ProcessAgentToolContractTests
         Assert.False(schema.GetProperty("additionalProperties").GetBoolean());
         Assert.Empty(schema.GetProperty("required").EnumerateArray());
         Assert.Equal(
-            ["sort", "limit"],
+            ["sort", "limit", "offset", "name_contains", "pid"],
             schema.GetProperty("properties")
                 .EnumerateObject()
                 .Select(property => property.Name));
@@ -136,6 +136,26 @@ public sealed class ProcessAgentToolContractTests
         Assert.Equal(
             ProcessMonitorSort.CpuDescending,
             parsed.Intent.Sort);
+        Assert.Equal(0, parsed.Intent.Offset);
+        Assert.Null(parsed.Intent.NameContains);
+        Assert.Null(parsed.Intent.ProcessId);
+    }
+
+    [Fact]
+    public void ParserAcceptsBoundedPagingAndFilters()
+    {
+        var panel = ProcessPanel("filters");
+
+        var parsed = Assert.IsType<ProcessAgentIntentResult.Parsed>(
+            ProcessAgentToolParser.Parse(
+                Proposal(
+                    BuiltInAgentTools.ProcessesList,
+                    """{"offset":32,"name_contains":"dotnet","pid":42}"""),
+                panel));
+
+        Assert.Equal(32, parsed.Intent.Offset);
+        Assert.Equal("dotnet", parsed.Intent.NameContains);
+        Assert.Equal(42, parsed.Intent.ProcessId);
     }
 
     [Theory]
@@ -210,6 +230,10 @@ public sealed class ProcessAgentToolContractTests
     [InlineData("""{"include_command_line":true}""")]
     [InlineData("""{"user":"root"}""")]
     [InlineData("""{"filter":"ghostshell"}""")]
+    [InlineData("""{"offset":-1}""")]
+    [InlineData("""{"offset":1000001}""")]
+    [InlineData("""{"name_contains":""}""")]
+    [InlineData("""{"pid":0}""")]
     public void ParserRejectsMalformedWideningOrUnknownArguments(
         string arguments)
     {

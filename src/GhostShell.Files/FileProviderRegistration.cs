@@ -43,7 +43,8 @@ public sealed record FileProviderRegistration
 
         const FilePanelCapability knownGovernedMutationCapabilities =
             FilePanelCapability.GovernedCreateDirectory
-            | FilePanelCapability.GovernedDelete;
+            | FilePanelCapability.GovernedDelete
+            | FilePanelCapability.GovernedRename;
         if ((governedMutationCapabilities & ~knownGovernedMutationCapabilities) != 0)
         {
             throw new ArgumentOutOfRangeException(
@@ -66,6 +67,14 @@ public sealed record FileProviderRegistration
         {
             throw new ArgumentException(
                 "Governed deletion requires provider deletion support.",
+                nameof(governedMutationCapabilities));
+        }
+
+        if (governedMutationCapabilities.HasFlag(FilePanelCapability.GovernedRename)
+            && !provider.Capabilities.Supports(FileProviderCapability.Rename))
+        {
+            throw new ArgumentException(
+                "Governed rename requires provider rename support.",
                 nameof(governedMutationCapabilities));
         }
 

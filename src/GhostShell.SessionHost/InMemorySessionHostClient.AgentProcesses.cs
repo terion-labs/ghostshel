@@ -480,7 +480,12 @@ public sealed partial class InMemorySessionHostClient
         return new AgentProcessDispatch(
             session,
             processes,
-            new ProcessMonitorQuery(request.Limit, request.Sort),
+            new ProcessMonitorQuery(
+                request.Limit,
+                request.Sort,
+                request.Offset,
+                request.NameContains,
+                request.ProcessId),
             expectedSessionRevision,
             expectedWorkspaceRevision,
             expectedGraphSequence,
@@ -512,7 +517,7 @@ public sealed partial class InMemorySessionHostClient
         && BuiltInAgentTools.Catalog.TryGet(
             BuiltInAgentTools.ProcessesList,
             out var descriptor)
-        && descriptor!.Capability == AgentCapability.ProcessControl
+        && descriptor!.Capability == AgentCapability.ProcessData
         && descriptor.Risk == AgentActionRisk.Observation;
 
     private static bool AgentProcessBindingsMatch(

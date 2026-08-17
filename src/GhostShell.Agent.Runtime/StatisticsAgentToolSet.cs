@@ -34,6 +34,10 @@ internal static class StatisticsAgentToolSet
             : [Tool(eligible.Select(panel => panel.PanelId).ToArray())];
     }
 
+    public static ImmutableArray<AgentToolDefinition> ForWorkspace() => [
+        AgentToolScopeSchema.WithRequiredPanelId(Read),
+    ];
+
     internal static ImmutableArray<AgentContextPanel> ActiveStatisticsPanels(
         IReadOnlyList<AgentContextPanel> panels)
     {

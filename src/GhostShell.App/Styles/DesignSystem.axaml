@@ -131,7 +131,9 @@
       <Setter Property="VerticalContentAlignment" Value="Stretch" />
       <Setter Property="Template">
         <ControlTemplate>
-          <controls:SurfaceCard
+          <Grid>
+            <controls:SurfaceCard
+              Name="PART_PanelSurface"
               Tone="Panel"
               ClipsContent="True"
               Padding="0"
@@ -277,8 +279,18 @@
                     VerticalAlignment="Center"
                     Content="{TemplateBinding Footer}" />
               </Border>
-            </Grid>
-          </controls:SurfaceCard>
+              </Grid>
+            </controls:SurfaceCard>
+            <Border
+                Background="{DynamicResource ShellAgentPanelGlowBrush}"
+                BorderBrush="{DynamicResource ShellAccentBrush}"
+                BorderThickness="2"
+                BoxShadow="{DynamicResource ShellAgentPanelGlowShadow}"
+                Classes="PanelAgentGlow"
+                CornerRadius="{Binding CornerRadius, ElementName=PART_PanelSurface}"
+                IsHitTestVisible="False"
+                IsVisible="{TemplateBinding IsAgentActive}" />
+          </Grid>
         </ControlTemplate>
       </Setter>
     </ControlTheme>
@@ -548,6 +560,17 @@
                 HorizontalAlignment="Right"
                 VerticalAlignment="Top"
                 IsVisible="False" />
+            <icons:SymbolIcon
+                HorizontalAlignment="Left"
+                VerticalAlignment="Bottom"
+                AutomationProperties.Name="AI agent active in this workspace"
+                Classes="PanelAgentActivity"
+                FontSize="{DynamicResource ShellFontSize10}"
+                Foreground="{TemplateBinding AccentBrush}"
+                IsHitTestVisible="False"
+                IsVisible="{TemplateBinding HasAgentActivity}"
+                Symbol="Bot"
+                ToolTip.Tip="AI agent active in this workspace" />
           </Panel>
         </ControlTemplate>
       </Setter>
@@ -1326,6 +1349,52 @@
     </ControlTheme>
 
   </Styles.Resources>
+
+  <!-- A single marker shared by every runtime panel and tab. Its turn-scoped
+       lease originates from a governed action's exact panel identity, so it
+       never guesses from focus, the active tab, or provider streaming state. -->
+  <Style Selector="icons|SymbolIcon.PanelAgentActivity">
+    <Style.Animations>
+      <Animation Duration="0:0:5" IterationCount="INFINITE" PlaybackDirection="Alternate">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="0.45" />
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="1" />
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+  <Style Selector="Border.PanelAgentGlow">
+    <Style.Animations>
+      <Animation Duration="0:0:5" IterationCount="INFINITE">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="0.38" />
+        </KeyFrame>
+        <KeyFrame Cue="50%">
+          <Setter Property="Opacity" Value="1" />
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="0.38" />
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+  <Style Selector="icons|SymbolIcon.AgentToolbarActivityPulse.running">
+    <Style.Animations>
+      <Animation Duration="0:0:2.5" IterationCount="INFINITE">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="0" />
+        </KeyFrame>
+        <KeyFrame Cue="50%">
+          <Setter Property="Opacity" Value="1" />
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="0" />
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
 
   <!-- A vertical ItemsControl does not generate ListBoxItem containers, so it
        does not inherit the shell's normal full-width list-row alignment. Apply

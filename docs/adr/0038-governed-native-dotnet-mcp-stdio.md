@@ -67,7 +67,7 @@ headers and response-body bytes, and validates bounded printable
 `MCP-Session-Id` response headers before SDK parsing. The SDK owns the POST
 JSON/SSE exchange, `Accept: application/json, text/event-stream`,
 `MCP-Session-Id`, and `MCP-Protocol-Version` protocol behavior. GhostSHELL does
-not enable legacy SSE fallback.
+not support the separate SSE transport.
 
 The first slice supports the stable MCP `2025-11-25` lifecycle:
 
@@ -87,8 +87,8 @@ The first slice supports the stable MCP `2025-11-25` lifecycle:
 - bounded, count-only stderr diagnostics.
 
 Roots, resources, prompts, sampling, elicitation, tasks, server-initiated
-application actions, notifications that expand authority, legacy SSE
-fallback, and draft protocol revisions are not advertised or accepted by this
+application actions, notifications that expand authority, the separate SSE
+transport, and draft protocol revisions are not advertised or accepted by this
 slice.
 
 ### Durable server profile
@@ -124,12 +124,9 @@ bounded and reject null or control characters before the first request. Values
 and child environment/header contents never enter definitions, import/export,
 recovery, diagnostics, action audit, or normal logs.
 
-Released schema-one stdio payloads are accepted only at the infrastructure
-read/import boundary, strictly deserialized into their old closed shape, and
-immediately converted in memory to schema two with a `stdio` transport. Saving
-or importing emits schema two. Unknown versions and unmapped legacy fields
-remain rejected; migration never interprets a legacy executable string as an
-HTTP endpoint.
+Only the current schema-two payload is accepted at repository and import
+boundaries. Every other version is rejected before deserialization; no
+compatibility document is interpreted or rewritten.
 
 Adding a profile, changing its transport configuration or secret bindings,
 and expanding the enabled-tool allowlist requires a
@@ -147,7 +144,7 @@ non-reserved HTTP header names to opaque profile-scoped `SecretRef` values.
 Header values never enter the editor or trust presentation. Switching
 transport, changing an endpoint or header binding, and adding a remote profile
 all enter the same authority-expansion confirmation path as stdio launch
-changes. Existing schema-one profiles remain stdio after migration and edit.
+changes. A profile always retains its explicitly selected transport after edit.
 
 The Settings **Test** operation requires the composition-owned authenticated
 human principal, an enabled profile, and the exact current profile revision.
@@ -167,17 +164,18 @@ decision.
 
 ### Frozen run manifest
 
-MCP is available to a governed run only when its effective `McpTools`
-permission is `Ask` or `Auto` and no YOLO overlay is active. `Off` starts no
-server and advertises no MCP tool. `Auto` still requires human approval
-because every supported MCP call is conservatively classified as a
-mutation. `YOLO` never authorizes an MCP call.
+MCP is available to a governed run whenever its effective `McpTools`
+permission is enabled. `Off` starts no server and advertises no MCP tool.
+`Auto` still requires human approval because every supported MCP call is
+conservatively classified as a mutation. Explicitly confirmed run-local Full
+access authorizes the same frozen one-action call through `YoloPolicy`.
 
 Before catalog, vault, or transport access, the MCP boundary acquires a
 broker-issued launch lease for the exact registered run, agent actor, live
-policy generation, and `Ask`/`Auto` MCP permission. Suspension, cancellation,
-YOLO activation, policy replacement, or actor/run mismatch revokes or denies
-that lease. At first use for an authorized run, the MCP boundary opens each
+policy generation, and enabled MCP permission. Suspension, cancellation,
+policy replacement, or actor/run mismatch revokes or denies that lease. A
+Full-access transition revokes the old generation and opens a new manifest
+under the confirmed generation. At first use for an authorized run, the MCP boundary opens each
 eligible enabled profile, lists all bounded pages, intersects the result with
 the configured exact allowlist, and freezes:
 
@@ -248,8 +246,10 @@ commit point because the public client API cannot prove whether a failed or
 cancelled request reached the server. Cancellation before that point is a
 normal cancellation. Any timeout, transport failure, process exit, malformed
 response, HTTP disconnect, or cancellation after dispatch returns
-`mcp_tool_outcome_unknown`, completion-audits that result, revokes the run,
-and prevents provider continuation. An unconfirmed completion audit follows
+`mcp_tool_outcome_unknown`, completion-audits that result, and closes the
+uncertain MCP session. The non-retryable result is committed to the transcript;
+the remainder of the stale batch is skipped and the provider may recover from
+fresh observations. An unconfirmed completion audit follows
 the existing `agent_completion_audit_unavailable` quarantine path and never
 replays the server call.
 
@@ -311,12 +311,14 @@ approval from the absence of the desktop UI.
 
 - MCP becomes a production-reachable extension point without changing the
   native in-process provider loop or adding a Node/Pi sidecar.
-- Every MCP call uses the same human approval, one-use authorization, audit,
-  cancellation, and fail-closed continuation rules as built-in actions.
+- Every MCP call uses the same one-use authorization, audit, cancellation, and
+  fail-closed continuation rules as built-in actions; Ask/Auto use human
+  approval and confirmed Full access uses `YoloPolicy`.
 - A malicious server can return prompt injection or lie about annotations,
   but it cannot expand the frozen run manifest or classify itself as safe.
-- Conservative Ask-only behavior and outcome-unknown quarantine trade
-  convenience for deterministic authority and no accidental replay.
+- Conservative Ask-only behavior, non-retryable unknown outcomes, and
+  uncertain-session closure trade convenience for deterministic authority and
+  no accidental replay.
 - The official SDK owns MCP initialization, JSON-RPC correlation, lifecycle,
   and typed tool message semantics. GhostSHELL's SDK transport owns subprocess
   launch, framing bounds, environment isolation, stderr draining and cleanup;
@@ -336,7 +338,7 @@ approval from the absence of the desktop UI.
 - Retrying a timed-out or disconnected `tools/call` could repeat an already
   committed side effect.
 - Supporting resources, prompts, sampling, tasks, durable HTTP session resume,
-  legacy SSE fallback, and list-change expansion would create authority
+  the separate SSE transport, and list-change expansion would create authority
   surfaces without a product decision or implementation.
 - Hand-writing a parallel MCP lifecycle/tools client would duplicate a
   maintained official native .NET SDK at a security-sensitive boundary. A

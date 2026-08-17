@@ -5,6 +5,18 @@ namespace GhostShell.Application;
 /// </summary>
 public interface ITerminalState
 {
+    ValueTask<TerminalScrollbackSnapshot> ReadScrollbackAsync(
+        TerminalScrollbackReadInput input,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromException<TerminalScrollbackSnapshot>(new NotSupportedException(
+            "Non-mutating terminal history projection is not supported by this terminal engine."));
+
+    ValueTask<TerminalScrollbackFindResult> FindScrollbackAsync(
+        TerminalScrollbackFindInput input,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromException<TerminalScrollbackFindResult>(new NotSupportedException(
+            "Non-mutating terminal history search is not supported by this terminal engine."));
+
     ValueTask ScrollViewportAsync(
         TerminalViewportScrollInput scrollInput,
         CancellationToken cancellationToken);

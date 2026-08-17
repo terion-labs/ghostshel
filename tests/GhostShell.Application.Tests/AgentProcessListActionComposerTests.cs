@@ -87,6 +87,9 @@ public sealed class AgentProcessListActionComposerTests
                 (argument.Name, argument.DisplayValue)),
             argument => Assert.Equal(
                 ("limit", "64"),
+                (argument.Name, argument.DisplayValue)),
+            argument => Assert.Equal(
+                ("offset", "0"),
                 (argument.Name, argument.DisplayValue)));
     }
 
@@ -121,7 +124,7 @@ public sealed class AgentProcessListActionComposerTests
     }
 
     [Fact]
-    public void Digest_binds_panel_sort_limit_and_action_identity()
+    public void Digest_binds_panel_sort_limit_filters_and_action_identity()
     {
         var composer = new AgentProcessListActionComposer();
         var context = ExactContext(ExactProcessPanel());
@@ -147,6 +150,16 @@ public sealed class AgentProcessListActionComposerTests
                 ProcessPanel(),
                 32,
                 ProcessMonitorSort.CpuDescending));
+        var changedFilters = composer.Prepare(
+            envelope,
+            context,
+            new AgentProcessListRequest(
+                ProcessPanel(),
+                16,
+                ProcessMonitorSort.CpuDescending,
+                offset: 16,
+                nameContains: "dotnet",
+                processId: 42));
 
         Assert.NotEqual(
             baseline.Proposal.ArgumentDigest,
@@ -154,6 +167,42 @@ public sealed class AgentProcessListActionComposerTests
         Assert.NotEqual(
             baseline.Proposal.ArgumentDigest,
             changedLimit.Proposal.ArgumentDigest);
+        Assert.NotEqual(
+            baseline.Proposal.ArgumentDigest,
+            changedFilters.Proposal.ArgumentDigest);
+    }
+
+    [Fact]
+    public void Projection_rejects_rows_outside_authorized_filters()
+    {
+        var composer = new AgentProcessListActionComposer();
+        var context = ExactContext(ExactProcessPanel());
+        var request = new AgentProcessListRequest(
+            ProcessPanel(),
+            16,
+            ProcessMonitorSort.ProcessIdAscending,
+            nameContains: "worker",
+            processId: 42);
+        var action = composer.Prepare(Envelope(), context, request);
+
+        Assert.Throws<ArgumentException>(() => composer.Project(
+            action,
+            new ProcessMonitorSnapshot(
+                Now,
+                [Process(42, "other")],
+                EnumeratedProcessCount: 2,
+                ObservedProcessCount: 2,
+                IsTruncated: false,
+                MatchingProcessCount: 1)));
+        Assert.Throws<ArgumentException>(() => composer.Project(
+            action,
+            new ProcessMonitorSnapshot(
+                Now,
+                [Process(7, "worker")],
+                EnumeratedProcessCount: 2,
+                ObservedProcessCount: 2,
+                IsTruncated: false,
+                MatchingProcessCount: 1)));
     }
 
     [Fact]
@@ -489,7 +538,7 @@ public sealed class AgentProcessListActionComposerTests
         Assert.True(BuiltInAgentTools.Catalog.TryGet(
             BuiltInAgentTools.ProcessesList,
             out var descriptor));
-        Assert.Equal(AgentCapability.ProcessControl, descriptor!.Capability);
+        Assert.Equal(AgentCapability.ProcessData, descriptor!.Capability);
         Assert.Equal(AgentActionRisk.Observation, descriptor.Risk);
     }
 

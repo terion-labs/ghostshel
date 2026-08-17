@@ -101,7 +101,7 @@
           <Grid
               Classes="RuntimeTabDropTarget"
               Classes.active="{Binding IsActive}"
-              ColumnDefinitions="18,*,20"
+              ColumnDefinitions="18,*,Auto,20"
               DragDrop.AllowDrop="True"
               DragDrop.DragEnter="OnDragEnter"
               DragDrop.DragLeave="OnDragLeave"
@@ -118,7 +118,7 @@
             <!-- No inline Padding: the orientation styles above own it, and an
                  inline value would silently beat them both. -->
             <Button
-                Grid.ColumnSpan="3"
+                Grid.ColumnSpan="4"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Stretch"
                 Classes="RuntimeTabActivator"
@@ -132,7 +132,7 @@
                    wants, so a long tab name ran under its own attention dot and
                    out through the close button instead of trimming. The label is
                    the only part that gives. -->
-              <Grid VerticalAlignment="Center" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceXs}">
+              <Grid VerticalAlignment="Center" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceXs}">
                 <Border
                     Tag="{Binding Icon}"
                     Background="Transparent"
@@ -174,11 +174,10 @@
                       LostFocus="OnTitleEditorLostFocus"
                       AutomationProperties.Name="Edit tab title" />
                 </Grid>
-                <controls:SignalDot Grid.Column="2" IsVisible="{Binding HasAttention}" />
               </Grid>
             </Button>
             <Border
-                Grid.ColumnSpan="3"
+                Grid.ColumnSpan="4"
                 Width="3"
                 Margin="{controls:Inset Vertical=Xs}"
                 HorizontalAlignment="Left"
@@ -187,7 +186,7 @@
                 IsHitTestVisible="False"
                 IsVisible="False" />
             <Border
-                Grid.ColumnSpan="3"
+                Grid.ColumnSpan="4"
                 Width="3"
                 Margin="{controls:Inset Vertical=Xs}"
                 HorizontalAlignment="Right"
@@ -212,8 +211,24 @@
                   Symbol="ReOrderDotsVertical"
                   FontSize="10" />
             </Border>
-            <Button
+            <StackPanel
                 Grid.Column="2"
+                Margin="{controls:Inset Right=Xs}"
+                VerticalAlignment="Center"
+                IsHitTestVisible="False"
+                Orientation="Horizontal"
+                Spacing="{DynamicResource ShellSpaceXs}">
+              <icons:SymbolIcon
+                  AutomationProperties.Name="{Binding AgentActivity}"
+                  Classes="PanelAgentActivity"
+                  FontSize="{DynamicResource ShellFontSize10}"
+                  IsVisible="{Binding HasAgentActivity}"
+                  Symbol="Bot"
+                  ToolTip.Tip="{Binding AgentActivity}" />
+              <controls:SignalDot IsVisible="{Binding HasAttention}" />
+            </StackPanel>
+            <Button
+                Grid.Column="3"
                 Width="18"
                 Height="18"
                 Classes="IconButton"

@@ -178,8 +178,7 @@ public sealed partial class GovernedAgentRuntime
 
     private static bool IsWorkspaceGraphTool(string toolName) =>
         toolName is
-            BuiltInAgentTools.WorkspaceList
-            or BuiltInAgentTools.WorkspaceInspect
+            BuiltInAgentTools.WorkspaceInspect
             or BuiltInAgentTools.TabList
             or BuiltInAgentTools.PanelList;
 
@@ -190,7 +189,9 @@ public sealed partial class GovernedAgentRuntime
             AgentToolBuildContext context) =>
             runtime._agentWorkspaceGraphHost is not null
                 && runtime._workspaceGraphComposer is not null
-                    ? WorkspaceGraphAgentToolSet.For(context.StructuralContext)
+                    ? context.Context.Target is AgentTarget.Workspace
+                        ? WorkspaceGraphAgentToolSet.ForWorkspace()
+                        : WorkspaceGraphAgentToolSet.For(context.Context)
                     : [];
 
         public ResolvedAgentToolContribution? Resolve(string toolName) =>
@@ -204,7 +205,7 @@ public sealed partial class GovernedAgentRuntime
             AgentToolExecutionRequest request,
             CancellationToken cancellationToken)
         {
-            var structuralContext = request.TargetContexts.Structural;
+            var structuralContext = request.Context;
             if (!runtime.MatchesPinnedGraphStructure(structuralContext))
             {
                 return CreateRejectedResult(

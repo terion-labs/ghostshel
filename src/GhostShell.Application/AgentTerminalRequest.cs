@@ -15,11 +15,35 @@ public abstract record AgentTerminalRequest
 
     public sealed record ReadScreen(SessionId SessionId) : AgentTerminalRequest;
 
+    public sealed record ReadScreenDiff(
+        SessionId SessionId,
+        TerminalScreenDiffInput Input) : AgentTerminalRequest;
+
+    public sealed record ReadScrollback(
+        SessionId SessionId,
+        TerminalScrollbackReadInput Input) : AgentTerminalRequest;
+
+    public sealed record FindScrollback(
+        SessionId SessionId,
+        TerminalScrollbackFindInput Input) : AgentTerminalRequest;
+
+    public sealed record FindOnScreen(
+        SessionId SessionId,
+        TerminalScreenFindInput Input) : AgentTerminalRequest;
+
+    public sealed record ScrollViewport(
+        SessionId SessionId,
+        TerminalViewportScrollInput Input) : AgentTerminalRequest;
+
     public sealed record SendText(
         SessionId SessionId,
         string Text) : AgentTerminalRequest;
 
     public sealed record Paste(
+        SessionId SessionId,
+        string Text) : AgentTerminalRequest;
+
+    public sealed record SubmitText(
         SessionId SessionId,
         string Text) : AgentTerminalRequest;
 
@@ -33,13 +57,22 @@ public abstract record AgentTerminalRequest
 
     public sealed record SendMouse(
         SessionId SessionId,
-        TerminalMouseInput MouseInput) : AgentTerminalRequest;
+        TerminalMouseInput MouseInput,
+        long ExpectedContentRevision) : AgentTerminalRequest;
+
+    public sealed record WaitForDelay(TerminalWaitForDelayRequest Value) : AgentTerminalRequest;
 
     public sealed record WaitForText(TerminalWaitForTextRequest Value) : AgentTerminalRequest;
 
     public sealed record WaitForChange(TerminalWaitForChangeRequest Value) : AgentTerminalRequest;
 
     public sealed record WaitForStable(TerminalWaitForStableRequest Value) : AgentTerminalRequest;
+
+    public sealed record WaitForPromptReady(TerminalWaitForPromptReadyRequest Value)
+        : AgentTerminalRequest;
+
+    public sealed record WaitForCommandFinished(
+        TerminalWaitForCommandFinishedRequest Value) : AgentTerminalRequest;
 
     public sealed record Interrupt(SessionId SessionId) : AgentTerminalRequest;
 

@@ -35,6 +35,7 @@ public sealed class AgentTerminalActionComposer
             context,
             prepared.SessionId,
             prepared.Capability);
+        RequireRequestSpecificCapabilities(request, resolved.Panel);
         var presentation = CreatePresentation(
             resolved.Context.Target,
             resolved.Panel,
@@ -68,6 +69,7 @@ public sealed class AgentTerminalActionComposer
             freshContext,
             prepared.SessionId,
             prepared.Capability);
+        RequireRequestSpecificCapabilities(action.Request, resolved.Panel);
         var proposal = action.Proposal;
         var argumentDigest = CreateArgumentDigest(
             proposal.Id,
@@ -109,14 +111,25 @@ public sealed class AgentTerminalActionComposer
         request switch
         {
             AgentTerminalRequest.ReadScreen read => PrepareReadScreen(read),
+            AgentTerminalRequest.ReadScreenDiff diff => PrepareReadScreenDiff(diff),
+            AgentTerminalRequest.ReadScrollback read => PrepareReadScrollback(read),
+            AgentTerminalRequest.FindScrollback find => PrepareFindScrollback(find),
+            AgentTerminalRequest.FindOnScreen find => PrepareFindOnScreen(find),
+            AgentTerminalRequest.ScrollViewport scroll => PrepareScrollViewport(scroll),
             AgentTerminalRequest.SendText write => PrepareSendText(write),
             AgentTerminalRequest.Paste paste => PreparePaste(paste),
+            AgentTerminalRequest.SubmitText submit => PrepareSubmitText(submit),
             AgentTerminalRequest.SendKey key => PrepareSendKey(key),
             AgentTerminalRequest.SendChord chord => PrepareSendChord(chord),
             AgentTerminalRequest.SendMouse mouse => PrepareSendMouse(mouse),
+            AgentTerminalRequest.WaitForDelay wait => PrepareWaitForDelay(wait),
             AgentTerminalRequest.WaitForText wait => PrepareWaitForText(wait),
             AgentTerminalRequest.WaitForChange wait => PrepareWaitForChange(wait),
             AgentTerminalRequest.WaitForStable wait => PrepareWaitForStable(wait),
+            AgentTerminalRequest.WaitForPromptReady wait =>
+                PrepareWaitForPromptReady(wait),
+            AgentTerminalRequest.WaitForCommandFinished wait =>
+                PrepareWaitForCommandFinished(wait),
             AgentTerminalRequest.Interrupt interrupt => PrepareInterrupt(interrupt),
             AgentTerminalRequest.Resize resize => PrepareResize(resize),
             _ => throw new ArgumentOutOfRangeException(
@@ -134,6 +147,105 @@ public sealed class AgentTerminalActionComposer
             SessionCapabilities.TerminalReadScreen,
             request.SessionId,
             Argument("session_id", sessionId));
+    }
+
+    private static PreparedRequest PrepareReadScreenDiff(
+        AgentTerminalRequest.ReadScreenDiff request)
+    {
+        var input = request.Input
+            ?? throw new ArgumentException(
+                "A rendered-screen diff requires bounded revision input.",
+                nameof(request));
+        var sessionId = RequireIdentifier(request.SessionId.Value, "session ID");
+        return Prepared(
+            BuiltInAgentTools.TerminalReadScreenDiff,
+            SessionCapabilities.TerminalReadScreen,
+            request.SessionId,
+            Argument("session_id", sessionId),
+            Argument("after_content_revision", Invariant(input.AfterContentRevision)),
+            Argument("maximum_rows", Invariant(input.MaximumRowCount)));
+    }
+
+    private static PreparedRequest PrepareReadScrollback(
+        AgentTerminalRequest.ReadScrollback request)
+    {
+        var input = request.Input
+            ?? throw new ArgumentException(
+                "A scrollback read requires bounded projection input.",
+                nameof(request));
+        var sessionId = RequireIdentifier(request.SessionId.Value, "session ID");
+        var arguments = new List<MaterialArgument>
+        {
+            Argument("session_id", sessionId),
+            Argument("origin", input.Origin.ToString()),
+            Argument("maximum_lines", Invariant(input.MaximumLines)),
+        };
+        if (input.RowAnchor is { } anchor)
+        {
+            arguments.Add(Argument(
+                "anchor_content_revision",
+                Invariant(anchor.ContentRevision)));
+            arguments.Add(Argument("anchor_line_index", Invariant(anchor.LineIndex)));
+        }
+
+        return Prepared(
+            BuiltInAgentTools.TerminalReadScrollback,
+            SessionCapabilities.TerminalScrollbackRead,
+            request.SessionId,
+            arguments.ToArray());
+    }
+
+    private static PreparedRequest PrepareFindScrollback(
+        AgentTerminalRequest.FindScrollback request)
+    {
+        var input = request.Input
+            ?? throw new ArgumentException(
+                "A scrollback search requires bounded projection input.",
+                nameof(request));
+        var sessionId = RequireIdentifier(request.SessionId.Value, "session ID");
+        return Prepared(
+            BuiltInAgentTools.TerminalFind,
+            SessionCapabilities.TerminalScrollbackFind,
+            request.SessionId,
+            Argument("session_id", sessionId),
+            Argument("query", RequireMaterialText(input.Query, "terminal history query")),
+            Argument("direction", input.Direction.ToString()),
+            Argument("maximum_matches", Invariant(input.MaximumMatchCount)));
+    }
+
+    private static PreparedRequest PrepareFindOnScreen(
+        AgentTerminalRequest.FindOnScreen request)
+    {
+        var input = request.Input
+            ?? throw new ArgumentException(
+                "A rendered-screen search requires bounded input.",
+                nameof(request));
+        var sessionId = RequireIdentifier(request.SessionId.Value, "session ID");
+        return Prepared(
+            BuiltInAgentTools.TerminalFindOnScreen,
+            SessionCapabilities.TerminalReadScreen,
+            request.SessionId,
+            Argument("session_id", sessionId),
+            Argument("query", RequireMaterialText(input.Query, "terminal screen query")),
+            Argument("maximum_matches", Invariant(input.MaximumMatchCount)));
+    }
+
+    private static PreparedRequest PrepareScrollViewport(
+        AgentTerminalRequest.ScrollViewport request)
+    {
+        var input = request.Input
+            ?? throw new ArgumentException(
+                "A viewport scroll requires bounded scroll input.",
+                nameof(request));
+        var sessionId = RequireIdentifier(request.SessionId.Value, "session ID");
+        return Prepared(
+            BuiltInAgentTools.TerminalScrollViewport,
+            SessionCapabilities.TerminalScrollback,
+            request.SessionId,
+            Argument("session_id", sessionId),
+            Argument("direction", input.Direction.ToString()),
+            Argument("unit", input.Unit.ToString()),
+            Argument("amount", Invariant(input.Amount)));
     }
 
     private static PreparedRequest PrepareSendText(
@@ -162,6 +274,19 @@ public sealed class AgentTerminalActionComposer
             Argument("text", text));
     }
 
+    private static PreparedRequest PrepareSubmitText(
+        AgentTerminalRequest.SubmitText request)
+    {
+        var sessionId = RequireIdentifier(request.SessionId.Value, "session ID");
+        var text = RequirePasteText(request.Text);
+        return Prepared(
+            BuiltInAgentTools.TerminalSubmitText,
+            SessionCapabilities.TerminalPaste,
+            request.SessionId,
+            Argument("session_id", sessionId),
+            Argument("text", text));
+    }
+
     private static PreparedRequest PrepareSendKey(
         AgentTerminalRequest.SendKey request)
     {
@@ -176,7 +301,8 @@ public sealed class AgentTerminalActionComposer
             request.SessionId,
             Argument("session_id", sessionId),
             Argument("key", keyStroke.Key.ToString()),
-            Argument("modifiers", keyStroke.Modifiers.ToString()));
+            Argument("modifiers", keyStroke.Modifiers.ToString()),
+            Argument("repeat_count", Invariant(keyStroke.RepeatCount)));
     }
 
     private static PreparedRequest PrepareSendChord(
@@ -203,6 +329,8 @@ public sealed class AgentTerminalActionComposer
                 "A send-mouse action requires a terminal mouse event.",
                 nameof(request));
         var sessionId = RequireIdentifier(request.SessionId.Value, "session ID");
+        ArgumentOutOfRangeException.ThrowIfNegative(
+            request.ExpectedContentRevision);
         return Prepared(
             BuiltInAgentTools.TerminalSendMouse,
             SessionCapabilities.TerminalMouse,
@@ -212,7 +340,56 @@ public sealed class AgentTerminalActionComposer
             Argument("kind", mouseInput.Kind.ToString()),
             Argument("column", Invariant(mouseInput.Column)),
             Argument("row", Invariant(mouseInput.Row)),
-            Argument("modifiers", mouseInput.Modifiers.ToString()));
+            Argument("modifiers", mouseInput.Modifiers.ToString()),
+            Argument(
+                "expected_content_revision",
+                Invariant(request.ExpectedContentRevision)));
+    }
+
+    private static void RequireRequestSpecificCapabilities(
+        AgentTerminalRequest request,
+        AgentContextPanel panel)
+    {
+        if (request is AgentTerminalRequest.SendMouse
+            && !panel.Capabilities.Contains(
+                SessionCapabilities.TerminalRevisionBoundMouse,
+                StringComparer.Ordinal))
+        {
+            throw new ArgumentException(
+                $"The terminal session does not support '{SessionCapabilities.TerminalRevisionBoundMouse}'.",
+                nameof(panel));
+        }
+
+
+        if (request is AgentTerminalRequest.SubmitText
+            && !panel.Capabilities.Contains(
+                SessionCapabilities.TerminalEnter,
+                StringComparer.Ordinal))
+        {
+            throw new ArgumentException(
+                $"The terminal session does not support '{SessionCapabilities.TerminalEnter}'.",
+                nameof(panel));
+        }
+    }
+
+    private static PreparedRequest PrepareWaitForDelay(
+        AgentTerminalRequest.WaitForDelay request)
+    {
+        var value = request.Value
+            ?? throw new ArgumentException(
+                "A delay wait requires a terminal wait request.",
+                nameof(request));
+        var wait = value.Wait
+            ?? throw new ArgumentException(
+                "A delay wait requires bounded wait input.",
+                nameof(request));
+        var sessionId = RequireIdentifier(value.SessionId.Value, "session ID");
+        return Prepared(
+            BuiltInAgentTools.TerminalWait,
+            SessionCapabilities.TerminalWait,
+            value.SessionId,
+            Argument("session_id", sessionId),
+            Argument("delay", Invariant(wait.Delay)));
     }
 
     private static PreparedRequest PrepareWaitForText(
@@ -276,6 +453,54 @@ public sealed class AgentTerminalActionComposer
             value.SessionId,
             Argument("session_id", sessionId),
             Argument("stable_for", Invariant(wait.StableFor)),
+            Argument("timeout", Invariant(wait.Timeout)));
+    }
+
+    private static PreparedRequest PrepareWaitForPromptReady(
+        AgentTerminalRequest.WaitForPromptReady request)
+    {
+        var value = request.Value
+            ?? throw new ArgumentException(
+                "A prompt-ready wait requires a terminal wait request.",
+                nameof(request));
+        var wait = value.Wait
+            ?? throw new ArgumentException(
+                "A prompt-ready wait requires bounded shell-event input.",
+                nameof(request));
+        var sessionId = RequireIdentifier(value.SessionId.Value, "session ID");
+        return Prepared(
+            BuiltInAgentTools.TerminalWait,
+            SessionCapabilities.TerminalWait,
+            value.SessionId,
+            Argument("session_id", sessionId),
+            Argument("condition", "prompt_ready"),
+            Argument(
+                "after_shell_event_sequence",
+                Invariant(wait.AfterShellEventSequence)),
+            Argument("timeout", Invariant(wait.Timeout)));
+    }
+
+    private static PreparedRequest PrepareWaitForCommandFinished(
+        AgentTerminalRequest.WaitForCommandFinished request)
+    {
+        var value = request.Value
+            ?? throw new ArgumentException(
+                "A command-finished wait requires a terminal wait request.",
+                nameof(request));
+        var wait = value.Wait
+            ?? throw new ArgumentException(
+                "A command-finished wait requires bounded shell-event input.",
+                nameof(request));
+        var sessionId = RequireIdentifier(value.SessionId.Value, "session ID");
+        return Prepared(
+            BuiltInAgentTools.TerminalWait,
+            SessionCapabilities.TerminalWait,
+            value.SessionId,
+            Argument("session_id", sessionId),
+            Argument("condition", "command_finished"),
+            Argument(
+                "after_shell_event_sequence",
+                Invariant(wait.AfterShellEventSequence)),
             Argument("timeout", Invariant(wait.Timeout)));
     }
 

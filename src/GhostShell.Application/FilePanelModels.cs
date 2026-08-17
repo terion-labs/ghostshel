@@ -40,6 +40,7 @@ public enum FilePanelCapability : ulong
     Pagination = 1UL << 20,
     GovernedCreateDirectory = 1UL << 21,
     GovernedDelete = 1UL << 22,
+    GovernedRename = 1UL << 23,
 }
 
 public sealed record FileProviderProfileDescriptor
@@ -153,7 +154,8 @@ public sealed record FileProviderProfileDescriptor
         | FilePanelCapability.ServerSideCopy
         | FilePanelCapability.Pagination
         | FilePanelCapability.GovernedCreateDirectory
-        | FilePanelCapability.GovernedDelete;
+        | FilePanelCapability.GovernedDelete
+        | FilePanelCapability.GovernedRename;
 }
 
 public enum FilePanelEntryKind

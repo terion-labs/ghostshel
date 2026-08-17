@@ -123,6 +123,32 @@ public sealed class DatabaseSqlDialectTests
         Assert.Equal("%x!%' OR 1=1 --%", Assert.Single(command.Parameters).Value);
     }
 
+    [Fact]
+    public void Table_projection_selects_only_requested_columns_and_rejects_unknowns()
+    {
+        var dialect = DatabaseSqlDialect.For("sqlite");
+        var columns = new[]
+        {
+            new DatabaseColumnSchema("id", 0, "INTEGER", DatabaseValueKind.SignedInteger),
+            new DatabaseColumnSchema("topic", 1, "TEXT", DatabaseValueKind.Text),
+            new DatabaseColumnSchema("body", 2, "TEXT", DatabaseValueKind.Text),
+        };
+        var command = dialect.BuildSelect(
+            new DatabaseObjectId(null, null, "articles"),
+            columns,
+            new DatabaseTableQuery([], [], 0, 10, Columns: ["id", "topic"]));
+
+        Assert.StartsWith(
+            "SELECT \"id\", \"topic\" FROM ",
+            command.Sql,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("\"body\"", command.Sql, StringComparison.Ordinal);
+        Assert.Throws<ArgumentException>(() => dialect.BuildSelect(
+            new DatabaseObjectId(null, null, "articles"),
+            columns,
+            new DatabaseTableQuery([], [], 0, 10, Columns: ["missing"])));
+    }
+
     [Theory]
     [InlineData("sqlite", "@p0")]
     [InlineData("postgres", "@p0")]

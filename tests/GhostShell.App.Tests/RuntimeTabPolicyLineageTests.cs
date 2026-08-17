@@ -75,7 +75,7 @@ public sealed class RuntimeTabPolicyLineageTests
     }
 
     [Fact]
-    public void Workspace_override_inherits_global_conversation_maintenance_models()
+    public void Workspace_override_owns_its_explicit_conversation_maintenance_models()
     {
         var compaction = new AgentModelSelection("global", "compact-model");
         var title = new AgentModelSelection("global", "title-model");
@@ -90,18 +90,19 @@ public sealed class RuntimeTabPolicyLineageTests
         {
             Provider = "workspace",
             Model = "workspace-model",
-            CompactionModel = null,
-            TitleModel = null,
+            CompactionModel = new AgentModelSelection("workspace", "workspace-compact-model"),
+            TitleModel = new AgentModelSelection("workspace", "workspace-title-model"),
         };
         var provenance = new RuntimeAgentPolicyProvenance(global).WithOverride(
             workspace,
             new DefinitionKey(WorkspaceDefinition.Kind, "workspace"),
             revision: 1);
 
-        Assert.Equal("workspace", provenance.EffectivePolicy.Provider);
-        Assert.Equal("workspace-model", provenance.EffectivePolicy.Model);
-        Assert.Equal(compaction, provenance.EffectivePolicy.CompactionModel);
-        Assert.Equal(title, provenance.EffectivePolicy.TitleModel);
+        var effective = Assert.IsType<AgentPolicy>(provenance.EffectivePolicy);
+        Assert.Equal("workspace", effective.Provider);
+        Assert.Equal("workspace-model", effective.Model);
+        Assert.Equal(workspace.CompactionModel, effective.CompactionModel);
+        Assert.Equal(workspace.TitleModel, effective.TitleModel);
     }
 
     private static RuntimeAgentPolicyProvenance WorkspaceLineage() =>

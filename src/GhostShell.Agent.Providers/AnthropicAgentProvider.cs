@@ -160,7 +160,7 @@ internal sealed class AnthropicAgentProvider(
                 for (var index = 0; index < request.Messages.Length; index++)
                 {
                     var message = request.Messages[index];
-                    if (message.Role is AgentMessageRole.System or AgentMessageRole.Summary)
+                    if (message.Role == AgentMessageRole.System)
                     {
                         continue;
                     }
@@ -289,6 +289,7 @@ internal sealed class AnthropicAgentProvider(
         writer.WriteStartObject();
         switch (message.Role)
         {
+            case AgentMessageRole.Summary:
             case AgentMessageRole.User:
                 writer.WriteString("role", "user");
                 if (message.Images.Length == 0)
@@ -577,7 +578,7 @@ internal sealed class AnthropicAgentProvider(
     private static string SystemPrompt(AgentProviderRequest request)
     {
         var systemMessages = request.Messages
-            .Where(message => message.Role is AgentMessageRole.System or AgentMessageRole.Summary)
+            .Where(message => message.Role == AgentMessageRole.System)
             .Select(message => message.Content)
             .ToArray();
         return string.Join("\n\n", systemMessages);

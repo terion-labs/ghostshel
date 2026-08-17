@@ -1,7 +1,7 @@
 # Agent panel tool design
 
-- Status: Proposed
-- Date: 2026-08-14
+- Status: Implemented safe production slice; remaining items are an explicit roadmap
+- Date: 2026-08-15
 - Scope: the built-in native agent and the seven user-placeable panel kinds
 - Builds on: [ADR 0019](adr/0019-one-action-agent-capability-broker.md),
   [ADR 0040](adr/0040-cross-platform-libghostty-vt-terminal.md), and
@@ -11,7 +11,7 @@
 
 ## Executive decision
 
-GhostSHELL should expose a capability-negotiated tool contribution for each
+GhostSHELL exposes a capability-negotiated tool contribution for each
 hosted panel session. Tools operate the panel's typed engine boundary, not its
 Avalonia view model and not the desktop's global pointer or keyboard.
 
@@ -30,13 +30,16 @@ Terminal and browser tools need two levels:
   controls, and debugging.
 
 Browser scripting and raw DevTools access form a third, explicitly privileged
-level. They are not substitutes for semantic tools and must not be silently
-enabled by ordinary browser interaction permission.
+level. They are not substitutes for semantic tools and are not enabled in the
+production capability profile. In particular, arbitrary JavaScript cannot be
+made safe by source/result substring filtering: a same-origin script can derive
+cookie or storage access dynamically.
 
-Database and Docker panels are not currently hosted `IPanelSession` instances.
-They must first move behind SessionHost-owned typed sessions. Directly wiring
-agent tools to their presentation view models would bypass target binding,
-one-action authorization, cancellation, audit, and outcome-uncertainty rules.
+Database, Redis, and Docker now have SessionHost-owned typed session adapters.
+Their first production tool slice is deliberately read-only. Direct agent
+wiring to presentation view models remains forbidden because it would bypass
+target binding, one-action authorization, cancellation, audit, and
+outcome-uncertainty rules.
 
 ## Research and current implementation
 
@@ -50,7 +53,7 @@ capture, and coordinate mouse input. Its recommended workflow is
 when page state changes:
 
 - [Browse CLI documentation](https://docs.browserbase.com/integrations/skills/browse-cli)
-- [Browse CLI command reference](https://github.com/browserbase/stagehand/tree/main/packages/cli)
+- [Browse CLI command reference](https://github.com/browserbase/stagehand/blob/main/packages/cli/README.md)
 - [Browserbase agent skills](https://github.com/browserbase/skills)
 
 The vendored cmux reference independently reaches the same conclusion for an
@@ -85,26 +88,50 @@ The vendored Exclr8CEF revision already exposes the required primitives:
 | OOPIF/worker discovery | `CefBrowser.Target` |
 | File chooser/download | `FileDialog` and download callbacks |
 
-These are present under `vendor/exclr8cef/src/Exclr8Cef`. The current
-`CefBrowserView` deliberately returns unavailable/unknown results for semantic
-automation, as required by ADR 0042. The new browser automation adapter should
-replace that fail-closed stub; it should not add JavaScript strings to
-Application or SessionHost contracts.
+These are present under `vendor/exclr8cef/src/Exclr8Cef`. A private typed CEF
+adapter now implements bounded AX snapshots, opaque element leases, live
+backend-node revalidation, and acknowledged CDP input. No CEF/CDP object or
+JavaScript string enters the normal Application or SessionHost interaction
+contracts.
 
 ### Current panel inventory
 
-`PanelKind.Placeholder` is a layout affordance, not an operational panel, and
-receives no tools.
+`PanelKind.Placeholder` is a layout affordance with no hosted session and
+receives no panel-session tools. It remains part of the trusted workspace
+graph: a launcher-only workspace is a valid agent target and still exposes
+graph, intrinsic, and governed workspace-layout tools.
 
 | Panel | Hosted session now | Current agent tools | Main gap |
 | --- | --- | --- | --- |
-| Terminal | Yes | read, text, paste, key, chord, mouse, wait, interrupt, resize | scrollback read/search and explicit viewport scrolling |
-| Browser | Yes | state, candidate snapshot/click/fill/check, navigation | production semantic adapter and the rest of the interaction surface |
-| File Viewer | Yes | list, stat, bounded text read, mkdir, delete | rename, search, transfers, ACLs, non-text artifacts |
+| Terminal | Yes | screen/scrollback observation and search, viewport control, bounded waits, text/paste/key/chord/mouse, interrupt, resize | selection and destructive history operations intentionally absent |
+| Browser | Yes | state, AX snapshot, bounded waits, semantic click/fill/check, atomic mouse/key/scroll, navigation | artifacts, diagnostics, and safely constrained scripting |
+| File Viewer | Yes | list/search/stat/read/access, transfer status, mkdir, same-provider move/rename, recursive or non-recursive delete | governed copy/write/ACL operations and non-text artifacts |
 | Statistics | Yes | one bounded read | no essential gap |
-| Process Monitor | Yes | bounded sorted list | optional exact-row refresh; no control tool is justified |
-| Database Viewer | No | none | hosted relational/Redis session and complete policy boundary |
-| Docker | Only embedded terminal/file children are hosted | none | hosted Docker session and typed Docker tools |
+| Process Monitor | Yes | bounded filtered, sorted, and paged list | optional exact-row refresh; no control tool is justified |
+| Database Viewer | Yes | bounded relational schema/projected table reads and Redis scan/read/index discovery/search | enforced read-only SQL and all writes intentionally absent |
+| Docker | Yes; embedded terminal/file children remain distinct | state, inspect, logs, bounded file reads | lifecycle mutations and generic exec intentionally absent |
+
+### Implemented production tool inventory
+
+This table is authoritative for the first production slice. Later sections
+retain the researched target surface and mark deferred tools explicitly.
+
+| Panel | Production tools |
+| --- | --- |
+| Common graph/layout | `workspace.inspect`, `tab.list`, `panel.list`, `panel.inspect`, `panel.focus`, `tab.create`, `tab.close`, `panel.add`, `panel.split`, `panel.close` |
+| Terminal | `terminal.read_screen`, `terminal.read_screen_diff`, `terminal.find_on_screen`, `terminal.read_scrollback`, `terminal.find`, `terminal.scroll_viewport`, `terminal.wait`, `terminal.send_text`, `terminal.paste`, `terminal.submit_text`, `terminal.send_keys`, `terminal.send_chord`, `terminal.send_mouse`, `terminal.interrupt`, `terminal.resize` |
+| Browser | `browser.read_state`, `browser.snapshot`, `browser.wait`, `browser.click`, `browser.fill`, `browser.check`, `browser.mouse`, `browser.key`, `browser.scroll`, `browser.navigate`, `browser.back`, `browser.forward`, `browser.reload`, `browser.stop` |
+| File Viewer | `files.list`, `files.search`, `files.stat`, `files.read`, `files.access_read`, `files.transfers`, `files.mkdir`, `files.move`, `files.delete` |
+| Statistics | `statistics.read` |
+| Process Monitor | `processes.list` |
+| Relational database | `database.read_state`, `database.list_objects`, `database.describe_object`, `database.read_table`, `database.schema_graph` |
+| Redis | `redis.scan`, `redis.read`, `redis.list_indexes`, and capability-gated `redis.search` |
+| Docker | `docker.read_state`, `docker.inspect`, `docker.logs`, `docker.files_list`, `docker.files_stat`, `docker.file_read` |
+
+`browser.evaluate` exists only as a dormant conformance candidate and is not
+advertised by the production browser profile. `browser.cdp`, diagnostics,
+artifacts, uploads/downloads, database/Redis writes, Docker lifecycle actions,
+and generic terminal/Docker exec are not implemented as production tools.
 
 ## Cross-panel contract
 
@@ -158,22 +185,25 @@ and file mutation rules.
 - Text fields use strict Unicode and rune-safe byte limits.
 - Rows, nodes, cells, log lines, network records, and matches have independent
   count and byte limits plus explicit `truncated` state.
-- Images, downloads, uploads, exports, and large response bodies use an opaque,
-  run-scoped artifact broker. Tools never accept or return an ambient local
-  filesystem path.
+- Future images, downloads, uploads, exports, and large response bodies require
+  an opaque, run-scoped artifact broker. Until that broker exists, those tools
+  remain absent; tools never accept or return an ambient local filesystem path.
 - All terminal, browser, file, database, Docker, and process content is marked
   untrusted in provider results.
 
 ### Waits instead of polling
 
 Long-lived interactive panels should expose bounded waits. A wait has one
-condition, a maximum 30-second deadline, cancellation, and a final fresh
-snapshot. It does not synthesize input and never retries another action.
+condition (including an explicit delay/read-after condition), a caller-selected
+deadline of at most one hour, cancellation, and a final fresh snapshot. It does
+not synthesize input and never retries another action. Short waits remain the
+normal default; the one-hour ceiling exists for builds, remote jobs, downloads,
+and other legitimately long interactive work.
 
 ### Input ownership
 
-Terminal already has a human-preemptible agent input barrier. Browser should
-gain the equivalent `browser.agent_input_barrier` and one-action input lease.
+Terminal and Browser have human-preemptible agent input barriers. Browser uses
+`browser.agent_input_barrier` and a one-action input lease.
 Physical user input advances the input epoch and preempts an agent lease. Raw
 input is panel-relative only; neither terminal nor browser tools may move the
 desktop cursor, type into another application, or address screen coordinates.
@@ -184,15 +214,32 @@ Keep the existing graph tools for every hosted operational panel:
 
 | Tool | Purpose | Capability / risk |
 | --- | --- | --- |
-| `workspace.list` | List the scope-visible workspaces needed to resolve a broad target | `Search` / Observation |
-| `workspace.inspect` | Read one scope-visible workspace's fresh graph metadata | `Search` / Observation |
+| `workspace.inspect` | Read the run's one trusted workspace and its fresh graph metadata | `Search` / Observation |
 | `tab.list` | List scope-visible tabs and their graph identities | `Search` / Observation |
 | `panel.list` | List scope-visible panels, kinds, and hosted-state summaries | `Search` / Observation |
 | `panel.inspect` | Fresh identity, lifecycle, health, focus, visibility, activity, and supported operations | `Search` / Observation |
 | `panel.focus` | Activate the exact containing tab and panel | `RunCommands` / Routine |
+| `tab.create` | Create an active tab containing one selected panel kind | `WorkspaceLayout` / Mutation |
+| `tab.close` | Close one exact tab and its sessions | `WorkspaceLayout` / Destructive |
+| `panel.add` | Add one selected panel kind to an exact tab | `WorkspaceLayout` / Mutation |
+| `panel.split` | Split one exact panel left/right or top/bottom and create a selected panel kind in the new cell | `WorkspaceLayout` / Mutation |
+| `panel.close` | Close one exact panel and its session | `WorkspaceLayout` / Destructive |
 
-Creating, closing, splitting, moving, or resizing layout panels is a separate
-workspace-editing capability and is outside this panel-operation design.
+Every agent run is already bound to exactly one trusted workspace.
+`workspace.inspect` therefore accepts only `{}` and resolves that workspace
+from the host-owned run context. There is no `workspace.list` tool and no
+model-supplied workspace identifier.
+
+Layout mutations are advertised only for a complete `Workspace` run. Their
+schemas enumerate current graph-owned tab/panel IDs and panel kinds supported
+by the attached desktop. Preparation binds the complete ordered topology;
+SessionHost consumes one `WorkspaceLayout` authorization and the trusted UI
+port rejects graph drift without retry. Close operations reject unsaved
+database edits. Once UI dispatch begins, a missing or unverifiable final graph
+is the non-retryable tool failure `workspace_layout_outcome_unknown`; the agent
+may inspect the fresh local graph but must not repeat the mutation automatically.
+A newer graph is valid when it preserves the exact applied effect. Moving and
+resizing panels remain deferred.
 
 ## Terminal panel
 
@@ -212,18 +259,21 @@ scrollback or to the remote TUI.
 
 | Tool | Arguments and result | Capability / risk | Status |
 | --- | --- | --- | --- |
-| `terminal.read_screen` | No required args. Returns bounded visible rows, cursor, dimensions, title, cwd, alternate-screen, paste/mouse modes, scrollback counts, content revision, and recent OSC 133 boundaries/events. | `TerminalRead` / Observation | Keep |
-| `terminal.read_scrollback` | `anchor: top|bottom|before|after`, optional opaque row anchor, `max_lines` (16/64/200). Non-mutating bounded history read. | `TerminalRead` / Observation | Add after native projection |
-| `terminal.find` | Exact literal text, direction, maximum matches. Returns bounded excerpts and opaque match anchors without moving the user's viewport. | `TerminalRead` / Observation | Add; native full-scrollback search already exists |
-| `terminal.scroll_viewport` | `direction: up|down|top|bottom`, `unit: line|page`, bounded `amount`. Reject on alternate screen when there is no hosted scrollback. Returns the resulting viewport snapshot. | `RunCommands` / Routine | Add; typed port exists |
-| `terminal.send_text` | Exact printable text, no Enter, max 2,048 UTF-8 bytes. | `RunCommands` / Mutation | Keep |
-| `terminal.paste` | Exact bounded text using bracketed-paste semantics; controls escaped in approval. | `RunCommands` / Mutation, human/confirmed policy only | Keep |
-| `terminal.send_keys` | One named special key plus known modifiers. Extend the enum only as libghostty-vt proves encoding. | `RunCommands` / Mutation | Keep |
-| `terminal.send_chord` | One lowercase ASCII letter with exactly Control or Alt. | `DestructiveTerminalActions` / Destructive | Keep |
-| `terminal.send_mouse` | One zero-based cell move/down/up/drag/wheel event, modifiers, and expected content revision. Valid only inside current dimensions and when terminal mouse tracking supports the event. | `RunCommands` / Mutation | Tighten existing contract |
-| `terminal.wait` | One of text, newer revision, stable screen, prompt-ready, or command-finished; max 30 seconds. Returns a fresh screen. | `TerminalRead` / Routine | Extend |
-| `terminal.interrupt` | One typed interrupt. | `DestructiveTerminalActions` / Destructive | Keep |
-| `terminal.resize` | Exact bounded cell dimensions, preserving attachment-owned scale. | `RunCommands` / Mutation | Keep |
+| `terminal.read_screen` | No required args. Returns bounded visible rows, cursor, dimensions, title, cwd, alternate-screen, paste/mouse modes, scrollback counts, content revision, and recent OSC 133 boundaries/events. | `TerminalRead` / Observation | Implemented |
+| `terminal.read_screen_diff` | Exact previously observed content revision plus a changed-row limit. Returns only changed rendered viewport rows. If that revision is not the latest observed screen, reports `baseline_available: false` and no invented diff. | `TerminalRead` / Observation | Implemented |
+| `terminal.find_on_screen` | Exact literal text and maximum matches against the current rendered viewport, including alternate-screen TUIs. This is deliberately distinct from scrollback/history search. | `TerminalRead` / Observation | Implemented |
+| `terminal.read_scrollback` | `anchor: top|bottom|before|after`, optional opaque row anchor, `max_lines` (16/64/200). Non-mutating bounded history read. | `TerminalRead` / Observation | Implemented |
+| `terminal.find` | Exact literal text, direction, maximum matches. Returns bounded excerpts and opaque match anchors without moving the user's viewport. | `TerminalRead` / Observation | Implemented |
+| `terminal.scroll_viewport` | `direction: up|down|top|bottom`, `unit: line|page`, bounded `amount`. Reject on alternate screen when there is no hosted scrollback. Returns the resulting viewport snapshot. | `RunCommands` / Routine | Implemented |
+| `terminal.send_text` | Exact printable text, no Enter, max 2,048 UTF-8 bytes. | `RunCommands` / Mutation | Implemented |
+| `terminal.paste` | Exact bounded text using bracketed-paste semantics; controls escaped in approval. | `RunCommands` / Mutation, human/confirmed policy only | Implemented |
+| `terminal.submit_text` | Paste exact bounded text and press protocol-correct Enter in one atomic PTY delivery; preferred for submitting shell commands and interactive prompts. | `RunCommands` / Mutation, human/confirmed policy only | Implemented |
+| `terminal.send_keys` | One named special key plus known modifiers and an optional bounded repeat count (1–64), delivered as one queued PTY write. Extend the enum only as libghostty-vt proves encoding. | `RunCommands` / Mutation | Implemented |
+| `terminal.send_chord` | One lowercase ASCII letter with exactly Control or Alt. | `DestructiveTerminalActions` / Destructive | Implemented |
+| `terminal.send_mouse` | One zero-based cell move/down/up/drag/wheel event, modifiers, and expected content revision. Valid only inside current dimensions and when terminal mouse tracking supports the event. | `RunCommands` / Mutation | Implemented; revision-atomic at PTY dispatch |
+| `terminal.wait` | One of delay/read-after, text, newer revision, stable screen, prompt-ready, or command-finished; caller-selected timeout up to one hour. Returns a fresh screen. | `TerminalRead` / Routine | Implemented |
+| `terminal.interrupt` | One typed interrupt. | `DestructiveTerminalActions` / Destructive | Implemented |
+| `terminal.resize` | Exact bounded cell dimensions, preserving attachment-owned scale. | `RunCommands` / Mutation | Implemented |
 
 Selection read/write and clear-scrollback are not needed for reliable agent
 operation. They should remain human UI features until a concrete agent workflow
@@ -232,12 +282,52 @@ justifies their privacy and destructive semantics.
 ### Terminal-specific rules
 
 - `read_screen` never auto-scrolls.
+- `find_on_screen` searches the rendered viewport; `terminal.find` searches
+  hosted scrollback. Agents use the former for full-screen TUIs and the latter
+  for terminal history.
+- `read_screen_diff` accepts only the engine's most recently observed screen as
+  a baseline. Renderer, health, and context reads are not agent observations and
+  do not replace it. A later agent-visible screen/find/wait/diff observation
+  supersedes it. A stale or unavailable revision yields an explicit unavailable
+  baseline rather than a best-effort reconstruction.
+- Interactive applications may emit the generic terminal state protocol with
+  an optional half-open viewport input range named by exact zero-based
+  `row`, `start_column`, and `end_column_exclusive` fields. The host exposes it
+  as expiring, untrusted observation only and omits it when it does not fit the
+  observed viewport. No screen-text heuristic invents input or approval
+  semantics.
 - `scroll_viewport` manipulates local hosted history; wheel events sent to a TUI
   remain `send_mouse` mutations. The host never guesses between those effects.
 - Mouse coordinates are checked against the same screen revision and grid used
   by the agent. Resize or content-mode drift fails stale.
 - `wait(prompt-ready)` is offered only when shell integration is active. No
   prompt regex heuristic becomes authority.
+- For a full-screen TUI or REPL without OSC 133, automation uses a content
+  revision barrier followed by a stable-screen wait and then a fresh screen
+  read. Stability proves only that the rendered grid stopped changing for the
+  requested interval; it does not prove that the application is idle, ready
+  for input, showing a modal, or requesting approval.
+- Screen `text` is logical text: physical rows joined by terminal soft wrapping
+  are returned as one logical line. Arbitrary cursor-addressed TUI decoration
+  remains visible because removing it heuristically would also remove real
+  content.
+- Interactive applications may opt into `terminal.interactive-state.v1` by
+  emitting an OSC 777 desktop-notification payload with a strictly increasing
+  `sequence`, one of `idle_input`, `working`, `streaming`, `modal`,
+  `input_required`, or `approval_required`, and a bounded `ttl_ms`. The state is
+  exposed as expiring `untrusted_terminal_protocol` observation. Absence means
+  unknown, stale/replayed payloads are ignored, and the signal never grants
+  approval or agent authority. A `clear` state removes the observation.
+  The wire form is `OSC 777 ; notify ; terminal.interactive-state.v1 ; JSON ST`,
+  for example
+  `{"sequence":7,"state":"streaming","ttl_ms":5000}`. A cooperating app
+  refreshes the TTL while the state remains active. Local PTY processes receive
+  `GHOSTSHELL_INTERACTIVE_STATE_PROTOCOL=terminal.interactive-state.v1` so an
+  app-neutral launcher can discover support without identifying GhostSHELL or
+  any particular interactive application.
+- App-specific adapters may translate a structured local event stream into
+  that protocol. Without an explicit protocol, screen-text recognition can be
+  advisory at most and MUST NOT produce a semantic approval action.
 - Every input tool requires `terminal.agent_input_barrier`; human input wins.
 - No text/chord/paste input is automatically retried after PTY dispatch.
 
@@ -245,7 +335,7 @@ justifies their privacy and destructive semantics.
 
 ### Architecture
 
-Add a private CEF automation adapter behind `IEmbeddedBrowserView`. Public
+The private CEF automation adapter sits behind `IEmbeddedBrowserView`. Public
 Application contracts remain typed and engine-neutral. The adapter uses CEF's
 CDP domain clients and OSR input APIs; it does not expose `CefBrowser`, backend
 node IDs, JavaScript object IDs, or raw JSON outside `GhostShell.Browser`.
@@ -269,25 +359,32 @@ isolated world only where DOM property access is unavoidable.
 
 ### Normal observation and navigation tools
 
+The production subset here is state, snapshot, wait, and navigation. Screenshot,
+getters, and predicates remain roadmap items pending artifact/inspection ports.
+
 | Tool | Arguments and result | Capability / risk |
 | --- | --- | --- |
 | `browser.read_state` | URL, origin, title, load state, history flags, focused state, viewport CSS size/scale, document revision, active downloads, and input epoch. | `BrowserData` / Observation |
-| `browser.snapshot` | `interactive_only`, optional text filter and `max_depth`; returns a bounded accessibility tree and opaque refs. | `BrowserData` / Observation |
+| `browser.snapshot` | `interactive_only`, optional text `filter` and `max_depth`; returns a lean bounded accessibility tree and opaque refs. Filtering keeps ancestors and occurs before the node cap. Provider projection has no separate fixed node cutoff. | `BrowserData` / Observation |
 | `browser.screenshot` | `viewport|full_page`, optional bounded clip, PNG/JPEG/WebP quality; returns an image attachment/artifact and the exact document/viewport revision. | `BrowserData` / Observation |
 | `browser.get` | Ref plus `text|value|html|attribute|box|styles|accessible_name`. Attribute/style names use bounded allowlists. | `BrowserData` / Observation |
 | `browser.is` | Ref plus `visible|enabled|checked|selected|editable|focused`. | `BrowserData` / Observation |
-| `browser.wait` | One of load state, URL pattern, text, ref state, document revision, or network idle; max 30 seconds. | `BrowserData` / Routine |
+| `browser.wait` | One of delay/read-after, load state, URL pattern, text, ref state, document revision, or network idle; caller-selected timeout up to one hour. | `BrowserData` / Routine |
 | `browser.navigate` | Absolute HTTP(S) URL or `about:blank`, with current origin/start revision bound into approval. | `BrowserNavigation` / Mutation |
 | `browser.back` / `browser.forward` / `browser.reload` / `browser.stop` | No ambient target args. Return final state or a typed no-op. | `BrowserNavigation` / Mutation |
 
 ### Normal semantic interaction tools
+
+Production currently advertises click, fill, and ensure-checked. Type, select,
+hover, focus, scroll-into-view, highlight, and desired false check state remain
+roadmap items.
 
 | Tool | Arguments and result | Capability / risk |
 | --- | --- | --- |
 | `browser.click` | Ref, `button`, click count, modifiers. Real input dispatch at a revalidated point. | `BrowserInteraction` / Mutation |
 | `browser.fill` | Ref and replacement text; empty text clears. Restricted to fillable controls and verifies final value. | `BrowserInteraction` / Mutation |
 | `browser.type` | Optional ref, text, optional bounded per-character delay. Focuses and appends through input semantics. | `BrowserInteraction` / Mutation |
-| `browser.check` | Ref and desired `checked: true|false`; idempotent final-state semantics. | `BrowserInteraction` / Mutation |
+| `browser.check` | Ref; idempotently ensures the control is checked and verifies the final state. Desired false state is a future contract. | `BrowserInteraction` / Mutation |
 | `browser.select` | Select ref plus one or more exact option values/labels from a fresh snapshot. Returns selected values. | `BrowserInteraction` / Mutation |
 | `browser.hover` | Ref; moves the panel-local pointer and returns resulting cursor/hover state. | `BrowserInteraction` / Mutation |
 | `browser.focus` | Ref; focuses a page control without moving desktop focus elsewhere. | `BrowserInteraction` / Routine |
@@ -300,6 +397,10 @@ These are necessary for canvas applications, custom editors, drag surfaces,
 games, remote consoles, and pages with incomplete accessibility trees. They
 remain panel-local and require the browser input barrier.
 
+Production intentionally exposes only atomic `mouse` move/click/wheel, atomic
+`key` press, and `scroll`; split down/up and drag gestures remain deferred until
+their multi-event commit and capture-loss receipts are specified.
+
 | Tool | Arguments and result | Capability / risk |
 | --- | --- | --- |
 | `browser.mouse` | `move|down|up|click|wheel`, viewport-relative CSS `x/y`, button, click count, wheel deltas, modifiers. Coordinates bind to viewport and document revision. | `BrowserInteraction` / Mutation |
@@ -308,6 +409,11 @@ remain panel-local and require the browser input barrier.
 | `browser.scroll` | CSS-pixel deltas and optional origin point; uses wheel or synthesized gesture and returns resulting viewport state. | `BrowserInteraction` / Mutation |
 
 ### Script and DevTools power tier
+
+This entire tier is deferred in the production profile. The candidate
+`browser.evaluate` implementation is retained for conformance work only; an
+isolated JavaScript world is not a credential boundary because it still has
+same-origin DOM, cookie, and storage access.
 
 | Tool | Contract | Capability / risk |
 | --- | --- | --- |
@@ -324,7 +430,7 @@ allowlist excludes `Browser.close`, arbitrary `Target.*` attachment/control,
 security bypass, permission grants, download-path changes, local-file access,
 cookie/auth extraction, and unbounded tracing. A future explicit developer mode
 may expose a wider list, but only to exact-panel runs with a human approval per
-call; never through `Auto` or YOLO.
+call or explicitly confirmed run-local Full access; never through `Auto`.
 
 Both script worlds and every allowed CDP method run under the same frozen-origin
 navigation guard as normal browser interaction. A script-initiated top-level
@@ -370,15 +476,14 @@ replace them with caller-supplied native paths or provider URLs.
 | `files.list` | Bounded directory page with structured child paths and continuation | `ReadFiles` / Observation | Existing |
 | `files.stat` | Exact bounded metadata | `ReadFiles` / Observation | Existing |
 | `files.read` | Bounded UTF-8 preview | `ReadFiles` / Observation | Existing |
-| `files.search` | Provider-capability-gated bounded name/content search under one directory | `ReadFiles` / Observation | P1 |
+| `files.search` | Provider-capability-gated bounded name search under one directory or subtree | `ReadFiles` / Observation | Implemented |
 | `files.mkdir` | One non-root directory, `MustNotExist` | `EditFiles` / Mutation | Existing |
-| `files.rename` | Exact source and new sibling name with version/precondition from a fresh stat | `EditFiles` / Mutation | P0 after a separate `GovernedRename` provider capability |
-| `files.delete` | One exact file or empty directory, non-recursive | `EditFiles` / Destructive | Existing, capability gated |
+| `files.move` | Move or rename one exact non-root path to one exact non-root destination in the same hosted provider, `MustNotExist` | `EditFiles` / Mutation | Implemented for explicitly trusted local providers |
+| `files.delete` | One exact non-root path, with recursive deletion requested explicitly | `EditFiles` / Destructive | Existing, capability gated |
 | `files.copy` | Copy one or more exact entries to an exact hosted destination panel/directory with explicit conflict policy | `EditFiles` / Mutation | P1 after a separate governed copy capability |
-| `files.move` | Move one or more exact entries to an exact hosted destination panel/directory with explicit conflict policy | `EditFiles` / Destructive | P1 after a separate governed move capability |
-| `files.transfers` | List bounded session-owned transfer status | `ReadFiles` / Observation | P1 |
-| `files.transfer_cancel` / `retry` | One exact transfer; retry only a provider-declared safely retryable, uncommitted transfer | `EditFiles` / Mutation | P1 |
-| `files.access_read` | Bounded POSIX mode or provider ACL | `ReadFiles` / Observation | P2 |
+| `files.transfers` | List bounded session-owned transfer status without source/destination paths or provider identifiers | `ReadFiles` / Observation | Implemented |
+| `files.transfer_cancel` / `retry` | One exact transfer; retry only a provider-declared safely retryable, uncommitted transfer | `EditFiles` / Mutation | Deferred: queue cannot yet prove a race-safe final state |
+| `files.access_read` | Bounded POSIX mode or provider ACL | `ReadFiles` / Observation | Implemented |
 | `files.access_set` | Exact version-bound mode/grant replacement | `EditFiles` / Privileged | P2 |
 
 Non-text previews return metadata plus an artifact/image attachment when the
@@ -415,7 +520,8 @@ old policy payloads fail closed until migrated explicitly.
 Keep `processes.list` as the primary and, for now, only tool:
 
 - sort is one of CPU descending, memory descending, name ascending, or PID;
-- limit remains one of 16, 32, or 64;
+- bounded offset/limit pagination can be narrowed by case-insensitive process
+  name or exact PID;
 - results exclude command line, executable path, user, environment, open files,
   and terminal content; and
 - the tool targets only the local hosted Process Monitor, never a remote shell.
@@ -430,26 +536,31 @@ name for an observation.
 
 ## Database Viewer panel
 
-### Required architecture first
+### Hosted architecture
 
-Introduce `IDatabasePanelSession : IPanelSession` and a SessionHost factory.
+`IDatabasePanelSession : IPanelSession` and its SessionHost factory now bind
+the exact panel and provider session.
 The session immutably binds driver, connection definition/revision, selected
 database, tunnel generation, and a secret reference. The session owns
 connection cancellation and publishes only sanitized endpoint/session facts.
-Presentation consumes that session rather than holding an unrestricted
-`IDatabasePanelClient` plus connection string.
+The current human presentation keeps its eager direct client while also
+creating this governed projection after graph acceptance; agent tools never
+receive the direct client or connection string.
 
-Redis should use a hosted Redis session under the same `PanelKind`, but advertise
+Redis uses a hosted Redis session under the same `PanelKind`, but advertises
 Redis-specific capabilities and tools. Do not flatten Redis operations into SQL.
 
 ### Relational tools
+
+Production implements the first five bounded structural/data observations.
+`query_read` and `execute` remain deferred.
 
 | Tool | Purpose | Capability / risk |
 | --- | --- | --- |
 | `database.read_state` | Driver, server/TLS facts, selected catalog/schema, readiness, capabilities; no connection string/password | new `DatabaseRead` / Observation |
 | `database.list_objects` | Bounded tables/views/routines with opaque object refs | `DatabaseRead` / Observation |
 | `database.describe_object` | Columns, keys, nullability, types, indexes/relations where available | `DatabaseRead` / Observation |
-| `database.read_table` | Structured filters/sorts/page against one object ref; bounded rows/cells/bytes | `DatabaseRead` / Observation |
+| `database.read_table` | Structured filters/sorts/page and include/exclude column projection against one object ref; bounded rows/cells/bytes plus distinct filtered/table counts | `DatabaseRead` / Observation |
 | `database.schema_graph` | Bounded table/foreign-key graph, optionally clipped to named objects | `DatabaseRead` / Observation |
 | `database.query_read` | One bounded SQL statement under an enforced read-only connection/transaction and read-only principal | `DatabaseRead` / Observation |
 | `database.execute` | One exact SQL statement or structured table change; SQL hash and sanitized preview bound into approval | new `DatabaseWrite` / Privileged |
@@ -466,10 +577,15 @@ after dispatch is `database_outcome_unknown`.
 
 ### Redis tools
 
+Production implements scan, exact read, and Search-index discovery; search is
+advertised only when the live provider reports its search capability. All
+mutations remain deferred.
+
 | Tool | Purpose | Capability / risk |
 | --- | --- | --- |
 | `redis.scan` | Pattern plus opaque cursor and bounded count | `DatabaseRead` / Observation |
 | `redis.read` | Exact opaque key ref, type, TTL, size, and bounded entries | `DatabaseRead` / Observation |
+| `redis.list_indexes` | Bounded Search-index names for the selected Redis database | `DatabaseRead` / Observation |
 | `redis.search` | Exact index and bounded query/results when supported | `DatabaseRead` / Observation |
 | `redis.set` | Type-specific exact set/append/update with TTL/precondition where supported | `DatabaseWrite` / Mutation |
 | `redis.expire` | Exact key and desired TTL/persist state | `DatabaseWrite` / Mutation |
@@ -483,9 +599,9 @@ call open indefinitely.
 
 ## Docker panel
 
-### Required architecture first
+### Hosted architecture
 
-Introduce `IDockerPanelSession : IPanelSession`. It immutably binds the exact
+`IDockerPanelSession : IPanelSession` now immutably binds the exact
 local/SSH connection definition and Docker engine generation, owns refresh/log
 operations, and exposes typed operations currently reached through
 `IDockerEngineClient`. The main Docker panel, its embedded container terminal,
@@ -494,10 +610,13 @@ workspace graph.
 
 ### Tool set
 
+Production implements the six observation tools. Container lifecycle and shell
+creation remain deferred; there is no generic Docker exec tool.
+
 | Tool | Purpose | Capability / risk |
 | --- | --- | --- |
 | `docker.read_state` | Engine facts and bounded container/image/volume/network summaries | new `DockerData` / Observation |
-| `docker.inspect` | Exact resource ref with bounded normalized properties; raw JSON optional and bounded | `DockerData` / Observation |
+| `docker.inspect` | Exact resource ref with bounded normalized allowlisted properties; no raw JSON, command, environment, labels, mounts, or host paths | `DockerData` / Observation |
 | `docker.logs` | Exact container ref, bounded lines, before/since cursor, text filter/context | `DockerData` / Observation |
 | `docker.files_list` / `docker.files_stat` / `docker.file_read` | Bounded container/image/volume file observation | `DockerData` / Observation |
 | `docker.container_start` | Start one exact stopped container | existing `Docker` / Mutation |
@@ -535,17 +654,20 @@ fails closed. A deliberate migration/UI edit is required to enable one. Keep
 `Docker` for lifecycle mutation and `ProcessControl` for any future process
 mutation; do not overload observation and control under one permission.
 
-## Implementation sequence
+## Implementation status and remaining sequence
 
-### Phase 0: contract foundation
+### Landed foundation
 
 1. Add the new policy capabilities with fail-closed schema compatibility.
-2. Define the run-scoped artifact broker and common bounded result envelope.
-3. Add `browser.agent_input_barrier` and browser input-lease/epoch support.
-4. Define hosted Database and Docker session contracts before any tools for
-   those panels.
+2. Add `browser.agent_input_barrier` and browser input-lease/epoch support.
+3. Define and host Database, Redis, and Docker session contracts.
+4. Enforce strict bounded JSON projections and opaque references across every
+   newly exposed observation.
 
-### Phase 1: terminal completion
+The run-scoped artifact broker remains a prerequisite for binary screenshots,
+uploads, downloads, and non-text file previews.
+
+### Landed: terminal completion
 
 1. Add non-mutating bounded scrollback projection.
 2. Wire native full-scrollback search.
@@ -555,36 +677,40 @@ mutation; do not overload observation and control under one permission.
 This phase is low architectural risk because the typed terminal ports and
 libghostty-vt state already exist.
 
-### Phase 2: CEF semantic browser
+### Landed subset: CEF semantic browser
 
 1. Implement CEF accessibility snapshot and opaque backend-node leases.
-2. Add get/is/wait, screenshot, and element geometry/focus.
-3. Implement click/fill/type/check/select with real input and exact post-action
-   verification.
-4. Replace the production fail-closed automation profile only after hostile-page,
-   navigation-order, mutation, cancellation, and recovery conformance passes on
-   every supported CEF RID.
+2. Add bounded wait with delay/load/URL/text/ref/revision/network conditions.
+3. Implement click/fill/ensure-checked with acknowledged real input and exact
+   post-action verification.
+4. Add atomic panel-relative mouse move/click/wheel, key press, and scroll under
+   the browser input barrier.
 
-### Phase 3: CEF low-level and power tier
+### Remaining: CEF interaction and power tier
 
-1. Add raw panel-relative mouse/key/scroll/drag.
-2. Add the bounded script runner with isolated/main-world distinction.
+1. Add getters/predicates, screenshot artifacts, type/select/focus/hover, and
+   split or multi-event drag input with explicit commit receipts.
+2. Define a credential-safe scripting boundary; do not promote the current
+   arbitrary-evaluate candidate merely because it uses an isolated world.
 3. Add redacted console/network buffers.
 4. Add the versioned CDP method allowlist.
 5. Add artifact-backed upload and download.
 
-### Phase 4: hosted Database and Docker
+### Landed subset: hosted Database, Redis, and Docker
 
-1. Move presentation onto hosted sessions without changing human behavior.
+1. Link the hosted projection after the real panel graph is accepted without
+   changing eager human initialization.
 2. Add read-only tools and conformance first.
 3. Add one exact mutation at a time with commit and outcome-unknown tests.
 
-### Phase 5: File Viewer completion
+### Remaining: File Viewer mutations and artifacts
 
-1. Add rename.
-2. Add transfer observation/cancel/retry.
-3. Add exact cross-panel copy, then move after partial-effect evidence.
-4. Add ACL tools only for providers with race-safe version semantics.
+1. Add bounded governed text write with version/create preconditions.
+2. Add transfer cancellation/retry only after the queue proves final state and
+   commit evidence.
+3. Add exact cross-panel copy; same-provider move/rename is already governed,
+   while copy-then-delete move needs explicit partial-effect evidence.
+4. Add ACL writes only for providers with race-safe version semantics.
 
 ## Verification gates
 

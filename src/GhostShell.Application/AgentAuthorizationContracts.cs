@@ -196,16 +196,30 @@ public sealed record AgentActionPermit
     internal AgentActionPermit(
         AgentActionAuthorization authorization,
         DateTimeOffset startedAtUtc,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DateTimeOffset? executionDeadlineUtc = null)
     {
+        var deadline = executionDeadlineUtc ?? authorization.ExpiresAtUtc;
+        if (startedAtUtc.Offset != TimeSpan.Zero
+            || deadline.Offset != TimeSpan.Zero
+            || deadline <= startedAtUtc)
+        {
+            throw new ArgumentException(
+                "An action permit requires an ordered UTC execution window.",
+                nameof(executionDeadlineUtc));
+        }
+
         Authorization = authorization;
         StartedAtUtc = startedAtUtc;
+        ExecutionDeadlineUtc = deadline;
         CancellationToken = cancellationToken;
     }
 
     public AgentActionAuthorization Authorization { get; }
 
     public DateTimeOffset StartedAtUtc { get; }
+
+    public DateTimeOffset ExecutionDeadlineUtc { get; }
 
     /// <summary>
     /// Cancelled when the run stops, its policy generation changes, or the

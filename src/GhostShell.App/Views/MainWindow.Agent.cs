@@ -45,7 +45,7 @@ public sealed partial class MainWindow
         }
     }
 
-    private async void OnQueueAgentFollowUpClick(object? sender, RoutedEventArgs e)
+    private async void OnQueueAgentSteeringClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
         _ = e;
@@ -56,7 +56,14 @@ public sealed partial class MainWindow
 
         try
         {
-            await agentChat.QueueFollowUpAsync(_lifetime.Token);
+            if (agentChat.CanOfferFollowUpQueue)
+            {
+                await agentChat.QueueSteeringAsync(_lifetime.Token);
+            }
+            else
+            {
+                await ViewModel.SendAgentPromptAsync(_lifetime.Token);
+            }
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
         {
@@ -414,6 +421,25 @@ public sealed partial class MainWindow
                 e,
                 (agent, token) => agent.ToggleFavoriteModelAsync(item, token),
                 hideHistoryFlyout: false);
+        }
+    }
+
+    private async void OnMoveAgentQueuedFollowUpRequested(
+        object? sender,
+        AgentQueuedFollowUpMoveRequestedEventArgs e)
+    {
+        _ = sender;
+        if (ViewModel.AgentChat is not { } agent)
+        {
+            return;
+        }
+
+        try
+        {
+            await agent.MoveQueuedFollowUpAsync(e.Item, e.DestinationIndex);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
         }
     }
 

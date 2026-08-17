@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using GhostShell.Core;
 
 namespace GhostShell.Application;
@@ -22,11 +23,28 @@ public abstract record AgentFileActionResult
 
     public sealed record Page(FilePanelPage Value) : AgentFileActionResult;
 
+    public sealed record SearchResults(
+        ImmutableArray<FilePanelEntry> Entries,
+        bool IsTruncated)
+        : AgentFileActionResult;
+
     public sealed record Entry(FilePanelEntry Value) : AgentFileActionResult;
 
     public sealed record Preview(FilePanelPreview Value) : AgentFileActionResult;
 
+    public sealed record AccessControl(
+        FilePanelAccessControl Value,
+        bool IsTruncated = false)
+        : AgentFileActionResult;
+
+    public sealed record Transfers(
+        ImmutableArray<FilePanelTransferSnapshot> Values,
+        bool IsTruncated)
+        : AgentFileActionResult;
+
     public sealed record CreatedDirectory(FilePanelEntry Value) : AgentFileActionResult;
+
+    public sealed record Moved(FilePanelEntry Value) : AgentFileActionResult;
 
     public sealed record Deleted(FilePanelDeleteReceipt Value) : AgentFileActionResult;
 }

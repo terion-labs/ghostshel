@@ -18,15 +18,9 @@ internal static class AgentAuditEventId
         return $"agent-{digest.Value}";
     }
 
-    public static string ForPolicyTransition(
-        AgentRunId runId,
-        long policyGeneration)
-    {
-        AgentRunRegistration.ValidateRunId(runId);
-        ArgumentOutOfRangeException.ThrowIfNegative(policyGeneration);
-        var digest = AgentActionDigest.FromUtf8(
-            FormattableString.Invariant(
-                $"ghostshell-agent-policy-transition-v1\0{runId.Value}\0{policyGeneration}"));
-        return $"agent-policy-{digest.Value}";
-    }
+    // Policy generations are scoped to one live broker registration and may
+    // repeat when a durable conversation is restored. The broker retains this
+    // exact ID while retrying one ambiguous audit commit.
+    public static string NewPolicyTransition() =>
+        $"agent-policy-{Guid.CreateVersion7():N}";
 }

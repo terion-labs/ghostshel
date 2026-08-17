@@ -177,8 +177,10 @@ public sealed class AgentCapabilityBroker :
 
             var mcpPermission =
                 run.Policy.GetPermission(AgentCapability.McpTools);
-            if (mcpPermission is not
-                (AgentPermission.Ask or AgentPermission.Auto))
+            if (mcpPermission is not (
+                    AgentPermission.Ask
+                    or AgentPermission.Auto
+                    or AgentPermission.Yolo))
             {
                 return McpRunDenied(
                     Error(
@@ -186,12 +188,13 @@ public sealed class AgentCapabilityBroker :
                         "The live run policy does not permit MCP tools."));
             }
 
-            if (HasActiveYoloConfirmation(run, _timeProvider.GetUtcNow()))
+            if (mcpPermission == AgentPermission.Yolo
+                && !HasActiveYoloConfirmation(run, _timeProvider.GetUtcNow()))
             {
                 return McpRunDenied(
                     Error(
                         AgentAuthorizationErrorCode.PolicyDenied,
-                        "MCP launch is unavailable while YOLO authority is active."));
+                        "MCP launch requires current full-access authority."));
             }
 
             if (!_runAuthoritySignals.TryGetValue(
@@ -1031,12 +1034,26 @@ public sealed class AgentCapabilityBroker :
 
             var cancellationSource = CancellationTokenSource.CreateLinkedTokenSource(
                 runAuthorityToken);
-            cancellationSource.CancelAfter(
-                issued.Authorization.ExpiresAtUtc - now);
+            var executionDeadlineUtc = Earliest(
+                issued.Proposal.DeadlineUtc,
+                now + issued.Tool.MaximumExecutionLifetime);
+            if (issued.Authorization.Source
+                == AgentAuthorizationSource.YoloPolicy)
+            {
+                // A YOLO confirmation is live authority, not merely an
+                // issuance window. An in-flight action must stop when that
+                // explicit confirmation window closes.
+                executionDeadlineUtc = Earliest(
+                    executionDeadlineUtc,
+                    issued.Authorization.ExpiresAtUtc);
+            }
+
+            cancellationSource.CancelAfter(executionDeadlineUtc - now);
             var permit = new AgentActionPermit(
                 issued.Authorization,
                 now,
-                cancellationSource.Token);
+                cancellationSource.Token,
+                executionDeadlineUtc);
             _authorizations.Remove(authorizationId);
             _activeActions.Add(
                 authorizationId,
@@ -1923,9 +1940,7 @@ public sealed class AgentCapabilityBroker :
             update.YoloConfirmation?.ExpiresAtUtc
             ?? previousYolo?.ExpiresAtUtc;
         return new AuditEventRecord(
-            AgentAuditEventId.ForPolicyTransition(
-                run.RunId,
-                update.PolicyGeneration),
+            AgentAuditEventId.NewPolicyTransition(),
             run.RunId.Value,
             update.ChangedBy,
             PolicyAuditAction,

@@ -9,6 +9,37 @@
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
   <UserControl.Styles>
+    <!-- A live run is visible from every surface hosting the shared agent
+         panel. The ordinary icon remains beneath this accent copy, so the
+         five-second opacity cycle reads as a slow colour pulse rather than a
+         blinking status light. -->
+    <Style Selector="icons|SymbolIcon.AgentActivityPulse.running">
+      <Style.Animations>
+        <Animation Duration="0:0:5" IterationCount="INFINITE">
+          <KeyFrame Cue="0%">
+            <Setter Property="Opacity" Value="0" />
+          </KeyFrame>
+          <KeyFrame Cue="50%">
+            <Setter Property="Opacity" Value="1" />
+          </KeyFrame>
+          <KeyFrame Cue="100%">
+            <Setter Property="Opacity" Value="0" />
+          </KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+    <Style Selector="Grid.agentQueueRow Border.queueDropBefore">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="Grid.agentQueueRow Border.queueDropAfter">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="Grid.agentQueueRow.queueDropBefore Border.queueDropBefore">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="Grid.agentQueueRow.queueDropAfter Border.queueDropAfter">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
     <!-- The ordinary workspace uses this grip only while floating. An
          edge-resizable host also exposes it while docked because its layout
          spacer follows the Agent surface's live width. -->
@@ -102,6 +133,13 @@
       <Setter Property="BoxShadow" Value="{DynamicResource ShellFocusRingShadow}" />
     </Style>
   </UserControl.Styles>
+  <!--
+    Keep the agent surface free of AutomationProperties.LiveSetting. Avalonia
+    12.0.5's macOS bridge can raise a native live-region notification with a
+    nil announcement while streaming controls are updated or detached, which
+    terminates the process. Stable names, help text, and keyboard focus remain
+    available to assistive technology without that unsafe native callback.
+  -->
   <Panel ClipToBounds="False">
   <!-- The floating panel's backdrop: whatever the window has already painted
        beneath it, blurred live on every frame by the compositor itself.
@@ -121,12 +159,21 @@
       the footer now, beside the run status they describe.
     -->
     <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
-      <Grid MinHeight="44" Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-        <icons:SymbolIcon
-            VerticalAlignment="Center"
-            Symbol="Bot"
-            FontSize="16"
-            Foreground="{DynamicResource ShellAccentBrush}" />
+      <Grid MinHeight="44" Margin="{controls:Inset Horizontal=Md}" ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+        <Grid VerticalAlignment="Center">
+          <icons:SymbolIcon
+              Symbol="Bot"
+              FontSize="16"
+              Foreground="{DynamicResource ShellForegroundBrush}" />
+          <icons:SymbolIcon
+              x:Name="AgentActivityPulseIcon"
+              Classes="AgentActivityPulse"
+              Classes.running="{Binding AgentChat.IsBusy}"
+              Symbol="Bot"
+              FontSize="16"
+              Foreground="{DynamicResource ShellAccentBrush}"
+              Opacity="0" />
+        </Grid>
         <TextBlock
             Grid.Column="1"
             VerticalAlignment="Center"
@@ -138,12 +185,13 @@
             VerticalAlignment="Center"
             Classes.Warning="{Binding AgentChat.NeedsProviderAttention}"
             Content="{Binding AgentChat.ConnectionStatus}"
-            AutomationProperties.LiveSetting="Polite"
+            IsVisible="{Binding AgentChat, Converter={x:Static ObjectConverters.IsNotNull}}"
             AutomationProperties.Name="AI agent state" />
         <Button
             x:Name="AgentConversationHistoryButton"
             Grid.Column="3"
             Classes="IconButton"
+            IsVisible="{Binding AgentChat, Converter={x:Static ObjectConverters.IsNotNull}}"
             ToolTip.Tip="Conversations"
             AutomationProperties.Name="Open saved AI conversations">
           <icons:SymbolIcon Symbol="History" FontSize="13" />
@@ -236,11 +284,26 @@
             </Flyout>
           </Button.Flyout>
         </Button>
+        <Button
+            Grid.Column="4"
+            VerticalAlignment="Center"
+            Classes="IconButton"
+            Click="OnCancelAgentChatClick"
+            IsEnabled="{Binding AgentChat.CanRequestStop}"
+            IsVisible="{Binding AgentChat.ShowStopAction, FallbackValue=False}"
+            ToolTip.Tip="Stop agent"
+            AutomationProperties.Name="Stop AI agent run">
+          <Border
+              Width="9"
+              Height="9"
+              Background="{DynamicResource ShellTextBrush}"
+              CornerRadius="2" />
+        </Button>
         <!-- One button, two facts: pinned holds the panel in the layout,
              unpinned lets it float over the canvas. The workspace remembers
              which. -->
         <Button
-            Grid.Column="4"
+            Grid.Column="5"
             VerticalAlignment="Center"
             Classes="IconButton"
             Click="OnToggleAgentPinClick"
@@ -429,7 +492,7 @@
                         Click="OnEnableAgentYoloClick"
                         Content="Enable full access…"
                         IsVisible="{Binding AgentChat.CanOfferYolo}"
-                        AutomationProperties.Name="Review and enable full access for terminal actions" />
+                        AutomationProperties.Name="Review and enable full access for agent actions" />
                   </StackPanel>
                 </Flyout>
               </Button.Flyout>
@@ -441,7 +504,7 @@
       <ScrollViewer
           x:Name="AgentChatTranscript"
           Grid.Row="2"
-          IsVisible="{Binding AgentChat.HasAgentContent}"
+          IsVisible="{Binding AgentChat.HasAgentContent, FallbackValue=False}"
           HorizontalScrollBarVisibility="Disabled"
           VerticalScrollBarVisibility="Auto"
           BringIntoViewOnFocusChange="False"
@@ -489,6 +552,7 @@
                         Classes="IconButton"
                         Click="OnCopyAgentMessageClick"
                         Tag="{Binding}"
+                        IsVisible="{Binding HasMessageText}"
                         ToolTip.Tip="Copy message"
                         AutomationProperties.Name="Copy this message">
                       <icons:SymbolIcon Symbol="Copy" FontSize="12" />
@@ -555,11 +619,15 @@
                         Text="{Binding UsageLabel}"
                         IsVisible="{Binding HasUsage}"
                         AutomationProperties.Name="{Binding UsageLabel, StringFormat={}AI token usage · {0}}" />
-                    <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+                    <StackPanel
+                        Orientation="Horizontal"
+                        Spacing="{DynamicResource ShellSpaceXs}"
+                        IsVisible="{Binding HasMessageText}">
                       <Button
                           Classes="IconButton"
                           Click="OnCopyAgentMessageClick"
                           Tag="{Binding}"
+                          IsVisible="{Binding HasMessageText}"
                           ToolTip.Tip="Copy message"
                           AutomationProperties.Name="Copy this message">
                         <icons:SymbolIcon Symbol="Copy" FontSize="12" />
@@ -579,9 +647,9 @@
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
-          <StackPanel Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding AgentChat.HasProvisionalAgentContent}">
+          <StackPanel Spacing="{DynamicResource ShellSpaceSm}" IsVisible="{Binding AgentChat.HasProvisionalAgentContent, FallbackValue=False}">
             <StackPanel
-                IsVisible="{Binding AgentChat.HasProvisionalReasoningSummary}"
+                IsVisible="{Binding AgentChat.HasProvisionalReasoningSummary, FallbackValue=False}"
                 AutomationProperties.Name="AI reasoning summary in progress">
               <ToggleButton
                   x:Name="ProvisionalReasoningDisclosure"
@@ -619,7 +687,7 @@
                       Margin="{controls:Inset Top=Xs}"
                       HorizontalAlignment="Stretch"
                       IsIndeterminate="True"
-                      IsVisible="{Binding AgentChat.ShowProvisionalReasoningLoader}"
+                      IsVisible="{Binding AgentChat.ShowProvisionalReasoningLoader, FallbackValue=False}"
                       AutomationProperties.Name="Reasoning in progress" />
                 </Grid>
               </ToggleButton>
@@ -645,8 +713,7 @@
               Padding="{controls:Inset Horizontal=Md, Vertical=Sm}"
               Focusable="True"
               KeyboardNavigation.IsTabStop="True"
-              IsVisible="{Binding AgentChat.HasCurrentProgress}"
-              AutomationProperties.LiveSetting="Polite"
+              IsVisible="{Binding AgentChat.HasCurrentProgress, FallbackValue=False}"
               AutomationProperties.Name="AI agent progress"
               AutomationProperties.HelpText="Live status from the AI model">
             <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
@@ -688,8 +755,7 @@
               BorderBrush="{DynamicResource ShellAccentBrush}"
               BorderThickness="1"
               CornerRadius="{DynamicResource ShellCardCornerRadius}"
-              IsVisible="{Binding AgentChat.HasActiveTool}"
-              AutomationProperties.LiveSetting="Polite"
+              IsVisible="{Binding AgentChat.HasActiveTool, FallbackValue=False}"
               AutomationProperties.Name="AI agent tool activity">
             <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
               <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
@@ -722,13 +788,13 @@
           <components:AgentApprovalCardView
               ApproveRequested="OnApproveAgentActionClick"
               DenyRequested="OnDenyAgentActionClick"
-              IsVisible="{Binding AgentChat.HasPendingApproval}" />
+              IsVisible="{Binding AgentChat.HasPendingApproval, FallbackValue=False}" />
           <Expander
               x:Name="AgentRunAudit"
               Margin="{controls:Inset Bottom=Sm}"
               HorizontalContentAlignment="Stretch"
               IsExpanded="{Binding AgentChat.IsAuditExpanded, Mode=TwoWay}"
-              IsVisible="{Binding AgentChat.HasAuditActivity}"
+              IsVisible="{Binding AgentChat.HasAuditActivity, FallbackValue=False}"
               AutomationProperties.Name="Review AI agent activity"
               AutomationProperties.HelpText="Show recorded actions for this conversation">
             <Expander.Header>
@@ -829,7 +895,6 @@
                   FontSize="{DynamicResource ShellFontSize9}"
                   Text="{Binding AgentChat.AuditStatus}"
                   TextWrapping="Wrap"
-                  AutomationProperties.LiveSetting="Polite"
                   AutomationProperties.Name="AI agent audit status" />
               <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                 <Button
@@ -852,10 +917,27 @@
       </ScrollViewer>
 
       <controls:EmptyStatePanel
+          x:Name="AgentSetupRequiredState"
           Grid.Row="2"
           Margin="{controls:Inset Horizontal=Md, Vertical=Xl}"
           VerticalAlignment="Center"
-          IsVisible="{Binding AgentChat.HasNoProvider}"
+          IsVisible="{Binding AgentChat, Converter={x:Static ObjectConverters.IsNull}}"
+          Glyph="Bot"
+          Heading="AI setup required"
+          Body="Choose the primary, compaction, and title models in AI settings.">
+        <Button
+            Classes="PrimaryButton"
+            Click="OnShowAgentSettingsClick"
+            Content="Configure AI"
+            AutomationProperties.Name="Configure AI models" />
+      </controls:EmptyStatePanel>
+
+      <controls:EmptyStatePanel
+          x:Name="AgentNoProviderState"
+          Grid.Row="2"
+          Margin="{controls:Inset Horizontal=Md, Vertical=Xl}"
+          VerticalAlignment="Center"
+          IsVisible="{Binding AgentChat.HasNoProvider, FallbackValue=False}"
           Glyph="Bot"
           Heading="Connect an AI provider"
           Body="Add a model provider to start using the AI agent.">
@@ -865,10 +947,11 @@
         </StackPanel>
       </controls:EmptyStatePanel>
       <controls:EmptyStatePanel
+          x:Name="AgentFailedTurnState"
           Grid.Row="2"
           Margin="{controls:Inset Horizontal=Md, Vertical=Xl}"
           VerticalAlignment="Center"
-          IsVisible="{Binding AgentChat.HasFailedTurn}"
+          IsVisible="{Binding AgentChat.HasFailedTurn, FallbackValue=False}"
           Glyph="Warning"
           Heading="{Binding AgentChat.FailureHeading}"
           Body="{Binding AgentChat.Status}">
@@ -887,15 +970,131 @@
         </StackPanel>
       </controls:EmptyStatePanel>
 
-      <Border
-          Grid.Row="3"
+      <StackPanel
+          Grid.Row="4"
+          Spacing="2">
+        <ItemsControl
+            x:Name="AgentQueuedFollowUps"
+            Margin="{controls:Inset Horizontal=Md}"
+            ItemsSource="{Binding AgentChat.QueuedFollowUps}"
+            IsVisible="{Binding AgentChat.HasQueuedFollowUps, FallbackValue=False}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Grid Classes="agentQueueRow" Margin="{controls:Inset Bottom=2}">
+                <Border
+                    Classes="queueDropBefore"
+                    Height="2"
+                    Margin="{controls:Inset Horizontal=Xs}"
+                    VerticalAlignment="Top"
+                    ZIndex="2"
+                    Background="{DynamicResource ShellAccentBrush}" />
+                <Border
+                    Classes="queueDropAfter"
+                    Height="2"
+                    Margin="{controls:Inset Horizontal=Xs}"
+                    VerticalAlignment="Bottom"
+                    ZIndex="2"
+                    Background="{DynamicResource ShellAccentBrush}" />
+                <Border
+                    Padding="{controls:Inset Horizontal=Sm, Vertical=Xs}"
+                    Background="{DynamicResource ShellSurfaceRaisedBrush}"
+                    BorderBrush="{DynamicResource ShellBorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{DynamicResource ShellControlCornerRadius}">
+                  <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="2">
+                    <Border
+                        Grid.Column="0"
+                        Width="28"
+                        Background="Transparent"
+                        Cursor="SizeAll"
+                        IsVisible="{Binding IsReadOnly}"
+                        PointerPressed="OnQueuedFollowUpDragPressed"
+                        PointerMoved="OnQueuedFollowUpDragMoved"
+                        PointerReleased="OnQueuedFollowUpDragReleased"
+                        PointerCaptureLost="OnQueuedFollowUpDragCaptureLost"
+                        ToolTip.Tip="Drag to reorder"
+                        AutomationProperties.Name="Drag queued agent message to reorder">
+                      <icons:SymbolIcon
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center"
+                          Symbol="ReOrderDotsVertical"
+                          FontSize="14"
+                          Foreground="{DynamicResource ShellTextMutedBrush}" />
+                    </Border>
+                    <TextBlock
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        Text="{Binding Message}"
+                        TextTrimming="CharacterEllipsis"
+                        IsVisible="{Binding IsReadOnly}" />
+                    <TextBox
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        MinHeight="32"
+                        Padding="{controls:Inset Horizontal=Sm, Vertical=Xs}"
+                        Text="{Binding EditDraft, Mode=TwoWay}"
+                        IsVisible="{Binding IsEditing}"
+                        AutomationProperties.Name="Edit queued agent message" />
+                    <Button
+                        Grid.Column="2"
+                        Classes="TextButton"
+                        Command="{Binding SteerCommand}"
+                        Content="{Binding SteerLabel}"
+                        IsVisible="{Binding IsReadOnly}"
+                        AutomationProperties.Name="Send this queued message at the next safe boundary" />
+                    <Button
+                        Grid.Column="3"
+                        Width="32"
+                        Height="32"
+                        Classes="IconButton Danger"
+                        Command="{Binding DeleteCommand}"
+                        IsVisible="{Binding IsReadOnly}"
+                        ToolTip.Tip="Delete queued message"
+                        AutomationProperties.Name="Delete queued agent message">
+                      <icons:SymbolIcon Symbol="Delete" FontSize="12" />
+                    </Button>
+                    <Button
+                        Grid.Column="4"
+                        Width="32"
+                        Height="32"
+                        Classes="IconButton"
+                        IsVisible="{Binding IsReadOnly}"
+                        ToolTip.Tip="Queued message options"
+                        AutomationProperties.Name="Queued agent message options">
+                      <icons:SymbolIcon Symbol="MoreVertical" FontSize="12" />
+                      <Button.Flyout>
+                        <Flyout Placement="TopEdgeAlignedRight">
+                          <StackPanel Width="180">
+                            <Button Classes="FlyoutMenuItem" HorizontalContentAlignment="Left" Command="{Binding BeginEditCommand}" Content="Edit" />
+                          </StackPanel>
+                        </Flyout>
+                      </Button.Flyout>
+                    </Button>
+                    <StackPanel
+                        Grid.Column="2"
+                        Grid.ColumnSpan="3"
+                        HorizontalAlignment="Right"
+                        Orientation="Horizontal"
+                        Spacing="2"
+                        IsVisible="{Binding IsEditing}">
+                      <Button Classes="TextButton" Command="{Binding CancelEditCommand}" Content="Cancel" />
+                      <Button Classes="PrimaryButton" Command="{Binding SaveEditCommand}" Content="Save" />
+                    </StackPanel>
+                  </Grid>
+                </Border>
+              </Grid>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <Border
+          x:Name="AgentComposer"
           Margin="{controls:Inset Horizontal=Md, Bottom=Sm}"
           Padding="{controls:Inset Sm}"
           Background="{DynamicResource ShellSurfaceBrush}"
           BorderBrush="{DynamicResource ShellBorderBrush}"
           BorderThickness="1"
           CornerRadius="18"
-          IsVisible="{Binding AgentChat.HasProvider}">
+          IsVisible="{Binding AgentChat.HasProvider, FallbackValue=False}">
         <Grid RowDefinitions="Auto,Auto" RowSpacing="{DynamicResource ShellSpaceXs}">
           <TextBox
               x:Name="AgentChatPromptInput"
@@ -929,6 +1128,7 @@
               <icons:SymbolIcon Symbol="Add" FontSize="15" />
             </Button>
             <Button
+                x:Name="AgentAccessModeButton"
                 Grid.Column="1"
                 MinWidth="0"
                 HorizontalAlignment="Stretch"
@@ -953,8 +1153,8 @@
                         HorizontalContentAlignment="Left"
                         Classes="FlyoutMenuItem"
                         Click="OnEnableAgentYoloClick"
-                        Content="Full access for terminal actions"
-                        AutomationProperties.Name="Enable full access for terminal actions" />
+                        Content="Full access for agent actions"
+                        AutomationProperties.Name="Enable full access for agent actions" />
                   </StackPanel>
                 </Flyout>
               </Button.Flyout>
@@ -1165,31 +1365,16 @@
                 AutomationProperties.Name="{Binding AgentChat.PrimaryActionAccessibleName}">
               <icons:SymbolIcon Symbol="ArrowUp" FontSize="15" />
             </Button>
-            <Button
-                Grid.Column="4"
-                Width="38"
-                Height="38"
-                CornerRadius="19"
-                Classes="SecondaryButton"
-                Click="OnCancelAgentChatClick"
-                IsEnabled="{Binding AgentChat.CanRequestStop}"
-                IsVisible="{Binding AgentChat.ShowStopAction}"
-                AutomationProperties.Name="Stop AI agent run">
-              <Border
-                  Width="11"
-                  Height="11"
-                  Background="{DynamicResource ShellTextBrush}"
-                  CornerRadius="2" />
-            </Button>
           </Grid>
         </Grid>
-      </Border>
+        </Border>
+      </StackPanel>
 
       <Grid
-          Grid.Row="4"
+          Grid.Row="3"
           MinHeight="{DynamicResource ShellControlHeightCompact}"
           Margin="{controls:Inset Horizontal=Md, Bottom=Sm}"
-          IsVisible="{Binding AgentChat.ShowFooterStatus}">
+          IsVisible="{Binding AgentChat.ShowFooterStatus, FallbackValue=False}">
         <TextBlock
             Classes="Muted"
             FontSize="{DynamicResource ShellFontSize9}"
@@ -1199,7 +1384,6 @@
             TextWrapping="Wrap"
             IsVisible="{Binding AgentChat.ShowFooterStatus}"
             ToolTip.Tip="{Binding AgentChat.Status}"
-            AutomationProperties.LiveSetting="Polite"
             AutomationProperties.Name="AI agent status" />
       </Grid>
     </Grid>

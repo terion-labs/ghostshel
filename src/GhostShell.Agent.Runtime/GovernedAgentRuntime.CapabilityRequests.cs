@@ -325,17 +325,18 @@ public sealed partial class GovernedAgentRuntime
             AgentCapability capability,
             CancellationToken cancellationToken)
     {
-        var contexts = await InspectRunTargetContextsAsync(
+        var contexts = await InspectRunTargetContextAsync(
                 GetPinnedTarget(),
                 GetOrCreateAgent(),
                 cancellationToken)
             .ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
-        if (contexts?.Operational is not { } context
-            || !MatchesPinnedScope(contexts))
+        if (contexts is null || !MatchesPinnedScope(contexts))
         {
             return new CapabilityCandidateInspection.TargetChanged();
         }
+
+        var context = contexts;
 
         var resizeAttachments = await InspectResizeAttachmentsAsync(
                 context,
@@ -350,7 +351,6 @@ public sealed partial class GovernedAgentRuntime
                 cancellationToken)
             .ConfigureAwait(false);
         var tools = BuildAgentTools(
-            contexts.Structural,
             context,
             resizeAttachments.Keys.ToImmutableHashSet(),
             browserEligiblePanelIds,
@@ -408,7 +408,12 @@ public sealed partial class GovernedAgentRuntime
             var nextRunPolicy = new AgentPolicy(
                 _runPolicy.Provider,
                 _runPolicy.Model,
-                permissions);
+                permissions)
+            {
+                CompactionModel = _runPolicy.CompactionModel,
+                TitleModel = _runPolicy.TitleModel,
+                SystemPrompt = _runPolicy.SystemPrompt,
+            };
             update = new AgentRunPolicyUpdate(
                 awaiter.Request.RunId,
                 nextRunPolicy,
@@ -768,10 +773,19 @@ public sealed partial class GovernedAgentRuntime
                 "Destructive terminal actions",
             AgentCapability.BrowserNavigation => "Browser navigation",
             AgentCapability.BrowserData => "Browser data",
-            AgentCapability.ProcessControl => "Process inspection",
+            AgentCapability.ProcessControl => "Process control",
             AgentCapability.McpTools => "MCP tools",
             AgentCapability.SecretUse => "Secret use",
             AgentCapability.BrowserInteraction => "Browser interaction",
+            AgentCapability.BrowserScripting => "Browser scripting",
+            AgentCapability.BrowserDiagnostics => "Browser diagnostics",
+            AgentCapability.DatabaseRead => "Database reading",
+            AgentCapability.DatabaseWrite => "Database changes",
+            AgentCapability.DockerData => "Docker inspection",
+            AgentCapability.SystemData => "System statistics",
+            AgentCapability.ProcessData => "Process inspection",
+            AgentCapability.ArtifactTransfer => "Artifact transfers",
+            AgentCapability.WorkspaceLayout => "Workspace layout",
             _ => throw new ArgumentOutOfRangeException(nameof(capability)),
         };
 

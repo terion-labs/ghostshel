@@ -30,34 +30,6 @@ public sealed record McpServerProfile : IDurableDefinition
         encoderShouldEmitUTF8Identifier: false,
         throwOnInvalidBytes: true);
 
-    /// <summary>
-    /// Compatibility constructor for existing stdio call sites. New durable
-    /// JSON uses the transport-discriminated constructor below.
-    /// </summary>
-    public McpServerProfile(
-        McpServerProfileId id,
-        int schemaVersion,
-        string name,
-        string executable,
-        IReadOnlyList<string> arguments,
-        string? workingDirectory,
-        IReadOnlyList<McpServerEnvironmentVariable> environment,
-        IReadOnlyList<string> enabledTools,
-        bool isEnabled = true)
-        : this(
-            id,
-            schemaVersion,
-            name,
-            new McpServerTransport.Stdio(
-                executable,
-                arguments,
-                workingDirectory,
-                environment),
-            enabledTools,
-            isEnabled)
-    {
-    }
-
     [JsonConstructor]
     public McpServerProfile(
         McpServerProfileId id,
@@ -99,25 +71,6 @@ public sealed record McpServerProfile : IDurableDefinition
     public string Name { get; }
 
     public McpServerTransport Transport { get; }
-
-    [JsonIgnore]
-    public string Executable =>
-        (Transport as McpServerTransport.Stdio)?.Executable
-        ?? string.Empty;
-
-    [JsonIgnore]
-    public IReadOnlyList<string> Arguments =>
-        (Transport as McpServerTransport.Stdio)?.Arguments
-        ?? [];
-
-    [JsonIgnore]
-    public string? WorkingDirectory =>
-        (Transport as McpServerTransport.Stdio)?.WorkingDirectory;
-
-    [JsonIgnore]
-    public IReadOnlyList<McpServerEnvironmentVariable> Environment =>
-        (Transport as McpServerTransport.Stdio)?.Environment
-        ?? [];
 
     public IReadOnlyList<string> EnabledTools { get; }
 

@@ -1,6 +1,6 @@
 # ADR 0022: Governed browser origin containment
 
-- Status: Accepted
+- Status: Superseded for product origin containment; retained for navigation serialization
 - Date: 2026-07-24
 - Extends:
   [ADR 0020](0020-native-webview-wrapper-and-first-browser-capability-slice.md),
@@ -25,6 +25,24 @@ final-address validation, cancellation, and late-event suppression at its own
 renderer boundary.
 
 ## Decision
+
+### 2026-08-16 amendment
+
+GhostSHELL no longer treats the current site origin as a browsing allowlist.
+After ordinary capability authorization, SessionHost supplies an unrestricted
+navigation boundary, so explicit navigation, redirects, history movement, and
+links activated by governed interaction may cross origins. `about:blank` may
+bootstrap any address accepted by `BrowserAddress`.
+
+The renderer guard remains as a typed execution boundary because it also owns
+starting-document/revision validation, one-operation serialization, terminal
+completion, cancellation, late-event fencing, and unknown-outcome handling.
+Those invariants remain in force. The exact-origin mode is retained for
+lower-level conformance tests and embedders but is not selected by the product
+SessionHost. Authorization-source failures use
+`browser_action_not_authorized`; they are not presented as domain policy.
+
+The original decision follows as historical context.
 
 GhostSHELL adds an application-owned origin-containment capability,
 `browser.navigation_origin_guard`. Governed `navigate`, `back`, `forward`, and

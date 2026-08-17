@@ -18,8 +18,7 @@
       Padding="{DynamicResource ShellCardPaddingCompact}"
       Focusable="True"
       KeyboardNavigation.IsTabStop="True"
-      IsVisible="{Binding AgentChat.HasPendingCapabilityRequest}"
-      AutomationProperties.LiveSetting="Assertive"
+      IsVisible="{Binding AgentChat.HasPendingCapabilityRequest, FallbackValue=False}"
       AutomationProperties.Name="{Binding AgentChat.PendingCapabilityRequest.AccessibleName}"
       AutomationProperties.HelpText="{Binding AgentChat.PendingCapabilityRequest.GrantWarning}">
     <StackPanel Spacing="{DynamicResource ShellSpaceSm}">

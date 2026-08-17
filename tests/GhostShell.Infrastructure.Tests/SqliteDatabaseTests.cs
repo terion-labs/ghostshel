@@ -14,17 +14,25 @@ public sealed class SqliteDatabaseTests
         await temporary.Database.EnsureInitializedAsync(CancellationToken.None);
         await using var connection = await temporary.Database.OpenConnectionAsync(CancellationToken.None);
 
+        Assert.False(new SqliteConnectionStringBuilder(connection.ConnectionString).Pooling);
         Assert.Equal("wal", await ScalarAsync(connection, "PRAGMA journal_mode;"));
         Assert.Equal("1", await ScalarAsync(connection, "PRAGMA foreign_keys;"));
         Assert.Equal(
             SqliteSchema.Migrations[^1].Version.ToString(
                 System.Globalization.CultureInfo.InvariantCulture),
             await ScalarAsync(connection, "SELECT MAX(version) FROM schema_migrations;"));
-        // 3.49.1 is what SQLite3 Multiple Ciphers currently bundles — the
-        // price of encryption at rest; raise alongside GhostShellDatabase's
-        // own minimum as that bundle tracks upstream.
-        var version = Version.Parse(await ScalarAsync(connection, "SELECT sqlite_version();"));
-        Assert.True(version >= new Version(3, 49, 1));
+        // Pin the executable provider, not merely the managed package graph,
+        // so a different dylib cannot slip into a packaged application through
+        // transitive restore or RID selection.
+        var sqliteVersion = Version.Parse(
+            await ScalarAsync(connection, "SELECT sqlite_version();"));
+        var sqlite3McVersion = await ScalarAsync(
+            connection,
+            "SELECT sqlite3mc_version();");
+        Assert.True(
+            sqliteVersion >= new Version(3, 53, 4),
+            $"Expected SQLite 3.53.4 or newer, found {sqliteVersion}.");
+        Assert.Equal("SQLite3 Multiple Ciphers 2.4.0", sqlite3McVersion);
     }
 
     [Fact]

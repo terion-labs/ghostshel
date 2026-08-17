@@ -198,7 +198,7 @@ public sealed partial class GovernedAgentRuntimeTests
                     "The provider received an unexpected round."),
             });
 
-        private static AgentProviderEvent[] ToolBatch(
+        internal static AgentProviderEvent[] ToolBatch(
             IReadOnlyList<ToolBatchCall> calls)
         {
             var events = new List<AgentProviderEvent>

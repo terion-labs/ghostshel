@@ -1206,46 +1206,46 @@
       "nuspecLicense": "LGPL-3.0-or-later"
     },
     {
-      "identity": "SQLitePCLRaw.bundle_e_sqlite3mc/2.1.11",
+      "identity": "SQLite3MC.PCLRaw.bundle/2.4.0",
       "kind": "nuget",
       "depsType": "package",
-      "licenseDeclared": "Apache-2.0",
-      "nuGetId": "SQLitePCLRaw.bundle_e_sqlite3mc",
-      "contentHash": "gHV54qtGLG8DRbOGUeK/rZHlBIWPMLi73lLuvC6csFpMvoLyEHlwc+FlpAdJg1X2+VZRPw/PC/2/nOWm1SUtHQ==",
-      "nupkgSha512": "+UeIISQcP6DPgv4xkFUvOf6uUYqcRWfMAjZlVMB8h78A5NNg06xCSYPATgsFdMYoCZxuy2TrDLDTIVDNlRnJaw==",
+      "licenseDeclared": "MIT",
+      "nuGetId": "SQLite3MC.PCLRaw.bundle",
+      "contentHash": "D86SPXNYZQPLnurZnDoo6ZI3TUsw7X5JWIBAMcusAJxPiGepjd5ZvyaXWOFt/GjSfSI2H5B9oGT7P7ymUC1TBg==",
+      "nupkgSha512": "3LfLTr3bU/xdp9PBUo73B4JtnNd7tNx9bAo8j7t+VFPRjzYgR/fYKkyFfAqsnBWSps2kWKYbxt21HznxxQd9uA==",
       "nuspecLicenseType": "expression",
-      "nuspecLicense": "Apache-2.0"
+      "nuspecLicense": "MIT"
     },
     {
-      "identity": "SQLitePCLRaw.core/2.1.11",
+      "identity": "SQLite3MC.PCLRaw.lib/2.4.0",
+      "kind": "nuget",
+      "depsType": "package",
+      "licenseDeclared": "MIT",
+      "nuGetId": "SQLite3MC.PCLRaw.lib",
+      "contentHash": "1In6cTL5SGGVbyJh5Uf6Qq6/hf9ecP6bSIUkU7F9JaVvAiMZTwzLXwgXqm4jjWtHpjHiaVURUrjkpbDG3kTKHw==",
+      "nupkgSha512": "FBIyX30KT8v35pXGxC85+qZR7EbdrsYYjFhz+J7dxIoXhsKpGhd/1hpBj76c89KEEtBK/I2fOfqAlHiBRWsZdA==",
+      "nuspecLicenseType": "expression",
+      "nuspecLicense": "MIT"
+    },
+    {
+      "identity": "SQLite3MC.PCLRaw.provider/2.4.0",
+      "kind": "nuget",
+      "depsType": "package",
+      "licenseDeclared": "MIT",
+      "nuGetId": "SQLite3MC.PCLRaw.provider",
+      "contentHash": "2PTNuZ/3k1Bpva0ZbEa4Q6w6hFclZQGyTi46WtQCp99rgwczOMzoxDWJlCWndIne7giMM/BK8hmHZ0ekbqPxUQ==",
+      "nupkgSha512": "w/m72CVPGSsdQ0jbuON1+VNwWA2EQ7swq7kB56QDliwx5VRzo2ibP1TWFhMff4QjQkdV/DJkCr6Ck1hpSQgW7w==",
+      "nuspecLicenseType": "expression",
+      "nuspecLicense": "MIT"
+    },
+    {
+      "identity": "SQLitePCLRaw.core/3.0.2",
       "kind": "nuget",
       "depsType": "package",
       "licenseDeclared": "Apache-2.0",
       "nuGetId": "SQLitePCLRaw.core",
-      "contentHash": "PK0GLFkfhZzLQeR3PJf71FmhtHox+U3vcY6ZtswoMjrefkB9k6ErNJEnwXqc5KgXDSjige2XXrezqS39gkpQKA==",
-      "nupkgSha512": "D10Qjxm88aDfBqa8GIVyTxwPWnZCaqOEYehVI3RhZ+W2CxCB1XBGwD+0TTlfpM6TbT4qROnSDcrOvuZxt64DQA==",
-      "nuspecLicenseType": "expression",
-      "nuspecLicense": "Apache-2.0"
-    },
-    {
-      "identity": "SQLitePCLRaw.lib.e_sqlite3mc/2.1.11",
-      "kind": "nuget",
-      "depsType": "package",
-      "licenseDeclared": "Apache-2.0",
-      "nuGetId": "SQLitePCLRaw.lib.e_sqlite3mc",
-      "contentHash": "z7vGnW2SeVC3az+gBWFHM16gnKed8/p91WCyCe9Al2BtY3mnGJ+dk4rUzW5zm/Kz7fM7lXhUhRI6Nexm1PAVAg==",
-      "nupkgSha512": "pqmXE2WHBmNx69NiEqPIdPcj5B5O5t4bwn6tdL0ds/W1U6p63zMkLP1AmtQy/SIQLQhkoQ7zzkv5WzDiJG2ZFg==",
-      "nuspecLicenseType": "expression",
-      "nuspecLicense": "Apache-2.0"
-    },
-    {
-      "identity": "SQLitePCLRaw.provider.e_sqlite3mc/2.1.11",
-      "kind": "nuget",
-      "depsType": "package",
-      "licenseDeclared": "Apache-2.0",
-      "nuGetId": "SQLitePCLRaw.provider.e_sqlite3mc",
-      "contentHash": "v0Y7yjzDwLsoM922PReXZcAAZJ2ekZaorulQB5yhXzEHkXCHcLJ/Rcd8NPESBrS/PMxgaKtJ1BjQkorRJH7AEA==",
-      "nupkgSha512": "1M9J2u6IIxIMW6xEyYwJwfk49aji29T73APIYYjN5J5/GhgXQmTEDxKouZ8h7wFwBLz2PTRfyDQX/qsxZErIxw==",
+      "contentHash": "tnbRf0muOOSJK1RLCfyYK13jynFScgL4xMj7yC3oy8lrrGKXTKmOoWjfdV+cFfBRdppm4qST31hvp8ihgIgvMQ==",
+      "nupkgSha512": "4ceF9dgtFwZQ3ESyDcvFWVxUihvQbL5v+6+dhpJ1KA+NeONqwYKmS+Vq+arEsYjERSJ1c0BPtHkvLD2zEt8NbA==",
       "nuspecLicenseType": "expression",
       "nuspecLicense": "Apache-2.0"
     },

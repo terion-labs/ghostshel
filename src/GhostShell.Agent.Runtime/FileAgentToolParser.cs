@@ -118,6 +118,30 @@ internal static class FileAgentToolParser
         IReadOnlyDictionary<string, JsonElement> properties,
         PanelInstanceId? panelId)
     {
+        if (toolName == BuiltInAgentTools.FilesTransfers)
+        {
+            return properties.Count == 0
+                ? new FileAgentIntentResult.Parsed(
+                    new FileAgentIntent.Transfers(),
+                    panelId)
+                : Invalid("File transfer observation accepts no arguments.");
+        }
+
+        if (toolName == BuiltInAgentTools.FilesSearch)
+        {
+            return ParseSearch(properties, panelId);
+        }
+
+        if (toolName == BuiltInAgentTools.FilesDelete)
+        {
+            return ParseDelete(properties, panelId);
+        }
+
+        if (toolName == BuiltInAgentTools.FilesMove)
+        {
+            return ParseMove(properties, panelId);
+        }
+
         if (properties.Count != 1
             || !properties.TryGetValue(
                 "path_segments",
@@ -145,20 +169,172 @@ internal static class FileAgentToolParser
                     panelId),
             BuiltInAgentTools.FilesRead =>
                 Invalid("File read requires a non-root file path."),
+            BuiltInAgentTools.FilesAccessRead =>
+                new FileAgentIntentResult.Parsed(
+                    new FileAgentIntent.AccessRead(path),
+                    panelId),
             BuiltInAgentTools.FilesCreateDirectory when path.Length > 0 =>
                 new FileAgentIntentResult.Parsed(
                     new FileAgentIntent.CreateDirectory(path),
                     panelId),
             BuiltInAgentTools.FilesCreateDirectory =>
                 Invalid("Directory creation requires a non-root file path."),
-            BuiltInAgentTools.FilesDelete when path.Length > 0 =>
-                new FileAgentIntentResult.Parsed(
-                    new FileAgentIntent.Delete(path),
-                    panelId),
-            BuiltInAgentTools.FilesDelete =>
-                Invalid("File deletion requires a non-root file path."),
             _ => UnknownTool(),
         };
+    }
+
+    private static FileAgentIntentResult ParseDelete(
+        IReadOnlyDictionary<string, JsonElement> properties,
+        PanelInstanceId? panelId)
+    {
+        if (properties.Count is < 1 or > 2
+            || !properties.TryGetValue("path_segments", out var pathElement)
+            || !TryReadPath(pathElement, out var path)
+            || path.Length == 0)
+        {
+            return Invalid("File deletion requires a non-root path_segments array.");
+        }
+
+        var recursive = false;
+        if (properties.TryGetValue("recursive", out var recursiveElement))
+        {
+            if (recursiveElement.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            {
+                return Invalid("File deletion recursive must be a boolean.");
+            }
+
+            recursive = recursiveElement.GetBoolean();
+        }
+
+        if (properties.Keys.Any(name => name is not ("path_segments" or "recursive")))
+        {
+            return Invalid("File deletion contains an unknown field.");
+        }
+
+        return new FileAgentIntentResult.Parsed(
+            new FileAgentIntent.Delete(path, recursive),
+            panelId);
+    }
+
+    private static FileAgentIntentResult ParseMove(
+        IReadOnlyDictionary<string, JsonElement> properties,
+        PanelInstanceId? panelId)
+    {
+        if (properties.Count != 2
+            || !properties.TryGetValue(
+                "source_path_segments",
+                out var sourceElement)
+            || !TryReadPath(sourceElement, out var source)
+            || source.Length == 0
+            || !properties.TryGetValue(
+                "destination_path_segments",
+                out var destinationElement)
+            || !TryReadPath(destinationElement, out var destination)
+            || destination.Length == 0
+            || source.SequenceEqual(destination))
+        {
+            return Invalid(
+                "File move requires distinct non-root source_path_segments "
+                + "and destination_path_segments arrays.");
+        }
+
+        return new FileAgentIntentResult.Parsed(
+            new FileAgentIntent.Move(source, destination),
+            panelId);
+    }
+
+    private static FileAgentIntentResult ParseSearch(
+        IReadOnlyDictionary<string, JsonElement> properties,
+        PanelInstanceId? panelId)
+    {
+        if (properties.Count != 4
+            || !properties.TryGetValue("path_segments", out var pathElement)
+            || !TryReadPath(pathElement, out var path)
+            || !properties.TryGetValue("query", out var queryElement)
+            || queryElement.ValueKind != JsonValueKind.String
+            || !TryGetString(queryElement, out var query)
+            || !IsSafeQuery(query)
+            || !properties.TryGetValue("scope", out var scopeElement)
+            || scopeElement.ValueKind != JsonValueKind.String
+            || !TryGetString(scopeElement, out var scopeText)
+            || !TryReadSearchScope(scopeText, out var scope)
+            || !properties.TryGetValue("max_results", out var maximumElement)
+            || maximumElement.ValueKind != JsonValueKind.Number
+            || !maximumElement.TryGetInt32(out var maximumResults)
+            || maximumResults is < 1 or > FileAgentToolSet.MaximumSearchResults)
+        {
+            return Invalid(
+                "File search requires bounded path_segments, query, scope, "
+                + "and max_results fields only.");
+        }
+
+        return new FileAgentIntentResult.Parsed(
+            new FileAgentIntent.Search(
+                path,
+                query,
+                scope,
+                maximumResults),
+            panelId);
+    }
+
+    private static bool TryReadSearchScope(
+        string value,
+        out FilePanelDiscoveryScope scope)
+    {
+        scope = value switch
+        {
+            "current_directory" => FilePanelDiscoveryScope.CurrentDirectory,
+            "subtree" => FilePanelDiscoveryScope.Subtree,
+            _ => (FilePanelDiscoveryScope)(-1),
+        };
+        return Enum.IsDefined(scope);
+    }
+
+    private static bool IsSafeQuery(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)
+            || !string.Equals(value, value.Trim(), StringComparison.Ordinal)
+            || value.Length > FileAgentToolSet.MaximumSearchQueryBytes)
+        {
+            return false;
+        }
+
+        try
+        {
+            if (Encoding.UTF8.GetByteCount(value)
+                > FileAgentToolSet.MaximumSearchQueryBytes)
+            {
+                return false;
+            }
+        }
+        catch (EncoderFallbackException)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < value.Length; index++)
+        {
+            if (!char.IsSurrogate(value[index]))
+            {
+                continue;
+            }
+
+            if (!char.IsHighSurrogate(value[index])
+                || index + 1 >= value.Length
+                || !char.IsLowSurrogate(value[index + 1]))
+            {
+                return false;
+            }
+
+            index++;
+        }
+
+        return value.EnumerateRunes().All(rune =>
+            Rune.GetUnicodeCategory(rune) is not (
+                UnicodeCategory.Control
+                or UnicodeCategory.Format
+                or UnicodeCategory.LineSeparator
+                or UnicodeCategory.ParagraphSeparator));
     }
 
     private static bool TryReadPath(
@@ -281,9 +457,13 @@ internal static class FileAgentToolParser
     private static bool IsKnownTool(string toolName) =>
         toolName is
             BuiltInAgentTools.FilesList
+            or BuiltInAgentTools.FilesSearch
             or BuiltInAgentTools.FilesStat
             or BuiltInAgentTools.FilesRead
+            or BuiltInAgentTools.FilesAccessRead
+            or BuiltInAgentTools.FilesTransfers
             or BuiltInAgentTools.FilesCreateDirectory
+            or BuiltInAgentTools.FilesMove
             or BuiltInAgentTools.FilesDelete;
 
     private static FileAgentIntentResult UnknownTool() =>

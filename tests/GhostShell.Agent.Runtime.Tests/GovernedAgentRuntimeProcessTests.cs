@@ -132,7 +132,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             Assert.IsType<AuditDetails.AgentActionDetails>(
                 completedAudit.Details);
         Assert.Equal(
-            AgentCapability.ProcessControl,
+            AgentCapability.ProcessData,
             completedDetails.Capability);
         Assert.Equal(2, completedDetails.Binding.ResultCount);
         Assert.Null(completedDetails.Binding.ArtifactReference);
@@ -181,6 +181,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
                 ("panel_id", ProcessRuntimeContextProxy.ProcessPanelId.Value),
                 ("sort", "pid_asc"),
                 ("limit", "64"),
+                ("offset", "0"),
             ],
             approval.Presentation.Arguments.Select(argument =>
                 (argument.Name, argument.DisplayValue)));
@@ -331,7 +332,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             ProcessRuntimeContextProxy.ProcessPanelId.Value,
             toolJson.RootElement.GetProperty("panel_id").GetString());
         Assert.Equal(
-            2,
+            3,
             selected.Runtime.Snapshot.ContextItems.Length);
         Assert.Contains(
             selected.Runtime.Snapshot.ContextItems,
@@ -465,6 +466,13 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             fixture.Runtime.Snapshot.State
             == GovernedAgentState.RunningTool);
 
+        var activeTool = Assert.IsType<GovernedAgentToolActivity>(
+            fixture.Runtime.Snapshot.ActiveTool);
+        Assert.Equal(
+            ProcessRuntimeContextProxy.ProcessPanelId,
+            activeTool.PanelId);
+        Assert.Equal(activeTool, fixture.Runtime.Snapshot.PanelActivity);
+
         var cancellation = await fixture.Runtime.CancelActiveActionAsync(
             CancellationToken.None);
         var result = await sending.WaitAsync(TimeSpan.FromSeconds(5));
@@ -476,6 +484,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         Assert.Equal("caller_cancelled", toolResult.StableCode);
         Assert.Equal(AgentToolResultStatus.Failed, toolResult.Status);
         Assert.Null(fixture.Runtime.Snapshot.ActiveTool);
+        Assert.Null(fixture.Runtime.Snapshot.PanelActivity);
         Assert.Contains(
             fixture.Audit.Events,
             auditEvent =>
@@ -664,7 +673,15 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         AgentPolicy.Default with
         {
             Permissions = AgentPolicy.Default.Permissions.SetItem(
-                AgentCapability.ProcessControl,
+                AgentCapability.ProcessData,
+                permission),
+        };
+
+    private static AgentPolicy StatisticsPolicy(AgentPermission permission) =>
+        AgentPolicy.Default with
+        {
+            Permissions = AgentPolicy.Default.Permissions.SetItem(
+                AgentCapability.SystemData,
                 permission),
         };
 
@@ -725,6 +742,8 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         MixedOpenTab,
         ExactStatistics,
         MixedStatisticsOpenTab,
+        ExactDatabase,
+        ExactDocker,
     }
 
     private sealed class ProcessRuntimeFixture : IAsyncDisposable
@@ -739,6 +758,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         {
             Context = context;
             Provider = provider;
+            ConfiguredPolicy = AgentPolicyResolver.Resolve(policy);
             Audit = new RecordingAuditStore();
             Broker = new AgentCapabilityBroker(
                 BuiltInAgentTools.Catalog,
@@ -761,6 +781,16 @@ public sealed partial class GovernedAgentRuntimeProcessTests
                     Broker,
                     statisticsComposer,
                     context);
+            var databaseComposer = new AgentDatabaseReadActionComposer();
+            Database = new ConsumingDatabaseHost(
+                Broker,
+                databaseComposer,
+                context);
+            var dockerComposer = new AgentDockerReadActionComposer();
+            Docker = new ConsumingDockerHost(
+                Broker,
+                dockerComposer,
+                context);
             Runtime = new GovernedAgentRuntime(
                 sessionHost,
                 Broker,
@@ -774,7 +804,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
                 new FixedProviderResolver(provider),
                 new TestApprovalPrincipal(context.ApprovalClientId),
                 TimeProvider.System,
-                policy,
+                ConfiguredPolicy,
                 agentProcessHost: Processes,
                 processComposer: processComposer,
                 agentMcpHost: mcpHost,
@@ -782,12 +812,18 @@ public sealed partial class GovernedAgentRuntimeProcessTests
                     ? null
                     : new AgentMcpToolCallActionComposer(),
                 agentStatisticsHost: Statistics,
-                statisticsComposer: statisticsComposer);
+                statisticsComposer: statisticsComposer,
+                agentDatabaseHost: Database,
+                databaseComposer: databaseComposer,
+                agentDockerHost: Docker,
+                dockerComposer: dockerComposer);
         }
 
         public ProcessRuntimeContextProxy Context { get; }
 
         public ScriptedProvider Provider { get; }
+
+        public AgentPolicy ConfiguredPolicy { get; }
 
         public RecordingAuditStore Audit { get; }
 
@@ -798,6 +834,10 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         public ConsumingProcessHost Processes { get; }
 
         public ConsumingStatisticsHost? Statistics { get; }
+
+        public ConsumingDatabaseHost Database { get; }
+
+        public ConsumingDockerHost Docker { get; }
 
         public GovernedAgentRuntime Runtime { get; }
 
@@ -827,7 +867,10 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             new(
                 new AiProviderProfileId("process-provider"),
                 message,
-                Context.Target);
+                Context.Target,
+                ConfiguredPolicy.SelectPrimaryModel(
+                    "process-provider",
+                    "process-default-model"));
 
         public async ValueTask DisposeAsync()
         {
@@ -856,6 +899,14 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             new("statistics-panel");
         public static readonly SessionId StatisticsSessionId =
             new("statistics-session");
+        public static readonly PanelInstanceId DatabasePanelId =
+            new("database-panel");
+        public static readonly SessionId DatabaseSessionId =
+            new("database-session");
+        public static readonly PanelInstanceId DockerPanelId =
+            new("docker-panel");
+        public static readonly SessionId DockerSessionId =
+            new("docker-session");
 
         private ProcessScope _scope;
         private int _inspectionCount;
@@ -870,6 +921,8 @@ public sealed partial class GovernedAgentRuntimeProcessTests
 
         public int ReplaceSessionAfterInspection { get; set; } =
             int.MaxValue;
+
+        public bool IncludeRedisIndexCapabilities { get; set; }
 
         public int InspectionCount =>
             Volatile.Read(ref _inspectionCount);
@@ -890,6 +943,8 @@ public sealed partial class GovernedAgentRuntimeProcessTests
                     WindowId,
                     WorkspaceId,
                     TabId),
+                ProcessScope.ExactDatabase => ExactDatabaseTarget(),
+                ProcessScope.ExactDocker => ExactDockerTarget(),
                 _ => throw new ArgumentOutOfRangeException(nameof(scope)),
             };
         }
@@ -918,6 +973,32 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             }
 
             return CreateExactStatisticsContext(target);
+        }
+
+        public AgentContextSnapshot ExactDatabaseContext(AgentTarget target)
+        {
+            if (target is not AgentTarget.Panel panel
+                || panel != ExactDatabaseTarget())
+            {
+                throw new ArgumentException(
+                    "The database host received an unexpected exact target.",
+                    nameof(target));
+            }
+
+            return CreateExactDatabaseContext(target);
+        }
+
+        public AgentContextSnapshot ExactDockerContext(AgentTarget target)
+        {
+            if (target is not AgentTarget.Panel panel
+                || panel != ExactDockerTarget())
+            {
+                throw new ArgumentException(
+                    "The Docker host received an unexpected exact target.",
+                    nameof(target));
+            }
+
+            return CreateExactDockerContext(target);
         }
 
         protected override object? Invoke(
@@ -963,6 +1044,10 @@ public sealed partial class GovernedAgentRuntimeProcessTests
                     CreateExactStatisticsContext(request.Target),
                 ProcessScope.MixedStatisticsOpenTab =>
                     CreateMixedContext(request.Target, statisticsEnabled: true),
+                ProcessScope.ExactDatabase =>
+                    CreateExactDatabaseContext(request.Target),
+                ProcessScope.ExactDocker =>
+                    CreateExactDockerContext(request.Target),
                 _ => throw new ArgumentOutOfRangeException(nameof(_scope)),
             };
             return ValueTask.FromResult(
@@ -1106,6 +1191,63 @@ public sealed partial class GovernedAgentRuntimeProcessTests
                 DateTimeOffset.UtcNow);
         }
 
+        private AgentContextSnapshot CreateExactDatabaseContext(
+            AgentTarget target)
+        {
+            var graph = Graph(
+                [new PanelInstance(
+                    DatabasePanelId,
+                    PanelKind.DatabaseViewer,
+                    "Database",
+                    DatabaseSessionId)],
+                DatabasePanelId);
+            return new AgentContextSnapshot(
+                target,
+                [AgentContextPanel.ForGraphPanel(
+                    graph,
+                    TabId,
+                    DatabasePanelId,
+                    Descriptor(
+                        DatabaseSessionId,
+                        DatabasePanelId,
+                        PanelKind.DatabaseViewer,
+                        new CapabilitySet(
+                            IncludeRedisIndexCapabilities
+                                ?
+                                [
+                                    SessionCapabilities.DatabaseReadState,
+                                    SessionCapabilities.RedisListIndexes,
+                                    SessionCapabilities.RedisSearch,
+                                ]
+                                : [SessionCapabilities.DatabaseReadState])))],
+                DateTimeOffset.UtcNow);
+        }
+
+        private AgentContextSnapshot CreateExactDockerContext(
+            AgentTarget target)
+        {
+            var graph = Graph(
+                [new PanelInstance(
+                    DockerPanelId,
+                    PanelKind.Docker,
+                    "Docker",
+                    DockerSessionId)],
+                DockerPanelId);
+            return new AgentContextSnapshot(
+                target,
+                [AgentContextPanel.ForGraphPanel(
+                    graph,
+                    TabId,
+                    DockerPanelId,
+                    Descriptor(
+                        DockerSessionId,
+                        DockerPanelId,
+                        PanelKind.Docker,
+                        new CapabilitySet(
+                            [SessionCapabilities.DockerReadState])))],
+                DateTimeOffset.UtcNow);
+        }
+
         private WorkspaceGraphSnapshot Graph(
             IReadOnlyList<PanelInstance> panels,
             PanelInstanceId activePanelId) =>
@@ -1188,6 +1330,20 @@ public sealed partial class GovernedAgentRuntimeProcessTests
                 WorkspaceId,
                 TabId,
                 StatisticsPanelId);
+
+        private static AgentTarget.Panel ExactDatabaseTarget() =>
+            new(
+                WindowId,
+                WorkspaceId,
+                TabId,
+                DatabasePanelId);
+
+        private static AgentTarget.Panel ExactDockerTarget() =>
+            new(
+                WindowId,
+                WorkspaceId,
+                TabId,
+                DockerPanelId);
     }
 
     private sealed class ConsumingProcessHost(

@@ -1,6 +1,7 @@
 # ADR 0037: Bounded native provider-generation steering
 
-- Status: Accepted
+- Status: Superseded for desktop presentation and scheduling by
+  [ADR 0046](0046-ordered-step-boundary-agent-steering.md)
 - Date: 2026-07-24
 - Extends:
   [ADR 0017](0017-native-dotnet-agent-runtime.md) and
@@ -9,6 +10,10 @@
   [Agent-to-tool threat model](../security/agent-tool-threat-model.md)
 
 ## Context
+
+> Historical decision: the bounded generation-replacement primitive remains a
+> fenced kernel capability, but the desktop no longer presents or schedules
+> steering this way. The current product contract is ADR 0046.
 
 A provider can begin a long answer in the wrong direction while the user still
 has better task intent to supply. Requiring Stop followed by a new prompt loses

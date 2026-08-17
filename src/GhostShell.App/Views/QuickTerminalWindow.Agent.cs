@@ -54,7 +54,7 @@ public sealed partial class QuickTerminalWindow
         }
     }
 
-    private async void OnQueueAgentFollowUpClick(object? sender, RoutedEventArgs e)
+    private async void OnQueueAgentSteeringClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
         _ = e;
@@ -65,7 +65,14 @@ public sealed partial class QuickTerminalWindow
 
         try
         {
-            await agentChat.QueueFollowUpAsync(_lifetime.Token);
+            if (agentChat.CanOfferFollowUpQueue)
+            {
+                await agentChat.QueueSteeringAsync(_lifetime.Token);
+            }
+            else if (DataContext is QuickTerminalViewModel viewModel)
+            {
+                await viewModel.SendAgentPromptAsync(_lifetime.Token);
+            }
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
         {
@@ -274,6 +281,25 @@ public sealed partial class QuickTerminalWindow
                 sender,
                 (agent, token) => agent.ToggleFavoriteModelAsync(item, token),
                 hideHistoryFlyout: false);
+        }
+    }
+
+    private async void OnMoveAgentQueuedFollowUpRequested(
+        object? sender,
+        AgentQueuedFollowUpMoveRequestedEventArgs e)
+    {
+        _ = sender;
+        if (DataContext is not QuickTerminalViewModel { AgentChat: { } agent })
+        {
+            return;
+        }
+
+        try
+        {
+            await agent.MoveQueuedFollowUpAsync(e.Item, e.DestinationIndex);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
         }
     }
 

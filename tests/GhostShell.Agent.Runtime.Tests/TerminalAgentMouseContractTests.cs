@@ -33,13 +33,14 @@ public sealed class TerminalAgentMouseContractTests
                 @event = eventName,
                 column = 1_000_000,
                 row = 0,
+                expected_content_revision = 42,
                 modifiers = new[] { "shift", "meta" },
             }));
 
         var parsed = Assert.IsType<TerminalAgentIntentResult.Parsed>(
             TerminalAgentToolParser.Parse(proposal));
-        var mouse = Assert.IsType<TerminalAgentIntent.SendMouse>(parsed.Intent)
-            .MouseInput;
+        var intent = Assert.IsType<TerminalAgentIntent.SendMouse>(parsed.Intent);
+        var mouse = intent.MouseInput;
 
         Assert.Equal(expectedButton, mouse.Button);
         Assert.Equal(expectedKind, mouse.Kind);
@@ -48,6 +49,7 @@ public sealed class TerminalAgentMouseContractTests
         Assert.Equal(
             TerminalKeyModifiers.Shift | TerminalKeyModifiers.Meta,
             mouse.Modifiers);
+        Assert.Equal(42, intent.ExpectedContentRevision);
     }
 
     [Theory]
@@ -59,6 +61,7 @@ public sealed class TerminalAgentMouseContractTests
     [InlineData("{\"event\":\"left_down\",\"column\":0.5,\"row\":0}")]
     [InlineData("{\"event\":\"left_down\",\"column\":0,\"row\":0,\"modifiers\":[\"alt\",\"alt\"]}")]
     [InlineData("{\"event\":\"left_down\",\"column\":0,\"row\":0,\"extra\":true}")]
+    [InlineData("{\"event\":\"left_down\",\"column\":0,\"row\":0,\"expected_content_revision\":-1}")]
     public async Task RejectsMalformedOrOutOfRangeMouseEvents(string arguments)
     {
         var proposal = await ProposalAsync(arguments);
@@ -75,7 +78,8 @@ public sealed class TerminalAgentMouseContractTests
         var panel = ContextPanel(
             "eligible",
             SessionCapabilities.TerminalAgentInputBarrier,
-            SessionCapabilities.TerminalMouse);
+            SessionCapabilities.TerminalMouse,
+            SessionCapabilities.TerminalRevisionBoundMouse);
         var tool = Assert.Single(
             TerminalAgentToolSet.For(panel),
             candidate => candidate.Name == BuiltInAgentTools.TerminalSendMouse);
@@ -84,7 +88,13 @@ public sealed class TerminalAgentMouseContractTests
 
         Assert.False(schema.GetProperty("additionalProperties").GetBoolean());
         Assert.Equal(
-            ["event", "column", "row", "modifiers"],
+            [
+                "event",
+                "column",
+                "row",
+                "expected_content_revision",
+                "modifiers",
+            ],
             properties.EnumerateObject().Select(property => property.Name));
         Assert.Equal(
             0,
@@ -93,7 +103,7 @@ public sealed class TerminalAgentMouseContractTests
             1_000_000,
             properties.GetProperty("row").GetProperty("maximum").GetInt32());
         Assert.Equal(
-            ["event", "column", "row"],
+            ["event", "column", "row", "expected_content_revision"],
             schema.GetProperty("required")
                 .EnumerateArray()
                 .Select(item => item.GetString()));
@@ -108,18 +118,25 @@ public sealed class TerminalAgentMouseContractTests
     }
 
     [Fact]
-    public void MouseToolRequiresBothCapabilityAndPhysicalInputBarrier()
+    public void MouseToolRequiresCapabilityRevisionBindingAndPhysicalInputBarrier()
     {
         var eligible = ContextPanel(
             "eligible",
             SessionCapabilities.TerminalAgentInputBarrier,
-            SessionCapabilities.TerminalMouse);
+            SessionCapabilities.TerminalMouse,
+            SessionCapabilities.TerminalRevisionBoundMouse);
         var noBarrier = ContextPanel(
             "no-barrier",
-            SessionCapabilities.TerminalMouse);
+            SessionCapabilities.TerminalMouse,
+            SessionCapabilities.TerminalRevisionBoundMouse);
         var noMouse = ContextPanel(
             "no-mouse",
-            SessionCapabilities.TerminalAgentInputBarrier);
+            SessionCapabilities.TerminalAgentInputBarrier,
+            SessionCapabilities.TerminalRevisionBoundMouse);
+        var noRevisionBinding = ContextPanel(
+            "no-revision",
+            SessionCapabilities.TerminalAgentInputBarrier,
+            SessionCapabilities.TerminalMouse);
 
         Assert.True(TerminalAgentToolSet.Supports(
             eligible,
@@ -131,8 +148,12 @@ public sealed class TerminalAgentMouseContractTests
         Assert.DoesNotContain(
             TerminalAgentToolSet.For(noMouse),
             tool => tool.Name == BuiltInAgentTools.TerminalSendMouse);
+        Assert.DoesNotContain(
+            TerminalAgentToolSet.For(noRevisionBinding),
+            tool => tool.Name == BuiltInAgentTools.TerminalSendMouse);
         Assert.False(TerminalAgentToolSet.SupportsMutations(noBarrier));
         Assert.False(TerminalAgentToolSet.SupportsMutations(noMouse));
+        Assert.False(TerminalAgentToolSet.SupportsMutations(noRevisionBinding));
     }
 
     [Fact]
@@ -141,10 +162,12 @@ public sealed class TerminalAgentMouseContractTests
         var eligible = ContextPanel(
             "eligible",
             SessionCapabilities.TerminalAgentInputBarrier,
-            SessionCapabilities.TerminalMouse);
+            SessionCapabilities.TerminalMouse,
+            SessionCapabilities.TerminalRevisionBoundMouse);
         var noBarrier = ContextPanel(
             "no-barrier",
-            SessionCapabilities.TerminalMouse);
+            SessionCapabilities.TerminalMouse,
+            SessionCapabilities.TerminalRevisionBoundMouse);
         var tools = TerminalAgentToolSet.For([eligible, noBarrier]);
         var mouseTool = Assert.Single(
             tools,
@@ -166,6 +189,7 @@ public sealed class TerminalAgentMouseContractTests
                 @event = "wheel_down",
                 column = 9,
                 row = 4,
+                expected_content_revision = 7,
             }));
         var accepted = Assert.IsType<TerminalAgentIntentResult.Parsed>(
             TerminalAgentToolParser.Parse(
@@ -180,6 +204,7 @@ public sealed class TerminalAgentMouseContractTests
                 @event = "wheel_down",
                 column = 9,
                 row = 4,
+                expected_content_revision = 7,
             }));
         var rejected = Assert.IsType<TerminalAgentIntentResult.Rejected>(
             TerminalAgentToolParser.Parse(

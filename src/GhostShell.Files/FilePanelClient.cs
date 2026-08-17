@@ -47,6 +47,16 @@ public sealed partial class FilePanelClient : IFilePanelClient, IFileTransferQue
 
     public IReadOnlyList<FileProviderProfileDescriptor> Profiles { get; }
 
+    public IAsyncEnumerable<FilePanelResult<FilePanelEntry>> SearchAsync(
+        FilePanelSearchRequest request,
+        CancellationToken cancellationToken) =>
+        FilePanelSearch.FindAsync(this, request, cancellationToken);
+
+    public IAsyncEnumerable<FilePanelResult<FilePanelChange>> WatchAsync(
+        FilePanelWatchRequest request,
+        CancellationToken cancellationToken) =>
+        FilePanelWatch.ObserveAsync(this, request, cancellationToken);
+
     public async ValueTask<FilePanelResult<FilePanelPage>> ListAsync(
         FilePanelListRequest request,
         CancellationToken cancellationToken)

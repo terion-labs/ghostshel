@@ -23,6 +23,93 @@ namespace GhostShell.App.Tests;
 public sealed partial class AgentChatViewModelTests
 {
     [Fact]
+    public Task Rendered_agent_completion_replaces_progress_without_live_region_updates() =>
+        RunAgentComposerHeadlessAsync(async () =>
+        {
+            var provider = Provider("provider", "Provider", order: 0);
+            var committedMessages = Enumerable.Range(0, 24)
+                .SelectMany(index => new[]
+                {
+                    new AgentChatMessage(
+                        AgentChatMessageRole.User,
+                        $"Test request {index}."),
+                    new AgentChatMessage(
+                        AgentChatMessageRole.Assistant,
+                        $"Test result {index}."),
+                })
+                .ToArray();
+            using var runtime = new StubGovernedRuntime
+            {
+                Snapshot = Snapshot(
+                    state: GovernedAgentState.StreamingProvider,
+                    runId: new AgentRunId("run-rendered-completion"),
+                    providerId: provider.Id,
+                    target: Target(),
+                    messages: committedMessages,
+                    currentProgress: new GovernedAgentProgress(
+                        "Panel test complete",
+                        percent: 100)) with
+                {
+                    ProvisionalAssistantText = "Writing the final report…",
+                },
+            };
+            using var profiles = new StubProfileRuntime { Profiles = [provider] };
+            using var viewModel = new AgentChatViewModel(
+                runtime,
+                profiles,
+                ImmediateUiThreadDispatcher.Instance);
+            var view = new AgentWorkspaceView
+            {
+                DataContext = new AgentComposerHost(viewModel),
+            };
+            var window = new Window
+            {
+                Width = 700,
+                Height = 900,
+                Content = view,
+            };
+
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+
+                Assert.DoesNotContain(
+                    view.GetVisualDescendants().OfType<Control>(),
+                    control => AutomationProperties.GetLiveSetting(control)
+                        != AutomationLiveSetting.Off);
+
+                runtime.Snapshot = runtime.Snapshot with
+                {
+                    State = GovernedAgentState.Ready,
+                    Messages = committedMessages.Append(
+                        new AgentChatMessage(
+                            AgentChatMessageRole.Assistant,
+                            "The full panel test passed."))
+                        .ToArray(),
+                    ProvisionalAssistantText = string.Empty,
+                    CurrentProgress = null,
+                    Status = string.Empty,
+                };
+                runtime.RaiseChanged();
+                await Task.Delay(100);
+                window.UpdateLayout();
+
+                Assert.False(viewModel.HasCurrentProgress);
+                Assert.Equal(49, viewModel.Messages.Count);
+                Assert.Contains(
+                    view.GetVisualDescendants().OfType<SelectableMarkdownDocument>(),
+                    document => document.Text.Contains(
+                        "The full panel test passed.",
+                        StringComparison.Ordinal));
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+    [Fact]
     public Task Idle_conversation_renders_send_and_enter_submits_without_a_stop_overlay() =>
         RunAgentComposerHeadlessAsync(() =>
         {
@@ -83,6 +170,17 @@ public sealed partial class AgentChatViewModelTests
                 view.SendAgentChatRequested += (_, _) => submitted++;
                 var prompt = view.FindControl<TextBox>("AgentChatPromptInput");
                 Assert.NotNull(prompt);
+                var status = Assert.Single(
+                    view.GetVisualDescendants().OfType<TextBlock>(),
+                    text => AutomationProperties.GetName(text)
+                        == "AI agent status");
+                var statusTop = Assert.NotNull(
+                    status.TranslatePoint(default, view)).Y;
+                var promptTop = Assert.NotNull(
+                    prompt.TranslatePoint(default, view)).Y;
+                Assert.True(
+                    statusTop + status.Bounds.Height <= promptTop,
+                    "The agent status must render above the composer.");
                 prompt.Focus();
 
                 window.KeyPress(
@@ -101,6 +199,128 @@ public sealed partial class AgentChatViewModelTests
                     null);
                 Assert.Equal(1, submitted);
                 Assert.Equal("line one\n", prompt.Text);
+            }
+            finally
+            {
+                window.Close();
+            }
+
+            return Task.CompletedTask;
+        });
+
+    [Fact]
+    public Task Busy_conversation_renders_ordered_queue_arrow_and_separate_stop() =>
+        RunAgentComposerHeadlessAsync(() =>
+        {
+            var provider = Provider("provider", "Provider", order: 0);
+            using var runtime = new StubGovernedRuntime
+            {
+                Snapshot = Snapshot(
+                    state: GovernedAgentState.StreamingProvider,
+                    runId: new AgentRunId("run-rendered-queue"),
+                    providerId: provider.Id,
+                    target: Target()) with
+                {
+                    QueuedFollowUpCount = 3,
+                    QueuedFollowUps =
+                    [
+                        new GovernedAgentQueuedFollowUp(
+                            new AgentQueuedFollowUpId("queued-steering"),
+                            "Check this next.",
+                            AgentReasoningEffort.High,
+                            GovernedAgentFollowUpDelivery.Steering),
+                        new GovernedAgentQueuedFollowUp(
+                            new AgentQueuedFollowUpId("queued-steering-second"),
+                            "Then inspect the result.",
+                            AgentReasoningEffort.High,
+                            GovernedAgentFollowUpDelivery.Steering),
+                        new GovernedAgentQueuedFollowUp(
+                            new AgentQueuedFollowUpId("queued-follow-up"),
+                            "Then summarize.",
+                            AgentReasoningEffort.Automatic,
+                            GovernedAgentFollowUpDelivery.FollowUp),
+                    ],
+                },
+            };
+            using var profiles = new StubProfileRuntime { Profiles = [provider] };
+            using var viewModel = new AgentChatViewModel(
+                runtime,
+                profiles,
+                ImmediateUiThreadDispatcher.Instance)
+            {
+                Prompt = "Another queued message.",
+            };
+            var view = new AgentWorkspaceView
+            {
+                DataContext = new AgentComposerHost(viewModel),
+            };
+            var window = new Window
+            {
+                Width = 700,
+                Height = 900,
+                Content = view,
+            };
+
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+
+                Assert.Equal(
+                    ["Check this next.", "Then inspect the result.", "Then summarize."],
+                    viewModel.QueuedFollowUps.Select(item => item.Message));
+                var dragHandles = view.GetVisualDescendants()
+                    .OfType<Border>()
+                    .Where(border => AutomationProperties.GetName(border)
+                        == "Drag queued agent message to reorder")
+                    .ToArray();
+                Assert.Equal(3, dragHandles.Length);
+                Assert.DoesNotContain(
+                    view.GetVisualDescendants().OfType<Button>(),
+                    button => button.Content as string is "Move earlier" or "Move later");
+
+                AgentQueuedFollowUpMoveRequestedEventArgs? move = null;
+                view.MoveQueuedFollowUpRequested += (_, eventArgs) => move = eventArgs;
+                var dragStart = Assert.NotNull(dragHandles[0].TranslatePoint(
+                    new Point(dragHandles[0].Bounds.Width / 2, dragHandles[0].Bounds.Height / 2),
+                    window));
+                var dragEnd = Assert.NotNull(dragHandles[1].TranslatePoint(
+                    new Point(dragHandles[1].Bounds.Width / 2, dragHandles[1].Bounds.Height - 2),
+                    window));
+                window.MouseDown(dragStart, MouseButton.Left);
+                window.MouseMove(dragEnd, RawInputModifiers.LeftMouseButton);
+                window.MouseUp(dragEnd, MouseButton.Left, RawInputModifiers.None);
+
+                Assert.NotNull(move);
+                Assert.Equal("Check this next.", move.Item.Message);
+                Assert.Equal(1, move.DestinationIndex);
+                var send = Assert.Single(
+                    view.GetVisualDescendants().OfType<Button>(),
+                    button => AutomationProperties.GetName(button)
+                        == "Queue a message for the AI agent");
+                var stop = Assert.Single(
+                    view.GetVisualDescendants().OfType<Button>(),
+                    button => AutomationProperties.GetName(button)
+                        == "Stop AI agent run");
+                Assert.True(send.IsEffectivelyVisible);
+                Assert.True(send.IsEnabled);
+                Assert.True(stop.IsEffectivelyVisible);
+                Assert.True(stop.IsEnabled);
+
+                var normalSubmissions = 0;
+                var steeringSubmissions = 0;
+                view.SendAgentChatRequested += (_, _) => normalSubmissions++;
+                view.QueueAgentSteeringRequested += (_, _) => steeringSubmissions++;
+                var prompt = view.FindControl<TextBox>("AgentChatPromptInput");
+                Assert.NotNull(prompt);
+                prompt.Focus();
+                window.KeyPress(
+                    Key.Enter,
+                    RawInputModifiers.Meta,
+                    PhysicalKey.Enter,
+                    null);
+                Assert.Equal(0, normalSubmissions);
+                Assert.Equal(1, steeringSubmissions);
             }
             finally
             {
@@ -169,7 +389,12 @@ public sealed partial class AgentChatViewModelTests
 
                 Task send = Task.CompletedTask;
                 view.SendAgentChatRequested += (_, _) =>
-                    send = viewModel.SendAsync(Target(), CancellationToken.None);
+                    send = viewModel.SendAsync(
+                        Target(),
+                        AgentPolicy.Default.SelectPrimaryModel(
+                            provider.Id.Value,
+                            provider.DefaultModel),
+                        CancellationToken.None);
                 var prompt = view.FindControl<TextBox>("AgentChatPromptInput");
                 Assert.NotNull(prompt);
                 prompt.Focus();
@@ -219,7 +444,11 @@ public sealed partial class AgentChatViewModelTests
                     effectivePolicy: new AgentPolicy(
                         provider.Id.Value,
                         "model",
-                        AgentPolicy.Default.Permissions)),
+                        AgentPolicy.Default.Permissions)
+                    {
+                        CompactionModel = new AgentModelSelection(provider.Id.Value, "model"),
+                        TitleModel = new AgentModelSelection(provider.Id.Value, "model"),
+                    }),
             };
             using var profiles = new StubProfileRuntime { Profiles = [provider] };
             using var viewModel = new AgentChatViewModel(
@@ -271,7 +500,12 @@ public sealed partial class AgentChatViewModelTests
                     viewModel.Messages.Select(message => message.Content));
                 Assert.Equal("model-fast", viewModel.SelectedModel?.Id);
 
-                await viewModel.SendAsync(Target(), CancellationToken.None);
+                await viewModel.SendAsync(
+                    Target(),
+                    AgentPolicy.Default.SelectPrimaryModel(
+                        provider.Id.Value,
+                        provider.DefaultModel),
+                    CancellationToken.None);
                 Assert.Equal("model-fast", runtime.LastRequest?.Model);
             }
             finally
@@ -328,6 +562,8 @@ public sealed partial class AgentChatViewModelTests
                 Task selection = Task.CompletedTask;
                 view.EnableAgentYoloRequested += (_, _) =>
                     selection = viewModel.SelectFullAccessAsync(CancellationToken.None);
+                view.DisableAgentYoloRequested += (_, _) =>
+                    selection = viewModel.SelectAskApprovalAsync(CancellationToken.None);
                 window.Show();
                 window.UpdateLayout();
 
@@ -373,12 +609,25 @@ public sealed partial class AgentChatViewModelTests
                 var fullAccess = Assert.Single(
                     window.GetVisualDescendants().OfType<Button>(),
                     button => AutomationProperties.GetName(button)
-                        == "Enable full access for terminal actions");
+                        == "Enable full access for agent actions");
                 fullAccess.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 await selection;
 
                 Assert.Equal("Full access", viewModel.AccessModeLabel);
                 Assert.Equal(0, runtime.EnableFullAccessCount);
+                Assert.False(access.Flyout.IsOpen);
+
+                access.Flyout.ShowAt(access);
+                window.UpdateLayout();
+                var askApproval = Assert.Single(
+                    window.GetVisualDescendants().OfType<Button>(),
+                    button => AutomationProperties.GetName(button)
+                        == "Ask for approval for agent actions");
+                askApproval.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                await selection;
+
+                Assert.Equal("Ask approval", viewModel.AccessModeLabel);
+                Assert.False(access.Flyout.IsOpen);
             }
             finally
             {
@@ -506,6 +755,63 @@ public sealed partial class AgentChatViewModelTests
                         && button.IsEffectivelyVisible);
                 fork.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 Assert.Equal(forkPoint, forked);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+    [Fact]
+    public Task Empty_assistant_turn_hides_copy_and_fork_actions() =>
+        RunAgentComposerHeadlessAsync(async () =>
+        {
+            var provider = Provider("provider", "Provider", order: 0);
+            using var runtime = new StubGovernedRuntime
+            {
+                Snapshot = Snapshot(
+                    state: GovernedAgentState.Ready,
+                    runId: new AgentRunId("run-rendered-empty-assistant"),
+                    providerId: provider.Id,
+                    target: Target(),
+                    messages:
+                    [
+                        new AgentChatMessage(
+                            AgentChatMessageRole.Assistant,
+                            string.Empty,
+                            "Inspected the request.",
+                            new AgentChatUsage(20, 8, 0, 4, 28),
+                            ForkPoint: new AgentConversationForkPoint(1)),
+                    ]),
+            };
+            using var profiles = new StubProfileRuntime { Profiles = [provider] };
+            using var viewModel = new AgentChatViewModel(
+                runtime,
+                profiles,
+                ImmediateUiThreadDispatcher.Instance);
+            var view = new AgentWorkspaceView
+            {
+                DataContext = new AgentComposerHost(viewModel),
+            };
+            var window = new Window
+            {
+                Width = 700,
+                Height = 900,
+                Content = view,
+            };
+
+            try
+            {
+                window.Show();
+                await Task.Delay(100);
+                window.UpdateLayout();
+
+                Assert.DoesNotContain(
+                    view.GetVisualDescendants().OfType<Button>(),
+                    button => button.IsEffectivelyVisible
+                        && (AutomationProperties.GetName(button) is
+                            "Copy this message"
+                            or "Fork conversation from this message"));
             }
             finally
             {
@@ -1051,6 +1357,53 @@ public sealed partial class AgentChatViewModelTests
             }
         });
 
+    [Fact]
+    public Task Missing_agent_runtime_renders_only_the_setup_state() =>
+        RunAgentComposerHeadlessAsync(() =>
+        {
+            var view = new AgentWorkspaceView
+            {
+                DataContext = new AgentComposerHost(null),
+            };
+            var window = new Window
+            {
+                Width = 700,
+                Height = 900,
+                Content = view,
+            };
+
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+
+                Assert.True(Assert.IsType<EmptyStatePanel>(
+                    view.FindControl<EmptyStatePanel>("AgentSetupRequiredState"))
+                    .IsEffectivelyVisible);
+                Assert.False(Assert.IsType<ScrollViewer>(
+                    view.FindControl<ScrollViewer>("AgentChatTranscript"))
+                    .IsEffectivelyVisible);
+                Assert.False(Assert.IsType<EmptyStatePanel>(
+                    view.FindControl<EmptyStatePanel>("AgentNoProviderState"))
+                    .IsEffectivelyVisible);
+                Assert.False(Assert.IsType<EmptyStatePanel>(
+                    view.FindControl<EmptyStatePanel>("AgentFailedTurnState"))
+                    .IsEffectivelyVisible);
+                Assert.False(Assert.IsType<ItemsControl>(
+                    view.FindControl<ItemsControl>("AgentQueuedFollowUps"))
+                    .IsEffectivelyVisible);
+                Assert.False(Assert.IsType<Border>(
+                    view.FindControl<Border>("AgentComposer"))
+                    .IsEffectivelyVisible);
+            }
+            finally
+            {
+                window.Close();
+            }
+
+            return Task.CompletedTask;
+        });
+
     private static async Task RunAgentComposerHeadlessAsync(Func<Task> assertion)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -1073,7 +1426,7 @@ public sealed partial class AgentChatViewModelTests
         }
     }
 
-    private sealed record AgentComposerHost(AgentChatViewModel AgentChat);
+    private sealed record AgentComposerHost(AgentChatViewModel? AgentChat);
 
     private static string RenderedText(SelectableTextBlock block) =>
         !string.IsNullOrEmpty(block.Text)

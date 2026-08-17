@@ -35,7 +35,9 @@ public sealed class BrowserRendererView(
     IBrowserRenderer renderer,
     IDisposable? lifetime = null) : IDisposable
 {
+    private readonly SemaphoreSlim _attachmentGate = new(1, 1);
     private readonly IDisposable? _lifetime = lifetime;
+    private bool _disposed;
 
     public Control View { get; } =
         view ?? throw new ArgumentNullException(nameof(view));
@@ -56,8 +58,87 @@ public sealed class BrowserRendererView(
     /// </summary>
     internal BrowserPresentationHost? PresentationHost { get; set; }
 
+    /// <summary>
+    /// Ensures the panel-owned renderer is linked to its hosted session. This
+    /// is deliberately independent of presentation: inactive tabs and
+    /// headless workspace runs still need a real renderer for browser tools.
+    /// </summary>
+    internal async ValueTask<BrowserRendererAttachment> EnsureAttachmentAsync(
+        ISessionHostClient client,
+        ClientId clientId,
+        EnsureBrowserSessionRequest request,
+        ViewportDescriptor viewport,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(viewport);
+        await _attachmentGate.WaitAsync(cancellationToken);
+        AttachmentId? pendingAttachmentId = null;
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (Attachment is { } existing)
+            {
+                return existing.Matches(client, clientId, request.SessionId)
+                    ? existing
+                    : throw new InvalidOperationException(
+                        "The browser renderer is already attached to a different panel session.");
+            }
+
+            var context = OperationContext.ForHuman(clientId);
+            _ = RequireSuccess(await client.EnsureBrowserSessionAsync(
+                request,
+                context,
+                cancellationToken));
+            var attachment = await AttachInteractiveAsync(
+                client,
+                clientId,
+                request.SessionId,
+                viewport,
+                cancellationToken);
+            pendingAttachmentId = attachment.Attachment.Id;
+            _ = RequireSuccess(await client.AttachBrowserRendererAsync(
+                new AttachBrowserRendererRequest(
+                    request.SessionId,
+                    attachment.Attachment.Id,
+                    Renderer),
+                context,
+                cancellationToken));
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
+            var created = new BrowserRendererAttachment(
+                client,
+                clientId,
+                request.SessionId,
+                attachment.Attachment.Id);
+            Attachment = created;
+            pendingAttachmentId = null;
+            return created;
+        }
+        finally
+        {
+            if (pendingAttachmentId is { } staleAttachmentId)
+            {
+                await DetachFailedAttachmentAsync(
+                    client,
+                    clientId,
+                    request.SessionId,
+                    staleAttachmentId);
+            }
+
+            _attachmentGate.Release();
+        }
+    }
+
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
         var attachment = Attachment;
         Attachment = null;
         attachment?.Release();
@@ -65,5 +146,81 @@ public sealed class BrowserRendererView(
         PresentationHost = null;
         presentationHost?.ReleaseRendererVisual(this);
         _lifetime?.Dispose();
+    }
+
+    private async ValueTask<AttachmentResult> AttachInteractiveAsync(
+        ISessionHostClient client,
+        ClientId clientId,
+        SessionId sessionId,
+        ViewportDescriptor viewport,
+        CancellationToken cancellationToken)
+    {
+        var capabilities = new CapabilitySet(
+        [
+            SessionCapabilities.AttachInteractive,
+            .. Renderer.Capabilities.Values,
+        ]);
+        HostResult<AttachmentResult>? lastResult = null;
+        for (var attempt = 0; attempt < 8; attempt++)
+        {
+            lastResult = await client.AttachAsync(
+                new AttachSessionRequest(
+                    sessionId,
+                    clientId,
+                    AttachmentKind.Interactive,
+                    viewport,
+                    capabilities),
+                OperationContext.ForHuman(clientId),
+                cancellationToken);
+            if (lastResult is HostResult<AttachmentResult>.Success success)
+            {
+                return success.Value;
+            }
+
+            if (lastResult is not HostResult<AttachmentResult>.Failure
+                {
+                    Error.Code: HostErrorCode.CapabilityNotSupported,
+                })
+            {
+                return RequireSuccess(lastResult);
+            }
+
+            await Task.Delay(
+                TimeSpan.FromMilliseconds(20 * (attempt + 1)),
+                cancellationToken);
+        }
+
+        return RequireSuccess(lastResult
+            ?? throw new InvalidOperationException(
+                "The browser attachment did not start."));
+    }
+
+    private static T RequireSuccess<T>(HostResult<T> result) => result switch
+    {
+        HostResult<T>.Success success => success.Value,
+        HostResult<T>.Failure failure => throw new InvalidOperationException(
+            $"{failure.Error.StableCode}: {failure.Error.Message}"),
+        _ => throw new ArgumentOutOfRangeException(nameof(result)),
+    };
+
+    private static async ValueTask DetachFailedAttachmentAsync(
+        ISessionHostClient client,
+        ClientId clientId,
+        SessionId sessionId,
+        AttachmentId attachmentId)
+    {
+        try
+        {
+            _ = await client.DetachAsync(
+                new DetachSessionRequest(attachmentId, sessionId),
+                OperationContext.ForHuman(clientId),
+                CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            System.Diagnostics.Trace.TraceError(
+                "Unable to detach a failed browser renderer attachment: {0}",
+                exception);
+        }
     }
 }

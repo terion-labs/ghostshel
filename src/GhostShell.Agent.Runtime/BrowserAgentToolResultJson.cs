@@ -15,16 +15,18 @@ internal static class BrowserAgentToolResultJson
     private const int MaximumTitleBytes = 4 * 1024;
     private const int MaximumProviderAddressBytes = 2 * 1024;
     private const int MaximumProviderSnapshotNameBytes = 128;
-    internal const int MaximumProviderSnapshotNodes = 48;
+    internal const int MaximumProviderSnapshotNodes =
+        BrowserDocumentSnapshot.MaximumNodeCount;
 
     public static string Success(
         AgentBrowserActionResult result,
         PanelInstanceId? panelId = null)
     {
         ArgumentNullException.ThrowIfNull(result);
-        if (result is AgentBrowserActionResult.Snapshot snapshot)
+        if (result is AgentBrowserActionResult.Snapshot
+            or AgentBrowserActionResult.Wait)
         {
-            return BoundedSnapshotSuccess(snapshot, panelId);
+            return BoundedSnapshotBearingSuccess(result, panelId);
         }
 
         var serialized = SerializeSuccess(
@@ -64,6 +66,24 @@ internal static class BrowserAgentToolResultJson
                     snapshot.Value,
                     maximumSnapshotNodes);
                 break;
+            case AgentBrowserActionResult.Wait wait:
+                WriteWait(
+                    writer,
+                    wait.Value,
+                    maximumSnapshotNodes);
+                break;
+            case AgentBrowserActionResult.Automation automation:
+                WriteState(writer, automation.Value.FreshState);
+                break;
+            case AgentBrowserActionResult.Evaluation evaluation:
+                WriteState(writer, evaluation.Value.FreshState);
+                writer.WritePropertyName("result");
+                using (var document = JsonDocument.Parse(evaluation.Value.Json))
+                {
+                    document.RootElement.WriteTo(writer);
+                }
+
+                break;
             default:
                 throw new ArgumentOutOfRangeException(
                     nameof(result),
@@ -83,9 +103,11 @@ internal static class BrowserAgentToolResultJson
         PanelInstanceId? panelId = null)
     {
         ArgumentNullException.ThrowIfNull(error);
+        var stableCode = error.StableCode;
         return AgentToolResultJson.Failure(
-            error.StableCode,
-            error.Retryable,
+            stableCode,
+            stableCode != InteractionOutcomeUnknownStableCode
+                && error.Retryable,
             panelId);
     }
 
@@ -94,9 +116,11 @@ internal static class BrowserAgentToolResultJson
         PanelInstanceId? panelId = null)
     {
         ArgumentNullException.ThrowIfNull(error);
+        var stableCode = ProviderStableCode(error);
         return AgentToolResultJson.Failure(
-            ProviderStableCode(error),
-            error.Retryable,
+            stableCode,
+            stableCode != InteractionOutcomeUnknownStableCode
+                && error.Retryable,
             panelId);
     }
 
@@ -162,6 +186,11 @@ internal static class BrowserAgentToolResultJson
         writer.WriteBoolean("can_go_back", state.CanGoBack);
         writer.WriteBoolean("can_go_forward", state.CanGoForward);
         writer.WriteNumber("document_revision", state.DocumentRevision);
+        writer.WriteNumber("viewport_width_css", state.Viewport.WidthCss);
+        writer.WriteNumber("viewport_height_css", state.Viewport.HeightCss);
+        writer.WriteNumber("device_scale_factor", state.Viewport.DeviceScaleFactor);
+        writer.WriteNumber("viewport_revision", state.ViewportRevision);
+        writer.WriteNumber("input_epoch", state.InputEpoch);
         if (state.Failure is { } failure)
         {
             // Browser engine messages can contain page-controlled or platform
@@ -243,21 +272,76 @@ internal static class BrowserAgentToolResultJson
         }
 
         writer.WriteEndArray();
+        writer.WriteNumber("available_node_count", snapshot.Nodes.Count);
+        writer.WriteNumber("returned_node_count", writtenNodes);
         writer.WriteBoolean(
             "is_truncated",
             snapshot.IsTruncated || projectionTruncated);
+        if (snapshot.IsTruncated || projectionTruncated)
+        {
+            writer.WriteString(
+                "narrow_with",
+                "filter, interactive_only, or max_depth; use returned refs and do not guess coordinates");
+        }
         writer.WriteNumber("redactions", redactionCount);
     }
 
-    private static string BoundedSnapshotSuccess(
-        AgentBrowserActionResult.Snapshot snapshot,
+    private static void WriteWait(
+        Utf8JsonWriter writer,
+        BrowserWaitOutcome outcome,
+        int maximumSnapshotNodes)
+    {
+        ArgumentNullException.ThrowIfNull(outcome);
+        writer.WriteString(
+            "wait_outcome",
+            outcome.Completion switch
+            {
+                BrowserWaitCompletion.Matched => "matched",
+                BrowserWaitCompletion.TimedOut => "timed_out",
+                BrowserWaitCompletion.Cancelled => "cancelled",
+                BrowserWaitCompletion.SessionEnded => "session_ended",
+                _ => throw new ArgumentOutOfRangeException(nameof(outcome)),
+            });
+        writer.WriteString(
+            "completed_at_utc",
+            outcome.CompletedAtUtc.ToUniversalTime());
+        WriteState(writer, outcome.State);
+        if (outcome.Snapshot is { } snapshot)
+        {
+            writer.WritePropertyName("snapshot");
+            writer.WriteStartObject();
+            WriteSnapshot(writer, snapshot, maximumSnapshotNodes);
+            writer.WriteEndObject();
+        }
+        else
+        {
+            writer.WriteNull("snapshot");
+            AgentToolResultJson.WriteError(
+                writer,
+                "snapshot_error",
+                outcome.SnapshotError!.StableCode,
+                outcome.SnapshotError.Retryable);
+        }
+    }
+
+    private static string BoundedSnapshotBearingSuccess(
+        AgentBrowserActionResult result,
         PanelInstanceId? panelId)
     {
+        var nodeCount = result switch
+        {
+            AgentBrowserActionResult.Snapshot snapshot =>
+                snapshot.Value.Nodes.Count,
+            AgentBrowserActionResult.Wait { Value.Snapshot: { } snapshot } =>
+                snapshot.Nodes.Count,
+            AgentBrowserActionResult.Wait => 0,
+            _ => throw new ArgumentOutOfRangeException(nameof(result)),
+        };
         var maximumNodes = Math.Min(
             MaximumProviderSnapshotNodes,
-            snapshot.Value.Nodes.Count);
+            nodeCount);
         var full = SerializeSuccess(
-            snapshot,
+            result,
             panelId,
             maximumNodes);
         var maximumBytes =
@@ -274,7 +358,7 @@ internal static class BrowserAgentToolResultJson
         {
             var candidateNodes = low + ((high - low) / 2);
             var candidate = SerializeSuccess(
-                snapshot,
+                result,
                 panelId,
                 candidateNodes);
             if (candidate.ByteCount <= maximumBytes)
@@ -390,12 +474,16 @@ internal static class BrowserAgentToolResultJson
             or "navigation_in_progress"
             or "browser_state_changed"
             or "browser_domain_policy_denied"
+            or "browser_action_not_authorized"
             or "browser_snapshot_invalid"
             or "browser_element_reference_stale"
             or "browser_element_not_interactable"
             or "browser_element_not_fillable"
             or "browser_element_not_checkable"
+            or "browser_check_state_not_applied"
             or "browser_fill_value_not_supported"
+            or "browser_script_rejected"
+            or "browser_script_result_rejected"
             or InteractionOutcomeUnknownStableCode
             or "navigation_failed"
             or "operation_cancelled"

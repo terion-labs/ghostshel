@@ -294,7 +294,9 @@ public sealed class BrowserRuntimePanelViewModelTests
         }
     }
 
-    private sealed class RecordingBrowserRenderer : IBrowserRenderer
+    private sealed class RecordingBrowserRenderer :
+        IBrowserRenderer,
+        IBrowserPhysicalInputBarrier
     {
         public BrowserSessionState State { get; } =
             BrowserSessionState.Initial(BrowserAddress.Blank);
@@ -312,12 +314,19 @@ public sealed class BrowserRuntimePanelViewModelTests
             SessionCapabilities.BrowserReload,
             SessionCapabilities.BrowserStop,
             SessionCapabilities.BrowserOriginGuard,
+            SessionCapabilities.BrowserAgentInputBarrier,
         ]);
 
         public event EventHandler<BrowserStateChangedEventArgs>? StateChanged
         {
             add { }
             remove { }
+        }
+
+        public void BindPhysicalInputGate(
+            Func<NativeRendererPhysicalInput, bool>? physicalInputGate)
+        {
+            _ = physicalInputGate;
         }
 
         public ValueTask<BrowserResult<BrowserSessionState>> NavigateAsync(
@@ -352,7 +361,8 @@ public sealed class BrowserRuntimePanelViewModelTests
         public ValueTask<BrowserResult<BrowserDocumentSnapshot>>
             CaptureSnapshotAsync(
                 BrowserDocumentBinding document,
-                CancellationToken cancellationToken)
+                CancellationToken cancellationToken,
+                BrowserSnapshotQuery? query = null)
         {
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.FromResult(

@@ -9,6 +9,9 @@ namespace GhostShell.Agent;
 public sealed partial class NativeAgentSession
 {
     private const string CheckpointReadyState = "ready";
+    private const string CheckpointInterruptedState = "interrupted";
+    private const string InterruptedTurnMessage =
+        "The previous agent turn was interrupted. No pending tool action was resumed.";
     private const int MaximumRouteIdentityLength = 256;
 
     private AiProviderProfileId? _conversationProviderId;
@@ -52,13 +55,13 @@ public sealed partial class NativeAgentSession
     {
         lock (_gate)
         {
-            var firstUserMessage = _conversation.FirstOrDefault(message =>
+            var firstUserMessage = _transcript.FirstOrDefault(message =>
                 message.Role == AgentMessageRole.User
                 && !string.IsNullOrWhiteSpace(message.Content));
             var title = _conversationTitle ?? (firstUserMessage is null
                 ? "Untitled conversation"
                 : CreateConversationTitle(firstUserMessage.Content));
-            var binding = _conversation
+            var binding = _transcript
                 .Select(message => message.ProviderReplayState?.Binding)
                 .LastOrDefault(candidate => candidate is not null);
             return new AgentConversationDescriptor(
@@ -66,7 +69,7 @@ public sealed partial class NativeAgentSession
                 title,
                 binding?.ProfileId ?? _conversationProviderId,
                 binding?.Model ?? _conversationModel,
-                _conversation.Count(message => message.Role is
+                _transcript.Count(message => message.Role is
                     AgentMessageRole.User or AgentMessageRole.Assistant));
         }
     }
@@ -107,6 +110,52 @@ public sealed partial class NativeAgentSession
         }
     }
 
+    /// <summary>
+    /// Replaces the trusted leading system prompt of an idle restored
+    /// conversation without changing its durable run identity or resetting its
+    /// revision fence. The caller owns construction of the trusted prompt; the
+    /// native session owns the monotonic transcript mutation.
+    /// </summary>
+    public bool TryRebaseSystemPrompt(string systemPrompt)
+    {
+        ArgumentNullException.ThrowIfNull(systemPrompt);
+        var replacement = new AgentMessage(AgentMessageRole.System, systemPrompt);
+        ValidateMessageBounds(replacement, _limits.MaximumAssistantTextBytes);
+
+        lock (_gate)
+        {
+            if (_state != NativeAgentSessionState.Ready
+                || _activeTurn is not null
+                || _providerOperationsInFlight != 0
+                || _pendingToolTurn is not null
+                || _pendingToolProposals.Length != 0
+                || _activeCompaction is not null
+                || _conversation.Length == 0
+                || _conversation[0].Role != AgentMessageRole.System)
+            {
+                return false;
+            }
+
+            if (string.Equals(
+                    _conversation[0].Content,
+                    systemPrompt,
+                    StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            _conversation = _conversation.SetItem(0, replacement);
+            if (_transcript.Length > 0
+                && _transcript[0].Role == AgentMessageRole.System)
+            {
+                _transcript = _transcript.SetItem(0, replacement);
+            }
+            _conversationRevision = checked(_conversationRevision + 1);
+            AppendEventUnsafe(AgentRunEventKind.SystemPromptRebased, _generation);
+            return true;
+        }
+    }
+
     private static string CreateConversationTitle(string content)
     {
         const int maximumLength = 72;
@@ -140,48 +189,11 @@ public sealed partial class NativeAgentSession
 
             try
             {
-                ValidateConversation(_conversation);
-                var durableConversation = _conversation
-                    .Select(WithoutUnsafeProviderReplayState)
-                    .ToImmutableArray();
-                ValidateConversation(durableConversation);
-                ValidateCheckpointDurableBounds(durableConversation);
-                var providerBinding = _conversation
-                    .Select(message => message.ProviderReplayState?.Binding)
-                    .LastOrDefault(candidate => candidate is not null);
-
-                if (ContainsUnsafeStructuredContent(durableConversation))
-                {
-                    return AgentCheckpointCaptureResult.Failure(
-                        AgentCheckpointCaptureErrorCode.UnsafeContent);
-                }
-
-                var payload = new CheckpointPayload(
+                return CaptureCheckpointUnsafe(
+                    _conversation,
+                    _transcript,
                     CheckpointReadyState,
-                    _conversationTitle,
-                    _conversationRevision,
-                    _sequence,
-                    _lastSubmittedToolGeneration,
-                    durableConversation.Select(ToCheckpointMessage).ToArray(),
-                    _providerToolBindings
-                        .OrderBy(binding => binding.Key, StringComparer.Ordinal)
-                        .Select(binding => new CheckpointToolBinding(
-                            binding.Key,
-                            binding.Value))
-                        .ToArray(),
-                    providerBinding?.ProfileId.Value ?? _conversationProviderId?.Value,
-                    providerBinding?.Model ?? _conversationModel);
-                var payloadJson = JsonSerializer.Serialize(
-                    payload,
-                    CheckpointJsonOptions);
-                var checkpoint = new AgentSessionCheckpoint(
-                    RunId,
-                    AgentSessionCheckpoint.CurrentSchemaVersion,
-                    _generation,
-                    _revision,
-                    payloadJson,
-                    _timeProvider.GetUtcNow().ToUniversalTime());
-                return AgentCheckpointCaptureResult.Success(checkpoint);
+                    _conversationRevision);
             }
             catch (Exception exception) when (
                 exception is AgentLimitException
@@ -198,6 +210,223 @@ public sealed partial class NativeAgentSession
     }
 
     /// <summary>
+    /// Captures an inert transcript before the first provider request begins.
+    /// The stored turn is deliberately closed by a fixed assistant message and
+    /// restores without pending work, so a restart can display and continue it
+    /// but cannot replay the interrupted operation.
+    /// </summary>
+    public AgentCheckpointCaptureResult CaptureInterruptedCheckpoint(
+        string userMessage,
+        ImmutableArray<AgentImageAttachment> images)
+    {
+        ArgumentNullException.ThrowIfNull(userMessage);
+        if (images.IsDefault)
+        {
+            throw new ArgumentException(
+                "The image collection is required.",
+                nameof(images));
+        }
+
+        var user = new AgentMessage(AgentMessageRole.User, userMessage, images);
+        lock (_gate)
+        {
+            if (_state != NativeAgentSessionState.Ready
+                || _activeTurn is not null
+                || _providerOperationsInFlight != 0
+                || _pendingToolProposals.Length != 0
+                || _activeCompaction is not null)
+            {
+                return AgentCheckpointCaptureResult.Failure(
+                    AgentCheckpointCaptureErrorCode.SessionNotIdle);
+            }
+
+            return CaptureInterruptedCheckpointUnsafe(
+                _conversation.Add(user).Add(InterruptedAssistantMessage()),
+                _transcript.Add(user).Add(InterruptedAssistantMessage()));
+        }
+    }
+
+    /// <summary>
+    /// Captures the committed transcript while an unexecuted provider tool
+    /// proposal is pending. The proposal itself is excluded, so recovery can
+    /// never mistake it for an action that should be dispatched.
+    /// </summary>
+    public AgentCheckpointCaptureResult CaptureInterruptedCheckpoint()
+    {
+        lock (_gate)
+        {
+            if (_state == NativeAgentSessionState.AwaitingProviderContinuation
+                && _activeTurn is null
+                && _providerOperationsInFlight == 0
+                && _pendingToolContinuation is not null
+                && _pendingToolProposals.Length == 0
+                && _activeCompaction is null)
+            {
+                return CaptureInterruptedCheckpointUnsafe(
+                    _conversation.Add(InterruptedAssistantMessage()),
+                    _transcript.Add(InterruptedAssistantMessage()));
+            }
+
+            if (_state != NativeAgentSessionState.AwaitingToolDecision
+                || _activeTurn is not null
+                || _providerOperationsInFlight != 0
+                || _pendingToolProposals.Length == 0
+                || _activeCompaction is not null
+                || _conversation.Length == 0
+                || _conversation[^1] is not
+                {
+                    Role: AgentMessageRole.Assistant,
+                    ToolCalls.Length: > 0,
+                })
+            {
+                return AgentCheckpointCaptureResult.Failure(
+                    AgentCheckpointCaptureErrorCode.SessionNotIdle);
+            }
+
+            return CaptureInterruptedCheckpointUnsafe(
+                _conversation[..^1].Add(InterruptedAssistantMessage()),
+                _transcript[..^1].Add(InterruptedAssistantMessage()));
+        }
+    }
+
+    /// <summary>
+    /// Captures a completed governed tool batch before provider continuation.
+    /// Results are retained as history, but a fixed final assistant message
+    /// closes the transcript and prevents automatic continuation after restart.
+    /// </summary>
+    public AgentCheckpointCaptureResult CaptureInterruptedCheckpoint(
+        ImmutableArray<AgentToolResult> results)
+    {
+        if (results.IsDefault)
+        {
+            throw new ArgumentException(
+                "The tool-result collection is required.",
+                nameof(results));
+        }
+
+        lock (_gate)
+        {
+            if (_state != NativeAgentSessionState.AwaitingToolDecision
+                || _activeTurn is not null
+                || _providerOperationsInFlight != 0
+                || _pendingToolProposals.Length == 0
+                || _activeCompaction is not null
+                || !ToolResultsMatchPendingProposals(results))
+            {
+                return AgentCheckpointCaptureResult.Failure(
+                    AgentCheckpointCaptureErrorCode.SessionNotIdle);
+            }
+
+            try
+            {
+                ValidateToolResultBounds(results);
+                var resultMessages = results
+                    .Select(AgentMessage.FromToolResult)
+                    .ToImmutableArray();
+                return CaptureInterruptedCheckpointUnsafe(
+                    _conversation
+                        .AddRange(resultMessages)
+                        .Add(InterruptedAssistantMessage()),
+                    _transcript
+                        .AddRange(resultMessages)
+                        .Add(InterruptedAssistantMessage()));
+            }
+            catch (AgentLimitException)
+            {
+                return AgentCheckpointCaptureResult.Failure(
+                    AgentCheckpointCaptureErrorCode.LimitExceeded);
+            }
+        }
+    }
+
+    private AgentCheckpointCaptureResult CaptureInterruptedCheckpointUnsafe(
+        ImmutableArray<AgentMessage> conversation,
+        ImmutableArray<AgentMessage> transcript)
+    {
+        try
+        {
+            var conversationRevision = checked(_conversationRevision + 1);
+            AppendEventUnsafe(
+                AgentRunEventKind.RecoveryCheckpointCaptured,
+                _generation);
+            return CaptureCheckpointUnsafe(
+                conversation,
+                transcript,
+                CheckpointInterruptedState,
+                conversationRevision);
+        }
+        catch (Exception exception) when (
+            exception is AgentLimitException
+                or AgentConversationException
+                or ArgumentException
+                or JsonException
+                or NotSupportedException
+                or OverflowException)
+        {
+            return AgentCheckpointCaptureResult.Failure(
+                AgentCheckpointCaptureErrorCode.LimitExceeded);
+        }
+    }
+
+    private AgentCheckpointCaptureResult CaptureCheckpointUnsafe(
+        ImmutableArray<AgentMessage> conversation,
+        ImmutableArray<AgentMessage> transcript,
+        string state,
+        long conversationRevision)
+    {
+        ValidateConversation(conversation);
+        ValidateTranscript(transcript);
+        var durableConversation = conversation
+            .Select(WithoutUnsafeProviderReplayState)
+            .ToImmutableArray();
+        var durableTranscript = transcript
+            .Select(WithoutUnsafeProviderReplayState)
+            .ToImmutableArray();
+        ValidateConversation(durableConversation);
+        ValidateTranscript(durableTranscript);
+        ValidateCheckpointDurableBounds(durableConversation);
+        ValidateCheckpointDurableBounds(durableTranscript);
+        if (ContainsUnsafeStructuredContent(durableConversation)
+            || ContainsUnsafeStructuredContent(durableTranscript))
+        {
+            return AgentCheckpointCaptureResult.Failure(
+                AgentCheckpointCaptureErrorCode.UnsafeContent);
+        }
+
+        var providerBinding = _transcript
+            .Select(message => message.ProviderReplayState?.Binding)
+            .LastOrDefault(candidate => candidate is not null);
+        var payload = new CheckpointPayload(
+            state,
+            _conversationTitle,
+            conversationRevision,
+            _sequence,
+            _lastSubmittedToolGeneration,
+            durableConversation.Select(ToCheckpointMessage).ToArray(),
+            _providerToolBindings
+                .OrderBy(binding => binding.Key, StringComparer.Ordinal)
+                .Select(binding => new CheckpointToolBinding(
+                    binding.Key,
+                    binding.Value))
+                .ToArray(),
+            providerBinding?.ProfileId.Value ?? _conversationProviderId?.Value,
+            providerBinding?.Model ?? _conversationModel,
+            durableTranscript.Select(ToCheckpointMessage).ToArray());
+        var payloadJson = JsonSerializer.Serialize(payload, CheckpointJsonOptions);
+        var checkpoint = new AgentSessionCheckpoint(
+            RunId,
+            AgentSessionCheckpoint.CurrentSchemaVersion,
+            _generation,
+            _revision,
+            payloadJson,
+            _timeProvider.GetUtcNow().ToUniversalTime());
+        return AgentCheckpointCaptureResult.Success(checkpoint);
+    }
+
+    private static AgentMessage InterruptedAssistantMessage() =>
+        new(AgentMessageRole.Assistant, InterruptedTurnMessage);
+
+    /// <summary>
     /// Rehydrates a new idle session from a kernel-owned checkpoint document.
     /// No runtime capability or provider object is accepted or reconstructed.
     /// </summary>
@@ -206,7 +435,8 @@ public sealed partial class NativeAgentSession
         AgentKernelLimits? limits = null)
     {
         ArgumentNullException.ThrowIfNull(checkpoint);
-        if (checkpoint.SchemaVersion is not (1 or AgentSessionCheckpoint.CurrentSchemaVersion))
+        if (checkpoint.SchemaVersion is not (
+                1 or 2 or AgentSessionCheckpoint.CurrentSchemaVersion))
         {
             return AgentCheckpointRestoreResult.Failure(
                 AgentCheckpointRestoreErrorCode.UnsupportedSchema);
@@ -254,7 +484,11 @@ public sealed partial class NativeAgentSession
             var conversation = payload!.Conversation!
                 .Select(FromCheckpointMessage)
                 .ToImmutableArray();
-            if (ContainsUnsafeStructuredContent(conversation))
+            var transcript = (payload.Transcript ?? payload.Conversation!)
+                .Select(FromCheckpointMessage)
+                .ToImmutableArray();
+            if (ContainsUnsafeStructuredContent(conversation)
+                || ContainsUnsafeStructuredContent(transcript))
             {
                 return AgentCheckpointRestoreResult.Failure(
                     AgentCheckpointRestoreErrorCode.UnsafeContent);
@@ -266,6 +500,9 @@ public sealed partial class NativeAgentSession
                 limits,
                 TimeProvider.System);
             session.ValidateCheckpointDurableBounds(conversation);
+            session.ValidateTranscript(transcript);
+            session.ValidateCheckpointDurableBounds(transcript);
+            session._transcript = transcript;
             var bindings = payload.ProviderToolBindings!
                 .Select(binding => new KeyValuePair<string, string>(
                     binding.ProviderName,
@@ -286,7 +523,7 @@ public sealed partial class NativeAgentSession
                     AgentCheckpointRestoreErrorCode.InvalidPayload);
             }
 
-            var greatestTranscriptGeneration = conversation
+            var greatestTranscriptGeneration = transcript
                 .SelectMany(message => message.ToolCalls)
                 .Select(proposal => proposal.Generation)
                 .Concat(conversation
@@ -312,6 +549,7 @@ public sealed partial class NativeAgentSession
             session._revision = checkpoint.Revision;
             session._sequence = payload.LastSequence;
             session._lastSubmittedToolGeneration = payload.LastSubmittedToolGeneration;
+            session._state = NativeAgentSessionState.Ready;
             return AgentCheckpointRestoreResult.Success(session);
         }
         catch (AgentLimitException)
@@ -342,11 +580,10 @@ public sealed partial class NativeAgentSession
         CheckpointPayload? payload)
     {
         if (payload is null
-            || !string.Equals(
-                payload.State,
-                CheckpointReadyState,
-                StringComparison.Ordinal)
+            || payload.State is not (
+                CheckpointReadyState or CheckpointInterruptedState)
             || payload.Conversation is null
+            || checkpoint.SchemaVersion >= 3 && payload.Transcript is null
             || payload.ProviderToolBindings is null
             || payload.ConversationRevision < 0
             || payload.ConversationRevision > checkpoint.Revision
@@ -524,7 +761,10 @@ public sealed partial class NativeAgentSession
             }
 
             var result = FromCheckpointToolResult(message.ToolResult);
-            if (!string.Equals(message.Content, result.Value.Content, StringComparison.Ordinal))
+            if (!CheckpointToolResultContentMatches(
+                    message.Content,
+                    message.ToolResult,
+                    result.Value.Kind))
             {
                 throw new ArgumentException("Tool checkpoint content does not match its result.");
             }
@@ -546,6 +786,36 @@ public sealed partial class NativeAgentSession
         return images.Length == 0
             ? new AgentMessage(role, message.Content)
             : new AgentMessage(role, message.Content, images);
+    }
+
+    private static bool CheckpointToolResultContentMatches(
+        string messageContent,
+        CheckpointToolResult checkpointResult,
+        AgentToolResultValueKind kind)
+    {
+        if (kind == AgentToolResultValueKind.Text)
+        {
+            return string.Equals(
+                messageContent,
+                checkpointResult.TextValue,
+                StringComparison.Ordinal);
+        }
+
+        if (checkpointResult.JsonValue is not { } jsonValue)
+        {
+            return false;
+        }
+
+        using var messageJson = JsonDocument.Parse(
+            messageContent,
+            new JsonDocumentOptions
+            {
+                AllowDuplicateProperties = false,
+                AllowTrailingCommas = false,
+                CommentHandling = JsonCommentHandling.Disallow,
+                MaxDepth = 128,
+            });
+        return JsonElement.DeepEquals(messageJson.RootElement, jsonValue);
     }
 
     private static AgentProviderReplayState FromCheckpointReplayState(
@@ -954,7 +1224,8 @@ public sealed partial class NativeAgentSession
         CheckpointMessage[]? Conversation,
         CheckpointToolBinding[]? ProviderToolBindings,
         string? ProviderId = null,
-        string? Model = null);
+        string? Model = null,
+        CheckpointMessage[]? Transcript = null);
 
     private sealed record CheckpointMessage(
         string Role,

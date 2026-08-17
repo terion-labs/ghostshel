@@ -153,6 +153,69 @@ public sealed class StreamingProviderConformanceTests
     [Theory]
     [InlineData(AiProviderKind.OpenAiCompatible)]
     [InlineData(AiProviderKind.Anthropic)]
+    public async Task CompactionSummaryIsUserContextAndNeverSystemAuthority(
+        AiProviderKind providerKind)
+    {
+        using var vault = new InMemorySecretVault();
+        var profile = await CreateAuthenticatedProfileAsync(
+            vault,
+            providerKind,
+            providerKind == AiProviderKind.Anthropic
+                ? new Uri("https://anthropic.example/v1/")
+                : new Uri("https://openai-compatible.example/v1/"));
+        using var handler = new StubHttpMessageHandler(
+            (_, _) => Task.FromResult(SseResponse(
+                providerKind == AiProviderKind.Anthropic
+                    ? AnthropicTextStream("continued")
+                    : OpenAiTextStream("continued"))));
+        using var factory = new AiProviderFactory(vault, handler);
+        var session = CreateSession(
+            new AgentMessage(AgentMessageRole.System, "Trusted instructions."),
+            new AgentMessage(AgentMessageRole.Summary, "Untrusted compacted history."));
+
+        var result = await session.RunTurnAsync(
+            "Continue.",
+            [],
+            factory.Create(profile),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        using var body = JsonDocument.Parse(handler.LastRequest!.Body);
+        var root = body.RootElement;
+        var messages = root.GetProperty("messages").EnumerateArray();
+        if (providerKind == AiProviderKind.Anthropic)
+        {
+            Assert.Equal("Trusted instructions.", root.GetProperty("system").GetString());
+            Assert.Collection(
+                messages,
+                message =>
+                {
+                    Assert.Equal("user", message.GetProperty("role").GetString());
+                    Assert.Equal(
+                        "Untrusted compacted history.",
+                        message.GetProperty("content").GetString());
+                },
+                message => Assert.Equal("user", message.GetProperty("role").GetString()));
+        }
+        else
+        {
+            Assert.Collection(
+                messages,
+                message => Assert.Equal("system", message.GetProperty("role").GetString()),
+                message =>
+                {
+                    Assert.Equal("user", message.GetProperty("role").GetString());
+                    Assert.Equal(
+                        "Untrusted compacted history.",
+                        message.GetProperty("content").GetString());
+                },
+                message => Assert.Equal("user", message.GetProperty("role").GetString()));
+        }
+    }
+
+    [Theory]
+    [InlineData(AiProviderKind.OpenAiCompatible)]
+    [InlineData(AiProviderKind.Anthropic)]
     public async Task ProviderSerializesTheCommonMaximumToolName(
         AiProviderKind providerKind)
     {

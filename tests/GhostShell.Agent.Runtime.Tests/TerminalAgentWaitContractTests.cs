@@ -10,7 +10,7 @@ namespace GhostShell.Agent.Runtime.Tests;
 public sealed class TerminalAgentWaitContractTests
 {
     [Fact]
-    public void SchemaAdvertisesExactlyThreeClosedWaitShapes()
+    public void SchemaAdvertisesExactlySixClosedWaitShapesUpToOneHour()
     {
         var panel = ContextPanel("one", "panel-one");
         var wait = TerminalAgentToolSet.For(panel)
@@ -20,8 +20,12 @@ public sealed class TerminalAgentWaitContractTests
         Assert.Equal(
             [
                 "text",
+                "delay_ms",
                 "after_content_revision",
                 "stable_for_ms",
+                "prompt_ready",
+                "command_finished",
+                "after_shell_event_sequence",
                 "timeout_ms",
             ],
             schema
@@ -29,29 +33,55 @@ public sealed class TerminalAgentWaitContractTests
                 .EnumerateObject()
                 .Select(property => property.Name));
         Assert.Equal(
-            ["timeout_ms"],
+            [],
             RequiredNames(schema));
         Assert.Equal(
             [
-                "text",
-                "after_content_revision",
-                "stable_for_ms",
+                new[] { "delay_ms" },
+                ["text", "timeout_ms"],
+                ["after_content_revision", "timeout_ms"],
+                ["stable_for_ms", "timeout_ms"],
+                ["prompt_ready", "after_shell_event_sequence", "timeout_ms"],
+                ["command_finished", "after_shell_event_sequence", "timeout_ms"],
             ],
             schema
                 .GetProperty("oneOf")
                 .EnumerateArray()
-                .Select(shape => Assert.Single(RequiredNames(shape))));
+                .Select(RequiredNames));
+        Assert.Equal(
+            3_600_000,
+            schema.GetProperty("properties")
+                .GetProperty("timeout_ms")
+                .GetProperty("maximum")
+                .GetInt32());
         Assert.False(
             schema.GetProperty("additionalProperties").GetBoolean());
+        Assert.Contains(
+            "visual quiescence",
+            wait.Description,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "never proof of an idle prompt",
+            wait.Description,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "interactive_state_available",
+            wait.Description,
+            StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task ParsesAllThreeHostedWaitConditions()
+    public async Task ParsesDelayAndAllFiveHostedWaitConditions()
     {
+        var delay = AssertParsed<TerminalAgentIntent.WaitForDelay>(
+            await ProposalAsync(
+                """
+                {"delay_ms":3600000}
+                """));
         var text = AssertParsed<TerminalAgentIntent.WaitForText>(
             await ProposalAsync(
                 """
-                {"text":"ready","timeout_ms":30000}
+                {"text":"ready","timeout_ms":3600000}
                 """));
         var change = AssertParsed<TerminalAgentIntent.WaitForChange>(
             await ProposalAsync(
@@ -63,17 +93,35 @@ public sealed class TerminalAgentWaitContractTests
                 """
                 {"stable_for_ms":125,"timeout_ms":250}
                 """));
+        var promptReady = AssertParsed<TerminalAgentIntent.WaitForPromptReady>(
+            await ProposalAsync(
+                """
+                {"prompt_ready":true,"after_shell_event_sequence":7,"timeout_ms":3600000}
+                """));
+        var commandFinished = AssertParsed<TerminalAgentIntent.WaitForCommandFinished>(
+            await ProposalAsync(
+                """
+                {"command_finished":true,"after_shell_event_sequence":9223372036854775807,"timeout_ms":1}
+                """));
 
         Assert.Equal("ready", text.Text);
-        Assert.Equal(TimeSpan.FromSeconds(30), text.Timeout);
+        Assert.Equal(TimeSpan.FromHours(1), delay.Delay);
+        Assert.Equal(TimeSpan.FromHours(1), text.Timeout);
         Assert.Equal(long.MaxValue, change.AfterContentRevision);
         Assert.Equal(TimeSpan.FromMilliseconds(1), change.Timeout);
         Assert.Equal(TimeSpan.FromMilliseconds(125), stable.StableFor);
         Assert.Equal(TimeSpan.FromMilliseconds(250), stable.Timeout);
+        Assert.Equal(7, promptReady.AfterShellEventSequence);
+        Assert.Equal(TimeSpan.FromHours(1), promptReady.Timeout);
+        Assert.Equal(long.MaxValue, commandFinished.AfterShellEventSequence);
+        Assert.Equal(TimeSpan.FromMilliseconds(1), commandFinished.Timeout);
     }
 
     [Theory]
     [InlineData("""{"timeout_ms":1000}""")]
+    [InlineData("""{"delay_ms":0}""")]
+    [InlineData("""{"delay_ms":3600001}""")]
+    [InlineData("""{"delay_ms":1000,"timeout_ms":1000}""")]
     [InlineData("""{"text":"ready"}""")]
     [InlineData("""{"text":"","timeout_ms":1000}""")]
     [InlineData("""{"text":"line\nfeed","timeout_ms":1000}""")]
@@ -88,9 +136,18 @@ public sealed class TerminalAgentWaitContractTests
     [InlineData("""{"stable_for_ms":1001,"timeout_ms":1000}""")]
     [InlineData("""{"stable_for_ms":30001,"timeout_ms":30000}""")]
     [InlineData("""{"stable_for_ms":1,"timeout_ms":0}""")]
-    [InlineData("""{"stable_for_ms":1,"timeout_ms":30001}""")]
+    [InlineData("""{"stable_for_ms":1,"timeout_ms":3600001}""")]
     [InlineData("""{"stable_for_ms":"1","timeout_ms":1000}""")]
     [InlineData("""{"stable_for_ms":1,"timeout_ms":1.5}""")]
+    [InlineData("""{"prompt_ready":true,"timeout_ms":1000}""")]
+    [InlineData("""{"prompt_ready":false,"after_shell_event_sequence":0,"timeout_ms":1000}""")]
+    [InlineData("""{"prompt_ready":true,"after_shell_event_sequence":-1,"timeout_ms":1000}""")]
+    [InlineData("""{"prompt_ready":true,"after_shell_event_sequence":1.5,"timeout_ms":1000}""")]
+    [InlineData("""{"prompt_ready":true,"after_shell_event_sequence":9223372036854775808,"timeout_ms":1000}""")]
+    [InlineData("""{"command_finished":true,"after_shell_event_sequence":0}""")]
+    [InlineData("""{"command_finished":true,"after_shell_event_sequence":0,"timeout_ms":3600001}""")]
+    [InlineData("""{"prompt_ready":true,"command_finished":true,"after_shell_event_sequence":0,"timeout_ms":1000}""")]
+    [InlineData("""{"prompt_ready":true,"after_shell_event_sequence":0,"timeout_ms":1000,"text":"ready"}""")]
     public async Task RejectsInvalidOrAmbiguousWaitShapes(string arguments)
     {
         var proposal = await ProposalAsync(arguments);
@@ -157,18 +214,21 @@ public sealed class TerminalAgentWaitContractTests
                 .EnumerateArray()
                 .Select(value => value.GetString()));
         Assert.Equal(
-            ["timeout_ms", "panel_id"],
+            ["panel_id"],
             RequiredNames(schema));
         Assert.Equal(
             [
-                "text",
-                "after_content_revision",
-                "stable_for_ms",
+                new[] { "delay_ms" },
+                ["text", "timeout_ms"],
+                ["after_content_revision", "timeout_ms"],
+                ["stable_for_ms", "timeout_ms"],
+                ["prompt_ready", "after_shell_event_sequence", "timeout_ms"],
+                ["command_finished", "after_shell_event_sequence", "timeout_ms"],
             ],
             schema
                 .GetProperty("oneOf")
                 .EnumerateArray()
-                .Select(shape => Assert.Single(RequiredNames(shape))));
+                .Select(RequiredNames));
         Assert.False(
             schema.GetProperty("additionalProperties").GetBoolean());
     }
@@ -193,11 +253,21 @@ public sealed class TerminalAgentWaitContractTests
                 stable_for_ms = 100,
                 timeout_ms = 250,
             }));
+        var commandFinishedProposal = await ProposalAsync(
+            JsonSerializer.Serialize(new
+            {
+                panel_id = first.PanelId.Value,
+                command_finished = true,
+                after_shell_event_sequence = 9,
+                timeout_ms = 500,
+            }));
 
         var change = Assert.IsType<TerminalAgentIntentResult.Parsed>(
             TerminalAgentToolParser.Parse(changeProposal, scope));
         var stable = Assert.IsType<TerminalAgentIntentResult.Parsed>(
             TerminalAgentToolParser.Parse(stableProposal, scope));
+        var commandFinished = Assert.IsType<TerminalAgentIntentResult.Parsed>(
+            TerminalAgentToolParser.Parse(commandFinishedProposal, scope));
 
         Assert.Equal(first.PanelId, change.PanelId);
         Assert.Equal(
@@ -209,6 +279,11 @@ public sealed class TerminalAgentWaitContractTests
             TimeSpan.FromMilliseconds(100),
             Assert.IsType<TerminalAgentIntent.WaitForStable>(
                 stable.Intent).StableFor);
+        Assert.Equal(first.PanelId, commandFinished.PanelId);
+        Assert.Equal(
+            9,
+            Assert.IsType<TerminalAgentIntent.WaitForCommandFinished>(
+                commandFinished.Intent).AfterShellEventSequence);
     }
 
     [Fact]

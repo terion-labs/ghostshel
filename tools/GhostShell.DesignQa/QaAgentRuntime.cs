@@ -27,6 +27,7 @@ internal sealed class QaOfflineAgentRuntime : IGovernedAgentRuntime
         TargetTitle: string.Empty,
         ImmutableArray<GovernedAgentContextItem>.Empty,
         Messages: [],
+        EffectivePolicy: AgentPolicy.Default,
         ProvisionalAssistantText: string.Empty,
         Status: "Add an AI provider to start a governed run.");
 

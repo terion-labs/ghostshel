@@ -27,11 +27,7 @@ Console.WriteLine($"Exclr8Cef {versions.Shim} — running CEF {versions.Cef} (Ch
 //   Windows: <dir>/exclr8cef_demo_helper.exe (sibling of the main .exe)
 //   Linux:   <dir>/exclr8cef_demo_helper      (same idea, no extension)
 var helperPath = OperatingSystem.IsMacOS()
-    ? Path.GetFullPath(Path.Combine(
-          AppContext.BaseDirectory,
-          "..", "Frameworks",
-          "exclr8cef_demo Helper.app", "Contents", "MacOS",
-          "exclr8cef_demo Helper"))
+    ? ResolveMacHelperPath()
     : OperatingSystem.IsWindows()
         ? Path.Combine(AppContext.BaseDirectory, "exclr8cef_demo_helper.exe")
         : Path.Combine(AppContext.BaseDirectory, "exclr8cef_demo_helper");
@@ -62,6 +58,16 @@ if (args.Contains("--loadstring-test"))
     return RunLoadStringTest(args, helperPath);
 }
 
+if (args.Contains("--close-on-load-end-test"))
+{
+    return RunCloseOnLoadEndTest(args, helperPath);
+}
+
+if (args.Contains("--accessibility-test"))
+{
+    return RunAccessibilityTest(args, helperPath);
+}
+
 if (accelPaintOut is not null)
 {
     if (screenshotUrl is null)
@@ -85,6 +91,30 @@ Cef.Shutdown();
 
 Console.WriteLine("Exclr8Cef shut down cleanly.");
 return 0;
+
+static string ResolveMacHelperPath()
+{
+    var frameworks = Path.GetFullPath(Path.Combine(
+        AppContext.BaseDirectory,
+        "..",
+        "Frameworks"));
+    var candidates = new[]
+    {
+        Path.Combine(
+            frameworks,
+            "exclr8cef_demo Helper.app",
+            "Contents",
+            "MacOS",
+            "exclr8cef_demo Helper"),
+        Path.Combine(
+            frameworks,
+            "GhostSHELL Helper.app",
+            "Contents",
+            "MacOS",
+            "GhostSHELL Helper"),
+    };
+    return candidates.FirstOrDefault(File.Exists) ?? candidates[0];
+}
 
 static string? GetArg(string[] argv, string name)
 {
@@ -180,6 +210,335 @@ static int RunLoadStringTest(string[] argv, string helperPath)
     Console.WriteLine($"RESULT: initial={ok0} small={ok1} sameAgain={ok2} different={ok3} largeViaHandler={ok4} medium1.4MB={ok5}");
     return 0;
 }
+
+// Regression for hosts that remove a browser-backed view as a page finishes.
+// The managed callback is synchronous with native CefLoadHandler::OnLoadEnd,
+// so Close must be queued until that native callback has unwound.
+static int RunCloseOnLoadEndTest(string[] argv, string helperPath)
+{
+    var tempRoot = Path.GetTempPath();
+    if (OperatingSystem.IsMacOS()
+        && tempRoot.StartsWith("/var/", StringComparison.Ordinal))
+    {
+        tempRoot = "/private" + tempRoot;
+    }
+    var cacheRoot = Path.Combine(
+        tempRoot,
+        $"exclr8cef-close-on-load-end-{Environment.ProcessId}");
+    Directory.CreateDirectory(cacheRoot);
+    Cef.SetInitSettings(new Cef.CefSettings
+    {
+        RootCachePath = cacheRoot,
+        CachePath = Path.Combine(cacheRoot, "cache"),
+    });
+    Cef.InitializeForOsr(argv, helperPath, _ => { });
+    var browser = Cef.CreateOffscreenBrowser(320, 180, 1.0f, "about:blank");
+    if (browser is null)
+    {
+        Console.Error.WriteLine("CreateOffscreenBrowser failed");
+        Cef.Shutdown();
+        return 3;
+    }
+
+    var closeRequested = false;
+    var closed = false;
+    browser.Closed += (_, _) => closed = true;
+    browser.LoadEnd += (_, e) =>
+    {
+        if (!e.IsMainFrame || closeRequested) return;
+        closeRequested = true;
+        browser.Dispose();
+        browser.Dispose();
+    };
+
+    // CreateOffscreenBrowser may finish about:blank before callers can attach
+    // handlers. Start a distinct navigation only after the callback is wired so
+    // this regression deterministically closes from inside LoadEnd.
+    browser.LoadString("<html><body>close from load end</body></html>");
+
+    var deadline = DateTime.UtcNow.AddSeconds(10);
+    while (!closed && DateTime.UtcNow < deadline)
+    {
+        Cef.DoMessageLoopWork();
+        Thread.Sleep(5);
+    }
+
+    Cef.Shutdown();
+    try
+    {
+        Directory.Delete(cacheRoot, recursive: true);
+    }
+    catch (IOException)
+    {
+        // The lifecycle result matters more than best-effort test-cache cleanup.
+    }
+    catch (UnauthorizedAccessException)
+    {
+        // The lifecycle result matters more than best-effort test-cache cleanup.
+    }
+    Console.WriteLine(
+        $"RESULT: closeRequested={closeRequested} closed={closed}");
+    return closeRequested && closed ? 0 : 4;
+}
+
+// Native integration probe for the same acknowledged CDP Accessibility
+// round-trip used by GhostSHELL's browser agent. This deliberately runs below
+// Avalonia and the session host so renderer/protocol failures stay observable.
+static int RunAccessibilityTest(string[] argv, string helperPath)
+{
+    var tempRoot = Path.GetTempPath();
+    if (OperatingSystem.IsMacOS()
+        && tempRoot.StartsWith("/var/", StringComparison.Ordinal))
+    {
+        tempRoot = "/private" + tempRoot;
+    }
+
+    var cacheRoot = Path.Combine(
+        tempRoot,
+        $"exclr8cef-accessibility-{Environment.ProcessId}");
+    Directory.CreateDirectory(cacheRoot);
+    Cef.SetInitSettings(new Cef.CefSettings
+    {
+        RootCachePath = cacheRoot,
+        CachePath = Path.Combine(cacheRoot, "cache"),
+    });
+    Cef.InitializeForOsr(argv, helperPath, _ => { });
+    var browser = Cef.CreateOffscreenBrowser(640, 480, 1.0f, "about:blank");
+    if (browser is null)
+    {
+        Console.Error.WriteLine("CreateOffscreenBrowser failed");
+        Cef.Shutdown();
+        return 3;
+    }
+
+    var initialLoaded = false;
+    var loaded = false;
+    browser.LoadEnd += (_, eventArgs) =>
+    {
+        if (!eventArgs.IsMainFrame)
+        {
+            return;
+        }
+
+        if (string.Equals(
+                eventArgs.Url,
+                "about:blank",
+                StringComparison.Ordinal))
+        {
+            initialLoaded = true;
+        }
+        else
+        {
+            loaded = true;
+        }
+    };
+
+    var initialDeadline = DateTime.UtcNow.AddSeconds(10);
+    while (!initialLoaded && DateTime.UtcNow < initialDeadline)
+    {
+        Cef.DoMessageLoopWork();
+        Thread.Sleep(5);
+    }
+    browser.LoadString(
+        "<html><body><button aria-label='Continue' aria-pressed='false' "
+        + "onclick=\"this.setAttribute('aria-pressed','true')\">Go</button>"
+        + "<label>Email<input type='email'></label>"
+        + "<div style='height:1600px'></div></body></html>");
+
+    var loadDeadline = DateTime.UtcNow.AddSeconds(10);
+    while (!loaded && DateTime.UtcNow < loadDeadline)
+    {
+        Cef.DoMessageLoopWork();
+        Thread.Sleep(5);
+    }
+
+    Exception? failure = null;
+    IReadOnlyList<Exclr8Cef.Cdp.AxNode>? nodes = null;
+    var filled = false;
+    var clicked = false;
+    var scrolled = false;
+    if (loaded)
+    {
+        var readTask = ReadAccessibilityAsync(browser);
+        var readDeadline = DateTime.UtcNow.AddSeconds(10);
+        while (!readTask.IsCompleted && DateTime.UtcNow < readDeadline)
+        {
+            Cef.DoMessageLoopWork();
+            Thread.Sleep(5);
+        }
+
+        if (!readTask.IsCompleted)
+        {
+            failure = new TimeoutException(
+                "Accessibility CDP round-trip did not complete.");
+        }
+        else
+        {
+            try
+            {
+                var result = readTask.GetAwaiter().GetResult();
+                nodes = result.Nodes;
+                filled = result.Filled;
+                clicked = result.Clicked;
+                scrolled = result.Scrolled;
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        }
+    }
+
+    browser.Close();
+    var closeDeadline = DateTime.UtcNow.AddSeconds(2);
+    while (!browser.IsClosed && DateTime.UtcNow < closeDeadline)
+    {
+        Cef.DoMessageLoopWork();
+        Thread.Sleep(5);
+    }
+    Cef.Shutdown();
+    try
+    {
+        Directory.Delete(cacheRoot, recursive: true);
+    }
+    catch (IOException)
+    {
+        // Best-effort test-cache cleanup.
+    }
+    catch (UnauthorizedAccessException)
+    {
+        // Best-effort test-cache cleanup.
+    }
+
+    var hasButton = nodes?.Any(node =>
+        string.Equals(node.Role, "button", StringComparison.OrdinalIgnoreCase)
+        && string.Equals(node.Name, "Continue", StringComparison.Ordinal))
+        ?? false;
+    var hasInput = nodes?.Any(node =>
+        string.Equals(node.Role, "textbox", StringComparison.OrdinalIgnoreCase)
+        && string.Equals(node.Name, "Email", StringComparison.Ordinal))
+        ?? false;
+    if (failure is not null)
+    {
+        Console.Error.WriteLine(failure);
+    }
+
+    Console.WriteLine(
+        $"RESULT: loaded={loaded} nodes={nodes?.Count ?? 0} "
+        + $"button={hasButton} input={hasInput} filled={filled} "
+        + $"clicked={clicked} scrolled={scrolled}");
+    return loaded && hasButton && hasInput && filled && clicked && scrolled
+        && failure is null
+        ? 0
+        : 4;
+}
+
+static async Task<(
+    IReadOnlyList<Exclr8Cef.Cdp.AxNode> Nodes,
+    bool Filled,
+    bool Clicked,
+    bool Scrolled)>
+    ReadAccessibilityAsync(CefBrowser browser)
+{
+    await browser.Accessibility.EnableAsync().ConfigureAwait(false);
+    await browser.Dom.EnableAsync().ConfigureAwait(false);
+    var nodes = await browser.Accessibility
+        .GetFullTreeAsync(maxDepth: 64)
+        .ConfigureAwait(false);
+    var input = nodes.First(node =>
+        string.Equals(node.Role, "textbox", StringComparison.OrdinalIgnoreCase)
+        && string.Equals(node.Name, "Email", StringComparison.Ordinal));
+    var button = nodes.First(node =>
+        string.Equals(node.Role, "button", StringComparison.OrdinalIgnoreCase)
+        && string.Equals(node.Name, "Continue", StringComparison.Ordinal));
+    var inputBackendId = input.BackendDomNodeId
+        ?? throw new InvalidOperationException("Textbox has no backend node id.");
+    var buttonBackendId = button.BackendDomNodeId
+        ?? throw new InvalidOperationException("Button has no backend node id.");
+
+    await browser.Dom.FocusAsync(inputBackendId).ConfigureAwait(false);
+    await browser.Input.InsertTextAsync("probe value").ConfigureAwait(false);
+    var filledNodes = await browser.Accessibility
+        .GetPartialTreeAsync(inputBackendId, fetchRelatives: true)
+        .ConfigureAwait(false);
+    var filled = filledNodes.Any(node =>
+        node.BackendDomNodeId == inputBackendId
+        && string.Equals(node.Value, "probe value", StringComparison.Ordinal));
+
+    var quads = await browser.Dom
+        .GetContentQuadsAsync(buttonBackendId)
+        .ConfigureAwait(false);
+    var clip = quads.First().ToBoundingClip();
+    var x = clip.X + clip.Width / 2;
+    var y = clip.Y + clip.Height / 2;
+    await DispatchMouseAsync(browser, "mouseMoved", x, y, "none", buttons: 0)
+        .ConfigureAwait(false);
+    await DispatchMouseAsync(browser, "mousePressed", x, y, "left", buttons: 1)
+        .ConfigureAwait(false);
+    await DispatchMouseAsync(browser, "mouseReleased", x, y, "left", buttons: 0)
+        .ConfigureAwait(false);
+    var clicked = false;
+    for (var attempt = 0; attempt < 5 && !clicked; attempt++)
+    {
+        var describedButton = await browser.Dom
+            .DescribeNodeAsync(buttonBackendId)
+            .ConfigureAwait(false);
+        var attributes = describedButton.GetProperty("attributes")
+            .EnumerateArray()
+            .Select(attribute => attribute.GetString() ?? string.Empty)
+            .ToArray();
+        for (var index = 0; index + 1 < attributes.Length; index += 2)
+        {
+            if (string.Equals(
+                    attributes[index],
+                    "aria-pressed",
+                    StringComparison.Ordinal)
+                && string.Equals(
+                    attributes[index + 1],
+                    "true",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                clicked = true;
+                break;
+            }
+        }
+        if (!clicked)
+        {
+            await Task.Delay(20).ConfigureAwait(false);
+        }
+    }
+
+    await browser.Input
+        .SynthesizeScrollGestureAsync(
+            x: 320,
+            y: 240,
+            yDistance: -300,
+            gestureSource: "mouse")
+        .ConfigureAwait(false);
+    return (nodes, filled, clicked, Scrolled: true);
+}
+
+static Task DispatchMouseAsync(
+    CefBrowser browser,
+    string type,
+    double x,
+    double y,
+    string button,
+    int buttons) =>
+    browser.ExecuteDevToolsMethodAsync(
+        "Input.dispatchMouseEvent",
+        System.Text.Json.JsonSerializer.Serialize(new
+        {
+            type,
+            x,
+            y,
+            button,
+            buttons,
+            clickCount = string.Equals(button, "none", StringComparison.Ordinal)
+                ? 0
+                : 1,
+            pointerType = "mouse",
+        }));
 
 static int RunScreenshotMode(string[] argv, string helperPath, string url, string outPath,
                               int width, int height, float dsf)

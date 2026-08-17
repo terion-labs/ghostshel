@@ -42,6 +42,9 @@ internal sealed class WorkspaceRailTile : TemplatedControl
     public static readonly StyledProperty<bool> HasAttentionProperty =
         AvaloniaProperty.Register<WorkspaceRailTile, bool>(nameof(HasAttention));
 
+    public static readonly StyledProperty<bool> HasAgentActivityProperty =
+        AvaloniaProperty.Register<WorkspaceRailTile, bool>(nameof(HasAgentActivity));
+
     /// <summary>
     /// Whether this tile offers to end the workspace. False for the one that
     /// always exists — it has nowhere to go — and false for anything not
@@ -128,6 +131,12 @@ internal sealed class WorkspaceRailTile : TemplatedControl
     {
         get => GetValue(IsCurrentProperty);
         set => SetValue(IsCurrentProperty, value);
+    }
+
+    public bool HasAgentActivity
+    {
+        get => GetValue(HasAgentActivityProperty);
+        set => SetValue(HasAgentActivityProperty, value);
     }
 
     public bool HasAttention

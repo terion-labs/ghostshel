@@ -364,6 +364,18 @@ The agent cannot rely only on command blocks or shell command execution. Termina
 
 This is sufficient to operate interactive OpenCode, Codex, Claude Code, editors, pagers, and other TUIs without pretending they are line-oriented commands. Test fixtures MUST cover alternate screen, resize, color, wide/combining characters, IME, mouse mode, bracketed paste, and an interactive confirmation prompt.
 
+Generic TUI automation uses terminal facts rather than named-application
+heuristics. After input, the agent can wait for a newer screen revision, wait
+for visual quiescence, and read logical text with soft wraps removed. Visual
+quiescence is not promoted to idle/prompt/approval state. Applications or
+host-side adapters may additionally emit the bounded, expiring
+`terminal.interactive-state.v1` OSC 777 observation protocol. These state
+signals are untrusted and never authorize an action; applications without the
+protocol remain fully operable through ordinary terminal primitives with their
+interactive state reported as unknown. Local PTY launches advertise protocol
+support through `GHOSTSHELL_INTERACTIVE_STATE_PROTOCOL`; the variable is a
+capability advertisement, not a semantic-state claim.
+
 ### 6.4 Command blocks are deferred enhancement
 
 The design's command cards are desirable but not a desktop-v1 dependency. First collect semantic command boundaries using shell integration (for example prompt/command/output markers and working-directory updates) and retain a normal continuous terminal rendering mode.
@@ -507,8 +519,11 @@ Desktop browser panels use the pinned Chromium Embedded Framework runtime:
 
 Profiles own cookies, storage, permissions, downloads, cache, and history. Ephemeral profiles are supported. OAuth and security-sensitive authentication flows SHOULD be opened in the system browser when the identity provider disallows embedded user agents.
 
-In desktop mode, a browser session and its CEF view follow the lifetime of the
-owning panel. Closing the panel closes the browser. A renderer-process crash
+In desktop mode, a browser session and its CEF renderer follow the lifetime of
+the owning panel, independently of whether that panel's Avalonia visual is
+currently mounted. Inactive tabs keep a hidden CPU-OSR renderer available to
+governed semantic and input operations; presenting the panel adopts the same
+attachment. Closing the panel closes the browser. A renderer-process crash
 replaces the frozen view and reports loss of volatile page state.
 
 **Implemented CEF foundation (2026-08-08).** `GhostShell.Application` exposes
@@ -533,9 +548,10 @@ records the runtime, packaging, and release gates.
 ### 9.1 Engine-neutral automation
 
 The engine-neutral contracts retain the useful interaction model of
-`agent-browser`. The production CEF adapter currently advertises state and
-governed navigation only; semantic automation is deferred to its own trust-model
-pass and fails closed in this migration.
+`agent-browser`. The production CEF adapter advertises bounded state,
+navigation, wait, semantic snapshot, exact-element click/fill/check, and
+low-level mouse/key/scroll operations. Provider-authored script evaluation is
+not part of the production profile.
 
 **Implemented governed contracts (2026-07-24).** The native agent runtime has
 ten closed typed browser operations: `browser.read_state`, `browser.snapshot`,
@@ -549,18 +565,14 @@ application-private native-adapter scripts. No provider-authored script,
 raw-JavaScript tool, selector, DOM or browser-engine object, CDP client, or
 Node.js child process enters the public path.
 
-The production desktop advertises a narrower immutable profile: state read,
-navigate, back, forward, reload, stop, and the navigation origin guard.
-Snapshot, click, fill, and check exist only in an explicitly injected
-`FullAutomationCandidate` profile used by tests and future conformance work.
-One profile is fixed for the factory, every session it creates, and its
-renderer surface. Desktop creates the surface from the exact session-factory
-profile. SessionHost snapshots that factory profile for negotiation, rejects
-and disposes a created session whose capabilities differ in either direction,
-and attachment rejects both missing and extra renderer capabilities.
-This preserves existing governed navigation while keeping page-realm element
-automation out of production until a named native adapter supplies hostile-page
-and event-ordering evidence.
+One immutable profile is fixed for the factory, every session it creates, and
+its renderer surface. Desktop creates the surface from the exact
+session-factory profile. SessionHost snapshots that factory profile for
+negotiation, rejects and disposes a created session whose capabilities differ
+in either direction, and attachment rejects both missing and extra renderer
+capabilities. The separately named `FullAutomationCandidate` adds only the
+dormant evaluation capability; production keeps provider-authored evaluation
+disabled.
 [ADR 0026](adr/0026-native-browser-capability-conformance-gate.md) records the
 gate.
 
@@ -578,51 +590,55 @@ bypass this bridge.
 
 Provider-visible state is bounded and labeled `untrusted_browser`: HTTP(S)
 query and fragment are removed, title text is secret-redacted and byte-bounded,
-and renderer error messages are reduced to stable codes. The host's first-slice
-domain gate treats a `HumanApproval` as the one-use allow decision for its exact
-typed action. All five navigation tools are cataloged as mutations, so the
+and renderer error messages are reduced to stable codes. The host treats a
+`HumanApproval` as the one-use allow decision for its exact typed action. All
+five navigation tools are cataloged as mutations, so the
 broker escalates `BrowserNavigation=Auto` to exact human approval rather than
 allowing approval-free navigation. Click, fill, and check are separately cataloged
 mutations, so the broker similarly escalates `BrowserInteraction=Auto`.
 `read_state` and `snapshot` can normally arrive as `AutoPolicy`; the host
 nevertheless evaluates that source for every operation as defense in depth.
-At that host gate, Auto read/snapshot/reload/stop are allowed, explicit
-navigation requires the same HTTP(S) scheme, IDN host, and effective port as
-the current page, back/forward/click/fill/check are denied, and `about:blank`
-may only remain `about:blank`. Click, fill, and check accept only
-`HumanApproval`. Every `YoloPolicy` browser action fails closed. Domain denials use
-`browser_domain_policy_denied`. [ADR 0021](adr/0021-governed-browser-state-and-navigation.md)
-records the boundary and its deliberately conservative limits.
+At that host gate, authorized navigation is not restricted to the current
+origin: it may leave `about:blank`, follow redirects, and activate links across
+sites. Click, fill, and check accept `HumanApproval` or confirmed run-local
+`YoloPolicy`; authorization-source failures use
+`browser_action_not_authorized`. [ADR 0021](adr/0021-governed-browser-state-and-navigation.md)
+records the boundary.
 
 Governed navigate, back, forward, and reload additionally require
 `browser.navigation_origin_guard`. The host freezes the approved destination
-origin for explicit navigation and the current committed origin for
-reload/history, refuses to overlap an unresolved load, and holds the one-action
-execution open through native completion. The renderer synchronously cancels
-every observed top-level redirect outside that scheme, IDN-normalized host,
-and effective port, validates the final address again, and preserves the last
-committed address/revision on denial. Stop and authority cancellation interrupt
-the pending load. Only final success records `*_completed`; redirect escape
-uses `browser_domain_policy_denied` and loading overlap uses retryable
-`navigation_in_progress`.
+boundary as unrestricted, refuses to overlap an unresolved load, and holds the
+one-action execution open through native completion. The renderer still
+revalidates the exact starting address/document revision, serializes navigation,
+and fences late or ambiguous terminal events, but it does not reject a start or
+final address merely because its origin changed. Stop and authority
+cancellation interrupt the pending load. Only final success records
+`*_completed`; loading overlap uses retryable `navigation_in_progress`.
 [ADR 0022](adr/0022-governed-browser-origin-containment.md) records the
-containment and its native-event limits.
+superseded containment decision and the navigation-serialization invariants
+that remain.
 
 `browser.snapshot` binds the trusted committed logical address and document
 revision, translates that binding to the exact last-projected renderer-local
 document, and checks it before and after capture. Address/revision drift fails
 closed. A renderer revision regression invalidates the projection and its
-references rather than being normalized into current state. The fixed private
-script and native parser bound traversal and accept at most 128 derived nodes
-from the top document. This is a page-realm DOM projection, not a portable
-platform accessibility tree; frames, shadow roots, and named-platform parity
-are not claimed.
+references rather than being normalized into current state. Chromium's native
+accessibility tree is projected into a lean semantic tree: empty/generic wrapper
+noise and duplicate actionable descendants are removed while document structure,
+text, and interactive nodes remain. `interactive_only`, case-insensitive `filter`,
+and `max_depth` are typed snapshot inputs. Filtering retains ancestors and runs
+before the bounded 512-node projection, so early page chrome cannot consume the
+budget before a requested late-page result. Frames, shadow roots, and
+named-platform parity are not claimed.
 
 The provider projection is labeled `untrusted_browser`, redacts secret-shaped
 page text, removes HTTP(S) query and fragment data, truncates overlong addresses
 with metadata, and exposes only allowlisted stable error codes. Its actual JSON
-encoding after escaping is at most 64 KiB; projected nodes are reduced until
-the complete envelope fits. Only one native snapshot may be outstanding.
+encoding after escaping is at most 64 KiB; there is no independent 48-node
+provider cutoff, and projected nodes are reduced only when the complete envelope
+would exceed the kernel byte limit. A truncated result reports available and
+returned counts and can be narrowed with the same pre-cap query. Only one native
+snapshot may be outstanding.
 Cancellation fences late completion, deadlines quarantine an ambiguous adapter
 for fail-closed replacement, and capture is unavailable during unresolved
 navigation.
@@ -649,17 +665,18 @@ The fixed script flushes pending mutation records, requires the epoch to match,
 revalidates the stored object, and calls captured
 `HTMLElement.prototype.click`.
 
-Click additionally requires `browser.navigation_origin_guard`. Any
-synchronously observed top-level start outside the frozen origin is cancelled;
-same-origin navigation waits for its terminal event and final-address check.
+Click additionally requires `browser.navigation_origin_guard`. The product
+supplies an unrestricted boundary, so cross-site link activation is allowed;
+navigation still waits for its terminal event and final-address projection.
 Cancellation wins only before native dispatch is committed. Later cancellation
 cannot overwrite a confirmed activation, and GhostSHELL never retries a click.
 A malformed result, deadline, native exception, missing terminal event, or
 other uncertain post-dispatch state returns non-retryable
 `browser_interaction_outcome_unknown`. Native-surface ambiguity attempts
-adapter quarantine and fresh `about:blank` replacement; every unknown outcome
-revokes the agent run before provider continuation, and unconfirmed recovery
-leaves the surface unavailable rather than enabling retry.
+adapter quarantine and fresh `about:blank` replacement. Every unknown outcome
+is committed as a non-retryable tool result, skips the stale remainder of its
+batch, and returns control to the provider for fresh inspection. Unconfirmed
+adapter recovery leaves that surface unavailable rather than enabling replay.
 [ADR 0024](adr/0024-governed-browser-element-click.md) records the exact-object,
 one-shot, commit, and quarantine boundary.
 
@@ -689,7 +706,8 @@ provider result nor audit records echo the text. Cancellation has authority
 only before native dispatch commits; any uncertain post-commit result is
 non-retryable
 `browser_interaction_outcome_unknown`, quarantines the native adapter and
-agent run, and prevents provider continuation or redispatch.
+settles the failed tool result without redispatch, and requires a fresh
+observation before another provider-chosen action.
 [ADR 0025](adr/0025-governed-browser-element-fill.md) records this boundary.
 
 `browser.check` accepts the same exact opaque `reference` and
@@ -710,7 +728,8 @@ Check repeats the same exact document, human-approval, origin-guard,
 navigation-containment, deadline, one-shot, receipt, and quarantine boundaries
 as click and fill. It never retries. Any uncertain post-activation outcome is
 non-retryable `browser_interaction_outcome_unknown`, quarantines the native
-adapter and agent run, and stops provider continuation. A future uncheck
+adapter, settles the failed tool result, and returns control for fresh
+inspection. A future uncheck
 operation remains separate and will not uncheck a selected radio implicitly.
 [ADR 0027](adr/0027-governed-browser-element-check.md) records this boundary.
 
@@ -736,8 +755,8 @@ Required common operations:
 - profile/cookie/storage management through explicit capabilities;
 - downloads, dialogs, permission prompts, certificate failures, and new-window requests as events.
 
-Console, network inspection, DevTools integration, and semantic interaction are
-optional future CEF capabilities. Unimplemented operations return
+Console, network inspection, screenshots, and additional interaction families
+are optional future CEF capabilities. Unimplemented operations return
 `UnsupportedCapability` or outcome-unknown rather than simulating success.
 
 Every browser tool call passes through domain allow/deny policy, content-boundary labeling, and the capability broker. Browser page text is untrusted input and MUST never silently elevate tool permissions.
@@ -772,28 +791,23 @@ adapters still receive neither a session host nor an executor, and their tool
 calls remain inert until the governed runtime creates a closed typed request
 for the broker/session-host path.
 
-**Implementation status (2026-07-24):** `agent.steer` is production-reachable
-as a native, human-only application operation during the actively streaming
-initial provider generation. One bounded update may replace that generation
-before it commits. The kernel preserves the exact provider and tool manifest,
-commits one revised user message, reserves a second bounded provider slot, and
-generation-fences late output from a non-cooperative old adapter. Commit,
-Steer, Stop, and caller cancellation have one gate-ordered winner.
+**Implementation status (2026-08-17):** steering and follow-ups share one
+bounded, ordered workspace-run queue. Enter queues an ordinary follow-up while
+busy; Command/Super+Enter queues steering; a queued row can be promoted with
+**Steer**, edited, deleted, or reordered. The primary action remains the send
+arrow and Stop remains independent.
 
-The governed runtime exposes steering only after target resolution and
-re-inspects the complete pinned target before use. It also revalidates the
-exact run and projected initial kernel generation, session/cancellation owner,
-immutable provider revision/current status, and baseline/run/effective policy
-generation. The generation binding prevents a delayed command from an earlier
-turn steering a later turn in the same run. It clears and filters old-generation
-provisional text after acceptance. Steering is unavailable
-during tool-result continuation, clarification, capability decision, action
-approval, and tool execution; it cannot answer or approve any of them. It
-requests no broker permit, invokes no SessionHost action, changes no authority,
-and creates no action or policy audit. The existing composer visibly changes
-to **Steer**, keeps **Stop** independent, prevents duplicate submission, and
-restores a rejected/cancelled draft. These decisions are recorded in
-[ADR 0037](adr/0037-bounded-native-provider-steering.md).
+Steering is consumed only after the current provider response or complete
+correlated tool batch has settled. It does not cancel the current generation,
+skip remaining tool calls, or rewrite an earlier user message. The next
+provider request receives steering as a distinct retained user turn. Ordinary
+follow-ups run when the agent would otherwise stop. Queue input cannot answer a
+dedicated question, decide a capability request, approve an action, change
+policy, or create tool authority. These decisions are recorded in
+[ADR 0046](adr/0046-ordered-step-boundary-agent-steering.md); the earlier
+generation-replacement design in
+[ADR 0037](adr/0037-bounded-native-provider-steering.md) is not routed by the
+desktop presentation.
 
 ### 10.2 Target scopes
 
@@ -834,8 +848,8 @@ when exactly one terminal can perform the operation. The parser does not infer
 authority from current cardinality.
 
 **Implementation status (2026-07-24):** The complete first governed
-workspace-graph family is production-reachable. `workspace.list`,
-`workspace.inspect`, `tab.list`, and `panel.list` project only the registered
+workspace-graph family is production-reachable. `workspace.inspect`,
+`tab.list`, and `panel.list` project only the registered
 graph objects already inside the immutable run target; they never discover
 sibling workspaces, tabs, or panels. `panel.inspect` and `panel.focus` select
 one exact current member. An exact panel or connection-session scope resolves
@@ -858,12 +872,25 @@ Graphless Quick Terminal sessions advertise no graph tool. These decisions are
 recorded in
 [ADR 0029](adr/0029-scope-clipped-governed-workspace-graph-observations.md).
 
+**Implementation status (2026-08-15):** A workspace-scoped run also exposes
+`tab.create`, `tab.close`, `panel.add`, `panel.split`, and `panel.close` through
+the `WorkspaceLayout` capability. The runtime derives all tab/panel enums from
+the fresh complete graph and panel-kind enums from the trusted desktop port.
+The composer binds the ordered topology; SessionHost consumes one exact permit,
+then calls a narrow presentation-owned mutation port and verifies the resulting
+host graph. Layout actions never retry graph conflicts. Unsaved database edits
+block close, while failure after the UI commit boundary is outcome-unknown and
+settles as a non-retryable failure before provider reconciliation. See
+[ADR 0045](adr/0045-governed-workspace-layout-mutations.md).
+
 ### 10.3 Tool surface
 
 The initial tool families are:
 
-- `workspace.list`, `workspace.inspect`, `tab.list`, `panel.list`, `panel.inspect`, `panel.focus`;
-- `terminal.read_screen`, `terminal.send_text`, `terminal.paste`,
+- `workspace.inspect`, `tab.list`, `panel.list`, `panel.inspect`, `panel.focus`,
+  `tab.create`, `tab.close`, `panel.add`, `panel.split`, `panel.close`;
+- `terminal.read_screen`, `terminal.read_screen_diff`, `terminal.find_on_screen`,
+  `terminal.read_scrollback`, `terminal.find`, `terminal.send_text`, `terminal.paste`, `terminal.submit_text`,
   `terminal.send_keys`, `terminal.send_chord`, `terminal.send_mouse`,
   `terminal.wait`, `terminal.interrupt`,
   `terminal.resize`;
@@ -883,6 +910,17 @@ The initial tool families are:
 
 Tools return structured data, stable errors, truncation metadata, and links to full local artifacts when applicable. Screen reads and terminal output use explicit byte/token budgets. Tool execution is cancellable.
 
+Rendered-screen search and screen diffs are viewport observations rather than
+scrollback aliases. A screen diff is available only for the latest revision the
+agent actually observed; renderer, context, and health reads do not replace that
+baseline, while a later agent-visible screen/find/wait/diff result does. Stale
+baselines return no fabricated rows. Special
+key repetition is bounded and encoded into one PTY delivery. The optional
+interactive input-region signal is an exact half-open zero-based
+`row`/`start_column`/`end_column_exclusive` range. It is app-authored, expiring,
+untrusted metadata; its absence remains unknown and never triggers heuristic
+approval handling.
+
 These dotted names are GhostSHELL domain, routing, and audit identities. They
 never cross an AI-provider wire contract directly. The agent kernel preserves
 already compatible names and derives a deterministic opaque provider alias for
@@ -894,9 +932,16 @@ internal identity across continuation, cancellation, and compaction; later
 rebinding fails before provider invocation. Tool-definition, schema,
 returned-call, and generated-argument budgets are independent.
 
-**Implementation status (2026-07-24):** All six first-family tools are
+**Implementation status (2026-07-24):** All five first-family tools are
 production-reachable through the same broker/SessionHost boundary.
-`workspace.list` and `workspace.inspect` use closed empty schemas.
+`workspace.inspect` uses a closed empty schema and resolves the run's one
+trusted workspace without accepting a workspace identifier.
+A Workspace run has one authoritative context: the complete registered graph.
+Panels without hosted sessions remain ordinary members of that context, so a
+launcher-only workspace can answer, inspect its graph, and create a tab or
+panel. Terminal/browser/file/database/Docker tools are derived from live
+session attributes on panels in that same context. Selecting a launcher tab
+never hides live sessions in sibling tabs.
 `tab.list` and `panel.list` accept only an optional fixed offset from
 `0/16/32/48`, return pages of 16 with offset/returned/next/complete receipts,
 publish no totals, and cannot accept IDs, filters, sorts, or continuation
@@ -1124,8 +1169,8 @@ ordered arguments, optional working directory, and environment-name-to-
 `SecretRef` bindings; Streamable HTTP contains one bounded HTTP(S) endpoint,
 an explicit acknowledgement for plaintext HTTP, and HTTP-header-name-to-
 `SecretRef` bindings. Both carry exact enabled-tool names and enabled state.
-Released schema-one stdio profiles are strictly migrated in memory at the
-infrastructure boundary; the next save or import emits schema two. SQLite,
+Only the current schema-two MCP profile is accepted; non-current schemas are
+rejected at the infrastructure boundary without migration. SQLite,
 import/export, and dependency-aware secret handling preserve references rather
 than values. Every imported MCP profile is normalized to disabled before
 publication. The Settings editor and trust-confirmation dialog author both
@@ -1149,7 +1194,7 @@ notification or server-request flood closes the transport instead of starving
 the expected response. SDK types do not cross the project boundary.
 
 For remote profiles, the official SDK `HttpClientTransport` runs in forced
-Streamable HTTP mode; legacy SSE fallback is disabled. A private HTTP boundary
+Streamable HTTP mode; the separate SSE transport is unsupported. A private HTTP boundary
 rejects redirects and cross-origin requests, disables cookies, ambient proxy
 use, decompression, and automatic redirects, and bounds response headers,
 session identifiers, and JSON/SSE body bytes. The SDK owns POST framing and
@@ -1172,18 +1217,20 @@ disposes every opened profile session before the manifest reaches the agent
 kernel.
 All aliases map back to the one trusted `mcp.call` catalog action, classified as
 `McpTools` plus `Mutation`. Both `Ask` and `Auto` therefore require an exact
-human approval; MCP rejects YOLO.
+human approval. Confirmed run-local Full access uses the same frozen binding,
+one-use authorization, host validation, and audit path without another prompt.
 
 Before any catalog, vault, or transport access, the execution host also requires
 a broker-issued launch lease for the exact registered agent/run and live
-`Ask`/`Auto` policy generation. Immediately before one dispatch, it re-inspects
+enabled policy generation. Immediately before one dispatch, it re-inspects
 the run target, recomputes its binding, verifies the frozen manifest, current
 profile revision, and credential-session validity, consumes the one-action
 human authorization, and calls the exact privately bound tool once. It never
 retries. Post-dispatch cancellation, transport loss, malformed or oversized
 response, and other ambiguous failures become
-`mcp_tool_outcome_unknown`; the runtime closes MCP sessions, revokes the run,
-and prevents provider continuation. Valid results are projected to at most
+`mcp_tool_outcome_unknown`; the runtime closes the uncertain MCP session,
+commits the non-retryable result, skips the stale batch remainder, and returns
+control for fresh inspection. Valid results are projected to at most
 64 KiB, omit binary/resource content and operational identities, redact exact
 and secret-shaped values, and carry `content_origin=untrusted_mcp`.
 Replacing or deleting an MCP-scoped credential closes every run that resolved
@@ -1493,7 +1540,7 @@ that profile's captured default. Its durable selectors offer only `Off`, `Ask`,
 and `Auto`. Terminal panel drafts also retain the exact closed startup-command
 delivery-failure policy across save, duplicate, per-layout draft switching, and
 workspace-only-tab editing; changing a panel to a non-terminal kind resets the
-policy to its legacy default.
+policy to the configured terminal default.
 
 Saved connection and saved-screen activation now follows one state-aware path
 across the overview cards, New Tab/New Session launcher, and unified search.
@@ -1611,15 +1658,27 @@ result set to the proposal generation without giving the kernel an executor.
 Pending proposals still block unrelated turns and cancellation rolls an
 unexecuted pending turn back.
 
+Tool-result settlement and provider continuation are separate kernel
+transitions. Exact correlated results first enter an
+`AwaitingProviderContinuation` transcript. That stable boundary can be
+checkpointed and compacted before the next provider request, matching Pi's
+prepare-next-turn lifecycle and preventing long multi-tool workflows from
+running past the model context window. The public convenience API preserves
+submit-and-continue behavior for callers that do not need maintenance between
+rounds.
+
 Long conversations now compact automatically using Pi's budget model: the
 active provider/model publishes its context capacity, the kernel triggers above
 `contextWindow - 16,384`, retains roughly 20,000 tokens of the newest whole
 user turns, and asks a separately configured provider/model to roll older state
 into the structured summary. The composer displays current usage against that
-effective capacity. Global AI settings select the compaction model and an
+effective capacity. Global AI settings select the compaction model and a
 title-generation model; workspace and saved-screen policy layers can override
-both independently. The editor defaults legacy policies to their primary model
-and never presents first-message fallback as a title-model option.
+both independently. Incomplete policies are rejected; the editor requires
+explicit primary, compaction, and title routes and never synthesizes any of them.
+The compacted provider projection is distinct from the append-only committed
+workspace transcript: compaction never removes visible history or inserts its
+internal summary into the chat, and schema-v3 idle checkpoints persist both.
 Maintenance
 providers receive no tools or execution authority, and a compaction/title
 failure cannot erase a provider answer that already committed. Quick Terminal
@@ -1650,14 +1709,13 @@ provider-private replay binding both match. It never resumes in-flight work or
 durable authority, and Clear removes the stored checkpoint. See
 [ADR 0043](adr/0043-idle-native-agent-checkpoints.md).
 
-One human steering update can now replace the actively streaming initial
-provider generation before commit. The original turn owner transparently runs
-the replacement with the same provider and exact tool manifest, while a
-reserved provider slot and generation checks fence non-cooperative old output.
-The governed runtime revalidates the exact target, provider revision, policies,
-and lifecycle first; approval, question, capability-decision, tool, and
-continuation states remain separate and non-steerable. The operation changes
-no authority and uses no broker, SessionHost action, or audit path.
+Human follow-ups and steering are retained in a bounded workspace-run queue.
+Steering is scheduled ahead of ordinary follow-ups at the next settled model
+or complete tool-batch boundary, without cancelling current work. The composer
+remains available during provider, tool, approval, question, and capability
+states, but queued text remains separate from those dedicated decisions. Queue
+operations change no authority and use no broker, SessionHost action, or audit
+path. See [ADR 0046](adr/0046-ordered-step-boundary-agent-steering.md).
 
 The kernel references only `GhostShell.Core` and the BCL. Compiled-boundary
 tests reject process, network, filesystem, native-loading, terminal,
@@ -1858,9 +1916,11 @@ caller cancellation occurred; a changed attachment authority still fails
 closed. libghostty-vt state and Porta.Pty receive and verify the exact cell grid
 instead of claiming success from a pixel-only resize. Resize is a mutation
 under the terminal command policy and dispatches once through the typed
-terminal-process port. Output is bounded, secret-shaped material is redacted, parallel
-calls fail closed, and both tool rounds and total turn duration are bounded. Stop, request
-cancellation, scope-membership or session replacement, provider-profile
+terminal-process port. Output is bounded, secret-shaped material is redacted,
+and parallel calls fail closed. Provider/tool continuation has no round-count
+or whole-turn deadline; it continues until the provider completes or the user
+cancels it. Each governed operation retains its own execution deadline. Stop,
+request cancellation, scope-membership or session replacement, provider-profile
 changes, runtime disposal, and failure recovery revoke authority rather than
 retrying an uncertain side effect.
 
@@ -1918,11 +1978,13 @@ escalates before authorization, the host accepts only `HumanApproval` or an
 explicit run-local `YoloPolicy`, and durable policy/recovery cannot carry
 YOLO. SessionHost invokes the captured provider mutation once. A valid receipt
 wins late cancellation or binding drift. After invocation begins, any provider
-failure, cancellation exception, other exception, or invalid receipt is
-non-retryable `file_mutation_outcome_unknown`, is audited `Failed`, and causes
-the runtime to stop provider continuation, revoke the run, and quarantine it
-until Clear. Only completion-audit reconciliation may retry; the side effect
-never does.
+rejection with a definite typed no-commit result is returned as a failed tool
+result so the model may recover. An ambiguous transport/cancellation failure,
+exception, or invalid receipt is non-retryable
+`file_mutation_outcome_unknown`, is audited `Failed`, and causes the runtime to
+commit the failed result, skip the stale remainder of the batch, and return
+control to the provider for a fresh observation. Only completion-audit
+reconciliation may retry; the side effect never does.
 
 Both mutations additionally require an operation-specific, host-trusted
 governed provider capability. Those flags default off and are assigned only by
@@ -1957,22 +2019,22 @@ requires an eligible `panel_id`, even when only one browser currently qualifies.
 `BrowserInteraction`; and the five navigation mutations use
 `BrowserNavigation`. The host requires the exact current interactive browser
 attachment owned by the approving client, consumes one authorization,
-revalidates attachment/session authority, applies the domain rule recorded in
+revalidates attachment/session authority, applies the action-authorization rule recorded in
 [ADR 0021](adr/0021-governed-browser-state-and-navigation.md),
-requires the redirect-containment capability recorded in
+requires the serialized-navigation capability recorded in
 [ADR 0022](adr/0022-governed-browser-origin-containment.md), and dispatches
 through the typed browser port without a terminal input lease.
 Human approval permits its exact typed action. Because all five navigation
 tools are cataloged mutations, the broker escalates
 `BrowserNavigation=Auto` to that exact human approval; only `read_state` and
 `snapshot` normally arrive as `AutoPolicy`. Click, fill, and check are separate
-mutations and `BrowserInteraction=Auto` is also escalated. The browser domain
-gate still
-evaluates Auto as defense in depth: it allows read/snapshot/reload/stop and
-same-origin HTTP(S) navigate, denies history movement, click, fill, check, and
-non-blank navigation from `about:blank`, and denies all browser YOLO. Click,
-fill, and check accept only `HumanApproval`. Denials use
-`browser_domain_policy_denied`. State results are bounded, strip HTTP(S)
+mutations and `BrowserInteraction=Auto` is also escalated. The host still
+evaluates the authorization source as defense in depth: it accepts observations
+and authorized navigation without a site-origin allowlist, while click, fill,
+check, and history movement require their expected authorization source.
+Confirmed run-local Full access is accepted only after the same starting
+document, reference, input-barrier, and session checks. Authorization-source
+denials use `browser_action_not_authorized`. State results are bounded, strip HTTP(S)
 query/fragment, redact and truncate page-controlled text, exclude renderer
 messages, and carry
 `content_origin=untrusted_browser`. Ordinary browser chrome remains an exact
@@ -2008,15 +2070,16 @@ native reference set before invoking captured `HTMLElement.prototype.click`,
 making leases one-shot.
 
 Click starts only from the exact ready source document, under
-`BrowserInteraction` and exact `HumanApproval`, and freezes that document's
-origin. A synchronously observed cross-origin or unsupported top-level start is
-cancelled; same-origin navigation must reach a matching terminal event before
-success. Cancellation has authority before the native call is committed. After
+`BrowserInteraction` and exact `HumanApproval`, and supplies an unrestricted
+navigation boundary. Any resulting navigation must reach a matching terminal
+event before success; changing site origin is allowed. Cancellation has
+authority before the native call is committed. After
 commit, late cancellation cannot replace a confirmed result, and no retry is
 issued. A deadline, malformed result, native exception, missing terminal event,
 or otherwise unknown post-dispatch outcome returns non-retryable
-`browser_interaction_outcome_unknown` and revokes the run before provider
-continuation. Native-surface ambiguity attempts adapter quarantine/replacement;
+`browser_interaction_outcome_unknown`, settles the failed tool result, and
+forces fresh inspection before another action. Native-surface ambiguity
+attempts adapter quarantine/replacement;
 unconfirmed dispatcher, receipt, or adapter recovery leaves the surface
 unavailable. The synthetic page-realm activation, top-document scope, and
 named-platform evidence limits are recorded in
@@ -2039,10 +2102,10 @@ inputs reject it around any comma-delimited token. That known failure is
 the assigned value, and dispatches a bubbling, composed synthetic `input`
 event. Results and audit expose only a receipt/stable code and never the text.
 Post-setter ambiguity is never retried; it returns
-`browser_interaction_outcome_unknown`, quarantines the adapter and run, and
-stops provider continuation. Unexpected in-process host exceptions from click
-or fill are normalized to the same outcome-unknown result so provider
-continuation cannot escape quarantine; observation and navigation host failures
+`browser_interaction_outcome_unknown`, quarantines the adapter, settles the
+failed result, and requires fresh inspection. Unexpected in-process host
+exceptions from click or fill are normalized to the same outcome-unknown result;
+observation and navigation host failures
 retain `browser_host_failed`. The registry and captured methods do not prevent
 a hostile page from poisoning `Map`/`Set`, `Function.prototype.call`, or other
 realm-visible APIs before or after registry installation or snapshot capture.
@@ -2112,6 +2175,20 @@ tool/risk/target/material-argument details and expiry. Approve and deny are
 explicit; a failed or stopped run must be cleared before reuse. The scope
 selector is locked once a run starts, while broad-scope approvals still display
 the exact panel action target rather than only the enclosing tab or workspace.
+After authorization, every panel-owned tool family projects the host-selected
+`PanelInstanceId` with its live action. The desktop turns the first such action
+in a provider turn into a panel-presence lease: tool completion does not drop
+it while the provider reasons, a later action against another panel transfers
+it, and ready/failed/cancelled turn completion releases it. Shared panel chrome
+draws a five-second accent inner-glow pulse around that exact panel, the shared
+tab strip marks its containing tab, and workspace rail/menu chrome marks its
+workspace. Panel headers do not add an activity robot—the exact glow is the
+panel-level signal, leaving feature-specific header glyphs unambiguous. The
+shell toolbar's robot independently pulses from its base colour to the accent
+while any open workspace owns a live agent turn, including provider-only phases
+before the first panel action. Focus is never used as a proxy and background
+work remains visible after switching workspaces. Workspace-graph and MCP work
+without a concrete panel do not invent one.
 
 The shared Avalonia renderer's physical text, key, mouse, focus, and paste input
 reacquires the exact human attachment lease adjacent to dispatch and preempts
@@ -2147,22 +2224,26 @@ presentation. The live agent header, capability card, and approval card expose
 the exact target, connection boundary, and current directory.
 
 The run-scoped full-access lifecycle supports exact panels, `OpenTab`, selected
-panels, and Workspace whenever the selected run scope contains a terminal.
-Browser and MCP actions remain governed and cannot consume terminal full-access
-authority. The override cannot be loaded as a durable runtime default.
+panels, and Workspace. It overlays every capability for that live run; tools
+still exist only when the exact workspace context exposes their required
+session capabilities. The override cannot be loaded as a durable runtime default.
 Selecting Full access is itself the explicit human choice; it remains run-bound
 until Ask is selected or the run ends, revokes on downgrade, and records
 deterministic secret-free policy transitions.
-Focused tests cover confirmed bypass, target mismatch, broad-scope binding,
-active-action revocation, next-action approval, ambiguous audit commit,
-and audit-failure suspension.
+Changing the mode during a provider turn advances the policy generation
+immediately. A pending, still-undispatched approval is revoked and the exact
+proposal is re-inspected once under the new generation; dispatched,
+cancelled, or outcome-unknown actions are never replayed. Focused tests cover
+confirmed bypass, live pending-approval replacement, target mismatch,
+broad-scope binding, active-action revocation, next-action approval, ambiguous
+audit commit, and audit-failure suspension.
 
 Saved-screen template targeting and additional visible agent scopes, browser
 profiles and permission/download/error flows, reference-backed interactions
 beyond click/fill/check, named-platform snapshot/redirect/click/fill/check, and browser
 automation conformance and document automation remain incomplete. The
 CEF browser foundation, governed state/navigation tools, closed
-snapshot/click/fill/check contracts, and top-level origin containment are
+snapshot/click/fill/check contracts, and serialized navigation completion are
 implemented. Snapshot/click/fill/check are not implemented by or
 production-advertised on the CEF adapter, and the work
 does not yet satisfy all browser or agent-control exit criteria below. The
@@ -2241,7 +2322,7 @@ boundary, so presentation remains independent of the concrete terminal engine.
 The governed agent surface reports its native in-process .NET boundary, the
 visible workspace target, live mixed terminal/browser/File Viewer/Statistics/
 Process Monitor membership, live capabilities, and effective policy. It
-does not claim saved-screen-template targeting or browser YOLO,
+does not claim saved-screen-template targeting,
 browser interactions beyond exact-object click/fill/check, cross-platform browser
 automation conformance, persistent MCP
 health/session resume, or

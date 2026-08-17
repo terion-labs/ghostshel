@@ -26,6 +26,45 @@ public sealed class ShellNotificationCenterTests
         Assert.True(shell.FlagsRefreshed > 0);
     }
 
+    [Fact]
+    public void A_workspace_notification_marks_background_work_without_a_panel()
+    {
+        var shell = new FakeShell();
+        var (workspace, tab, panel) = shell.AddWorkspace("background");
+
+        shell.Center.NotifyWorkspace(workspace);
+
+        Assert.False(panel.HasAttention);
+        Assert.False(tab.HasAttention);
+        Assert.True(workspace.HasAttention);
+        Assert.True(shell.FlagsRefreshed > 0);
+    }
+
+    [Fact]
+    public void Looking_at_a_workspace_clears_its_workspace_notification()
+    {
+        var shell = new FakeShell();
+        var (workspace, _, _) = shell.AddWorkspace("background");
+        shell.Center.NotifyWorkspace(workspace);
+
+        shell.Front = workspace;
+        shell.Center.MarkVisibleSeen();
+
+        Assert.False(workspace.HasAttention);
+    }
+
+    [Fact]
+    public void Workspace_work_finishing_in_the_visible_workspace_leaves_no_mark()
+    {
+        var shell = new FakeShell();
+        var (workspace, _, _) = shell.AddWorkspace("front");
+        shell.Front = workspace;
+
+        shell.Center.NotifyWorkspace(workspace);
+
+        Assert.False(workspace.HasAttention);
+    }
+
     /// <summary>
     /// Marking a panel you are already watching would be a dot you could never
     /// clear — it would reappear on the next line of output.

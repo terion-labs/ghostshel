@@ -806,6 +806,13 @@ internal sealed partial class GhosttyVtTerminalSession
             ? scrollbar.Total - scrollbar.Offset - scrollbar.Length
             : 0;
         var below = checked((int)Math.Min(remainingBelow, int.MaxValue));
+        var capturedAtUtc = DateTimeOffset.UtcNow;
+        if (_interactiveState is { } interactiveState
+            && interactiveState.ExpiresAtUtc <= capturedAtUtc)
+        {
+            _interactiveState = null;
+        }
+
         return new TerminalScreenSnapshot(
             text.ToString().TrimEnd('\n'),
             cursorRow,
@@ -814,7 +821,7 @@ internal sealed partial class GhosttyVtTerminalSession
             frame.Columns,
             activeScreen == GhosttyVtTerminalScreen.Alternate,
             NullIfEmpty(workingDirectory.CopyUtf8()) ?? _launch.WorkingDirectory,
-            DateTimeOffset.UtcNow,
+            capturedAtUtc,
             truncated,
             rows,
             ModeEnabledUnsafe(2004),
@@ -825,7 +832,8 @@ internal sealed partial class GhosttyVtTerminalSession
             above,
             below,
             BuildVisibleCommandBoundaries(frame, activeScreen),
-            _semanticMarkers.Select(marker => marker.Event).ToArray());
+            _semanticMarkers.Select(marker => marker.Event).ToArray(),
+            _interactiveState);
     }
 
     private unsafe IReadOnlyList<TerminalCommandBoundary> BuildVisibleCommandBoundaries(

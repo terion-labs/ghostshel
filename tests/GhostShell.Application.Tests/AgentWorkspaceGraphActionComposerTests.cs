@@ -96,7 +96,7 @@ public sealed class AgentWorkspaceGraphActionComposerTests
     }
 
     [Fact]
-    public void Listing_is_scope_relative_and_includes_non_session_monitors()
+    public void Panel_listing_is_scope_relative_and_includes_non_session_monitors()
     {
         var composer = new AgentWorkspaceGraphActionComposer();
         var graph = Graph();
@@ -109,16 +109,6 @@ public sealed class AgentWorkspaceGraphActionComposerTests
             graph,
             selected,
             [StatisticsPanel(), ProcessPanel()]);
-
-        var workspaceAction = composer.Prepare(
-            Envelope(),
-            context,
-            new AgentWorkspaceGraphRequest.WorkspaceList());
-        var listed =
-            Assert.IsType<
-                AgentWorkspaceGraphActionResult.WorkspacesListed>(
-                composer.Project(workspaceAction, context));
-        Assert.Single(listed.Workspaces);
 
         var panelAction = composer.Prepare(
             Envelope(),
@@ -288,12 +278,12 @@ public sealed class AgentWorkspaceGraphActionComposerTests
         var multibyteAction = composer.Prepare(
             Envelope(),
             multibyteContext,
-            new AgentWorkspaceGraphRequest.WorkspaceList());
+            new AgentWorkspaceGraphRequest.WorkspaceInspect());
         var multibyteResult =
             Assert.IsType<
-                AgentWorkspaceGraphActionResult.WorkspacesListed>(
+                AgentWorkspaceGraphActionResult.WorkspaceInspected>(
                 composer.Project(multibyteAction, multibyteContext));
-        var boundedTitle = Assert.Single(multibyteResult.Workspaces).Title!;
+        var boundedTitle = multibyteResult.Workspace.Workspace.Title!;
         Assert.Equal(
             AgentWorkspaceGraphTitle.MaximumTextBytes,
             System.Text.Encoding.UTF8.GetByteCount(boundedTitle.Text));
@@ -342,11 +332,18 @@ public sealed class AgentWorkspaceGraphActionComposerTests
     public void Requests_are_closed_and_offsets_are_fixed_and_bounded()
     {
         Assert.Empty(
-            typeof(AgentWorkspaceGraphRequest.WorkspaceList)
-                .GetProperties(BindingFlags.Instance | BindingFlags.Public));
-        Assert.Empty(
             typeof(AgentWorkspaceGraphRequest.WorkspaceInspect)
                 .GetProperties(BindingFlags.Instance | BindingFlags.Public));
+        Assert.Equal(
+            [
+                typeof(AgentWorkspaceGraphRequest.PanelList),
+                typeof(AgentWorkspaceGraphRequest.TabList),
+                typeof(AgentWorkspaceGraphRequest.WorkspaceInspect),
+            ],
+            typeof(AgentWorkspaceGraphRequest)
+                .GetNestedTypes()
+                .Where(type => !type.IsAbstract)
+                .OrderBy(type => type.Name, StringComparer.Ordinal));
         Assert.Equal(
             [0, 16, 32, 48],
             new[] { 0, 16, 32, 48 }

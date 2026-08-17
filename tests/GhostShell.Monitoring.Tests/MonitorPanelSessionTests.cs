@@ -24,6 +24,34 @@ public sealed class MonitorPanelSessionTests
         Assert.True(result.Value.IsTruncated);
         Assert.Equal(3, result.Value.EnumeratedProcessCount);
         Assert.Equal(3, result.Value.ObservedProcessCount);
+        Assert.Equal(3, result.Value.MatchingProcessCount);
+    }
+
+    [Fact]
+    public async Task ProcessQueryFiltersAndPagesBeforeApplyingTheLimit()
+    {
+        var source = new SequenceProcessSnapshotSource();
+        source.Enqueue(Capture(
+            Process(1, "dotnet-alpha", 10),
+            Process(2, "other", 20),
+            Process(3, "dotnet-charlie", 30),
+            Process(4, "dotnet-delta", 40)));
+        await using var session = ProcessSession(source);
+
+        var result = await session.ListProcessesAsync(
+            new ProcessMonitorQuery(
+                MaximumResults: 1,
+                Sort: ProcessMonitorSort.ProcessIdAscending,
+                Offset: 1,
+                NameContains: "DOTNET"),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.Message);
+        Assert.Equal([3], result.Value!.Processes.Select(process => process.ProcessId));
+        Assert.Equal(4, result.Value.EnumeratedProcessCount);
+        Assert.Equal(4, result.Value.ObservedProcessCount);
+        Assert.Equal(3, result.Value.MatchingProcessCount);
+        Assert.True(result.Value.IsTruncated);
     }
 
     [Theory]

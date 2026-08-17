@@ -29,7 +29,9 @@ public sealed record DatabaseTableQuery(
     IReadOnlyList<DatabaseFilterCondition> Filters,
     IReadOnlyList<DatabaseSort> Sorts,
     int Offset,
-    int Limit)
+    int Limit,
+    IReadOnlyList<string>? Columns = null,
+    IReadOnlyList<string>? ExcludeColumns = null)
 {
     public static DatabaseTableQuery FirstPage(int limit) => new([], [], 0, limit);
 }
@@ -39,7 +41,8 @@ public sealed record DatabaseTablePage(
     int Offset,
     int Limit,
     bool HasMore,
-    long TotalRows = 0);
+    long TotalRows = 0,
+    long? TableRows = null);
 
 public enum DatabaseEditValueState
 {

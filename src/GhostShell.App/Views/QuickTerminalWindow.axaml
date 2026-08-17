@@ -129,6 +129,22 @@
           </Grid>
         </DockPanel>
 
+        <!-- Quick Terminal owns a native terminal surface rather than a
+             PanelChrome. Mirror the shared, turn-scoped panel-presence glow
+             here so its active terminal receives the same signal as every
+             ordinary workspace panel. -->
+        <Border
+            Grid.Row="0"
+            ZIndex="80"
+            Background="Transparent"
+            BorderBrush="{DynamicResource ShellAccentBrush}"
+            BorderThickness="1"
+            BoxShadow="{DynamicResource ShellAgentPanelGlowShadow}"
+            Classes="PanelAgentGlow"
+            CornerRadius="0"
+            IsHitTestVisible="False"
+            IsVisible="{Binding ActiveTab.HasAgentActivity}" />
+
         <Panel
             x:Name="AgentViewport"
             Grid.Row="0"
@@ -160,6 +176,7 @@
               EnableAgentYoloRequested="OnEnableAgentYoloClick"
               KeepAgentCapabilityOffRequested="OnKeepAgentCapabilityOffClick"
               LoadOlderAgentAuditRequested="OnLoadOlderAgentAuditClick"
+              MoveQueuedFollowUpRequested="OnMoveAgentQueuedFollowUpRequested"
               RefreshAgentAuditRequested="OnRefreshAgentAuditClick"
               StartNewAgentConversationRequested="OnStartNewAgentConversationClick"
               OpenAgentConversationRequested="OnOpenAgentConversationClick"
@@ -170,7 +187,7 @@
               ToggleAgentModelFavoriteRequested="OnToggleAgentModelFavoriteClick"
               RefreshAgentModelsRequested="OnRefreshAgentModelsClick"
               SendAgentChatRequested="OnSendAgentChatClick"
-              QueueAgentFollowUpRequested="OnQueueAgentFollowUpClick"
+              QueueAgentSteeringRequested="OnQueueAgentSteeringClick"
               AttachAgentImageRequested="OnAttachAgentImageClick"
               ClearAgentImagesRequested="OnClearAgentImagesClick"
               ShowAgentSettingsRequested="OnShowAgentSettingsClick"
@@ -222,7 +239,19 @@
                   Click="OnToggleAgentClick"
                   ToolTip.Tip="Toggle agent panel"
                   AutomationProperties.Name="Toggle AI agent panel">
-                <icons:SymbolIcon Symbol="Bot" FontSize="13" />
+                <Grid>
+                  <icons:SymbolIcon
+                      FontSize="13"
+                      Foreground="{DynamicResource ShellForegroundBrush}"
+                      Symbol="Bot" />
+                  <icons:SymbolIcon
+                      Classes="AgentToolbarActivityPulse"
+                      Classes.running="{Binding AgentChat.IsBusy}"
+                      FontSize="13"
+                      Foreground="{DynamicResource ShellAccentBrush}"
+                      Opacity="0"
+                      Symbol="Bot" />
+                </Grid>
               </Button>
               <Button
                   Classes="IconButton"

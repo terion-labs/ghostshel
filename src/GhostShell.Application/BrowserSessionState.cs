@@ -14,7 +14,10 @@ public sealed record BrowserSessionState
         bool canGoBack,
         bool canGoForward,
         long documentRevision,
-        BrowserError? failure = null)
+        BrowserError? failure = null,
+        BrowserViewportState? viewport = null,
+        long viewportRevision = 0,
+        long inputEpoch = 0)
     {
         ArgumentNullException.ThrowIfNull(address);
         ArgumentNullException.ThrowIfNull(title);
@@ -32,6 +35,8 @@ public sealed record BrowserSessionState
         }
 
         ArgumentOutOfRangeException.ThrowIfNegative(documentRevision);
+        ArgumentOutOfRangeException.ThrowIfNegative(viewportRevision);
+        ArgumentOutOfRangeException.ThrowIfNegative(inputEpoch);
         if ((loadState == BrowserLoadState.Failed) != (failure is not null))
         {
             throw new ArgumentException(
@@ -46,6 +51,9 @@ public sealed record BrowserSessionState
         CanGoForward = canGoForward;
         DocumentRevision = documentRevision;
         Failure = failure;
+        Viewport = viewport ?? BrowserViewportState.Empty;
+        ViewportRevision = viewportRevision;
+        InputEpoch = inputEpoch;
     }
 
     public BrowserAddress Address { get; }
@@ -65,6 +73,14 @@ public sealed record BrowserSessionState
     public long DocumentRevision { get; }
 
     public BrowserError? Failure { get; }
+
+    public BrowserViewportState Viewport { get; }
+
+    /// <summary>Advances whenever the CSS viewport geometry or scale changes.</summary>
+    public long ViewportRevision { get; }
+
+    /// <summary>Advances after accepted human or acknowledged agent input.</summary>
+    public long InputEpoch { get; }
 
     public static BrowserSessionState Initial(BrowserAddress address) =>
         new(address, string.Empty, BrowserLoadState.Ready, false, false, 0);

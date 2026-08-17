@@ -2892,6 +2892,28 @@ extern "C" int excef_start_external_begin_frame_clock(
 extern "C" void excef_stop_external_begin_frame_clock(int) {}
 #endif
 
+namespace {
+
+class CloseBrowserTask final : public CefTask {
+public:
+    CloseBrowserTask(int browser_id, bool force_close)
+        : browser_id_(browser_id), force_close_(force_close) {}
+
+    void Execute() override {
+        auto browser = exclr8cef::GetOsrBrowser(browser_id_);
+        if (browser) {
+            browser->GetHost()->CloseBrowser(force_close_);
+        }
+    }
+
+private:
+    const int browser_id_;
+    const bool force_close_;
+    IMPLEMENT_REFCOUNTING(CloseBrowserTask);
+};
+
+}  // namespace
+
 // ---- Navigation -----------------------------------------------------------
 
 extern "C" void excef_load_url(int browser_id, const char* url) {
@@ -2909,8 +2931,17 @@ extern "C" void excef_reload(int browser_id, int ignore_cache) {
 }
 extern "C" void excef_stop_load(int browser_id) { auto b = get_browser(browser_id); if (b) b->StopLoad(); }
 extern "C" void excef_close_browser(int browser_id, int force_close) {
-    auto b = get_browser(browser_id);
-    if (b) b->GetHost()->CloseBrowser(force_close != 0);
+    if (!exclr8cef::LookupOsrHandler(browser_id)) return;
+
+    // Managed load callbacks run synchronously inside CEF's TID_UI stack.
+    // A host can legitimately release its view from LoadEnd; closing inline
+    // there recursively re-enters Chromium teardown and can overflow the
+    // native stack. Always queue close, even when the caller is already on
+    // TID_UI, so the active CEF callback unwinds before destruction begins.
+    CefPostTask(
+        TID_UI,
+        CefRefPtr<CefTask>(
+            new CloseBrowserTask(browser_id, force_close != 0)));
 }
 extern "C" void excef_was_hidden(int browser_id, int hidden) {
     auto b = get_browser(browser_id);
@@ -3283,6 +3314,89 @@ private:
     IMPLEMENT_REFCOUNTING(DevToolsObserver);
 };
 
+void EnsureDevToolsObserver(int browser_id, CefRefPtr<CefBrowser> browser) {
+    std::lock_guard<std::mutex> lock(exclr8cef::g_devtools_observers_mu);
+    if (!exclr8cef::g_devtools_observers.count(browser_id)) {
+        exclr8cef::g_devtools_observers[browser_id] =
+            browser->GetHost()->AddDevToolsMessageObserver(
+                new DevToolsObserver(browser_id));
+    }
+}
+
+void ReportDevToolsExecutionFailure(int browser_id, int message_id) {
+    if (!exclr8cef::g_devtools_message_cb) return;
+    std::string json =
+        "{\"id\":" + std::to_string(message_id)
+        + ",\"error\":{\"code\":-32000,"
+          "\"message\":\"CEF rejected the DevTools command.\"}}";
+    exclr8cef::g_devtools_message_cb(
+        browser_id,
+        /*is_event=*/0,
+        message_id,
+        json.c_str());
+}
+
+int ExecuteDevToolsMethodOnUi(
+        int browser_id,
+        int message_id,
+        const std::string& method,
+        const std::string& params_json) {
+    if (!CefCurrentlyOn(TID_UI)) {
+        ReportDevToolsExecutionFailure(browser_id, message_id);
+        return 0;
+    }
+    auto browser = exclr8cef::GetOsrBrowser(browser_id);
+    if (!browser) {
+        ReportDevToolsExecutionFailure(browser_id, message_id);
+        return 0;
+    }
+
+    EnsureDevToolsObserver(browser_id, browser);
+    CefRefPtr<CefDictionaryValue> params;
+    if (!params_json.empty()) {
+        auto value = CefParseJSON(params_json, JSON_PARSER_RFC);
+        if (value && value->GetType() == VTYPE_DICTIONARY) {
+            params = value->GetDictionary();
+        }
+    }
+    int result = browser->GetHost()->ExecuteDevToolsMethod(
+        message_id,
+        method,
+        params);
+    if (result == 0) {
+        ReportDevToolsExecutionFailure(browser_id, message_id);
+    }
+    return result;
+}
+
+class ExecuteDevToolsMethodTask final : public CefTask {
+public:
+    ExecuteDevToolsMethodTask(
+            int browser_id,
+            int message_id,
+            std::string method,
+            std::string params_json)
+        : browser_id_(browser_id),
+          message_id_(message_id),
+          method_(std::move(method)),
+          params_json_(std::move(params_json)) {}
+
+    void Execute() override {
+        ExecuteDevToolsMethodOnUi(
+            browser_id_,
+            message_id_,
+            method_,
+            params_json_);
+    }
+
+private:
+    const int browser_id_;
+    const int message_id_;
+    const std::string method_;
+    const std::string params_json_;
+    IMPLEMENT_REFCOUNTING(ExecuteDevToolsMethodTask);
+};
+
 }  // namespace
 
 extern "C" int excef_send_devtools_message(int browser_id,
@@ -3305,23 +3419,28 @@ extern "C" int excef_execute_devtools_method(int browser_id,
                                               int message_id,
                                               const char* method,
                                               const char* params_json) {
-    auto b = exclr8cef::GetOsrBrowser(browser_id);
-    if (!b || !method) return 0;
-    {
-        std::lock_guard<std::mutex> lock(exclr8cef::g_devtools_observers_mu);
-        if (!exclr8cef::g_devtools_observers.count(browser_id)) {
-            exclr8cef::g_devtools_observers[browser_id] = b->GetHost()->AddDevToolsMessageObserver(
-                new DevToolsObserver(browser_id));
-        }
+    if (!method || message_id <= 0
+        || !exclr8cef::LookupOsrHandler(browser_id)) {
+        return 0;
     }
-    CefRefPtr<CefDictionaryValue> params;
-    if (params_json && *params_json) {
-        auto v = CefParseJSON(params_json, JSON_PARSER_RFC);
-        if (v && v->GetType() == VTYPE_DICTIONARY) {
-            params = v->GetDictionary();
-        }
+
+    std::string method_copy(method);
+    std::string params_copy = params_json ? params_json : "";
+    if (CefCurrentlyOn(TID_UI)) {
+        return ExecuteDevToolsMethodOnUi(
+            browser_id,
+            message_id,
+            method_copy,
+            params_copy);
     }
-    return b->GetHost()->ExecuteDevToolsMethod(message_id, method, params);
+
+    return CefPostTask(
+        TID_UI,
+        CefRefPtr<CefTask>(new ExecuteDevToolsMethodTask(
+            browser_id,
+            message_id,
+            std::move(method_copy),
+            std::move(params_copy)))) ? 1 : 0;
 }
 extern "C" void excef_set_take_focus_callback(excef_take_focus_cb_t cb) { exclr8cef::g_take_focus_cb = cb; }
 extern "C" void excef_set_set_focus_callback(excef_set_focus_cb_t cb) { exclr8cef::g_set_focus_cb = cb; }

@@ -485,7 +485,7 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.True((await fixture.Runtime.SendAsync(
             fixture.Prompt("Second turn."),
             CancellationToken.None)).IsSuccess);
-        Assert.DoesNotContain(
+        Assert.Contains(
             provider.Requests.ToArray()[2].Tools,
             tool => tool.Name == IntrinsicAgentTools.RequestCapability);
         Assert.Equal(
@@ -530,7 +530,7 @@ public sealed partial class GovernedAgentRuntimeTests
     }
 
     [Fact]
-    public async Task YoloOmitsRequestAndDisableRestoresRunCandidates()
+    public async Task YoloChangesAuthorityWithoutChangingTheRunToolManifest()
     {
         var provider = new ProviderRound((_, _) => Answer("Done."));
         var baseline = CapabilityPolicy(
@@ -550,9 +550,14 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.True((await fixture.Runtime.SendAsync(
             fixture.Prompt("YOLO turn."),
             CancellationToken.None)).IsSuccess);
-        Assert.DoesNotContain(
-            provider.Requests.ToArray()[1].Tools,
-            tool => tool.Name == IntrinsicAgentTools.RequestCapability);
+        var initialSchema = provider.Requests.ToArray()[0].Tools
+            .Single(tool => tool.Name == IntrinsicAgentTools.RequestCapability)
+            .InputSchema.GetRawText();
+        Assert.Equal(
+            initialSchema,
+            provider.Requests.ToArray()[1].Tools
+                .Single(tool => tool.Name == IntrinsicAgentTools.RequestCapability)
+                .InputSchema.GetRawText());
         Assert.True((await fixture.Runtime.DisableYoloAsync(
             CancellationToken.None)).IsAccepted);
 
@@ -562,6 +567,11 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Contains(
             provider.Requests.ToArray()[2].Tools,
             tool => tool.Name == IntrinsicAgentTools.RequestCapability);
+        Assert.Equal(
+            initialSchema,
+            provider.Requests.ToArray()[2].Tools
+                .Single(tool => tool.Name == IntrinsicAgentTools.RequestCapability)
+                .InputSchema.GetRawText());
     }
 
     [Fact]
@@ -878,7 +888,10 @@ public sealed partial class GovernedAgentRuntimeTests
             new(
                 new AiProviderProfileId("provider-1"),
                 message,
-                Context.Target);
+                Context.Target,
+                Runtime.Snapshot.EffectivePolicy!.SelectPrimaryModel(
+                    "provider-1",
+                    "provider-default-model"));
 
         public async ValueTask DisposeAsync()
         {

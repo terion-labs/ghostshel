@@ -68,6 +68,20 @@ public sealed class QuickTerminalPresentationContractTests
                 && AttributeValue(element, "Tabs") == "{Binding Tabs}"
                 && AttributeValue(element, "IconPickerPlacement") == "TopEdgeAlignedLeft"
                 && AttributeValue(element, "AddTabRequested") == "OnAddTabRequested");
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "Border"
+                && AttributeValue(element, "Classes") == "PanelAgentGlow"
+                && AttributeValue(element, "BoxShadow")
+                    == "{DynamicResource ShellAgentPanelGlowShadow}"
+                && AttributeValue(element, "IsVisible")
+                    == "{Binding ActiveTab.HasAgentActivity}");
+        var agentGlow = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "Border"
+                && AttributeValue(element, "Classes") == "PanelAgentGlow");
+        Assert.Null(AttributeValue(agentGlow, "Margin"));
+        Assert.Equal("0", AttributeValue(agentGlow, "CornerRadius"));
         var controlBar = Assert.Single(
             root.Descendants(),
             element => element.Name.LocalName == "Grid"
@@ -125,9 +139,18 @@ public sealed class QuickTerminalPresentationContractTests
                     == "{Binding IsAgentPanelDockedVisible}");
         Assert.Contains(
             root.Descendants(),
-            element => AttributeValue(element, "Symbol") == "Bot"
-                && element.Parent is { } button
-                && AttributeValue(button, "Click") == "OnToggleAgentClick");
+            element => element.Name.LocalName == "Button"
+                && AttributeValue(element, "Click") == "OnToggleAgentClick"
+                && element.Descendants().Any(descendant =>
+                    AttributeValue(descendant, "Symbol") == "Bot"));
+        Assert.Contains(
+            root.Descendants(),
+            element => element.Name.LocalName == "SymbolIcon"
+                && AttributeValue(element, "Classes")
+                    == "AgentToolbarActivityPulse"
+                && AttributeValue(element, "Classes.running")
+                    == "{Binding AgentChat.IsBusy}"
+                && AttributeValue(element, "Opacity") == "0");
         Assert.DoesNotContain(
             root.Descendants(),
             element => AttributeValue(element, "Click") == "OnSettingsClick");

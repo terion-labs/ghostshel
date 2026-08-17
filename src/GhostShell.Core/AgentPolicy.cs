@@ -37,10 +37,59 @@ public enum AgentCapability
     DestructiveTerminalActions,
     BrowserNavigation,
     BrowserData,
+
+    /// <summary>
+    /// Process mutations such as signaling or priority changes.
+    /// </summary>
     ProcessControl,
     McpTools,
     SecretUse,
     BrowserInteraction,
+
+    /// <summary>
+    /// JavaScript evaluation in an exact browser document.
+    /// </summary>
+    BrowserScripting,
+
+    /// <summary>
+    /// Browser console, network, and DevTools diagnostics.
+    /// </summary>
+    BrowserDiagnostics,
+
+    /// <summary>
+    /// Bounded relational database and Redis observations.
+    /// </summary>
+    DatabaseRead,
+
+    /// <summary>
+    /// Relational database and Redis mutations.
+    /// </summary>
+    DatabaseWrite,
+
+    /// <summary>
+    /// Docker observations distinct from lifecycle control.
+    /// </summary>
+    DockerData,
+
+    /// <summary>
+    /// Aggregate local system statistics.
+    /// </summary>
+    SystemData,
+
+    /// <summary>
+    /// Bounded local process observations.
+    /// </summary>
+    ProcessData,
+
+    /// <summary>
+    /// Browser and cross-panel artifact transfers.
+    /// </summary>
+    ArtifactTransfer,
+
+    /// <summary>
+    /// Creating, splitting, and closing tabs and panels in the bound workspace.
+    /// </summary>
+    WorkspaceLayout,
 }
 
 public enum AgentPermission
@@ -67,39 +116,11 @@ public sealed record AgentPolicy(
     public const int MaximumProviderLength = 256;
     public const int MaximumModelLength = 256;
 
-    private static readonly ImmutableHashSet<AgentCapability> LegacyCapabilities =
-        ImmutableHashSet.Create(
-            AgentCapability.RunCommands,
-            AgentCapability.EditFiles,
-            AgentCapability.ReadFiles,
-            AgentCapability.Search,
-            AgentCapability.Git,
-            AgentCapability.WebFetch,
-            AgentCapability.Docker);
-
-    private static readonly ImmutableHashSet<AgentCapability> PreviousFullCapabilities =
-        ImmutableHashSet.Create(
-            AgentCapability.TerminalRead,
-            AgentCapability.RunCommands,
-            AgentCapability.EditFiles,
-            AgentCapability.ReadFiles,
-            AgentCapability.Search,
-            AgentCapability.Git,
-            AgentCapability.WebFetch,
-            AgentCapability.Docker,
-            AgentCapability.DestructiveTerminalActions,
-            AgentCapability.BrowserNavigation,
-            AgentCapability.BrowserData,
-            AgentCapability.ProcessControl,
-            AgentCapability.McpTools,
-            AgentCapability.SecretUse);
-
     public static ImmutableArray<AgentCapability> Capabilities { get; } =
         Enum.GetValues<AgentCapability>().ToImmutableArray();
 
-    public static AgentPolicy Default { get; } = new(
-        "Anthropic",
-        "claude-opus-4.8",
+    public static ImmutableDictionary<AgentCapability, AgentPermission> InitialPermissions
+    { get; } =
         new Dictionary<AgentCapability, AgentPermission>
         {
             [AgentCapability.TerminalRead] = AgentPermission.Auto,
@@ -117,25 +138,74 @@ public sealed record AgentPolicy(
             [AgentCapability.ProcessControl] = AgentPermission.Off,
             [AgentCapability.McpTools] = AgentPermission.Off,
             [AgentCapability.SecretUse] = AgentPermission.Ask,
-        }.ToImmutableDictionary());
+            [AgentCapability.BrowserScripting] = AgentPermission.Off,
+            [AgentCapability.BrowserDiagnostics] = AgentPermission.Off,
+            [AgentCapability.DatabaseRead] = AgentPermission.Off,
+            [AgentCapability.DatabaseWrite] = AgentPermission.Off,
+            [AgentCapability.DockerData] = AgentPermission.Off,
+            [AgentCapability.SystemData] = AgentPermission.Off,
+            [AgentCapability.ProcessData] = AgentPermission.Off,
+            [AgentCapability.ArtifactTransfer] = AgentPermission.Off,
+            [AgentCapability.WorkspaceLayout] = AgentPermission.Ask,
+        }.ToImmutableDictionary();
+
+    public static AgentPolicy Default { get; } = new(
+        "Anthropic",
+        "claude-opus-4.8",
+        InitialPermissions)
+    {
+        CompactionModel = new AgentModelSelection(
+            "Anthropic",
+            "claude-opus-4.8"),
+        TitleModel = new AgentModelSelection(
+            "Anthropic",
+            "claude-opus-4.8"),
+    };
 
     /// <summary>
-    /// Optional summarization route. Null means inherit the next broader layer;
-    /// a fully resolved policy falls back to the global primary model.
+    /// Explicit model route used to summarize conversations before the context
+    /// limit is reached.
     /// </summary>
-    public AgentModelSelection? CompactionModel { get; init; }
+    public required AgentModelSelection CompactionModel { get; init; }
 
     /// <summary>
-    /// Optional conversation-title route. Null inherits an explicitly configured
-    /// broader route; resolved legacy policies fall back to their primary model.
+    /// Explicit model route used to generate conversation titles.
     /// </summary>
-    public AgentModelSelection? TitleModel { get; init; }
+    public required AgentModelSelection TitleModel { get; init; }
 
     /// <summary>
     /// Optional user-authored instructions appended to the invariant runtime
     /// safety prompt. Null inherits the next broader policy layer.
     /// </summary>
     public string? SystemPrompt { get; init; }
+
+    /// <summary>
+    /// Selects the primary conversation route. Maintenance routes are independent
+    /// configuration and are never changed implicitly.
+    /// </summary>
+    public AgentPolicy SelectPrimaryModel(string provider, string model)
+    {
+        if (!IsValidProvider(provider))
+        {
+            throw new ArgumentException(
+                "A valid provider identity is required.",
+                nameof(provider));
+        }
+
+        if (!IsValidModel(model))
+        {
+            throw new ArgumentException(
+                "A valid model identity is required.",
+                nameof(model));
+        }
+
+        var nextPrimary = new AgentModelSelection(provider.Trim(), model.Trim());
+        return this with
+        {
+            Provider = nextPrimary.Provider,
+            Model = nextPrimary.Model,
+        };
+    }
 
     public string EffectiveSummary =>
         $"Commands: {Format(GetPermission(AgentCapability.RunCommands))} · " +
@@ -144,9 +214,7 @@ public sealed record AgentPolicy(
         $"Docker: {Format(GetPermission(AgentCapability.Docker))}";
 
     /// <summary>
-    /// Returns a fail-closed permission for execution. This also lets definitions
-    /// written before the precise desktop-v1 capabilities were added remain
-    /// readable without granting those new capabilities.
+    /// Returns a fail-closed permission for execution.
     /// </summary>
     public AgentPermission GetPermission(AgentCapability capability)
     {
@@ -166,8 +234,10 @@ public sealed record AgentPolicy(
     {
         if (!IsValidProvider(Provider)
             || !IsValidModel(Model)
-            || CompactionModel is not null && !CompactionModel.IsStructurallyValid()
-            || TitleModel is not null && !TitleModel.IsStructurallyValid()
+            || CompactionModel is null
+            || !CompactionModel.IsStructurallyValid()
+            || TitleModel is null
+            || !TitleModel.IsStructurallyValid()
             || SystemPrompt is not null && !IsValidSystemPrompt(SystemPrompt)
             || Permissions is null
             || Permissions.Keys.Any(capability => !Enum.IsDefined(capability))
@@ -176,10 +246,7 @@ public sealed record AgentPolicy(
             return false;
         }
 
-        var keys = Permissions.Keys.ToImmutableHashSet();
-        return keys.SetEquals(Capabilities)
-            || keys.SetEquals(PreviousFullCapabilities)
-            || keys.SetEquals(LegacyCapabilities);
+        return Permissions.Keys.ToImmutableHashSet().SetEquals(Capabilities);
     }
 
     /// <summary>

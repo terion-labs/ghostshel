@@ -27,10 +27,9 @@ reject legitimate Workspace evolution or accept unsafe action retargeting.
 
 ## Decision
 
-GhostSHELL exposes four closed read-only tools through the native governed
+GhostSHELL exposes three closed read-only tools through the native governed
 runtime:
 
-- `workspace.list`;
 - `workspace.inspect`;
 - `tab.list`;
 - `panel.list`.
@@ -46,11 +45,11 @@ The host resolves the original immutable `AgentTarget` and projects only graph
 objects already inside it. A panel or current connection-session scope contains
 one exact current graph panel. An internal `OpenTab` scope contains that exact
 tab's current panels. A Workspace scope contains that one exact workspace. An
-internal selected-panel scope contains only the exact selected set.
-`workspace.list` therefore returns the workspace shell already implied by the
-target; it is not ambient workspace discovery. Workspace is the only target
-choice exposed by the current desktop UI; the other variants remain closed
-internal/testable contracts.
+internal selected-panel scope contains only the exact selected set. Every run
+is already bound to one workspace by trusted host context, so
+`workspace.inspect` returns that workspace and there is no workspace discovery
+tool. Workspace is the only target choice exposed by the current desktop UI;
+the other variants remain closed internal/testable contracts.
 
 Graph observations include registered Terminal, Browser, File Viewer,
 Statistics, and Process Monitor panels. They require every in-scope panel to be
@@ -59,7 +58,7 @@ other graphless connection session advertises none of these tools.
 
 ### Model-controlled input
 
-`workspace.list` and `workspace.inspect` accept only `{}`. `tab.list` and
+`workspace.inspect` accepts only `{}`. `tab.list` and
 `panel.list` accept an optional `offset` from the fixed set `0`, `16`, `32`,
 and `48`; omission means zero and the page size is always 16. Duplicate,
 unknown, fractional, negative, and out-of-range fields fail before

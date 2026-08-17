@@ -39,7 +39,8 @@ public sealed record FileSessionMetadata
         | FilePanelCapability.ServerSideCopy
         | FilePanelCapability.Pagination
         | FilePanelCapability.GovernedCreateDirectory
-        | FilePanelCapability.GovernedDelete;
+        | FilePanelCapability.GovernedDelete
+        | FilePanelCapability.GovernedRename;
 
     public FileSessionMetadata(
         FilePanelLocation trustedRoot,

@@ -761,19 +761,19 @@ public sealed class DefinitionCatalogTests
     }
 
     [Fact]
-    public async Task AiProviderProfilesPersistInDistinctFallbackOrder()
+    public async Task AiProviderProfilesRequireDistinctDisplayOrder()
     {
         var fixture = new CatalogFixture();
         Assert.True((await fixture.Catalog.InitializeAsync(CancellationToken.None)).IsSuccess);
         var primary = CreateAiProvider("ai.primary", "Primary", order: 0);
-        var fallback = CreateAiProvider("ai.fallback", "Fallback", order: 0);
+        var secondary = CreateAiProvider("ai.secondary", "Secondary", order: 0);
 
         var saved = await fixture.Catalog.SaveAiProviderProfileAsync(
             primary,
             expectedRevision: null,
             CancellationToken.None);
         var rejected = await fixture.Catalog.SaveAiProviderProfileAsync(
-            fallback,
+            secondary,
             expectedRevision: null,
             CancellationToken.None);
 
@@ -1081,10 +1081,11 @@ public sealed class DefinitionCatalogTests
             new McpServerProfileId(id),
             McpServerProfile.CurrentSchemaVersion,
             name,
-            "/usr/local/bin/mcp-server",
-            ["--stdio"],
-            workingDirectory: null,
-            environment: [],
+            new McpServerTransport.Stdio(
+                "/usr/local/bin/mcp-server",
+                ["--stdio"],
+                workingDirectory: null,
+                environment: []),
             enabledTools: ["status.read"]);
 
     private static AgentPolicy AgentPolicyFor(AiProviderProfileId profileId) =>

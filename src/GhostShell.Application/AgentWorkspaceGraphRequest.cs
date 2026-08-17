@@ -13,8 +13,6 @@ public abstract record AgentWorkspaceGraphRequest
     {
     }
 
-    public sealed record WorkspaceList : AgentWorkspaceGraphRequest;
-
     public sealed record WorkspaceInspect : AgentWorkspaceGraphRequest;
 
     public sealed record TabList : AgentWorkspaceGraphRequest

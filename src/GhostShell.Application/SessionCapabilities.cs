@@ -17,6 +17,10 @@ public static class SessionCapabilities
     public const string TerminalWait = "terminal.wait";
     public const string TerminalMouse = "terminal.mouse";
     public const string TerminalScrollback = "terminal.scrollback";
+    public const string TerminalScrollbackRead = "terminal.scrollback.read";
+    public const string TerminalScrollbackFind = "terminal.scrollback.find";
+    public const string TerminalRevisionBoundMouse =
+        "terminal.mouse.content_revision_bound";
     public const string TerminalClearScrollback = "terminal.scrollback.clear";
     public const string TerminalFind = "terminal.find";
     public const string TerminalSelection = "terminal.selection";
@@ -25,9 +29,14 @@ public static class SessionCapabilities
     public const string TerminalFocus = "terminal.focus";
     public const string BrowserReadState = "browser.state.read";
     public const string BrowserSnapshot = "browser.snapshot";
+    public const string BrowserWait = "browser.wait";
     public const string BrowserClick = "browser.click";
     public const string BrowserFill = "browser.fill";
     public const string BrowserCheck = "browser.check";
+    public const string BrowserMouse = "browser.mouse";
+    public const string BrowserKey = "browser.key";
+    public const string BrowserScroll = "browser.scroll";
+    public const string BrowserEvaluate = "browser.evaluate";
     public const string BrowserNavigate = "browser.navigate";
     public const string BrowserBack = "browser.back";
     public const string BrowserForward = "browser.forward";
@@ -35,9 +44,29 @@ public static class SessionCapabilities
     public const string BrowserStop = "browser.stop";
     public const string BrowserOriginGuard =
         "browser.navigation_origin_guard";
+    public const string BrowserAgentInputBarrier =
+        "browser.agent_input_barrier";
+    public const string DatabaseReadState = "database.state.read";
+    public const string DatabaseListObjects = "database.objects.list";
+    public const string DatabaseDescribeObject = "database.object.describe";
+    public const string DatabaseReadTable = "database.table.read";
+    public const string DatabaseSchemaGraph = "database.schema_graph";
+    public const string RedisScan = "redis.scan";
+    public const string RedisRead = "redis.read";
+    public const string RedisListIndexes = "redis.indexes.list";
+    public const string RedisSearch = "redis.search";
+    public const string DockerReadState = "docker.state.read";
+    public const string DockerInspect = "docker.inspect";
+    public const string DockerReadLogs = "docker.logs.read";
+    public const string DockerFilesList = "docker.files.list";
+    public const string DockerFilesStat = "docker.files.stat";
+    public const string DockerFilesRead = "docker.files.read";
     public const string FilesList = "files.list";
+    public const string FilesSearch = "files.search";
     public const string FilesStat = "files.stat";
     public const string FilesPreview = "files.preview";
+    public const string FilesReadAccessControl = "files.access_control.read";
+    public const string FilesTransfersRead = "files.transfers.read";
     public const string FilesCreateDirectory = "files.mkdir";
     public const string FilesRename = "files.rename";
     public const string FilesDelete = "files.delete";

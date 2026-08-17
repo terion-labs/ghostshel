@@ -7,7 +7,9 @@ public interface IBrowserPanelSession :
     IOriginConstrainedBrowserElementClick,
     IOriginConstrainedBrowserElementFill,
     IOriginConstrainedBrowserElementCheck,
+    IOriginConstrainedBrowserAutomation,
     IBrowserDocumentReader,
+    IBrowserWaitObservation,
     IBrowserRendererAttachment
 {
 }

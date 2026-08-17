@@ -171,6 +171,148 @@ public sealed class AgentFileSessionHostTests
     }
 
     [Fact]
+    public async Task Search_is_provider_gated_bounded_and_root_relative()
+    {
+        await using var fixture = await AgentFileHostFixture.CreateAsync(
+            configureFileFactory: factory =>
+                factory.MetadataFactory = root => new FileSessionMetadata(
+                    root,
+                    FilePanelCapability.List
+                    | FilePanelCapability.Stat
+                    | FilePanelCapability.RangedRead
+                    | FilePanelCapability.Search,
+                    100,
+                    64 * 1024));
+        fixture.Files.SearchOperation = SearchResults;
+        var action = await fixture.PrepareAsync(
+            new AgentFileRequest.Search(
+                fixture.SessionId,
+                Path("logs"),
+                "error",
+                FilePanelDiscoveryScope.Subtree,
+                MaximumResults: 1));
+        var authorizationId = fixture.Authorization.Arm(action);
+
+        var result = await fixture.Client.RunAgentFileActionAsync(
+            authorizationId,
+            action,
+            default);
+
+        var search = Assert.IsType<AgentFileActionResult.SearchResults>(
+            result.Value());
+        Assert.True(search.IsTruncated);
+        Assert.Equal("error.log", Assert.Single(search.Entries).Name);
+        Assert.Equal(1, fixture.Files.SearchCount);
+        Assert.Equal("error", fixture.Files.LastSearchRequest?.Query);
+        Assert.Equal(
+            FilePanelDiscoveryScope.Subtree,
+            fixture.Files.LastSearchRequest?.Scope);
+        Assert.False(fixture.Files.LastSearchRequest?.ShowHidden);
+        Assert.Equal(
+            "files_searched",
+            Assert.Single(fixture.Authorization.Completions).StableCode);
+    }
+
+    [Fact]
+    public async Task Access_read_strips_version_and_returns_bounded_grants()
+    {
+        await using var fixture = await AgentFileHostFixture.CreateAsync(
+            configureFileFactory: factory =>
+                factory.MetadataFactory = root => new FileSessionMetadata(
+                    root,
+                    FilePanelCapability.List
+                    | FilePanelCapability.Stat
+                    | FilePanelCapability.RangedRead
+                    | FilePanelCapability.Permissions,
+                    100,
+                    64 * 1024));
+        fixture.Files.AccessControlOperation = (request, token) =>
+        {
+            token.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(
+                FilePanelResult<FilePanelAccessControl>.Success(
+                    new FilePanelAccessControl(
+                        request.Location.WithVersion("provider-version"),
+                        mode: new FilePanelPosixMode(0x1A4),
+                        owner: "alice",
+                        group: "staff",
+                        grants:
+                        [
+                            new FilePanelAccessGrant(
+                                new FilePanelGrantee(
+                                    FilePanelGranteeKind.User,
+                                    "user-1",
+                                    "Alice"),
+                                FilePanelAccessRight.Read),
+                        ],
+                        version: "acl-version")));
+        };
+        var action = await fixture.PrepareAsync(
+            new AgentFileRequest.AccessRead(
+                fixture.SessionId,
+                Path("report.txt")));
+        var authorizationId = fixture.Authorization.Arm(action);
+
+        var result = await fixture.Client.RunAgentFileActionAsync(
+            authorizationId,
+            action,
+            default);
+
+        var access = Assert.IsType<AgentFileActionResult.AccessControl>(
+            result.Value());
+        Assert.False(access.IsTruncated);
+        Assert.Null(access.Value.Version);
+        Assert.Null(access.Value.Location.Version);
+        Assert.Equal("alice", access.Value.Owner);
+        Assert.Single(access.Value.Grants);
+        Assert.Equal(
+            "file_access_read",
+            Assert.Single(fixture.Authorization.Completions).StableCode);
+    }
+
+    [Fact]
+    public async Task Transfers_returns_only_the_session_snapshot_without_mutation()
+    {
+        await using var fixture = await AgentFileHostFixture.CreateAsync();
+        var transfer = new FilePanelTransferSnapshot(
+            FilePanelTransferId.New(),
+            new FilePanelTransferRequest(
+                Location("srv", "workspace", "source.txt"),
+                Location("srv", "workspace", "copies"),
+                FilePanelTransferOperation.Copy,
+                FilePanelConflictPolicy.Fail),
+            Location("srv", "workspace", "copies", "source.txt"),
+            FilePanelTransferState.Running,
+            "Copying",
+            12,
+            24,
+            null,
+            DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch,
+            null);
+        fixture.Files.AddTransfer(transfer);
+        var action = await fixture.PrepareAsync(
+            new AgentFileRequest.Transfers(fixture.SessionId));
+        var authorizationId = fixture.Authorization.Arm(action);
+
+        var result = await fixture.Client.RunAgentFileActionAsync(
+            authorizationId,
+            action,
+            default);
+
+        var transfers = Assert.IsType<AgentFileActionResult.Transfers>(
+            result.Value());
+        Assert.False(transfers.IsTruncated);
+        var observed = Assert.Single(transfers.Values);
+        Assert.Equal(transfer.Id, observed.Id);
+        Assert.Equal(FilePanelTransferState.Running, observed.State);
+        Assert.Equal(12, observed.BytesTransferred);
+        Assert.Equal(
+            "file_transfers_read",
+            Assert.Single(fixture.Authorization.Completions).StableCode);
+    }
+
+    [Fact]
     public async Task Provider_limits_reduce_agent_list_and_read_bounds()
     {
         await using var fixture = await AgentFileHostFixture.CreateAsync(
@@ -715,6 +857,47 @@ public sealed class AgentFileSessionHostTests
     }
 
     [Fact]
+    public async Task Move_derives_must_not_exist_and_returns_the_verified_destination()
+    {
+        await using var fixture = await MutationFixtureAsync();
+        var action = await fixture.PrepareAsync(
+            new AgentFileRequest.Move(
+                fixture.SessionId,
+                Path("draft.txt"),
+                Path("published", "report.txt")));
+        var authorizationId = fixture.Authorization.Arm(
+            action,
+            AgentAuthorizationSource.HumanApproval);
+
+        var result = await fixture.Client.RunAgentFileActionAsync(
+            authorizationId,
+            action,
+            default);
+
+        var moved = Assert.IsType<AgentFileActionResult.Moved>(
+            result.Value()).Value;
+        Assert.Equal(
+            ["srv", "workspace", "published", "report.txt"],
+            Segments(moved.Location));
+        Assert.Null(moved.Location.Version);
+        var request = Assert.IsType<FilePanelRenameRequest>(
+            fixture.Files.LastRenameRequest);
+        Assert.Equal(
+            ["srv", "workspace", "draft.txt"],
+            Segments(request.Source));
+        Assert.Equal(
+            ["srv", "workspace", "published", "report.txt"],
+            Segments(request.Destination));
+        Assert.Equal(
+            FilePanelMutationPreconditionKind.MustNotExist,
+            request.DestinationPrecondition.Kind);
+        Assert.Equal(1, fixture.Files.RenameCount);
+        var completion = Assert.Single(fixture.Authorization.Completions);
+        Assert.Equal(AgentActionOutcome.Succeeded, completion.Outcome);
+        Assert.Equal("file_moved", completion.StableCode);
+    }
+
+    [Fact]
     public async Task Mutation_rejects_auto_policy_before_provider_dispatch()
     {
         await using var fixture = await MutationFixtureAsync();
@@ -875,7 +1058,7 @@ public sealed class AgentFileSessionHostTests
     }
 
     [Fact]
-    public async Task Mutation_failure_after_invocation_is_non_retryable_outcome_unknown()
+    public async Task Deterministic_mutation_rejection_preserves_safe_typed_failure()
     {
         await using var fixture = await MutationFixtureAsync();
         fixture.Files.DeleteOperation = (_, _) =>
@@ -899,6 +1082,82 @@ public sealed class AgentFileSessionHostTests
             action,
             default);
 
+        Assert.Equal(HostErrorCode.InvalidRequest, result.Error().Code);
+        Assert.Equal("file_access_denied", result.Error().StableCode);
+        Assert.False(result.Error().Retryable);
+        Assert.DoesNotContain(
+            "hunter2",
+            result.Error().Message,
+            StringComparison.Ordinal);
+        Assert.Equal(1, fixture.Files.DeleteCount);
+        var completion = Assert.Single(fixture.Authorization.Completions);
+        Assert.Equal(AgentActionOutcome.Failed, completion.Outcome);
+        Assert.Equal("file_access_denied", completion.StableCode);
+    }
+
+    [Fact]
+    public async Task Create_directory_precondition_failure_is_returned_to_agent()
+    {
+        await using var fixture = await MutationFixtureAsync();
+        fixture.Files.CreateDirectoryOperation = (_, _) =>
+            ValueTask.FromResult(
+                FilePanelResult<FilePanelEntry>.Failure(
+                    new FilePanelError(
+                        FilePanelErrorCode.PreconditionFailed,
+                        "provider-secret-code",
+                        "password=hunter2",
+                        Retryable: true)));
+        var action = await fixture.PrepareAsync(
+            new AgentFileRequest.CreateDirectory(
+                fixture.SessionId,
+                Path("generated")));
+        var authorizationId = fixture.Authorization.Arm(
+            action,
+            AgentAuthorizationSource.HumanApproval);
+
+        var result = await fixture.Client.RunAgentFileActionAsync(
+            authorizationId,
+            action,
+            default);
+
+        Assert.Equal(HostErrorCode.InvalidRequest, result.Error().Code);
+        Assert.Equal("file_precondition_failed", result.Error().StableCode);
+        Assert.False(result.Error().Retryable);
+        Assert.DoesNotContain(
+            "hunter2",
+            result.Error().Message,
+            StringComparison.Ordinal);
+        Assert.Equal(1, fixture.Files.CreateDirectoryCount);
+        var completion = Assert.Single(fixture.Authorization.Completions);
+        Assert.Equal(AgentActionOutcome.Failed, completion.Outcome);
+        Assert.Equal("file_precondition_failed", completion.StableCode);
+    }
+
+    [Fact]
+    public async Task Ambiguous_mutation_transport_failure_remains_outcome_unknown()
+    {
+        await using var fixture = await MutationFixtureAsync();
+        fixture.Files.CreateDirectoryOperation = (_, _) =>
+            ValueTask.FromResult(
+                FilePanelResult<FilePanelEntry>.Failure(
+                    new FilePanelError(
+                        FilePanelErrorCode.IoFailure,
+                        "provider-secret-code",
+                        "password=hunter2",
+                        Retryable: true)));
+        var action = await fixture.PrepareAsync(
+            new AgentFileRequest.CreateDirectory(
+                fixture.SessionId,
+                Path("generated")));
+        var authorizationId = fixture.Authorization.Arm(
+            action,
+            AgentAuthorizationSource.HumanApproval);
+
+        var result = await fixture.Client.RunAgentFileActionAsync(
+            authorizationId,
+            action,
+            default);
+
         Assert.Equal(HostErrorCode.EngineFailed, result.Error().Code);
         Assert.Equal(
             "file_mutation_outcome_unknown",
@@ -908,7 +1167,7 @@ public sealed class AgentFileSessionHostTests
             "hunter2",
             result.Error().Message,
             StringComparison.Ordinal);
-        Assert.Equal(1, fixture.Files.DeleteCount);
+        Assert.Equal(1, fixture.Files.CreateDirectoryCount);
         var completion = Assert.Single(fixture.Authorization.Completions);
         Assert.Equal(AgentActionOutcome.Failed, completion.Outcome);
         Assert.Equal(
@@ -961,8 +1220,10 @@ public sealed class AgentFileSessionHostTests
                     | FilePanelCapability.Stat
                     | FilePanelCapability.RangedRead
                     | FilePanelCapability.CreateDirectory
+                    | FilePanelCapability.Rename
                     | FilePanelCapability.Delete
                     | FilePanelCapability.GovernedCreateDirectory
+                    | FilePanelCapability.GovernedRename
                     | FilePanelCapability.GovernedDelete,
                     maximumListPageSize: 100,
                     maximumPreviewBytes: 64 * 1024));
@@ -997,6 +1258,20 @@ public sealed class AgentFileSessionHostTests
             1,
             null,
             false);
+
+    private static async IAsyncEnumerable<FilePanelResult<FilePanelEntry>>
+        SearchResults(
+            FilePanelSearchRequest request,
+            [System.Runtime.CompilerServices.EnumeratorCancellation]
+            CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        yield return FilePanelResult<FilePanelEntry>.Success(
+            ListedEntry(request.Location, "error.log"));
+        yield return FilePanelResult<FilePanelEntry>.Success(
+            ListedEntry(request.Location, "other-error.log"));
+        await Task.CompletedTask;
+    }
 
     private sealed class AgentFileHostFixture : IAsyncDisposable
     {

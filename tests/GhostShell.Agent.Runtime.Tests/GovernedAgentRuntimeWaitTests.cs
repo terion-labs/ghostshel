@@ -65,6 +65,82 @@ public sealed partial class GovernedAgentRuntimeTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task CommandFinishedProposalUsesBaselineAndReturnsObservedExitCode()
+    {
+        await using var fixture = new RuntimeFixture(
+            WaitThenAnswer(
+                """{"command_finished":true,"after_shell_event_sequence":7,"timeout_ms":1000}"""));
+        var shellEvent = new TerminalShellIntegrationEvent(
+            Sequence: 8,
+            TerminalCommandBoundaryKind.CommandFinished,
+            DateTimeOffset.UnixEpoch,
+            ExitCode: 23);
+        fixture.Terminal.Results.Enqueue(
+            new AgentTerminalActionResult.Wait(
+                TerminalWaitOutcome.CommandFinished(
+                    fixture.Context.Screen(
+                        "done",
+                        contentRevision: 8,
+                        shellIntegrationEvents: [shellEvent]),
+                    initialContentRevision: 7,
+                    shellEvent)));
+
+        var result = await fixture.Runtime.SendAsync(
+            fixture.Prompt("Wait for the current terminal command to finish."),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var request = Assert.IsType<AgentTerminalRequest.WaitForCommandFinished>(
+            Assert.Single(fixture.Terminal.Actions).Request);
+        Assert.Equal(fixture.Context.SessionId, request.Value.SessionId);
+        Assert.Equal(7, request.Value.Wait.AfterShellEventSequence);
+        Assert.Equal(TimeSpan.FromSeconds(1), request.Value.Wait.Timeout);
+        Assert.Contains(
+            "\"wait_outcome\":\"command_finished\"",
+            ToolResult(fixture),
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "\"observed_exit_code\":23",
+            ToolResult(fixture),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OneHourDelayGetsLongLivedProposalAndConsumedPermitOnly()
+    {
+        await using var fixture = new RuntimeFixture(
+            WaitThenAnswer("""{"delay_ms":3600000}"""));
+        var snapshot = fixture.Context.Screen("after delay", contentRevision: 9);
+        fixture.Terminal.Results.Enqueue(
+            new AgentTerminalActionResult.Wait(
+                TerminalWaitOutcome.Elapsed(
+                    snapshot,
+                    initialContentRevision: 8)));
+
+        var result = await fixture.Runtime.SendAsync(
+            fixture.Prompt("Read the terminal after one hour."),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var action = Assert.Single(fixture.Terminal.Actions);
+        var request = Assert.IsType<AgentTerminalRequest.WaitForDelay>(
+            action.Request);
+        Assert.Equal(TimeSpan.FromHours(1), request.Value.Wait.Delay);
+        Assert.Equal(
+            TimeSpan.FromMinutes(66),
+            action.Proposal.DeadlineUtc - action.Proposal.CreatedAtUtc);
+        var permit = Assert.Single(fixture.Terminal.Permits);
+        Assert.InRange(
+            permit.ExecutionDeadlineUtc - permit.StartedAtUtc,
+            TimeSpan.FromMinutes(60.9),
+            TimeSpan.FromMinutes(61));
+        Assert.Contains(
+            "\"wait_outcome\":\"elapsed\"",
+            ToolResult(fixture),
+            StringComparison.Ordinal);
+    }
+
     private static ProviderRound WaitThenAnswer(string arguments) =>
         new((call, request) => call switch
         {

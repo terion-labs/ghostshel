@@ -8,8 +8,6 @@ internal abstract record WorkspaceGraphAgentIntent
     {
     }
 
-    public sealed record WorkspaceList : WorkspaceGraphAgentIntent;
-
     public sealed record WorkspaceInspect : WorkspaceGraphAgentIntent;
 
     public sealed record TabList(int Offset) : WorkspaceGraphAgentIntent;
@@ -19,7 +17,6 @@ internal abstract record WorkspaceGraphAgentIntent
     public AgentWorkspaceGraphRequest ToRequest() =>
         this switch
         {
-            WorkspaceList => new AgentWorkspaceGraphRequest.WorkspaceList(),
             WorkspaceInspect => new AgentWorkspaceGraphRequest.WorkspaceInspect(),
             TabList tabs => new AgentWorkspaceGraphRequest.TabList(tabs.Offset),
             PanelList panels => new AgentWorkspaceGraphRequest.PanelList(panels.Offset),

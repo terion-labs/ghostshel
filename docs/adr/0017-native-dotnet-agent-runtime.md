@@ -69,6 +69,11 @@ prompt-injection-resistant structured checkpoint contract derived from Pi's
 Goal, Constraints, Progress, Decisions, Next Steps, and Critical Context
 sections. Compaction remains revision-fenced and optional maintenance: a
 maintenance-provider failure cannot discard the answer that already completed.
+Like Pi's append-only session log, the workspace transcript and the provider
+context projection have separate lifecycles. Compaction replaces only the
+projection sent to a provider. The complete committed user-visible transcript
+remains append-only, is restored from its checkpoint, and never displays the
+internal summary as a chat message.
 
 The compaction route and optional conversation-title route are independent
 provider/model selections in the global AI configuration. Workspace and saved
@@ -132,25 +137,26 @@ at most 128 advertised tool definitions from at most 16 returned calls, and
 bound schemas independently from generated call arguments.
 
 [ADR 0043](0043-idle-native-agent-checkpoints.md) adds a deliberately narrower
-durability boundary than Pi's operation harness: only fully committed `Ready`
-conversation state can be checkpointed. Active provider streams, pending tool
-decisions, compaction leases, approvals, capabilities, authorities, provider
-clients, and credentials remain process-local. A versioned kernel-owned JSON
-payload is stored behind an application port by a revision-fenced,
-integrity-checked SQLite adapter. Restore returns an idle kernel and never
-infers or replays an unfinished external effect. The desktop orchestration saves
-settled turns and restores only within the same workspace identity.
+durability boundary than Pi's operation harness. Fully committed `Ready`
+conversation state is resumable. An in-progress turn is stored only as an
+inert, valid transcript marked `interrupted`; it restores as a closed,
+sendable transcript with no proposal or authority. Active provider streams,
+pending tool decisions,
+compaction leases, approvals, capabilities, authorities, provider clients, and
+credentials remain process-local. A versioned kernel-owned JSON payload is
+stored behind an application port by a revision-fenced, integrity-checked
+SQLite adapter. Restore never infers or replays an unfinished external effect,
+and desktop orchestration restores only within the same workspace identity.
 
-[ADR 0037](0037-bounded-native-provider-steering.md) adds the first steering
-slice without widening that boundary. One human update may replace only the
-actively streaming initial user generation before commit. The kernel
-linearizes Steer against commit and cancellation, reserves bounded replacement
-provider capacity, retains the exact provider/tool manifest and one revised
-user message, and generation-fences a non-cooperative old stream. The governed
-runtime first revalidates the pinned target, provider revision, policy
-generation, and run lifecycle. Steering creates no permit, SessionHost
-operation, authority decision, or audit row and is unavailable during tool
-continuations, questions, capability decisions, approvals, and tool execution.
+[ADR 0046](0046-ordered-step-boundary-agent-steering.md) defines the current
+desktop steering contract. Human input enters a bounded, editable workspace-run
+queue. Ordinary follow-ups run when the agent would otherwise stop; steering
+runs first at the next settled provider or complete tool-batch boundary. The
+kernel records it as a distinct user turn instead of cancelling or rewriting
+the active generation. Queue input creates no permit, SessionHost operation,
+authority decision, or audit row. The earlier generation-replacement primitive
+from [ADR 0037](0037-bounded-native-provider-steering.md) is not routed by the
+desktop presentation.
 
 [ADR 0018](0018-native-ai-provider-and-chat-boundary.md) adds provider I/O in a
 separate native project. Secret resolution remains request-local to that
@@ -174,15 +180,32 @@ broker, invokes the session-host consume-and-execute bridge, redacts and bounds
 the result, and returns the trusted panel ID with the correlated structured
 result to the same request-scoped provider adapter. Returned tool proposals are
 executed sequentially in provider order and submitted as one correlated result
-set; an uncertain mutation outcome revokes the run and skips the remainder.
-Exact internal targets retain fixed-membership fail-closed semantics. Tool
-rounds and total turn lifetime are bounded. A linked, identity-tracked
+set. Tool results are committed as their own stable transcript boundary before
+another provider request begins. An uncertain effect is returned as a
+non-retryable failed tool result; the remainder of that already-planned batch
+is settled as `tool_batch_reconciliation_required` instead of executing against
+possibly changed state. The provider may then inspect fresh state and recover.
+Only authority/audit integrity failures quarantine the whole run.
+Exact internal targets retain fixed-membership fail-closed semantics. Provider
+continuation is not capped by a tool-round count or a whole-turn deadline; long
+workflows end when the provider completes or the user cancels them. Each
+governed action remains independently bounded. A linked, identity-tracked
 cancellation source exists
-only while one authorized terminal dispatch is active. Its one-shot
-cancellation state is projected with that activity; completion clears the
-identity before disposing it, so stale completion and duplicate-cancel races
-cannot affect a later action. Whole-turn cancellation still takes precedence
-and revokes run authority.
+only while one authorized panel dispatch is active. The same activity snapshot
+carries the host-selected exact panel identity. The desktop acquires a
+turn-scoped panel-presence lease from that identity, retains it while the
+provider reasons between tool calls, transfers it when a later action selects a
+different panel, and releases it when the turn becomes ready, failed, or
+cancelled. Tab and workspace markers derive from that lease even when the
+workspace is not in front. The one-shot action-cancellation identity still
+clears before disposal, so stale completion and duplicate-cancel races cannot
+affect a later action. Whole-turn cancellation takes precedence and revokes run
+authority.
+
+The settlement boundary also permits checkpointing and PI-style conversation
+compaction between tool rounds. A large tool workflow therefore summarizes old
+completed turns before constructing the next provider request rather than
+waiting until the provider has ended the entire workflow.
 
 That same current ordered Workspace topology is projected as immutable
 presentation-only rows for the visible desktop context inspector. The snapshot

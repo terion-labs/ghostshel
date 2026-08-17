@@ -18,4 +18,18 @@ public sealed class AgentWorkspaceViewInputTests
             Key.Enter,
             KeyModifiers.Control));
     }
+
+    [Fact]
+    public void Super_enter_requests_steering_without_submitting_normally()
+    {
+        Assert.True(AgentWorkspaceView.ShouldQueueSteering(
+            Key.Enter,
+            KeyModifiers.Meta));
+        Assert.False(AgentWorkspaceView.ShouldSubmitPrompt(
+            Key.Enter,
+            KeyModifiers.Meta));
+        Assert.False(AgentWorkspaceView.ShouldQueueSteering(
+            Key.Enter,
+            KeyModifiers.Shift));
+    }
 }

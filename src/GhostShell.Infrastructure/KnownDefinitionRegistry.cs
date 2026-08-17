@@ -61,9 +61,7 @@ internal static class KnownDefinitionRegistry
         }
 
         var currentSchemaVersion = GetCurrentSchemaVersion(document.Kind);
-        var requiresMigration = document.SchemaVersion != currentSchemaVersion;
-        if (requiresMigration
-            && !IsKnownMigratableSchema(document.Kind, document.SchemaVersion))
+        if (document.SchemaVersion != currentSchemaVersion)
         {
             problem = new(
                 DefinitionProblemKind.UnsupportedSchema,
@@ -107,22 +105,6 @@ internal static class KnownDefinitionRegistry
                 "The definition payload schema does not match its envelope.",
                 key);
             return false;
-        }
-
-        if (requiresMigration)
-        {
-            if (!TryMigrateDefinition(
-                    document,
-                    key,
-                    out document,
-                    out problem))
-            {
-                problem ??= new(
-                    DefinitionProblemKind.UnsupportedSchema,
-                    $"Definition schema {document.SchemaVersion} is not supported for kind '{document.Kind}'.",
-                    key);
-                return false;
-            }
         }
 
         try
@@ -243,153 +225,6 @@ internal static class KnownDefinitionRegistry
                 JsonSerializer.Deserialize<QuickTerminalSettings>(payloadJson, DefinitionJson.Options),
             _ => null,
         };
-
-    private static bool TryMigrateDefinition(
-        PortableDefinitionDocument source,
-        DefinitionKey key,
-        out PortableDefinitionDocument migrated,
-        out DefinitionProblem? problem)
-    {
-        if (TryMigrateMcpServerProfile(source, key, out migrated, out problem))
-        {
-            return true;
-        }
-
-        if (problem is not null)
-        {
-            return false;
-        }
-
-        return TryMigrateAiProviderProfile(source, key, out migrated, out problem);
-    }
-
-    private static bool IsKnownMigratableSchema(
-        DefinitionKind kind,
-        int schemaVersion) =>
-        schemaVersion == 1
-        && (kind == DefinitionKind.McpServerProfile
-            || kind == DefinitionKind.AiProviderProfile);
-
-    private static bool TryMigrateMcpServerProfile(
-        PortableDefinitionDocument source,
-        DefinitionKey key,
-        out PortableDefinitionDocument migrated,
-        out DefinitionProblem? problem)
-    {
-        migrated = source;
-        problem = null;
-        if (source.Kind != DefinitionKind.McpServerProfile
-            || source.SchemaVersion != 1)
-        {
-            return false;
-        }
-
-        try
-        {
-            var legacy = JsonSerializer.Deserialize<McpServerProfileSchemaOne>(
-                source.PayloadJson,
-                DefinitionJson.Options);
-            if (legacy is null
-                || legacy.SchemaVersion != 1
-                || legacy.Id.Value != key.Value
-                || !string.Equals(
-                    legacy.Name,
-                    source.Name,
-                    StringComparison.Ordinal))
-            {
-                problem = new(
-                    DefinitionProblemKind.InvalidDefinition,
-                    "The legacy MCP profile identity, schema, or name is invalid.",
-                    key);
-                return false;
-            }
-
-            var profile = new McpServerProfile(
-                legacy.Id,
-                McpServerProfile.CurrentSchemaVersion,
-                legacy.Name,
-                legacy.Executable,
-                legacy.Arguments,
-                legacy.WorkingDirectory,
-                legacy.Environment,
-                legacy.EnabledTools,
-                legacy.IsEnabled);
-            migrated = new PortableDefinitionDocument(
-                source.Kind,
-                source.Id,
-                profile.SchemaVersion,
-                profile.Name,
-                JsonSerializer.Serialize(profile, DefinitionJson.Options));
-            return true;
-        }
-        catch (Exception exception) when (IsPayloadException(exception))
-        {
-            problem = new(
-                DefinitionProblemKind.InvalidDefinition,
-                "The legacy MCP profile cannot be migrated safely.",
-                key);
-            return false;
-        }
-    }
-
-    private static bool TryMigrateAiProviderProfile(
-        PortableDefinitionDocument source,
-        DefinitionKey key,
-        out PortableDefinitionDocument migrated,
-        out DefinitionProblem? problem)
-    {
-        migrated = source;
-        problem = null;
-        if (source.Kind != DefinitionKind.AiProviderProfile
-            || source.SchemaVersion != AiProviderProfile.LegacySchemaVersion)
-        {
-            return false;
-        }
-
-        try
-        {
-            var legacy = JsonSerializer.Deserialize<AiProviderProfileSchemaOne>(
-                source.PayloadJson,
-                DefinitionJson.Options);
-            if (legacy is null
-                || legacy.SchemaVersion != AiProviderProfile.LegacySchemaVersion
-                || legacy.Id.Value != key.Value
-                || !string.Equals(legacy.Name, source.Name, StringComparison.Ordinal))
-            {
-                problem = new(
-                    DefinitionProblemKind.InvalidDefinition,
-                    "The legacy AI-provider profile identity, schema, or name is invalid.",
-                    key);
-                return false;
-            }
-
-            var profile = new AiProviderProfile(
-                legacy.Id,
-                legacy.SchemaVersion,
-                legacy.Name,
-                legacy.ProviderKind,
-                legacy.Endpoint,
-                legacy.Authentication,
-                legacy.DefaultModel,
-                legacy.Order,
-                legacy.IsEnabled);
-            migrated = new PortableDefinitionDocument(
-                source.Kind,
-                source.Id,
-                profile.SchemaVersion,
-                profile.Name,
-                JsonSerializer.Serialize(profile, DefinitionJson.Options));
-            return true;
-        }
-        catch (Exception exception) when (IsPayloadException(exception))
-        {
-            problem = new(
-                DefinitionProblemKind.InvalidDefinition,
-                "The legacy AI-provider profile cannot be migrated safely.",
-                key);
-            return false;
-        }
-    }
 
     private static DefinitionProblem? ValidateSelf(IDurableDefinition definition)
     {

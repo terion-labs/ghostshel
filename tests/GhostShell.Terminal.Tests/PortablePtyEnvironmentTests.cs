@@ -1,0 +1,24 @@
+using GhostShell.Terminal;
+
+namespace GhostShell.Terminal.Tests;
+
+public sealed class PortablePtyEnvironmentTests
+{
+    [Fact]
+    public void Process_environment_advertises_the_supported_interactive_state_protocol()
+    {
+        var environment = PortaPtyFactory.CreateProcessEnvironment(
+            new Dictionary<string, string>
+            {
+                ["LANG"] = "C",
+                ["GHOSTSHELL_INTERACTIVE_STATE_PROTOCOL"] = "unsupported-version",
+            });
+
+        Assert.Equal("C", environment["LANG"]);
+        Assert.Equal("xterm-256color", environment["TERM"]);
+        Assert.Equal("truecolor", environment["COLORTERM"]);
+        Assert.Equal(
+            "terminal.interactive-state.v1",
+            environment["GHOSTSHELL_INTERACTIVE_STATE_PROTOCOL"]);
+    }
+}

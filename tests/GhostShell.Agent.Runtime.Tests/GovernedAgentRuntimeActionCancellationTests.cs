@@ -65,6 +65,7 @@ public sealed partial class GovernedAgentRuntimeTests
                 fixture.Runtime.Snapshot.State);
             var activity = Assert.IsType<GovernedAgentToolActivity>(
                 fixture.Runtime.Snapshot.ActiveTool);
+            Assert.Equal(fixture.Target.PanelId, activity.PanelId);
             Assert.True(activity.CancellationRequested);
             Assert.Equal(
                 "Cancelling this action…",
@@ -299,7 +300,7 @@ public sealed partial class GovernedAgentRuntimeTests
     }
 
     [Fact]
-    public async Task RealHostWaitCancellationIsFailedCallerCancelledResult()
+    public async Task RealHostWaitCancellationPreservesFinalScreenForProvider()
     {
         var provider = InteractiveTuiProvider.OneWaitThenAnswer();
         await using var fixture = await InteractiveTuiFixture.CreateAsync(provider);
@@ -321,14 +322,18 @@ public sealed partial class GovernedAgentRuntimeTests
         var toolResult = Assert.Single(
             provider.Requests.SelectMany(request => request.Messages),
             message => message.Role == AgentMessageRole.Tool);
-        Assert.Equal(AgentToolResultStatus.Failed, toolResult.ToolResult?.Status);
-        Assert.Equal("caller_cancelled", toolResult.ToolResult?.StableCode);
+        Assert.Equal(AgentToolResultStatus.Succeeded, toolResult.ToolResult?.Status);
+        Assert.Equal("tool_succeeded", toolResult.ToolResult?.StableCode);
         Assert.Contains(
-            "\"ok\":false",
+            "\"ok\":true",
             toolResult.Content,
             StringComparison.Ordinal);
         Assert.Contains(
-            "\"code\":\"caller_cancelled\"",
+            "\"wait_outcome\":\"cancelled\"",
+            toolResult.Content,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "\"content_revision\":1",
             toolResult.Content,
             StringComparison.Ordinal);
         Assert.Contains(

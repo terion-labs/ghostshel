@@ -23,6 +23,15 @@ public static class AgentCapabilityProtocol
     public const string McpTools = "mcp_tools";
     public const string SecretUse = "secret_use";
     public const string BrowserInteraction = "browser_interaction";
+    public const string BrowserScripting = "browser_scripting";
+    public const string BrowserDiagnostics = "browser_diagnostics";
+    public const string DatabaseRead = "database_read";
+    public const string DatabaseWrite = "database_write";
+    public const string DockerData = "docker_data";
+    public const string SystemData = "system_data";
+    public const string ProcessData = "process_data";
+    public const string ArtifactTransfer = "artifact_transfer";
+    public const string WorkspaceLayout = "workspace_layout";
 
     public static string GetToken(AgentCapability capability) =>
         capability switch
@@ -43,6 +52,15 @@ public static class AgentCapabilityProtocol
             AgentCapability.McpTools => McpTools,
             AgentCapability.SecretUse => SecretUse,
             AgentCapability.BrowserInteraction => BrowserInteraction,
+            AgentCapability.BrowserScripting => BrowserScripting,
+            AgentCapability.BrowserDiagnostics => BrowserDiagnostics,
+            AgentCapability.DatabaseRead => DatabaseRead,
+            AgentCapability.DatabaseWrite => DatabaseWrite,
+            AgentCapability.DockerData => DockerData,
+            AgentCapability.SystemData => SystemData,
+            AgentCapability.ProcessData => ProcessData,
+            AgentCapability.ArtifactTransfer => ArtifactTransfer,
+            AgentCapability.WorkspaceLayout => WorkspaceLayout,
             _ => throw new ArgumentOutOfRangeException(nameof(capability)),
         };
 
@@ -96,6 +114,33 @@ public static class AgentCapabilityProtocol
                 return true;
             case BrowserInteraction:
                 capability = AgentCapability.BrowserInteraction;
+                return true;
+            case BrowserScripting:
+                capability = AgentCapability.BrowserScripting;
+                return true;
+            case BrowserDiagnostics:
+                capability = AgentCapability.BrowserDiagnostics;
+                return true;
+            case DatabaseRead:
+                capability = AgentCapability.DatabaseRead;
+                return true;
+            case DatabaseWrite:
+                capability = AgentCapability.DatabaseWrite;
+                return true;
+            case DockerData:
+                capability = AgentCapability.DockerData;
+                return true;
+            case SystemData:
+                capability = AgentCapability.SystemData;
+                return true;
+            case ProcessData:
+                capability = AgentCapability.ProcessData;
+                return true;
+            case ArtifactTransfer:
+                capability = AgentCapability.ArtifactTransfer;
+                return true;
+            case WorkspaceLayout:
+                capability = AgentCapability.WorkspaceLayout;
                 return true;
             default:
                 capability = default;

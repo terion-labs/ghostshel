@@ -5,12 +5,20 @@ namespace GhostShell.Agent.Runtime;
 
 internal sealed record ProcessAgentIntent
 {
-    public ProcessAgentIntent(int limit, ProcessMonitorSort sort)
+    public ProcessAgentIntent(
+        int limit,
+        ProcessMonitorSort sort,
+        int offset = 0,
+        string? nameContains = null,
+        int? processId = null)
     {
         if (!ProcessAgentToolSet.IsAllowedLimit(limit))
         {
             throw new ArgumentOutOfRangeException(nameof(limit));
         }
+
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(offset, 1_000_000);
 
         if (!Enum.IsDefined(sort))
         {
@@ -19,11 +27,20 @@ internal sealed record ProcessAgentIntent
 
         Limit = limit;
         Sort = sort;
+        Offset = offset;
+        NameContains = nameContains;
+        ProcessId = processId;
     }
 
     public int Limit { get; }
 
     public ProcessMonitorSort Sort { get; }
+
+    public int Offset { get; }
+
+    public string? NameContains { get; }
+
+    public int? ProcessId { get; }
 
     public string SortName =>
         Sort switch

@@ -429,7 +429,8 @@ public sealed partial class GovernedAgentRuntimeTests
                 BuiltInAgentTools.Catalog,
                 new FixedProviderResolver(provider),
                 new TestApprovalPrincipal(new ClientId("broad-scope-client")),
-                TimeProvider.System);
+                TimeProvider.System,
+                AgentPolicy.Default);
         }
 
         public BroadScopeContextProxy Context { get; }
@@ -459,7 +460,10 @@ public sealed partial class GovernedAgentRuntimeTests
             new(
                 new AiProviderProfileId("provider-1"),
                 message,
-                Context.CreatePromptTarget());
+                Context.CreatePromptTarget(),
+                Runtime.Snapshot.EffectivePolicy!.SelectPrimaryModel(
+                    "provider-1",
+                    "provider-default-model"));
 
         public async ValueTask DisposeAsync()
         {

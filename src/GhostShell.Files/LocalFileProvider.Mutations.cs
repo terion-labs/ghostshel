@@ -60,7 +60,16 @@ public abstract partial class LocalFileProvider
                     return ValueTask.FromResult(FileProviderResult<FileEntry>.Failure(preconditionError));
                 }
 
-                Directory.CreateDirectory(resolved.Value!.Path);
+                if (existing is null)
+                {
+                    var mutationError = CreateDirectoryEntry(resolved.Value!);
+                    if (mutationError is not null)
+                    {
+                        return ValueTask.FromResult(
+                            FileProviderResult<FileEntry>.Failure(mutationError));
+                    }
+                }
+
                 return ValueTask.FromResult(ReadEntry(new ResolvedLocalLocation(
                     request.Location.WithVersion(null),
                     resolved.Value!.StructuredPath,
@@ -206,27 +215,54 @@ public abstract partial class LocalFileProvider
 
                 token.ThrowIfCancellationRequested();
                 var wasDirectory = entry.Kind == FileEntryKind.Directory;
-                if (entry.Kind == FileEntryKind.Link)
+                var mutationError = DeleteEntry(
+                    resolved.Value!,
+                    entry,
+                    request.Recursive,
+                    token);
+                if (mutationError is not null)
                 {
-                    DeleteLink(resolved.Value!.Path);
-                }
-                else if (wasDirectory && request.Recursive)
-                {
-                    DeleteTree(resolved.Value!.Path, token);
-                }
-                else if (wasDirectory)
-                {
-                    Directory.Delete(resolved.Value!.Path);
-                }
-                else
-                {
-                    File.Delete(resolved.Value!.Path);
+                    return ValueTask.FromResult(
+                        FileProviderResult<FileDeleteReceipt>.Failure(mutationError));
                 }
 
                 return ValueTask.FromResult(FileProviderResult<FileDeleteReceipt>.Success(
                     new FileDeleteReceipt(request.Location, wasDirectory)));
             },
             cancellationToken);
+    }
+
+    private protected virtual FileProviderError? CreateDirectoryEntry(
+        ResolvedLocalLocation resolved)
+    {
+        Directory.CreateDirectory(resolved.Path);
+        return null;
+    }
+
+    private protected virtual FileProviderError? DeleteEntry(
+        ResolvedLocalLocation resolved,
+        FileEntry entry,
+        bool recursive,
+        CancellationToken cancellationToken)
+    {
+        if (entry.Kind == FileEntryKind.Link)
+        {
+            DeleteLink(resolved.Path);
+        }
+        else if (entry.Kind == FileEntryKind.Directory && recursive)
+        {
+            DeleteTree(resolved.Path, cancellationToken);
+        }
+        else if (entry.Kind == FileEntryKind.Directory)
+        {
+            Directory.Delete(resolved.Path);
+        }
+        else
+        {
+            File.Delete(resolved.Path);
+        }
+
+        return null;
     }
 
     private static void DeleteTree(string directoryPath, CancellationToken cancellationToken)

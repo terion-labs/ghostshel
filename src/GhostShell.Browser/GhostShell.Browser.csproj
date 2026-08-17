@@ -6,6 +6,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="GhostShell" />
     <InternalsVisibleTo Include="GhostShell.Browser.Tests" />
   </ItemGroup>
 

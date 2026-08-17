@@ -9,12 +9,10 @@ public sealed class GhostShellDatabase : IAsyncDisposable
 {
     /// <summary>
     /// The engine version this build bundles, asserted so a stray system
-    /// library can never be swapped in underneath. Bundling SQLite3 Multiple
-    /// Ciphers — the price of encryption at rest — currently means 3.49.1
-    /// rather than the newest plain SQLite; raise this as that bundle tracks
-    /// upstream.
+    /// library can never be swapped in underneath. The bundled SQLite3
+    /// Multiple Ciphers build currently tracks SQLite 3.53.4.
     /// </summary>
-    private static readonly Version MinimumSqliteVersion = new(3, 49, 1);
+    private static readonly Version MinimumSqliteVersion = new(3, 53, 4);
     private readonly SemaphoreSlim _initializationGate = new(1, 1);
     private readonly IReadOnlyList<SqliteMigration> _migrations;
     private readonly SqliteStorageOptions _options;
@@ -134,8 +132,6 @@ public sealed class GhostShellDatabase : IAsyncDisposable
         await _initializationGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            using var poolConnection = CreateConnection();
-            SqliteConnection.ClearPool(poolConnection);
             _profileLock?.Dispose();
             _profileLock = null;
         }
@@ -152,7 +148,16 @@ public sealed class GhostShellDatabase : IAsyncDisposable
         {
             DataSource = _options.DatabasePath,
             Mode = SqliteOpenMode.ReadWriteCreate,
-            Pooling = true,
+            // The configuration database is a correctness boundary, not a
+            // throughput database. A logical store operation exclusively owns
+            // its native sqlite3 connection from open through disposal. Native
+            // connection pooling allows a connection used by one store (for
+            // example checkpoint persistence) to be handed to an unrelated
+            // concurrent agent-audit operation. Repeated macOS/arm64 crash
+            // reports showed the reused connection's per-connection lookaside
+            // free list was corrupt during prepare. Do not reuse that native
+            // state across application subsystems.
+            Pooling = false,
             ForeignKeys = true,
             DefaultTimeout = checked((int)Math.Ceiling(_options.BusyTimeout.TotalSeconds)),
         };
@@ -167,8 +172,7 @@ public sealed class GhostShellDatabase : IAsyncDisposable
     /// <summary>
     /// Runs an operation that must have the database file to itself — turning
     /// encryption on or off rewrites every page. New opens wait at the gate
-    /// and then re-verify the (possibly re-keyed) file; pooled connections
-    /// are dropped first so no idle handle survives the change.
+    /// and then re-verify the (possibly re-keyed) file.
     /// </summary>
     public async ValueTask RunExclusiveMaintenanceAsync(
         Func<CancellationToken, Task> operation,
@@ -179,7 +183,6 @@ public sealed class GhostShellDatabase : IAsyncDisposable
         await _initializationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            SqliteConnection.ClearAllPools();
             _initialized = false;
             await operation(cancellationToken).ConfigureAwait(false);
         }

@@ -111,15 +111,15 @@ public sealed partial class AgentChatViewModelTests
                 AgentServiceTier.Flex,
                 AgentServiceTier.Priority,
             ]);
-        var legacy = new AiProviderModelDescriptor(
+        var basicModel = new AiProviderModelDescriptor(
             "model",
-            "Legacy",
+            "Basic model",
             [AgentReasoningEffort.Automatic, AgentReasoningEffort.High]);
         var provider = Provider(
             "provider",
             "OpenAI",
             order: 0,
-            models: [legacy, gpt56]);
+            models: [basicModel, gpt56]);
         using var runtime = new StubGovernedRuntime();
         using var profiles = new StubProfileRuntime { Profiles = [provider] };
         using var viewModel = new AgentChatViewModel(
@@ -127,7 +127,7 @@ public sealed partial class AgentChatViewModelTests
             profiles,
             ImmediateUiThreadDispatcher.Instance);
 
-        viewModel.SelectedModel = gpt56;
+        await viewModel.SelectModelAsync(gpt56, CancellationToken.None);
 
         Assert.Equal(
             [
@@ -151,14 +151,14 @@ public sealed partial class AgentChatViewModelTests
             option.Value == AgentServiceTier.Priority);
         viewModel.Prompt = "Inspect it.";
 
-        await viewModel.SendAsync(Target(), CancellationToken.None);
+        await viewModel.SendAsync(Target(), Policy(provider), CancellationToken.None);
 
         Assert.Equal(AgentServiceTier.Priority, runtime.LastRequest!.ServiceTier);
         Assert.Equal(AgentReasoningEffort.ExtraHigh, runtime.LastRequest.ReasoningEffort);
 
         runtime.Snapshot = Snapshot();
         runtime.RaiseChanged();
-        viewModel.SelectedModel = legacy;
+        viewModel.SelectedModel = basicModel;
 
         Assert.Empty(viewModel.ServiceTiers);
         Assert.Equal(AgentServiceTier.Automatic, viewModel.SelectedServiceTier.Value);
@@ -230,7 +230,7 @@ public sealed partial class AgentChatViewModelTests
     }
 
     [Fact]
-    public void Legacy_adjacent_reasoning_parts_are_presented_as_separate_paragraphs()
+    public void Adjacent_reasoning_parts_are_presented_as_separate_paragraphs()
     {
         var message = new AgentChatMessageViewModel(
             AgentChatMessageRole.Assistant,
@@ -310,6 +310,60 @@ public sealed partial class AgentChatViewModelTests
     }
 
     [Fact]
+    public async Task Streaming_and_completion_preserve_committed_message_instances()
+    {
+        var committedMessages = new[]
+        {
+            new AgentChatMessage(AgentChatMessageRole.User, "Test every panel."),
+            new AgentChatMessage(AgentChatMessageRole.Assistant, "Testing now."),
+        };
+        using var runtime = new StubGovernedRuntime
+        {
+            Snapshot = Snapshot(
+                state: GovernedAgentState.StreamingProvider,
+                messages: committedMessages) with
+            {
+                ProvisionalAssistantText = "Writing the final report",
+            },
+        };
+        using var profiles = new StubProfileRuntime();
+        using var viewModel = new AgentChatViewModel(
+            runtime,
+            profiles,
+            ImmediateUiThreadDispatcher.Instance);
+        var first = viewModel.Messages[0];
+        var second = viewModel.Messages[1];
+
+        runtime.Snapshot = runtime.Snapshot with
+        {
+            ProvisionalAssistantText = "Writing the final report…",
+        };
+        runtime.RaiseChanged();
+        await WaitUntilAsync(() =>
+            viewModel.ProvisionalAssistantText.EndsWith('…'));
+
+        Assert.Same(first, viewModel.Messages[0]);
+        Assert.Same(second, viewModel.Messages[1]);
+
+        runtime.Snapshot = runtime.Snapshot with
+        {
+            State = GovernedAgentState.Ready,
+            Messages = committedMessages.Append(
+                new AgentChatMessage(
+                    AgentChatMessageRole.Assistant,
+                    "The full test passed."))
+                .ToArray(),
+            ProvisionalAssistantText = string.Empty,
+        };
+        runtime.RaiseChanged();
+        await WaitUntilAsync(() => viewModel.Messages.Count == 3);
+
+        Assert.Same(first, viewModel.Messages[0]);
+        Assert.Same(second, viewModel.Messages[1]);
+        Assert.Equal("The full test passed.", viewModel.Messages[2].Content);
+    }
+
+    [Fact]
     public async Task Assistant_fork_point_is_projected_and_forwarded()
     {
         var forkPoint = new AgentConversationForkPoint(2);
@@ -338,6 +392,20 @@ public sealed partial class AgentChatViewModelTests
 
         Assert.Equal(1, runtime.ForkCount);
         Assert.Equal(forkPoint, runtime.LastForkPoint);
+    }
+
+    [Fact]
+    public void Empty_assistant_turn_has_no_message_actions()
+    {
+        var message = new AgentChatMessageViewModel(
+            AgentChatMessageRole.Assistant,
+            string.Empty,
+            ReasoningSummary: "Checked the request.",
+            Usage: new AgentChatUsage(20, 8, 0, 8, 28),
+            ForkPoint: new AgentConversationForkPoint(2));
+
+        Assert.False(message.HasMessageText);
+        Assert.False(message.CanFork);
     }
 
     [Fact]
@@ -447,7 +515,7 @@ public sealed partial class AgentChatViewModelTests
     }
 
     [Fact]
-    public void Progress_card_has_keyboard_and_polite_live_accessibility_bindings()
+    public void Progress_card_is_keyboard_accessible_without_a_native_live_region()
     {
         XNamespace viewNamespace = "https://github.com/avaloniaui";
         XNamespace ControlsNamespace = "using:GhostShell.App.Controls";
@@ -461,11 +529,9 @@ public sealed partial class AgentChatViewModelTests
             "True",
             card.Attribute("KeyboardNavigation.IsTabStop")?.Value);
         Assert.Equal(
-            "{Binding AgentChat.HasCurrentProgress}",
+            "{Binding AgentChat.HasCurrentProgress, FallbackValue=False}",
             card.Attribute("IsVisible")?.Value);
-        Assert.Equal(
-            "Polite",
-            card.Attribute("AutomationProperties.LiveSetting")?.Value);
+        Assert.Null(card.Attribute("AutomationProperties.LiveSetting"));
         Assert.Equal(
             "AI agent progress",
             card.Attribute("AutomationProperties.Name")?.Value);
@@ -512,7 +578,7 @@ public sealed partial class AgentChatViewModelTests
     }
 
     [Fact]
-    public void Pending_question_is_untrusted_agent_content_and_blocks_the_main_prompt()
+    public void Pending_question_preserves_the_question_and_keeps_the_queue_composer_available()
     {
         var provider = Provider("provider", "Provider", order: 0);
         var question = Question();
@@ -544,9 +610,7 @@ public sealed partial class AgentChatViewModelTests
         Assert.Equal(question.Question, pending.Question);
         Assert.Equal(question.ContentOrigin, pending.ContentOrigin);
         Assert.Contains("2026", pending.ExpiresAt, StringComparison.Ordinal);
-        Assert.Contains("untrusted model text", pending.AccessibleName);
-        Assert.Contains("not approval", pending.ResponseWarning);
-        Assert.Contains("credentials", pending.ResponseWarning);
+        Assert.Contains(question.Question, pending.AccessibleName, StringComparison.Ordinal);
         Assert.Equal("Input needed", viewModel.StateLabel);
         Assert.Equal("Input needed", viewModel.ConnectionStatus);
         Assert.True(viewModel.IsBusy);
@@ -556,7 +620,9 @@ public sealed partial class AgentChatViewModelTests
         Assert.True(viewModel.CanRespondToQuestion);
         Assert.True(viewModel.CanDeclineQuestion);
         Assert.False(viewModel.CanSubmitQuestionResponse);
-        Assert.False(viewModel.CanEnterPrompt);
+        Assert.True(viewModel.CanEnterPrompt);
+        Assert.True(viewModel.CanQueueFollowUp);
+        Assert.True(viewModel.CanSubmitPrompt);
         Assert.False(viewModel.CanSend);
         Assert.True(viewModel.CanStop);
         Assert.True(viewModel.CanRequestStop);
@@ -723,17 +789,16 @@ public sealed partial class AgentChatViewModelTests
             "True",
             card.Attribute("KeyboardNavigation.IsTabStop")?.Value);
         Assert.Equal(
-            "{Binding AgentChat.HasPendingQuestion}",
+            "{Binding AgentChat.HasPendingQuestion, FallbackValue=False}",
             card.Attribute("IsVisible")?.Value);
-        Assert.Equal(
-            "Assertive",
-            card.Attribute("AutomationProperties.LiveSetting")?.Value);
+        Assert.Null(card.Attribute("AutomationProperties.LiveSetting"));
         Assert.Equal(
             "{Binding AgentChat.PendingQuestion.AccessibleName}",
             card.Attribute("AutomationProperties.Name")?.Value);
-        Assert.Equal(
-            "{Binding AgentChat.PendingQuestion.ResponseWarning}",
-            card.Attribute("AutomationProperties.HelpText")?.Value);
+        Assert.Null(card.Attribute("AutomationProperties.HelpText"));
+        Assert.DoesNotContain(
+            card.Descendants(),
+            element => element.Name.LocalName == "Callout");
         Assert.Contains(
             card.Descendants(viewNamespace + "TextBlock"),
             element => string.Equals(
@@ -810,7 +875,7 @@ public sealed partial class AgentChatViewModelTests
     }
 
     [Fact]
-    public void Pending_capability_request_is_trusted_run_local_content_and_blocks_the_main_prompt()
+    public void Pending_capability_request_is_trusted_and_keeps_the_queue_composer_available()
     {
         var provider = Provider("provider", "Provider", order: 0);
         var request = CapabilityRequest();
@@ -860,7 +925,9 @@ public sealed partial class AgentChatViewModelTests
         Assert.Null(viewModel.PendingApproval);
         Assert.False(viewModel.CanRespondToQuestion);
         Assert.False(viewModel.CanDecideApproval);
-        Assert.False(viewModel.CanEnterPrompt);
+        Assert.True(viewModel.CanEnterPrompt);
+        Assert.True(viewModel.CanQueueFollowUp);
+        Assert.True(viewModel.CanSubmitPrompt);
         Assert.False(viewModel.CanSend);
         Assert.True(viewModel.CanStop);
         Assert.True(viewModel.CanRequestStop);
@@ -1057,11 +1124,9 @@ public sealed partial class AgentChatViewModelTests
             "True",
             card.Attribute("KeyboardNavigation.IsTabStop")?.Value);
         Assert.Equal(
-            "{Binding AgentChat.HasPendingCapabilityRequest}",
+            "{Binding AgentChat.HasPendingCapabilityRequest, FallbackValue=False}",
             card.Attribute("IsVisible")?.Value);
-        Assert.Equal(
-            "Assertive",
-            card.Attribute("AutomationProperties.LiveSetting")?.Value);
+        Assert.Null(card.Attribute("AutomationProperties.LiveSetting"));
         Assert.Equal(
             "{Binding AgentChat.PendingCapabilityRequest.AccessibleName}",
             card.Attribute("AutomationProperties.Name")?.Value);
@@ -1119,7 +1184,7 @@ public sealed partial class AgentChatViewModelTests
     }
 
     [Fact]
-    public async Task Initial_provider_stream_repurposes_composer_for_bounded_steering()
+    public async Task Initial_provider_stream_keeps_send_and_stop_and_queues_steering()
     {
         var provider = Provider("provider", "Provider", order: 0);
         var runId = new AgentRunId("run-steering");
@@ -1150,49 +1215,45 @@ public sealed partial class AgentChatViewModelTests
             ImmediateUiThreadDispatcher.Instance);
         using var cancellation = new CancellationTokenSource();
 
-        Assert.True(viewModel.IsSteeringAvailable);
         Assert.True(viewModel.CanEnterPrompt);
-        Assert.False(viewModel.CanSteer);
         Assert.False(viewModel.CanSubmitPrompt);
-        Assert.False(viewModel.CanShowPrimaryAction);
+        Assert.True(viewModel.CanShowPrimaryAction);
         Assert.True(viewModel.ShowStopAction);
-        Assert.Equal("Steer", viewModel.PrimaryActionLabel);
+        Assert.Equal("Queue message", viewModel.PrimaryActionLabel);
         Assert.Equal(
-            "Steer the current AI agent response",
+            "Queue a message for the AI agent",
             viewModel.PrimaryActionAccessibleName);
-        Assert.Equal(
-            "Steer the current response…",
-            viewModel.PromptPlaceholder);
+        Assert.Equal("Ask GhostSHELL…", viewModel.PromptPlaceholder);
 
         viewModel.Prompt = "Check the canary before production.";
 
-        Assert.True(viewModel.CanSteer);
         Assert.True(viewModel.CanSubmitPrompt);
         Assert.True(viewModel.CanShowPrimaryAction);
-        Assert.False(viewModel.ShowStopAction);
+        Assert.True(viewModel.ShowStopAction);
 
-        await viewModel.SteerAsync(cancellation.Token);
+        await viewModel.QueueSteeringAsync(cancellation.Token);
 
-        var steering = Assert.IsType<GovernedAgentSteering>(
-            runtime.LastSteering);
-        Assert.Equal(runId, steering.RunId);
-        Assert.Equal(7, steering.ExpectedGeneration);
+        var steering = Assert.IsType<GovernedAgentFollowUp>(
+            runtime.LastFollowUp);
         Assert.Equal(
             "Check the canary before production.",
-            steering.Update);
+            steering.Message);
+        Assert.Equal(
+            GovernedAgentFollowUpDelivery.Steering,
+            steering.Delivery);
         Assert.Equal(
             cancellation.Token,
-            runtime.LastSteeringCancellationToken);
-        Assert.Equal(1, runtime.SteeringCount);
+            runtime.LastFollowUpCancellationToken);
+        Assert.Equal(1, runtime.FollowUpCount);
         Assert.Equal(0, runtime.SendCount);
         Assert.Equal(string.Empty, viewModel.Prompt);
     }
 
     [Fact]
-    public async Task Rejected_steering_restores_draft_and_blocks_duplicate_submission()
+    public async Task Rejected_queued_steering_restores_draft_and_blocks_duplicate_submission()
     {
         var provider = Provider("provider", "Provider", order: 0);
-        var pending = new TaskCompletionSource<GovernedAgentSteeringResult>(
+        var pending = new TaskCompletionSource<GovernedAgentFollowUpResult>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         using var runtime = new StubGovernedRuntime
         {
@@ -1203,7 +1264,7 @@ public sealed partial class AgentChatViewModelTests
                 target: Target(),
                 steeringAvailable: true,
                 steeringGeneration: 11),
-            PendingSteering = pending,
+            PendingFollowUp = pending,
         };
         using var profiles = new StubProfileRuntime
         {
@@ -1217,34 +1278,34 @@ public sealed partial class AgentChatViewModelTests
             Prompt = "Preserve this steering update.",
         };
 
-        var steering = viewModel.SteerAsync(CancellationToken.None);
-        await viewModel.SteerAsync(CancellationToken.None);
+        var steering = viewModel.QueueSteeringAsync(CancellationToken.None);
+        await viewModel.QueueSteeringAsync(CancellationToken.None);
 
-        Assert.Equal(1, runtime.SteeringCount);
-        Assert.False(viewModel.CanEnterPrompt);
-        Assert.False(viewModel.CanSteer);
+        Assert.Equal(1, runtime.FollowUpCount);
+        Assert.True(viewModel.CanEnterPrompt);
+        Assert.False(viewModel.CanQueueFollowUp);
         Assert.Equal(string.Empty, viewModel.Prompt);
 
         pending.SetResult(
-            new GovernedAgentSteeringResult(
+            new GovernedAgentFollowUpResult(
                 false,
                 "agent_steering_unavailable",
-                "The active generation can no longer be steered."));
+                "The active generation can no longer be steered.",
+                0));
         await steering;
 
         Assert.Equal("Preserve this steering update.", viewModel.Prompt);
         Assert.Equal(
             "The active generation can no longer be steered.",
             viewModel.Status);
-        Assert.True(viewModel.IsSteeringAvailable);
-        Assert.True(viewModel.CanSteer);
+        Assert.True(viewModel.CanQueueFollowUp);
     }
 
     [Theory]
     [InlineData(GovernedAgentState.AwaitingUserInput)]
     [InlineData(GovernedAgentState.AwaitingCapabilityDecision)]
     [InlineData(GovernedAgentState.AwaitingApproval)]
-    public void Authority_bearing_and_user_decision_states_never_offer_steering(
+    public void Authority_bearing_and_user_decision_states_accept_queued_messages(
         GovernedAgentState state)
     {
         var provider = Provider("provider", "Provider", order: 0);
@@ -1270,11 +1331,9 @@ public sealed partial class AgentChatViewModelTests
             Prompt = "Do not reinterpret this as a decision.",
         };
 
-        Assert.False(viewModel.IsSteeringAvailable);
-        Assert.False(viewModel.CanSteer);
-        Assert.False(viewModel.CanSubmitPrompt);
-        Assert.False(viewModel.CanEnterPrompt);
-        Assert.Equal("Send", viewModel.PrimaryActionLabel);
+        Assert.True(viewModel.CanSubmitPrompt);
+        Assert.True(viewModel.CanEnterPrompt);
+        Assert.Equal("Queue message", viewModel.PrimaryActionLabel);
     }
 
     [Fact]
@@ -1298,12 +1357,10 @@ public sealed partial class AgentChatViewModelTests
             Prompt = "Continue with this after the tool finishes.",
         };
 
-        Assert.False(viewModel.IsSteeringAvailable);
-        Assert.False(viewModel.CanSteer);
         Assert.True(viewModel.CanOfferFollowUpQueue);
         Assert.True(viewModel.CanQueueFollowUp);
         Assert.True(viewModel.CanEnterPrompt);
-        Assert.False(viewModel.CanSubmitPrompt);
+        Assert.True(viewModel.CanSubmitPrompt);
     }
 
     [Fact]
@@ -1331,12 +1388,10 @@ public sealed partial class AgentChatViewModelTests
             Prompt = "This must remain unavailable.",
         };
 
-        Assert.False(viewModel.IsSteeringAvailable);
-        Assert.False(viewModel.CanSteer);
-        Assert.False(viewModel.CanSubmitPrompt);
+        Assert.True(viewModel.CanSubmitPrompt);
         Assert.True(viewModel.CanEnterPrompt);
         Assert.True(viewModel.CanOfferFollowUpQueue);
-        Assert.False(viewModel.CanShowPrimaryAction);
+        Assert.True(viewModel.CanShowPrimaryAction);
     }
 
     [Fact]
@@ -1359,14 +1414,15 @@ public sealed partial class AgentChatViewModelTests
             "{Binding !AgentChat.HasFailedTurn}",
             input.Attribute("IsVisible")?.Value);
         var composer = Assert.Single(
-            input.Ancestors(viewNamespace + "Border"),
-            border => string.Equals(
-                border.Attribute("Grid.Row")?.Value,
-                "3",
+            input.Ancestors(viewNamespace + "StackPanel"),
+            panel => string.Equals(
+                panel.Attribute("Grid.Row")?.Value,
+                "4",
                 StringComparison.Ordinal));
-        Assert.Equal(
-            "{Binding AgentChat.HasProvider}",
-            composer.Attribute("IsVisible")?.Value);
+        Assert.Contains(
+            composer.Elements(viewNamespace + "Border"),
+            border => border.Attribute("IsVisible")?.Value
+                == "{Binding AgentChat.HasProvider, FallbackValue=False}");
 
         var action = Assert.Single(
             document.Descendants(viewNamespace + "Button"),
@@ -1396,7 +1452,7 @@ public sealed partial class AgentChatViewModelTests
                 "OnCancelAgentChatClick",
                 StringComparison.Ordinal));
         Assert.Equal(
-            "{Binding AgentChat.ShowStopAction}",
+            "{Binding AgentChat.ShowStopAction, FallbackValue=False}",
             stop.Attribute("IsVisible")?.Value);
         Assert.DoesNotContain(
             stop.Descendants(),
@@ -1422,7 +1478,7 @@ public sealed partial class AgentChatViewModelTests
         };
         using var cancellation = new CancellationTokenSource();
 
-        await viewModel.SendAsync(target, cancellation.Token);
+        await viewModel.SendAsync(target, Policy(provider), cancellation.Token);
 
         var request = Assert.IsType<GovernedAgentPrompt>(runtime.LastRequest);
         Assert.Equal(provider.Id, request.ProviderId);
@@ -1432,6 +1488,74 @@ public sealed partial class AgentChatViewModelTests
         Assert.Equal(cancellation.Token, runtime.LastCancellationToken);
         Assert.Equal(string.Empty, viewModel.Prompt);
         Assert.Equal(1, runtime.SendCount);
+    }
+
+    [Fact]
+    public async Task New_run_preserves_conversation_maintenance_policy()
+    {
+        var provider = Provider("provider", "Provider", order: 0);
+        var policy = new AgentPolicy(
+            provider.Id.Value,
+            provider.DefaultModel,
+            AgentPolicy.Default.Permissions)
+        {
+            CompactionModel = new AgentModelSelection("provider", "compact-model"),
+            TitleModel = new AgentModelSelection("provider", "title-model"),
+            SystemPrompt = "Workspace instructions.",
+        };
+        using var runtime = new StubGovernedRuntime
+        {
+            Snapshot = Snapshot(effectivePolicy: policy),
+        };
+        using var profiles = new StubProfileRuntime { Profiles = [provider] };
+        using var viewModel = new AgentChatViewModel(
+            runtime,
+            profiles,
+            ImmediateUiThreadDispatcher.Instance)
+        {
+            Prompt = "Inspect the workspace.",
+        };
+
+        await viewModel.SendAsync(Target(), policy, CancellationToken.None);
+
+        var requestedPolicy = Assert.IsType<AgentPolicy>(runtime.LastRequest?.Policy);
+        Assert.Equal(policy.CompactionModel, requestedPolicy.CompactionModel);
+        Assert.Equal(policy.TitleModel, requestedPolicy.TitleModel);
+        Assert.Equal(policy.SystemPrompt, requestedPolicy.SystemPrompt);
+    }
+
+    [Fact]
+    public async Task New_run_never_changes_the_explicit_compaction_route()
+    {
+        var provider = Provider("provider", "Provider", order: 0);
+        var configuredPolicy = AgentPolicyResolver.Resolve(AgentPolicy.Default);
+        Assert.Equal(
+            new AgentModelSelection(AgentPolicy.Default.Provider, AgentPolicy.Default.Model),
+            configuredPolicy.CompactionModel);
+        using var runtime = new StubGovernedRuntime
+        {
+            Snapshot = Snapshot(effectivePolicy: configuredPolicy),
+        };
+        using var profiles = new StubProfileRuntime { Profiles = [provider] };
+        using var viewModel = new AgentChatViewModel(
+            runtime,
+            profiles,
+            ImmediateUiThreadDispatcher.Instance)
+        {
+            Prompt = "Inspect the workspace.",
+        };
+
+        await viewModel.SendAsync(
+            Target(),
+            configuredPolicy.SelectPrimaryModel(
+                provider.Id.Value,
+                provider.DefaultModel),
+            CancellationToken.None);
+
+        var requestedPolicy = Assert.IsType<AgentPolicy>(runtime.LastRequest?.Policy);
+        Assert.Equal(provider.Id.Value, requestedPolicy.Provider);
+        Assert.Equal(provider.DefaultModel, requestedPolicy.Model);
+        Assert.Equal(configuredPolicy.CompactionModel, requestedPolicy.CompactionModel);
     }
 
     [Fact]
@@ -1499,7 +1623,7 @@ public sealed partial class AgentChatViewModelTests
         Assert.False(viewModel.CanStop);
         Assert.False(viewModel.ShowStopAction);
 
-        await viewModel.SendAsync(Target(), CancellationToken.None);
+        await viewModel.SendAsync(Target(), Policy(provider), CancellationToken.None);
 
         var request = Assert.IsType<GovernedAgentPrompt>(runtime.LastRequest);
         Assert.Equal("Tell me a story.", request.Message);
@@ -1529,10 +1653,11 @@ public sealed partial class AgentChatViewModelTests
         {
             Prompt = "Inspect the workspace.",
         };
-        viewModel.SelectedModel = viewModel.Models.Single(model =>
-            model.Id == "model-fast");
+        await viewModel.SelectModelAsync(
+            viewModel.Models.Single(model => model.Id == "model-fast"),
+            CancellationToken.None);
 
-        await viewModel.SendAsync(Target(), CancellationToken.None);
+        await viewModel.SendAsync(Target(), Policy(provider), CancellationToken.None);
 
         Assert.False(viewModel.HasMultipleProviders);
         Assert.True(viewModel.HasMultipleModels);
@@ -1683,7 +1808,11 @@ public sealed partial class AgentChatViewModelTests
                 effectivePolicy: new AgentPolicy(
                     provider.Id.Value,
                     "model",
-                    AgentPolicy.Default.Permissions)),
+                    AgentPolicy.Default.Permissions)
+                {
+                    CompactionModel = new AgentModelSelection(provider.Id.Value, "model"),
+                    TitleModel = new AgentModelSelection(provider.Id.Value, "model"),
+                }),
             SnapshotOnClear = Snapshot(),
         };
         using var profiles = new StubProfileRuntime { Profiles = [provider] };
@@ -1700,7 +1829,7 @@ public sealed partial class AgentChatViewModelTests
         Assert.Equal("model-fast", viewModel.SelectedModel?.Id);
 
         viewModel.Prompt = "Continue with the faster model.";
-        await viewModel.SendAsync(Target(), CancellationToken.None);
+        await viewModel.SendAsync(Target(), Policy(provider), CancellationToken.None);
 
         Assert.Equal("model-fast", runtime.LastRequest?.Model);
     }
@@ -1728,7 +1857,7 @@ public sealed partial class AgentChatViewModelTests
         viewModel.AddPendingImage(image);
         Assert.True(viewModel.CanSend);
 
-        await viewModel.SendAsync(Target(), CancellationToken.None);
+        await viewModel.SendAsync(Target(), Policy(provider), CancellationToken.None);
 
         var request = Assert.IsType<GovernedAgentPrompt>(runtime.LastRequest);
         Assert.Equal(string.Empty, request.Message);
@@ -1756,7 +1885,7 @@ public sealed partial class AgentChatViewModelTests
         Assert.False(viewModel.CanAttachImages);
         Assert.False(viewModel.CanSend);
 
-        await viewModel.SendAsync(Target(), CancellationToken.None);
+        await viewModel.SendAsync(Target(), Policy(provider), CancellationToken.None);
 
         Assert.Equal(0, runtime.SendCount);
         Assert.Contains(
@@ -1780,7 +1909,11 @@ public sealed partial class AgentChatViewModelTests
                     capability => capability,
                     capability => capability == AgentCapability.RunCommands
                         ? AgentPermission.Off
-                        : AgentPermission.Auto)));
+                        : AgentPermission.Auto))
+            {
+                CompactionModel = new AgentModelSelection(provider.Id.Value, "saved-model"),
+                TitleModel = new AgentModelSelection(provider.Id.Value, "saved-model"),
+            });
         using var runtime = new StubGovernedRuntime();
         using var profiles = new StubProfileRuntime
         {
@@ -1865,7 +1998,7 @@ public sealed partial class AgentChatViewModelTests
             Prompt = "Keep this prompt.",
         };
 
-        await viewModel.SendAsync(Target(), CancellationToken.None);
+        await viewModel.SendAsync(Target(), Policy(provider), CancellationToken.None);
 
         Assert.Equal("Keep this prompt.", viewModel.Prompt);
         Assert.Equal("The provider is unavailable.", viewModel.Status);
@@ -1937,7 +2070,7 @@ public sealed partial class AgentChatViewModelTests
             Prompt = "This initial prompt was already committed.",
         };
 
-        await viewModel.SendAsync(Target(), CancellationToken.None);
+        await viewModel.SendAsync(Target(), Policy(provider), CancellationToken.None);
 
         Assert.Equal(
             "First preserved follow-up."
@@ -1982,7 +2115,7 @@ public sealed partial class AgentChatViewModelTests
         };
         viewModel.AddPendingImage(image);
 
-        await viewModel.SendAsync(Target(), CancellationToken.None);
+        await viewModel.SendAsync(Target(), Policy(provider), CancellationToken.None);
 
         Assert.Empty(viewModel.PendingImages);
         Assert.Equal(string.Empty, viewModel.Prompt);
@@ -2097,7 +2230,11 @@ public sealed partial class AgentChatViewModelTests
                     AgentCapability.RunCommands => AgentPermission.Off,
                     AgentCapability.ReadFiles => AgentPermission.Auto,
                     _ => AgentPermission.Ask,
-                }));
+                }))
+        {
+            CompactionModel = new AgentModelSelection("Saved provider", "compact-model"),
+            TitleModel = new AgentModelSelection("Saved provider", "title-model"),
+        };
         using var runtime = new StubGovernedRuntime();
         using var profiles = new StubProfileRuntime
         {
@@ -2501,7 +2638,7 @@ public sealed partial class AgentChatViewModelTests
             EffectivePolicy = AgentPolicy.Default with
             {
                 Permissions = AgentPolicy.Default.Permissions.SetItem(
-                    AgentCapability.ProcessControl,
+                    AgentCapability.ProcessData,
                     AgentPermission.Ask),
             },
         };
@@ -2563,7 +2700,7 @@ public sealed partial class AgentChatViewModelTests
             EffectivePolicy = AgentPolicy.Default with
             {
                 Permissions = AgentPolicy.Default.Permissions.SetItem(
-                    AgentCapability.ProcessControl,
+                    AgentCapability.SystemData,
                     AgentPermission.Ask),
             },
         };
@@ -2688,6 +2825,7 @@ public sealed partial class AgentChatViewModelTests
     public void Active_tool_projects_visible_activity()
     {
         var provider = Provider("provider", "Provider", order: 0);
+        var panelId = new PanelInstanceId("production-shell");
         using var runtime = new StubGovernedRuntime
         {
             Snapshot = Snapshot(
@@ -2699,7 +2837,8 @@ public sealed partial class AgentChatViewModelTests
                     "terminal.read_screen",
                     "Read terminal screen",
                     AgentActionRisk.Observation,
-                    "Production shell")),
+                    "Production shell",
+                    PanelId: panelId)),
         };
         using var profiles = new StubProfileRuntime
         {
@@ -2716,11 +2855,50 @@ public sealed partial class AgentChatViewModelTests
         Assert.Equal("Read terminal screen", activity.ToolTitle);
         Assert.Equal("Observation", activity.Risk);
         Assert.Equal("Production shell", activity.TargetTitle);
+        Assert.Equal(panelId, activity.PanelId);
+        Assert.Equal(activity.PanelId, viewModel.PanelActivity?.PanelId);
         Assert.False(activity.CancellationRequested);
         Assert.True(viewModel.HasActiveTool);
         Assert.True(viewModel.HasAgentContent);
         Assert.True(viewModel.CanCancelActiveAction);
         Assert.Equal("Cancel action", viewModel.ActiveActionCancellationLabel);
+
+        runtime.Snapshot = runtime.Snapshot with
+        {
+            State = GovernedAgentState.StreamingProvider,
+            ActiveTool = null,
+        };
+        runtime.RaiseChanged();
+
+        Assert.Null(viewModel.ActiveTool);
+        Assert.Equal(activity.PanelId, viewModel.PanelActivity?.PanelId);
+
+        var nextPanelId = new PanelInstanceId("production-files");
+        var nextActivity = new GovernedAgentToolActivity(
+            "files.list",
+            "List files",
+            AgentActionRisk.Observation,
+            "Production files",
+            PanelId: nextPanelId);
+        runtime.Snapshot = runtime.Snapshot with
+        {
+            State = GovernedAgentState.RunningTool,
+            ActiveTool = nextActivity,
+            PanelActivity = nextActivity,
+        };
+        runtime.RaiseChanged();
+
+        Assert.Equal(nextPanelId, viewModel.PanelActivity?.PanelId);
+
+        runtime.Snapshot = runtime.Snapshot with
+        {
+            State = GovernedAgentState.Ready,
+            ActiveTool = null,
+            PanelActivity = null,
+        };
+        runtime.RaiseChanged();
+
+        Assert.Null(viewModel.PanelActivity);
     }
 
     [Fact]
@@ -2903,7 +3081,7 @@ public sealed partial class AgentChatViewModelTests
         Assert.Equal(0, runtime.EnableFullAccessCount);
 
         viewModel.Prompt = "Inspect the terminal.";
-        await viewModel.SendAsync(Target(), CancellationToken.None);
+        await viewModel.SendAsync(Target(), Policy(provider), CancellationToken.None);
 
         Assert.Equal(
             AgentApprovalMode.FullAccess,
@@ -2939,7 +3117,7 @@ public sealed partial class AgentChatViewModelTests
         Assert.Equal(0, runtime.EnableFullAccessCount);
 
         viewModel.Prompt = "Continue with full access.";
-        await viewModel.SendAsync(Target(), CancellationToken.None);
+        await viewModel.SendAsync(Target(), Policy(provider), CancellationToken.None);
 
         Assert.Equal(AgentApprovalMode.FullAccess, runtime.LastRequest!.ApprovalMode);
     }
@@ -3022,15 +3200,6 @@ public sealed partial class AgentChatViewModelTests
         await viewModel.SelectFullAccessAsync(CancellationToken.None);
 
         Assert.Equal("Full access", viewModel.AccessModeLabel);
-        Assert.Equal(0, runtime.EnableFullAccessCount);
-
-        runtime.Snapshot = Snapshot(
-            runId: runId,
-            providerId: provider.Id,
-            target: Target());
-        runtime.RaiseChanged();
-        await Task.Yield();
-
         Assert.Equal(1, runtime.EnableFullAccessCount);
     }
 
@@ -3141,7 +3310,10 @@ public sealed partial class AgentChatViewModelTests
             Prompt = "Wait for this response.",
         };
 
-        var send = viewModel.SendAsync(Target(), CancellationToken.None);
+        var send = viewModel.SendAsync(
+            Target(),
+            Policy(provider),
+            CancellationToken.None);
         var quiesce = viewModel.QuiesceAsync(CancellationToken.None);
 
         Assert.Equal(1, runtime.StopCount);
@@ -3277,6 +3449,50 @@ public sealed partial class AgentChatViewModelTests
     }
 
     [Fact]
+    public void Run_finished_is_raised_once_when_active_work_reaches_a_terminal_state()
+    {
+        var provider = Provider("provider", "Provider", order: 0);
+        using var runtime = new StubGovernedRuntime
+        {
+            Snapshot = Snapshot(
+                runId: new AgentRunId("run-finished"),
+                providerId: provider.Id,
+                target: Target()),
+        };
+        using var profiles = new StubProfileRuntime { Profiles = [provider] };
+        using var viewModel = new AgentChatViewModel(
+            runtime,
+            profiles,
+            ImmediateUiThreadDispatcher.Instance);
+        var finished = 0;
+        viewModel.RunFinished += (_, _) => finished++;
+
+        runtime.Snapshot = runtime.Snapshot with
+        {
+            State = GovernedAgentState.StreamingProvider,
+        };
+        runtime.RaiseChanged();
+        runtime.Snapshot = runtime.Snapshot with
+        {
+            State = GovernedAgentState.Ready,
+        };
+        runtime.RaiseChanged();
+        runtime.RaiseChanged();
+
+        Assert.Equal(1, finished);
+    }
+
+    [Fact]
+    public void Audit_evidence_ui_is_controlled_by_the_build_configuration()
+    {
+#if DEBUG
+        Assert.True(AgentChatViewModel.AuditEvidenceUiEnabled);
+#else
+        Assert.False(AgentChatViewModel.AuditEvidenceUiEnabled);
+#endif
+    }
+
+    [Fact]
     public async Task Audit_is_lazy_run_owned_and_uses_opaque_pagination()
     {
         var provider = Provider("provider", "Provider", order: 0);
@@ -3313,6 +3529,12 @@ public sealed partial class AgentChatViewModelTests
             profiles,
             ImmediateUiThreadDispatcher.Instance,
             auditReader);
+
+        if (!AgentChatViewModel.AuditEvidenceUiEnabled)
+        {
+            Assert.False(viewModel.CanShowAudit);
+            return;
+        }
 
         Assert.True(viewModel.CanShowAudit);
         Assert.Equal(0, auditReader.ReadCount);
@@ -3378,6 +3600,12 @@ public sealed partial class AgentChatViewModelTests
             Prompt = "Continue the run.",
         };
 
+        if (!AgentChatViewModel.AuditEvidenceUiEnabled)
+        {
+            Assert.False(viewModel.CanShowAudit);
+            return;
+        }
+
         viewModel.IsAuditExpanded = true;
         await WaitUntilAsync(() => auditReader.ReadCount == 1);
 
@@ -3430,6 +3658,13 @@ public sealed partial class AgentChatViewModelTests
             profiles,
             ImmediateUiThreadDispatcher.Instance,
             auditReader);
+
+        if (!AgentChatViewModel.AuditEvidenceUiEnabled)
+        {
+            Assert.False(viewModel.CanShowAudit);
+            return;
+        }
+
         viewModel.IsAuditExpanded = true;
         await WaitUntilAsync(() => auditReader.ReadCount == 1);
 
@@ -3483,6 +3718,20 @@ public sealed partial class AgentChatViewModelTests
                     "model",
                     "model",
                     supportedReasoningEfforts)]);
+
+    private static AgentPolicy Policy(AiProviderProfileDescriptor provider) =>
+        new(
+            provider.Id.Value,
+            provider.DefaultModel,
+            AgentPolicy.Default.Permissions)
+        {
+            CompactionModel = new AgentModelSelection(
+                provider.Id.Value,
+                provider.DefaultModel),
+            TitleModel = new AgentModelSelection(
+                provider.Id.Value,
+                provider.DefaultModel),
+        };
 
     private static AgentTarget.Panel Target() =>
         new(
@@ -3609,8 +3858,19 @@ public sealed partial class AgentChatViewModelTests
         GovernedAgentCapabilityRequest? pendingCapabilityRequest = null,
         bool steeringAvailable = false,
         long? steeringGeneration = null,
-        IReadOnlyList<GovernedAgentConversationSummary>? conversations = null) =>
-        new(
+        IReadOnlyList<GovernedAgentConversationSummary>? conversations = null,
+        GovernedAgentToolActivity? panelActivity = null)
+    {
+        var routeProvider = providerId?.Value ?? "provider";
+        var policy = effectivePolicy ?? new AgentPolicy(
+            routeProvider,
+            "model",
+            AgentPolicy.Default.Permissions)
+        {
+            CompactionModel = new AgentModelSelection(routeProvider, "model"),
+            TitleModel = new AgentModelSelection(routeProvider, "model"),
+        };
+        return new(
             state,
             runId,
             providerId,
@@ -3618,6 +3878,7 @@ public sealed partial class AgentChatViewModelTests
             target is null ? "No panel selected" : "Active panel",
             contextItems?.ToImmutableArray() ?? [],
             messages ?? [],
+            policy,
             provisional,
             status,
             pendingApproval,
@@ -3628,7 +3889,6 @@ public sealed partial class AgentChatViewModelTests
             yoloAuthority,
             connectionBoundary,
             workingDirectory,
-            effectivePolicy,
             currentProgress,
             pendingQuestion,
             pendingCapabilityRequest,
@@ -3636,7 +3896,9 @@ public sealed partial class AgentChatViewModelTests
             steeringGeneration,
             ProvisionalReasoningSummary: string.Empty,
             QueuedFollowUpCount: 0,
-            Conversations: conversations?.ToImmutableArray() ?? []);
+            Conversations: conversations?.ToImmutableArray() ?? [],
+            PanelActivity: panelActivity ?? activeTool);
+    }
 
     private static GovernedAgentContextItem ContextItem(
         string panelId,
@@ -3708,6 +3970,9 @@ public sealed partial class AgentChatViewModelTests
         public GovernedAgentSteeringResult SteeringResult { get; set; } =
             new(true, "agent_steering_accepted", "Steering accepted.");
 
+        public GovernedAgentFollowUpResult FollowUpResult { get; set; } =
+            new(true, "agent_follow_up_queued", "Queued.", 1);
+
         public GovernedAgentDecisionResult DecisionResult { get; set; } =
             new(true, "agent_decision_accepted", "Accepted.");
 
@@ -3740,6 +4005,9 @@ public sealed partial class AgentChatViewModelTests
         public TaskCompletionSource<GovernedAgentSteeringResult>? PendingSteering
         { get; set; }
 
+        public TaskCompletionSource<GovernedAgentFollowUpResult>? PendingFollowUp
+        { get; set; }
+
         public TaskCompletionSource<GovernedAgentActionCancellationResult>?
             PendingActionCancellation
         { get; set; }
@@ -3752,9 +4020,13 @@ public sealed partial class AgentChatViewModelTests
 
         public GovernedAgentSteering? LastSteering { get; private set; }
 
+        public GovernedAgentFollowUp? LastFollowUp { get; private set; }
+
         public CancellationToken LastCancellationToken { get; private set; }
 
         public CancellationToken LastSteeringCancellationToken { get; private set; }
+
+        public CancellationToken LastFollowUpCancellationToken { get; private set; }
 
         public AgentApprovalId? LastApprovalId { get; private set; }
 
@@ -3791,6 +4063,8 @@ public sealed partial class AgentChatViewModelTests
         public int SendCount { get; private set; }
 
         public int SteeringCount { get; private set; }
+
+        public int FollowUpCount { get; private set; }
 
         public int DecisionCount { get; private set; }
 
@@ -3845,6 +4119,18 @@ public sealed partial class AgentChatViewModelTests
                 ? ValueTask.FromResult(SteeringResult)
                 : new ValueTask<GovernedAgentSteeringResult>(
                     PendingSteering.Task);
+        }
+
+        public ValueTask<GovernedAgentFollowUpResult> QueueFollowUpAsync(
+            GovernedAgentFollowUp request,
+            CancellationToken cancellationToken)
+        {
+            LastFollowUp = request;
+            LastFollowUpCancellationToken = cancellationToken;
+            FollowUpCount++;
+            return PendingFollowUp is null
+                ? ValueTask.FromResult(FollowUpResult)
+                : new ValueTask<GovernedAgentFollowUpResult>(PendingFollowUp.Task);
         }
 
         public ValueTask<GovernedAgentDecisionResult> DecideAsync(

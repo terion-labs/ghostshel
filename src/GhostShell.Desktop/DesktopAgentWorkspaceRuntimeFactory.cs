@@ -10,7 +10,8 @@ internal sealed class DesktopAgentWorkspaceRuntimeFactory(
 {
     public IGovernedAgentRuntime Create(
         WorkspaceInstanceId workspaceId,
-        AgentConversationScopeId conversationScopeId)
+        AgentConversationScopeId conversationScopeId,
+        AgentPolicy policy)
     {
         if (string.IsNullOrWhiteSpace(workspaceId.Value))
         {
@@ -19,9 +20,18 @@ internal sealed class DesktopAgentWorkspaceRuntimeFactory(
                 nameof(workspaceId));
         }
 
+        ArgumentNullException.ThrowIfNull(policy);
+        if (!policy.IsValidForDurableStorage())
+        {
+            throw new ArgumentException(
+                "A complete agent policy is required to create a workspace runtime.",
+                nameof(policy));
+        }
+
         return ActivatorUtilities.CreateInstance<GovernedAgentRuntime>(
             services,
             workspaceId,
-            conversationScopeId);
+            conversationScopeId,
+            policy);
     }
 }

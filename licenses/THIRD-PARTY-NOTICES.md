@@ -157,10 +157,10 @@ materials and independent license review.
 | `PDFtoImage` | `5.3.0` | MIT |
 | `Porta.Pty` | `1.0.7` | MIT |
 | `SMBLibrary` | `1.5.7.1` | LGPL-3.0-or-later |
-| `SQLitePCLRaw.bundle_e_sqlite3mc` | `2.1.11` | Apache-2.0 |
-| `SQLitePCLRaw.core` | `2.1.11` | Apache-2.0 |
-| `SQLitePCLRaw.lib.e_sqlite3mc` | `2.1.11` | Apache-2.0 |
-| `SQLitePCLRaw.provider.e_sqlite3mc` | `2.1.11` | Apache-2.0 |
+| `SQLite3MC.PCLRaw.bundle` | `2.4.0` | MIT |
+| `SQLite3MC.PCLRaw.lib` | `2.4.0` | MIT |
+| `SQLite3MC.PCLRaw.provider` | `2.4.0` | MIT |
+| `SQLitePCLRaw.core` | `3.0.2` | Apache-2.0 |
 | `SSH.NET` | `2025.1.0` | MIT |
 | `ShimSkiaSharp` | `5.1.1` | MIT |
 | `SkiaSharp.NativeAssets.macOS` | `4.150.1` | MIT |

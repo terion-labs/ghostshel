@@ -133,16 +133,16 @@ public sealed class AgentStatisticsReadActionComposerTests
     }
 
     [Fact]
-    public void CatalogUsesExistingReadOnlySystemMonitorPolicyCapability()
+    public void CatalogUsesDedicatedReadOnlySystemDataCapability()
     {
         Assert.True(BuiltInAgentTools.Catalog.TryGet(
             BuiltInAgentTools.StatisticsRead,
             out var descriptor));
-        Assert.Equal(AgentCapability.ProcessControl, descriptor!.Capability);
+        Assert.Equal(AgentCapability.SystemData, descriptor!.Capability);
         Assert.Equal(AgentActionRisk.Observation, descriptor.Risk);
         Assert.Equal(
             AgentPermission.Off,
-            AgentPolicy.Default.GetPermission(AgentCapability.ProcessControl));
+            AgentPolicy.Default.GetPermission(AgentCapability.SystemData));
         Assert.DoesNotContain(
             "Docker",
             descriptor.Title,

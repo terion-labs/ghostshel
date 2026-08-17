@@ -41,15 +41,21 @@ internal sealed class FakeBrowserPanelSessionFactory : IBrowserPanelSessionFacto
         SessionCapabilities.AttachInteractive,
         SessionCapabilities.BrowserReadState,
         SessionCapabilities.BrowserSnapshot,
+        SessionCapabilities.BrowserWait,
         SessionCapabilities.BrowserClick,
         SessionCapabilities.BrowserFill,
         SessionCapabilities.BrowserCheck,
+        SessionCapabilities.BrowserMouse,
+        SessionCapabilities.BrowserKey,
+        SessionCapabilities.BrowserScroll,
+        SessionCapabilities.BrowserEvaluate,
         SessionCapabilities.BrowserNavigate,
         SessionCapabilities.BrowserBack,
         SessionCapabilities.BrowserForward,
         SessionCapabilities.BrowserReload,
         SessionCapabilities.BrowserStop,
         SessionCapabilities.BrowserOriginGuard,
+        SessionCapabilities.BrowserAgentInputBarrier,
     ]);
 }
 
@@ -147,7 +153,8 @@ internal sealed class FakeBrowserPanelSession(
     public ValueTask<BrowserResult<BrowserDocumentSnapshot>>
         CaptureSnapshotAsync(
             BrowserDocumentBinding document,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            BrowserSnapshotQuery? query = null)
     {
         if (_closed)
         {
@@ -167,7 +174,8 @@ internal sealed class FakeBrowserPanelSession(
                         retryable: true)))
             : _renderer.CaptureSnapshotAsync(
                 document,
-                cancellationToken);
+                cancellationToken,
+                query);
     }
 
     public ValueTask<BrowserResult<BrowserClickReceipt>>
@@ -254,6 +262,92 @@ internal sealed class FakeBrowserPanelSession(
                 reference,
                 allowedOrigin,
                 cancellationToken);
+    }
+
+    public ValueTask<BrowserResult<BrowserAutomationReceipt>>
+        DispatchMouseWithinOriginAsync(
+            BrowserMouseRequest request,
+            BrowserNavigationOrigin allowedOrigin,
+            CancellationToken cancellationToken) =>
+        _renderer is null
+            ? ValueTask.FromResult(BrowserResult<BrowserAutomationReceipt>.Failure(
+                BrowserError.Create(BrowserErrorCode.RendererUnavailable, "No browser renderer is attached.")))
+            : _renderer.DispatchMouseWithinOriginAsync(request, allowedOrigin, cancellationToken);
+
+    public ValueTask<BrowserResult<BrowserAutomationReceipt>>
+        DispatchKeyWithinOriginAsync(
+            BrowserKeyRequest request,
+            BrowserNavigationOrigin allowedOrigin,
+            CancellationToken cancellationToken) =>
+        _renderer is null
+            ? ValueTask.FromResult(BrowserResult<BrowserAutomationReceipt>.Failure(
+                BrowserError.Create(BrowserErrorCode.RendererUnavailable, "No browser renderer is attached.")))
+            : _renderer.DispatchKeyWithinOriginAsync(request, allowedOrigin, cancellationToken);
+
+    public ValueTask<BrowserResult<BrowserAutomationReceipt>>
+        ScrollWithinOriginAsync(
+            BrowserScrollRequest request,
+            BrowserNavigationOrigin allowedOrigin,
+            CancellationToken cancellationToken) =>
+        _renderer is null
+            ? ValueTask.FromResult(BrowserResult<BrowserAutomationReceipt>.Failure(
+                BrowserError.Create(BrowserErrorCode.RendererUnavailable, "No browser renderer is attached.")))
+            : _renderer.ScrollWithinOriginAsync(request, allowedOrigin, cancellationToken);
+
+    public ValueTask<BrowserResult<BrowserEvaluationResult>>
+        EvaluateWithinOriginAsync(
+            BrowserEvaluateRequest request,
+            BrowserNavigationOrigin allowedOrigin,
+            CancellationToken cancellationToken) =>
+        _renderer is null
+            ? ValueTask.FromResult(BrowserResult<BrowserEvaluationResult>.Failure(
+                BrowserError.Create(BrowserErrorCode.RendererUnavailable, "No browser renderer is attached.")))
+            : _renderer.EvaluateWithinOriginAsync(request, allowedOrigin, cancellationToken);
+
+    public ValueTask<BrowserResult<BrowserElementStateSnapshot>>
+        ReadElementStateAsync(
+            BrowserElementReference reference,
+            CancellationToken cancellationToken)
+    {
+        if (_closed)
+        {
+            return ValueTask.FromResult(
+                BrowserResult<BrowserElementStateSnapshot>.Failure(
+                    BrowserError.Create(
+                        BrowserErrorCode.SessionClosed,
+                        "The browser session is closed.")));
+        }
+
+        return _renderer is null
+            ? ValueTask.FromResult(
+                BrowserResult<BrowserElementStateSnapshot>.Failure(
+                    BrowserError.Create(
+                        BrowserErrorCode.RendererUnavailable,
+                        "No browser renderer is attached.",
+                        retryable: true)))
+            : _renderer.ReadElementStateAsync(reference, cancellationToken);
+    }
+
+    public ValueTask<BrowserResult<BrowserNetworkActivitySnapshot>>
+        ReadNetworkActivityAsync(CancellationToken cancellationToken)
+    {
+        if (_closed)
+        {
+            return ValueTask.FromResult(
+                BrowserResult<BrowserNetworkActivitySnapshot>.Failure(
+                    BrowserError.Create(
+                        BrowserErrorCode.SessionClosed,
+                        "The browser session is closed.")));
+        }
+
+        return _renderer is null
+            ? ValueTask.FromResult(
+                BrowserResult<BrowserNetworkActivitySnapshot>.Failure(
+                    BrowserError.Create(
+                        BrowserErrorCode.RendererUnavailable,
+                        "No browser renderer is attached.",
+                        retryable: true)))
+            : _renderer.ReadNetworkActivityAsync(cancellationToken);
     }
 
     public ValueTask<PanelSessionSnapshot> SnapshotAsync(
@@ -347,7 +441,9 @@ internal sealed class FakeBrowserPanelSession(
     }
 }
 
-internal sealed class FakeBrowserRenderer(BrowserAddress initialAddress) : IBrowserRenderer
+internal sealed class FakeBrowserRenderer(BrowserAddress initialAddress) :
+    IBrowserRenderer,
+    IBrowserPhysicalInputBarrier
 {
     public CapabilitySet Capabilities { get; } = new(
     [
@@ -362,6 +458,7 @@ internal sealed class FakeBrowserRenderer(BrowserAddress initialAddress) : IBrow
         SessionCapabilities.BrowserReload,
         SessionCapabilities.BrowserStop,
         SessionCapabilities.BrowserOriginGuard,
+        SessionCapabilities.BrowserAgentInputBarrier,
     ]);
 
     public BrowserSessionState State { get; private set; } =
@@ -400,6 +497,13 @@ internal sealed class FakeBrowserRenderer(BrowserAddress initialAddress) : IBrow
     public BrowserNavigationOrigin? LastCheckOrigin { get; private set; }
 
     public event EventHandler<BrowserStateChangedEventArgs>? StateChanged;
+
+    public Func<NativeRendererPhysicalInput, bool>? PhysicalInputGate
+    { get; private set; }
+
+    public void BindPhysicalInputGate(
+        Func<NativeRendererPhysicalInput, bool>? physicalInputGate) =>
+        PhysicalInputGate = physicalInputGate;
 
     public void BeginLoading(BrowserAddress address)
     {
@@ -512,7 +616,8 @@ internal sealed class FakeBrowserRenderer(BrowserAddress initialAddress) : IBrow
     public ValueTask<BrowserResult<BrowserDocumentSnapshot>>
         CaptureSnapshotAsync(
             BrowserDocumentBinding document,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            BrowserSnapshotQuery? query = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         SnapshotCount++;

@@ -160,16 +160,13 @@ public sealed class AgentCapabilityBrokerTests
     }
 
     [Fact]
-    public async Task McpRunAuthorityRejectsAnyActiveYoloConfirmation()
+    public async Task McpRunAuthorityAcceptsCurrentFullAccessConfirmation()
     {
         var policy = AgentPolicy.Default with
         {
             Permissions = AgentPolicy.Default.Permissions
                 .SetItem(
                     AgentCapability.McpTools,
-                    AgentPermission.Ask)
-                .SetItem(
-                    AgentCapability.DestructiveTerminalActions,
                     AgentPermission.Yolo),
         };
         var confirmation = new AgentYoloConfirmation(
@@ -188,10 +185,10 @@ public sealed class AgentCapabilityBrokerTests
             new AgentMcpRunAuthorityRequest(RunId(), Agent()),
             CancellationToken.None);
 
-        Assert.Equal(
-            AgentAuthorizationErrorCode.PolicyDenied,
-            Assert.IsType<AgentMcpRunAuthorityResult.Denied>(
-                result).Error.Code);
+        var lease = Assert.IsType<AgentMcpRunAuthorityResult.Granted>(result).Lease;
+        Assert.Equal(RunId(), lease.RunId);
+        Assert.Equal(1, lease.PolicyGeneration);
+        Assert.False(lease.RevocationToken.IsCancellationRequested);
     }
 
     [Fact]
@@ -928,6 +925,60 @@ public sealed class AgentCapabilityBrokerTests
     }
 
     [Fact]
+    public async Task LongWaitExecutionWindowDoesNotLengthenIssuanceOrOtherTools()
+    {
+        var policy = AgentPolicy.Default with
+        {
+            Permissions = AgentPolicy.Default.Permissions.SetItem(
+                AgentCapability.TerminalRead,
+                AgentPermission.Auto),
+        };
+        await using var broker = await CreateRegisteredBrokerAsync(
+            new RecordingAuditStore(),
+            policy);
+        var waitProposal = Proposal(
+            BuiltInAgentTools.TerminalWait,
+            lifetime: TimeSpan.FromMinutes(66));
+        var waitAuthorization = Assert.IsType<AgentAuthorizationResult.Authorized>(
+            await broker.RequestAsync(waitProposal, CancellationToken.None));
+
+        Assert.Equal(
+            Now + AgentCapabilityBroker.DefaultAuthorizationLifetime,
+            waitAuthorization.Authorization.ExpiresAtUtc);
+        var waitPermit = Assert.IsType<AgentPermitResult.Granted>(
+            await broker.ConsumeAsync(
+                waitAuthorization.Authorization.Id,
+                waitProposal,
+                CancellationToken.None)).Permit;
+        Assert.Equal(Now.AddMinutes(61), waitPermit.ExecutionDeadlineUtc);
+        Assert.Null(await broker.CompleteAsync(
+            waitPermit,
+            new AgentActionCompletion(
+                AgentActionOutcome.Succeeded,
+                "wait_elapsed",
+                Now),
+            CancellationToken.None));
+
+        var readProposal = Proposal(BuiltInAgentTools.TerminalReadScreen);
+        var readAuthorization = Assert.IsType<AgentAuthorizationResult.Authorized>(
+            await broker.RequestAsync(readProposal, CancellationToken.None));
+        var readPermit = Assert.IsType<AgentPermitResult.Granted>(
+            await broker.ConsumeAsync(
+                readAuthorization.Authorization.Id,
+                readProposal,
+                CancellationToken.None)).Permit;
+
+        Assert.Equal(Now.AddSeconds(30), readPermit.ExecutionDeadlineUtc);
+        Assert.Null(await broker.CompleteAsync(
+            readPermit,
+            new AgentActionCompletion(
+                AgentActionOutcome.Succeeded,
+                "screen_read",
+                Now),
+            CancellationToken.None));
+    }
+
+    [Fact]
     public async Task YoloRejectsConfirmationForAnotherTarget()
     {
         var policy = AgentPolicy.Default with
@@ -1094,6 +1145,74 @@ public sealed class AgentCapabilityBrokerTests
                 expired.Details);
         Assert.Equal(expiresAt, details.YoloExpiresAtUtc);
         Assert.Equal(3, details.PolicyGeneration);
+    }
+
+    [Fact]
+    public async Task RestoredConversationCanReuseItsLivePolicyGeneration()
+    {
+        var audit = new RecordingAuditStore
+        {
+            RejectDuplicateEventIds = true,
+        };
+        var time = new AdjustableTimeProvider(Now);
+        var fullAccessPolicy = AgentPolicy.Default with
+        {
+            Permissions = AgentPolicy.Default.Permissions
+                .SetItem(AgentCapability.RunCommands, AgentPermission.Yolo)
+                .SetItem(
+                    AgentCapability.DestructiveTerminalActions,
+                    AgentPermission.Yolo),
+        };
+
+        await using (var firstBroker = CreateBroker(audit, time))
+        {
+            Assert.Null(await firstBroker.RegisterRunAsync(
+                Registration(AgentPolicy.Default),
+                CancellationToken.None));
+            Assert.Null(await firstBroker.UpdateRunPolicyAsync(
+                new AgentRunPolicyUpdate(
+                    RunId(),
+                    fullAccessPolicy,
+                    policyGeneration: 2,
+                    Human(),
+                    new AgentYoloConfirmation(
+                        RunId(),
+                        WorkspaceTarget(),
+                        policyGeneration: 2,
+                        Human(),
+                        time.Now,
+                        AgentYoloConfirmation.RunLifetimeExpiry)),
+                CancellationToken.None));
+        }
+
+        time.Now = Now.AddDays(1);
+        await using (var restoredBroker = CreateBroker(audit, time))
+        {
+            Assert.Null(await restoredBroker.RegisterRunAsync(
+                Registration(AgentPolicy.Default),
+                CancellationToken.None));
+            Assert.Null(await restoredBroker.UpdateRunPolicyAsync(
+                new AgentRunPolicyUpdate(
+                    RunId(),
+                    fullAccessPolicy,
+                    policyGeneration: 2,
+                    Human(),
+                    new AgentYoloConfirmation(
+                        RunId(),
+                        WorkspaceTarget(),
+                        policyGeneration: 2,
+                        Human(),
+                        time.Now,
+                        AgentYoloConfirmation.RunLifetimeExpiry)),
+                CancellationToken.None));
+        }
+
+        var transitions = audit.Events
+            .Where(item =>
+                item.Details is AuditDetails.AgentRunPolicyTransitionDetails)
+            .ToArray();
+        Assert.Equal(2, transitions.Length);
+        Assert.Equal(2, transitions.Select(item => item.EventId).Distinct().Count());
     }
 
     [Fact]
@@ -1444,15 +1563,21 @@ public sealed class AgentCapabilityBrokerTests
             timeProvider ?? new AdjustableTimeProvider(Now));
 
     private static async Task<AgentCapabilityBroker> CreateRegisteredBrokerAsync(
+        RecordingAuditStore audit) =>
+        await CreateRegisteredBrokerAsync(
+            audit,
+            AgentPolicy.Default);
+
+    private static async Task<AgentCapabilityBroker> CreateRegisteredBrokerAsync(
         RecordingAuditStore audit,
-        AgentPolicy? policy = null,
+        AgentPolicy policy,
         long policyGeneration = 1,
         AgentYoloConfirmation? yoloConfirmation = null)
     {
         var broker = CreateBroker(audit);
         var error = await broker.RegisterRunAsync(
             Registration(
-                policy ?? AgentPolicy.Default,
+                policy,
                 yoloConfirmation,
                 policyGeneration),
             CancellationToken.None);
@@ -1479,7 +1604,8 @@ public sealed class AgentCapabilityBrokerTests
         long policyGeneration = 1,
         string argumentMaterial = "default",
         AgentTarget? target = null,
-        ActorDescriptor? actor = null) =>
+        ActorDescriptor? actor = null,
+        TimeSpan? lifetime = null) =>
         new(
             id ?? AgentActionId.New(),
             RunId(),
@@ -1495,7 +1621,7 @@ public sealed class AgentCapabilityBrokerTests
                 [new AgentApprovalArgument("Text", argumentMaterial)]),
             policyGeneration,
             Now,
-            Now.AddMinutes(10));
+            Now + (lifetime ?? TimeSpan.FromMinutes(10)));
 
     private static AgentRunId RunId() => new("run-1");
 
@@ -1533,6 +1659,8 @@ public sealed class AgentCapabilityBrokerTests
 
         public Func<AuditEventRecord, bool>? BlockPredicate { get; set; }
 
+        public bool RejectDuplicateEventIds { get; set; }
+
         public int ListFailureCount { get; set; }
 
         public TaskCompletionSource Blocked { get; } =
@@ -1545,6 +1673,19 @@ public sealed class AgentCapabilityBrokerTests
             AuditEventRecord auditEvent,
             CancellationToken cancellationToken)
         {
+            if (RejectDuplicateEventIds
+                && Events.Any(item =>
+                    string.Equals(
+                        item.EventId,
+                        auditEvent.EventId,
+                        StringComparison.Ordinal)))
+            {
+                return AuditStoreResult<Unit>.Failure(
+                    new AuditStoreError(
+                        AuditStoreErrorCode.Conflict,
+                        "The event ID already exists."));
+            }
+
             if (FailurePredicate?.Invoke(auditEvent) == true)
             {
                 return AuditStoreResult<Unit>.Failure(

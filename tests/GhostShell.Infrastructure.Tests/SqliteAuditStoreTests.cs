@@ -6,6 +6,40 @@ namespace GhostShell.Infrastructure.Tests;
 public sealed class SqliteAuditStoreTests
 {
     [Fact]
+    public async Task ParallelAgentActionClaimsDoNotCrashTheNativeSqliteProvider()
+    {
+        await using var temporary = TemporaryDatabase.Create();
+        var store = new SqliteAuditStore(temporary.Database);
+        const int workerCount = 16;
+        const int claimsPerWorker = 128;
+
+        var results = await Task.WhenAll(
+            Enumerable.Range(0, workerCount).Select(async worker =>
+            {
+                var outcomes = new List<AuditStoreResult<AgentActionAuditClaimOutcome>>(
+                    claimsPerWorker);
+                for (var claim = 0; claim < claimsPerWorker; claim++)
+                {
+                    var actionId = $"parallel-action-{worker}-{claim}";
+                    outcomes.Add(await store.ClaimAgentActionAsync(
+                        AgentEvent(
+                            $"parallel-event-{worker}-{claim}",
+                            actionId,
+                            AuditOutcome.Requested),
+                        CancellationToken.None));
+                }
+
+                return outcomes;
+            }));
+
+        var failures = results
+            .SelectMany(static worker => worker)
+            .Where(static result => !result.IsSuccess)
+            .ToArray();
+        Assert.Empty(failures);
+    }
+
+    [Fact]
     public async Task TypedDetailsRoundTripWithoutExposingJsonToCallers()
     {
         await using var temporary = TemporaryDatabase.Create();

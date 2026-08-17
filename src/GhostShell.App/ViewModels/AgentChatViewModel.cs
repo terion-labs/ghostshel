@@ -28,7 +28,9 @@ public sealed record AgentChatMessageViewModel(
 
     public bool HasUsage => IsAssistant && Usage is not null;
 
-    public bool CanFork => IsAssistant && ForkPoint is not null;
+    public bool HasMessageText => !string.IsNullOrWhiteSpace(Content);
+
+    public bool CanFork => IsAssistant && HasMessageText && ForkPoint is not null;
 
     public bool HasReasoningRequest =>
         IsAssistant
@@ -170,7 +172,8 @@ public sealed record AgentToolActivityViewModel(
     string ToolTitle,
     string Risk,
     string TargetTitle,
-    bool CancellationRequested);
+    bool CancellationRequested,
+    PanelInstanceId? PanelId);
 
 /// <summary>
 /// Immutable presentation copy of one bounded, run-local progress report.
@@ -210,8 +213,8 @@ public sealed record AgentProgressViewModel
 }
 
 /// <summary>
-/// Presentation-only copy of a bounded model clarification. The question text
-/// remains visibly untrusted and never participates in approval or authority.
+/// Presentation-only copy of a bounded model clarification. It never
+/// participates in approval or authority.
 /// </summary>
 public sealed record AgentQuestionCardViewModel
 {
@@ -232,12 +235,8 @@ public sealed record AgentQuestionCardViewModel
 
     public string ContentOrigin { get; }
 
-    public string ResponseWarning =>
-        "Your answer is clarification only—not approval. Do not include passwords, "
-        + "tokens, private keys, or other credentials.";
-
     public string AccessibleName =>
-        $"AI agent question · untrusted model text · {Question} · expires {ExpiresAt}";
+        $"AI agent question · {Question} · expires {ExpiresAt}";
 }
 
 /// <summary>
@@ -303,8 +302,8 @@ public sealed record AgentYoloAuthorityViewModel(
     string ExpiresAt)
 {
     public string Warning =>
-        "Terminal input and destructive terminal actions can run without "
-        + "per-action approval. The selected run scope, human preemption, stop, and audit remain active.";
+        "Agent actions can run without per-action approval. The selected run "
+        + "scope, typed host guards, human preemption, stop, and audit remain active.";
 }
 
 public sealed class AgentChatViewModel : ObservableObject, IDisposable
@@ -369,13 +368,14 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
     private string _connectionBoundary = string.Empty;
     private string _workingDirectory = string.Empty;
     private string _capabilityNotice = PendingCapabilityNotice;
-    private string _effectivePolicyProvider = AgentPolicy.Default.Provider;
-    private string _effectivePolicyModel = AgentPolicy.Default.Model;
+    private string _effectivePolicyProvider;
+    private string _effectivePolicyModel;
     private GovernedAgentState _state;
     private AgentApprovalCardViewModel? _pendingApproval;
     private AgentQuestionCardViewModel? _pendingQuestion;
     private AgentCapabilityRequestCardViewModel? _pendingCapabilityRequest;
     private AgentToolActivityViewModel? _activeTool;
+    private AgentToolActivityViewModel? _panelActivity;
     private AgentProgressViewModel? _currentProgress;
     private AgentYoloAuthorityViewModel? _yoloAuthority;
     private bool _fullAccessSelected;
@@ -390,10 +390,8 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
     private AgentPermission _terminalMutationPermission = AgentPermission.Ask;
     private bool _terminalMutationAvailable;
     private bool _runtimeCanSend = true;
-    private bool _runtimeCanSteer;
     private bool _runtimeCanQueueFollowUp;
     private int _queuedFollowUpCount;
-    private long? _steeringGeneration;
     private bool _runtimeCanStop;
     private bool _isRunBound;
     private bool _runHasTerminal;
@@ -407,12 +405,18 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
     private bool _capabilityDecisionInFlight;
     private bool _policyChangeInFlight;
     private bool _stopInFlight;
-    private bool _steerInFlight;
     private bool _clearInFlight;
     private bool _disposed;
     private int _refreshPending;
     private int _refreshLoopRunning;
-    private AgentPolicy _effectivePolicy = AgentPolicy.Default;
+    private AgentPolicy _effectivePolicy;
+
+    /// <summary>
+    /// Raised once when an active turn reaches a terminal presentation state.
+    /// The event carries no provider or transcript data; workspace owners use
+    /// it only to surface completion while their workspace is in the background.
+    /// </summary>
+    public event EventHandler? RunFinished;
 
     public AgentChatViewModel(
         IGovernedAgentRuntime runtime,
@@ -426,6 +430,9 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         _auditReader = auditReader;
         _favoriteStore = favoriteStore;
+        _effectivePolicy = runtime.Snapshot.EffectivePolicy;
+        _effectivePolicyProvider = _effectivePolicy.Provider;
+        _effectivePolicyModel = _effectivePolicy.Model;
         _runtime.Changed += OnRuntimeChanged;
         _profiles.ProfilesChanged += OnProfilesChanged;
         if (_favoriteStore is not null)
@@ -452,6 +459,8 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
     public ObservableCollection<AiProviderProfileDescriptor> Providers { get; } = [];
 
     public ObservableCollection<AgentChatMessageViewModel> Messages { get; } = [];
+
+    public ObservableCollection<AgentQueuedFollowUpViewModel> QueuedFollowUps { get; } = [];
 
     public ObservableCollection<AgentConversationItemViewModel> Conversations { get; } = [];
 
@@ -714,7 +723,6 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _prompt, value))
             {
                 OnPropertyChanged(nameof(CanSend));
-                OnPropertyChanged(nameof(CanSteer));
                 OnPropertyChanged(nameof(CanQueueFollowUp));
                 OnPropertyChanged(nameof(CanSubmitPrompt));
                 OnPropertyChanged(nameof(ShowPrimaryAction));
@@ -979,7 +987,21 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
     }
 
     public bool CanShowAudit =>
-        _auditReader is not null && _auditRunId is not null;
+        AuditEvidenceUiEnabled
+        && _auditReader is not null
+        && _auditRunId is not null;
+
+    internal static bool AuditEvidenceUiEnabled
+    {
+        get
+        {
+#if DEBUG
+            return true;
+#else
+            return false;
+#endif
+        }
+    }
 
     public bool HasAuditActivity => CanShowAudit && _hasActionActivity;
 
@@ -1187,6 +1209,17 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
 
     public bool HasActiveTool => ActiveTool is not null;
 
+    /// <summary>
+    /// The last concrete panel used by the active provider turn. Unlike
+    /// <see cref="ActiveTool"/>, this remains present while the provider reasons
+    /// between panel actions so the panel does not flicker between tool calls.
+    /// </summary>
+    public AgentToolActivityViewModel? PanelActivity
+    {
+        get => _panelActivity;
+        private set => SetProperty(ref _panelActivity, value);
+    }
+
     public AgentProgressViewModel? CurrentProgress
     {
         get => _currentProgress;
@@ -1290,23 +1323,9 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         && (!HasPendingImages || SelectedProvider.SupportsImageInput)
         && (!string.IsNullOrWhiteSpace(Prompt) || HasPendingImages);
 
-    public bool IsSteeringAvailable =>
-        SelectedProvider is not null
-        && _runtimeCanSteer
-        && _steeringGeneration is > 0
-        && _runId is not null
-        && State == GovernedAgentState.StreamingProvider
-        && !_clearInFlight
-        && !_steerInFlight;
-
-    public bool CanSteer =>
-        IsSteeringAvailable
-        && !string.IsNullOrWhiteSpace(Prompt);
-
     public bool CanOfferFollowUpQueue =>
         SelectedProvider is not null
         && _runtimeCanQueueFollowUp
-        && !_steerInFlight
         && !_clearInFlight;
 
     public bool CanQueueFollowUp =>
@@ -1321,26 +1340,24 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
 
     public bool HasQueuedFollowUps => QueuedFollowUpCount > 0;
 
-    public bool CanSubmitPrompt => CanSend || CanSteer;
+    public bool CanSubmitPrompt => CanSend || CanQueueFollowUp;
 
-    public bool CanShowPrimaryAction => !IsStreaming || CanSteer;
+    public bool CanShowPrimaryAction => HasProvider;
 
     public bool ShowPrimaryAction => CanShowPrimaryAction && !HasFailedTurn;
 
-    public bool ShowStopAction => CanStop && !ShowPrimaryAction;
+    public bool ShowStopAction => CanStop;
 
-    public string PrimaryActionLabel =>
-        IsSteeringAvailable ? "Steer" : "Send";
+    public string PrimaryActionLabel => CanOfferFollowUpQueue
+        ? "Queue message"
+        : "Send";
 
     public string PrimaryActionAccessibleName =>
-        IsSteeringAvailable
-            ? "Steer the current AI agent response"
+        CanOfferFollowUpQueue
+            ? "Queue a message for the AI agent"
             : "Send AI agent prompt";
 
-    public string PromptPlaceholder =>
-        IsSteeringAvailable
-            ? "Steer the current response…"
-            : "Ask GhostSHELL…";
+    public string PromptPlaceholder => "Ask GhostSHELL…";
 
     // Preserved as an alias for callers that still use the old chat naming.
     public bool CanCancel => CanStop;
@@ -1385,7 +1402,6 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         && !_clearInFlight
         && ((_runtimeCanSend && State == GovernedAgentState.Ready)
             || State == GovernedAgentState.Cancelled
-            || IsSteeringAvailable
             || CanOfferFollowUpQueue);
 
     public bool NeedsProviderAttention =>
@@ -1401,59 +1417,19 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
             : "Not connected"
         : StateLabel;
 
-    public Task SendAsync(
-        AgentTarget target,
-        CancellationToken cancellationToken) =>
-        SendWithPolicyAsync(target, policy: null, cancellationToken);
+    public Task QueueFollowUpAsync(CancellationToken cancellationToken) =>
+        QueueFollowUpAsync(
+            GovernedAgentFollowUpDelivery.FollowUp,
+            cancellationToken);
 
-    public async Task SteerAsync(CancellationToken cancellationToken)
-    {
-        if (!CanSteer
-            || _runId is not { } runId
-            || _steeringGeneration is not { } steeringGeneration)
-        {
-            return;
-        }
+    public Task QueueSteeringAsync(CancellationToken cancellationToken) =>
+        QueueFollowUpAsync(
+            GovernedAgentFollowUpDelivery.Steering,
+            cancellationToken);
 
-        var update = Prompt;
-        _steerInFlight = true;
-        Prompt = string.Empty;
-        NotifyAvailabilityChanged();
-        try
-        {
-            var result = await _runtime.SteerAsync(
-                new GovernedAgentSteering(
-                    runId,
-                    steeringGeneration,
-                    update),
-                cancellationToken);
-            if (!result.IsAccepted)
-            {
-                if (string.IsNullOrEmpty(Prompt))
-                {
-                    Prompt = update;
-                }
-
-                Status = result.Message;
-            }
-        }
-        catch
-        {
-            if (string.IsNullOrEmpty(Prompt))
-            {
-                Prompt = update;
-            }
-
-            throw;
-        }
-        finally
-        {
-            _steerInFlight = false;
-            NotifyAvailabilityChanged();
-        }
-    }
-
-    public async Task QueueFollowUpAsync(CancellationToken cancellationToken)
+    private async Task QueueFollowUpAsync(
+        GovernedAgentFollowUpDelivery delivery,
+        CancellationToken cancellationToken)
     {
         if (!CanQueueFollowUp)
         {
@@ -1467,7 +1443,8 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
             var result = await _runtime.QueueFollowUpAsync(
                 new GovernedAgentFollowUp(
                     followUp,
-                    SelectedReasoningEffort.Value),
+                    SelectedReasoningEffort.Value,
+                    delivery),
                 cancellationToken);
             if (!result.IsAccepted)
             {
@@ -1490,6 +1467,70 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         }
     }
 
+    private async Task<bool> UpdateQueuedFollowUpAsync(
+        AgentQueuedFollowUpViewModel item,
+        string message)
+    {
+        var result = await _runtime.UpdateQueuedFollowUpAsync(
+            item.Id,
+            new GovernedAgentFollowUp(
+                message,
+                item.ReasoningEffort,
+                item.Delivery),
+            _lifetime.Token);
+        if (!result.IsAccepted)
+        {
+            Status = result.Message;
+            return false;
+        }
+
+        return true;
+    }
+
+    private async Task RemoveQueuedFollowUpAsync(
+        AgentQueuedFollowUpViewModel item)
+    {
+        var result = await _runtime.RemoveQueuedFollowUpAsync(
+            item.Id,
+            _lifetime.Token);
+        if (!result.IsAccepted)
+        {
+            Status = result.Message;
+        }
+    }
+
+    public async Task MoveQueuedFollowUpAsync(
+        AgentQueuedFollowUpViewModel item,
+        int destinationIndex)
+    {
+        var index = QueuedFollowUps.IndexOf(item);
+        if (index < 0)
+        {
+            return;
+        }
+
+        var result = await _runtime.MoveQueuedFollowUpAsync(
+            item.Id,
+            destinationIndex,
+            _lifetime.Token);
+        if (!result.IsAccepted)
+        {
+            Status = result.Message;
+        }
+    }
+
+    private async Task SteerQueuedFollowUpAsync(
+        AgentQueuedFollowUpViewModel item)
+    {
+        var result = await _runtime.SteerQueuedFollowUpAsync(
+            item.Id,
+            _lifetime.Token);
+        if (!result.IsAccepted)
+        {
+            Status = result.Message;
+        }
+    }
+
     public Task SendAsync(
         AgentTarget target,
         AgentPolicy policy,
@@ -1501,7 +1542,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
 
     private Task SendWithPolicyAsync(
         AgentTarget target,
-        AgentPolicy? policy,
+        AgentPolicy policy,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(target);
@@ -1514,7 +1555,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
             return Task.CompletedTask;
         }
 
-        var provider = policy is null
+        var provider = _modelSelectionExplicit
             ? SelectedProvider
             : Providers.SingleOrDefault(candidate =>
                 string.Equals(
@@ -1523,16 +1564,15 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
                     StringComparison.Ordinal));
         if (provider is null)
         {
-            ReportTargetUnavailable(policy is null
-                ? "Choose an enabled AI-provider profile."
-                : "The saved agent policy references an unavailable AI-provider profile.");
+            ReportTargetUnavailable(
+                "The agent policy references an unavailable AI-provider profile.");
             return Task.CompletedTask;
         }
 
-        if (policy is not null)
+        if (!_modelSelectionExplicit)
         {
             SelectedProvider = provider;
-            if (startsRun && !_modelSelectionExplicit)
+            if (startsRun)
             {
                 UpdateModels(provider, policy.Model);
             }
@@ -1547,49 +1587,21 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
 
         var prompt = Prompt;
         var images = PendingImages.ToArray();
-        var selectedModel = SelectedModel?.Id
-            ?? policy?.Model
-            ?? provider.DefaultModel;
-        AgentPolicy? requestedPolicy = policy;
-        if (requestedPolicy is null && startsRun)
-        {
-            requestedPolicy = new AgentPolicy(
-                provider.Id.Value,
-                SelectedModel?.Id ?? provider.DefaultModel,
-                _effectivePolicy.Permissions);
-        }
-
-        GovernedAgentPrompt request;
-        if (requestedPolicy is null)
-        {
-            request = new GovernedAgentPrompt(
-                provider.Id,
-                prompt,
-                target,
-                images,
-                SelectedReasoningEffort.Value,
-                SelectedServiceTier.Value)
-            {
-                Model = selectedModel,
-            };
-        }
-        else
-        {
-            request = new GovernedAgentPrompt(
-                provider.Id,
-                prompt,
-                target,
-                images,
-                SelectedReasoningEffort.Value,
-                SelectedServiceTier.Value,
-                requestedPolicy,
-                _fullAccessSelected
-                    ? AgentApprovalMode.FullAccess
-                    : AgentApprovalMode.Ask)
-            {
-                Model = selectedModel,
-            };
-        }
+        var selectedModel = SelectedModel?.Id ?? policy.Model;
+        var requestedPolicy = policy.SelectPrimaryModel(
+            provider.Id.Value,
+            selectedModel);
+        var request = new GovernedAgentPrompt(
+            provider.Id,
+            prompt,
+            target,
+            images,
+            SelectedReasoningEffort.Value,
+            SelectedServiceTier.Value,
+            requestedPolicy,
+            _fullAccessSelected
+                ? AgentApprovalMode.FullAccess
+                : AgentApprovalMode.Ask);
 
         Prompt = string.Empty;
         ClearPendingImages();
@@ -1792,8 +1804,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
     {
         if (!_approvalModeChangePending
             || _policyChangeInFlight
-            || !_isRunBound
-            || (_fullAccessSelected && State != GovernedAgentState.Ready))
+            || !_isRunBound)
         {
             return;
         }
@@ -1809,6 +1820,13 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
                 : await _runtime.DisableYoloAsync(cancellationToken);
             if (!result.IsAccepted)
             {
+                if (result.Code is "agent_run_not_bound" or "agent_busy")
+                {
+                    _approvalModeChangePending = true;
+                    Status = result.Message;
+                    return;
+                }
+
                 _fullAccessSelected = HasYoloAuthority;
                 Status = result.Message;
             }
@@ -2354,7 +2372,8 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         ExactTarget = FormatTarget(snapshot.Target);
         ConnectionBoundary = snapshot.ConnectionBoundary ?? string.Empty;
         WorkingDirectory = snapshot.WorkingDirectory ?? string.Empty;
-        var effectivePolicy = snapshot.EffectivePolicy ?? AgentPolicy.Default;
+        var effectivePolicy = snapshot.EffectivePolicy;
+        ArgumentNullException.ThrowIfNull(effectivePolicy);
         _effectivePolicy = effectivePolicy;
         EffectivePolicyProvider = effectivePolicy.Provider;
         EffectivePolicyModel = effectivePolicy.Model;
@@ -2372,12 +2391,11 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         PendingApproval = CreateApproval(snapshot.PendingApproval);
         ActiveTool = snapshot.ActiveTool is null
             ? null
-            : new AgentToolActivityViewModel(
-                snapshot.ActiveTool.ToolName,
-                snapshot.ActiveTool.ToolTitle,
-                FormatEnum(snapshot.ActiveTool.Risk),
-                snapshot.ActiveTool.TargetTitle,
-                snapshot.ActiveTool.CancellationRequested);
+            : CreateToolActivity(snapshot.ActiveTool);
+        PanelActivity = IsActiveRunState(snapshot.State)
+            && snapshot.PanelActivity is not null
+                ? CreateToolActivity(snapshot.PanelActivity)
+                : null;
         _terminalMutationPermission = snapshot.TerminalMutationPermission;
         if (!_approvalModeInitialized)
         {
@@ -2395,7 +2413,6 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
 
         _runId = snapshot.RunId;
         _runtimeCanSend = snapshot.CanSend;
-        _runtimeCanSteer = snapshot.CanSteer;
         _runtimeCanQueueFollowUp = snapshot.CanQueueFollowUp;
         if (_queuedFollowUpCount != snapshot.QueuedFollowUpCount)
         {
@@ -2404,7 +2421,10 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(QueuedFollowUpLabel));
             OnPropertyChanged(nameof(HasQueuedFollowUps));
         }
-        _steeringGeneration = snapshot.SteeringGeneration;
+        SynchronizeQueuedFollowUps(
+            snapshot.QueuedFollowUps.IsDefault
+                ? Array.Empty<GovernedAgentQueuedFollowUp>()
+                : snapshot.QueuedFollowUps);
         _runtimeCanStop = snapshot.CanStop;
         _isRunBound = isRunBound;
         Status = boundProviderMissing
@@ -2413,8 +2433,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         NotifyAvailabilityChanged();
         NotifyContentChanged();
         if (_approvalModeChangePending
-            && _isRunBound
-            && (!_fullAccessSelected || State == GovernedAgentState.Ready))
+            && _isRunBound)
         {
             _ = ApplySelectedApprovalModeAsync(_lifetime.Token);
         }
@@ -2430,7 +2449,24 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         {
             _ = RefreshAuditAsync(_lifetime.Token);
         }
+
+        if (IsActiveRunState(previousState)
+            && snapshot.State is
+                GovernedAgentState.Ready
+                or GovernedAgentState.Failed
+                or GovernedAgentState.Cancelled)
+        {
+            RunFinished?.Invoke(this, EventArgs.Empty);
+        }
     }
+
+    private static bool IsActiveRunState(GovernedAgentState state) => state is
+        GovernedAgentState.StreamingProvider
+        or GovernedAgentState.AwaitingUserInput
+        or GovernedAgentState.AwaitingCapabilityDecision
+        or GovernedAgentState.AwaitingApproval
+        or GovernedAgentState.RunningTool
+        or GovernedAgentState.Cancelling;
 
     private async Task LoadAuditAsync(
         bool replace,
@@ -2795,13 +2831,13 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         var hasProcesses = snapshot.ContextItems.Any(
             item => item.Kind == PanelKind.ProcessMonitor);
         var statisticsNotice =
-            (snapshot.EffectivePolicy ?? AgentPolicy.Default).GetPermission(
-                AgentCapability.ProcessControl) == AgentPermission.Off
+            snapshot.EffectivePolicy.GetPermission(
+                AgentCapability.SystemData) == AgentPermission.Off
                 ? "Local resource statistics are disabled in this workspace."
                 : "Local resource statistics are available.";
         var processNotice =
-            (snapshot.EffectivePolicy ?? AgentPolicy.Default).GetPermission(
-                AgentCapability.ProcessControl) == AgentPermission.Off
+            snapshot.EffectivePolicy.GetPermission(
+                AgentCapability.ProcessData) == AgentPermission.Off
                 ? "Process tools are disabled in this workspace."
                 : "Local process information is available.";
         var capabilityNotice = !string.IsNullOrWhiteSpace(snapshot.CapabilityNotice)
@@ -2971,8 +3007,6 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
     private void NotifyAvailabilityChanged()
     {
         OnPropertyChanged(nameof(CanSend));
-        OnPropertyChanged(nameof(IsSteeringAvailable));
-        OnPropertyChanged(nameof(CanSteer));
         OnPropertyChanged(nameof(CanOfferFollowUpQueue));
         OnPropertyChanged(nameof(CanQueueFollowUp));
         OnPropertyChanged(nameof(CanSubmitPrompt));
@@ -3001,6 +3035,57 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         NotifyPolicyAvailabilityChanged();
         NotifyQuestionAvailabilityChanged();
         NotifyCapabilityRequestAvailabilityChanged();
+    }
+
+    private static AgentToolActivityViewModel CreateToolActivity(
+        GovernedAgentToolActivity activity) =>
+        new(
+            activity.ToolName,
+            activity.ToolTitle,
+            FormatEnum(activity.Risk),
+            activity.TargetTitle,
+            activity.CancellationRequested,
+            activity.PanelId);
+
+    private void SynchronizeQueuedFollowUps(
+        IReadOnlyList<GovernedAgentQueuedFollowUp> queued)
+    {
+        GovernedAgentQueuedFollowUp[] desired = queued.Count == 0
+            ? []
+            : queued.ToArray();
+        var desiredIds = desired.Select(item => item.Id).ToHashSet();
+        for (var index = QueuedFollowUps.Count - 1; index >= 0; index--)
+        {
+            if (!desiredIds.Contains(QueuedFollowUps[index].Id))
+            {
+                QueuedFollowUps.RemoveAt(index);
+            }
+        }
+
+        for (var index = 0; index < desired.Length; index++)
+        {
+            var snapshot = desired[index];
+            var existing = QueuedFollowUps.FirstOrDefault(item => item.Id == snapshot.Id);
+            if (existing is null)
+            {
+                existing = new AgentQueuedFollowUpViewModel(
+                    snapshot,
+                    UpdateQueuedFollowUpAsync,
+                    RemoveQueuedFollowUpAsync,
+                    SteerQueuedFollowUpAsync);
+                QueuedFollowUps.Insert(index, existing);
+            }
+            else
+            {
+                existing.Apply(snapshot);
+                var currentIndex = QueuedFollowUps.IndexOf(existing);
+                if (currentIndex != index)
+                {
+                    QueuedFollowUps.Move(currentIndex, index);
+                }
+            }
+        }
+
     }
 
     private void UpdateModelCapabilities(AiProviderModelDescriptor? model)
@@ -3226,16 +3311,188 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         IEnumerable<T> source)
     {
         var replacement = source as IReadOnlyList<T> ?? source.ToArray();
-        if (destination.SequenceEqual(replacement))
+        var sharedPrefixLength = 0;
+        var maximumSharedPrefixLength = Math.Min(
+            destination.Count,
+            replacement.Count);
+        while (sharedPrefixLength < maximumSharedPrefixLength
+            && EqualityComparer<T>.Default.Equals(
+                destination[sharedPrefixLength],
+                replacement[sharedPrefixLength]))
+        {
+            sharedPrefixLength++;
+        }
+
+        for (var index = destination.Count - 1;
+             index >= sharedPrefixLength;
+             index--)
+        {
+            destination.RemoveAt(index);
+        }
+
+        for (var index = sharedPrefixLength;
+             index < replacement.Count;
+             index++)
+        {
+            destination.Add(replacement[index]);
+        }
+    }
+}
+
+public sealed class AgentQueuedFollowUpViewModel : ObservableObject
+{
+    private readonly Func<AgentQueuedFollowUpViewModel, string, Task<bool>> _update;
+    private string _message;
+    private string _editDraft;
+    private AgentReasoningEffort _reasoningEffort;
+    private GovernedAgentFollowUpDelivery _delivery;
+    private bool _isEditing;
+
+    public AgentQueuedFollowUpViewModel(
+        GovernedAgentQueuedFollowUp item,
+        Func<AgentQueuedFollowUpViewModel, string, Task<bool>> update,
+        Func<AgentQueuedFollowUpViewModel, Task> remove,
+        Func<AgentQueuedFollowUpViewModel, Task> steer)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        Id = item.Id;
+        _message = item.Message;
+        _editDraft = item.Message;
+        _reasoningEffort = item.ReasoningEffort;
+        _delivery = item.Delivery;
+        _update = update ?? throw new ArgumentNullException(nameof(update));
+        DeleteCommand = new AsyncActionCommand(
+            () => remove(this),
+            () => true);
+        SteerCommand = new AsyncActionCommand(
+            () => steer(this),
+            () => !IsSteering);
+        BeginEditCommand = new AsyncActionCommand(
+            BeginEditAsync,
+            () => !IsEditing);
+        SaveEditCommand = new AsyncActionCommand(
+            SaveEditAsync,
+            () => IsEditing && !string.IsNullOrWhiteSpace(EditDraft));
+        CancelEditCommand = new AsyncActionCommand(
+            CancelEditAsync,
+            () => IsEditing);
+    }
+
+    public AgentQueuedFollowUpId Id { get; }
+
+    public string Message
+    {
+        get => _message;
+        private set => SetProperty(ref _message, value);
+    }
+
+    public string EditDraft
+    {
+        get => _editDraft;
+        set
+        {
+            if (SetProperty(ref _editDraft, value ?? string.Empty))
+            {
+                SaveEditCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public AgentReasoningEffort ReasoningEffort
+    {
+        get => _reasoningEffort;
+        private set => SetProperty(ref _reasoningEffort, value);
+    }
+
+    public GovernedAgentFollowUpDelivery Delivery
+    {
+        get => _delivery;
+        private set
+        {
+            if (SetProperty(ref _delivery, value))
+            {
+                OnPropertyChanged(nameof(IsSteering));
+                OnPropertyChanged(nameof(SteerLabel));
+                SteerCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public bool IsSteering => Delivery == GovernedAgentFollowUpDelivery.Steering;
+
+    public string SteerLabel => IsSteering ? "Next" : "Steer";
+
+    public bool IsEditing
+    {
+        get => _isEditing;
+        private set
+        {
+            if (SetProperty(ref _isEditing, value))
+            {
+                OnPropertyChanged(nameof(IsReadOnly));
+                BeginEditCommand.RaiseCanExecuteChanged();
+                SaveEditCommand.RaiseCanExecuteChanged();
+                CancelEditCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public bool IsReadOnly => !IsEditing;
+
+    public AsyncActionCommand DeleteCommand { get; }
+
+    public AsyncActionCommand SteerCommand { get; }
+
+    public AsyncActionCommand BeginEditCommand { get; }
+
+    public AsyncActionCommand SaveEditCommand { get; }
+
+    public AsyncActionCommand CancelEditCommand { get; }
+
+    public void Apply(GovernedAgentQueuedFollowUp item)
+    {
+        if (item.Id != Id)
+        {
+            throw new ArgumentException(
+                "A queued-message presentation cannot change identity.",
+                nameof(item));
+        }
+
+        Message = item.Message;
+        ReasoningEffort = item.ReasoningEffort;
+        Delivery = item.Delivery;
+        if (!IsEditing)
+        {
+            EditDraft = item.Message;
+        }
+    }
+
+    private Task BeginEditAsync()
+    {
+        EditDraft = Message;
+        IsEditing = true;
+        return Task.CompletedTask;
+    }
+
+    private async Task SaveEditAsync()
+    {
+        var message = EditDraft.Trim();
+        if (message.Length == 0)
         {
             return;
         }
 
-        destination.Clear();
-        foreach (var item in replacement)
+        if (await _update(this, message))
         {
-            destination.Add(item);
+            IsEditing = false;
         }
+    }
+
+    private Task CancelEditAsync()
+    {
+        EditDraft = Message;
+        IsEditing = false;
+        return Task.CompletedTask;
     }
 }
 

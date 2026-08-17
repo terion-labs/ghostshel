@@ -39,7 +39,10 @@ public sealed class GovernedAgentRuntimeFileTests
             fixture.Prompt("Describe the available file scope."),
             CancellationToken.None);
 
-        Assert.True(result.IsSuccess);
+        Assert.True(
+            result.IsSuccess,
+            $"{result.Code}: {result.Message}; {fixture.Runtime.Snapshot.Status}; "
+            + $"actions={fixture.Files.Actions.Count}; requests={fixture.Provider.Requests.Count}");
         Assert.Equal(
             "provider-relative session root (details withheld)",
             Assert.Single(fixture.Runtime.Snapshot.ContextItems)
@@ -135,6 +138,55 @@ public sealed class GovernedAgentRuntimeFileTests
     }
 
     [Fact]
+    public async Task SearchObservationFlowsThroughTypedGovernedRuntime()
+    {
+        await using var fixture = FileRuntimeFixture.Create(
+            FileScope.ExactPanel,
+            ScriptedProvider.ToolThenAnswer(
+                BuiltInAgentTools.FilesSearch,
+                """{"path_segments":["logs"],"query":"error","scope":"subtree","max_results":10}"""));
+        fixture.Context.EnableObservations();
+        fixture.Files.Results.Enqueue(
+            new AgentFileActionResult.SearchResults(
+                [
+                    new FilePanelEntry(
+                        fixture.Context.Location(
+                            [
+                                new FilePanelPathSegment("logs"),
+                                new FilePanelPathSegment("error.log"),
+                            ]),
+                        "error.log",
+                        FilePanelEntryKind.File,
+                        12,
+                        null,
+                        false),
+                ],
+                false));
+
+        var result = await fixture.Runtime.SendAsync(
+            fixture.Prompt("Find error files."),
+            CancellationToken.None);
+
+        Assert.True(
+            result.IsSuccess,
+            $"{result.Code}: {result.Message}; {fixture.Runtime.Snapshot.Status}; "
+            + $"actions={fixture.Files.Actions.Count}; requests={fixture.Provider.Requests.Count}");
+        var request = Assert.IsType<AgentFileRequest.Search>(
+            Assert.Single(fixture.Files.Actions).Request);
+        Assert.Equal("error", request.Query);
+        Assert.Equal(FilePanelDiscoveryScope.Subtree, request.Scope);
+        Assert.Equal(10, request.MaximumResults);
+        using var json = JsonDocument.Parse(
+            ToolResultFromLastRequest(fixture.Provider).Value.Content);
+        Assert.Equal(
+            "error.log",
+            Assert.Single(json.RootElement.GetProperty("matches")
+                    .EnumerateArray())
+                .GetProperty("name")
+                .GetString());
+    }
+
+    [Fact]
     public async Task FileApprovalNeverYieldsTerminalInput()
     {
         await using var fixture = FileRuntimeFixture.Create(
@@ -208,7 +260,64 @@ public sealed class GovernedAgentRuntimeFileTests
     }
 
     [Fact]
-    public async Task MutationOutcomeUnknownQuarantinesAndRevokesBeforeProviderContinuation()
+    public async Task DeterministicCreateDirectoryFailureIsReturnedForProviderRecovery()
+    {
+        await using var fixture = FileRuntimeFixture.Create(
+            FileScope.ExactPanel,
+            ScriptedProvider.ToolThenAnswer(
+                BuiltInAgentTools.FilesCreateDirectory,
+                """{"path_segments":["deploy","current"]}"""));
+        fixture.Context.EnableMutations();
+        fixture.Files.Failure = new HostError(
+            HostErrorCode.InvalidRequest,
+            "file_precondition_failed",
+            "The provider response contained secret host details.",
+            Retryable: false);
+
+        var sending = fixture.Runtime.SendAsync(
+            fixture.Prompt("Create the deploy/current directory."),
+            CancellationToken.None).AsTask();
+        var approval = await WaitForApprovalAsync(fixture.Runtime);
+        Assert.True((await fixture.Runtime.DecideAsync(
+            approval.Id,
+            approved: true,
+            CancellationToken.None)).IsAccepted);
+
+        var result = await sending.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(GovernedAgentState.Ready, fixture.Runtime.Snapshot.State);
+        Assert.Equal(2, fixture.Provider.Requests.Count);
+        Assert.IsType<AgentFileRequest.CreateDirectory>(
+            Assert.Single(fixture.Files.Actions).Request);
+        var continuation = fixture.Provider.Requests.ToArray()[^1];
+        var failedActionMessage = Assert.Single(
+            continuation.Messages,
+            message => message.Role == AgentMessageRole.Assistant
+                && message.ToolCalls.Length > 0);
+        var failedAction = Assert.Single(failedActionMessage.ToolCalls);
+        Assert.Equal(BuiltInAgentTools.FilesCreateDirectory, failedAction.ToolName);
+        Assert.Equal(
+            "deploy",
+            failedAction.Arguments
+                .GetProperty("path_segments")[0]
+                .GetString());
+        var toolResult = ToolResultFromLastRequest(fixture.Provider);
+        Assert.Equal(AgentToolResultStatus.Failed, toolResult.Status);
+        Assert.Equal("file_precondition_failed", toolResult.StableCode);
+        Assert.Equal(failedAction.ProviderCallId, toolResult.ProviderCallId);
+        Assert.Contains(
+            "file_precondition_failed",
+            toolResult.Value.Content,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "secret host details",
+            toolResult.Value.Content,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task MutationOutcomeUnknownReturnsToProviderWithoutRevokingRun()
     {
         await using var fixture = FileRuntimeFixture.Create(
             FileScope.ExactPanel,
@@ -233,25 +342,20 @@ public sealed class GovernedAgentRuntimeFileTests
 
         var result = await sending.WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.False(result.IsSuccess);
-        Assert.Equal(
-            FileAgentToolResultJson.FileMutationOutcomeUnknownStableCode,
-            result.Code);
-        Assert.Equal(GovernedAgentState.Failed, fixture.Runtime.Snapshot.State);
-        Assert.Contains(
-            "quarantined",
-            fixture.Runtime.Snapshot.Status,
-            StringComparison.Ordinal);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(GovernedAgentState.Ready, fixture.Runtime.Snapshot.State);
         Assert.IsType<AgentFileRequest.Delete>(
             Assert.Single(fixture.Files.Actions).Request);
-        Assert.Single(fixture.Provider.Requests);
-        await AssertRunAuthorityRevokedAsync(fixture);
+        Assert.Equal(2, fixture.Provider.Requests.Count);
+        Assert.Equal(
+            FileAgentToolResultJson.FileMutationOutcomeUnknownStableCode,
+            ToolResultFromLastRequest(fixture.Provider).StableCode);
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task UnexpectedMutationHostFailureBecomesOutcomeUnknownAndQuarantines(
+    public async Task UnexpectedMutationHostFailureBecomesProviderToolError(
         bool operationCanceledException)
     {
         await using var fixture = FileRuntimeFixture.Create(
@@ -277,19 +381,14 @@ public sealed class GovernedAgentRuntimeFileTests
 
         var result = await sending.WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.False(result.IsSuccess);
-        Assert.Equal(
-            FileAgentToolResultJson.FileMutationOutcomeUnknownStableCode,
-            result.Code);
-        Assert.Equal(GovernedAgentState.Failed, fixture.Runtime.Snapshot.State);
-        Assert.Contains(
-            "quarantined",
-            fixture.Runtime.Snapshot.Status,
-            StringComparison.Ordinal);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(GovernedAgentState.Ready, fixture.Runtime.Snapshot.State);
         Assert.IsType<AgentFileRequest.CreateDirectory>(
             Assert.Single(fixture.Files.Actions).Request);
-        Assert.Single(fixture.Provider.Requests);
-        await AssertRunAuthorityRevokedAsync(fixture);
+        Assert.Equal(2, fixture.Provider.Requests.Count);
+        Assert.Equal(
+            FileAgentToolResultJson.FileMutationOutcomeUnknownStableCode,
+            ToolResultFromLastRequest(fixture.Provider).StableCode);
     }
 
     [Fact]
@@ -442,34 +541,6 @@ public sealed class GovernedAgentRuntimeFileTests
                 "The continuation did not contain a structured tool result.");
     }
 
-    private static async ValueTask AssertRunAuthorityRevokedAsync(
-        FileRuntimeFixture fixture)
-    {
-        var executed = Assert.Single(fixture.Files.Actions);
-        var now = DateTimeOffset.UtcNow;
-        var followup = new AgentFileActionComposer().Prepare(
-            new AgentActionEnvelope(
-                AgentActionId.New(),
-                executed.Proposal.RunId,
-                executed.Proposal.Actor,
-                executed.Proposal.PolicyGeneration,
-                now,
-                now.AddMinutes(1)),
-            fixture.Context.ExactContext(executed.Proposal.Target),
-            new AgentFileRequest.Stat(
-                FileRuntimeContextProxy.FileSessionId,
-                [new FilePanelPathSegment("status.txt")]));
-
-        var authorization = await fixture.Broker.RequestAsync(
-            followup.Proposal,
-            CancellationToken.None);
-
-        Assert.Equal(
-            AgentAuthorizationErrorCode.RunCancelled,
-            Assert.IsType<AgentAuthorizationResult.Denied>(
-                authorization).Error.Code);
-    }
-
     private static async ValueTask<GovernedAgentApproval> WaitForApprovalAsync(
         GovernedAgentRuntime runtime)
     {
@@ -556,8 +627,13 @@ public sealed class GovernedAgentRuntimeFileTests
 
         public static FileRuntimeFixture Create(
             FileScope scope,
+            ScriptedProvider provider) =>
+            Create(scope, provider, AgentPolicy.Default);
+
+        public static FileRuntimeFixture Create(
+            FileScope scope,
             ScriptedProvider provider,
-            AgentPolicy? policy = null)
+            AgentPolicy policy)
         {
             var sessionHost = DispatchProxy.Create<
                 ISessionHostClient,
@@ -568,14 +644,17 @@ public sealed class GovernedAgentRuntimeFileTests
                 sessionHost,
                 context,
                 provider,
-                policy ?? AgentPolicy.Default);
+                policy);
         }
 
         public GovernedAgentPrompt Prompt(string message) =>
             new(
                 new AiProviderProfileId("file-provider"),
                 message,
-                Context.Target);
+                Context.Target,
+                Runtime.Snapshot.EffectivePolicy!.SelectPrimaryModel(
+                    "file-provider",
+                    "file-default-model"));
 
         public async ValueTask DisposeAsync()
         {
@@ -599,6 +678,7 @@ public sealed class GovernedAgentRuntimeFileTests
 
         private FileScope _scope;
         private int _inspectionCount;
+        private bool _observationsEnabled;
 
         public ClientId ApprovalClientId { get; } =
             new("file-desktop-client");
@@ -641,6 +721,18 @@ public sealed class GovernedAgentRuntimeFileTests
                 | FilePanelCapability.GovernedDelete,
                 CurrentMetadata.MaximumListPageSize,
                 CurrentMetadata.MaximumPreviewBytes);
+
+        public void EnableObservations()
+        {
+            _observationsEnabled = true;
+            CurrentMetadata = new FileSessionMetadata(
+                CurrentMetadata.TrustedRoot,
+                CurrentMetadata.Capabilities
+                | FilePanelCapability.Search
+                | FilePanelCapability.Permissions,
+                CurrentMetadata.MaximumListPageSize,
+                CurrentMetadata.MaximumPreviewBytes);
+        }
 
         public void Initialize(FileScope scope)
         {
@@ -809,6 +901,15 @@ public sealed class GovernedAgentRuntimeFileTests
             if (!removeRead)
             {
                 sessionCapabilities.Add(SessionCapabilities.FilesPreview);
+            }
+
+            if (_observationsEnabled)
+            {
+                sessionCapabilities.Add(SessionCapabilities.FilesSearch);
+                sessionCapabilities.Add(
+                    SessionCapabilities.FilesReadAccessControl);
+                sessionCapabilities.Add(
+                    SessionCapabilities.FilesTransfersRead);
             }
 
             if (CurrentMetadata.Capabilities.HasFlag(
@@ -988,6 +1089,20 @@ public sealed class GovernedAgentRuntimeFileTests
                                     IsHidden: false),
                             ],
                             continuationToken: null)),
+                AgentFileRequest.Search search =>
+                    new AgentFileActionResult.SearchResults(
+                        [
+                            new FilePanelEntry(
+                                context.Location(search.RelativePath.Add(
+                                    new FilePanelPathSegment(
+                                        $"{search.Query}.txt"))),
+                                $"{search.Query}.txt",
+                                FilePanelEntryKind.File,
+                                Size: 12,
+                                LastModifiedAt: null,
+                                IsHidden: false),
+                        ],
+                        IsTruncated: false),
                 AgentFileRequest.Stat stat =>
                     new AgentFileActionResult.Entry(
                         new FilePanelEntry(
@@ -1007,6 +1122,13 @@ public sealed class GovernedAgentRuntimeFileTests
                             "text/plain",
                             "status=ok"u8,
                             isTruncated: false)),
+                AgentFileRequest.AccessRead accessRead =>
+                    new AgentFileActionResult.AccessControl(
+                        new FilePanelAccessControl(
+                            context.Location(accessRead.RelativePath),
+                            new FilePanelPosixMode(0x1A4))),
+                AgentFileRequest.Transfers =>
+                    new AgentFileActionResult.Transfers([], false),
                 AgentFileRequest.CreateDirectory createDirectory =>
                     new AgentFileActionResult.CreatedDirectory(
                         new FilePanelEntry(
@@ -1031,8 +1153,11 @@ public sealed class GovernedAgentRuntimeFileTests
             request switch
             {
                 AgentFileRequest.List => "files_listed",
+                AgentFileRequest.Search => "files_searched",
                 AgentFileRequest.Stat => "file_stated",
                 AgentFileRequest.Read => "file_read",
+                AgentFileRequest.AccessRead => "file_access_read",
+                AgentFileRequest.Transfers => "file_transfers_read",
                 AgentFileRequest.CreateDirectory =>
                     "directory_created",
                 AgentFileRequest.Delete => "file_deleted",

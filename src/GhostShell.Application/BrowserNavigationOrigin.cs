@@ -3,8 +3,9 @@ using System.Globalization;
 namespace GhostShell.Application;
 
 /// <summary>
-/// A canonical top-level browser origin used by the native renderer to
-/// contain one governed navigation and every redirect it starts.
+/// A host-selected top-level browser navigation boundary. It may constrain a
+/// renderer operation to one canonical origin or explicitly allow every
+/// address supported by <see cref="BrowserAddress"/>.
 /// </summary>
 public sealed record BrowserNavigationOrigin
 {
@@ -12,13 +13,18 @@ public sealed record BrowserNavigationOrigin
         string scheme,
         string idnHost,
         int port,
-        bool isBlank)
+        bool isBlank,
+        bool isUnrestricted)
     {
         Scheme = scheme;
         IdnHost = idnHost;
         Port = port;
         IsBlank = isBlank;
+        IsUnrestricted = isUnrestricted;
     }
+
+    public static BrowserNavigationOrigin Unrestricted { get; } =
+        new("*", string.Empty, port: -1, isBlank: false, isUnrestricted: true);
 
     public string Scheme { get; }
 
@@ -28,12 +34,16 @@ public sealed record BrowserNavigationOrigin
 
     public bool IsBlank { get; }
 
+    public bool IsUnrestricted { get; }
+
     /// <summary>
-    /// Stable presentation and digest material for this exact effective
-    /// origin. HTTP(S) ports are always explicit.
+    /// Stable presentation and digest material for this navigation boundary.
+    /// HTTP(S) ports are always explicit; unrestricted boundaries use '*'.
     /// </summary>
     public string CanonicalValue =>
-        IsBlank
+        IsUnrestricted
+            ? "*"
+            : IsBlank
             ? BrowserAddress.Blank.ToString()
             : string.Concat(
                 Scheme,
@@ -54,19 +64,26 @@ public sealed record BrowserNavigationOrigin
                 "about",
                 string.Empty,
                 port: -1,
-                isBlank: true);
+                isBlank: true,
+                isUnrestricted: false);
         }
 
         return new BrowserNavigationOrigin(
             value.Scheme.ToLowerInvariant(),
             value.IdnHost.ToLowerInvariant(),
             value.Port,
-            isBlank: false);
+            isBlank: false,
+            isUnrestricted: false);
     }
 
     public bool Allows(BrowserAddress address)
     {
         ArgumentNullException.ThrowIfNull(address);
+        if (IsUnrestricted)
+        {
+            return true;
+        }
+
         var candidate = FromAddress(address);
         return IsBlank
             ? candidate.IsBlank

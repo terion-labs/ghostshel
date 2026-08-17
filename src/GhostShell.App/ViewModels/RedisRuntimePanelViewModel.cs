@@ -268,8 +268,13 @@ public sealed class RedisRuntimePanelViewModel : RuntimePanelViewModel
     private readonly Func<DatabaseConnectionProfileId, string, CancellationToken,
         Task<DatabaseConnectionProfile?>>? _passwordPersister;
     private readonly CancellationTokenSource _lifetime = new();
+    private readonly string _hostBindingId = SessionId.New().Value;
     private readonly TimeProvider _time;
     private readonly DispatcherTimer? _expiryTimer;
+    private HostedPanelSessionLink? _hostedSession;
+    private ISessionHostClient? _hostSessionClient;
+    private Task _hostInitialization = Task.CompletedTask;
+    private long _hostBindingRevision;
     private IRedisPanelSession? _session;
     private DatabaseConnectionProfile? _savedConnection;
     private ConnectionProfile? _tunnelConnection;
@@ -396,6 +401,36 @@ public sealed class RedisRuntimePanelViewModel : RuntimePanelViewModel
     }
 
     public event EventHandler? PasswordRequested;
+
+    public SessionId? HostedSessionId => _hostedSession?.SessionId;
+
+    public CapabilitySet HostedCapabilities =>
+        _hostedSession?.Capabilities ?? CapabilitySet.Empty;
+
+    public bool HasHostedSession => _hostedSession?.IsLinked == true;
+
+    public Task StartHostingAsync(
+        ISessionHostClient sessionClient,
+        ClientId clientId,
+        SessionOwner owner)
+    {
+        ArgumentNullException.ThrowIfNull(sessionClient);
+        ArgumentNullException.ThrowIfNull(owner);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_hostedSession is not null)
+        {
+            return _hostInitialization;
+        }
+
+        _hostSessionClient = sessionClient;
+        _hostedSession = new HostedPanelSessionLink(
+            sessionClient,
+            clientId,
+            owner,
+            PanelKind.DatabaseViewer);
+        _hostInitialization = InitializeHostedSessionAsync();
+        return _hostInitialization;
+    }
 
     public Task Initialization { get; }
 
@@ -803,6 +838,10 @@ public sealed class RedisRuntimePanelViewModel : RuntimePanelViewModel
             {
                 await LoadIndexesCoreAsync(_lifetime.Token).ConfigureAwait(true);
             }
+
+            QueueHostedSessionEnsure(WithSelectedDatabase(
+                connectionString,
+                Facts.SelectedDatabase));
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
         {
@@ -827,7 +866,11 @@ public sealed class RedisRuntimePanelViewModel : RuntimePanelViewModel
         }
     }
 
-    public void SetSessionPassword(string password) => _sessionPassword = password ?? string.Empty;
+    public void SetSessionPassword(string password)
+    {
+        InvalidateHostedBinding();
+        _sessionPassword = password ?? string.Empty;
+    }
 
     public async Task<bool> StoreSessionPasswordAsync(
         string password,
@@ -847,6 +890,7 @@ public sealed class RedisRuntimePanelViewModel : RuntimePanelViewModel
             return false;
         }
 
+        InvalidateHostedBinding();
         _savedConnection = saved;
         OnPropertyChanged(nameof(CanStorePassword));
         return true;
@@ -859,6 +903,7 @@ public sealed class RedisRuntimePanelViewModel : RuntimePanelViewModel
         bool persisted = true)
     {
         ArgumentNullException.ThrowIfNull(profile);
+        InvalidateHostedBinding();
         _savedConnection = profile;
         _persistedConnection = persisted;
         _sessionPassword = string.IsNullOrEmpty(sessionPassword) ? null : sessionPassword;
@@ -879,6 +924,7 @@ public sealed class RedisRuntimePanelViewModel : RuntimePanelViewModel
         if (!_disposed)
         {
             _disposed = true;
+            _hostedSession?.Dispose();
             _expiryTimer?.Stop();
             _lifetime.Cancel();
             _ = DisconnectCoreAsync();
@@ -886,6 +932,105 @@ public sealed class RedisRuntimePanelViewModel : RuntimePanelViewModel
         }
 
         base.Dispose();
+    }
+
+    private async Task InitializeHostedSessionAsync()
+    {
+        try
+        {
+            await Initialization.ConfigureAwait(true);
+            if (_disposed || !IsConnected || _hostedSession?.IsLinked == true)
+            {
+                return;
+            }
+
+            var connectionString = await ResolveConnectionStringAsync(_lifetime.Token)
+                .ConfigureAwait(true);
+            if (connectionString is null)
+            {
+                return;
+            }
+
+            var selectedDatabase = Facts?.SelectedDatabase ?? 0;
+            await EnsureHostedSessionAsync(
+                    WithSelectedDatabase(connectionString, selectedDatabase),
+                    _lifetime.Token)
+                .ConfigureAwait(true);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+        catch
+        {
+            // The direct Redis panel remains authoritative for human use;
+            // hosted projection failures only remove agent reachability.
+        }
+    }
+
+    private string WithSelectedDatabase(string connectionString, int database)
+    {
+        var details = _connections.ParseConnectionDetails(
+            RedisDatabase.DriverId,
+            connectionString);
+        return _connections.BuildConnectionString(
+            RedisDatabase.DriverId,
+            details with
+            {
+                Database = database.ToString(CultureInfo.InvariantCulture),
+            });
+    }
+
+    private void QueueHostedSessionEnsure(string connectionString)
+    {
+        if (_hostedSession is not null && _hostSessionClient is not null)
+        {
+            _ = EnsureHostedSessionAsync(connectionString, _lifetime.Token);
+        }
+    }
+
+    private Task<bool> EnsureHostedSessionAsync(
+        string connectionString,
+        CancellationToken cancellationToken)
+    {
+        var hosted = _hostedSession;
+        var sessionClient = _hostSessionClient;
+        if (hosted is null || sessionClient is null || _disposed)
+        {
+            return Task.FromResult(false);
+        }
+
+        var target = new DatabaseSessionTarget(
+            RedisDatabase.DriverId,
+            connectionString,
+            _hostBindingId,
+            _hostBindingRevision,
+            _tunnelConnection,
+            _savedConnection?.PasswordSecret);
+        return hosted.EnsureAsync(
+            (sessionId, context, token) =>
+                sessionClient.EnsureDatabaseSessionAsync(
+                    new EnsureDatabaseSessionRequest(
+                        sessionId,
+                        hosted.Owner,
+                        Title,
+                        target),
+                    context,
+                    token),
+            cancellationToken);
+    }
+
+    private void InvalidateHostedBinding()
+    {
+        _hostBindingRevision = checked(_hostBindingRevision + 1);
+        InvalidateHostedSession();
+    }
+
+    private void InvalidateHostedSession()
+    {
+        if (_hostedSession is not null)
+        {
+            _ = _hostedSession.InvalidateAsync();
+        }
     }
 
     private async Task<string?> ResolveConnectionStringAsync(CancellationToken cancellationToken)
@@ -915,6 +1060,7 @@ public sealed class RedisRuntimePanelViewModel : RuntimePanelViewModel
     private async Task DisconnectAsync()
     {
         await DisconnectCoreAsync().ConfigureAwait(true);
+        InvalidateHostedSession();
         StatusText = "Disconnected";
         OnConnectionChanged();
     }
@@ -965,6 +1111,14 @@ public sealed class RedisRuntimePanelViewModel : RuntimePanelViewModel
             OnPropertyChanged(nameof(Facts));
             OnPropertyChanged(nameof(ServerFactsText));
             await RestartScanCoreAsync(token).ConfigureAwait(true);
+            InvalidateHostedBinding();
+            var connectionString = await ResolveConnectionStringAsync(token)
+                .ConfigureAwait(true);
+            if (connectionString is not null)
+            {
+                QueueHostedSessionEnsure(
+                    WithSelectedDatabase(connectionString, database));
+            }
         }).ConfigureAwait(true);
     }
 

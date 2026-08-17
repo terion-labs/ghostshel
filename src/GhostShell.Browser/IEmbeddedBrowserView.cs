@@ -45,7 +45,8 @@ internal interface IEmbeddedBrowserView : IDisposable
 
     bool Stop();
 
-    Task<NativeBrowserSnapshotResult> CaptureSnapshotAsync();
+    Task<NativeBrowserSnapshotResult> CaptureSnapshotAsync(
+        BrowserSnapshotQuery? query = null);
 
     Task<NativeBrowserClickResult> ClickAsync(
         NativeBrowserElementHandle handle);
@@ -56,6 +57,21 @@ internal interface IEmbeddedBrowserView : IDisposable
 
     Task<NativeBrowserCheckResult> CheckAsync(
         NativeBrowserElementHandle handle);
+
+    Task<NativeBrowserElementStateResult> ReadElementStateAsync(
+        NativeBrowserElementHandle handle);
+
+    NativeBrowserNetworkActivity ReadNetworkActivity();
+
+    Task<NativeBrowserViewport> ReadViewportAsync();
+
+    Task<NativeBrowserAutomationResult> DispatchMouseAsync(BrowserMouseRequest request);
+
+    Task<NativeBrowserAutomationResult> DispatchKeyAsync(BrowserKeyRequest request);
+
+    Task<NativeBrowserAutomationResult> DispatchScrollAsync(BrowserScrollRequest request);
+
+    Task<NativeBrowserAutomationResult> EvaluateAsync(BrowserEvaluateRequest request);
 }
 
 internal sealed class NativeBrowserAddressChangedEventArgs(

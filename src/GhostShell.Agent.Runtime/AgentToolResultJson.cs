@@ -30,6 +30,25 @@ internal static class AgentToolResultJson
         return Encoding.UTF8.GetString(buffer.WrittenSpan);
     }
 
+    public static string ReconciliationRequired(string causeStableCode)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(causeStableCode);
+        var buffer = new ArrayBufferWriter<byte>();
+        using var writer = new Utf8JsonWriter(buffer);
+        writer.WriteStartObject();
+        writer.WriteBoolean("ok", false);
+        WriteError(
+            writer,
+            "error",
+            "tool_batch_reconciliation_required",
+            retryable: true);
+        writer.WriteString("caused_by", causeStableCode);
+        writer.WriteString("required_action", "inspect_live_state");
+        writer.WriteEndObject();
+        writer.Flush();
+        return Encoding.UTF8.GetString(buffer.WrittenSpan);
+    }
+
     public static void WritePanelId(
         Utf8JsonWriter writer,
         PanelInstanceId? panelId)

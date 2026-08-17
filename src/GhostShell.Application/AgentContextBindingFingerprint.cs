@@ -73,7 +73,13 @@ public static class AgentContextBindingFingerprint
         Append(builder, metadata.Origin.IdnHost);
         Append(builder, metadata.Origin.Port);
         Append(builder, metadata.Origin.IsBlank);
+        Append(builder, metadata.Address?.ToString());
         Append(builder, metadata.DocumentRevision);
+        Append(builder, metadata.Viewport.WidthCss.ToString("R", CultureInfo.InvariantCulture));
+        Append(builder, metadata.Viewport.HeightCss.ToString("R", CultureInfo.InvariantCulture));
+        Append(builder, metadata.Viewport.DeviceScaleFactor.ToString("R", CultureInfo.InvariantCulture));
+        Append(builder, metadata.ViewportRevision);
+        Append(builder, metadata.InputEpoch);
     }
 
     private static void AppendFileMetadata(

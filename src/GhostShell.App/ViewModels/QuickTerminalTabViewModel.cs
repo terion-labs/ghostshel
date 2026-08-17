@@ -16,6 +16,7 @@ public sealed class QuickTerminalTabViewModel : ObservableObject
     private EnsureTerminalSessionRequest? _terminalRequest;
     private bool _isActive;
     private bool _canClose;
+    private string _agentActivity = string.Empty;
     private bool _isInitializing;
     private string _terminalUnavailableMessage = string.Empty;
     private long _initializationGeneration;
@@ -81,6 +82,26 @@ public sealed class QuickTerminalTabViewModel : ObservableObject
     }
 
     public bool HasAttention => false;
+
+    public string AgentActivity => _agentActivity;
+
+    public bool IsAgentActive => AgentActivity.Length > 0;
+
+    public bool HasAgentActivity => IsAgentActive;
+
+    internal void SetAgentActivity(string? activity)
+    {
+        var next = string.IsNullOrWhiteSpace(activity)
+            ? string.Empty
+            : string.Concat(activity);
+        if (!SetProperty(ref _agentActivity, next, nameof(AgentActivity)))
+        {
+            return;
+        }
+
+        OnPropertyChanged(nameof(IsAgentActive));
+        OnPropertyChanged(nameof(HasAgentActivity));
+    }
 
     public bool IsInitializing
     {

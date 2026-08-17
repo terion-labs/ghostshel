@@ -15,9 +15,16 @@ namespace GhostShell.Browser;
 internal sealed class CefBrowserView : IEmbeddedBrowserView
 {
     private const string LoadStringHost = "loadstring.exclr8cef.internal";
+    private const int HeadlessViewportWidth = 1280;
+    private const int HeadlessViewportHeight = 720;
 
     private readonly CefWebView _webView;
+    private readonly TaskCompletionSource<bool> _rendererReady = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
     private CefBrowser? _browser;
+    private CefBrowserSemanticAdapter? _semanticAdapter;
+    private CefBrowserAutomationAdapter? _automationAdapter;
+    private CefBrowserNetworkActivityTracker? _networkActivity;
     private ActiveNativeNavigation? _activeNavigation;
     private BrowserAddress? _queuedAddress;
     private CefLocalDocumentAccessPolicy _localDocumentAccess =
@@ -59,6 +66,12 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
     {
         ArgumentNullException.ThrowIfNull(address);
         ThrowIfDisposed();
+        if (address != BrowserAddress.Blank
+            && !TryStartHeadlessRenderer())
+        {
+            throw new InvalidOperationException(
+                "The CEF renderer could not be started.");
+        }
 
         var navigation = BeginExplicitNavigation(address);
         _queuedAddress = address;
@@ -121,34 +134,115 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         return true;
     }
 
-    // Semantic automation intentionally remains unavailable in this migration.
-    // The later agent-browser pass will replace this fail-closed implementation
-    // with a separately reviewed, typed CEF automation adapter.
-    public Task<NativeBrowserSnapshotResult> CaptureSnapshotAsync() =>
-        Task.FromResult(NativeBrowserSnapshotResult.Unavailable());
+    public async Task<NativeBrowserSnapshotResult> CaptureSnapshotAsync(
+        BrowserSnapshotQuery? query = null)
+    {
+        if (!await EnsureRendererReadyAsync().ConfigureAwait(false))
+        {
+            return NativeBrowserSnapshotResult.Unavailable();
+        }
 
-    public Task<NativeBrowserClickResult> ClickAsync(
+        return await (_semanticAdapter?.CaptureSnapshotAsync(
+                query ?? BrowserSnapshotQuery.Lean)
+            ?? Task.FromResult(NativeBrowserSnapshotResult.Unavailable()))
+            .ConfigureAwait(false);
+    }
+
+    public async Task<NativeBrowserClickResult> ClickAsync(
         NativeBrowserElementHandle handle)
     {
         ArgumentNullException.ThrowIfNull(handle);
-        return Task.FromResult(NativeBrowserClickResult.OutcomeUnknown());
+        if (!await EnsureRendererReadyAsync().ConfigureAwait(false))
+        {
+            return NativeBrowserClickResult.Stale();
+        }
+
+        return await (_semanticAdapter?.ClickAsync(handle)
+            ?? Task.FromResult(NativeBrowserClickResult.Stale()))
+            .ConfigureAwait(false);
     }
 
-    public Task<NativeBrowserFillResult> FillAsync(
+    public async Task<NativeBrowserFillResult> FillAsync(
         NativeBrowserElementHandle handle,
         string text)
     {
         ArgumentNullException.ThrowIfNull(handle);
         ArgumentNullException.ThrowIfNull(text);
-        return Task.FromResult(NativeBrowserFillResult.OutcomeUnknown());
+        if (!await EnsureRendererReadyAsync().ConfigureAwait(false))
+        {
+            return NativeBrowserFillResult.Stale();
+        }
+
+        return await (_semanticAdapter?.FillAsync(handle, text)
+            ?? Task.FromResult(NativeBrowserFillResult.Stale()))
+            .ConfigureAwait(false);
     }
 
-    public Task<NativeBrowserCheckResult> CheckAsync(
+    public async Task<NativeBrowserCheckResult> CheckAsync(
         NativeBrowserElementHandle handle)
     {
         ArgumentNullException.ThrowIfNull(handle);
-        return Task.FromResult(NativeBrowserCheckResult.OutcomeUnknown());
+        if (!await EnsureRendererReadyAsync().ConfigureAwait(false))
+        {
+            return NativeBrowserCheckResult.Stale();
+        }
+
+        return await (_semanticAdapter?.CheckAsync(handle)
+            ?? Task.FromResult(NativeBrowserCheckResult.Stale()))
+            .ConfigureAwait(false);
     }
+
+    public async Task<NativeBrowserElementStateResult> ReadElementStateAsync(
+        NativeBrowserElementHandle handle)
+    {
+        ArgumentNullException.ThrowIfNull(handle);
+        if (!await EnsureRendererReadyAsync().ConfigureAwait(false))
+        {
+            return NativeBrowserElementStateResult.Stale();
+        }
+
+        return await (_semanticAdapter?.ReadElementStateAsync(handle)
+            ?? Task.FromResult(NativeBrowserElementStateResult.Stale()))
+            .ConfigureAwait(false);
+    }
+
+    public NativeBrowserNetworkActivity ReadNetworkActivity() =>
+        _networkActivity?.Snapshot()
+        ?? new NativeBrowserNetworkActivity(
+            IsObservable: false,
+            ActiveRequestCount: 0,
+            QuietFor: TimeSpan.Zero);
+
+    public async Task<NativeBrowserViewport> ReadViewportAsync()
+    {
+        if (!await EnsureRendererReadyAsync().ConfigureAwait(false)
+            || _automationAdapter is not { } adapter)
+        {
+            throw new InvalidOperationException("The CEF renderer is not ready.");
+        }
+
+        return await adapter.ReadViewportAsync().ConfigureAwait(false);
+    }
+
+    public async Task<NativeBrowserAutomationResult> DispatchMouseAsync(
+        BrowserMouseRequest request) =>
+        await DispatchAutomationAsync(
+            adapter => adapter.DispatchMouseAsync(request));
+
+    public async Task<NativeBrowserAutomationResult> DispatchKeyAsync(
+        BrowserKeyRequest request) =>
+        await DispatchAutomationAsync(
+            adapter => adapter.DispatchKeyAsync(request));
+
+    public async Task<NativeBrowserAutomationResult> DispatchScrollAsync(
+        BrowserScrollRequest request) =>
+        await DispatchAutomationAsync(
+            adapter => adapter.DispatchScrollAsync(request));
+
+    public async Task<NativeBrowserAutomationResult> EvaluateAsync(
+        BrowserEvaluateRequest request) =>
+        await DispatchAutomationAsync(
+            adapter => adapter.EvaluateAsync(request));
 
     public void Dispose()
     {
@@ -170,6 +264,13 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
             _browser = null;
         }
 
+        _semanticAdapter?.InvalidateDocument();
+        _semanticAdapter = null;
+        _automationAdapter = null;
+        _networkActivity?.Dispose();
+        _networkActivity = null;
+        _rendererReady.TrySetResult(false);
+
         _webView.Dispose();
     }
 
@@ -188,12 +289,69 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
             }
 
             _browser = browser;
+            _semanticAdapter?.InvalidateDocument();
+            _networkActivity?.Dispose();
+            _semanticAdapter = new CefBrowserSemanticAdapter(
+                new CefSemanticBrowser(browser));
+            _automationAdapter = new CefBrowserAutomationAdapter(
+                new CefDevToolsTransport(browser));
+            _networkActivity = new CefBrowserNetworkActivityTracker(browser);
             Subscribe(browser);
         }
+
+        _rendererReady.TrySetResult(true);
 
         // CEF reports BrowserReady while its initial about:blank load is still
         // in flight. Dispatching here can silently lose LoadUrl/LoadString.
         // OnLoadEnd owns the handoff after that bootstrap navigation settles.
+    }
+
+    private async Task<NativeBrowserAutomationResult> DispatchAutomationAsync(
+        Func<CefBrowserAutomationAdapter, Task<NativeBrowserAutomationResult>> dispatch)
+    {
+        ArgumentNullException.ThrowIfNull(dispatch);
+        if (!await EnsureRendererReadyAsync().ConfigureAwait(false)
+            || _automationAdapter is not { } adapter)
+        {
+            return NativeBrowserAutomationResult.Rejected("renderer_unavailable");
+        }
+
+        return await dispatch(adapter).ConfigureAwait(false);
+    }
+
+    private async Task<bool> EnsureRendererReadyAsync()
+    {
+        if (_disposed)
+        {
+            return false;
+        }
+
+        bool started;
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            started = TryStartHeadlessRenderer();
+        }
+        else
+        {
+            started = await Dispatcher.UIThread.InvokeAsync(
+                TryStartHeadlessRenderer);
+        }
+
+        return started
+            && await _rendererReady.Task.ConfigureAwait(false);
+    }
+
+    private bool TryStartHeadlessRenderer()
+    {
+        if (_disposed)
+        {
+            return false;
+        }
+
+        return _webView.Browser is not null
+            || _webView.EnsureOffscreenBrowserCreated(
+                HeadlessViewportWidth,
+                HeadlessViewportHeight);
     }
 
     private void Subscribe(CefBrowser browser)
@@ -408,6 +566,7 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
             }
 
             PublishSameDocumentAddress(address);
+            _semanticAdapter?.InvalidateDocument();
         });
 
     private void OnLoadingStateChanged(object? sender, LoadingState state) =>
@@ -489,6 +648,7 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
             }
 
             var navigation = EnsureActiveNavigation();
+            _semanticAdapter?.InvalidateDocument();
             navigation.HasDocumentLoadStarted = true;
             if (navigation.HasStarted)
             {
@@ -715,6 +875,7 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
                 "A CEF top-level navigation is already active.");
         }
 
+        _semanticAdapter?.InvalidateDocument();
         return _activeNavigation = NewNavigation(pendingAddress);
     }
 

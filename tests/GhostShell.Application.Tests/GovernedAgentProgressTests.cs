@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using GhostShell.Core;
 
 namespace GhostShell.Application.Tests;
 
@@ -142,6 +143,7 @@ public sealed class GovernedAgentProgressTests
             TargetTitle: "Target",
             ContextItems: ImmutableArray<GovernedAgentContextItem>.Empty,
             Messages: Array.Empty<AgentChatMessage>(),
+            EffectivePolicy: AgentPolicy.Default,
             ProvisionalAssistantText: string.Empty,
             Status: "Working",
             CurrentProgress: progress);

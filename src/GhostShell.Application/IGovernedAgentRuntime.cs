@@ -57,6 +57,43 @@ public interface IGovernedAgentRuntime : IDisposable, IAsyncDisposable
                 0));
     }
 
+    ValueTask<GovernedAgentFollowUpResult> UpdateQueuedFollowUpAsync(
+        AgentQueuedFollowUpId id,
+        GovernedAgentFollowUp request,
+        CancellationToken cancellationToken) =>
+        UnsupportedQueuedFollowUpMutation(request, cancellationToken);
+
+    ValueTask<GovernedAgentFollowUpResult> RemoveQueuedFollowUpAsync(
+        AgentQueuedFollowUpId id,
+        CancellationToken cancellationToken) =>
+        UnsupportedQueuedFollowUpMutation(null, cancellationToken);
+
+    ValueTask<GovernedAgentFollowUpResult> MoveQueuedFollowUpAsync(
+        AgentQueuedFollowUpId id,
+        int newIndex,
+        CancellationToken cancellationToken) =>
+        UnsupportedQueuedFollowUpMutation(null, cancellationToken);
+
+    ValueTask<GovernedAgentFollowUpResult> SteerQueuedFollowUpAsync(
+        AgentQueuedFollowUpId id,
+        CancellationToken cancellationToken) =>
+        UnsupportedQueuedFollowUpMutation(null, cancellationToken);
+
+    private static ValueTask<GovernedAgentFollowUpResult>
+        UnsupportedQueuedFollowUpMutation(
+            GovernedAgentFollowUp? request,
+            CancellationToken cancellationToken)
+    {
+        _ = request;
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(
+            new GovernedAgentFollowUpResult(
+                false,
+                "agent_follow_up_unavailable",
+                "This agent runtime does not support queued follow-up changes.",
+                0));
+    }
+
     ValueTask<GovernedAgentDecisionResult> DecideAsync(
         AgentApprovalId approvalId,
         bool approved,
@@ -124,42 +161,6 @@ public sealed record GovernedAgentPrompt
 {
     public const int MaximumMessageLength = 64 * 1024;
 
-    private string? _model;
-
-    public GovernedAgentPrompt(
-        AiProviderProfileId providerId,
-        string message,
-        AgentTarget target)
-        : this(
-            providerId,
-            message,
-            target,
-            AgentReasoningEffort.Automatic,
-            AgentServiceTier.Automatic,
-            policy: null,
-            hasPolicyOverride: false,
-            images: null)
-    {
-    }
-
-    public GovernedAgentPrompt(
-        AiProviderProfileId providerId,
-        string message,
-        AgentTarget target,
-        IReadOnlyList<AgentImageAttachment> images,
-        AgentReasoningEffort reasoningEffort = AgentReasoningEffort.Automatic)
-        : this(
-            providerId,
-            message,
-            target,
-            reasoningEffort,
-            AgentServiceTier.Automatic,
-            policy: null,
-            hasPolicyOverride: false,
-            images)
-    {
-    }
-
     /// <summary>
     /// Carries the user's approval-mode selection into initial run
     /// registration. The runtime binds full access to the run ID and inspected
@@ -181,7 +182,6 @@ public sealed record GovernedAgentPrompt
             reasoningEffort,
             serviceTier,
             policy,
-            hasPolicyOverride: true,
             images)
     {
         if (!Enum.IsDefined(approvalMode))
@@ -191,23 +191,6 @@ public sealed record GovernedAgentPrompt
         }
 
         ApprovalMode = approvalMode;
-    }
-
-    public GovernedAgentPrompt(
-        AiProviderProfileId providerId,
-        string message,
-        AgentTarget target,
-        AgentReasoningEffort reasoningEffort)
-        : this(
-            providerId,
-            message,
-            target,
-            reasoningEffort,
-            AgentServiceTier.Automatic,
-            policy: null,
-            hasPolicyOverride: false,
-            images: null)
-    {
     }
 
     /// <summary>
@@ -226,7 +209,6 @@ public sealed record GovernedAgentPrompt
             AgentReasoningEffort.Automatic,
             AgentServiceTier.Automatic,
             policy,
-            hasPolicyOverride: true,
             images: null)
     {
     }
@@ -244,7 +226,6 @@ public sealed record GovernedAgentPrompt
             reasoningEffort,
             AgentServiceTier.Automatic,
             policy,
-            hasPolicyOverride: true,
             images: null)
     {
     }
@@ -263,26 +244,6 @@ public sealed record GovernedAgentPrompt
             reasoningEffort,
             AgentServiceTier.Automatic,
             policy,
-            hasPolicyOverride: true,
-            images)
-    {
-    }
-
-    public GovernedAgentPrompt(
-        AiProviderProfileId providerId,
-        string message,
-        AgentTarget target,
-        IReadOnlyList<AgentImageAttachment> images,
-        AgentReasoningEffort reasoningEffort,
-        AgentServiceTier serviceTier)
-        : this(
-            providerId,
-            message,
-            target,
-            reasoningEffort,
-            serviceTier,
-            policy: null,
-            hasPolicyOverride: false,
             images)
     {
     }
@@ -302,7 +263,6 @@ public sealed record GovernedAgentPrompt
             reasoningEffort,
             serviceTier,
             policy,
-            hasPolicyOverride: true,
             images)
     {
     }
@@ -313,8 +273,7 @@ public sealed record GovernedAgentPrompt
         AgentTarget target,
         AgentReasoningEffort reasoningEffort,
         AgentServiceTier serviceTier,
-        AgentPolicy? policy,
-        bool hasPolicyOverride,
+        AgentPolicy policy,
         IReadOnlyList<AgentImageAttachment>? images)
     {
         if (string.IsNullOrWhiteSpace(providerId.Value))
@@ -358,18 +317,17 @@ public sealed record GovernedAgentPrompt
             throw new ArgumentOutOfRangeException(nameof(serviceTier));
         }
 
-        if (hasPolicyOverride
-            && (policy is null || !policy.IsValidForDurableStorage()))
+        ArgumentNullException.ThrowIfNull(policy);
+        if (!policy.IsValidForDurableStorage())
         {
             throw new ArgumentException(
                 "A governed prompt requires a valid durable baseline policy.",
                 nameof(policy));
         }
 
-        if (hasPolicyOverride
-            && !string.Equals(
+        if (!string.Equals(
                 providerId.Value,
-                policy!.Provider,
+                policy.Provider,
                 StringComparison.Ordinal))
         {
             throw new ArgumentException(
@@ -383,33 +341,16 @@ public sealed record GovernedAgentPrompt
         ReasoningEffort = reasoningEffort;
         ServiceTier = serviceTier;
         Images = imageArray;
-        Policy = hasPolicyOverride
-            ? AgentPolicyResolver.Resolve(policy!)
-            : null;
+        Policy = AgentPolicyResolver.Resolve(policy);
     }
 
     public AiProviderProfileId ProviderId { get; }
 
     /// <summary>
-    /// The model selected for this provider turn. Model routing is deliberately
-    /// separate from conversation identity and from the authorization policy.
-    /// Null uses the policy/profile default for compatibility with older callers.
+    /// The model selected for this provider turn. Model routing remains separate
+    /// from conversation identity and comes from the complete trusted policy.
     /// </summary>
-    public string? Model
-    {
-        get => _model;
-        init
-        {
-            if (value is not null && !AgentPolicy.IsValidModel(value))
-            {
-                throw new ArgumentException(
-                    "The selected AI model is invalid.",
-                    nameof(value));
-            }
-
-            _model = value is null ? null : string.Concat(value);
-        }
-    }
+    public string Model => Policy.Model;
 
     public string Message { get; }
 
@@ -422,12 +363,10 @@ public sealed record GovernedAgentPrompt
     public ImmutableArray<AgentImageAttachment> Images { get; }
 
     /// <summary>
-    /// A trusted run-specific override whose provider is the exact profile ID
-    /// and whose model is passed unchanged to provider creation. Null preserves
-    /// configured permissions while binding identity to the selected profile's
-    /// captured default model.
+    /// The complete trusted run policy. The runtime never manufactures missing
+    /// provider, model, maintenance-route, or permission data.
     /// </summary>
-    public AgentPolicy? Policy { get; }
+    public AgentPolicy Policy { get; }
 
     public AgentApprovalMode ApprovalMode { get; } = AgentApprovalMode.Ask;
 
@@ -437,7 +376,8 @@ public sealed record GovernedAgentFollowUp
 {
     public GovernedAgentFollowUp(
         string message,
-        AgentReasoningEffort reasoningEffort = AgentReasoningEffort.Automatic)
+        AgentReasoningEffort reasoningEffort = AgentReasoningEffort.Automatic,
+        GovernedAgentFollowUpDelivery delivery = GovernedAgentFollowUpDelivery.FollowUp)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
         if (message.Length > GovernedAgentPrompt.MaximumMessageLength)
@@ -452,14 +392,34 @@ public sealed record GovernedAgentFollowUp
             throw new ArgumentOutOfRangeException(nameof(reasoningEffort));
         }
 
+        if (!Enum.IsDefined(delivery))
+        {
+            throw new ArgumentOutOfRangeException(nameof(delivery));
+        }
+
         Message = string.Concat(message);
         ReasoningEffort = reasoningEffort;
+        Delivery = delivery;
     }
 
     public string Message { get; }
 
     public AgentReasoningEffort ReasoningEffort { get; }
+
+    public GovernedAgentFollowUpDelivery Delivery { get; }
 }
+
+public enum GovernedAgentFollowUpDelivery
+{
+    FollowUp,
+    Steering,
+}
+
+public sealed record GovernedAgentQueuedFollowUp(
+    AgentQueuedFollowUpId Id,
+    string Message,
+    AgentReasoningEffort ReasoningEffort,
+    GovernedAgentFollowUpDelivery Delivery);
 
 public sealed record GovernedAgentApproval(
     AgentApprovalId Id,
@@ -477,7 +437,8 @@ public sealed record GovernedAgentToolActivity(
     string ToolTitle,
     AgentActionRisk Risk,
     string TargetTitle,
-    bool CancellationRequested = false);
+    bool CancellationRequested = false,
+    PanelInstanceId? PanelId = null);
 
 /// <summary>
 /// Presentation-safe evidence for one live, run-local YOLO authority window.
@@ -530,6 +491,7 @@ public sealed record GovernedAgentSnapshot(
     string TargetTitle,
     ImmutableArray<GovernedAgentContextItem> ContextItems,
     IReadOnlyList<AgentChatMessage> Messages,
+    AgentPolicy EffectivePolicy,
     string ProvisionalAssistantText,
     string Status,
     GovernedAgentApproval? PendingApproval = null,
@@ -540,7 +502,6 @@ public sealed record GovernedAgentSnapshot(
     GovernedAgentYoloAuthority? YoloAuthority = null,
     string? ConnectionBoundary = null,
     string? WorkingDirectory = null,
-    AgentPolicy? EffectivePolicy = null,
     GovernedAgentProgress? CurrentProgress = null,
     GovernedAgentQuestion? PendingQuestion = null,
     GovernedAgentCapabilityRequest? PendingCapabilityRequest = null,
@@ -548,9 +509,11 @@ public sealed record GovernedAgentSnapshot(
     long? SteeringGeneration = null,
     string ProvisionalReasoningSummary = "",
     int QueuedFollowUpCount = 0,
+    ImmutableArray<GovernedAgentQueuedFollowUp> QueuedFollowUps = default,
     ImmutableArray<GovernedAgentConversationSummary> Conversations = default,
     string? Model = null,
-    long? ContextTokensUsed = null)
+    long? ContextTokensUsed = null,
+    GovernedAgentToolActivity? PanelActivity = null)
 {
     public bool IsBusy => State is
         GovernedAgentState.StreamingProvider
@@ -582,7 +545,10 @@ public sealed record GovernedAgentSnapshot(
     public bool CanQueueFollowUp =>
         RunId is not null
         && State is GovernedAgentState.StreamingProvider
-            or GovernedAgentState.RunningTool;
+            or GovernedAgentState.RunningTool
+            or GovernedAgentState.AwaitingApproval
+            or GovernedAgentState.AwaitingUserInput
+            or GovernedAgentState.AwaitingCapabilityDecision;
 
     public bool HasMessages =>
         Messages.Count > 0
@@ -616,7 +582,8 @@ public sealed record GovernedAgentFollowUpResult(
     bool IsAccepted,
     string Code,
     string Message,
-    int QueuedCount);
+    int QueuedCount,
+    AgentQueuedFollowUpId? ItemId = null);
 
 public sealed record GovernedAgentDecisionResult(
     bool IsAccepted,

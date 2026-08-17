@@ -13,7 +13,6 @@ public sealed class AgentWorkspaceGraphSessionHostTests
         await using var fixture = await GraphHostFixture.CreateAsync();
         var requests = new (AgentWorkspaceGraphRequest Request, string Code)[]
         {
-            (new AgentWorkspaceGraphRequest.WorkspaceList(), "workspaces_listed"),
             (new AgentWorkspaceGraphRequest.WorkspaceInspect(), "workspace_inspected"),
             (new AgentWorkspaceGraphRequest.TabList(), "tabs_listed"),
             (new AgentWorkspaceGraphRequest.PanelList(), "panels_listed"),
@@ -138,7 +137,7 @@ public sealed class AgentWorkspaceGraphSessionHostTests
     {
         await using var fixture = await GraphHostFixture.CreateAsync();
         var action = await fixture.PrepareAsync(
-            new AgentWorkspaceGraphRequest.WorkspaceList());
+            new AgentWorkspaceGraphRequest.WorkspaceInspect());
         var authorizationId = fixture.Authorization.Arm(action);
         fixture.Authorization.CompletionError =
             new AgentAuthorizationError(

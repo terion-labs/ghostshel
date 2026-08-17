@@ -603,7 +603,11 @@ public sealed class BrowserPanelSessionTests
             BrowserAddress.Blank,
             new ManualTimeProvider(DateTimeOffset.UnixEpoch));
         var renderer = new RecordingBrowserRenderer(
-            BrowserCapabilityProfile.FullAutomationCandidate.Capabilities);
+            new CapabilitySet(
+            [
+                .. BrowserCapabilityProfile.Production.Capabilities.Values,
+                "browser.unsupported-test-capability",
+            ]));
 
         await Assert.ThrowsAsync<InvalidOperationException>(
             async () => await session.AttachRendererAsync(
@@ -612,7 +616,7 @@ public sealed class BrowserPanelSessionTests
     }
 
     [Fact]
-    public async Task ProductionSessionRejectsInteractionsBeforeRendererDispatch()
+    public async Task ProductionSessionDispatchesSemanticSnapshots()
     {
         await using var session = new BrowserPanelSession(
             new SessionId("browser-production"),
@@ -622,43 +626,13 @@ public sealed class BrowserPanelSessionTests
             BrowserCapabilityProfile.Production.Capabilities);
         await session.AttachRendererAsync(renderer, CancellationToken.None);
         var document = BrowserDocumentBinding.FromState(session.State);
-        var reference = new BrowserElementReference(
-            "be_production_session",
-            document);
-        var origin = BrowserNavigationOrigin.FromAddress(document.Address);
 
         var snapshot = await session.CaptureSnapshotAsync(
             document,
             CancellationToken.None);
-        var click = await session.ClickWithinOriginAsync(
-            reference,
-            origin,
-            CancellationToken.None);
-        var fill = await session.FillWithinOriginAsync(
-            reference,
-            "value",
-            origin,
-            CancellationToken.None);
-        var check = await session.CheckWithinOriginAsync(
-            reference,
-            origin,
-            CancellationToken.None);
-        Assert.Equal(
-            BrowserErrorCode.UnsupportedCapability,
-            snapshot.Error?.Code);
-        Assert.Equal(
-            BrowserErrorCode.UnsupportedCapability,
-            click.Error?.Code);
-        Assert.Equal(
-            BrowserErrorCode.UnsupportedCapability,
-            fill.Error?.Code);
-        Assert.Equal(
-            BrowserErrorCode.UnsupportedCapability,
-            check.Error?.Code);
-        Assert.Null(renderer.LastSnapshotBinding);
-        Assert.Equal(0, renderer.ClickCount);
-        Assert.Equal(0, renderer.FillCount);
-        Assert.Equal(0, renderer.CheckCount);
+
+        Assert.True(snapshot.IsSuccess);
+        Assert.Equal(document, renderer.LastSnapshotBinding);
     }
 
     [Fact]

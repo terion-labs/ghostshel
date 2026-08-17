@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Threading.Channels;
 using Avalonia.Controls;
 using GhostShell.App;
@@ -79,6 +80,258 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             graph.Tabs.SelectMany(tab => tab.Panels),
             panel => Assert.Null(panel.SessionId));
         Assert.Equal(1, runtime.HostRevision);
+    }
+
+    [Fact]
+    public async Task Accepted_terminal_sessions_remain_hosted_with_launcher_tab_active()
+    {
+        var (client, recorder) = CreateSessionClient();
+        recorder.AcceptTerminalSessions = true;
+        using var viewModel = CreateViewModel(client, CreateCatalogSnapshot());
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        var runtime = Assert.IsType<RuntimeWorkspaceViewModel>(
+            viewModel.RuntimeWorkspace);
+        await AwaitTerminalPanelPlansAsync(runtime);
+        await WaitForAsync(() => recorder.TerminalSessionEnsures.Count > 0);
+
+        Assert.True(await viewModel.AddLauncherTabAsync());
+        Assert.IsType<PanelPlaceholderViewModel>(
+            Assert.Single(runtime.ActiveTab!.Panels));
+
+        var terminals = runtime.Tabs
+            .SelectMany(tab => tab.Panels)
+            .OfType<TerminalRuntimePanelViewModel>()
+            .ToArray();
+        Assert.NotEmpty(terminals);
+        Assert.All(terminals, terminal =>
+        {
+            Assert.True(terminal.HasObservedActiveSession);
+            var ensure = Assert.Single(
+                recorder.TerminalSessionEnsures,
+                candidate => candidate.Request.Owner.PanelId == terminal.Id);
+            Assert.Equal(terminal.SessionRequest!.SessionId, ensure.Request.SessionId);
+            Assert.Equal(
+                terminal.SessionRequest.SessionId,
+                recorder.CurrentWorkspace!.Workspace.Tabs
+                    .SelectMany(tab => tab.Panels)
+                    .Single(panel => panel.Id == terminal.Id)
+                    .SessionId);
+        });
+    }
+
+    [Fact]
+    public async Task Accepted_relational_database_panel_links_hosted_read_capabilities_without_graph_connection_material()
+    {
+        const string connectionString = "Data Source=/private/runtime-graph.sqlite";
+        var profile = new DatabaseConnectionProfile(
+            new DatabaseConnectionProfileId("runtime-graph-sqlite"),
+            DatabaseConnectionProfile.CurrentSchemaVersion,
+            "Runtime graph SQLite",
+            "sqlite",
+            connectionString);
+        var snapshot = CreateCatalogSnapshot() with
+        {
+            DatabaseConnections = [Store(profile)],
+        };
+        var database = new HostedDatabaseClient();
+        var (client, recorder) = CreateSessionClient();
+        recorder.AcceptDatabaseSessions = true;
+        using var viewModel = CreateViewModel(
+            client,
+            snapshot,
+            databasePanelClient: database);
+
+        Assert.True(await viewModel.LaunchSavedDatabaseAsync(profile.Id));
+        var workspace = Assert.IsType<RuntimeWorkspaceViewModel>(viewModel.RuntimeWorkspace);
+        var tab = Assert.IsType<RuntimeTabViewModel>(workspace.ActiveTab);
+        var panel = Assert.IsType<DatabaseRuntimePanelViewModel>(tab.ActivePanel);
+        await WaitForAsync(() => panel.HasHostedSession);
+
+        var ensure = Assert.Single(recorder.DatabaseSessionEnsures);
+        Assert.Equal(ActorKind.Human, ensure.Context.Actor.Kind);
+        Assert.Equal(viewModel.ClientId, ensure.Context.Actor.ClientId);
+        Assert.Equal(viewModel.WindowId, ensure.Request.Owner.WindowId);
+        Assert.Equal(workspace.Id, ensure.Request.Owner.WorkspaceId);
+        Assert.Equal(tab.Id, ensure.Request.Owner.TabId);
+        Assert.Equal(panel.Id, ensure.Request.Owner.PanelId);
+        Assert.Equal(DatabasePanelBackend.Relational, ensure.Request.Target.Binding.Backend);
+        Assert.Equal(panel.HostedSessionId, ensure.Request.SessionId);
+        Assert.True(panel.HostedCapabilities.Contains(SessionCapabilities.DatabaseReadTable));
+        Assert.Equal(
+            panel.HostedSessionId,
+            recorder.CurrentWorkspace!.Workspace.Tabs
+                .Single(candidate => candidate.Id == tab.Id)
+                .Panels.Single(candidate => candidate.Id == panel.Id)
+                .SessionId);
+        Assert.DoesNotContain(
+            connectionString,
+            JsonSerializer.Serialize(recorder.CurrentWorkspace),
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            connectionString,
+            ensure.Request.Target.ToString(),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Accepted_redis_panel_links_backend_specific_hosted_read_capabilities()
+    {
+        const string connectionString = "redis://cache.private.test:6379/3";
+        var profile = new DatabaseConnectionProfile(
+            new DatabaseConnectionProfileId("runtime-graph-redis"),
+            DatabaseConnectionProfile.CurrentSchemaVersion,
+            "Runtime graph Redis",
+            RedisDatabase.DriverId,
+            connectionString);
+        var snapshot = CreateCatalogSnapshot() with
+        {
+            DatabaseConnections = [Store(profile)],
+        };
+        var redisSession = new RedisPanelFixtures.StubSession(timeToLive: null);
+        var redisCatalog = new RedisPanelFixtures.StubCatalog();
+        var (client, recorder) = CreateSessionClient();
+        recorder.AcceptDatabaseSessions = true;
+        using var viewModel = CreateViewModel(
+            client,
+            snapshot,
+            databaseConnectionCatalog: redisCatalog,
+            redisPanelSessionFactory: new RedisPanelFixtures.StubFactory(redisSession));
+
+        Assert.True(await viewModel.LaunchSavedDatabaseAsync(profile.Id));
+        var workspace = Assert.IsType<RuntimeWorkspaceViewModel>(viewModel.RuntimeWorkspace);
+        var tab = Assert.IsType<RuntimeTabViewModel>(workspace.ActiveTab);
+        var panel = Assert.IsType<RedisRuntimePanelViewModel>(tab.ActivePanel);
+        await WaitForAsync(() => panel.HasHostedSession);
+
+        var ensure = Assert.Single(recorder.DatabaseSessionEnsures);
+        Assert.Equal(DatabasePanelBackend.Redis, ensure.Request.Target.Binding.Backend);
+        Assert.Equal(RedisDatabase.DriverId, ensure.Request.Target.Binding.DriverId);
+        Assert.Equal(panel.HostedSessionId, ensure.Request.SessionId);
+        Assert.True(panel.HostedCapabilities.Contains(SessionCapabilities.RedisScan));
+        Assert.True(panel.HostedCapabilities.Contains(SessionCapabilities.RedisRead));
+        Assert.Equal(
+            panel.HostedSessionId,
+            recorder.CurrentWorkspace!.Workspace.Tabs
+                .Single(candidate => candidate.Id == tab.Id)
+                .Panels.Single(candidate => candidate.Id == panel.Id)
+                .SessionId);
+        Assert.DoesNotContain(
+            connectionString,
+            JsonSerializer.Serialize(recorder.CurrentWorkspace),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Rejected_database_hosting_keeps_the_human_panel_connected_but_unlinked()
+    {
+        var profile = new DatabaseConnectionProfile(
+            new DatabaseConnectionProfileId("runtime-graph-host-rejected"),
+            DatabaseConnectionProfile.CurrentSchemaVersion,
+            "Runtime graph host rejected",
+            "sqlite",
+            "Data Source=/private/human-only.sqlite");
+        var snapshot = CreateCatalogSnapshot() with
+        {
+            DatabaseConnections = [Store(profile)],
+        };
+        var (client, recorder) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            snapshot,
+            databasePanelClient: new HostedDatabaseClient());
+
+        Assert.True(await viewModel.LaunchSavedDatabaseAsync(profile.Id));
+        var panel = Assert.IsType<DatabaseRuntimePanelViewModel>(
+            viewModel.RuntimeWorkspace!.ActiveTab!.ActivePanel);
+        await WaitForAsync(() => recorder.DatabaseSessionEnsures.Count == 1);
+
+        Assert.True(panel.IsConnected);
+        Assert.False(panel.HasHostedSession);
+        Assert.Null(panel.HostedSessionId);
+        Assert.Null(recorder.CurrentWorkspace!.Workspace.Tabs
+            .SelectMany(tab => tab.Panels)
+            .Single(candidate => candidate.Id == panel.Id)
+            .SessionId);
+        Assert.Null(panel.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task Accepted_docker_panel_links_hosted_read_capabilities_and_dispose_unlinks_session()
+    {
+        var docker = new SingleContainerDockerClient();
+        var (client, recorder) = CreateSessionClient();
+        recorder.AcceptDockerSessions = true;
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            dockerEngineClient: docker);
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+
+        Assert.True(await viewModel.AddDockerPanelAsync());
+        var workspace = Assert.IsType<RuntimeWorkspaceViewModel>(viewModel.RuntimeWorkspace);
+        var tab = Assert.IsType<RuntimeTabViewModel>(workspace.ActiveTab);
+        var panel = Assert.IsType<DockerRuntimePanelViewModel>(tab.ActivePanel);
+        await WaitForAsync(() => panel.HasHostedSession);
+
+        var ensure = Assert.Single(recorder.DockerSessionEnsures);
+        var sessionId = Assert.IsType<SessionId>(panel.HostedSessionId);
+        Assert.Equal(ActorKind.Human, ensure.Context.Actor.Kind);
+        Assert.Equal(viewModel.WindowId, ensure.Request.Owner.WindowId);
+        Assert.Equal(workspace.Id, ensure.Request.Owner.WorkspaceId);
+        Assert.Equal(tab.Id, ensure.Request.Owner.TabId);
+        Assert.Equal(panel.Id, ensure.Request.Owner.PanelId);
+        Assert.Equal(panel.ConnectionId, ensure.Request.Target.Binding.ConnectionId);
+        Assert.True(panel.HostedCapabilities.Contains(SessionCapabilities.DockerReadState));
+        Assert.True(panel.HostedCapabilities.Contains(SessionCapabilities.DockerFilesRead));
+
+        panel.Dispose();
+        await WaitForAsync(() => recorder.CurrentWorkspace!.Workspace.Tabs
+            .Single(candidate => candidate.Id == tab.Id)
+            .Panels.Single(candidate => candidate.Id == panel.Id)
+            .SessionId is null);
+
+        var close = Assert.Single(recorder.SessionCloses, call =>
+            call.Request.Scope == CloseScopeKind.Session
+            && call.Request.TargetId == sessionId.Value);
+        Assert.Equal(CloseDecision.Confirm, close.Request.Decision);
+        Assert.Equal(ActorKind.Human, close.Context.Actor.Kind);
+    }
+
+    [Fact]
+    public async Task Changing_database_binding_unlinks_the_stale_hosted_session()
+    {
+        var profile = new DatabaseConnectionProfile(
+            new DatabaseConnectionProfileId("runtime-graph-rebind"),
+            DatabaseConnectionProfile.CurrentSchemaVersion,
+            "Runtime graph rebind",
+            "sqlite",
+            "Data Source=/private/first.sqlite");
+        var snapshot = CreateCatalogSnapshot() with
+        {
+            DatabaseConnections = [Store(profile)],
+        };
+        var (client, recorder) = CreateSessionClient();
+        recorder.AcceptDatabaseSessions = true;
+        using var viewModel = CreateViewModel(
+            client,
+            snapshot,
+            databasePanelClient: new HostedDatabaseClient());
+        Assert.True(await viewModel.LaunchSavedDatabaseAsync(profile.Id));
+        var panel = Assert.IsType<DatabaseRuntimePanelViewModel>(
+            viewModel.RuntimeWorkspace!.ActiveTab!.ActivePanel);
+        await WaitForAsync(() => panel.HasHostedSession);
+        var staleSessionId = Assert.IsType<SessionId>(panel.HostedSessionId);
+
+        panel.ConnectionString = "Data Source=/private/second.sqlite";
+
+        await WaitForAsync(() => !panel.HasHostedSession);
+        Assert.Contains(recorder.SessionCloses, call =>
+            call.Request.Scope == CloseScopeKind.Session
+            && call.Request.TargetId == staleSessionId.Value);
+        Assert.DoesNotContain(
+            recorder.CurrentWorkspace!.Workspace.Tabs.SelectMany(tab => tab.Panels),
+            graphPanel => graphPanel.SessionId == staleSessionId);
     }
 
     [Fact]
@@ -648,6 +901,526 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         Assert.Equal(
             [browserWorkspace.Id, statisticsWorkspace.Id],
             factory.CreatedWorkspaceIds);
+    }
+
+    [Fact]
+    public async Task Background_workspace_agent_keeps_running_and_marks_completion()
+    {
+        var provider = CreateAgentProvider();
+        using var profiles = new FixedAiProfileRuntime([provider]);
+        var factory = new RecordingAgentWorkspaceRuntimeFactory();
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            aiProfiles: profiles,
+            agentRuntimeFactory: factory);
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        var firstWorkspace = Assert.IsType<RuntimeWorkspaceViewModel>(
+            viewModel.RuntimeWorkspace);
+        var firstChat = Assert.IsType<AgentChatViewModel>(viewModel.AgentChat);
+        var firstRuntime = Assert.Single(factory.CreatedRuntimes);
+        firstRuntime.SetSnapshot(firstRuntime.Snapshot with
+        {
+            State = GovernedAgentState.StreamingProvider,
+            RunId = new AgentRunId("background-run"),
+            ProviderId = provider.Id,
+            Status = "Agent is working.",
+        });
+        await WaitForAsync(() =>
+            firstChat.State == GovernedAgentState.StreamingProvider
+            && viewModel.HasRunningAgent);
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(SecondWorkspaceId));
+        Assert.NotSame(firstChat, viewModel.AgentChat);
+        Assert.Equal(GovernedAgentState.StreamingProvider, firstChat.State);
+        Assert.True(viewModel.HasRunningAgent);
+        Assert.Equal(0, firstRuntime.StopCount);
+
+        firstRuntime.SetSnapshot(firstRuntime.Snapshot with
+        {
+            State = GovernedAgentState.Ready,
+            Status = "Completed.",
+        });
+        await WaitForAsync(() =>
+            firstChat.State == GovernedAgentState.Ready
+            && firstWorkspace.HasAttention
+            && !viewModel.HasRunningAgent);
+
+        Assert.Equal(GovernedAgentState.Ready, firstChat.State);
+        Assert.True(firstWorkspace.HasAttention);
+        Assert.True(Assert.Single(
+            viewModel.Workspaces,
+            workspace => workspace.Id == WorkspaceId).HasAttention);
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        Assert.Same(firstChat, viewModel.AgentChat);
+        Assert.False(firstWorkspace.HasAttention);
+        Assert.False(Assert.Single(
+            viewModel.Workspaces,
+            workspace => workspace.Id == WorkspaceId).HasAttention);
+        Assert.Equal(2, factory.CreatedRuntimes.Count);
+    }
+
+    [Fact]
+    public async Task Background_agent_activity_marks_only_its_exact_panel_and_tab()
+    {
+        var provider = CreateAgentProvider();
+        using var profiles = new FixedAiProfileRuntime([provider]);
+        var factory = new RecordingAgentWorkspaceRuntimeFactory();
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            aiProfiles: profiles,
+            agentRuntimeFactory: factory);
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        var firstWorkspace = Assert.IsType<RuntimeWorkspaceViewModel>(
+            viewModel.RuntimeWorkspace);
+        var activePanel = firstWorkspace.Tabs
+            .SelectMany(tab => tab.Panels)
+            .First();
+        var activeTab = Assert.Single(
+            firstWorkspace.Tabs,
+            tab => tab.Panels.Contains(activePanel));
+        var firstRuntime = Assert.Single(factory.CreatedRuntimes);
+        var activity = new GovernedAgentToolActivity(
+            "panel.inspect",
+            "Inspect panel",
+            AgentActionRisk.Observation,
+            activePanel.Title,
+            PanelId: activePanel.Id);
+
+        firstRuntime.SetSnapshot(firstRuntime.Snapshot with
+        {
+            State = GovernedAgentState.RunningTool,
+            RunId = new AgentRunId("panel-activity-run"),
+            ProviderId = provider.Id,
+            Status = "Reading panel.",
+            ActiveTool = activity,
+            PanelActivity = activity,
+        });
+        await WaitForAsync(() => activePanel.IsAgentActive);
+
+        Assert.Equal("AI agent working in this panel", activePanel.AgentActivity);
+        Assert.True(activeTab.HasAgentActivity);
+        Assert.True(firstWorkspace.HasAgentActivity);
+        Assert.True(Assert.Single(
+            viewModel.Workspaces,
+            workspace => workspace.Id == WorkspaceId).HasAgentActivity);
+        Assert.All(
+            firstWorkspace.Tabs
+                .SelectMany(tab => tab.Panels)
+                .Where(panel => panel.Id != activePanel.Id),
+            panel => Assert.False(panel.IsAgentActive));
+
+        firstRuntime.SetSnapshot(firstRuntime.Snapshot with
+        {
+            State = GovernedAgentState.StreamingProvider,
+            Status = "Planning the next action.",
+            ActiveTool = null,
+        });
+        await WaitForAsync(() =>
+            Assert.IsType<AgentChatViewModel>(viewModel.AgentChat).ActiveTool is null);
+        Assert.True(activePanel.IsAgentActive);
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(SecondWorkspaceId));
+        Assert.True(activePanel.IsAgentActive);
+        Assert.True(firstWorkspace.HasAgentActivity);
+
+        firstRuntime.SetSnapshot(firstRuntime.Snapshot with
+        {
+            State = GovernedAgentState.Ready,
+            Status = "Completed.",
+            ActiveTool = null,
+            PanelActivity = null,
+        });
+        await WaitForAsync(() => !activePanel.IsAgentActive);
+
+        Assert.False(activeTab.HasAgentActivity);
+        Assert.False(firstWorkspace.HasAgentActivity);
+        Assert.False(Assert.Single(
+            viewModel.Workspaces,
+            workspace => workspace.Id == WorkspaceId).HasAgentActivity);
+    }
+
+    [Fact]
+    public async Task Shutdown_quiesces_agent_runs_in_every_open_workspace()
+    {
+        var provider = CreateAgentProvider();
+        using var profiles = new FixedAiProfileRuntime([provider]);
+        var factory = new RecordingAgentWorkspaceRuntimeFactory();
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            aiProfiles: profiles,
+            agentRuntimeFactory: factory);
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        var firstChat = Assert.IsType<AgentChatViewModel>(viewModel.AgentChat);
+        var firstRuntime = Assert.Single(factory.CreatedRuntimes);
+        firstRuntime.SetSnapshot(firstRuntime.Snapshot with
+        {
+            State = GovernedAgentState.StreamingProvider,
+            RunId = new AgentRunId("shutdown-run-1"),
+            ProviderId = provider.Id,
+        });
+        await WaitForAsync(() => firstChat.CanStop);
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(SecondWorkspaceId));
+        var secondChat = Assert.IsType<AgentChatViewModel>(viewModel.AgentChat);
+        Assert.Equal(2, factory.CreatedRuntimes.Count);
+        var secondRuntime = factory.CreatedRuntimes[1];
+        secondRuntime.SetSnapshot(secondRuntime.Snapshot with
+        {
+            State = GovernedAgentState.StreamingProvider,
+            RunId = new AgentRunId("shutdown-run-2"),
+            ProviderId = provider.Id,
+        });
+        await WaitForAsync(() => secondChat.CanStop);
+
+        await viewModel.QuiesceForShutdownAsync(CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.All(factory.CreatedRuntimes, runtime => Assert.Equal(1, runtime.StopCount));
+    }
+
+    [Fact]
+    public async Task Accepted_workspace_attaches_a_live_agent_layout_port()
+    {
+        var provider = CreateAgentProvider();
+        using var profiles = new FixedAiProfileRuntime([provider]);
+        var factory = new RecordingAgentWorkspaceRuntimeFactory();
+        var (client, recorder) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            aiProfiles: profiles,
+            browserRendererFactory: new RecordingBrowserRendererViewFactory(),
+            agentRuntimeFactory: factory);
+        Assert.True(await viewModel.OpenLocalBrowserWorkspaceAsync());
+        var workspace = Assert.IsType<RuntimeWorkspaceViewModel>(
+            viewModel.RuntimeWorkspace);
+        var agent = Assert.Single(factory.CreatedRuntimes);
+        var port = Assert.IsAssignableFrom<IAgentWorkspaceLayoutMutationPort>(
+            agent.LayoutPort);
+        var beforeTabs = workspace.Tabs.Count;
+
+        var mutation = await port.MutateAsync(
+            new AgentWorkspaceLayoutRequest.TabCreate(PanelKind.Placeholder),
+            workspace.HostRevision,
+            default);
+
+        var applied = Assert.IsType<AgentWorkspaceLayoutMutationResult.Applied>(
+            mutation);
+        Assert.Equal(beforeTabs + 1, workspace.Tabs.Count);
+        Assert.Equal(PanelKind.Placeholder, applied.PanelKind);
+        Assert.Equal(workspace.HostRevision, applied.Snapshot.Revision);
+        Assert.Equal(
+            applied.Snapshot,
+            Assert.IsType<WorkspaceGraphSnapshot>(recorder.CurrentWorkspace));
+    }
+
+    [Fact]
+    public async Task Agent_layout_port_executes_all_five_closed_mutations()
+    {
+        var provider = CreateAgentProvider();
+        using var profiles = new FixedAiProfileRuntime([provider]);
+        var factory = new RecordingAgentWorkspaceRuntimeFactory();
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            aiProfiles: profiles,
+            browserRendererFactory: new RecordingBrowserRendererViewFactory(),
+            agentRuntimeFactory: factory);
+        Assert.True(await viewModel.OpenLocalBrowserWorkspaceAsync());
+        var workspace = Assert.IsType<RuntimeWorkspaceViewModel>(
+            viewModel.RuntimeWorkspace);
+        var port = Assert.IsAssignableFrom<IAgentWorkspaceLayoutMutationPort>(
+            Assert.Single(factory.CreatedRuntimes).LayoutPort);
+        var originalTab = Assert.Single(workspace.Tabs);
+        var originalPanel = Assert.Single(originalTab.Panels);
+
+        var added = await Apply(new AgentWorkspaceLayoutRequest.PanelAdd(
+            originalTab.Id,
+            PanelKind.Placeholder));
+        Assert.Equal(originalTab.Id, added.TabId);
+        var addedPanel = Assert.IsType<PanelInstanceId>(added.PanelId);
+
+        var split = await Apply(new AgentWorkspaceLayoutRequest.PanelSplit(
+            originalPanel.Id,
+            AgentPanelSplitOrientation.LeftRight,
+            PanelKind.Placeholder));
+        Assert.Equal(originalTab.Id, split.TabId);
+        Assert.NotEqual(addedPanel, split.PanelId);
+
+        var closedPanel = await Apply(
+            new AgentWorkspaceLayoutRequest.PanelClose(addedPanel));
+        Assert.Equal(addedPanel, closedPanel.PanelId);
+        Assert.DoesNotContain(
+            workspace.Tabs.SelectMany(tab => tab.Panels),
+            panel => panel.Id == addedPanel);
+
+        var createdTab = await Apply(
+            new AgentWorkspaceLayoutRequest.TabCreate(PanelKind.Placeholder));
+        var createdTabId = Assert.IsType<TabInstanceId>(createdTab.TabId);
+        Assert.Contains(workspace.Tabs, tab => tab.Id == createdTabId);
+
+        var closedTab = await Apply(
+            new AgentWorkspaceLayoutRequest.TabClose(createdTabId));
+        Assert.Equal(createdTabId, closedTab.TabId);
+        Assert.DoesNotContain(workspace.Tabs, tab => tab.Id == createdTabId);
+
+        async ValueTask<AgentWorkspaceLayoutMutationResult.Applied> Apply(
+            AgentWorkspaceLayoutRequest request)
+        {
+            var result = Assert.IsType<AgentWorkspaceLayoutMutationResult.Applied>(
+                await port.MutateAsync(
+                    request,
+                    workspace.HostRevision,
+                    default));
+            Assert.Null(viewModel.OperationError);
+            return result;
+        }
+    }
+
+    [Fact]
+    public async Task Agent_connections_are_opaque_and_creation_uses_explicit_targets()
+    {
+        var provider = CreateAgentProvider();
+        using var profiles = new FixedAiProfileRuntime([provider]);
+        var factory = new RecordingAgentWorkspaceRuntimeFactory();
+        var (client, recorder) = CreateSessionClient();
+        recorder.AcceptBrowserSessions = true;
+        recorder.AcceptTerminalSessions = true;
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            aiProfiles: profiles,
+            browserRendererFactory: new RecordingBrowserRendererViewFactory(),
+            agentRuntimeFactory: factory);
+        Assert.True(await viewModel.OpenLocalBrowserWorkspaceAsync());
+        var workspace = Assert.IsType<RuntimeWorkspaceViewModel>(
+            viewModel.RuntimeWorkspace);
+        var port = Assert.IsAssignableFrom<IAgentWorkspaceLayoutMutationPort>(
+            Assert.Single(factory.CreatedRuntimes).LayoutPort);
+
+        Assert.IsType<AgentWorkspaceLayoutMutationResult.Rejected>(
+            await port.MutateAsync(
+                new AgentWorkspaceLayoutRequest.TabCreate(PanelKind.Terminal),
+                workspace.HostRevision,
+                default));
+
+        var listed = Assert.IsType<AgentWorkspaceLayoutMutationResult.Observed>(
+            await port.MutateAsync(
+                new AgentWorkspaceLayoutRequest.ConnectionList(),
+                workspace.HostRevision,
+                default));
+        var terminalConnections = listed.Connections.Where(connection =>
+            connection.SupportedPanelKinds.Contains(PanelKind.Terminal)).ToArray();
+        Assert.NotEmpty(terminalConnections);
+        var local = terminalConnections[0];
+        Assert.StartsWith("connection_", local.Reference, StringComparison.Ordinal);
+        Assert.DoesNotContain("/bin/sh", local.Reference, StringComparison.Ordinal);
+
+        var browserPanel = Assert.Single(
+            workspace.Tabs.SelectMany(tab => tab.Panels));
+        var connected = await ApplyBrowserMutationAsync(
+                new AgentWorkspaceLayoutRequest.PanelConnect(
+                    browserPanel.Id,
+                    local.Reference));
+        Assert.Equal(browserPanel.Id, connected.PanelId);
+        var connectedBrowser = Assert.IsType<BrowserRuntimePanelViewModel>(
+            workspace.Tabs
+                .SelectMany(tab => tab.Panels)
+                .Single(panel => panel.Id == browserPanel.Id));
+
+        var browserCreated = await ApplyBrowserMutationAsync(
+                new AgentWorkspaceLayoutRequest.TabCreate(
+                    PanelKind.Browser,
+                    local.Reference));
+        var createdBrowser = Assert.IsType<BrowserRuntimePanelViewModel>(
+            workspace.Tabs
+                .SelectMany(tab => tab.Panels)
+                .Single(panel => panel.Id == browserCreated.PanelId));
+        Assert.Equal(connectedBrowser.ConnectionId, createdBrowser.ConnectionId);
+
+        var created = Assert.IsType<AgentWorkspaceLayoutMutationResult.Applied>(
+            await port.MutateAsync(
+                new AgentWorkspaceLayoutRequest.TabCreate(
+                    PanelKind.Terminal,
+                    local.Reference),
+                workspace.HostRevision,
+                default));
+        Assert.Equal(PanelKind.Terminal, created.PanelKind);
+        Assert.Null(viewModel.OperationError);
+
+        async Task<AgentWorkspaceLayoutMutationResult.Applied>
+            ApplyBrowserMutationAsync(AgentWorkspaceLayoutRequest request)
+        {
+            var previousSessions = workspace.Tabs
+                .SelectMany(tab => tab.Panels)
+                .OfType<BrowserRuntimePanelViewModel>()
+                .Select(panel => panel.SessionRequest.SessionId)
+                .ToHashSet();
+            var mutation = port.MutateAsync(
+                request,
+                workspace.HostRevision,
+                default).AsTask();
+            var applied = Assert.IsType<AgentWorkspaceLayoutMutationResult.Applied>(
+                await mutation.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.Null(viewModel.OperationError);
+            var browser = Assert.Single(
+                workspace.Tabs
+                    .SelectMany(tab => tab.Panels)
+                    .OfType<BrowserRuntimePanelViewModel>(),
+                panel => !previousSessions.Contains(panel.SessionRequest.SessionId));
+            Assert.True(browser.HasInteractiveAttachment);
+            Assert.Null(browser.RendererView?.PresentationHost);
+            return applied;
+        }
+    }
+
+    [Fact]
+    public async Task Agent_created_file_tab_starts_only_after_graph_acceptance_and_becomes_ready()
+    {
+        var provider = CreateAgentProvider();
+        using var profiles = new FixedAiProfileRuntime([provider]);
+        var factory = new RecordingAgentWorkspaceRuntimeFactory();
+        var dispatcher = new RecordingUiThreadDispatcher(hasAccess: true);
+        var root = new FilePanelLocation(
+            BuiltInFileProviders.HomeId.Value,
+            "local",
+            new FilePanelAddress.Hierarchical(FilePanelPath.Root));
+        var files = new EmptyFileClients(
+        [
+            new FileProviderProfileDescriptor(
+                BuiltInFileProviders.HomeId.Value,
+                "Local",
+                FileProviderFamily.Posix,
+                root,
+                FilePanelCapability.List,
+                500,
+                1024 * 1024),
+        ]);
+        var (client, recorder) = CreateSessionClient();
+        recorder.AcceptFilePanelSessions = true;
+        recorder.DelayNextFilePanelEnsure = true;
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            dispatcher,
+            aiProfiles: profiles,
+            browserRendererFactory: new RecordingBrowserRendererViewFactory(),
+            filePanelClient: files,
+            fileTransferQueueClient: files,
+            agentRuntimeFactory: factory);
+        Assert.True(await viewModel.OpenLocalBrowserWorkspaceAsync());
+        var workspace = Assert.IsType<RuntimeWorkspaceViewModel>(
+            viewModel.RuntimeWorkspace);
+        var port = Assert.IsAssignableFrom<IAgentWorkspaceLayoutMutationPort>(
+            Assert.Single(factory.CreatedRuntimes).LayoutPort);
+        var listed = Assert.IsType<AgentWorkspaceLayoutMutationResult.Observed>(
+            await port.MutateAsync(
+                new AgentWorkspaceLayoutRequest.ConnectionList(),
+                workspace.HostRevision,
+                default));
+        var localFiles = Assert.Single(listed.Connections, connection =>
+            connection.SupportedPanelKinds.SequenceEqual([PanelKind.FileViewer]));
+        var dispatchesBeforeCreation = dispatcher.InvokeCount;
+
+        var mutation = port.MutateAsync(
+            new AgentWorkspaceLayoutRequest.TabCreate(
+                PanelKind.FileViewer,
+                localFiles.Reference),
+            workspace.HostRevision,
+            default).AsTask();
+        await recorder.FilePanelEnsureEntered.Task.WaitAsync(
+            TimeSpan.FromSeconds(5));
+        Assert.False(mutation.IsCompleted);
+        recorder.AllowFilePanelEnsure.TrySetResult();
+        var result = await mutation.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var applied = Assert.IsType<AgentWorkspaceLayoutMutationResult.Applied>(result);
+        var panel = Assert.IsType<FileRuntimePanelViewModel>(
+            workspace.Tabs
+                .SelectMany(tab => tab.Panels)
+                .Single(candidate => candidate.Id == applied.PanelId));
+        await panel.Initialization.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(panel.IsLoading);
+        Assert.Equal(FileBrowserContentState.EmptyLocation, panel.ContentState);
+        Assert.Equal(1, recorder.FilePanelEnsureCount);
+        Assert.Equal(1, recorder.FileListCount);
+        Assert.True(dispatcher.InvokeCount > dispatchesBeforeCreation);
+        Assert.True(dispatcher.VerifyCount > 0);
+        Assert.Null(viewModel.OperationError);
+    }
+
+    [Fact]
+    public async Task Agent_layout_reports_applied_when_readiness_is_cancelled_after_commit()
+    {
+        var provider = CreateAgentProvider();
+        using var profiles = new FixedAiProfileRuntime([provider]);
+        var runtimeFactory = new RecordingAgentWorkspaceRuntimeFactory();
+        var root = new FilePanelLocation(
+            BuiltInFileProviders.HomeId.Value,
+            "local",
+            new FilePanelAddress.Hierarchical(FilePanelPath.Root));
+        var files = new EmptyFileClients(
+        [
+            new FileProviderProfileDescriptor(
+                BuiltInFileProviders.HomeId.Value,
+                "Local",
+                FileProviderFamily.Posix,
+                root,
+                FilePanelCapability.List,
+                500,
+                1024 * 1024),
+        ]);
+        var (client, recorder) = CreateSessionClient();
+        recorder.AcceptFilePanelSessions = true;
+        recorder.DelayNextFilePanelEnsure = true;
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            aiProfiles: profiles,
+            browserRendererFactory: new RecordingBrowserRendererViewFactory(),
+            filePanelClient: files,
+            fileTransferQueueClient: files,
+            agentRuntimeFactory: runtimeFactory);
+        Assert.True(await viewModel.OpenLocalBrowserWorkspaceAsync());
+        var workspace = Assert.IsType<RuntimeWorkspaceViewModel>(
+            viewModel.RuntimeWorkspace);
+        var port = Assert.IsAssignableFrom<IAgentWorkspaceLayoutMutationPort>(
+            Assert.Single(runtimeFactory.CreatedRuntimes).LayoutPort);
+        var listed = Assert.IsType<AgentWorkspaceLayoutMutationResult.Observed>(
+            await port.MutateAsync(
+                new AgentWorkspaceLayoutRequest.ConnectionList(),
+                workspace.HostRevision,
+                default));
+        var localFiles = Assert.Single(listed.Connections, connection =>
+            connection.SupportedPanelKinds.SequenceEqual([PanelKind.FileViewer]));
+        using var cancellation = new CancellationTokenSource();
+
+        var mutation = port.MutateAsync(
+            new AgentWorkspaceLayoutRequest.TabCreate(
+                PanelKind.FileViewer,
+                localFiles.Reference),
+            workspace.HostRevision,
+            cancellation.Token).AsTask();
+        await recorder.FilePanelEnsureEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        cancellation.Cancel();
+
+        var applied = Assert.IsType<AgentWorkspaceLayoutMutationResult.Applied>(
+            await mutation.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(PanelKind.FileViewer, applied.PanelKind);
+        Assert.Contains(
+            workspace.Tabs.SelectMany(tab => tab.Panels),
+            panel => panel.Id == applied.PanelId);
     }
 
     [Fact]
@@ -2875,7 +3648,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             CreateFixedCatalog(snapshot),
             new SuccessfulConnectionRuntime(),
             agentRuntime,
-            aiProfiles);
+            aiProfiles,
+            agentPolicyCoordinator: CreateConfiguredPolicyCoordinator(aiProfiles));
         await quickTerminal.Initialization;
         _ = Assert.IsType<QuickTerminalTabViewModel>(quickTerminal.ActiveTab);
         quickTerminal.AgentChat!.Prompt = "Inspect Quick Terminal.";
@@ -2888,6 +3662,64 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         Assert.Equal(quickTerminal.WorkspaceId, target.WorkspaceId);
         Assert.Equal(AgentRunScopeKind.Workspace, quickTerminal.SelectedAgentRunScope.Kind);
         Assert.NotEqual(mainWindow.WindowId, target.WindowId);
+    }
+
+    [Fact]
+    public async Task Quick_terminal_marks_the_exact_tab_while_its_agent_uses_it()
+    {
+        var provider = CreateAgentProvider();
+        using var aiProfiles = new FixedAiProfileRuntime([provider]);
+        var factory = new RecordingAgentWorkspaceRuntimeFactory();
+        var snapshot = CreateCatalogSnapshot();
+        var (client, _) = CreateSessionClient();
+        using var mainWindow = CreateViewModel(client, snapshot);
+        using var quickTerminal = new QuickTerminalViewModel(
+            mainWindow,
+            CreateFixedCatalog(snapshot),
+            new SuccessfulConnectionRuntime(),
+            aiProviderRuntime: aiProfiles,
+            agentRuntimeFactory: factory,
+            agentPolicyCoordinator: CreateConfiguredPolicyCoordinator(aiProfiles));
+        await quickTerminal.Initialization;
+        var tab = Assert.IsType<QuickTerminalTabViewModel>(quickTerminal.ActiveTab);
+        var runtime = Assert.Single(factory.CreatedRuntimes);
+
+        var activity = new GovernedAgentToolActivity(
+            "terminal.read_screen",
+            "Read terminal screen",
+            AgentActionRisk.Observation,
+            tab.Title,
+            PanelId: tab.PanelId);
+        runtime.SetSnapshot(runtime.Snapshot with
+        {
+            State = GovernedAgentState.RunningTool,
+            RunId = new AgentRunId("quick-terminal-activity"),
+            ProviderId = provider.Id,
+            Status = "Reading terminal.",
+            ActiveTool = activity,
+            PanelActivity = activity,
+        });
+        await WaitForAsync(() => tab.IsAgentActive);
+
+        Assert.Equal("AI agent working in this panel", tab.AgentActivity);
+
+        runtime.SetSnapshot(runtime.Snapshot with
+        {
+            State = GovernedAgentState.StreamingProvider,
+            Status = "Planning the next action.",
+            ActiveTool = null,
+        });
+        await WaitForAsync(() => quickTerminal.AgentChat!.ActiveTool is null);
+        Assert.True(tab.IsAgentActive);
+
+        runtime.SetSnapshot(runtime.Snapshot with
+        {
+            State = GovernedAgentState.Ready,
+            Status = "Completed.",
+            ActiveTool = null,
+            PanelActivity = null,
+        });
+        await WaitForAsync(() => !tab.IsAgentActive);
     }
 
     [Fact]
@@ -2961,7 +3793,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             catalog,
             new SuccessfulConnectionRuntime(),
             aiProviderRuntime: aiProfiles,
-            agentRuntimeFactory: factory);
+            agentRuntimeFactory: factory,
+            agentPolicyCoordinator: CreateConfiguredPolicyCoordinator(aiProfiles));
 
         Assert.NotSame(mainChat, quickTerminal.AgentChat);
         Assert.NotEqual(mainWindow.RuntimeWorkspace!.Id, quickTerminal.WorkspaceId);
@@ -3056,7 +3889,56 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     }
 
     [Fact]
-    public async Task Agent_steering_reuses_bound_run_without_resolving_a_new_workspace_target()
+    public async Task Visible_default_agent_configuration_is_persisted_and_activates_open_workspace()
+    {
+        var provider = CreateAgentProvider();
+        using var aiProfiles = new FixedAiProfileRuntime([provider]);
+        var factory = new RecordingAgentWorkspaceRuntimeFactory();
+        var store = new BlockingAgentPolicyStore();
+        var coordinator = new AgentPolicyCoordinator(store);
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            aiProfiles: aiProfiles,
+            browserRendererFactory: new RecordingBrowserRendererViewFactory(),
+            agentRuntimeFactory: factory,
+            agentPolicyCoordinator: coordinator);
+
+        try
+        {
+            await store.WriteStarted.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.True(viewModel.DefaultAgentPolicy.IsValid);
+            Assert.Equal(provider.Id.Value, viewModel.DefaultAgentPolicy.Provider);
+            Assert.Equal(provider.DefaultModel, viewModel.DefaultAgentPolicy.Model);
+
+            Assert.True(await viewModel.OpenLocalBrowserWorkspaceAsync());
+            Assert.Null(viewModel.AgentChat);
+            Assert.Empty(factory.CreatedRuntimes);
+
+            store.ReleaseWrite();
+            await WaitForAsync(() => viewModel.AgentChat is not null);
+
+            var policy = Assert.IsType<AgentPolicy>(store.Policy);
+            Assert.Equal(provider.Id.Value, policy.Provider);
+            Assert.Equal(provider.DefaultModel, policy.Model);
+            Assert.Equal(
+                new AgentModelSelection(provider.Id.Value, provider.DefaultModel),
+                policy.CompactionModel);
+            Assert.Equal(
+                new AgentModelSelection(provider.Id.Value, provider.DefaultModel),
+                policy.TitleModel);
+            AssertPolicyEqual(policy, Assert.Single(factory.CreatedPolicies));
+            Assert.Single(factory.CreatedRuntimes);
+        }
+        finally
+        {
+            store.ReleaseWrite();
+        }
+    }
+
+    [Fact]
+    public async Task Agent_mid_turn_prompt_queues_without_resolving_a_new_workspace_target()
     {
         var provider = CreateAgentProvider();
         var runId = new AgentRunId("run-steering");
@@ -3084,12 +3966,12 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
         await viewModel.SendAgentPromptAsync();
 
-        var steering = Assert.IsType<GovernedAgentSteering>(
-            agentRuntime.LastSteering);
-        Assert.Equal(runId, steering.RunId);
-        Assert.Equal(17, steering.ExpectedGeneration);
-        Assert.Equal("Check the canary first.", steering.Update);
-        Assert.Equal(1, agentRuntime.SteeringCount);
+        var followUp = Assert.IsType<GovernedAgentFollowUp>(
+            agentRuntime.LastFollowUp);
+        Assert.Equal("Check the canary first.", followUp.Message);
+        Assert.Equal(GovernedAgentFollowUpDelivery.FollowUp, followUp.Delivery);
+        Assert.Equal(1, agentRuntime.FollowUpCount);
+        Assert.Equal(0, agentRuntime.SteeringCount);
         Assert.Equal(0, agentRuntime.SendCount);
         Assert.Null(agentRuntime.LastRequest);
         Assert.Equal(string.Empty, viewModel.AgentChat.Prompt);
@@ -3133,7 +4015,9 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         var acceptedSource = Assert.Single(tab.AgentPolicy.Sources);
         Assert.Equal(storedScreen.Value.Key, acceptedSource.Definition);
         Assert.Equal(5, acceptedSource.Revision);
-        AssertPolicyEqual(acceptedPolicy, tab.AgentPolicy.EffectivePolicy);
+        AssertPolicyEqual(
+            acceptedPolicy,
+            Assert.IsType<AgentPolicy>(tab.AgentPolicy.EffectivePolicy));
 
         var current = storedScreen.Value;
         var editedScreen = new ScreenDefinition(
@@ -3208,7 +4092,9 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             workspace.Tabs,
             first =>
             {
-                AssertPolicyEqual(firstPolicy, first.AgentPolicy.EffectivePolicy);
+                AssertPolicyEqual(
+                    firstPolicy,
+                    Assert.IsType<AgentPolicy>(first.AgentPolicy.EffectivePolicy));
                 Assert.Equal(
                     [
                         (WorkspaceDefinition.Kind, WorkspaceId.Value, 3L),
@@ -3221,7 +4107,9 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             },
             second =>
             {
-                AssertPolicyEqual(secondPolicy, second.AgentPolicy.EffectivePolicy);
+                AssertPolicyEqual(
+                    secondPolicy,
+                    Assert.IsType<AgentPolicy>(second.AgentPolicy.EffectivePolicy));
                 Assert.Equal(
                     [
                         (WorkspaceDefinition.Kind, WorkspaceId.Value, 3L),
@@ -4063,7 +4951,11 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         IFilePanelClient? filePanelClient = null,
         IFileTransferQueueClient? fileTransferQueueClient = null,
         IDockerEngineClient? dockerEngineClient = null,
-        IAgentWorkspaceRuntimeFactory? agentRuntimeFactory = null) =>
+        IAgentWorkspaceRuntimeFactory? agentRuntimeFactory = null,
+        IDatabasePanelClient? databasePanelClient = null,
+        IDatabaseConnectionCatalog? databaseConnectionCatalog = null,
+        IRedisPanelSessionFactory? redisPanelSessionFactory = null,
+        AgentPolicyCoordinator? agentPolicyCoordinator = null) =>
         CreateViewModel(
             sessionClient,
             CreateFixedCatalog(snapshot),
@@ -4076,7 +4968,11 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             filePanelClient,
             fileTransferQueueClient,
             dockerEngineClient,
-            agentRuntimeFactory);
+            agentRuntimeFactory,
+            databasePanelClient,
+            databaseConnectionCatalog,
+            redisPanelSessionFactory,
+            agentPolicyCoordinator);
 
     private static MainWindowViewModel CreateViewModel(
         ISessionHostClient sessionClient,
@@ -4090,9 +4986,14 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         IFilePanelClient? filePanelClient = null,
         IFileTransferQueueClient? fileTransferQueueClient = null,
         IDockerEngineClient? dockerEngineClient = null,
-        IAgentWorkspaceRuntimeFactory? agentRuntimeFactory = null)
+        IAgentWorkspaceRuntimeFactory? agentRuntimeFactory = null,
+        IDatabasePanelClient? databasePanelClient = null,
+        IDatabaseConnectionCatalog? databaseConnectionCatalog = null,
+        IRedisPanelSessionFactory? redisPanelSessionFactory = null,
+        AgentPolicyCoordinator? agentPolicyCoordinator = null)
     {
         var files = new EmptyFileClients();
+        agentPolicyCoordinator ??= CreateConfiguredPolicyCoordinator(aiProfiles);
         return new MainWindowViewModel(
             sessionClient,
             catalog,
@@ -4106,8 +5007,42 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             agentChatRuntime: agentRuntime,
             agentApprovalPrincipal: approvalPrincipal,
             browserRendererViewFactory: browserRendererFactory,
+            databasePanelClient: databasePanelClient,
+            databaseConnectionCatalog: databaseConnectionCatalog,
+            redisPanelSessionFactory: redisPanelSessionFactory,
             dockerEngineClient: dockerEngineClient,
-            agentRuntimeFactory: agentRuntimeFactory);
+            agentRuntimeFactory: agentRuntimeFactory,
+            agentPolicyCoordinator: agentPolicyCoordinator);
+    }
+
+    private static AgentPolicyCoordinator? CreateConfiguredPolicyCoordinator(
+        IAiProviderProfileRuntime? profiles)
+    {
+        var provider = profiles?.Profiles.FirstOrDefault(profile => profile.IsEnabled);
+        if (provider is null)
+        {
+            return null;
+        }
+
+        var coordinator = new AgentPolicyCoordinator(new MemoryAgentPolicyStore());
+        var policy = new AgentPolicy(
+            provider.Id.Value,
+            provider.DefaultModel,
+            AgentPolicy.InitialPermissions)
+        {
+            CompactionModel = new AgentModelSelection(
+                provider.Id.Value,
+                provider.DefaultModel),
+            TitleModel = new AgentModelSelection(
+                provider.Id.Value,
+                provider.DefaultModel),
+        };
+        var saved = coordinator.SaveAsync(policy, CancellationToken.None)
+            .AsTask()
+            .GetAwaiter()
+            .GetResult();
+        Assert.True(saved.IsSuccess);
+        return coordinator;
     }
 
     private sealed class SingleContainerDockerClient : IDockerEngineClient
@@ -4202,6 +5137,53 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             CancellationToken cancellationToken) =>
             ValueTask.FromResult<DockerResult<bool>>(
                 new DockerResult<bool>.Success(true));
+    }
+
+    private sealed class HostedDatabaseClient : IDatabasePanelClient
+    {
+        public IReadOnlyList<DatabaseDriverDescriptor> Drivers { get; } =
+        [
+            new(
+                "sqlite",
+                "SQLite",
+                "Data Source=…",
+                IsFileBased: true),
+        ];
+
+        public Task<IReadOnlyList<DatabaseTableDescriptor>> ListTablesAsync(
+            string driverId,
+            string connectionString,
+            ConnectionProfile? tunnel,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult<IReadOnlyList<DatabaseTableDescriptor>>([]);
+        }
+
+        public Task<DatabaseQueryPage> QueryAsync(
+            string driverId,
+            string connectionString,
+            ConnectionProfile? tunnel,
+            string sql,
+            int maxRows,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new DatabaseQueryPage([], [], false, 0, TimeSpan.Zero));
+
+        public DatabaseConnectionDetails ParseConnectionDetails(
+            string driverId,
+            string connectionString) =>
+            new(FilePath: connectionString);
+
+        public string BuildConnectionString(
+            string driverId,
+            DatabaseConnectionDetails details) =>
+            details.FilePath ?? string.Empty;
+
+        public string BuildTablePreviewQuery(
+            string driverId,
+            string tableName,
+            int limit) =>
+            $"select * from {tableName} limit {limit}";
     }
 
     private static IDefinitionCatalog CreateFixedCatalog(DefinitionCatalogSnapshot snapshot)
@@ -4694,7 +5676,11 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             model,
             AgentPolicy.Capabilities.ToImmutableDictionary(
                 capability => capability,
-                permission));
+                permission))
+        {
+            CompactionModel = new AgentModelSelection(provider, model),
+            TitleModel = new AgentModelSelection(provider, model),
+        };
 
     private static void AssertPolicyEqual(AgentPolicy expected, AgentPolicy actual)
     {
@@ -4783,7 +5769,9 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         public void Dispose() => DisposeCount++;
     }
 
-    private sealed class RecordingBrowserRenderer : IBrowserRenderer
+    private sealed class RecordingBrowserRenderer :
+        IBrowserRenderer,
+        IBrowserPhysicalInputBarrier
     {
         public BrowserSessionState State { get; private set; } =
             BrowserSessionState.Initial(BrowserAddress.Blank);
@@ -4801,9 +5789,16 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             SessionCapabilities.BrowserReload,
             SessionCapabilities.BrowserStop,
             SessionCapabilities.BrowserOriginGuard,
+            SessionCapabilities.BrowserAgentInputBarrier,
         ]);
 
         public event EventHandler<BrowserStateChangedEventArgs>? StateChanged;
+
+        public void BindPhysicalInputGate(
+            Func<NativeRendererPhysicalInput, bool>? physicalInputGate)
+        {
+            _ = physicalInputGate;
+        }
 
         public ValueTask<BrowserResult<BrowserSessionState>> NavigateAsync(
             BrowserAddress address,
@@ -4853,7 +5848,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         public ValueTask<BrowserResult<BrowserDocumentSnapshot>>
             CaptureSnapshotAsync(
                 BrowserDocumentBinding document,
-                CancellationToken cancellationToken)
+                CancellationToken cancellationToken,
+                BrowserSnapshotQuery? query = null)
         {
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.FromResult(
@@ -4928,12 +5924,33 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         UnregisterWorkspaceGraphRequest Request,
         OperationContext Context);
 
+    public sealed record DatabaseSessionEnsure(
+        EnsureDatabaseSessionRequest Request,
+        OperationContext Context);
+
+    public sealed record TerminalSessionEnsure(
+        EnsureTerminalSessionRequest Request,
+        OperationContext Context);
+
+    public sealed record DockerSessionEnsure(
+        EnsureDockerSessionRequest Request,
+        OperationContext Context);
+
+    public sealed record SessionClose(
+        CloseScopeRequest Request,
+        OperationContext Context);
+
     public class RecordingSessionClient : DispatchProxy
     {
         private readonly object _gate = new();
         private readonly List<WorkspaceRegistration> _registrations = [];
         private readonly List<TabActivation> _tabActivations = [];
         private readonly List<WorkspaceUnregistration> _unregistrations = [];
+        private readonly List<DatabaseSessionEnsure> _databaseSessionEnsures = [];
+        private readonly List<TerminalSessionEnsure> _terminalSessionEnsures = [];
+        private readonly List<DockerSessionEnsure> _dockerSessionEnsures = [];
+        private readonly List<SessionClose> _sessionCloses = [];
+        private readonly HashSet<SessionId> _liveSessions = [];
         private readonly Dictionary<WorkspaceInstanceId, Channel<WorkspaceGraphStreamItem>>
             _workspaceEvents = [];
         private WorkspaceGraphSnapshot? _workspace;
@@ -4942,7 +5959,9 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         private int _activeWatchCount;
         private int _watchStartCount;
         private int _filePanelEnsureCount;
+        private int _fileListCount;
         private int _statisticsEnsureCount;
+        private int _browserAttachmentCount;
 
         public bool RejectNextTabActivation { get; set; }
 
@@ -4965,6 +5984,18 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         public bool AcceptProcessMonitorSessions { get; set; }
 
         public bool AcceptStatisticsSessions { get; set; }
+
+        public bool AcceptTerminalSessions { get; set; }
+
+        public bool AcceptBrowserSessions { get; set; }
+
+        public bool AcceptDatabaseSessions { get; set; }
+
+        public bool AcceptDockerSessions { get; set; }
+
+        public bool AcceptFilePanelSessions { get; set; }
+
+        public bool DelayNextFilePanelEnsure { get; set; }
 
         public bool WorkspaceQueryTokenWasCancellationRequestedOnEntry { get; private set; }
 
@@ -4998,6 +6029,12 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public TaskCompletionSource WorkspaceQueryEntered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource FilePanelEnsureEntered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource AllowFilePanelEnsure { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public TaskCompletionSource WatchStarted { get; } =
@@ -5039,6 +6076,50 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             }
         }
 
+        public IReadOnlyList<DatabaseSessionEnsure> DatabaseSessionEnsures
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _databaseSessionEnsures.ToArray();
+                }
+            }
+        }
+
+        public IReadOnlyList<TerminalSessionEnsure> TerminalSessionEnsures
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _terminalSessionEnsures.ToArray();
+                }
+            }
+        }
+
+        public IReadOnlyList<DockerSessionEnsure> DockerSessionEnsures
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _dockerSessionEnsures.ToArray();
+                }
+            }
+        }
+
+        public IReadOnlyList<SessionClose> SessionCloses
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _sessionCloses.ToArray();
+                }
+            }
+        }
+
         public int MaximumConcurrentTabActivations =>
             Volatile.Read(ref _maximumConcurrentTabActivations);
 
@@ -5048,7 +6129,11 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
         public int FilePanelEnsureCount => Volatile.Read(ref _filePanelEnsureCount);
 
+        public int FileListCount => Volatile.Read(ref _fileListCount);
+
         public int StatisticsEnsureCount => Volatile.Read(ref _statisticsEnsureCount);
+
+        public int BrowserAttachmentCount => Volatile.Read(ref _browserAttachmentCount);
 
         public WorkspaceGraphSnapshot? CurrentWorkspace
         {
@@ -5076,6 +6161,9 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                 nameof(ISessionHostClient.WatchWorkspaceGraphAsync)
                     when args is [WatchWorkspaceGraphRequest request, .., CancellationToken cancellationToken] =>
                     WatchWorkspace(request, cancellationToken),
+                nameof(ISessionHostClient.WatchAsync)
+                    when args is [WatchSessionRequest, .., CancellationToken cancellationToken] =>
+                    WatchSession(cancellationToken),
                 nameof(ISessionHostClient.ActivateWorkspaceTabAsync)
                     when args is [ActivateWorkspaceTabRequest request, OperationContext context, CancellationToken cancellationToken] =>
                     ActivateTabAsync(request, context, cancellationToken),
@@ -5090,6 +6178,42 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                         CancellationToken cancellationToken,
                     ] =>
                     ResolveStatisticsSession(request, cancellationToken),
+                nameof(ISessionHostClient.EnsureTerminalSessionAsync)
+                    when args is
+                    [
+                        EnsureTerminalSessionRequest request,
+                        OperationContext context,
+                        CancellationToken cancellationToken,
+                    ] =>
+                    ResolveTerminalSession(request, context, cancellationToken),
+                nameof(ISessionHostClient.EnsureBrowserSessionAsync)
+                    when args is
+                    [
+                        EnsureBrowserSessionRequest request,
+                        ..,
+                        CancellationToken cancellationToken,
+                    ] => ResolveBrowserSession(request, cancellationToken),
+                nameof(ISessionHostClient.AttachAsync)
+                    when args is
+                    [
+                        AttachSessionRequest request,
+                        ..,
+                        CancellationToken cancellationToken,
+                    ] => ResolveBrowserAttachment(request, cancellationToken),
+                nameof(ISessionHostClient.AttachBrowserRendererAsync)
+                    when args is
+                    [
+                        AttachBrowserRendererRequest request,
+                        ..,
+                        CancellationToken cancellationToken,
+                    ] => ResolveBrowserRendererAttachment(request, cancellationToken),
+                nameof(ISessionHostClient.DetachAsync)
+                    when args is
+                    [
+                        DetachSessionRequest,
+                        ..,
+                        CancellationToken cancellationToken,
+                    ] => ResolveDetach(cancellationToken),
                 nameof(ISessionHostClient.EnsureProcessMonitorSessionAsync)
                     when args is
                     [
@@ -5098,6 +6222,22 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                         CancellationToken cancellationToken,
                     ] =>
                     ResolveProcessMonitorSession(request, cancellationToken),
+                nameof(ISessionHostClient.EnsureDatabaseSessionAsync)
+                    when args is
+                    [
+                        EnsureDatabaseSessionRequest request,
+                        OperationContext context,
+                        CancellationToken cancellationToken,
+                    ] =>
+                    ResolveDatabaseSession(request, context, cancellationToken),
+                nameof(ISessionHostClient.EnsureDockerSessionAsync)
+                    when args is
+                    [
+                        EnsureDockerSessionRequest request,
+                        OperationContext context,
+                        CancellationToken cancellationToken,
+                    ] =>
+                    ResolveDockerSession(request, context, cancellationToken),
                 nameof(ISessionHostClient.ListProcessesAsync)
                     when args is
                     [
@@ -5107,16 +6247,22 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                     ] =>
                     ResolveProcessList(cancellationToken),
                 nameof(ISessionHostClient.EnsureFilePanelSessionAsync)
-                    when args is [EnsureFilePanelSessionRequest, ..] =>
-                    RejectFilePanelSession(),
+                    when args is
+                    [
+                        EnsureFilePanelSessionRequest request,
+                        ..,
+                        CancellationToken cancellationToken,
+                    ] => ResolveFilePanelSession(request, cancellationToken),
+                nameof(ISessionHostClient.ListFilesAsync)
+                    when args is [FilePanelListHostRequest, ..] =>
+                    ResolveFileList(),
                 nameof(ISessionHostClient.CloseAsync)
-                    when args is [CloseScopeRequest request, ..] =>
-                    ValueTask.FromResult(HostResult<CloseScopeResult>.Succeed(
-                        new CloseScopeResult.Completed(
-                            request.Scope,
-                            request.TargetId,
-                            []),
-                        1)),
+                    when args is
+                    [
+                        CloseScopeRequest request,
+                        OperationContext context,
+                        ..
+                    ] => ResolveClose(request, context),
                 _ => throw new NotSupportedException(targetMethod?.Name),
             };
 
@@ -5227,7 +6373,10 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
                 var registeredWorkspace = NextRegistrationSessionId is { } sessionId
                     ? ReplaceFirstPanelSession(request.Workspace, sessionId)
-                    : request.Workspace;
+                    : PreserveCurrentSessionLinks(
+                        request.Workspace,
+                        _workspace?.Workspace,
+                        _liveSessions);
                 NextRegistrationSessionId = null;
                 var revision = currentRevision + 1;
                 _workspace = new WorkspaceGraphSnapshot(
@@ -5323,6 +6472,370 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                     resultingRevision: 1));
         }
 
+        private ValueTask<HostResult<SessionSnapshot>> ResolveTerminalSession(
+            EnsureTerminalSessionRequest request,
+            OperationContext context,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_gate)
+            {
+                _terminalSessionEnsures.Add(new(request, context));
+            }
+
+            if (!AcceptTerminalSessions)
+            {
+                return ValueTask.FromResult(HostResult<SessionSnapshot>.Fail(
+                    HostError.Create(
+                        HostErrorCode.CapabilityNotSupported,
+                        "The test host does not provide terminal sessions."),
+                    0));
+            }
+
+            return LinkHostedSession(
+                request.SessionId,
+                request.Owner,
+                PanelKind.Terminal,
+                new CapabilitySet(
+                [
+                    SessionCapabilities.AttachRead,
+                    SessionCapabilities.AttachInteractive,
+                    SessionCapabilities.TerminalReadScreen,
+                    SessionCapabilities.TerminalWait,
+                    SessionCapabilities.TerminalScrollbackRead,
+                    SessionCapabilities.TerminalScrollbackFind,
+                    SessionCapabilities.TerminalAgentInputBarrier,
+                    SessionCapabilities.TerminalWrite,
+                    SessionCapabilities.TerminalPaste,
+                    SessionCapabilities.TerminalSendKeys,
+                    SessionCapabilities.TerminalSendChord,
+                    SessionCapabilities.TerminalInterrupt,
+                ]));
+        }
+
+        private ValueTask<HostResult<SessionSnapshot>> ResolveBrowserSession(
+            EnsureBrowserSessionRequest request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!AcceptBrowserSessions)
+            {
+                return ValueTask.FromResult(HostResult<SessionSnapshot>.Fail(
+                    HostError.Create(
+                        HostErrorCode.CapabilityNotSupported,
+                        "The test host does not provide browser sessions."),
+                    0));
+            }
+
+            return LinkHostedSession(
+                request.SessionId,
+                request.Owner,
+                PanelKind.Browser,
+                new CapabilitySet(
+                [
+                    SessionCapabilities.AttachRead,
+                    SessionCapabilities.BrowserReadState,
+                    SessionCapabilities.BrowserNavigate,
+                ]));
+        }
+
+        private ValueTask<HostResult<AttachmentResult>> ResolveBrowserAttachment(
+            AttachSessionRequest request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_gate)
+            {
+                if (!_liveSessions.Contains(request.SessionId)
+                    || _workspace is not { } current)
+                {
+                    return ValueTask.FromResult(
+                        HostResult<AttachmentResult>.Fail(
+                            HostError.Create(
+                                HostErrorCode.NotFound,
+                                "The browser session is unavailable."),
+                            0));
+                }
+
+                var match = current.Workspace.Tabs
+                    .SelectMany(tab => tab.Panels.Select(panel => (tab, panel)))
+                    .Single(item => item.panel.SessionId == request.SessionId);
+                var owner = new SessionOwner(
+                    HostMode.Desktop,
+                    current.WindowId,
+                    current.Workspace.Id,
+                    match.tab.Id,
+                    match.panel.Id);
+                var descriptor = new SessionDescriptor(
+                    request.SessionId,
+                    PanelKind.Browser,
+                    SessionLifecycle.Active,
+                    SessionHealth.Healthy,
+                    owner,
+                    request.ClientCapabilities,
+                    Revision: 1,
+                    HasActiveWork: false,
+                    StatusDetail: "Ready");
+                var presence = new AttachmentPresence(
+                    AttachmentId.New(),
+                    request.SessionId,
+                    request.ClientId,
+                    request.Kind,
+                    request.Viewport,
+                    DateTimeOffset.UtcNow);
+                var snapshot = new SessionSnapshot(
+                    descriptor,
+                    LastSequence: 1,
+                    [presence],
+                    InputLease: null);
+                var capabilities = new CapabilityNegotiation(
+                    request.ClientCapabilities,
+                    request.ClientCapabilities,
+                    request.ClientCapabilities,
+                    request.ClientCapabilities,
+                    request.ClientCapabilities);
+                return ValueTask.FromResult(
+                    HostResult<AttachmentResult>.Succeed(
+                        new AttachmentResult(
+                            presence,
+                            snapshot,
+                            capabilities,
+                            EventCursor: 1),
+                        resultingRevision: 1));
+            }
+        }
+
+        private ValueTask<HostResult<Unit>> ResolveBrowserRendererAttachment(
+            AttachBrowserRendererRequest request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_gate)
+            {
+                if (!_liveSessions.Contains(request.SessionId))
+                {
+                    return ValueTask.FromResult(HostResult<Unit>.Fail(
+                        HostError.Create(
+                            HostErrorCode.NotFound,
+                            "The browser session is unavailable."),
+                        0));
+                }
+
+                _browserAttachmentCount++;
+                return ValueTask.FromResult(
+                    HostResult<Unit>.Succeed(Unit.Value, 1));
+            }
+        }
+
+        private static ValueTask<HostResult<Unit>> ResolveDetach(
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(
+                HostResult<Unit>.Succeed(Unit.Value, 1));
+        }
+
+        private ValueTask<HostResult<SessionSnapshot>> ResolveDatabaseSession(
+            EnsureDatabaseSessionRequest request,
+            OperationContext context,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_gate)
+            {
+                _databaseSessionEnsures.Add(new(request, context));
+            }
+
+            if (!AcceptDatabaseSessions)
+            {
+                return ValueTask.FromResult(HostResult<SessionSnapshot>.Fail(
+                    HostError.Create(
+                        HostErrorCode.CapabilityNotSupported,
+                        "The test host does not provide database sessions."),
+                    0));
+            }
+
+            var capabilities = request.Target.Binding.Backend == DatabasePanelBackend.Redis
+                ? new CapabilitySet(
+                [
+                    SessionCapabilities.AttachRead,
+                    SessionCapabilities.DatabaseReadState,
+                    SessionCapabilities.RedisScan,
+                    SessionCapabilities.RedisRead,
+                    SessionCapabilities.RedisSearch,
+                ])
+                : new CapabilitySet(
+                [
+                    SessionCapabilities.AttachRead,
+                    SessionCapabilities.DatabaseReadState,
+                    SessionCapabilities.DatabaseListObjects,
+                    SessionCapabilities.DatabaseDescribeObject,
+                    SessionCapabilities.DatabaseReadTable,
+                    SessionCapabilities.DatabaseSchemaGraph,
+                ]);
+            return LinkHostedSession(
+                request.SessionId,
+                request.Owner,
+                PanelKind.DatabaseViewer,
+                capabilities);
+        }
+
+        private ValueTask<HostResult<SessionSnapshot>> ResolveDockerSession(
+            EnsureDockerSessionRequest request,
+            OperationContext context,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_gate)
+            {
+                _dockerSessionEnsures.Add(new(request, context));
+            }
+
+            if (!AcceptDockerSessions)
+            {
+                return ValueTask.FromResult(HostResult<SessionSnapshot>.Fail(
+                    HostError.Create(
+                        HostErrorCode.CapabilityNotSupported,
+                        "The test host does not provide Docker sessions."),
+                    0));
+            }
+
+            return LinkHostedSession(
+                request.SessionId,
+                request.Owner,
+                PanelKind.Docker,
+                new CapabilitySet(
+                [
+                    SessionCapabilities.AttachRead,
+                    SessionCapabilities.DockerReadState,
+                    SessionCapabilities.DockerInspect,
+                    SessionCapabilities.DockerReadLogs,
+                    SessionCapabilities.DockerFilesList,
+                    SessionCapabilities.DockerFilesStat,
+                    SessionCapabilities.DockerFilesRead,
+                ]));
+        }
+
+        private ValueTask<HostResult<SessionSnapshot>> LinkHostedSession(
+            SessionId sessionId,
+            SessionOwner owner,
+            PanelKind kind,
+            CapabilitySet capabilities,
+            FileSessionMetadata? fileMetadata = null)
+        {
+            lock (_gate)
+            {
+                var current = _workspace;
+                var tab = current?.Workspace.Tabs.SingleOrDefault(candidate =>
+                    candidate.Id == owner.TabId);
+                var panel = tab?.Panels.SingleOrDefault(candidate =>
+                    candidate.Id == owner.PanelId);
+                if (current is null
+                    || current.WindowId != owner.WindowId
+                    || current.Workspace.Id != owner.WorkspaceId
+                    || panel?.Kind != kind)
+                {
+                    return ValueTask.FromResult(HostResult<SessionSnapshot>.Fail(
+                        HostError.Create(
+                            HostErrorCode.InvalidRequest,
+                            "The hosted session owner does not match the graph."),
+                        current?.Revision ?? 0));
+                }
+
+                var descriptor = new SessionDescriptor(
+                    sessionId,
+                    kind,
+                    SessionLifecycle.Active,
+                    SessionHealth.Healthy,
+                    owner,
+                    capabilities,
+                    Revision: 1,
+                    HasActiveWork: false,
+                    StatusDetail: "Ready",
+                    FileMetadata: fileMetadata);
+                _liveSessions.Add(sessionId);
+                var linked = current.Workspace.ReplacePanelSession(
+                    owner.TabId,
+                    owner.PanelId,
+                    sessionId);
+                var graphRevision = current.Revision + 1;
+                var sequence = current.LastSequence + 1;
+                _workspace = new WorkspaceGraphSnapshot(
+                    current.WindowId,
+                    linked,
+                    graphRevision,
+                    sequence);
+                Assert.True(WorkspaceEvents(current.Workspace.Id).Writer.TryWrite(
+                    new WorkspaceGraphStreamItem.Event(new WorkspaceGraphEvent(
+                        current.WindowId,
+                        linked,
+                        sequence,
+                        graphRevision,
+                        WorkspaceGraphEventKind.PanelSessionLinked,
+                        DateTimeOffset.UtcNow,
+                        owner.TabId,
+                        owner.PanelId,
+                        sessionId))));
+                return ValueTask.FromResult(HostResult<SessionSnapshot>.Succeed(
+                    new SessionSnapshot(descriptor, 1, [], null),
+                    resultingRevision: 1));
+            }
+        }
+
+        private ValueTask<HostResult<CloseScopeResult>> ResolveClose(
+            CloseScopeRequest request,
+            OperationContext context)
+        {
+            lock (_gate)
+            {
+                _sessionCloses.Add(new(request, context));
+                if (request.Scope == CloseScopeKind.Session
+                    && _workspace is { } current)
+                {
+                    _liveSessions.Remove(new SessionId(request.TargetId));
+                    var match = current.Workspace.Tabs
+                        .SelectMany(tab => tab.Panels.Select(panel => (tab, panel)))
+                        .SingleOrDefault(item =>
+                            string.Equals(
+                                item.panel.SessionId?.Value,
+                                request.TargetId,
+                                StringComparison.Ordinal));
+                    if (match.panel is not null)
+                    {
+                        var unlinked = current.Workspace.ReplacePanelSession(
+                            match.tab.Id,
+                            match.panel.Id,
+                            sessionId: null);
+                        var revision = current.Revision + 1;
+                        var sequence = current.LastSequence + 1;
+                        _workspace = new WorkspaceGraphSnapshot(
+                            current.WindowId,
+                            unlinked,
+                            revision,
+                            sequence);
+                        Assert.True(WorkspaceEvents(current.Workspace.Id).Writer.TryWrite(
+                            new WorkspaceGraphStreamItem.Event(new WorkspaceGraphEvent(
+                                current.WindowId,
+                                unlinked,
+                                sequence,
+                                revision,
+                                WorkspaceGraphEventKind.PanelSessionUnlinked,
+                                DateTimeOffset.UtcNow,
+                                match.tab.Id,
+                                match.panel.Id,
+                                match.panel.SessionId))));
+                    }
+                }
+
+                return ValueTask.FromResult(HostResult<CloseScopeResult>.Succeed(
+                    new CloseScopeResult.Completed(
+                        request.Scope,
+                        request.TargetId,
+                        []),
+                    _workspace?.Revision ?? 0));
+            }
+        }
+
         private ValueTask<HostResult<SessionSnapshot>> ResolveProcessMonitorSession(
             EnsureProcessMonitorSessionRequest request,
             CancellationToken cancellationToken)
@@ -5383,14 +6896,52 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                     resultingRevision: 1));
         }
 
-        private ValueTask<HostResult<SessionSnapshot>> RejectFilePanelSession()
+        private async ValueTask<HostResult<SessionSnapshot>> ResolveFilePanelSession(
+            EnsureFilePanelSessionRequest request,
+            CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             Interlocked.Increment(ref _filePanelEnsureCount);
-            return ValueTask.FromResult(HostResult<SessionSnapshot>.Fail(
-                HostError.Create(
-                    HostErrorCode.CapabilityNotSupported,
-                    "The test host does not provide file-panel sessions."),
-                0));
+            if (DelayNextFilePanelEnsure)
+            {
+                DelayNextFilePanelEnsure = false;
+                FilePanelEnsureEntered.TrySetResult();
+                await AllowFilePanelEnsure.Task.WaitAsync(cancellationToken);
+            }
+
+            if (!AcceptFilePanelSessions)
+            {
+                return HostResult<SessionSnapshot>.Fail(
+                    HostError.Create(
+                        HostErrorCode.CapabilityNotSupported,
+                        "The test host does not provide file-panel sessions."),
+                    0);
+            }
+
+            var metadata = new FileSessionMetadata(
+                request.InitialLocation,
+                FilePanelCapability.List,
+                500,
+                1024 * 1024);
+            return await LinkHostedSession(
+                request.SessionId,
+                request.Owner,
+                PanelKind.FileViewer,
+                new CapabilitySet(
+                [
+                    SessionCapabilities.AttachRead,
+                    SessionCapabilities.FilesList,
+                ]),
+                metadata);
+        }
+
+        private ValueTask<HostResult<FilePanelResult<FilePanelPage>>> ResolveFileList()
+        {
+            Interlocked.Increment(ref _fileListCount);
+            return ValueTask.FromResult(
+                HostResult<FilePanelResult<FilePanelPage>>.Succeed(
+                    FilePanelResult<FilePanelPage>.Success(new FilePanelPage([], null)),
+                    resultingRevision: 1));
         }
 
         private IAsyncEnumerable<WorkspaceGraphStreamItem> WatchWorkspace(
@@ -5404,6 +6955,13 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             }
 
             return WatchWorkspaceCore(channel, cancellationToken);
+        }
+
+        private static async IAsyncEnumerable<SessionStreamItem> WatchSession(
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            yield break;
         }
 
         private async IAsyncEnumerable<WorkspaceGraphStreamItem> WatchWorkspaceCore(
@@ -5626,6 +7184,39 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                 firstTab.Panels[0].Id,
                 sessionId);
         }
+
+        private static WorkspaceInstance PreserveCurrentSessionLinks(
+            WorkspaceInstance proposal,
+            WorkspaceInstance? current,
+            IReadOnlySet<SessionId> liveSessions)
+        {
+            if (current is null)
+            {
+                return proposal;
+            }
+
+            var currentPanels = current.Tabs
+                .SelectMany(tab => tab.Panels)
+                .ToDictionary(panel => panel.Id);
+            var reconciled = proposal;
+            foreach (var tab in proposal.Tabs)
+            {
+                foreach (var panel in tab.Panels)
+                {
+                    if (currentPanels.TryGetValue(panel.Id, out var existing)
+                        && existing.SessionId is { } sessionId
+                        && liveSessions.Contains(sessionId))
+                    {
+                        reconciled = reconciled.ReplacePanelSession(
+                            tab.Id,
+                            panel.Id,
+                            sessionId);
+                    }
+                }
+            }
+
+            return reconciled;
+        }
     }
 
     public class FixedCatalogProxy : DispatchProxy
@@ -5708,7 +7299,9 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         }
     }
 
-    private sealed class RecordingGovernedAgentRuntime : IGovernedAgentRuntime
+    private sealed class RecordingGovernedAgentRuntime
+        : IGovernedAgentRuntime,
+          IAgentWorkspaceLayoutRuntime
     {
         public event EventHandler? Changed;
 
@@ -5720,6 +7313,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             TargetTitle: "No panel selected",
             ContextItems: [],
             Messages: [],
+            EffectivePolicy: AgentPolicy.Default,
             ProvisionalAssistantText: string.Empty,
             Status: "Choose an active terminal, browser, File Viewer, or Process Monitor panel.");
 
@@ -5727,9 +7321,24 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
         public GovernedAgentSteering? LastSteering { get; private set; }
 
+        public GovernedAgentFollowUp? LastFollowUp { get; private set; }
+
         public int SendCount { get; private set; }
 
         public int SteeringCount { get; private set; }
+
+        public int FollowUpCount { get; private set; }
+
+        public int StopCount { get; private set; }
+
+        public IAgentWorkspaceLayoutMutationPort? LayoutPort { get; private set; }
+
+        public void AttachWorkspaceLayoutPort(
+            IAgentWorkspaceLayoutMutationPort mutationPort)
+        {
+            Assert.Null(LayoutPort);
+            LayoutPort = mutationPort;
+        }
 
         public void SetSnapshot(GovernedAgentSnapshot snapshot)
         {
@@ -5765,6 +7374,21 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                     "Steering accepted."));
         }
 
+        public ValueTask<GovernedAgentFollowUpResult> QueueFollowUpAsync(
+            GovernedAgentFollowUp request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            LastFollowUp = request;
+            FollowUpCount++;
+            return ValueTask.FromResult(
+                new GovernedAgentFollowUpResult(
+                    true,
+                    "agent_follow_up_queued",
+                    "Queued.",
+                    FollowUpCount));
+        }
+
         public ValueTask<GovernedAgentDecisionResult> DecideAsync(
             AgentApprovalId approvalId,
             bool approved,
@@ -5786,12 +7410,16 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             throw new NotSupportedException();
 
         public ValueTask<GovernedAgentStopResult> StopAsync(
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult(
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            StopCount++;
+            return ValueTask.FromResult(
                 new GovernedAgentStopResult(
                     false,
                     "agent_not_running",
                     "No run is active."));
+        }
 
         public ValueTask<GovernedAgentActionCancellationResult>
             CancelActiveActionAsync(CancellationToken cancellationToken) =>
@@ -5835,13 +7463,21 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
         public List<AgentConversationScopeId> CreatedScopes { get; } = [];
 
+        public List<AgentPolicy> CreatedPolicies { get; } = [];
+
+        public List<RecordingGovernedAgentRuntime> CreatedRuntimes { get; } = [];
+
         public IGovernedAgentRuntime Create(
             WorkspaceInstanceId workspaceId,
-            AgentConversationScopeId conversationScopeId)
+            AgentConversationScopeId conversationScopeId,
+            AgentPolicy policy)
         {
             CreatedWorkspaceIds.Add(workspaceId);
             CreatedScopes.Add(conversationScopeId);
-            return new RecordingGovernedAgentRuntime();
+            CreatedPolicies.Add(policy);
+            var runtime = new RecordingGovernedAgentRuntime();
+            CreatedRuntimes.Add(runtime);
+            return runtime;
         }
     }
 
@@ -6097,6 +7733,38 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         }
     }
 
+    private sealed class BlockingAgentPolicyStore : IAgentPolicyPreferenceStore
+    {
+        private readonly TaskCompletionSource<bool> _writeStarted = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<bool> _allowWrite = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task WriteStarted => _writeStarted.Task;
+
+        public AgentPolicy? Policy { get; private set; }
+
+        public void ReleaseWrite() => _allowWrite.TrySetResult(true);
+
+        public ValueTask<ApplicationRunResult<AgentPolicy?>> ReadAsync(
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(
+                ApplicationRunResult<AgentPolicy?>.Success(Policy));
+        }
+
+        public async ValueTask<ApplicationRunResult<Unit>> WriteAsync(
+            AgentPolicy policy,
+            CancellationToken cancellationToken)
+        {
+            _writeStarted.TrySetResult(true);
+            await _allowWrite.Task.WaitAsync(cancellationToken);
+            Policy = policy;
+            return ApplicationRunResult<Unit>.Success(Unit.Value);
+        }
+    }
+
     private sealed class SuccessfulAuditStore : IAuditStore
     {
         public ValueTask<AuditStoreResult<Unit>> AppendAsync(
@@ -6146,6 +7814,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     {
         public int VerifyCount { get; private set; }
 
+        public int InvokeCount { get; private set; }
+
         public void VerifyAccess()
         {
             VerifyCount++;
@@ -6159,6 +7829,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         public Task InvokeAsync(Action action, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            InvokeCount++;
             action();
             return Task.CompletedTask;
         }

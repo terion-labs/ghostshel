@@ -34,6 +34,7 @@ public interface IPanelNotificationSource
 internal sealed class ShellNotificationCenter
 {
     private readonly Dictionary<RuntimePanelViewModel, PanelAttachment> _watched = [];
+    private readonly HashSet<RuntimeWorkspaceViewModel> _workspaceNotifications = [];
     private readonly Func<RuntimeWorkspaceViewModel?> _frontWorkspace;
     private readonly Func<bool> _isWindowFocused;
     private readonly Action _flagsChanged;
@@ -111,6 +112,7 @@ internal sealed class ShellNotificationCenter
             _watched.Remove(panel);
         }
 
+        _workspaceNotifications.Remove(workspace);
         workspace.HasAttention = false;
         _flagsChanged();
     }
@@ -123,6 +125,27 @@ internal sealed class ShellNotificationCenter
         }
 
         _watched.Clear();
+        _workspaceNotifications.Clear();
+    }
+
+    /// <summary>
+    /// Leaves a workspace-level mark for work that has no originating panel,
+    /// such as an agent run finishing after its workspace was sent behind the
+    /// current one. The mark uses the same rail/menu aggregation as panel
+    /// notifications and is suppressed when the workspace is already visible.
+    /// </summary>
+    public void NotifyWorkspace(RuntimeWorkspaceViewModel workspace)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+        if (_isWindowFocused() && ReferenceEquals(_frontWorkspace(), workspace))
+        {
+            return;
+        }
+
+        if (_workspaceNotifications.Add(workspace))
+        {
+            Reaggregate(workspace);
+        }
     }
 
     /// <summary>
@@ -132,19 +155,24 @@ internal sealed class ShellNotificationCenter
     /// </summary>
     public void MarkVisibleSeen()
     {
-        if (!_isWindowFocused()
-            || _frontWorkspace() is not { ActiveTab: { ActivePanel: { } panel } tab } workspace)
+        if (!_isWindowFocused() || _frontWorkspace() is not { } workspace)
         {
             return;
         }
 
-        if (!panel.HasAttention)
+        var changed = _workspaceNotifications.Remove(workspace);
+        if (workspace.ActiveTab is { ActivePanel: { } panel } tab
+            && panel.HasAttention)
         {
-            return;
+            panel.HasAttention = false;
+            tab.HasAttention = tab.Panels.Any(candidate => candidate.HasAttention);
+            changed = true;
         }
 
-        panel.HasAttention = false;
-        Reaggregate(workspace, tab);
+        if (changed)
+        {
+            Reaggregate(workspace);
+        }
     }
 
     private void OnNotification(
@@ -158,7 +186,8 @@ internal sealed class ShellNotificationCenter
         }
 
         panel.HasAttention = true;
-        Reaggregate(workspace, tab);
+        tab.HasAttention = true;
+        Reaggregate(workspace);
     }
 
     private bool IsBeingLookedAt(
@@ -175,10 +204,10 @@ internal sealed class ShellNotificationCenter
     /// tabs is. Recomputed from the panels rather than counted up and down,
     /// because a count that drifts is a dot that never goes away.
     /// </summary>
-    private void Reaggregate(RuntimeWorkspaceViewModel workspace, RuntimeTabViewModel tab)
+    private void Reaggregate(RuntimeWorkspaceViewModel workspace)
     {
-        tab.HasAttention = tab.Panels.Any(candidate => candidate.HasAttention);
-        workspace.HasAttention = workspace.Tabs.Any(candidate => candidate.HasAttention);
+        workspace.HasAttention = _workspaceNotifications.Contains(workspace)
+            || workspace.Tabs.Any(candidate => candidate.HasAttention);
         _flagsChanged();
     }
 

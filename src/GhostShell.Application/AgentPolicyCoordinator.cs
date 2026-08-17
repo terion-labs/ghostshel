@@ -33,7 +33,7 @@ public sealed class AgentPolicyCoordinator
         if (!policy.IsValidForDurableStorage())
         {
             throw new ArgumentException(
-                "The default agent policy must be valid for durable storage.",
+                "The configured agent policy must be valid for durable storage.",
                 nameof(policy));
         }
 
@@ -62,11 +62,9 @@ public sealed class AgentPolicyCoordinator
                 : policy.SystemPrompt.Trim(),
         };
 
-    private static AgentModelSelection? NormalizeSelection(
-        AgentModelSelection? selection) =>
-        selection is null
-            ? null
-            : new AgentModelSelection(
-                selection.Provider.Trim(),
-                selection.Model.Trim());
+    private static AgentModelSelection NormalizeSelection(
+        AgentModelSelection selection) =>
+        new(
+            selection.Provider.Trim(),
+            selection.Model.Trim());
 }

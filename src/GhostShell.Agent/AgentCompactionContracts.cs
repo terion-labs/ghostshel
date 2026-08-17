@@ -6,7 +6,11 @@ namespace GhostShell.Agent;
 public sealed record AgentCompactionRequest(
     AgentRunId RunId,
     long Generation,
-    ImmutableArray<AgentMessage> Messages);
+    ImmutableArray<AgentMessage> Messages,
+    ImmutableArray<AgentMessage> TurnPrefixMessages = default)
+{
+    public bool IsSplitTurn => !TurnPrefixMessages.IsDefaultOrEmpty;
+}
 
 public sealed record AgentCompactionSettings
 {

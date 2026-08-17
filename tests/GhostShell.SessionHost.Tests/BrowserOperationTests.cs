@@ -568,5 +568,6 @@ public sealed class BrowserOperationTests
         SessionCapabilities.BrowserForward,
         SessionCapabilities.BrowserReload,
         SessionCapabilities.BrowserStop,
+        SessionCapabilities.BrowserAgentInputBarrier,
     ]);
 }

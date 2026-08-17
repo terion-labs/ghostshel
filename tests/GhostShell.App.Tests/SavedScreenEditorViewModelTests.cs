@@ -25,7 +25,11 @@ public sealed class SavedScreenEditorViewModelTests
                     _ => AgentPermission.Auto,
                 }))
             .ToImmutableDictionary();
-        var policy = new AgentPolicy(provider.Id.Value, "screen-model", permissions);
+        var policy = new AgentPolicy(provider.Id.Value, "screen-model", permissions)
+        {
+            CompactionModel = new AgentModelSelection(provider.Id.Value, "compact-model"),
+            TitleModel = new AgentModelSelection(provider.Id.Value, "title-model"),
+        };
         var original = Screen(connection.Id);
         var screen = new ScreenDefinition(
             original.Id,
@@ -156,7 +160,9 @@ public sealed class SavedScreenEditorViewModelTests
         var saved = Assert.IsType<AgentPolicy>(
             editor.CreateSaveRequest().Definition.AgentPolicyOverride);
 
-        Assert.Null(saved.CompactionModel);
+        Assert.Equal(
+            new AgentModelSelection(provider.Id.Value, provider.DefaultModel),
+            saved.CompactionModel);
         Assert.DoesNotContain(
             editor.AgentPolicy.TitleModelOptions,
             option => option.Selection is null);
@@ -206,6 +212,15 @@ public sealed class SavedScreenEditorViewModelTests
 
         editor.AgentPolicy.SelectedProvider = editor.AgentPolicy.ProviderOptions
             .Single(option => option.Id == available.Id);
+        var availableRoute = new AgentModelSelection(
+            available.Id.Value,
+            available.DefaultModel);
+        editor.AgentPolicy.SelectedCompactionModel = editor.AgentPolicy
+            .AgentTaskModelOptions
+            .Single(option => option.Selection == availableRoute);
+        editor.AgentPolicy.SelectedTitleModel = editor.AgentPolicy
+            .TitleModelOptions
+            .Single(option => option.Selection == availableRoute);
 
         Assert.True(editor.AgentPolicy.IsValid);
         Assert.True(editor.CanSave);
@@ -253,7 +268,12 @@ public sealed class SavedScreenEditorViewModelTests
     public void AgentPolicyChangesAreDirtyValidatedAndCanRemoveTheOverride()
     {
         var connection = LocalConnection("local");
-        using var editor = Editor(Screen(connection.Id), 3, [connection]);
+        var provider = Provider("local-provider", "Local provider", "model-1");
+        using var editor = Editor(
+            Screen(connection.Id),
+            3,
+            [connection],
+            aiProviders: [provider]);
 
         Assert.False(editor.AgentPolicy.IsEnabled);
         editor.AgentPolicy.IsEnabled = true;
@@ -264,7 +284,7 @@ public sealed class SavedScreenEditorViewModelTests
         Assert.False(editor.CanSave);
         Assert.Throws<ArgumentException>(() => editor.CreateSaveRequest());
 
-        editor.AgentPolicy.Provider = "Local provider";
+        editor.AgentPolicy.Provider = provider.Id.Value;
         editor.AgentPolicy.Model = "model-1";
         editor.AgentPolicy.Capabilities
             .Single(item => item.Capability == AgentCapability.RunCommands)

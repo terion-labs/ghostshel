@@ -18,6 +18,7 @@ public sealed class BrowserAgentToolContractTests
             "exact",
             SessionCapabilities.BrowserReadState,
             SessionCapabilities.BrowserSnapshot,
+            SessionCapabilities.BrowserWait,
             SessionCapabilities.BrowserClick,
             SessionCapabilities.BrowserFill,
             SessionCapabilities.BrowserCheck,
@@ -26,7 +27,8 @@ public sealed class BrowserAgentToolContractTests
             SessionCapabilities.BrowserForward,
             SessionCapabilities.BrowserReload,
             SessionCapabilities.BrowserStop,
-            SessionCapabilities.BrowserOriginGuard);
+            SessionCapabilities.BrowserOriginGuard,
+            SessionCapabilities.BrowserAgentInputBarrier);
 
         var tools = BrowserAgentToolSet.For(panel);
 
@@ -34,6 +36,7 @@ public sealed class BrowserAgentToolContractTests
             [
                 BuiltInAgentTools.BrowserReadState,
                 BuiltInAgentTools.BrowserSnapshot,
+                BuiltInAgentTools.BrowserWait,
                 BuiltInAgentTools.BrowserClick,
                 BuiltInAgentTools.BrowserFill,
                 BuiltInAgentTools.BrowserCheck,
@@ -172,7 +175,8 @@ public sealed class BrowserAgentToolContractTests
             SessionCapabilities.BrowserBack,
             SessionCapabilities.BrowserForward,
             SessionCapabilities.BrowserReload,
-            SessionCapabilities.BrowserStop);
+            SessionCapabilities.BrowserStop,
+            SessionCapabilities.BrowserAgentInputBarrier);
 
         var tools = BrowserAgentToolSet.For(panel);
 
@@ -187,23 +191,55 @@ public sealed class BrowserAgentToolContractTests
         Assert.False(BrowserAgentToolSet.SupportsMutations(
             ContextPanel(
                 "unguarded-navigation-only",
-                SessionCapabilities.BrowserNavigate)));
+                SessionCapabilities.BrowserNavigate,
+                SessionCapabilities.BrowserAgentInputBarrier)));
         Assert.False(BrowserAgentToolSet.SupportsMutations(
             ContextPanel(
                 "unguarded-click-only",
-                SessionCapabilities.BrowserClick)));
+                SessionCapabilities.BrowserClick,
+                SessionCapabilities.BrowserAgentInputBarrier)));
         Assert.False(BrowserAgentToolSet.SupportsMutations(
             ContextPanel(
                 "unguarded-fill-only",
-                SessionCapabilities.BrowserFill)));
+                SessionCapabilities.BrowserFill,
+                SessionCapabilities.BrowserAgentInputBarrier)));
         Assert.False(BrowserAgentToolSet.SupportsMutations(
             ContextPanel(
                 "unguarded-check-only",
-                SessionCapabilities.BrowserCheck)));
+                SessionCapabilities.BrowserCheck,
+                SessionCapabilities.BrowserAgentInputBarrier)));
     }
 
     [Fact]
-    public void ProductionProfileKeepsGuardedNavigationButOmitsInteractions()
+    public void MutationToolsRequireThePhysicalHumanInputBarrier()
+    {
+        var panel = ContextPanel(
+            "barrierless",
+            SessionCapabilities.BrowserReadState,
+            SessionCapabilities.BrowserSnapshot,
+            SessionCapabilities.BrowserClick,
+            SessionCapabilities.BrowserFill,
+            SessionCapabilities.BrowserCheck,
+            SessionCapabilities.BrowserNavigate,
+            SessionCapabilities.BrowserBack,
+            SessionCapabilities.BrowserForward,
+            SessionCapabilities.BrowserReload,
+            SessionCapabilities.BrowserStop,
+            SessionCapabilities.BrowserOriginGuard);
+
+        var tools = BrowserAgentToolSet.For(panel);
+
+        Assert.Equal(
+            [
+                BuiltInAgentTools.BrowserReadState,
+                BuiltInAgentTools.BrowserSnapshot,
+            ],
+            tools.Select(tool => tool.Name));
+        Assert.False(BrowserAgentToolSet.SupportsMutations(panel));
+    }
+
+    [Fact]
+    public void ProductionProfileExposesTheConformantSemanticToolSet()
     {
         var panel = ContextPanel(
             "production",
@@ -214,6 +250,14 @@ public sealed class BrowserAgentToolContractTests
         Assert.Equal(
             [
                 BuiltInAgentTools.BrowserReadState,
+                BuiltInAgentTools.BrowserSnapshot,
+                BuiltInAgentTools.BrowserWait,
+                BuiltInAgentTools.BrowserClick,
+                BuiltInAgentTools.BrowserFill,
+                BuiltInAgentTools.BrowserCheck,
+                BuiltInAgentTools.BrowserMouse,
+                BuiltInAgentTools.BrowserKey,
+                BuiltInAgentTools.BrowserScroll,
                 BuiltInAgentTools.BrowserNavigate,
                 BuiltInAgentTools.BrowserBack,
                 BuiltInAgentTools.BrowserForward,
@@ -234,18 +278,21 @@ public sealed class BrowserAgentToolContractTests
             "navigate",
             SessionCapabilities.BrowserReadState,
             SessionCapabilities.BrowserNavigate,
-            SessionCapabilities.BrowserOriginGuard);
+            SessionCapabilities.BrowserOriginGuard,
+            SessionCapabilities.BrowserAgentInputBarrier);
         var click = ContextPanel(
             "click",
             SessionCapabilities.BrowserClick,
             SessionCapabilities.BrowserFill,
             SessionCapabilities.BrowserCheck,
-            SessionCapabilities.BrowserOriginGuard);
+            SessionCapabilities.BrowserOriginGuard,
+            SessionCapabilities.BrowserAgentInputBarrier);
         var history = ContextPanel(
             "history",
             SessionCapabilities.BrowserBack,
             SessionCapabilities.BrowserForward,
-            SessionCapabilities.BrowserOriginGuard);
+            SessionCapabilities.BrowserOriginGuard,
+            SessionCapabilities.BrowserAgentInputBarrier);
 
         var tools = BrowserAgentToolSet.For([read, navigate, click, history]);
 
@@ -371,6 +418,101 @@ public sealed class BrowserAgentToolContractTests
 
         Assert.IsType(intentType, parsed.Intent);
         Assert.Null(parsed.PanelId);
+    }
+
+    [Fact]
+    public async Task SnapshotParserAcceptsBrowseStyleNarrowingOptions()
+    {
+        var proposal = await ProposalAsync(
+            BuiltInAgentTools.BrowserSnapshot,
+            """
+            {
+              "interactive_only": true,
+              "filter": "YouTube result",
+              "max_depth": 6
+            }
+            """);
+
+        var parsed = Assert.IsType<BrowserAgentIntentResult.Parsed>(
+            BrowserAgentToolParser.Parse(proposal));
+        var snapshot = Assert.IsType<BrowserAgentIntent.Snapshot>(
+            parsed.Intent);
+
+        Assert.True(snapshot.InteractiveOnly);
+        Assert.Equal("YouTube result", snapshot.Filter);
+        Assert.Equal(6, snapshot.MaximumDepth);
+    }
+
+    [Theory]
+    [InlineData(
+        "{\"timeout_ms\":3600000,\"delay_ms\":1}",
+        typeof(BrowserWaitCondition.Delay))]
+    [InlineData(
+        "{\"timeout_ms\":1000,\"load_state\":\"ready\"}",
+        typeof(BrowserWaitCondition.LoadState))]
+    [InlineData(
+        "{\"timeout_ms\":1000,\"url_pattern\":\"https://example.test/*\"}",
+        typeof(BrowserWaitCondition.UrlPattern))]
+    [InlineData(
+        "{\"timeout_ms\":1000,\"text\":\"Ready 😀\"}",
+        typeof(BrowserWaitCondition.Text))]
+    [InlineData(
+        "{\"timeout_ms\":1000,\"reference\":\"button_1\",\"document_revision\":7,\"ref_state\":\"enabled\",\"expected\":true}",
+        typeof(BrowserWaitCondition.ElementState))]
+    [InlineData(
+        "{\"timeout_ms\":1000,\"after_document_revision\":7}",
+        typeof(BrowserWaitCondition.DocumentRevision))]
+    [InlineData(
+        "{\"timeout_ms\":1000,\"network_idle_ms\":500}",
+        typeof(BrowserWaitCondition.NetworkIdle))]
+    public async Task WaitParserAcceptsExactlyOneClosedCondition(
+        string arguments,
+        Type conditionType)
+    {
+        var proposal = await ProposalAsync(
+            BuiltInAgentTools.BrowserWait,
+            arguments);
+
+        var parsed = Assert.IsType<BrowserAgentIntentResult.Parsed>(
+            BrowserAgentToolParser.Parse(proposal));
+        var wait = Assert.IsType<BrowserAgentIntent.Wait>(parsed.Intent);
+
+        Assert.IsType(conditionType, wait.Condition);
+        Assert.InRange(
+            wait.Timeout,
+            TimeSpan.FromMilliseconds(1),
+            BrowserWaitRequest.MaximumTimeout);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"timeout_ms\":0,\"delay_ms\":1}")]
+    [InlineData("{\"timeout_ms\":3600001,\"delay_ms\":1}")]
+    [InlineData("{\"timeout_ms\":1000,\"delay_ms\":1001}")]
+    [InlineData("{\"timeout_ms\":1000,\"network_idle_ms\":1001}")]
+    [InlineData("{\"timeout_ms\":1000,\"delay_ms\":1,\"text\":\"Ready\"}")]
+    [InlineData("{\"timeout_ms\":1000,\"text\":\"Ready\",\"extra\":true}")]
+    public async Task WaitParserRejectsUnboundedAmbiguousAndMalformedRequests(
+        string arguments)
+    {
+        var proposal = await ProposalAsync(
+            BuiltInAgentTools.BrowserWait,
+            arguments);
+
+        var rejected = Assert.IsType<BrowserAgentIntentResult.Rejected>(
+            BrowserAgentToolParser.Parse(proposal));
+
+        Assert.Equal("invalid_tool_arguments", rejected.StableCode);
+    }
+
+    [Fact]
+    public void WaitToolUsesTheLongLivedExecutionDeadline()
+    {
+        Assert.True(BuiltInAgentTools.Catalog.TryGet(
+            BuiltInAgentTools.BrowserWait,
+            out var descriptor));
+
+        Assert.Equal(TimeSpan.FromMinutes(61), descriptor!.MaximumExecutionLifetime);
     }
 
     [Theory]
@@ -685,7 +827,8 @@ public sealed class BrowserAgentToolContractTests
         var navigate = ContextPanel(
             "navigate",
             SessionCapabilities.BrowserNavigate,
-            SessionCapabilities.BrowserOriginGuard);
+            SessionCapabilities.BrowserOriginGuard,
+            SessionCapabilities.BrowserAgentInputBarrier);
         AgentContextPanel[] scope = [read, navigate];
         var acceptedProposal = await ProposalAsync(
             BuiltInAgentTools.BrowserNavigate,
@@ -842,6 +985,92 @@ public sealed class BrowserAgentToolContractTests
             .EnumerateArray()
             .Select(value => value.GetString()!)
             .ToArray();
+
+    [Fact]
+    public void LowLevelSchemasAreClosedAndExposeOnlyAtomicGestures()
+    {
+        var panel = ContextPanel(
+            "low-level",
+            SessionCapabilities.BrowserMouse,
+            SessionCapabilities.BrowserKey,
+            SessionCapabilities.BrowserScroll,
+            SessionCapabilities.BrowserEvaluate,
+            SessionCapabilities.BrowserOriginGuard,
+            SessionCapabilities.BrowserAgentInputBarrier);
+
+        var tools = BrowserAgentToolSet.For(panel);
+
+        Assert.Equal(
+            [
+                BuiltInAgentTools.BrowserMouse,
+                BuiltInAgentTools.BrowserKey,
+                BuiltInAgentTools.BrowserScroll,
+                BuiltInAgentTools.BrowserEvaluate,
+            ],
+            tools.Select(tool => tool.Name));
+        Assert.All(tools, tool => Assert.False(
+            tool.InputSchema.GetProperty("additionalProperties").GetBoolean()));
+        var mouseActions = tools[0].InputSchema
+            .GetProperty("properties").GetProperty("action")
+            .GetProperty("enum").EnumerateArray()
+            .Select(value => value.GetString());
+        Assert.Equal(["move", "click", "wheel"], mouseActions);
+        var keyActions = tools[1].InputSchema
+            .GetProperty("properties").GetProperty("action")
+            .GetProperty("enum").EnumerateArray()
+            .Select(value => value.GetString());
+        Assert.Equal(["press"], keyActions);
+        Assert.Contains("side-effect-free", tools[3].Description, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task MouseParserReturnsExactBoundedInputAndFreshnessRevisions()
+    {
+        var proposal = await ProposalAsync(
+            BuiltInAgentTools.BrowserMouse,
+            """
+            {
+              "action":"click","x":12.5,"y":24.5,"button":"left",
+              "buttons":["left"],"modifiers":["control","shift"],
+              "click_count":2,"document_revision":7,"viewport_revision":8,
+              "input_epoch":9
+            }
+            """);
+
+        var parsed = Assert.IsType<BrowserAgentIntentResult.Parsed>(
+            BrowserAgentToolParser.Parse(proposal));
+        var mouse = Assert.IsType<BrowserAgentIntent.Mouse>(parsed.Intent);
+
+        Assert.Equal(BrowserMouseAction.Click, mouse.Action);
+        Assert.Equal(12.5, mouse.XCss);
+        Assert.Equal(BrowserMouseButton.Left, mouse.Button);
+        Assert.Equal(
+            BrowserInputModifiers.Control | BrowserInputModifiers.Shift,
+            mouse.Modifiers);
+        Assert.Equal((7L, 8L, 9L),
+            (mouse.DocumentRevision, mouse.ViewportRevision, mouse.InputEpoch));
+    }
+
+    [Theory]
+    [InlineData(BuiltInAgentTools.BrowserMouse,
+        "{\"action\":\"down\",\"x\":1,\"y\":1,\"button\":\"left\",\"click_count\":1,\"document_revision\":1,\"viewport_revision\":1,\"input_epoch\":1}")]
+    [InlineData(BuiltInAgentTools.BrowserKey,
+        "{\"action\":\"down\",\"key\":\"A\",\"document_revision\":1,\"viewport_revision\":1,\"input_epoch\":1}")]
+    [InlineData(BuiltInAgentTools.BrowserScroll,
+        "{\"origin_x\":1,\"origin_y\":1,\"delta_x\":0,\"delta_y\":0,\"document_revision\":1,\"viewport_revision\":1,\"input_epoch\":1}")]
+    [InlineData(BuiltInAgentTools.BrowserEvaluate,
+        "{\"source\":\"document.cookie\",\"world\":\"isolated\",\"document_revision\":1,\"viewport_revision\":1,\"input_epoch\":1}")]
+    public async Task LowLevelParserRejectsUnsafeOrNonAtomicRequests(
+        string toolName,
+        string arguments)
+    {
+        var proposal = await ProposalAsync(toolName, arguments);
+
+        var rejected = Assert.IsType<BrowserAgentIntentResult.Rejected>(
+            BrowserAgentToolParser.Parse(proposal));
+
+        Assert.Equal("invalid_tool_arguments", rejected.StableCode);
+    }
 
     private static async Task<AgentToolProposal> ProposalAsync(
         string name,

@@ -18,6 +18,14 @@ public abstract record AgentFileRequest
         ImmutableArray<FilePanelPathSegment> RelativePath)
         : AgentFileRequest;
 
+    public sealed record Search(
+        SessionId SessionId,
+        ImmutableArray<FilePanelPathSegment> RelativePath,
+        string Query,
+        FilePanelDiscoveryScope Scope,
+        int MaximumResults)
+        : AgentFileRequest;
+
     public sealed record Stat(
         SessionId SessionId,
         ImmutableArray<FilePanelPathSegment> RelativePath)
@@ -28,13 +36,28 @@ public abstract record AgentFileRequest
         ImmutableArray<FilePanelPathSegment> RelativePath)
         : AgentFileRequest;
 
+    public sealed record AccessRead(
+        SessionId SessionId,
+        ImmutableArray<FilePanelPathSegment> RelativePath)
+        : AgentFileRequest;
+
+    public sealed record Transfers(SessionId SessionId)
+        : AgentFileRequest;
+
     public sealed record CreateDirectory(
         SessionId SessionId,
         ImmutableArray<FilePanelPathSegment> RelativePath)
         : AgentFileRequest;
 
+    public sealed record Move(
+        SessionId SessionId,
+        ImmutableArray<FilePanelPathSegment> RelativePath,
+        ImmutableArray<FilePanelPathSegment> DestinationRelativePath)
+        : AgentFileRequest;
+
     public sealed record Delete(
         SessionId SessionId,
-        ImmutableArray<FilePanelPathSegment> RelativePath)
+        ImmutableArray<FilePanelPathSegment> RelativePath,
+        bool Recursive = false)
         : AgentFileRequest;
 }

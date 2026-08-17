@@ -31,9 +31,9 @@ narrow control allowlist.
 GhostSHELL adds `browser.fill` as the ninth governed browser tool. It is a
 mutation under `BrowserInteraction`, alongside `browser.click`, and its default
 permission is `Ask`. The broker escalates `BrowserInteraction=Auto` to an exact
-`HumanApproval`; the session-host domain gate independently accepts only
-`HumanApproval` for fill. `AutoPolicy`, `YoloPolicy`, and every other source
-fail closed.
+`HumanApproval`; the session-host domain gate independently accepts
+`HumanApproval` or explicitly confirmed run-local `YoloPolicy` for fill.
+`AutoPolicy` and every other source fail closed.
 
 The closed provider schema accepts exactly:
 
@@ -128,14 +128,14 @@ uncertain completion returns non-retryable
 cross-origin navigation denial invalidate references and attempt to quarantine
 the old adapter. Successful replacement installs a fresh `about:blank` adapter
 and advances the document revision; failed replacement leaves interaction
-unavailable. Every outcome-unknown also quarantines and revokes the agent run
-before provider continuation, so the model cannot retry a possibly committed
-fill.
+unavailable. Every outcome-unknown is committed as a non-retryable failed tool
+result; the stale remainder of that provider batch is skipped and the provider
+must inspect fresh state before choosing another action.
 
 An unexpected exception escaping the in-process host during click or fill is
-also normalized to `browser_interaction_outcome_unknown`; it quarantines the run
-before provider continuation. Observation and navigation host exceptions retain
-the separate `browser_host_failed` failure.
+also normalized to `browser_interaction_outcome_unknown`; it follows the same
+settle-and-reconcile continuation path. Observation and navigation host
+exceptions retain the separate `browser_host_failed` failure.
 
 No Node.js process, CDP client, bundled Chromium controller, or browser sidecar
 is launched. Execution remains in the user's attached native-webview session
@@ -153,8 +153,8 @@ session-level ambiguity requirements below remain open.
   separate opaque browser-secret design is approved.
 - Fill reuses the conservative whole-snapshot invalidation and one-shot lease
   rules rather than introducing a second locator or lifetime model.
-- Post-commit ambiguity sacrifices availability and quarantines both adapter
-  and run instead of inviting a duplicate mutation.
+- Post-commit ambiguity sacrifices adapter availability and forces a fresh
+  observation instead of inviting a duplicate mutation or destroying the run.
 - Provider results and durable audit prove the action outcome without retaining
   the filled text.
 

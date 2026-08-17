@@ -245,9 +245,14 @@ public sealed partial class InMemorySessionHostClient
         switch (request)
         {
             case AgentTerminalRequest.ReadScreen:
+            case AgentTerminalRequest.ReadScreenDiff:
+            case AgentTerminalRequest.FindOnScreen:
+            case AgentTerminalRequest.WaitForDelay:
             case AgentTerminalRequest.WaitForText:
             case AgentTerminalRequest.WaitForChange:
             case AgentTerminalRequest.WaitForStable:
+            case AgentTerminalRequest.WaitForPromptReady:
+            case AgentTerminalRequest.WaitForCommandFinished:
                 return new AgentTerminalDispatch(
                     request,
                     session,
@@ -258,6 +263,19 @@ public sealed partial class InMemorySessionHostClient
                     "operation_cancelled",
                     OneActionLeaseId: null,
                     revision);
+            case AgentTerminalRequest.ReadScrollback:
+            case AgentTerminalRequest.FindScrollback:
+                return new AgentTerminalDispatch(
+                    request,
+                    session,
+                    RequireAutomation(session),
+                    Process: null,
+                    runtimeCancellation,
+                    CancellationToken.None,
+                    "operation_cancelled",
+                    OneActionLeaseId: null,
+                    revision,
+                    State: RequireState(session));
             case AgentTerminalRequest.SendText:
             case AgentTerminalRequest.SendKey:
             case AgentTerminalRequest.Interrupt:
@@ -280,6 +298,13 @@ public sealed partial class InMemorySessionHostClient
                     session,
                     runtimeCancellation,
                     revision);
+            case AgentTerminalRequest.SubmitText:
+                RequireAgentSubmitTextCapabilities(session);
+                return InputDispatch(
+                    request,
+                    session,
+                    runtimeCancellation,
+                    revision);
             case AgentTerminalRequest.SendMouse:
                 RequireAgentMouseCapabilities(session);
                 return InputDispatch(
@@ -287,6 +312,19 @@ public sealed partial class InMemorySessionHostClient
                     session,
                     runtimeCancellation,
                     revision);
+            case AgentTerminalRequest.ScrollViewport:
+                RequireAgentScrollCapabilities(session);
+                return new AgentTerminalDispatch(
+                    request,
+                    session,
+                    Automation: RequireAutomation(session),
+                    Process: null,
+                    runtimeCancellation,
+                    CancellationToken.None,
+                    "input_lease_revoked",
+                    OneActionLeaseId: null,
+                    revision,
+                    State: RequireState(session));
             case AgentTerminalRequest.Resize resize:
                 if (!session.Engine.Capabilities.Contains(
                         SessionCapabilities.TerminalResize))
@@ -356,16 +394,37 @@ public sealed partial class InMemorySessionHostClient
             HostErrorCode.CapabilityNotSupported,
             "The terminal does not expose its automation port.");
 
+    private static ITerminalState RequireState(HostedSession session) =>
+        session.Engine as ITerminalState
+        ?? throw DispatchFailure(
+            HostErrorCode.CapabilityNotSupported,
+            "The terminal does not expose its state port.");
+
     private static void RequireAgentMouseCapabilities(HostedSession session)
     {
         var capabilities = session.Engine.Capabilities;
         if (!capabilities.Contains(SessionCapabilities.TerminalMouse)
+            || !capabilities.Contains(
+                SessionCapabilities.TerminalRevisionBoundMouse)
             || !capabilities.Contains(
                 SessionCapabilities.TerminalAgentInputBarrier))
         {
             throw DispatchFailure(
                 HostErrorCode.CapabilityNotSupported,
                 "The terminal cannot safely accept governed mouse input.");
+        }
+    }
+
+    private static void RequireAgentScrollCapabilities(HostedSession session)
+    {
+        var capabilities = session.Engine.Capabilities;
+        if (!capabilities.Contains(SessionCapabilities.TerminalScrollback)
+            || !capabilities.Contains(
+                SessionCapabilities.TerminalAgentInputBarrier))
+        {
+            throw DispatchFailure(
+                HostErrorCode.CapabilityNotSupported,
+                "The terminal cannot safely accept governed viewport scrolling.");
         }
     }
 
@@ -376,6 +435,16 @@ public sealed partial class InMemorySessionHostClient
             throw DispatchFailure(
                 HostErrorCode.CapabilityNotSupported,
                 "The terminal cannot safely accept governed paste input.");
+        }
+    }
+
+    private static void RequireAgentSubmitTextCapabilities(HostedSession session)
+    {
+        if (!HasAgentSubmitTextCapabilities(session))
+        {
+            throw DispatchFailure(
+                HostErrorCode.CapabilityNotSupported,
+                "The terminal cannot safely accept governed atomic text submission.");
         }
     }
 
@@ -405,13 +474,24 @@ public sealed partial class InMemorySessionHostClient
                 SessionCapabilities.TerminalAgentInputBarrier);
     }
 
+    private static bool HasAgentSubmitTextCapabilities(HostedSession session)
+    {
+        var capabilities = session.Engine.Capabilities;
+        return capabilities.Contains(SessionCapabilities.TerminalPaste)
+            && capabilities.Contains(SessionCapabilities.TerminalEnter)
+            && capabilities.Contains(
+                SessionCapabilities.TerminalAgentInputBarrier);
+    }
+
     private static bool RequiresOneActionInputLease(
         AgentTerminalRequest request) =>
         request is AgentTerminalRequest.SendText
             or AgentTerminalRequest.Paste
+            or AgentTerminalRequest.SubmitText
             or AgentTerminalRequest.SendKey
             or AgentTerminalRequest.SendChord
             or AgentTerminalRequest.SendMouse
+            or AgentTerminalRequest.ScrollViewport
             or AgentTerminalRequest.Interrupt;
 
     private async ValueTask<HostResult<AgentTerminalActionResult>>
@@ -522,6 +602,48 @@ public sealed partial class InMemorySessionHostClient
                             dispatch,
                             cancellationToken)
                         .ConfigureAwait(false),
+                AgentTerminalRequest.ReadScreenDiff read =>
+                    HostResult<AgentTerminalActionResult>.Succeed(
+                        new AgentTerminalActionResult.ScreenDiff(
+                            await dispatch.Automation!
+                                .ReadScreenDiffAsync(
+                                    read.Input,
+                                    cancellationToken)
+                                .ConfigureAwait(false)),
+                        dispatch.Revision),
+                AgentTerminalRequest.FindOnScreen find =>
+                    HostResult<AgentTerminalActionResult>.Succeed(
+                        new AgentTerminalActionResult.ScreenFind(
+                            TerminalScreenFindResult.Search(
+                                await dispatch.Automation!
+                                    .ObserveScreenAsync(cancellationToken)
+                                    .ConfigureAwait(false),
+                                find.Input)),
+                        dispatch.Revision),
+                AgentTerminalRequest.ReadScrollback read =>
+                    HostResult<AgentTerminalActionResult>.Succeed(
+                        new AgentTerminalActionResult.Scrollback(
+                            await dispatch.State!
+                                .ReadScrollbackAsync(
+                                    read.Input,
+                                    cancellationToken)
+                                .ConfigureAwait(false)),
+                        dispatch.Revision),
+                AgentTerminalRequest.FindScrollback find =>
+                    HostResult<AgentTerminalActionResult>.Succeed(
+                        new AgentTerminalActionResult.Find(
+                            await dispatch.State!
+                                .FindScrollbackAsync(
+                                    find.Input,
+                                    cancellationToken)
+                                .ConfigureAwait(false)),
+                        dispatch.Revision),
+                AgentTerminalRequest.ScrollViewport scroll =>
+                    await ScrollViewportAsync(
+                            dispatch,
+                            scroll.Input,
+                            cancellationToken)
+                        .ConfigureAwait(false),
                 AgentTerminalRequest.SendText sendText =>
                     await SendTextAsync(
                             dispatch,
@@ -532,6 +654,13 @@ public sealed partial class InMemorySessionHostClient
                     await PasteAsync(
                             dispatch,
                             paste.Text,
+                            authorizationSource,
+                            cancellationToken)
+                        .ConfigureAwait(false),
+                AgentTerminalRequest.SubmitText submit =>
+                    await SubmitTextAsync(
+                            dispatch,
+                            submit.Text,
                             authorizationSource,
                             cancellationToken)
                         .ConfigureAwait(false),
@@ -552,8 +681,18 @@ public sealed partial class InMemorySessionHostClient
                     await SendMouseAsync(
                             dispatch,
                             sendMouse.MouseInput,
+                            sendMouse.ExpectedContentRevision,
                             cancellationToken)
                         .ConfigureAwait(false),
+                AgentTerminalRequest.WaitForDelay wait =>
+                    HostResult<AgentTerminalActionResult>.Succeed(
+                        new AgentTerminalActionResult.Wait(
+                            await dispatch.Automation!
+                                .WaitForDelayAsync(
+                                    wait.Value.Wait,
+                                    cancellationToken)
+                                .ConfigureAwait(false)),
+                        dispatch.Revision),
                 AgentTerminalRequest.WaitForText wait =>
                     HostResult<AgentTerminalActionResult>.Succeed(
                         new AgentTerminalActionResult.Wait(
@@ -581,6 +720,22 @@ public sealed partial class InMemorySessionHostClient
                                     cancellationToken)
                                 .ConfigureAwait(false)),
                         dispatch.Revision),
+                AgentTerminalRequest.WaitForPromptReady wait =>
+                    SemanticWaitResult(
+                        await dispatch.Automation!
+                            .WaitForPromptReadyAsync(
+                                wait.Value.Wait,
+                                cancellationToken)
+                            .ConfigureAwait(false),
+                        dispatch.Revision),
+                AgentTerminalRequest.WaitForCommandFinished wait =>
+                    SemanticWaitResult(
+                        await dispatch.Automation!
+                            .WaitForCommandFinishedAsync(
+                                wait.Value.Wait,
+                                cancellationToken)
+                            .ConfigureAwait(false),
+                        dispatch.Revision),
                 AgentTerminalRequest.Interrupt =>
                     await InterruptAsync(dispatch, cancellationToken)
                         .ConfigureAwait(false),
@@ -595,6 +750,15 @@ public sealed partial class InMemorySessionHostClient
                     "The terminal-agent request kind is unsupported.",
                     dispatch.Revision),
             };
+        }
+        catch (TerminalScrollbackAnchorStaleException exception)
+        {
+            return HostResult<AgentTerminalActionResult>.Fail(
+                new HostError(
+                    HostErrorCode.RevisionConflict,
+                    "terminal_scrollback_anchor_stale",
+                    exception.Message),
+                dispatch.Revision);
         }
         catch (OperationCanceledException)
         {
@@ -616,13 +780,27 @@ public sealed partial class InMemorySessionHostClient
             CancellationToken cancellationToken)
     {
         var snapshot = await dispatch.Automation!
-            .ReadScreenAsync(cancellationToken)
+            .ObserveScreenAsync(cancellationToken)
             .ConfigureAwait(false);
         dispatch.Session.UpdateTerminalWorkingDirectory(snapshot.WorkingDirectory);
         return HostResult<AgentTerminalActionResult>.Succeed(
             new AgentTerminalActionResult.Screen(snapshot),
             dispatch.Session.Snapshot().Descriptor.Revision);
     }
+
+    private static HostResult<AgentTerminalActionResult> SemanticWaitResult(
+        TerminalWaitOutcome outcome,
+        long revision) =>
+        outcome.Kind == TerminalWaitOutcomeKind.Unsupported
+            ? HostResult<AgentTerminalActionResult>.Fail(
+                new HostError(
+                    HostErrorCode.CapabilityNotSupported,
+                    "terminal_shell_integration_unavailable",
+                    "The terminal cannot observe OSC 133 shell-integration events."),
+                revision)
+            : HostResult<AgentTerminalActionResult>.Succeed(
+                new AgentTerminalActionResult.Wait(outcome),
+                revision);
 
     private static async ValueTask<HostResult<AgentTerminalActionResult>>
         SendTextAsync(
@@ -737,15 +915,123 @@ public sealed partial class InMemorySessionHostClient
     }
 
     private static async ValueTask<HostResult<AgentTerminalActionResult>>
+        SubmitTextAsync(
+            AgentTerminalDispatch dispatch,
+            string text,
+            AgentAuthorizationSource authorizationSource,
+            CancellationToken cancellationToken)
+    {
+        if (!HasAgentSubmitTextCapabilities(dispatch.Session))
+        {
+            return HostResult<AgentTerminalActionResult>.Fail(
+                HostError.Create(
+                    HostErrorCode.CapabilityNotSupported,
+                    "The terminal can no longer safely accept governed atomic text submission."),
+                dispatch.Revision);
+        }
+
+        if (authorizationSource is not (
+                AgentAuthorizationSource.HumanApproval
+                or AgentAuthorizationSource.YoloPolicy))
+        {
+            return HostResult<AgentTerminalActionResult>.Fail(
+                HostError.Create(
+                    HostErrorCode.ConfirmationRequired,
+                    "Governed terminal text submission requires explicit human approval "
+                    + "or run-local YOLO."),
+                dispatch.Revision);
+        }
+
+        var result = await dispatch.Automation!
+            .SubmitTextAsync(
+                new TerminalPasteInput(text, ConfirmedUnsafe: true),
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (result.Sent && !result.RequiresConfirmation)
+        {
+            return Completed(dispatch.Revision);
+        }
+
+        if (!result.Sent && result.RequiresConfirmation)
+        {
+            return HostResult<AgentTerminalActionResult>.Fail(
+                HostError.Create(
+                    HostErrorCode.ConfirmationRequired,
+                    "Unsafe terminal text submission requires explicit human approval "
+                    + "or run-local YOLO."),
+                dispatch.Revision);
+        }
+
+        return HostResult<AgentTerminalActionResult>.Fail(
+            new HostError(
+                HostErrorCode.EngineFailed,
+                "invalid_submit_text_result",
+                "The terminal returned an invalid governed text-submission result."),
+            dispatch.Revision);
+    }
+
+    private static async ValueTask<HostResult<AgentTerminalActionResult>>
         SendMouseAsync(
             AgentTerminalDispatch dispatch,
             TerminalMouseInput mouseInput,
+            long expectedContentRevision,
             CancellationToken cancellationToken)
     {
-        await dispatch.Automation!
-            .SendMouseAsync(mouseInput, cancellationToken)
+        var outcome = await dispatch.Automation!
+            .SendMouseAtContentRevisionAsync(
+                mouseInput,
+                expectedContentRevision,
+                cancellationToken)
             .ConfigureAwait(false);
-        return Completed(dispatch.Revision);
+        return outcome switch
+        {
+            TerminalRevisionBoundMouseOutcome.Sent => Completed(dispatch.Revision),
+            TerminalRevisionBoundMouseOutcome.ContentRevisionChanged =>
+                HostResult<AgentTerminalActionResult>.Fail(
+                    new HostError(
+                        HostErrorCode.RevisionConflict,
+                        "terminal_content_revision_changed",
+                        "The terminal content changed before the mouse event could be sent."),
+                    dispatch.Revision),
+            TerminalRevisionBoundMouseOutcome.CoordinatesOutOfBounds =>
+                InvalidAgentTerminalAction(
+                    "The mouse coordinates are outside the revision-bound terminal grid.",
+                    dispatch.Revision),
+            TerminalRevisionBoundMouseOutcome.MouseTrackingDisabled =>
+                InvalidAgentTerminalAction(
+                    "Terminal mouse tracking is not enabled at the expected content revision.",
+                    dispatch.Revision),
+            _ => throw new ArgumentOutOfRangeException(nameof(outcome)),
+        };
+    }
+
+    private static async ValueTask<HostResult<AgentTerminalActionResult>>
+        ScrollViewportAsync(
+            AgentTerminalDispatch dispatch,
+            TerminalViewportScrollInput input,
+            CancellationToken cancellationToken)
+    {
+        var before = await dispatch.State!
+            .ReadScreenAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (before.IsAlternateScreen
+            && before.ScrollbackLinesAbove == 0
+            && before.ScrollbackLinesBelow == 0)
+        {
+            return InvalidAgentTerminalAction(
+                "The alternate screen has no hosted scrollback to move through.",
+                dispatch.Revision);
+        }
+
+        await dispatch.State
+            .ScrollViewportAsync(input, cancellationToken)
+            .ConfigureAwait(false);
+        var after = await dispatch.Automation!
+            .ObserveScreenAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return HostResult<AgentTerminalActionResult>.Succeed(
+            new AgentTerminalActionResult.Screen(after),
+            dispatch.Session.Snapshot().Descriptor.Revision);
     }
 
     private static async ValueTask<HostResult<AgentTerminalActionResult>>
@@ -874,6 +1160,23 @@ public sealed partial class InMemorySessionHostClient
             return result;
         }
 
+        if (result is HostResult<AgentTerminalActionResult>.Success
+            {
+                Value: AgentTerminalActionResult.Wait
+                {
+                    Outcome:
+                    {
+                        Kind: TerminalWaitOutcomeKind.Cancelled,
+                        Snapshot: not null,
+                    },
+                },
+            })
+        {
+            // Cancellation remains the audited action outcome, while the
+            // fresh final terminal observation remains available to the agent.
+            return result;
+        }
+
         return HostResult<AgentTerminalActionResult>.Fail(
             new HostError(
                 HostErrorCode.Cancelled,
@@ -924,14 +1227,24 @@ public sealed partial class InMemorySessionHostClient
         {
             AgentTerminalActionResult.Completed => "ok",
             AgentTerminalActionResult.Screen => "screen_read",
+            AgentTerminalActionResult.ScreenDiff => "screen_diff_read",
+            AgentTerminalActionResult.ScreenFind => "screen_found",
+            AgentTerminalActionResult.Scrollback => "scrollback_read",
+            AgentTerminalActionResult.Find => "scrollback_found",
             AgentTerminalActionResult.Wait wait => wait.Outcome.Kind switch
             {
+                TerminalWaitOutcomeKind.Elapsed => "wait_elapsed",
                 TerminalWaitOutcomeKind.Matched => "wait_matched",
                 TerminalWaitOutcomeKind.Changed => "wait_changed",
                 TerminalWaitOutcomeKind.Stable => "wait_stable",
+                TerminalWaitOutcomeKind.PromptReady => "wait_prompt_ready",
+                TerminalWaitOutcomeKind.CommandFinished =>
+                    "wait_command_finished",
                 TerminalWaitOutcomeKind.Timeout => "wait_timeout",
                 TerminalWaitOutcomeKind.SessionEnded => "session_ended",
                 TerminalWaitOutcomeKind.Cancelled => "operation_cancelled",
+                TerminalWaitOutcomeKind.Unsupported =>
+                    "terminal_shell_integration_unavailable",
                 _ => throw new ArgumentOutOfRangeException(
                     nameof(result),
                     wait.Outcome.Kind,
@@ -947,14 +1260,24 @@ public sealed partial class InMemorySessionHostClient
         request switch
         {
             AgentTerminalRequest.ReadScreen read => read.SessionId,
+            AgentTerminalRequest.ReadScreenDiff read => read.SessionId,
+            AgentTerminalRequest.FindOnScreen find => find.SessionId,
+            AgentTerminalRequest.ReadScrollback read => read.SessionId,
+            AgentTerminalRequest.FindScrollback find => find.SessionId,
+            AgentTerminalRequest.ScrollViewport scroll => scroll.SessionId,
             AgentTerminalRequest.SendText sendText => sendText.SessionId,
             AgentTerminalRequest.Paste paste => paste.SessionId,
+            AgentTerminalRequest.SubmitText submit => submit.SessionId,
             AgentTerminalRequest.SendKey sendKey => sendKey.SessionId,
             AgentTerminalRequest.SendChord sendChord => sendChord.SessionId,
             AgentTerminalRequest.SendMouse sendMouse => sendMouse.SessionId,
+            AgentTerminalRequest.WaitForDelay wait => wait.Value.SessionId,
             AgentTerminalRequest.WaitForText wait => wait.Value.SessionId,
             AgentTerminalRequest.WaitForChange wait => wait.Value.SessionId,
             AgentTerminalRequest.WaitForStable wait => wait.Value.SessionId,
+            AgentTerminalRequest.WaitForPromptReady wait => wait.Value.SessionId,
+            AgentTerminalRequest.WaitForCommandFinished wait =>
+                wait.Value.SessionId,
             AgentTerminalRequest.Interrupt interrupt => interrupt.SessionId,
             AgentTerminalRequest.Resize resize => resize.Value.SessionId,
             _ => throw DispatchFailure(
@@ -1017,7 +1340,8 @@ public sealed partial class InMemorySessionHostClient
         string ScopeRevocationCode,
         InputLeaseId? OneActionLeaseId,
         long Revision,
-        long? ExpectedSessionRevision = null);
+        long? ExpectedSessionRevision = null,
+        ITerminalState? State = null);
 
     private sealed class AgentTerminalDispatchException(HostError error)
         : Exception(error.Message)

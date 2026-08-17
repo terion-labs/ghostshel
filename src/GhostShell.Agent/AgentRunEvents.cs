@@ -9,6 +9,7 @@ public enum NativeAgentSessionState
     Ready,
     Streaming,
     AwaitingToolDecision,
+    AwaitingProviderContinuation,
     Failed,
     Cancelled,
 }
@@ -128,9 +129,12 @@ public enum AgentRunEventKind
     TurnFailed,
     TurnCancelled,
     ToolProposalsDiscarded,
+    ToolResultsCommitted,
     ConversationCompacted,
     ConversationTitleChanged,
     TurnSteered,
+    SystemPromptRebased,
+    RecoveryCheckpointCaptured,
 }
 
 public sealed record AgentRunEvent
@@ -190,6 +194,7 @@ public sealed record AgentSessionSnapshot(
     long LastSequence,
     long Generation,
     ImmutableArray<AgentMessage> Conversation,
+    ImmutableArray<AgentMessage> Transcript,
     ImmutableArray<AgentToolProposal> PendingToolProposals);
 
 public sealed record AgentEventWatchRequest

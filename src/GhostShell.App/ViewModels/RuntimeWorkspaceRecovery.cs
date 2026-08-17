@@ -9,9 +9,7 @@ namespace GhostShell.App.ViewModels;
 internal static class RuntimeWorkspaceRecoveryCodec
 {
     public const string SnapshotKey = "desktop.main-window";
-    public const int SchemaVersion = 6;
-
-    private const int OldestSupportedSchemaVersion = 4;
+    public const int SchemaVersion = 8;
 
     private const int MaximumTabs = WorkspaceInstance.MaximumPanelCount;
     private const int MaximumPanelsPerTab = WorkspaceInstance.MaximumPanelCount;
@@ -25,10 +23,7 @@ internal static class RuntimeWorkspaceRecoveryCodec
             workspace is null || workspace.Tabs.Count == 0
                 ? null
                 : CaptureWorkspace(workspace, historySource));
-        if (!TryValidate(
-                payload,
-                allowLegacyPolicyFallback: false,
-                out var error))
+        if (!TryValidate(payload, out var error))
         {
             throw new InvalidOperationException(error);
         }
@@ -45,7 +40,7 @@ internal static class RuntimeWorkspaceRecoveryCodec
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         payload = null;
-        if (snapshot.SchemaVersion is < OldestSupportedSchemaVersion or > SchemaVersion)
+        if (snapshot.SchemaVersion != SchemaVersion)
         {
             error = $"Runtime recovery schema {snapshot.SchemaVersion} is not supported.";
             return false;
@@ -68,55 +63,9 @@ internal static class RuntimeWorkspaceRecoveryCodec
             return false;
         }
 
-        if (snapshot.SchemaVersion == 1
-            && payload?.Workspace?.Tabs is { } versionOneTabs
-            && versionOneTabs.Any(tab => tab?.HistorySource is not null))
-        {
-            payload = null;
-            error = "Runtime recovery schema 1 cannot contain history-source metadata.";
-            return false;
-        }
-
-        if (snapshot.SchemaVersion < 4
-            && payload?.Workspace is { } olderWorkspace
-            && (olderWorkspace.AgentPolicy is not null
-                || olderWorkspace.Tabs?.Any(tab => tab?.AgentPolicy is not null) == true))
-        {
-            payload = null;
-            error = "Older runtime recovery schemas cannot contain agent-policy provenance.";
-            return false;
-        }
-
-        // Schema 5 accidentally persisted the effective global value as if it
-        // were a workspace override. Keeping it would pin an inherited
-        // workspace to whatever the global preference happened to be when the
-        // snapshot was written. The durable workspace definition is consulted
-        // during restore, so discarding this ambiguous value is lossless there.
-        if (snapshot.SchemaVersion == 5 && payload?.Workspace is { } versionFiveWorkspace)
-        {
-            payload = payload with
-            {
-                Workspace = versionFiveWorkspace with { TerminalMultiplexingMode = null },
-            };
-        }
-
-        if (snapshot.SchemaVersion >= 4
-            && payload?.Workspace is { } currentWorkspace
-            && (currentWorkspace.AgentPolicy is null
-                || currentWorkspace.Tabs is null
-                || currentWorkspace.Tabs.Any(tab => tab?.AgentPolicy is null)))
-        {
-            payload = null;
-            error = "Runtime recovery schema 4 requires complete agent-policy provenance.";
-            return false;
-        }
-
         error = null;
         if (payload is null
-            || !TryValidate(
-                payload,
-                snapshot.SchemaVersion < 4,
-                out error))
+            || !TryValidate(payload, out error))
         {
             payload = null;
             error ??= "Runtime recovery data is incomplete.";
@@ -226,7 +175,6 @@ internal static class RuntimeWorkspaceRecoveryCodec
 
     private static bool TryValidate(
         RuntimeWindowRecoveryPayload payload,
-        bool allowLegacyPolicyFallback,
         out string? error)
     {
         if (payload.Workspace is not { } workspace)
@@ -265,7 +213,6 @@ internal static class RuntimeWorkspaceRecoveryCodec
                 || !TryValidate(
                     tab,
                     workspace.AgentPolicy,
-                    allowLegacyPolicyFallback,
                     out error))
             {
                 error ??= "Runtime tab recovery metadata is invalid.";
@@ -293,7 +240,6 @@ internal static class RuntimeWorkspaceRecoveryCodec
     private static bool TryValidate(
         RuntimeTabRecoveryPayload tab,
         RuntimeAgentPolicyRecoveryPayload? workspacePolicy,
-        bool allowLegacyPolicyFallback,
         out string? error)
     {
         if (!IsIdentifier(tab.Key)
@@ -322,6 +268,12 @@ internal static class RuntimeWorkspaceRecoveryCodec
             .SingleOrDefault(source => source.Kind == WorkspaceDefinition.Kind.Value);
         var tabWorkspacePolicySource = tab.AgentPolicy?.Sources
             .SingleOrDefault(source => source.Kind == WorkspaceDefinition.Kind.Value);
+        if (workspacePolicy is not null && tab.AgentPolicy is null)
+        {
+            error = "Recovered tab policy is missing its workspace policy lineage.";
+            return false;
+        }
+
         if (screenPolicySource is not null
             && (tab.HistorySource is null
                 || tab.HistorySource.SourceKind != screenPolicySource.Kind
@@ -333,8 +285,7 @@ internal static class RuntimeWorkspaceRecoveryCodec
 
         if (tab.HistorySource?.SourceKind == ScreenDefinition.Kind.Value
             && screenPolicySource is null
-            && !(allowLegacyPolicyFallback && tab.AgentPolicy is null)
-            && tab.AgentPolicy?.IsLegacyFallback != true)
+            && tab.AgentPolicy is not null)
         {
             error = "Recovered saved-screen tab is missing its policy provenance.";
             return false;
@@ -343,8 +294,6 @@ internal static class RuntimeWorkspaceRecoveryCodec
         if (workspacePolicy is not null
             && tab.AgentPolicy is not null
             && (screenPolicySource is null
-                && tab.AgentPolicy.IsLegacyFallback != workspacePolicy.IsLegacyFallback
-                || screenPolicySource is null
                 && tab.AgentPolicy.HasPolicyOverride != workspacePolicy.HasPolicyOverride
                 || tabWorkspacePolicySource != workspacePolicySource
                 || screenPolicySource is null
@@ -548,30 +497,33 @@ internal sealed record RuntimeAgentPolicyRecoveryPayload(
     string Model,
     Dictionary<AgentCapability, AgentPermission> Permissions,
     RuntimeAgentPolicySourceRecoveryPayload[] Sources,
-    bool IsLegacyFallback,
     bool HasPolicyOverride,
-    AgentModelSelection? CompactionModel = null,
-    AgentModelSelection? TitleModel = null,
+    AgentModelSelection CompactionModel,
+    AgentModelSelection TitleModel,
     string? SystemPrompt = null)
 {
-    public static RuntimeAgentPolicyRecoveryPayload Capture(
+    public static RuntimeAgentPolicyRecoveryPayload? Capture(
         RuntimeAgentPolicyProvenance provenance)
     {
         ArgumentNullException.ThrowIfNull(provenance);
+        if (provenance.EffectivePolicy is not { } policy)
+        {
+            return null;
+        }
+
         return new(
-            provenance.EffectivePolicy.Provider,
-            provenance.EffectivePolicy.Model,
-            provenance.EffectivePolicy.Permissions.ToDictionary(
+            policy.Provider,
+            policy.Model,
+            policy.Permissions.ToDictionary(
                 item => item.Key,
                 item => item.Value),
             provenance.Sources
                 .Select(RuntimeAgentPolicySourceRecoveryPayload.Capture)
                 .ToArray(),
-            provenance.IsLegacyFallback,
             provenance.HasPolicyOverride,
-            provenance.EffectivePolicy.CompactionModel,
-            provenance.EffectivePolicy.TitleModel,
-            provenance.EffectivePolicy.SystemPrompt);
+            policy.CompactionModel,
+            policy.TitleModel,
+            policy.SystemPrompt);
     }
 
     public bool TryValidate()
@@ -597,13 +549,7 @@ internal sealed record RuntimeAgentPolicyRecoveryPayload(
             SystemPrompt = SystemPrompt,
         };
         return policy.IsValidForDurableStorage()
-            && (!IsLegacyFallback
-                || Sources.Length == 0
-                && !HasPolicyOverride
-                && HasSamePolicyAs(AgentPolicy.Default))
-            && (!HasPolicyOverride
-                ? HasSamePolicyAs(AgentPolicy.Default)
-                : Sources.Length > 0)
+            && (!HasPolicyOverride || Sources.Length > 0)
             && Permissions.Keys.ToHashSet().SetEquals(AgentPolicy.Capabilities);
     }
 
@@ -626,7 +572,6 @@ internal sealed record RuntimeAgentPolicyRecoveryPayload(
                 SystemPrompt = SystemPrompt,
             },
             Sources.Select(source => source.ToSource()),
-            IsLegacyFallback,
             HasPolicyOverride);
     }
 
@@ -644,18 +589,6 @@ internal sealed record RuntimeAgentPolicyRecoveryPayload(
                 && item.Value == permission);
     }
 
-    private bool HasSamePolicyAs(AgentPolicy other)
-    {
-        var resolved = AgentPolicyResolver.Resolve(other);
-        return string.Equals(Provider, resolved.Provider, StringComparison.Ordinal)
-        && string.Equals(Model, resolved.Model, StringComparison.Ordinal)
-        && CompactionModel == resolved.CompactionModel
-        && TitleModel == resolved.TitleModel
-        && string.Equals(SystemPrompt, resolved.SystemPrompt, StringComparison.Ordinal)
-        && AgentPolicy.Capabilities.All(capability =>
-            Permissions.TryGetValue(capability, out var permission)
-            && permission == resolved.GetPermission(capability));
-    }
 }
 
 internal sealed record RuntimeAgentPolicySourceRecoveryPayload(

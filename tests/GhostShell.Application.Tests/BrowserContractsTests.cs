@@ -289,6 +289,31 @@ public sealed class BrowserContractsTests
     }
 
     [Fact]
+    public void Snapshot_query_is_bounded_and_defaults_to_lean_output()
+    {
+        var lean = BrowserSnapshotQuery.Lean;
+        var narrowed = new BrowserSnapshotQuery(
+            interactiveOnly: true,
+            filter: "Checkout",
+            maximumDepth: 4);
+
+        Assert.False(lean.InteractiveOnly);
+        Assert.Null(lean.Filter);
+        Assert.Null(lean.MaximumDepth);
+        Assert.True(narrowed.InteractiveOnly);
+        Assert.Equal("Checkout", narrowed.Filter);
+        Assert.Equal(4, narrowed.MaximumDepth);
+        Assert.Throws<ArgumentException>(() =>
+            new BrowserSnapshotQuery(filter: " result "));
+        Assert.Throws<ArgumentException>(() =>
+            new BrowserSnapshotQuery(
+                filter: new string('x', BrowserSnapshotQuery.MaximumFilterBytes + 1)));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new BrowserSnapshotQuery(
+                maximumDepth: BrowserSnapshotNode.MaximumDepth + 1));
+    }
+
+    [Fact]
     public void Snapshot_references_are_opaque_bounded_identifiers()
     {
         var document = new BrowserDocumentBinding(
@@ -655,6 +680,13 @@ public sealed class BrowserContractsTests
                 BrowserErrorCode.ElementNotCheckable,
                 "browser_element_not_checkable"),
             (
+                BrowserErrorCode.CheckStateNotApplied,
+                "browser_check_state_not_applied"),
+            (BrowserErrorCode.ScriptRejected, "browser_script_rejected"),
+            (
+                BrowserErrorCode.ScriptResultRejected,
+                "browser_script_result_rejected"),
+            (
                 BrowserErrorCode.InteractionOutcomeUnknown,
                 "browser_interaction_outcome_unknown"),
             (BrowserErrorCode.NavigationFailed, "navigation_failed"),
@@ -723,6 +755,9 @@ public sealed class BrowserContractsTests
         Assert.Equal(
             "browser.navigation_origin_guard",
             SessionCapabilities.BrowserOriginGuard);
+        Assert.Equal(
+            "browser.agent_input_barrier",
+            SessionCapabilities.BrowserAgentInputBarrier);
     }
 
     [Theory]
@@ -775,6 +810,18 @@ public sealed class BrowserContractsTests
         Assert.Equal(expected, origin.ToString());
     }
 
+    [Theory]
+    [InlineData("https://example.test/")]
+    [InlineData("http://other.test:8080/path")]
+    [InlineData("about:blank")]
+    public void Unrestricted_navigation_origin_allows_every_supported_address(
+        string destination)
+    {
+        Assert.True(
+            BrowserNavigationOrigin.Unrestricted.Allows(Address(destination)));
+        Assert.Equal("*", BrowserNavigationOrigin.Unrestricted.CanonicalValue);
+    }
+
     [Fact]
     public void Requests_keep_session_attachment_and_renderer_identity_explicit()
     {
@@ -825,6 +872,8 @@ public sealed class BrowserContractsTests
             typeof(IBrowserPanelSession)));
         Assert.True(typeof(IBrowserDocumentReader).IsAssignableFrom(
             typeof(IBrowserPanelSession)));
+        Assert.True(typeof(IBrowserWaitObservation).IsAssignableFrom(
+            typeof(IBrowserPanelSession)));
         Assert.True(typeof(IBrowserRendererAttachment).IsAssignableFrom(
             typeof(IBrowserPanelSession)));
         Assert.True(typeof(IBrowserNavigation).IsAssignableFrom(typeof(IBrowserRenderer)));
@@ -837,6 +886,8 @@ public sealed class BrowserContractsTests
         Assert.True(typeof(IOriginConstrainedBrowserElementCheck).IsAssignableFrom(
             typeof(IBrowserRenderer)));
         Assert.True(typeof(IBrowserDocumentReader).IsAssignableFrom(
+            typeof(IBrowserRenderer)));
+        Assert.True(typeof(IBrowserWaitObservation).IsAssignableFrom(
             typeof(IBrowserRenderer)));
 
         Assert.Equal(
@@ -897,6 +948,9 @@ public sealed class BrowserContractsTests
         Assert.Equal(
             ["CaptureSnapshotAsync"],
             OperationNames(typeof(IBrowserDocumentReader)));
+        Assert.Equal(
+            ["ReadElementStateAsync", "ReadNetworkActivityAsync"],
+            OperationNames(typeof(IBrowserWaitObservation)));
 
         Type[] ports =
         [
@@ -906,8 +960,10 @@ public sealed class BrowserContractsTests
             typeof(IOriginConstrainedBrowserElementFill),
             typeof(IOriginConstrainedBrowserElementCheck),
             typeof(IBrowserDocumentReader),
+            typeof(IBrowserWaitObservation),
             typeof(IBrowserRenderer),
             typeof(IBrowserRendererAttachment),
+            typeof(IBrowserPhysicalInputBarrier),
         ];
         foreach (var member in ports.SelectMany(port => port.GetMembers()))
         {
@@ -922,6 +978,28 @@ public sealed class BrowserContractsTests
         {
             Assert.NotEqual(typeof(object), parameter.ParameterType);
         }
+    }
+
+    [Fact]
+    public void BrowserWaitRequestEnforcesTheOneHourAndConditionBounds()
+    {
+        var sessionId = new SessionId("browser-1");
+        var maximum = new BrowserWaitRequest(
+            sessionId,
+            new BrowserWaitCondition.Delay(TimeSpan.FromHours(1)),
+            TimeSpan.FromHours(1));
+
+        Assert.Equal(BrowserWaitRequest.MaximumTimeout, maximum.Timeout);
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new BrowserWaitRequest(
+                sessionId,
+                new BrowserWaitCondition.Delay(TimeSpan.FromHours(1)),
+                TimeSpan.FromHours(1) + TimeSpan.FromMilliseconds(1)));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new BrowserWaitRequest(
+                sessionId,
+                new BrowserWaitCondition.Delay(TimeSpan.FromSeconds(2)),
+                TimeSpan.FromSeconds(1)));
     }
 
     private static string[] OperationNames(Type port) => port
@@ -973,7 +1051,8 @@ public sealed class BrowserContractsTests
         public ValueTask<BrowserResult<BrowserDocumentSnapshot>>
             CaptureSnapshotAsync(
                 BrowserDocumentBinding document,
-                CancellationToken cancellationToken) =>
+                CancellationToken cancellationToken,
+                BrowserSnapshotQuery? query = null) =>
             ValueTask.FromResult(
                 BrowserResult<BrowserDocumentSnapshot>.Success(
                     new BrowserDocumentSnapshot(

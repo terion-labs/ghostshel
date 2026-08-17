@@ -342,7 +342,12 @@ public sealed record TerminalPhysicalKeyEvent
 
 public sealed record TerminalKeyStroke
 {
-    public TerminalKeyStroke(TerminalKey Key, TerminalKeyModifiers Modifiers = TerminalKeyModifiers.None)
+    public const int MaximumRepeatCount = 64;
+
+    public TerminalKeyStroke(
+        TerminalKey Key,
+        TerminalKeyModifiers Modifiers = TerminalKeyModifiers.None,
+        int RepeatCount = 1)
     {
         if (!Enum.IsDefined(Key))
         {
@@ -354,13 +359,25 @@ public sealed record TerminalKeyStroke
             throw new ArgumentOutOfRangeException(nameof(Modifiers));
         }
 
+        if (RepeatCount is < 1 or > MaximumRepeatCount)
+        {
+            throw new ArgumentOutOfRangeException(nameof(RepeatCount));
+        }
+
         this.Key = Key;
         this.Modifiers = Modifiers;
+        this.RepeatCount = RepeatCount;
     }
 
     public TerminalKey Key { get; }
 
     public TerminalKeyModifiers Modifiers { get; }
+
+    /// <summary>
+    /// The bounded number of identical key presses delivered as one terminal
+    /// input operation.
+    /// </summary>
+    public int RepeatCount { get; }
 
     private const TerminalKeyModifiers AllModifiers =
         TerminalPhysicalKeyEvent.AllKeyboardModifiers;
@@ -499,6 +516,14 @@ public sealed record TerminalMouseInput
             (TerminalMouseButton.WheelDown, TerminalMouseEventKind.WheelDown) => true,
             _ => false,
         };
+}
+
+public enum TerminalRevisionBoundMouseOutcome
+{
+    Sent,
+    ContentRevisionChanged,
+    CoordinatesOutOfBounds,
+    MouseTrackingDisabled,
 }
 
 public sealed record TerminalPasteInput

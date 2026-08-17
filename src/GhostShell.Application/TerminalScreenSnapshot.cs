@@ -30,7 +30,8 @@ public sealed record TerminalScreenSnapshot
         int ScrollbackLinesAbove = 0,
         int ScrollbackLinesBelow = 0,
         IReadOnlyList<TerminalCommandBoundary>? CommandBoundaries = null,
-        IReadOnlyList<TerminalShellIntegrationEvent>? ShellIntegrationEvents = null)
+        IReadOnlyList<TerminalShellIntegrationEvent>? ShellIntegrationEvents = null,
+        TerminalInteractiveStateSnapshot? InteractiveState = null)
     {
         ArgumentNullException.ThrowIfNull(PlainText);
         if (Rows < 0)
@@ -87,6 +88,15 @@ public sealed record TerminalScreenSnapshot
         this.ScrollbackLinesBelow = ScrollbackLinesBelow;
         this.CommandBoundaries = SnapshotBoundaries(CommandBoundaries, Rows, Columns);
         this.ShellIntegrationEvents = SnapshotShellEvents(ShellIntegrationEvents);
+        var liveInteractiveState = InteractiveState is { } state
+            && state.ExpiresAtUtc > CapturedAtUtc
+                ? state
+                : null;
+        this.InteractiveState = liveInteractiveState is
+        { InputRegion: { } inputRegion }
+            && !inputRegion.Fits(Rows, Columns)
+                ? liveInteractiveState with { InputRegion = null }
+                : liveInteractiveState;
     }
 
     public string PlainText { get; }
@@ -128,6 +138,12 @@ public sealed record TerminalScreenSnapshot
     public IReadOnlyList<TerminalCommandBoundary> CommandBoundaries { get; }
 
     public IReadOnlyList<TerminalShellIntegrationEvent> ShellIntegrationEvents { get; }
+
+    /// <summary>
+    /// Optional, expiring application-authored state. Its absence means unknown,
+    /// not idle, and callers must never treat it as authorization.
+    /// </summary>
+    public TerminalInteractiveStateSnapshot? InteractiveState { get; }
 
     private static IReadOnlyList<TerminalScreenRow> SnapshotRows(
         IReadOnlyList<TerminalScreenRow>? rows,

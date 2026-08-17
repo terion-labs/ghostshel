@@ -9,8 +9,9 @@ The native agent kernel retains a bounded, stable conversation in memory, but
 process exit currently loses it. Pi's durable harness is a useful reference for
 the distinction between settled transcript state and volatile provider/tool
 effects. GhostSHELL does not implement Pi's durable operation interpreter,
-effect-intent log, or branching lanes. Desktop recovery is deliberately
-limited to the last fully committed idle conversation.
+effect-intent log, or branching lanes. Resumable recovery is deliberately
+limited to the last fully committed idle conversation, but visible chat
+history must not roll back to an older turn when a process exits mid-request.
 
 Persisting the kernel's entire object graph would be unsafe. An active provider
 stream is incomplete and may still commit or fail. A pending tool proposal is
@@ -25,7 +26,8 @@ session is `Ready`, with no provider operation, pending tool decision, or
 compaction lease. The checkpoint contains the run ID, schema version,
 generation, event revision, conversation revision, last sequence, last settled
 tool generation, optional generated conversation title, complete stable
-conversation, the last trusted provider/model route used for history
+provider context projection, complete committed user-visible transcript, the
+last trusted provider/model route used for history
 attribution, and deterministic provider-tool alias bindings. Stable assistant
 reasoning summaries and provider token usage are part of the conversation.
 Provider-private replay state may also round-trip
@@ -41,10 +43,24 @@ the same signature-validating attachment constructor. No provider client, tool
 definition, approval, policy authority, capability, secret reference, or
 resolved secret is in the format.
 
-The current schema-v2 payload is owned by `GhostShell.Agent`; storage treats it
-as an opaque bounded JSON object. Schema v2 adds the optional bounded generated
-title. Restore still accepts schema v1 and derives the legacy deterministic
-first-user-message title. Restore rejects unknown fields, unsupported newer
+`CaptureInterruptedCheckpoint` uses the same bounded document for history-only
+recovery. Before provider invocation it stores the accepted user message plus a
+fixed interruption receipt. At every pending proposal it excludes the
+unexecuted proposal; after a completed governed tool batch it retains the exact
+structured results and closes the transcript with the same fixed receipt. Each
+capture advances the kernel event revision before the SQLite compare-and-swap.
+The payload state is `interrupted`, and restore produces a `Ready` native
+session with no provider operation, proposal, approval, permit, capability, or
+run authority. It can be displayed and continued with a new user turn, but it
+cannot be mistaken for automatically resumable execution state.
+
+The current schema-v3 payload is owned by `GhostShell.Agent`; storage treats it
+as an opaque bounded JSON object. Schema v2 added the optional bounded generated
+title. Schema v3 separates the append-only committed transcript from the
+compacted provider context projection. Restore still accepts schema v1/v2,
+using their single conversation as both values because already-discarded
+pre-compaction messages cannot be reconstructed. Schema v1 also derives the
+deterministic first-user-message title. Restore rejects unknown fields, unsupported newer
 schema versions, inconsistent revisions/generations, malformed conversation shapes,
 duplicate or changed provider aliases, and values outside the current kernel
 limits. Credential-shaped literal text and structured credential properties
@@ -82,16 +98,27 @@ receipts are frozen alongside the existing historical SQLite fixtures.
 
 ## Consequences
 
-The durable unit is a settled snapshot, not an external-effect journal.
-Checkpoint persistence is crash-safe, but any provider request or tool action
-that was active at process death is intentionally absent. A restored session
-starts idle at the last committed conversation and does not infer or replay
-unfinished work.
+The durable unit is a settled snapshot or an inert interrupted transcript, not
+an external-effect journal. A provider request or tool action active at process
+death is never reconstructed. Completed tool results already captured remain
+visible; a pending proposal is absent. A normal checkpoint restores idle and
+resumable, while an interrupted checkpoint restores as a closed, sendable
+transcript and cannot infer or replay unfinished work.
+
+Compaction is invisible to chat history. It updates only the bounded provider
+context projection (system messages, the internal summary, and retained whole
+turns). The user-visible transcript keeps every committed message and is the
+source for rendering, titles, forks, and history scrollback. The internal
+summary is never projected as a user or assistant message.
 
 The desktop creates one `GovernedAgentRuntime` for every live workspace,
-including Quick Terminal's independent workspace. Each runtime saves after
-every fully completed provider/tool turn and loads only the newest valid
-checkpoint from its own workspace when its chat is created. Switching
+including Quick Terminal's independent workspace. Each runtime saves every
+accepted initial or queued user message before its provider invocation,
+advances the interrupted checkpoint across tool rounds, commits a completed
+provider transcript before title generation or compaction, and replaces it
+with the final resumable checkpoint after the fully completed provider/tool
+turn. It loads only the newest valid checkpoint from
+its own workspace when its chat is created. Switching
 workspaces switches the active runtime and transcript; no active chat or
 history catalog crosses that boundary. No pending
 approval, queued prompt, provider request, tool action, or capability is

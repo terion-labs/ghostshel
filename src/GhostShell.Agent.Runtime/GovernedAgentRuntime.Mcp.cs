@@ -18,17 +18,9 @@ public sealed partial class GovernedAgentRuntime
         AgentRunId? disallowedRunId;
         lock (_gate)
         {
-            var baselinePermission =
-                _baselinePolicy.GetPermission(AgentCapability.McpTools);
-            var runPermission =
-                _runPolicy.GetPermission(AgentCapability.McpTools);
             var effectivePermission =
                 _effectivePolicy.GetPermission(AgentCapability.McpTools);
-            var mayOpen =
-                _snapshot.YoloAuthority is null
-                && AllowsMcpDiscovery(baselinePermission)
-                && AllowsMcpDiscovery(runPermission)
-                && AllowsMcpDiscovery(effectivePermission);
+            var mayOpen = AllowsMcpDiscovery(effectivePermission);
             disallowedRunId = mayOpen
                 ? null
                 : _mcpManifest?.RunId;
@@ -231,8 +223,9 @@ public sealed partial class GovernedAgentRuntime
                 "approval_still_required");
         }
 
-        if (authorized.Authorization.Source
-            != AgentAuthorizationSource.HumanApproval)
+        if (authorized.Authorization.Source is not (
+                AgentAuthorizationSource.HumanApproval
+                or AgentAuthorizationSource.YoloPolicy))
         {
             return CreateRejectedResult(
                 proposal,
@@ -277,6 +270,13 @@ public sealed partial class GovernedAgentRuntime
             var stableCode = failure.Error.OutcomeUnknown
                 ? McpAgentToolResultJson.OutcomeUnknownStableCode
                 : failure.Error.StableCode;
+            if (failure.Error.OutcomeUnknown)
+            {
+                await CloseMcpRunIfOpenBestEffortAsync(
+                        GetRequiredSession().RunId)
+                    .ConfigureAwait(false);
+            }
+
             return CreateFailedResult(
                 proposal,
                 stableCode,
@@ -376,7 +376,9 @@ public sealed partial class GovernedAgentRuntime
     }
 
     internal static bool AllowsMcpDiscovery(AgentPermission permission) =>
-        permission is AgentPermission.Ask or AgentPermission.Auto;
+        permission is AgentPermission.Ask
+            or AgentPermission.Auto
+            or AgentPermission.Yolo;
 
     private sealed class McpToolContribution(
         GovernedAgentRuntime runtime) : IAgentToolContribution
@@ -408,7 +410,7 @@ public sealed partial class GovernedAgentRuntime
             AgentToolExecutionRequest request,
             AgentMcpToolManifest frozenTool,
             CancellationToken cancellationToken) =>
-            runtime.ExecuteOperationalToolContributionAsync(
+            runtime.ExecutePanelToolContributionAsync(
                 request,
                 (boundRequest, context, boundCancellationToken) =>
                     runtime.ExecuteMcpProposalAsync(

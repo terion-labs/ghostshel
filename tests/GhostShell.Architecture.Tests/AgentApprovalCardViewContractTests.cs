@@ -17,7 +17,7 @@ public sealed class AgentApprovalCardViewContractTests
             element => element.Name.LocalName == "AgentApprovalCardView");
 
         Assert.Equal(
-            "{Binding AgentChat.HasPendingApproval}",
+            "{Binding AgentChat.HasPendingApproval, FallbackValue=False}",
             AttributeValue(approval, "IsVisible"));
         Assert.Equal(
             "OnApproveAgentActionClick",
@@ -47,9 +47,7 @@ public sealed class AgentApprovalCardViewContractTests
         Assert.Null(AttributeValue(root, "DataContext"));
         Assert.Equal("True", AttributeValue(card, "Focusable"));
         Assert.Equal("Local", AttributeValue(card, "KeyboardNavigation.TabNavigation"));
-        Assert.Equal("Assertive", AttributeValue(
-            card,
-            "AutomationProperties.LiveSetting"));
+        Assert.Null(AttributeValue(card, "AutomationProperties.LiveSetting"));
         Assert.Equal(
             "AI agent action approval request",
             AttributeValue(card, "AutomationProperties.Name"));

@@ -11,12 +11,21 @@ public sealed class TerminalAgentToolParserTests
 {
     [Theory]
     [InlineData(BuiltInAgentTools.TerminalReadScreen, "{}", typeof(TerminalAgentIntent.ReadScreen))]
+    [InlineData(BuiltInAgentTools.TerminalReadScreenDiff, "{\"after_content_revision\":7,\"max_changed_rows\":16}", typeof(TerminalAgentIntent.ReadScreenDiff))]
+    [InlineData(BuiltInAgentTools.TerminalFindOnScreen, "{\"text\":\"EDIT_PASS\",\"max_matches\":8}", typeof(TerminalAgentIntent.FindOnScreen))]
+    [InlineData(BuiltInAgentTools.TerminalReadScrollback, "{\"anchor\":\"bottom\",\"max_lines\":64}", typeof(TerminalAgentIntent.ReadScrollback))]
+    [InlineData(BuiltInAgentTools.TerminalFind, "{\"text\":\"ready\",\"direction\":\"backward\",\"max_matches\":8}", typeof(TerminalAgentIntent.FindScrollback))]
+    [InlineData(BuiltInAgentTools.TerminalScrollViewport, "{\"direction\":\"up\",\"unit\":\"page\",\"amount\":2}", typeof(TerminalAgentIntent.ScrollViewport))]
     [InlineData(BuiltInAgentTools.TerminalSendText, "{\"text\":\"menu\"}", typeof(TerminalAgentIntent.SendText))]
     [InlineData(BuiltInAgentTools.TerminalPaste, "{\"text\":\"first\\n\\tsecond\"}", typeof(TerminalAgentIntent.Paste))]
-    [InlineData(BuiltInAgentTools.TerminalSendKeys, "{\"key\":\"enter\",\"modifiers\":[\"control\"]}", typeof(TerminalAgentIntent.SendKey))]
+    [InlineData(BuiltInAgentTools.TerminalSubmitText, "{\"text\":\"echo ready\"}", typeof(TerminalAgentIntent.SubmitText))]
+    [InlineData(BuiltInAgentTools.TerminalSendKeys, "{\"key\":\"backspace\",\"repeat\":12}", typeof(TerminalAgentIntent.SendKey))]
     [InlineData(BuiltInAgentTools.TerminalSendChord, "{\"character\":\"d\",\"modifier\":\"control\"}", typeof(TerminalAgentIntent.SendChord))]
-    [InlineData(BuiltInAgentTools.TerminalSendMouse, "{\"event\":\"left_down\",\"column\":4,\"row\":7}", typeof(TerminalAgentIntent.SendMouse))]
+    [InlineData(BuiltInAgentTools.TerminalSendMouse, "{\"event\":\"left_down\",\"column\":4,\"row\":7,\"expected_content_revision\":9}", typeof(TerminalAgentIntent.SendMouse))]
     [InlineData(BuiltInAgentTools.TerminalWait, "{\"text\":\"Selected\",\"timeout_ms\":5000}", typeof(TerminalAgentIntent.WaitForText))]
+    [InlineData(BuiltInAgentTools.TerminalWait, "{\"delay_ms\":3600000}", typeof(TerminalAgentIntent.WaitForDelay))]
+    [InlineData(BuiltInAgentTools.TerminalWait, "{\"prompt_ready\":true,\"after_shell_event_sequence\":0,\"timeout_ms\":5000}", typeof(TerminalAgentIntent.WaitForPromptReady))]
+    [InlineData(BuiltInAgentTools.TerminalWait, "{\"command_finished\":true,\"after_shell_event_sequence\":7,\"timeout_ms\":5000}", typeof(TerminalAgentIntent.WaitForCommandFinished))]
     [InlineData(BuiltInAgentTools.TerminalInterrupt, "{}", typeof(TerminalAgentIntent.Interrupt))]
     public async Task ParsesTheClosedTerminalIntentSet(
         string toolName,
@@ -33,19 +42,26 @@ public sealed class TerminalAgentToolParserTests
 
     [Theory]
     [InlineData(BuiltInAgentTools.TerminalReadScreen, "{\"extra\":true}")]
+    [InlineData(BuiltInAgentTools.TerminalReadScreenDiff, "{\"after_content_revision\":7,\"max_changed_rows\":0}")]
+    [InlineData(BuiltInAgentTools.TerminalFindOnScreen, "{\"text\":\"\",\"max_matches\":8}")]
+    [InlineData(BuiltInAgentTools.TerminalReadScrollback, "{\"anchor\":\"before\",\"max_lines\":64,\"row_anchor\":\"invalid\"}")]
+    [InlineData(BuiltInAgentTools.TerminalFind, "{\"text\":\"ready\",\"direction\":\"sideways\",\"max_matches\":8}")]
+    [InlineData(BuiltInAgentTools.TerminalScrollViewport, "{\"direction\":\"top\",\"unit\":\"page\",\"amount\":1}")]
     [InlineData(BuiltInAgentTools.TerminalSendText, "{\"text\":\"line\\nfeed\"}")]
     [InlineData(BuiltInAgentTools.TerminalPaste, "{\"text\":\"\\u0000\"}")]
     [InlineData(BuiltInAgentTools.TerminalPaste, "{\"text\":\"\\u001b[31m\"}")]
     [InlineData(BuiltInAgentTools.TerminalPaste, "{\"text\":\"safe\",\"extra\":true}")]
+    [InlineData(BuiltInAgentTools.TerminalSubmitText, "{\"text\":\"\\u001b[31m\"}")]
     [InlineData(BuiltInAgentTools.TerminalSendKeys, "{\"key\":\"a\"}")]
     [InlineData(BuiltInAgentTools.TerminalSendKeys, "{\"key\":\"enter\",\"modifiers\":[\"control\",\"control\"]}")]
+    [InlineData(BuiltInAgentTools.TerminalSendKeys, "{\"key\":\"backspace\",\"repeat\":65}")]
     [InlineData(BuiltInAgentTools.TerminalSendChord, "{\"character\":\"D\",\"modifier\":\"control\"}")]
     [InlineData(BuiltInAgentTools.TerminalSendChord, "{\"character\":\"d\",\"modifier\":[\"control\",\"alt\"]}")]
     [InlineData(BuiltInAgentTools.TerminalSendChord, "{\"character\":\"d\",\"modifier\":\"control\",\"text\":\"\\u0004\"}")]
     [InlineData(BuiltInAgentTools.TerminalSendMouse, "{\"event\":\"click\",\"column\":4,\"row\":7}")]
     [InlineData(BuiltInAgentTools.TerminalSendMouse, "{\"event\":\"left_down\",\"column\":-1,\"row\":7}")]
     [InlineData(BuiltInAgentTools.TerminalSendMouse, "{\"event\":\"left_down\",\"column\":4,\"row\":1000001}")]
-    [InlineData(BuiltInAgentTools.TerminalWait, "{\"text\":\"ready\",\"timeout_ms\":30001}")]
+    [InlineData(BuiltInAgentTools.TerminalWait, "{\"text\":\"ready\",\"timeout_ms\":3600001}")]
     [InlineData("terminal.provider_extension", "{}")]
     public async Task RejectsUnknownOrUnboundedArguments(
         string toolName,
@@ -59,6 +75,21 @@ public sealed class TerminalAgentToolParserTests
         Assert.Contains(
             rejected.StableCode,
             new[] { "invalid_tool_arguments", "unknown_tool" });
+    }
+
+    [Fact]
+    public async Task Send_keys_projects_bounded_repeat_into_one_intent()
+    {
+        var proposal = await ProposalAsync(
+            BuiltInAgentTools.TerminalSendKeys,
+            "{\"key\":\"backspace\",\"repeat\":12}");
+
+        var parsed = Assert.IsType<TerminalAgentIntentResult.Parsed>(
+            TerminalAgentToolParser.Parse(proposal));
+        var intent = Assert.IsType<TerminalAgentIntent.SendKey>(parsed.Intent);
+
+        Assert.Equal(TerminalKey.Backspace, intent.KeyStroke.Key);
+        Assert.Equal(12, intent.KeyStroke.RepeatCount);
     }
 
     [Fact]
@@ -93,11 +124,14 @@ public sealed class TerminalAgentToolParserTests
             SessionCapabilities.TerminalPaste,
             SessionCapabilities.TerminalSendKeys,
             SessionCapabilities.TerminalMouse,
+            SessionCapabilities.TerminalRevisionBoundMouse,
             SessionCapabilities.TerminalInterrupt));
 
         Assert.Equal(
             [
                 BuiltInAgentTools.TerminalReadScreen,
+                BuiltInAgentTools.TerminalReadScreenDiff,
+                BuiltInAgentTools.TerminalFindOnScreen,
                 BuiltInAgentTools.TerminalWait,
                 BuiltInAgentTools.TerminalSendText,
                 BuiltInAgentTools.TerminalPaste,
@@ -139,6 +173,7 @@ public sealed class TerminalAgentToolParserTests
             SessionCapabilities.TerminalPaste,
             SessionCapabilities.TerminalSendKeys,
             SessionCapabilities.TerminalMouse,
+            SessionCapabilities.TerminalRevisionBoundMouse,
             SessionCapabilities.TerminalInterrupt);
 
         var tools = TerminalAgentToolSet.For(panel);
@@ -146,6 +181,8 @@ public sealed class TerminalAgentToolParserTests
         Assert.Equal(
             [
                 BuiltInAgentTools.TerminalReadScreen,
+                BuiltInAgentTools.TerminalReadScreenDiff,
+                BuiltInAgentTools.TerminalFindOnScreen,
                 BuiltInAgentTools.TerminalWait,
                 BuiltInAgentTools.TerminalSendText,
                 BuiltInAgentTools.TerminalPaste,
@@ -171,6 +208,8 @@ public sealed class TerminalAgentToolParserTests
         Assert.Equal(
             [
                 BuiltInAgentTools.TerminalReadScreen,
+                BuiltInAgentTools.TerminalReadScreenDiff,
+                BuiltInAgentTools.TerminalFindOnScreen,
                 BuiltInAgentTools.TerminalWait,
             ],
             tools.Select(tool => tool.Name));
@@ -219,6 +258,72 @@ public sealed class TerminalAgentToolParserTests
         Assert.True(TerminalAgentToolSet.SupportsMutations(eligible));
         Assert.False(TerminalAgentToolSet.SupportsMutations(noBarrier));
         Assert.False(TerminalAgentToolSet.SupportsMutations(noPaste));
+    }
+
+    [Fact]
+    public void Submit_text_requires_barrier_paste_and_enter_capabilities()
+    {
+        var eligible = ContextPanel(
+            SessionCapabilities.TerminalAgentInputBarrier,
+            SessionCapabilities.TerminalPaste,
+            SessionCapabilities.TerminalEnter);
+        var noEnter = ContextPanel(
+            SessionCapabilities.TerminalAgentInputBarrier,
+            SessionCapabilities.TerminalPaste);
+
+        var tool = Assert.Single(
+            TerminalAgentToolSet.For(eligible),
+            candidate => candidate.Name == BuiltInAgentTools.TerminalSubmitText);
+        Assert.Contains(
+            "Prefer this for submitting",
+            tool.Description,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            TerminalAgentToolSet.For(noEnter),
+            candidate => candidate.Name == BuiltInAgentTools.TerminalSubmitText);
+    }
+
+    [Fact]
+    public void HistoryProjectionAndViewportScrollUseDistinctCapabilities()
+    {
+        var projection = ContextPanel(
+            SessionCapabilities.TerminalScrollbackRead,
+            SessionCapabilities.TerminalScrollbackFind);
+        var scrolling = ContextPanel(
+            SessionCapabilities.TerminalAgentInputBarrier,
+            SessionCapabilities.TerminalScrollback);
+
+        Assert.Equal(
+            [
+                BuiltInAgentTools.TerminalReadScrollback,
+                BuiltInAgentTools.TerminalFind,
+            ],
+            TerminalAgentToolSet.For(projection).Select(tool => tool.Name));
+        Assert.Equal(
+            [BuiltInAgentTools.TerminalScrollViewport],
+            TerminalAgentToolSet.For(scrolling).Select(tool => tool.Name));
+        Assert.False(TerminalAgentToolSet.SupportsMutations(projection));
+        Assert.True(TerminalAgentToolSet.SupportsMutations(scrolling));
+    }
+
+    [Fact]
+    public async Task ScrollbackRowAnchorsRoundTripAndRemainRevisionBound()
+    {
+        var anchor = new TerminalScrollbackRowAnchor(42, 7);
+        var encoded = TerminalScrollbackAnchorCodec.Encode(anchor);
+        var proposal = await ProposalAsync(
+            BuiltInAgentTools.TerminalReadScrollback,
+            $$"""
+            {"anchor":"after","row_anchor":"{{encoded}}","max_lines":16}
+            """);
+
+        var parsed = Assert.IsType<TerminalAgentIntentResult.Parsed>(
+            TerminalAgentToolParser.Parse(proposal));
+        var read = Assert.IsType<TerminalAgentIntent.ReadScrollback>(
+            parsed.Intent);
+
+        Assert.Equal(anchor, read.Input.RowAnchor);
+        Assert.Equal(TerminalScrollbackReadOrigin.After, read.Input.Origin);
     }
 
     private static async Task<AgentToolProposal> ProposalAsync(

@@ -131,12 +131,32 @@ public sealed class AgentProcessListActionComposer
                 nameof(snapshot));
         }
 
+        if (action.Request.ProcessId is { } processId
+            && projected.Any(process => process.ProcessId != processId))
+        {
+            throw new ArgumentException(
+                "A process monitor capture contains rows outside the authorized PID filter.",
+                nameof(snapshot));
+        }
+
+        if (action.Request.NameContains is { } nameContains
+            && captured.Any(process => process is null
+                || !process.Name.Contains(
+                nameContains,
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new ArgumentException(
+                "A process monitor capture contains rows outside the authorized name filter.",
+                nameof(snapshot));
+        }
+
         var result = new AgentProcessListResult(
             snapshot.CapturedAtUtc,
             Order(projected, action.Request.Sort),
             snapshot.EnumeratedProcessCount,
             snapshot.ObservedProcessCount,
-            snapshot.IsTruncated);
+            snapshot.IsTruncated,
+            snapshot.MatchingProcessCount);
         EnsureProjectionBound(result);
         return result;
     }
@@ -366,6 +386,25 @@ public sealed class AgentProcessListActionComposer
                 new AgentApprovalArgument(
                     "limit",
                     request.Limit.ToString(CultureInfo.InvariantCulture)),
+                new AgentApprovalArgument(
+                    "offset",
+                    request.Offset.ToString(CultureInfo.InvariantCulture)),
+                .. request.NameContains is { } nameContains
+                    ? new[]
+                    {
+                        new AgentApprovalArgument(
+                            "name_contains",
+                            EscapeForApproval(nameContains)),
+                    }
+                    : [],
+                .. request.ProcessId is { } processId
+                    ? new[]
+                    {
+                        new AgentApprovalArgument(
+                            "pid",
+                            processId.ToString(CultureInfo.InvariantCulture)),
+                    }
+                    : [],
             ]);
 
     private static AgentActionDigest CreateArgumentDigest(
@@ -374,7 +413,7 @@ public sealed class AgentProcessListActionComposer
     {
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         AppendCanonical(hash, "ghostshell.agent-process-list-action");
-        AppendCanonical(hash, "1");
+        AppendCanonical(hash, "2");
         AppendCanonical(hash, actionId.Value);
         AppendCanonical(hash, BuiltInAgentTools.ProcessesList);
         AppendCanonical(hash, request.PanelId.Value);
@@ -382,6 +421,14 @@ public sealed class AgentProcessListActionComposer
         AppendCanonical(
             hash,
             request.Limit.ToString(CultureInfo.InvariantCulture));
+        AppendCanonical(
+            hash,
+            request.Offset.ToString(CultureInfo.InvariantCulture));
+        AppendCanonical(hash, request.NameContains ?? string.Empty);
+        AppendCanonical(
+            hash,
+            request.ProcessId?.ToString(CultureInfo.InvariantCulture)
+                ?? string.Empty);
         return new AgentActionDigest(
             Convert.ToHexStringLower(hash.GetHashAndReset()));
     }
@@ -506,6 +553,9 @@ public sealed class AgentProcessListActionComposer
             || snapshot.ObservedProcessCount < 0
             || snapshot.ObservedProcessCount
                 > snapshot.EnumeratedProcessCount
+            || snapshot.MatchingProcessCount is < 0
+            || snapshot.MatchingProcessCount
+                > snapshot.ObservedProcessCount
             || returnedCount > snapshot.EnumeratedProcessCount)
         {
             throw new ArgumentException(

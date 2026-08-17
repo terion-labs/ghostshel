@@ -9,7 +9,6 @@ namespace GhostShell.Core;
 /// </summary>
 public sealed record AiProviderProfile : IDurableDefinition
 {
-    public const int LegacySchemaVersion = 1;
     public const int CurrentSchemaVersion = 2;
     public const int MaximumNameLength = 128;
     public const int MaximumModelIdLength = 256;
@@ -56,7 +55,7 @@ public sealed record AiProviderProfile : IDurableDefinition
         AiProviderCapabilities? capabilities)
     {
         RuntimeId.Require(id.Value, nameof(id));
-        if (schemaVersion is not (LegacySchemaVersion or CurrentSchemaVersion))
+        if (schemaVersion != CurrentSchemaVersion)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(schemaVersion),
@@ -69,21 +68,8 @@ public sealed record AiProviderProfile : IDurableDefinition
             throw new ArgumentOutOfRangeException(nameof(providerKind), providerKind, null);
         }
 
-        if (schemaVersion == LegacySchemaVersion
-            && providerKind is not (AiProviderKind.Anthropic
-                or AiProviderKind.OpenAi
-                or AiProviderKind.OpenAiCompatible))
-        {
-            throw new ArgumentException(
-                "Schema-version 1 supports only the original provider identities.",
-                nameof(providerKind));
-        }
-
         var definition = AiProviderCatalog.Get(providerKind);
-        var resolvedProtocol = schemaVersion == LegacySchemaVersion
-            ? definition.Protocol
-            : protocol;
-        if (!Enum.IsDefined(resolvedProtocol) || resolvedProtocol != definition.Protocol)
+        if (!Enum.IsDefined(protocol) || protocol != definition.Protocol)
         {
             throw new ArgumentException(
                 "The provider protocol does not match its registered identity.",
@@ -91,12 +77,10 @@ public sealed record AiProviderProfile : IDurableDefinition
         }
 
         Id = id;
-        // Loading a v1 definition performs the complete in-memory migration. Any
-        // subsequent save emits schema 2 without requiring credential material.
-        SchemaVersion = CurrentSchemaVersion;
+        SchemaVersion = schemaVersion;
         Name = RequirePrintable(name, nameof(name), MaximumNameLength);
         ProviderKind = providerKind;
-        Protocol = resolvedProtocol;
+        Protocol = protocol;
         Endpoint = NormalizeEndpoint(endpoint);
         Authentication = authentication ?? throw new ArgumentNullException(nameof(authentication));
         if (Authentication is AiProviderAuthentication.None && !IsLoopback(Endpoint))
@@ -153,10 +137,7 @@ public sealed record AiProviderProfile : IDurableDefinition
 
     public AiProviderKind ProviderKind { get; }
 
-    /// <summary>
-    /// Provider identity alias used by schema-v2 consumers. <see cref="ProviderKind"/>
-    /// remains the serialized name for backward compatibility with schema 1.
-    /// </summary>
+    /// <summary>Provider identity used by runtime consumers.</summary>
     [JsonIgnore]
     public AiProviderKind Identity => ProviderKind;
 

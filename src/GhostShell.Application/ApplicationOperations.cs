@@ -54,6 +54,8 @@ public static class ApplicationOperations
     public const string StatisticsRead = "statistics.read";
     public const string ProcessesOpen = "processes.open";
     public const string ProcessesList = "processes.list";
+    public const string DatabaseOpen = "database.open";
+    public const string DockerOpen = "docker.open";
     public const string PanelClose = "panel.close";
     public const string TabClose = "tab.close";
     public const string WorkspaceClose = "workspace.close";

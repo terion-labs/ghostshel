@@ -12,8 +12,11 @@ internal sealed class FakeFilePanelSessionFactory : IFilePanelSessionFactory
     [
         SessionCapabilities.AttachRead,
         SessionCapabilities.FilesList,
+        SessionCapabilities.FilesSearch,
         SessionCapabilities.FilesStat,
         SessionCapabilities.FilesPreview,
+        SessionCapabilities.FilesReadAccessControl,
+        SessionCapabilities.FilesTransfersRead,
         SessionCapabilities.FilesCreateDirectory,
         SessionCapabilities.FilesRename,
         SessionCapabilities.FilesDelete,
@@ -81,13 +84,21 @@ internal sealed class FakeFilePanelSession : IFilePanelSession
 
     public int DeleteCount { get; private set; }
 
+    public int RenameCount { get; private set; }
+
     public int ListCount { get; private set; }
+
+    public int SearchCount { get; private set; }
 
     public int StatCount { get; private set; }
 
     public int PreviewCount { get; private set; }
 
     public FilePanelListRequest? LastListRequest { get; private set; }
+
+    public FilePanelSearchRequest? LastSearchRequest { get; private set; }
+
+    public FilePanelAccessControlRequest? LastAccessControlRequest { get; private set; }
 
     public FilePanelLocation? LastStatLocation { get; private set; }
 
@@ -97,10 +108,24 @@ internal sealed class FakeFilePanelSession : IFilePanelSession
 
     public FilePanelDeleteRequest? LastDeleteRequest { get; private set; }
 
+    public FilePanelRenameRequest? LastRenameRequest { get; private set; }
+
     public Func<
         FilePanelListRequest,
         CancellationToken,
         ValueTask<FilePanelResult<FilePanelPage>>>? ListOperation
+    { get; set; }
+
+    public Func<
+        FilePanelSearchRequest,
+        CancellationToken,
+        IAsyncEnumerable<FilePanelResult<FilePanelEntry>>>? SearchOperation
+    { get; set; }
+
+    public Func<
+        FilePanelAccessControlRequest,
+        CancellationToken,
+        ValueTask<FilePanelResult<FilePanelAccessControl>>>? AccessControlOperation
     { get; set; }
 
     public Func<
@@ -173,6 +198,18 @@ internal sealed class FakeFilePanelSession : IFilePanelSession
             Entry(location, LocationName(location, "stat.txt"))));
     }
 
+    public IAsyncEnumerable<FilePanelResult<FilePanelEntry>> SearchAsync(
+        FilePanelSearchRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        SearchCount++;
+        LastSearchRequest = request;
+        return SearchOperation is { } operation
+            ? operation(request, cancellationToken)
+            : DefaultSearchAsync(request, cancellationToken);
+    }
+
     public ValueTask<FilePanelResult<FilePanelPreview>> PreviewAsync(
         FilePanelPreviewRequest request,
         CancellationToken cancellationToken)
@@ -221,9 +258,13 @@ internal sealed class FakeFilePanelSession : IFilePanelSession
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        RenameCount++;
+        LastRenameRequest = request;
         return ValueTask.FromResult(FilePanelResult<FilePanelEntry>.Success(Entry(
             request.Destination,
-            "renamed.txt")));
+            request.Destination.Address is FilePanelAddress.Hierarchical hierarchical
+                ? hierarchical.Path.Name?.Value ?? "renamed"
+                : "renamed")));
     }
 
     public ValueTask<FilePanelResult<FilePanelDeleteReceipt>> DeleteAsync(
@@ -241,6 +282,28 @@ internal sealed class FakeFilePanelSession : IFilePanelSession
         return ValueTask.FromResult(FilePanelResult<FilePanelDeleteReceipt>.Success(
             new FilePanelDeleteReceipt(request.Location, false)));
     }
+
+    public ValueTask<FilePanelResult<FilePanelAccessControl>> GetAccessControlAsync(
+        FilePanelAccessControlRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        LastAccessControlRequest = request;
+        if (AccessControlOperation is { } operation)
+        {
+            return operation(request, cancellationToken);
+        }
+
+        return ValueTask.FromResult(FilePanelResult<FilePanelAccessControl>.Success(
+            new FilePanelAccessControl(
+                request.Location,
+                mode: new FilePanelPosixMode(0x1A4),
+                owner: "owner",
+                group: "group")));
+    }
+
+    public void AddTransfer(FilePanelTransferSnapshot snapshot) =>
+        _transfers.Add(snapshot ?? throw new ArgumentNullException(nameof(snapshot)));
 
     public ValueTask<FilePanelResult<FilePanelTransferSnapshot>> EnqueueTransferAsync(
         FilePanelTransferRequest request,
@@ -356,6 +419,19 @@ internal sealed class FakeFilePanelSession : IFilePanelSession
         7,
         null,
         false);
+
+    private static async IAsyncEnumerable<FilePanelResult<FilePanelEntry>>
+        DefaultSearchAsync(
+            FilePanelSearchRequest request,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var location = request.Location.Child(
+            new FilePanelPathSegment($"{request.Query}.txt"));
+        yield return FilePanelResult<FilePanelEntry>.Success(
+            Entry(location, $"{request.Query}.txt"));
+        await Task.CompletedTask;
+    }
 
     private static string LocationName(
         FilePanelLocation location,

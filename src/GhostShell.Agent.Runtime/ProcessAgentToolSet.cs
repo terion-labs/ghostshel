@@ -44,6 +44,10 @@ internal static class ProcessAgentToolSet
             : [Tool(eligible.Select(panel => panel.PanelId).ToArray())];
     }
 
+    public static ImmutableArray<AgentToolDefinition> ForWorkspace() => [
+        AgentToolScopeSchema.WithRequiredPanelId(List),
+    ];
+
     internal static ImmutableArray<AgentContextPanel> ActiveProcessPanels(
         IReadOnlyList<AgentContextPanel> panels)
     {
@@ -101,6 +105,7 @@ internal static class ProcessAgentToolSet
         writer.WriteStartObject("properties");
         WriteSortSchema(writer);
         WriteLimitSchema(writer);
+        WriteFilterSchema(writer);
         if (panelIds is not null)
         {
             writer.WriteStartObject("panel_id");
@@ -165,6 +170,27 @@ internal static class ProcessAgentToolSet
         writer.WriteString(
             "description",
             "Optional maximum returned rows; omit for 32.");
+        writer.WriteEndObject();
+    }
+
+    private static void WriteFilterSchema(Utf8JsonWriter writer)
+    {
+        writer.WriteStartObject("offset");
+        writer.WriteString("type", "integer");
+        writer.WriteNumber("minimum", 0);
+        writer.WriteNumber("maximum", 1_000_000);
+        writer.WriteNumber("default", 0);
+        writer.WriteEndObject();
+
+        writer.WriteStartObject("name_contains");
+        writer.WriteString("type", "string");
+        writer.WriteNumber("minLength", 1);
+        writer.WriteNumber("maxLength", 128);
+        writer.WriteEndObject();
+
+        writer.WriteStartObject("pid");
+        writer.WriteString("type", "integer");
+        writer.WriteNumber("minimum", 1);
         writer.WriteEndObject();
     }
 }

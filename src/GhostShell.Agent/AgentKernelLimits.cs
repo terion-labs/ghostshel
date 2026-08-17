@@ -16,7 +16,7 @@ public sealed class AgentKernelLimits
         int maximumTotalToolArgumentBytesPerTurn = 4 * 1024 * 1024,
         int maximumJsonDepth = 32,
         int maximumJsonNodes = 4 * 1024,
-        int maximumConversationMessages = 256,
+        int maximumConversationMessages = 4 * 1024,
         int maximumConversationBytes = 8 * 1024 * 1024,
         int maximumRetainedEvents = 512,
         int maximumEventBatchSize = 64,

@@ -48,6 +48,14 @@ internal static class Program
             return;
         }
 
+        if (args.Contains(
+                BrowserNativeCheckboxProbe.CommandLineSwitch,
+                StringComparer.Ordinal))
+        {
+            Environment.ExitCode = BrowserNativeCheckboxProbe.Run();
+            return;
+        }
+
         // macOS will only host the UI on the process's first thread, and an
         // async Main leaves it at the first await that does real work —
         // resolving an encryption key from the keychain, say. So this thread

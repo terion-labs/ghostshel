@@ -11,7 +11,14 @@ internal abstract record BrowserAgentIntent
 
     public sealed record ReadState : BrowserAgentIntent;
 
-    public sealed record Snapshot : BrowserAgentIntent;
+    public sealed record Snapshot(
+        bool InteractiveOnly,
+        string? Filter,
+        int? MaximumDepth) : BrowserAgentIntent;
+
+    public sealed record Wait(
+        BrowserWaitCondition Condition,
+        TimeSpan Timeout) : BrowserAgentIntent;
 
     public sealed record Click(
         BrowserElementReferenceId Reference,
@@ -25,6 +32,47 @@ internal abstract record BrowserAgentIntent
     public sealed record Check(
         BrowserElementReferenceId Reference,
         long DocumentRevision) : BrowserAgentIntent;
+
+    public sealed record Mouse(
+        BrowserMouseAction Action,
+        double XCss,
+        double YCss,
+        BrowserMouseButton Button,
+        BrowserMouseButtons Buttons,
+        BrowserInputModifiers Modifiers,
+        int ClickCount,
+        double DeltaX,
+        double DeltaY,
+        long DocumentRevision,
+        long ViewportRevision,
+        long InputEpoch) : BrowserAgentIntent;
+
+    public sealed record Key(
+        BrowserKeyAction Action,
+        BrowserKey KeyValue,
+        BrowserInputModifiers Modifiers,
+        long DocumentRevision,
+        long ViewportRevision,
+        long InputEpoch) : BrowserAgentIntent;
+
+    public sealed record Scroll(
+        double OriginXCss,
+        double OriginYCss,
+        double DeltaX,
+        double DeltaY,
+        BrowserInputModifiers Modifiers,
+        long DocumentRevision,
+        long ViewportRevision,
+        long InputEpoch) : BrowserAgentIntent;
+
+    public sealed record Evaluate(
+        string Source,
+        BrowserEvaluationWorld World,
+        bool AwaitPromise,
+        TimeSpan Timeout,
+        long DocumentRevision,
+        long ViewportRevision,
+        long InputEpoch) : BrowserAgentIntent;
 
     public sealed record Navigate(BrowserAddress Address) : BrowserAgentIntent;
 

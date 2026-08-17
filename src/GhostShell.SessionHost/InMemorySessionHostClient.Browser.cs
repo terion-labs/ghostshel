@@ -210,8 +210,22 @@ public sealed partial class InMemorySessionHostClient
             return Unsupported<Unit>("The session is not a browser.", revision);
         }
 
+        if (request.Renderer is not IBrowserPhysicalInputBarrier inputBarrier
+            || !request.Renderer.Capabilities.Contains(
+                SessionCapabilities.BrowserAgentInputBarrier))
+        {
+            return Unsupported<Unit>(
+                "The browser renderer cannot fence agent input from physical human input.",
+                revision);
+        }
+
         try
         {
+            inputBarrier.BindPhysicalInputGate(
+                _ => session.TryAcceptPhysicalInput(
+                    request.AttachmentId,
+                    context.Actor,
+                    HumanPhysicalInputLeaseDuration));
             await rendererAttachment
                 .AttachRendererAsync(request.Renderer, cancellationToken)
                 .ConfigureAwait(false);
@@ -229,10 +243,12 @@ public sealed partial class InMemorySessionHostClient
         }
         catch (OperationCanceledException)
         {
+            inputBarrier.BindPhysicalInputGate(null);
             return Cancelled<Unit>(revision);
         }
         catch (Exception exception)
         {
+            inputBarrier.BindPhysicalInputGate(null);
             return EngineFailure<Unit>(exception, revision);
         }
     }

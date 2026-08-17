@@ -24,19 +24,19 @@ public sealed class AiProviderProfileTests
     }
 
     [Fact]
-    public void SchemaOneProfileIsNormalizedToResponsesBasedSchemaTwo()
+    public void NonCurrentSchemaIsRejected()
     {
         const string json =
             """
             {
-              "Id": { "Value": "legacy-openai" },
+              "Id": { "Value": "non-current-openai" },
               "SchemaVersion": 1,
-              "Name": "Legacy OpenAI",
+              "Name": "Non-current OpenAI",
               "ProviderKind": 1,
               "Endpoint": "https://api.openai.com/v1/",
               "Authentication": {
                 "$type": "api-key",
-                "Secret": { "Value": "legacy-openai-key" }
+                "Secret": { "Value": "non-current-openai-key" }
               },
               "DefaultModel": "gpt-test",
               "Order": 0,
@@ -44,17 +44,10 @@ public sealed class AiProviderProfileTests
             }
             """;
 
-        var profile = JsonSerializer.Deserialize<AiProviderProfile>(json);
+        var exception = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            JsonSerializer.Deserialize<AiProviderProfile>(json));
 
-        Assert.NotNull(profile);
-        Assert.Equal(AiProviderProfile.CurrentSchemaVersion, profile.SchemaVersion);
-        Assert.Equal(AiProviderKind.OpenAi, profile.Identity);
-        Assert.Equal(AiProviderProtocol.OpenAiResponses, profile.Protocol);
-        Assert.True(profile.Capabilities.SupportsToolBatches);
-        var normalized = JsonSerializer.Serialize(profile);
-        Assert.Contains("\"SchemaVersion\":2", normalized, StringComparison.Ordinal);
-        Assert.Contains("\"Protocol\":1", normalized, StringComparison.Ordinal);
-        Assert.Contains("\"Capabilities\"", normalized, StringComparison.Ordinal);
+        Assert.Equal("schemaVersion", exception.ParamName);
     }
 
     [Fact]

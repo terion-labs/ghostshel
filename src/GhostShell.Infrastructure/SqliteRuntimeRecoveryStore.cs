@@ -194,9 +194,9 @@ public sealed class SqliteRuntimeRecoveryStore :
             }
 
             // Keep the bounded-count check and UPSERT as separate statements.
-            // In the bundled CEF process, SQLite3MC 3.49.1 returned SQLITE_NOMEM
-            // for the combined INSERT ... SELECT ... WHERE ... ON CONFLICT form.
-            // The immediate transaction keeps this two-statement form atomic.
+            // SQLite3MC 3.49.1 returned SQLITE_NOMEM for the combined
+            // INSERT ... SELECT ... WHERE ... ON CONFLICT form. The immediate
+            // transaction keeps this two-statement form atomic.
             sqliteStage = "inspect snapshot inventory";
             await using (var inventory = connection.CreateCommand())
             {

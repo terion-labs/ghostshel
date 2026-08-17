@@ -19,6 +19,12 @@ public sealed class AgentPolicyCoordinatorTests
                 capability => capability,
                 _ => AgentPermission.Ask))
         {
+            CompactionModel = new AgentModelSelection(
+                "provider-openai",
+                "gpt-5.6-terra"),
+            TitleModel = new AgentModelSelection(
+                "provider-openai",
+                "gpt-5.6-terra"),
             SystemPrompt = "  Follow the repository conventions.  ",
         };
 
@@ -29,10 +35,10 @@ public sealed class AgentPolicyCoordinatorTests
         Assert.Equal(policy.Model, store.Policy?.Model);
         Assert.Equal(policy.Provider, coordinator.Policy?.Provider);
         Assert.Equal(policy.Model, coordinator.Policy?.Model);
-        Assert.Null(store.Policy?.CompactionModel);
-        Assert.Null(store.Policy?.TitleModel);
-        Assert.Null(coordinator.Policy?.CompactionModel);
-        Assert.Null(coordinator.Policy?.TitleModel);
+        Assert.Equal(policy.CompactionModel, store.Policy?.CompactionModel);
+        Assert.Equal(policy.TitleModel, store.Policy?.TitleModel);
+        Assert.Equal(policy.CompactionModel, coordinator.Policy?.CompactionModel);
+        Assert.Equal(policy.TitleModel, coordinator.Policy?.TitleModel);
         Assert.Equal("Follow the repository conventions.", store.Policy?.SystemPrompt);
         Assert.Equal("Follow the repository conventions.", coordinator.Policy?.SystemPrompt);
         Assert.Equal(1, changed);

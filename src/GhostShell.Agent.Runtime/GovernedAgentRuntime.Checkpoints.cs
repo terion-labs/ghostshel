@@ -60,21 +60,16 @@ public sealed partial class GovernedAgentRuntime
             var descriptor = restored.DescribeConversation();
             var policy = descriptor.ProviderId is { } providerId
                 && !string.IsNullOrWhiteSpace(descriptor.Model)
-                ? new AgentPolicy(
+                ? _configuredPolicy.SelectPrimaryModel(
                     providerId.Value,
-                    descriptor.Model,
-                    _configuredDefaultPolicy.Permissions)
-                {
-                    CompactionModel = _configuredDefaultPolicy.CompactionModel,
-                    TitleModel = _configuredDefaultPolicy.TitleModel,
-                    SystemPrompt = _configuredDefaultPolicy.SystemPrompt,
-                }
-                : _configuredDefaultPolicy;
+                    descriptor.Model)
+                : _configuredPolicy;
             _baselinePolicy = policy;
             _runPolicy = policy;
             _effectivePolicy = policy;
             _snapshot = EmptySnapshot(policy) with
             {
+                State = GovernedAgentState.Ready,
                 Messages = CopyMessages(ProjectMessages(restored)),
                 ContextTokensUsed = restored.EstimateContextUsage().EstimatedTokens,
                 ProviderId = descriptor.ProviderId,
@@ -116,6 +111,105 @@ public sealed partial class GovernedAgentRuntime
         return true;
     }
 
+    private async ValueTask<bool> PersistFinalConversationAsync(
+        NativeAgentSession session,
+        long? settledCheckpointRevision,
+        CancellationToken cancellationToken)
+    {
+        if (_checkpointStore is null)
+        {
+            return true;
+        }
+
+        var captured = session.CaptureCheckpoint();
+        if (!captured.Succeeded || captured.Checkpoint is null)
+        {
+            return false;
+        }
+
+        if (captured.Checkpoint.Revision != settledCheckpointRevision)
+        {
+            var saved = await SaveCheckpointAsync(
+                    captured.Checkpoint,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!saved.IsSuccess)
+            {
+                return false;
+            }
+        }
+
+        await RefreshConversationCatalogAsync(cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    private async ValueTask<bool> PersistInterruptedConversationAsync(
+        NativeAgentSession session,
+        string userMessage,
+        ImmutableArray<AgentImageAttachment> images,
+        CancellationToken cancellationToken)
+    {
+        if (_checkpointStore is null)
+        {
+            return true;
+        }
+
+        return await SaveCheckpointCaptureAsync(
+                session.CaptureInterruptedCheckpoint(userMessage, images),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask<bool> PersistInterruptedConversationAsync(
+        NativeAgentSession session,
+        CancellationToken cancellationToken)
+    {
+        if (_checkpointStore is null)
+        {
+            return true;
+        }
+
+        return await SaveCheckpointCaptureAsync(
+                session.CaptureInterruptedCheckpoint(),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask<bool> PersistInterruptedConversationAsync(
+        NativeAgentSession session,
+        ImmutableArray<AgentToolResult> results,
+        CancellationToken cancellationToken)
+    {
+        if (_checkpointStore is null)
+        {
+            return true;
+        }
+
+        return await SaveCheckpointCaptureAsync(
+                session.CaptureInterruptedCheckpoint(results),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask<bool> SaveCheckpointCaptureAsync(
+        AgentCheckpointCaptureResult captured,
+        CancellationToken cancellationToken)
+    {
+        if (_checkpointStore is null)
+        {
+            return true;
+        }
+
+        if (!captured.Succeeded || captured.Checkpoint is null)
+        {
+            return false;
+        }
+
+        var saved = await SaveCheckpointAsync(captured.Checkpoint, cancellationToken)
+            .ConfigureAwait(false);
+        return saved.IsSuccess;
+    }
+
     public async ValueTask<bool> OpenConversationAsync(
         AgentRunId runId,
         CancellationToken cancellationToken)
@@ -146,16 +240,10 @@ public sealed partial class GovernedAgentRuntime
         var descriptor = session.DescribeConversation();
         var policy = descriptor.ProviderId is { } providerId
             && !string.IsNullOrWhiteSpace(descriptor.Model)
-            ? new AgentPolicy(
+            ? _configuredPolicy.SelectPrimaryModel(
                 providerId.Value,
-                descriptor.Model,
-                _configuredDefaultPolicy.Permissions)
-            {
-                CompactionModel = _configuredDefaultPolicy.CompactionModel,
-                TitleModel = _configuredDefaultPolicy.TitleModel,
-                SystemPrompt = _configuredDefaultPolicy.SystemPrompt,
-            }
-            : _configuredDefaultPolicy;
+                descriptor.Model)
+            : _configuredPolicy;
         lock (_gate)
         {
             if (_disposed || _turnCancellation is not null)
@@ -176,6 +264,7 @@ public sealed partial class GovernedAgentRuntime
                 Messages = CopyMessages(ProjectMessages(session)),
                 ContextTokensUsed = session.EstimateContextUsage().EstimatedTokens,
                 EffectivePolicy = policy,
+                PanelActivity = null,
                 Status = string.Empty,
             };
         }
@@ -210,7 +299,7 @@ public sealed partial class GovernedAgentRuntime
             policy = _baselinePolicy;
         }
 
-        var conversation = source.Snapshot().Conversation;
+        var conversation = source.Snapshot().Transcript;
         if (forkPoint.MessageCount > conversation.Length)
         {
             return false;
@@ -270,6 +359,7 @@ public sealed partial class GovernedAgentRuntime
                 Messages = CopyMessages(ProjectMessages(fork)),
                 ContextTokensUsed = fork.EstimateContextUsage().EstimatedTokens,
                 EffectivePolicy = policy,
+                PanelActivity = null,
                 Status = string.Empty,
             };
         }
@@ -430,12 +520,33 @@ public sealed partial class GovernedAgentRuntime
         NativeAgentSession Session,
         GovernedAgentConversationSummary Summary);
 
-    private ValueTask<AgentSessionCheckpointStoreResult<Unit>> SaveCheckpointAsync(
+    private async ValueTask<AgentSessionCheckpointStoreResult<Unit>> SaveCheckpointAsync(
         AgentSessionCheckpoint checkpoint,
-        CancellationToken cancellationToken) =>
-        _conversationScopeId is { } scopeId
-            ? _checkpointStore!.SaveAsync(scopeId, checkpoint, cancellationToken)
-            : _checkpointStore!.SaveAsync(checkpoint, cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return _conversationScopeId is { } scopeId
+                ? await _checkpointStore!
+                    .SaveAsync(scopeId, checkpoint, cancellationToken)
+                    .ConfigureAwait(false)
+                : await _checkpointStore!
+                    .SaveAsync(checkpoint, cancellationToken)
+                    .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return CheckpointStoreFailure<Unit>(
+                AgentSessionCheckpointStoreErrorCode.Cancelled,
+                "Saving the agent conversation was cancelled.");
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return CheckpointStoreFailure<Unit>(
+                AgentSessionCheckpointStoreErrorCode.StorageFailure,
+                "The agent conversation could not be saved.");
+        }
+    }
 
     private ValueTask<AgentSessionCheckpointStoreResult<AgentSessionCheckpoint>>
         LoadCheckpointAsync(AgentRunId runId, CancellationToken cancellationToken) =>
@@ -457,6 +568,12 @@ public sealed partial class GovernedAgentRuntime
         _conversationScopeId is { } scopeId
             ? _checkpointStore!.ListAsync(scopeId, maximumCount, cancellationToken)
             : _checkpointStore!.ListAsync(maximumCount, cancellationToken);
+
+    private static AgentSessionCheckpointStoreResult<T> CheckpointStoreFailure<T>(
+        AgentSessionCheckpointStoreErrorCode code,
+        string message) =>
+        AgentSessionCheckpointStoreResult<T>.Failure(
+            new AgentSessionCheckpointStoreError(code, message));
 
     private void ReportCheckpointSaveFailure()
     {

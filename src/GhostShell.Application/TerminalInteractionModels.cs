@@ -2,22 +2,96 @@ using GhostShell.Core;
 
 namespace GhostShell.Application;
 
+public enum TerminalViewportScrollDirection
+{
+    Up,
+    Down,
+    Top,
+    Bottom,
+}
+
+public enum TerminalViewportScrollUnit
+{
+    Line,
+    Page,
+}
+
 public sealed record TerminalViewportScrollInput
 {
     public const int MaximumLineDelta = 1_000_000;
+    public const int MaximumAmount = MaximumLineDelta;
 
     public TerminalViewportScrollInput(int Lines)
+        : this(
+            Lines < 0
+                ? TerminalViewportScrollDirection.Up
+                : TerminalViewportScrollDirection.Down,
+            TerminalViewportScrollUnit.Line,
+            LegacyAmount(Lines))
     {
-        if (Lines == 0 || Math.Abs((long)Lines) > MaximumLineDelta)
-        {
-            throw new ArgumentOutOfRangeException(nameof(Lines));
-        }
-
-        this.Lines = Lines;
     }
 
-    /// <summary>Negative values move toward older output; positive values move toward the live screen.</summary>
-    public int Lines { get; }
+    public TerminalViewportScrollInput(
+        TerminalViewportScrollDirection Direction,
+        TerminalViewportScrollUnit Unit,
+        int Amount)
+    {
+        if (!Enum.IsDefined(Direction))
+        {
+            throw new ArgumentOutOfRangeException(nameof(Direction));
+        }
+
+        if (!Enum.IsDefined(Unit))
+        {
+            throw new ArgumentOutOfRangeException(nameof(Unit));
+        }
+
+        if (Amount is < 1 or > MaximumAmount)
+        {
+            throw new ArgumentOutOfRangeException(nameof(Amount));
+        }
+
+        if (Direction is TerminalViewportScrollDirection.Top
+                or TerminalViewportScrollDirection.Bottom
+            && (Unit != TerminalViewportScrollUnit.Line || Amount != 1))
+        {
+            throw new ArgumentException(
+                "Top and bottom scrolling use one line unit as a canonical absolute request.",
+                nameof(Amount));
+        }
+
+        this.Direction = Direction;
+        this.Unit = Unit;
+        this.Amount = Amount;
+    }
+
+    public TerminalViewportScrollDirection Direction { get; }
+
+    public TerminalViewportScrollUnit Unit { get; }
+
+    public int Amount { get; }
+
+    /// <summary>
+    /// Signed line delta for legacy line-scrolling callers. Absolute and page
+    /// requests intentionally have no context-free line delta.
+    /// </summary>
+    public int? Lines => (Direction, Unit) switch
+    {
+        (TerminalViewportScrollDirection.Up, TerminalViewportScrollUnit.Line) => -Amount,
+        (TerminalViewportScrollDirection.Down, TerminalViewportScrollUnit.Line) => Amount,
+        _ => null,
+    };
+
+    private static int LegacyAmount(int lines)
+    {
+        var magnitude = Math.Abs((long)lines);
+        if (magnitude is < 1 or > MaximumLineDelta)
+        {
+            throw new ArgumentOutOfRangeException(nameof(lines));
+        }
+
+        return checked((int)magnitude);
+    }
 }
 
 public enum TerminalSelectionPhase

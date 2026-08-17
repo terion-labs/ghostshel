@@ -33,6 +33,17 @@ internal static class ProcessAgentToolResultJson
         writer.WriteString("captured_at_utc", result.CapturedAtUtc);
         writer.WriteString("sort", intent.SortName);
         writer.WriteNumber("limit", intent.Limit);
+        writer.WriteNumber("offset", intent.Offset);
+        if (intent.NameContains is { } nameContains)
+        {
+            writer.WriteString("name_contains", nameContains);
+        }
+
+        if (intent.ProcessId is { } processId)
+        {
+            writer.WriteNumber("pid", processId);
+        }
+
         writer.WriteNumber("returned", result.ReturnedCount);
         writer.WriteNumber(
             "enumerated_process_count",
@@ -40,6 +51,9 @@ internal static class ProcessAgentToolResultJson
         writer.WriteNumber(
             "observed_process_count",
             result.ObservedProcessCount);
+        writer.WriteNumber(
+            "matching_process_count",
+            result.MatchingProcessCount);
         writer.WriteBoolean("truncated", result.IsTruncated);
         writer.WriteNumber(
             "redacted_name_count",
@@ -124,7 +138,9 @@ internal static class ProcessAgentToolResultJson
             || result.EnumeratedProcessCount < 0
             || result.ObservedProcessCount < 0
             || result.ObservedProcessCount > result.EnumeratedProcessCount
-            || result.ReturnedCount > result.EnumeratedProcessCount
+            || result.MatchingProcessCount < 0
+            || result.MatchingProcessCount > result.ObservedProcessCount
+            || result.ReturnedCount > result.MatchingProcessCount
             || result.RedactedNameCount < 0
             || result.TruncatedNameCount < 0
             || result.RedactedNameCount > result.ReturnedCount

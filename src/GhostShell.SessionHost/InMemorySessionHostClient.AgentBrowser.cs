@@ -144,6 +144,34 @@ public sealed partial class InMemorySessionHostClient
                         policyError,
                         revision);
             }
+
+            if (preDispatchFailure is null
+                && RequiresOneActionInputLease(action.Request))
+            {
+                var leaseResult = dispatch.Session
+                    .AcquireOneActionAgentLease(permit.Authorization);
+                if (leaseResult
+                    is HostResult<OneActionAgentLease>.Failure leaseFailure)
+                {
+                    preDispatchFailure =
+                        HostResult<AgentBrowserActionResult>.Fail(
+                            leaseFailure.Error,
+                            leaseFailure.CurrentRevision);
+                }
+                else
+                {
+                    var leaseSuccess =
+                        (HostResult<OneActionAgentLease>.Success)leaseResult;
+                    var lease = leaseSuccess.Value;
+                    dispatch = dispatch with
+                    {
+                        InputCancellation = lease.CancellationToken,
+                        OneActionLeaseId = lease.Id,
+                        ExpectedSessionRevision =
+                            leaseSuccess.ResultingRevision,
+                    };
+                }
+            }
         }
         catch (AgentBrowserDispatchException exception) when (permit is null)
         {
@@ -254,6 +282,15 @@ public sealed partial class InMemorySessionHostClient
                 "The browser cannot contain governed navigation redirects.");
         }
 
+        if (RequiresOneActionInputLease(request)
+            && !browser.Capabilities.Contains(
+                SessionCapabilities.BrowserAgentInputBarrier))
+        {
+            throw BrowserDispatchFailure(
+                HostErrorCode.CapabilityNotSupported,
+                "The browser cannot fence agent input from physical human input.");
+        }
+
         if (!session.TryCaptureAgentBrowserAttachmentAuthority(
                 expectedSessionRevision,
                 out var attachmentId,
@@ -274,7 +311,9 @@ public sealed partial class InMemorySessionHostClient
             attachmentId,
             attachmentClientId,
             expectedSessionRevision,
-            revision);
+            revision,
+            CancellationToken.None,
+            OneActionLeaseId: null);
     }
 
     private async ValueTask<HostResult<AgentBrowserActionResult>>
@@ -284,34 +323,42 @@ public sealed partial class InMemorySessionHostClient
             HostResult<AgentBrowserActionResult> failure,
             CancellationToken callerCancellation)
     {
-        var hostFailure =
-            (HostResult<AgentBrowserActionResult>.Failure)failure;
-        var cancelled = permit.CancellationToken.IsCancellationRequested
-            || dispatch.RuntimeCancellation.IsCancellationRequested
-            || dispatch.AttachmentCancellation.IsCancellationRequested
-            || hostFailure.Error.Code == HostErrorCode.Cancelled;
-        var stableCode = cancelled
-            ? BrowserCancellationCode(
-                dispatch,
+        try
+        {
+            var hostFailure =
+                (HostResult<AgentBrowserActionResult>.Failure)failure;
+            var cancelled = permit.CancellationToken.IsCancellationRequested
+                || dispatch.RuntimeCancellation.IsCancellationRequested
+                || dispatch.AttachmentCancellation.IsCancellationRequested
+                || dispatch.InputCancellation.IsCancellationRequested
+                || hostFailure.Error.Code == HostErrorCode.Cancelled;
+            var stableCode = cancelled
+                ? BrowserCancellationCode(
+                    dispatch,
+                    permit,
+                    callerCancellation)
+                : hostFailure.Error.StableCode;
+            var completion = Completion(
                 permit,
-                callerCancellation)
-            : hostFailure.Error.StableCode;
-        var completion = Completion(
-            permit,
-            cancelled
-                ? AgentActionOutcome.Cancelled
-                : AgentActionOutcome.Failed,
-            stableCode);
-        var normalizedFailure = NormalizeAgentBrowserCancellationResult(
-            failure,
-            completion,
-            dispatch.Revision);
-        return await CompleteConsumedAgentActionAsync(
-                permit,
+                cancelled
+                    ? AgentActionOutcome.Cancelled
+                    : AgentActionOutcome.Failed,
+                stableCode);
+            var normalizedFailure = NormalizeAgentBrowserCancellationResult(
+                failure,
                 completion,
-                normalizedFailure,
-                dispatch.Revision)
-            .ConfigureAwait(false);
+                dispatch.Revision);
+            return await CompleteConsumedAgentActionAsync(
+                    permit,
+                    completion,
+                    normalizedFailure,
+                    dispatch.Revision)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            ReleaseOneActionLease(dispatch, permit);
+        }
     }
 
     private async ValueTask<HostResult<AgentBrowserActionResult>>
@@ -325,9 +372,19 @@ public sealed partial class InMemorySessionHostClient
                 callerCancellation,
                 permit.CancellationToken,
                 dispatch.RuntimeCancellation,
-                dispatch.AttachmentCancellation);
+                dispatch.AttachmentCancellation,
+                dispatch.InputCancellation);
         HostResult<AgentBrowserActionResult> result;
-        if (executionCancellation.IsCancellationRequested)
+        if (executionCancellation.IsCancellationRequested
+            && dispatch.Request is AgentBrowserRequest.Wait wait)
+        {
+            result = await WaitForBrowserAsync(
+                    dispatch,
+                    wait.Value,
+                    executionCancellation.Token)
+                .ConfigureAwait(false);
+        }
+        else if (executionCancellation.IsCancellationRequested)
         {
             result = Cancelled<AgentBrowserActionResult>(dispatch.Revision);
         }
@@ -338,6 +395,13 @@ public sealed partial class InMemorySessionHostClient
                      dispatch.AttachmentCancellation))
         {
             result = BrowserAttachmentRevoked(dispatch.Revision);
+        }
+        else if (dispatch.OneActionLeaseId is { } leaseId
+            && !dispatch.Session.HoldsLease(
+                leaseId,
+                permit.Authorization.Agent.Id))
+        {
+            result = Cancelled<AgentBrowserActionResult>(dispatch.Revision);
         }
         else
         {
@@ -370,15 +434,22 @@ public sealed partial class InMemorySessionHostClient
             result,
             completion,
             dispatch.Revision);
-        return await CompleteConsumedAgentActionAsync(
-                permit,
-                completion,
-                normalizedResult,
-                dispatch.Revision)
-            .ConfigureAwait(false);
+        try
+        {
+            return await CompleteConsumedAgentActionAsync(
+                    permit,
+                    completion,
+                    normalizedResult,
+                    dispatch.Revision)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            ReleaseOneActionLease(dispatch, permit);
+        }
     }
 
-    private static async ValueTask<HostResult<AgentBrowserActionResult>>
+    private async ValueTask<HostResult<AgentBrowserActionResult>>
         DispatchAgentBrowserActionAsync(
             AgentBrowserDispatch dispatch,
             AgentBrowserDomainPolicyDecision policyDecision,
@@ -386,14 +457,15 @@ public sealed partial class InMemorySessionHostClient
     {
         try
         {
-            if (dispatch.Request is AgentBrowserRequest.Snapshot)
+            if (dispatch.Request is AgentBrowserRequest.Snapshot snapshot)
             {
                 var document = BrowserDocumentBinding.FromState(
                     dispatch.Browser.State);
                 var snapshotResult = await dispatch.Browser
                     .CaptureSnapshotAsync(
                         document,
-                        cancellationToken)
+                        cancellationToken,
+                        snapshot.Query ?? BrowserSnapshotQuery.Lean)
                     .ConfigureAwait(false);
                 return snapshotResult.IsSuccess
                     ? HostResult<AgentBrowserActionResult>.Succeed(
@@ -403,6 +475,15 @@ public sealed partial class InMemorySessionHostClient
                     : MapBrowserOperationFailure(
                         snapshotResult.Error!,
                         dispatch.Revision);
+            }
+
+            if (dispatch.Request is AgentBrowserRequest.Wait wait)
+            {
+                return await WaitForBrowserAsync(
+                        dispatch,
+                        wait.Value,
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
 
             if (dispatch.Request is AgentBrowserRequest.Click click)
@@ -523,6 +604,72 @@ public sealed partial class InMemorySessionHostClient
                     dispatch.Session.Snapshot().Descriptor.Revision);
             }
 
+            if (dispatch.Request is AgentBrowserRequest.Mouse mouse)
+            {
+                return await DispatchBrowserAutomationAsync(
+                        dispatch,
+                        mouse.Value.Binding,
+                        token => dispatch.Browser.DispatchMouseWithinOriginAsync(
+                            mouse.Value,
+                            RequiredAllowedOrigin(policyDecision),
+                            token),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            if (dispatch.Request is AgentBrowserRequest.Key key)
+            {
+                return await DispatchBrowserAutomationAsync(
+                        dispatch,
+                        key.Value.Binding,
+                        token => dispatch.Browser.DispatchKeyWithinOriginAsync(
+                            key.Value,
+                            RequiredAllowedOrigin(policyDecision),
+                            token),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            if (dispatch.Request is AgentBrowserRequest.Scroll scroll)
+            {
+                return await DispatchBrowserAutomationAsync(
+                        dispatch,
+                        scroll.Value.Binding,
+                        token => dispatch.Browser.ScrollWithinOriginAsync(
+                            scroll.Value,
+                            RequiredAllowedOrigin(policyDecision),
+                            token),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            if (dispatch.Request is AgentBrowserRequest.Evaluate evaluate)
+            {
+                var evaluation = await dispatch.Browser.EvaluateWithinOriginAsync(
+                        evaluate.Value,
+                        RequiredAllowedOrigin(policyDecision),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (!evaluation.IsSuccess)
+                {
+                    return MapBrowserOperationFailure(
+                        evaluation.Error!,
+                        dispatch.Revision);
+                }
+
+                if (evaluation.Value!.SourceBinding != evaluate.Value.Binding)
+                {
+                    return UnknownBrowserInteractionOutcome(
+                        "The browser evaluation receipt did not match its source binding.",
+                        dispatch.Revision);
+                }
+
+                await ReconcileBrowserMutationAsync(dispatch).ConfigureAwait(false);
+                return HostResult<AgentBrowserActionResult>.Succeed(
+                    new AgentBrowserActionResult.Evaluation(evaluation.Value),
+                    dispatch.Session.Snapshot().Descriptor.Revision);
+            }
+
             BrowserResult<BrowserSessionState> browserResult;
             var isMutation = true;
             switch (dispatch.Request)
@@ -604,12 +751,27 @@ public sealed partial class InMemorySessionHostClient
         }
         catch (OperationCanceledException)
             when (dispatch.Request is AgentBrowserRequest.Fill
-                or AgentBrowserRequest.Check)
+                or AgentBrowserRequest.Check
+                or AgentBrowserRequest.Mouse
+                or AgentBrowserRequest.Key
+                or AgentBrowserRequest.Scroll
+                or AgentBrowserRequest.Evaluate)
         {
             return UnknownBrowserInteractionOutcome(
-                dispatch.Request is AgentBrowserRequest.Check
-                    ? "The browser check outcome could not be determined."
-                    : "The browser fill outcome could not be determined.",
+                dispatch.Request switch
+                {
+                    AgentBrowserRequest.Check =>
+                        "The browser check outcome could not be determined.",
+                    AgentBrowserRequest.Mouse =>
+                        "The browser mouse outcome could not be determined.",
+                    AgentBrowserRequest.Key =>
+                        "The browser key outcome could not be determined.",
+                    AgentBrowserRequest.Scroll =>
+                        "The browser scroll outcome could not be determined.",
+                    AgentBrowserRequest.Evaluate =>
+                        "The browser evaluation outcome could not be determined.",
+                    _ => "The browser fill outcome could not be determined.",
+                },
                 dispatch.Revision);
         }
         catch (OperationCanceledException)
@@ -619,7 +781,11 @@ public sealed partial class InMemorySessionHostClient
         catch (Exception)
             when (dispatch.Request is AgentBrowserRequest.Click
                 or AgentBrowserRequest.Fill
-                or AgentBrowserRequest.Check)
+                or AgentBrowserRequest.Check
+                or AgentBrowserRequest.Mouse
+                or AgentBrowserRequest.Key
+                or AgentBrowserRequest.Scroll
+                or AgentBrowserRequest.Evaluate)
         {
             return UnknownBrowserInteractionOutcome(
                 dispatch.Request switch
@@ -628,6 +794,14 @@ public sealed partial class InMemorySessionHostClient
                         "The browser fill outcome could not be determined.",
                     AgentBrowserRequest.Check =>
                         "The browser check outcome could not be determined.",
+                    AgentBrowserRequest.Evaluate =>
+                        "The browser evaluation outcome could not be determined.",
+                    AgentBrowserRequest.Mouse =>
+                        "The browser mouse outcome could not be determined.",
+                    AgentBrowserRequest.Key =>
+                        "The browser key outcome could not be determined.",
+                    AgentBrowserRequest.Scroll =>
+                        "The browser scroll outcome could not be determined.",
                     _ =>
                         "The browser click outcome could not be determined.",
                 },
@@ -641,6 +815,33 @@ public sealed partial class InMemorySessionHostClient
                     "The browser engine could not complete the governed action."),
                 dispatch.Revision);
         }
+    }
+
+    private static async ValueTask<HostResult<AgentBrowserActionResult>>
+        DispatchBrowserAutomationAsync(
+            AgentBrowserDispatch dispatch,
+            BrowserAutomationBinding sourceBinding,
+            Func<CancellationToken,
+                ValueTask<BrowserResult<BrowserAutomationReceipt>>> operation,
+            CancellationToken cancellationToken)
+    {
+        var result = await operation(cancellationToken).ConfigureAwait(false);
+        if (!result.IsSuccess)
+        {
+            return MapBrowserOperationFailure(result.Error!, dispatch.Revision);
+        }
+
+        if (result.Value!.SourceBinding != sourceBinding)
+        {
+            return UnknownBrowserInteractionOutcome(
+                "The browser automation receipt did not match its source binding.",
+                dispatch.Revision);
+        }
+
+        await ReconcileBrowserMutationAsync(dispatch).ConfigureAwait(false);
+        return HostResult<AgentBrowserActionResult>.Succeed(
+            new AgentBrowserActionResult.Automation(result.Value),
+            dispatch.Session.Snapshot().Descriptor.Revision);
     }
 
     private static async ValueTask ReconcileBrowserMutationAsync(
@@ -674,6 +875,27 @@ public sealed partial class InMemorySessionHostClient
     {
         var (outcome, stableCode) = result switch
         {
+            HostResult<AgentBrowserActionResult>.Success
+            {
+                Value: AgentBrowserActionResult.Wait
+                {
+                    Value.Completion: BrowserWaitCompletion.Cancelled,
+                },
+            } =>
+                (
+                    AgentActionOutcome.Cancelled,
+                    BrowserCancellationCode(
+                        dispatch,
+                        permit,
+                        callerCancellation)),
+            HostResult<AgentBrowserActionResult>.Success
+            {
+                Value: AgentBrowserActionResult.Wait
+                {
+                    Value.Completion: BrowserWaitCompletion.SessionEnded,
+                },
+            } =>
+                (AgentActionOutcome.Failed, "browser_wait_session_ended"),
             HostResult<AgentBrowserActionResult>.Failure failure
                 when failure.Error.Code == HostErrorCode.Cancelled =>
                 (
@@ -701,6 +923,14 @@ public sealed partial class InMemorySessionHostClient
             long revision)
     {
         if (completion.Outcome != AgentActionOutcome.Cancelled)
+        {
+            return result;
+        }
+
+        if (result is HostResult<AgentBrowserActionResult>.Success
+            {
+                Value: AgentBrowserActionResult.Wait,
+            })
         {
             return result;
         }
@@ -743,6 +973,12 @@ public sealed partial class InMemorySessionHostClient
             BrowserErrorCode.ElementNotFillable =>
                 HostErrorCode.InvalidRequest,
             BrowserErrorCode.ElementNotCheckable =>
+                HostErrorCode.InvalidRequest,
+            BrowserErrorCode.CheckStateNotApplied =>
+                HostErrorCode.InvalidRequest,
+            BrowserErrorCode.ScriptRejected =>
+                HostErrorCode.InvalidRequest,
+            BrowserErrorCode.ScriptResultRejected =>
                 HostErrorCode.InvalidRequest,
             BrowserErrorCode.FillValueNotSupported =>
                 HostErrorCode.InvalidRequest,
@@ -801,6 +1037,11 @@ public sealed partial class InMemorySessionHostClient
             return "attachment_revoked";
         }
 
+        if (dispatch.InputCancellation.IsCancellationRequested)
+        {
+            return "human_input_preempted";
+        }
+
         return callerCancellation.IsCancellationRequested
             ? "caller_cancelled"
             : "operation_cancelled";
@@ -811,9 +1052,14 @@ public sealed partial class InMemorySessionHostClient
         {
             AgentBrowserRequest.ReadState => "state_read",
             AgentBrowserRequest.Snapshot => "snapshot_captured",
+            AgentBrowserRequest.Wait => "wait_completed",
             AgentBrowserRequest.Click => "click_completed",
             AgentBrowserRequest.Fill => "fill_completed",
             AgentBrowserRequest.Check => "check_completed",
+            AgentBrowserRequest.Mouse => "mouse_completed",
+            AgentBrowserRequest.Key => "key_completed",
+            AgentBrowserRequest.Scroll => "scroll_completed",
+            AgentBrowserRequest.Evaluate => "evaluate_completed",
             AgentBrowserRequest.Navigate => "navigate_completed",
             AgentBrowserRequest.Back => "back_completed",
             AgentBrowserRequest.Forward => "forward_completed",
@@ -831,9 +1077,31 @@ public sealed partial class InMemorySessionHostClient
             or AgentBrowserRequest.Click
             or AgentBrowserRequest.Fill
             or AgentBrowserRequest.Check
+            or AgentBrowserRequest.Mouse
+            or AgentBrowserRequest.Key
+            or AgentBrowserRequest.Scroll
+            or AgentBrowserRequest.Evaluate
             or AgentBrowserRequest.Back
             or AgentBrowserRequest.Forward
             or AgentBrowserRequest.Reload;
+
+    private static bool RequiresOneActionInputLease(
+        AgentBrowserRequest request) =>
+        request is not AgentBrowserRequest.ReadState
+            and not AgentBrowserRequest.Snapshot
+            and not AgentBrowserRequest.Wait;
+
+    private static void ReleaseOneActionLease(
+        AgentBrowserDispatch dispatch,
+        AgentActionPermit permit)
+    {
+        if (dispatch.OneActionLeaseId is { } leaseId)
+        {
+            dispatch.Session.ReleaseOneActionAgentLease(
+                leaseId,
+                permit.Authorization.Agent.Id);
+        }
+    }
 
     private static BrowserNavigationOrigin RequiredAllowedOrigin(
         AgentBrowserDomainPolicyDecision policyDecision) =>
@@ -857,12 +1125,22 @@ public sealed partial class InMemorySessionHostClient
                 SessionCapabilities.BrowserReadState,
             AgentBrowserRequest.Snapshot =>
                 SessionCapabilities.BrowserSnapshot,
+            AgentBrowserRequest.Wait =>
+                SessionCapabilities.BrowserWait,
             AgentBrowserRequest.Click =>
                 SessionCapabilities.BrowserClick,
             AgentBrowserRequest.Fill =>
                 SessionCapabilities.BrowserFill,
             AgentBrowserRequest.Check =>
                 SessionCapabilities.BrowserCheck,
+            AgentBrowserRequest.Mouse =>
+                SessionCapabilities.BrowserMouse,
+            AgentBrowserRequest.Key =>
+                SessionCapabilities.BrowserKey,
+            AgentBrowserRequest.Scroll =>
+                SessionCapabilities.BrowserScroll,
+            AgentBrowserRequest.Evaluate =>
+                SessionCapabilities.BrowserEvaluate,
             AgentBrowserRequest.Navigate =>
                 SessionCapabilities.BrowserNavigate,
             AgentBrowserRequest.Back =>
@@ -884,9 +1162,14 @@ public sealed partial class InMemorySessionHostClient
         {
             AgentBrowserRequest.ReadState read => read.SessionId,
             AgentBrowserRequest.Snapshot snapshot => snapshot.SessionId,
+            AgentBrowserRequest.Wait wait => wait.Value.SessionId,
             AgentBrowserRequest.Click click => click.Value.SessionId,
             AgentBrowserRequest.Fill fill => fill.Value.SessionId,
             AgentBrowserRequest.Check check => check.Value.SessionId,
+            AgentBrowserRequest.Mouse mouse => mouse.Value.SessionId,
+            AgentBrowserRequest.Key key => key.Value.SessionId,
+            AgentBrowserRequest.Scroll scroll => scroll.Value.SessionId,
+            AgentBrowserRequest.Evaluate evaluate => evaluate.Value.SessionId,
             AgentBrowserRequest.Navigate navigate => navigate.Value.SessionId,
             AgentBrowserRequest.Back back => back.SessionId,
             AgentBrowserRequest.Forward forward => forward.SessionId,
@@ -962,7 +1245,9 @@ public sealed partial class InMemorySessionHostClient
         AttachmentId AttachmentId,
         ClientId AttachmentClientId,
         long ExpectedSessionRevision,
-        long Revision);
+        long Revision,
+        CancellationToken InputCancellation,
+        InputLeaseId? OneActionLeaseId);
 
     private sealed class AgentBrowserDispatchException(HostError error)
         : Exception(error.Message)

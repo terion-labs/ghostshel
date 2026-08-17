@@ -5,11 +5,17 @@ namespace GhostShell.Application;
 
 public sealed record AgentToolDescriptor
 {
+    public static readonly TimeSpan DefaultMaximumExecutionLifetime =
+        TimeSpan.FromSeconds(30);
+    public static readonly TimeSpan AbsoluteMaximumExecutionLifetime =
+        TimeSpan.FromMinutes(61);
+
     public AgentToolDescriptor(
         string name,
         string title,
         AgentCapability capability,
-        AgentActionRisk risk)
+        AgentActionRisk risk,
+        TimeSpan? maximumExecutionLifetime = null)
     {
         Name = RequireToolName(name);
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
@@ -28,9 +34,18 @@ public sealed record AgentToolDescriptor
             throw new ArgumentOutOfRangeException(nameof(risk));
         }
 
+        var executionLifetime = maximumExecutionLifetime
+            ?? DefaultMaximumExecutionLifetime;
+        if (executionLifetime <= TimeSpan.Zero
+            || executionLifetime > AbsoluteMaximumExecutionLifetime)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumExecutionLifetime));
+        }
+
         Title = title;
         Capability = capability;
         Risk = risk;
+        MaximumExecutionLifetime = executionLifetime;
     }
 
     public string Name { get; }
@@ -40,6 +55,12 @@ public sealed record AgentToolDescriptor
     public AgentCapability Capability { get; }
 
     public AgentActionRisk Risk { get; }
+
+    /// <summary>
+    /// Maximum lifetime after a one-action authorization is consumed. The
+    /// unconsumed authorization remains independently short-lived.
+    /// </summary>
+    public TimeSpan MaximumExecutionLifetime { get; }
 
     private static string RequireToolName(string value)
     {
@@ -98,15 +119,27 @@ public sealed class AgentToolCatalog
 
 public static class BuiltInAgentTools
 {
-    public const string WorkspaceList = "workspace.list";
     public const string WorkspaceInspect = "workspace.inspect";
+    public const string ConnectionsList = "connections.list";
     public const string TabList = "tab.list";
+    public const string TabCreate = "tab.create";
+    public const string TabClose = "tab.close";
     public const string PanelList = "panel.list";
     public const string PanelInspect = "panel.inspect";
     public const string PanelFocus = "panel.focus";
+    public const string PanelConnect = "panel.connect";
+    public const string PanelAdd = "panel.add";
+    public const string PanelSplit = "panel.split";
+    public const string PanelClose = "panel.close";
     public const string TerminalReadScreen = "terminal.read_screen";
+    public const string TerminalReadScreenDiff = "terminal.read_screen_diff";
+    public const string TerminalReadScrollback = "terminal.read_scrollback";
+    public const string TerminalFind = "terminal.find";
+    public const string TerminalFindOnScreen = "terminal.find_on_screen";
+    public const string TerminalScrollViewport = "terminal.scroll_viewport";
     public const string TerminalSendText = "terminal.send_text";
     public const string TerminalPaste = "terminal.paste";
+    public const string TerminalSubmitText = "terminal.submit_text";
     public const string TerminalSendKeys = "terminal.send_keys";
     public const string TerminalSendChord = "terminal.send_chord";
     public const string TerminalSendMouse = "terminal.send_mouse";
@@ -115,36 +148,91 @@ public static class BuiltInAgentTools
     public const string TerminalResize = "terminal.resize";
     public const string BrowserReadState = "browser.read_state";
     public const string BrowserSnapshot = "browser.snapshot";
+    public const string BrowserWait = "browser.wait";
     public const string BrowserClick = "browser.click";
     public const string BrowserFill = "browser.fill";
     public const string BrowserCheck = "browser.check";
+    public const string BrowserMouse = "browser.mouse";
+    public const string BrowserKey = "browser.key";
+    public const string BrowserScroll = "browser.scroll";
+    public const string BrowserEvaluate = "browser.evaluate";
     public const string BrowserNavigate = "browser.navigate";
     public const string BrowserBack = "browser.back";
     public const string BrowserForward = "browser.forward";
     public const string BrowserReload = "browser.reload";
     public const string BrowserStop = "browser.stop";
     public const string FilesList = "files.list";
+    public const string FilesSearch = "files.search";
     public const string FilesStat = "files.stat";
     public const string FilesRead = "files.read";
+    public const string FilesAccessRead = "files.access_read";
+    public const string FilesTransfers = "files.transfers";
     public const string FilesCreateDirectory = "files.mkdir";
+    public const string FilesMove = "files.move";
     public const string FilesDelete = "files.delete";
     public const string ProcessesList = "processes.list";
     public const string StatisticsRead = "statistics.read";
+    public const string DatabaseReadState = "database.read_state";
+    public const string DatabaseListObjects = "database.list_objects";
+    public const string DatabaseDescribeObject = "database.describe_object";
+    public const string DatabaseReadTable = "database.read_table";
+    public const string DatabaseSchemaGraph = "database.schema_graph";
+    public const string RedisScan = "redis.scan";
+    public const string RedisRead = "redis.read";
+    public const string RedisListIndexes = "redis.list_indexes";
+    public const string RedisSearch = "redis.search";
+    public const string DockerReadState = "docker.read_state";
+    public const string DockerInspect = "docker.inspect";
+    public const string DockerLogs = "docker.logs";
+    public const string DockerFilesList = "docker.files_list";
+    public const string DockerFilesStat = "docker.files_stat";
+    public const string DockerFileRead = "docker.file_read";
     public const string McpCall = "mcp.call";
 
     public static AgentToolCatalog Catalog { get; } = new(
     [
-        Tool(WorkspaceList, "List workspaces", AgentCapability.Search, AgentActionRisk.Observation),
         Tool(WorkspaceInspect, "Inspect workspace", AgentCapability.Search, AgentActionRisk.Observation),
+        Tool(ConnectionsList, "List workspace connections", AgentCapability.Search, AgentActionRisk.Observation),
         Tool(TabList, "List tabs", AgentCapability.Search, AgentActionRisk.Observation),
+        Tool(TabCreate, "Create tab", AgentCapability.WorkspaceLayout, AgentActionRisk.Mutation),
+        Tool(TabClose, "Close tab", AgentCapability.WorkspaceLayout, AgentActionRisk.Destructive),
         Tool(PanelList, "List panels", AgentCapability.Search, AgentActionRisk.Observation),
         Tool(PanelInspect, "Inspect panel", AgentCapability.Search, AgentActionRisk.Observation),
         Tool(PanelFocus, "Focus panel", AgentCapability.RunCommands, AgentActionRisk.Routine),
+        Tool(PanelConnect, "Connect panel", AgentCapability.WorkspaceLayout, AgentActionRisk.Destructive),
+        Tool(PanelAdd, "Add panel", AgentCapability.WorkspaceLayout, AgentActionRisk.Mutation),
+        Tool(PanelSplit, "Split panel", AgentCapability.WorkspaceLayout, AgentActionRisk.Mutation),
+        Tool(PanelClose, "Close panel", AgentCapability.WorkspaceLayout, AgentActionRisk.Destructive),
         Tool(
             TerminalReadScreen,
             "Read terminal screen",
             AgentCapability.TerminalRead,
             AgentActionRisk.Observation),
+        Tool(
+            TerminalReadScreenDiff,
+            "Read terminal screen changes",
+            AgentCapability.TerminalRead,
+            AgentActionRisk.Observation),
+        Tool(
+            TerminalReadScrollback,
+            "Read terminal scrollback",
+            AgentCapability.TerminalRead,
+            AgentActionRisk.Observation),
+        Tool(
+            TerminalFind,
+            "Find terminal history",
+            AgentCapability.TerminalRead,
+            AgentActionRisk.Observation),
+        Tool(
+            TerminalFindOnScreen,
+            "Find text on terminal screen",
+            AgentCapability.TerminalRead,
+            AgentActionRisk.Observation),
+        Tool(
+            TerminalScrollViewport,
+            "Scroll terminal viewport",
+            AgentCapability.RunCommands,
+            AgentActionRisk.Routine),
         Tool(
             TerminalSendText,
             "Send terminal text",
@@ -153,6 +241,11 @@ public static class BuiltInAgentTools
         Tool(
             TerminalPaste,
             "Paste terminal text",
+            AgentCapability.RunCommands,
+            AgentActionRisk.Mutation),
+        Tool(
+            TerminalSubmitText,
+            "Submit terminal text",
             AgentCapability.RunCommands,
             AgentActionRisk.Mutation),
         Tool(
@@ -174,7 +267,8 @@ public static class BuiltInAgentTools
             TerminalWait,
             "Wait for terminal state",
             AgentCapability.TerminalRead,
-            AgentActionRisk.Routine),
+            AgentActionRisk.Routine,
+            TimeSpan.FromMinutes(61)),
         Tool(
             TerminalInterrupt,
             "Interrupt terminal process",
@@ -196,6 +290,12 @@ public static class BuiltInAgentTools
             AgentCapability.BrowserData,
             AgentActionRisk.Observation),
         Tool(
+            BrowserWait,
+            "Wait for browser state",
+            AgentCapability.BrowserData,
+            AgentActionRisk.Routine,
+            TimeSpan.FromMinutes(61)),
+        Tool(
             BrowserClick,
             "Click browser element",
             AgentCapability.BrowserInteraction,
@@ -210,6 +310,26 @@ public static class BuiltInAgentTools
             "Check browser element",
             AgentCapability.BrowserInteraction,
             AgentActionRisk.Mutation),
+        Tool(
+            BrowserMouse,
+            "Send browser mouse input",
+            AgentCapability.BrowserInteraction,
+            AgentActionRisk.Mutation),
+        Tool(
+            BrowserKey,
+            "Send browser key input",
+            AgentCapability.BrowserInteraction,
+            AgentActionRisk.Mutation),
+        Tool(
+            BrowserScroll,
+            "Scroll browser viewport",
+            AgentCapability.BrowserInteraction,
+            AgentActionRisk.Mutation),
+        Tool(
+            BrowserEvaluate,
+            "Evaluate bounded browser script",
+            AgentCapability.BrowserScripting,
+            AgentActionRisk.Privileged),
         Tool(
             BrowserNavigate,
             "Navigate browser",
@@ -241,6 +361,11 @@ public static class BuiltInAgentTools
             AgentCapability.ReadFiles,
             AgentActionRisk.Observation),
         Tool(
+            FilesSearch,
+            "Search file names",
+            AgentCapability.ReadFiles,
+            AgentActionRisk.Observation),
+        Tool(
             FilesStat,
             "Inspect file metadata",
             AgentCapability.ReadFiles,
@@ -251,8 +376,23 @@ public static class BuiltInAgentTools
             AgentCapability.ReadFiles,
             AgentActionRisk.Observation),
         Tool(
+            FilesAccessRead,
+            "Read file access control",
+            AgentCapability.ReadFiles,
+            AgentActionRisk.Observation),
+        Tool(
+            FilesTransfers,
+            "List file transfers",
+            AgentCapability.ReadFiles,
+            AgentActionRisk.Observation),
+        Tool(
             FilesCreateDirectory,
             "Create directory",
+            AgentCapability.EditFiles,
+            AgentActionRisk.Mutation),
+        Tool(
+            FilesMove,
+            "Move or rename path",
             AgentCapability.EditFiles,
             AgentActionRisk.Mutation),
         Tool(
@@ -263,17 +403,87 @@ public static class BuiltInAgentTools
         Tool(
             ProcessesList,
             "List local processes",
-            AgentCapability.ProcessControl,
+            AgentCapability.ProcessData,
             AgentActionRisk.Observation),
-        // Statistics and process listing are the two read-only local
-        // system-monitor surfaces. Keeping them under the existing policy
-        // capability avoids silently enabling a new persisted permission;
-        // the distinct tool and session capability still authorize each
-        // observation independently.
         Tool(
             StatisticsRead,
             "Read local system statistics",
-            AgentCapability.ProcessControl,
+            AgentCapability.SystemData,
+            AgentActionRisk.Observation),
+        Tool(
+            DatabaseReadState,
+            "Read database session state",
+            AgentCapability.DatabaseRead,
+            AgentActionRisk.Observation),
+        Tool(
+            DatabaseListObjects,
+            "List database objects",
+            AgentCapability.DatabaseRead,
+            AgentActionRisk.Observation),
+        Tool(
+            DatabaseDescribeObject,
+            "Describe database object",
+            AgentCapability.DatabaseRead,
+            AgentActionRisk.Observation),
+        Tool(
+            DatabaseReadTable,
+            "Read database table",
+            AgentCapability.DatabaseRead,
+            AgentActionRisk.Observation),
+        Tool(
+            DatabaseSchemaGraph,
+            "Read database schema graph",
+            AgentCapability.DatabaseRead,
+            AgentActionRisk.Observation),
+        Tool(
+            RedisScan,
+            "Scan Redis keys",
+            AgentCapability.DatabaseRead,
+            AgentActionRisk.Observation),
+        Tool(
+            RedisRead,
+            "Read Redis key",
+            AgentCapability.DatabaseRead,
+            AgentActionRisk.Observation),
+        Tool(
+            RedisListIndexes,
+            "List Redis Search indexes",
+            AgentCapability.DatabaseRead,
+            AgentActionRisk.Observation),
+        Tool(
+            RedisSearch,
+            "Search Redis index",
+            AgentCapability.DatabaseRead,
+            AgentActionRisk.Observation),
+        Tool(
+            DockerReadState,
+            "Read Docker engine state",
+            AgentCapability.DockerData,
+            AgentActionRisk.Observation),
+        Tool(
+            DockerInspect,
+            "Inspect Docker resource",
+            AgentCapability.DockerData,
+            AgentActionRisk.Observation),
+        Tool(
+            DockerLogs,
+            "Read Docker container logs",
+            AgentCapability.DockerData,
+            AgentActionRisk.Observation),
+        Tool(
+            DockerFilesList,
+            "List Docker resource files",
+            AgentCapability.DockerData,
+            AgentActionRisk.Observation),
+        Tool(
+            DockerFilesStat,
+            "Inspect Docker resource file",
+            AgentCapability.DockerData,
+            AgentActionRisk.Observation),
+        Tool(
+            DockerFileRead,
+            "Read Docker resource text file",
+            AgentCapability.DockerData,
             AgentActionRisk.Observation),
         Tool(
             McpCall,
@@ -286,6 +496,7 @@ public static class BuiltInAgentTools
         string name,
         string title,
         AgentCapability capability,
-        AgentActionRisk risk) =>
-        new(name, title, capability, risk);
+        AgentActionRisk risk,
+        TimeSpan? maximumExecutionLifetime = null) =>
+        new(name, title, capability, risk, maximumExecutionLifetime);
 }

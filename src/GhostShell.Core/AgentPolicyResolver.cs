@@ -52,14 +52,10 @@ public static class AgentPolicyResolver
             mostSpecific.Model.Trim(),
             permissions)
         {
-            CompactionModel = ResolveModelSelection(
-                layers,
-                policy => policy.CompactionModel,
-                global),
-            TitleModel = ResolveModelSelection(
-                layers,
-                policy => policy.TitleModel,
-                fallback: null),
+            CompactionModel = NormalizeModelSelection(
+                mostSpecific.CompactionModel),
+            TitleModel = NormalizeModelSelection(
+                mostSpecific.TitleModel),
             SystemPrompt = ResolveSystemPrompt(layers),
         };
     }
@@ -166,25 +162,9 @@ public static class AgentPolicyResolver
         return AgentPermission.Off;
     }
 
-    private static AgentModelSelection? ResolveModelSelection(
-        IReadOnlyList<AgentPolicy?> layers,
-        Func<AgentPolicy, AgentModelSelection?> selector,
-        AgentPolicy? fallback)
-    {
-        for (var index = layers.Count - 1; index >= 0; index--)
-        {
-            if (layers[index] is { } layer && selector(layer) is { } selection)
-            {
-                return new AgentModelSelection(
-                    selection.Provider.Trim(),
-                    selection.Model.Trim());
-            }
-        }
-
-        return fallback is null
-            ? null
-            : new AgentModelSelection(fallback.Provider.Trim(), fallback.Model.Trim());
-    }
+    private static AgentModelSelection NormalizeModelSelection(
+        AgentModelSelection selection) =>
+        new(selection.Provider.Trim(), selection.Model.Trim());
 
     private static string? ResolveSystemPrompt(IReadOnlyList<AgentPolicy?> layers)
     {

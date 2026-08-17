@@ -34,20 +34,6 @@ public abstract record AgentWorkspaceGraphActionResult
 
     public bool ScopeLimited { get; }
 
-    public sealed record WorkspacesListed : AgentWorkspaceGraphActionResult
-    {
-        internal WorkspacesListed(
-            AgentWorkspaceGraphScopeKind scopeKind,
-            bool scopeLimited,
-            IReadOnlyList<AgentWorkspaceGraphWorkspace> workspaces)
-            : base(scopeKind, scopeLimited)
-        {
-            Workspaces = Copy(workspaces, nameof(workspaces));
-        }
-
-        public IReadOnlyList<AgentWorkspaceGraphWorkspace> Workspaces { get; }
-    }
-
     public sealed record WorkspaceInspected : AgentWorkspaceGraphActionResult
     {
         internal WorkspaceInspected(
@@ -91,19 +77,6 @@ public abstract record AgentWorkspaceGraphActionResult
         public AgentWorkspaceGraphPage<AgentWorkspaceGraphPanel> Page { get; }
     }
 
-    private static IReadOnlyList<T> Copy<T>(
-        IReadOnlyList<T> values,
-        string parameterName)
-        where T : class
-    {
-        ArgumentNullException.ThrowIfNull(values);
-        return new ReadOnlyCollection<T>(
-            values
-                .Select(value => value ?? throw new ArgumentException(
-                    "A graph projection cannot contain null entries.",
-                    parameterName))
-                .ToArray());
-    }
 }
 
 public sealed record AgentWorkspaceGraphPage<T>

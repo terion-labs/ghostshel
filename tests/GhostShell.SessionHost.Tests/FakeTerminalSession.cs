@@ -32,7 +32,10 @@ internal sealed class FakeTerminalSession(
         SessionCapabilities.TerminalInterrupt,
         SessionCapabilities.TerminalWait,
         SessionCapabilities.TerminalMouse,
+        SessionCapabilities.TerminalRevisionBoundMouse,
         SessionCapabilities.TerminalScrollback,
+        SessionCapabilities.TerminalScrollbackRead,
+        SessionCapabilities.TerminalScrollbackFind,
         SessionCapabilities.TerminalClearScrollback,
         SessionCapabilities.TerminalFind,
         SessionCapabilities.TerminalSelection,
@@ -141,6 +144,8 @@ internal sealed class FakeTerminalSession(
 
     public int PasteCount { get; private set; }
 
+    public int SubmitTextCount { get; private set; }
+
     public TerminalPasteResult? PasteResultOverride { get; set; }
 
     public string ScreenText { get; set; } = "fake screen";
@@ -149,13 +154,31 @@ internal sealed class FakeTerminalSession(
 
     public long ScreenContentRevision { get; set; }
 
+    public TerminalScreenDiffInput? LastScreenDiffInput { get; private set; }
+
+    public TerminalScreenDiffResult? ScreenDiffResultOverride { get; set; }
+
     public TerminalWaitOutcome? WaitOutcomeOverride { get; set; }
 
     public TerminalWaitForTextInput? LastTextWait { get; private set; }
 
+    public TerminalWaitForDelayInput? LastDelayWait { get; private set; }
+
+    public TerminalScrollbackReadInput? LastScrollbackRead { get; private set; }
+
+    public TerminalScrollbackFindInput? LastScrollbackFind { get; private set; }
+
     public TerminalWaitForChangeInput? LastChangeWait { get; private set; }
 
     public TerminalWaitForStableInput? LastStableWait { get; private set; }
+
+    public TerminalWaitForPromptReadyInput? LastPromptReadyWait { get; private set; }
+
+    public TerminalWaitForCommandFinishedInput? LastCommandFinishedWait { get; private set; }
+
+    public bool SupportsShellIntegrationEvents { get; set; } = true;
+
+    public int? SemanticWaitExitCode { get; set; } = 17;
 
     public ValueTask AttachRendererAsync(
         NativeRendererHost rendererHost,
@@ -293,6 +316,27 @@ internal sealed class FakeTerminalSession(
         }
     }
 
+    public async ValueTask<TerminalRevisionBoundMouseOutcome>
+        SendMouseAtContentRevisionAsync(
+            TerminalMouseInput mouseInput,
+            long expectedContentRevision,
+            CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (expectedContentRevision != ScreenContentRevision)
+        {
+            return TerminalRevisionBoundMouseOutcome.ContentRevisionChanged;
+        }
+
+        if (mouseInput.Column >= 80 || mouseInput.Row >= 24)
+        {
+            return TerminalRevisionBoundMouseOutcome.CoordinatesOutOfBounds;
+        }
+
+        await SendMouseAsync(mouseInput, cancellationToken);
+        return TerminalRevisionBoundMouseOutcome.Sent;
+    }
+
     public void RemoveCapability(string capability)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(capability);
@@ -308,6 +352,48 @@ internal sealed class FakeTerminalSession(
         LastScrollInput = scrollInput;
         cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.CompletedTask;
+    }
+
+    public ValueTask<TerminalScrollbackSnapshot> ReadScrollbackAsync(
+        TerminalScrollbackReadInput input,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        LastScrollbackRead = input;
+        var row = new TerminalScrollbackRow(
+            new TerminalScrollbackRowAnchor(ScreenContentRevision, 0),
+            ScreenText);
+        return ValueTask.FromResult(new TerminalScrollbackSnapshot(
+            [row],
+            TotalLines: 1,
+            ContentRevision: ScreenContentRevision,
+            HasMoreBefore: false,
+            HasMoreAfter: false));
+    }
+
+    public ValueTask<TerminalScrollbackFindResult> FindScrollbackAsync(
+        TerminalScrollbackFindInput input,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        LastScrollbackFind = input;
+        IReadOnlyList<TerminalScrollbackRow> matches = ScreenText.Contains(
+            input.Query,
+            StringComparison.Ordinal)
+                ?
+                [
+                    new TerminalScrollbackRow(
+                        new TerminalScrollbackRowAnchor(
+                            ScreenContentRevision,
+                            0),
+                        ScreenText),
+                ]
+                : [];
+        return ValueTask.FromResult(new TerminalScrollbackFindResult(
+            matches,
+            TotalLines: 1,
+            ContentRevision: ScreenContentRevision,
+            IsTruncated: false));
     }
 
     public ValueTask ClearScrollbackAsync(CancellationToken cancellationToken)
@@ -355,6 +441,18 @@ internal sealed class FakeTerminalSession(
             ?? TerminalPasteResult.Completed(bracketed: false));
     }
 
+    public ValueTask<TerminalPasteResult> SubmitTextAsync(
+        TerminalPasteInput pasteInput,
+        CancellationToken cancellationToken)
+    {
+        LastPasteInput = pasteInput;
+        cancellationToken.ThrowIfCancellationRequested();
+        SubmitTextCount++;
+        return ValueTask.FromResult(
+            PasteResultOverride
+            ?? TerminalPasteResult.Completed(bracketed: false));
+    }
+
     public ValueTask<TerminalScreenSnapshot> ReadScreenAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -368,6 +466,27 @@ internal sealed class FakeTerminalSession(
             ScreenWorkingDirectory,
             DateTimeOffset.UnixEpoch,
             ContentRevision: ScreenContentRevision));
+    }
+
+    public ValueTask<TerminalScreenDiffResult> ReadScreenDiffAsync(
+        TerminalScreenDiffInput input,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        LastScreenDiffInput = input;
+        return ValueTask.FromResult(
+            ScreenDiffResultOverride
+            ?? new TerminalScreenDiffResult(
+                input.AfterContentRevision,
+                ScreenContentRevision,
+                BaselineAvailable:
+                    input.AfterContentRevision == ScreenContentRevision,
+                ChangedRows: [],
+                IsTruncated: false,
+                CursorRow: 1,
+                CursorColumn: 1,
+                IsCursorVisible: true,
+                InteractiveState: null));
     }
 
     public async ValueTask<TerminalWaitOutcome> WaitForTextAsync(
@@ -387,6 +506,20 @@ internal sealed class FakeTerminalSession(
             ?? (snapshot.PlainText.Contains(input.Text, StringComparison.Ordinal)
                 ? TerminalWaitOutcome.Matched(snapshot, snapshot.ContentRevision)
                 : TerminalWaitOutcome.Timeout(snapshot, snapshot.ContentRevision));
+    }
+
+    public ValueTask<TerminalWaitOutcome> WaitForDelayAsync(
+        TerminalWaitForDelayInput input,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        LastDelayWait = input;
+        var snapshot = ReadScreenAsync(cancellationToken).Result;
+        return ValueTask.FromResult(
+            WaitOutcomeOverride
+            ?? TerminalWaitOutcome.Elapsed(
+                snapshot,
+                snapshot.ContentRevision));
     }
 
     public ValueTask<TerminalWaitOutcome> WaitForChangeAsync(
@@ -411,6 +544,79 @@ internal sealed class FakeTerminalSession(
         var snapshot = ReadScreenAsync(cancellationToken).Result;
         return ValueTask.FromResult(WaitOutcomeOverride
             ?? TerminalWaitOutcome.Stable(snapshot, snapshot.ContentRevision));
+    }
+
+    public ValueTask<TerminalWaitOutcome> WaitForPromptReadyAsync(
+        TerminalWaitForPromptReadyInput input,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        LastPromptReadyWait = input;
+        return ValueTask.FromResult(SemanticWait(
+            input.AfterShellEventSequence,
+            TerminalCommandBoundaryKind.CommandInputStarted));
+    }
+
+    public ValueTask<TerminalWaitOutcome> WaitForCommandFinishedAsync(
+        TerminalWaitForCommandFinishedInput input,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        LastCommandFinishedWait = input;
+        return ValueTask.FromResult(SemanticWait(
+            input.AfterShellEventSequence,
+            TerminalCommandBoundaryKind.CommandFinished));
+    }
+
+    private TerminalWaitOutcome SemanticWait(
+        long afterShellEventSequence,
+        TerminalCommandBoundaryKind eventKind)
+    {
+        if (!SupportsShellIntegrationEvents)
+        {
+            return TerminalWaitOutcome.Unsupported();
+        }
+
+        if (WaitOutcomeOverride is not null)
+        {
+            return WaitOutcomeOverride;
+        }
+
+        if (afterShellEventSequence == long.MaxValue)
+        {
+            var final = ReadScreenAsync(CancellationToken.None).Result;
+            return TerminalWaitOutcome.Timeout(
+                final,
+                final.ContentRevision);
+        }
+
+        var shellEvent = new TerminalShellIntegrationEvent(
+            afterShellEventSequence + 1,
+            eventKind,
+            DateTimeOffset.UnixEpoch,
+            eventKind == TerminalCommandBoundaryKind.CommandFinished
+                ? SemanticWaitExitCode
+                : null);
+        var snapshot = new TerminalScreenSnapshot(
+            ScreenText,
+            CursorRow: 1,
+            CursorColumn: 1,
+            Rows: 24,
+            Columns: 80,
+            IsAlternateScreen: false,
+            WorkingDirectory: ScreenWorkingDirectory,
+            CapturedAtUtc: DateTimeOffset.UnixEpoch,
+            ContentRevision: ScreenContentRevision,
+            ShellIntegrationEvents: [shellEvent]);
+        return eventKind == TerminalCommandBoundaryKind.CommandInputStarted
+            ? TerminalWaitOutcome.PromptReady(
+                snapshot,
+                snapshot.ContentRevision,
+                shellEvent)
+            : TerminalWaitOutcome.CommandFinished(
+                snapshot,
+                snapshot.ContentRevision,
+                shellEvent);
     }
 
     public ValueTask<PanelSessionSnapshot> SnapshotAsync(CancellationToken cancellationToken)

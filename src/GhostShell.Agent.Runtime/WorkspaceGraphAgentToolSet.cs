@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Text;
 using GhostShell.Agent;
 using GhostShell.Application;
+using GhostShell.Core;
 
 namespace GhostShell.Agent.Runtime;
 
@@ -34,13 +35,8 @@ internal static class WorkspaceGraphAgentToolSet
     private static readonly ImmutableArray<AgentToolDefinition> Tools =
     [
         Tool(
-            BuiltInAgentTools.WorkspaceList,
-            "List only the workspace shell already inside this run's fixed scope. "
-                + "Titles are bounded untrusted metadata; this cannot discover sibling workspaces.",
-            EmptySchema),
-        Tool(
             BuiltInAgentTools.WorkspaceInspect,
-            "Inspect the scope-clipped workspace, tabs, and panels already fixed for this run. "
+            "Inspect the single scope-clipped workspace, tabs, and panels already fixed for this run. "
                 + "Titles are bounded untrusted metadata and no session details are returned.",
             EmptySchema),
         Tool(
@@ -66,6 +62,8 @@ internal static class WorkspaceGraphAgentToolSet
             ? Tools
             : [];
     }
+
+    public static ImmutableArray<AgentToolDefinition> ForWorkspace() => Tools;
 
     private static AgentToolDefinition Tool(
         string name,

@@ -56,6 +56,14 @@ internal sealed class PanelChrome : ContentControl
         AvaloniaProperty.Register<PanelChrome, bool>(nameof(IsActive));
 
     /// <summary>
+    /// Whether the current agent turn has leased this exact panel. This is an
+    /// explicit chrome input so a template cannot accidentally inherit an
+    /// aggregate tab or workspace activity flag from an outer data context.
+    /// </summary>
+    public static readonly StyledProperty<bool> IsAgentActiveProperty =
+        AvaloniaProperty.Register<PanelChrome, bool>(nameof(IsAgentActive));
+
+    /// <summary>
     /// The panel's liveness, drawn at the far left of the header. A dot for most,
     /// but the shape is the panel's to choose — what "live" means differs.
     /// </summary>
@@ -256,6 +264,12 @@ internal sealed class PanelChrome : ContentControl
     {
         get => GetValue(IsActiveProperty);
         set => SetValue(IsActiveProperty, value);
+    }
+
+    public bool IsAgentActive
+    {
+        get => GetValue(IsAgentActiveProperty);
+        set => SetValue(IsAgentActiveProperty, value);
     }
 
     public object? Status

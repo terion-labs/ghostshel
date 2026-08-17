@@ -28,9 +28,11 @@ public sealed class McpServerProfileEditorViewModelTests
 
         var request = editor.CreateSaveRequest();
 
-        Assert.Equal("/opt/tools/mcp-server", request.Profile.Executable);
-        Assert.Equal(["--stdio", "value with spaces"], request.Profile.Arguments);
-        var binding = Assert.Single(request.Profile.Environment);
+        var transport = Assert.IsType<McpServerTransport.Stdio>(
+            request.Profile.Transport);
+        Assert.Equal("/opt/tools/mcp-server", transport.Executable);
+        Assert.Equal(["--stdio", "value with spaces"], transport.Arguments);
+        var binding = Assert.Single(transport.Environment);
         Assert.Equal("API_TOKEN", binding.Name);
         Assert.Equal(new SecretRef("vault-token-ref"), binding.Reference);
         Assert.Equal(["deploy.preview"], request.Profile.EnabledTools);
@@ -76,9 +78,6 @@ public sealed class McpServerProfileEditorViewModelTests
         var header = Assert.Single(transport.Headers);
         Assert.Equal("Authorization", header.Name);
         Assert.Equal(new SecretRef("vault-remote-token"), header.Reference);
-        Assert.Empty(request.Profile.Environment);
-        Assert.Empty(request.Profile.Arguments);
-        Assert.Equal(string.Empty, request.Profile.Executable);
         Assert.True(request.RequiresTrustConfirmation);
         Assert.True(request.TrustReview.IsStreamableHttp);
         Assert.False(request.TrustReview.IsStdio);
@@ -227,7 +226,10 @@ public sealed class McpServerProfileEditorViewModelTests
         editor.MoveArgumentUp(editor.Arguments[1]);
 
         var request = editor.CreateSaveRequest();
-        Assert.Equal(["second", "first"], request.Profile.Arguments);
+        Assert.Equal(
+            ["second", "first"],
+            Assert.IsType<McpServerTransport.Stdio>(request.Profile.Transport)
+                .Arguments);
         Assert.Equal("Argument 1", editor.Arguments[0].AccessibleName);
         Assert.Equal("Argument 2", editor.Arguments[1].AccessibleName);
     }
@@ -299,14 +301,16 @@ public sealed class McpServerProfileEditorViewModelTests
     {
         var profile = Profile(enabledTools: ["read"]);
         var matching = Secret(
-            profile.Environment[0].Reference,
+            Assert.IsType<McpServerTransport.Stdio>(profile.Transport)
+                .Environment[0].Reference,
             "Deployment token",
             "ApiKey",
             new SecretScope(
                 SecretScopeKind.McpServer,
                 profile.Id.Value));
         var wrongScope = Secret(
-            profile.Environment[0].Reference,
+            Assert.IsType<McpServerTransport.Stdio>(profile.Transport)
+                .Environment[0].Reference,
             "Global token",
             "Password",
             SecretScope.Global);
@@ -961,12 +965,13 @@ public sealed class McpServerProfileEditorViewModelTests
             new McpServerProfileId("mcp.local-tools"),
             McpServerProfile.CurrentSchemaVersion,
             "Local tools",
-            "/opt/tools/mcp-server",
-            ["--stdio"],
-            "/var/lib/mcp",
-            [new McpServerEnvironmentVariable(
-                "API_TOKEN",
-                mcpReference)],
+            new McpServerTransport.Stdio(
+                "/opt/tools/mcp-server",
+                ["--stdio"],
+                "/var/lib/mcp",
+                [new McpServerEnvironmentVariable(
+                    "API_TOKEN",
+                    mcpReference)]),
             ["read"]);
         var stored = new StoredDefinition<McpServerProfile>(
             profile,
@@ -1105,14 +1110,15 @@ public sealed class McpServerProfileEditorViewModelTests
             new McpServerProfileId("mcp.local-tools"),
             McpServerProfile.CurrentSchemaVersion,
             "Local tools",
-            "/opt/tools/mcp-server",
-            ["--stdio"],
-            "/var/lib/mcp",
-            hasEnvironment
-                ? [new McpServerEnvironmentVariable(
-                    "API_TOKEN",
-                    new SecretRef("vault-ref"))]
-                : [],
+            new McpServerTransport.Stdio(
+                "/opt/tools/mcp-server",
+                ["--stdio"],
+                "/var/lib/mcp",
+                hasEnvironment
+                    ? [new McpServerEnvironmentVariable(
+                        "API_TOKEN",
+                        new SecretRef("vault-ref"))]
+                    : []),
             enabledTools,
             isEnabled);
 

@@ -27,4 +27,13 @@ public abstract record AgentBrowserActionResult
 
     public sealed record Snapshot(BrowserDocumentSnapshot Value)
         : AgentBrowserActionResult;
+
+    public sealed record Wait(BrowserWaitOutcome Value)
+        : AgentBrowserActionResult;
+
+    public sealed record Automation(BrowserAutomationReceipt Value)
+        : AgentBrowserActionResult;
+
+    public sealed record Evaluation(BrowserEvaluationResult Value)
+        : AgentBrowserActionResult;
 }

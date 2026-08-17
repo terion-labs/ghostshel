@@ -176,10 +176,11 @@ public sealed class DurableDefinitionSecurityTests
             profileId,
             McpServerProfile.CurrentSchemaVersion,
             "Production MCP",
-            "/usr/local/bin/mcp-server",
-            ["--stdio"],
-            workingDirectory: null,
-            [new McpServerEnvironmentVariable("MCP_TOKEN", secretReference)],
+            new McpServerTransport.Stdio(
+                "/usr/local/bin/mcp-server",
+                ["--stdio"],
+                workingDirectory: null,
+                [new McpServerEnvironmentVariable("MCP_TOKEN", secretReference)]),
             ["status.read"]);
         var repository = new SqliteDefinitionRepository<McpServerProfile>(
             temporary.Database,
@@ -192,7 +193,8 @@ public sealed class DurableDefinitionSecurityTests
         Assert.True(loaded.IsSuccess, loaded.Error?.Message);
         Assert.Equal(
             secretReference,
-            Assert.Single(loaded.Value!.Value.Environment).Reference);
+            Assert.Single(Assert.IsType<McpServerTransport.Stdio>(
+                loaded.Value!.Value.Transport).Environment).Reference);
 
         await using (var sqlite = await temporary.Database.OpenConnectionAsync(
                          CancellationToken.None))

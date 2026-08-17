@@ -16,6 +16,7 @@ public sealed class AgentFileActionComposerTests
     [InlineData(
         FileOperation.CreateDirectory,
         BuiltInAgentTools.FilesCreateDirectory)]
+    [InlineData(FileOperation.Move, BuiltInAgentTools.FilesMove)]
     [InlineData(FileOperation.Delete, BuiltInAgentTools.FilesDelete)]
     public void Closed_request_kinds_map_to_trusted_tools(
         FileOperation operation,
@@ -53,26 +54,44 @@ public sealed class AgentFileActionComposerTests
 
         Assert.True(typeof(AgentFileRequest).IsAbstract);
         Assert.Equal(
-            ["CreateDirectory", "Delete", "List", "Read", "Stat"],
+            [
+                "AccessRead",
+                "CreateDirectory",
+                "Delete",
+                "List",
+                "Move",
+                "Read",
+                "Search",
+                "Stat",
+                "Transfers",
+            ],
             requestKinds.Select(type => type.Name));
         Assert.All(requestKinds, type => Assert.True(type.IsSealed));
-        Assert.All(
-            requestKinds,
-            type => Assert.Equal(
-                [typeof(ImmutableArray<FilePanelPathSegment>), typeof(SessionId)],
-                type.GetProperties()
-                    .Select(property => property.PropertyType)
-                    .OrderBy(propertyType => propertyType.Name, StringComparer.Ordinal)));
+        Assert.All(requestKinds, type => Assert.Contains(
+            type.GetProperties(),
+            property => property is
+            {
+                Name: "SessionId",
+                PropertyType: not null,
+            } && property.PropertyType == typeof(SessionId)));
         Assert.DoesNotContain(
             requestKinds.SelectMany(type => type.GetProperties()),
             property => property.Name.Contains("Page", StringComparison.Ordinal)
                 || property.Name.Contains("Continuation", StringComparison.Ordinal)
-                || property.Name.Contains("Absolute", StringComparison.Ordinal)
-                || property.Name.Contains("Maximum", StringComparison.Ordinal)
-                || property.PropertyType == typeof(string));
+                || property.Name.Contains("Absolute", StringComparison.Ordinal));
         Assert.True(typeof(AgentFileActionResult).IsAbstract);
         Assert.Equal(
-            ["CreatedDirectory", "Deleted", "Entry", "Page", "Preview"],
+            [
+                "AccessControl",
+                "CreatedDirectory",
+                "Deleted",
+                "Entry",
+                "Moved",
+                "Page",
+                "Preview",
+                "SearchResults",
+                "Transfers",
+            ],
             resultKinds.Select(type => type.Name));
         Assert.All(resultKinds, type => Assert.True(type.IsSealed));
         Assert.Empty(typeof(AgentFileAction).GetConstructors());
@@ -94,8 +113,23 @@ public sealed class AgentFileActionComposerTests
                 AgentCapability.ReadFiles,
                 AgentActionRisk.Observation),
             (
+                BuiltInAgentTools.FilesSearch,
+                "Search file names",
+                AgentCapability.ReadFiles,
+                AgentActionRisk.Observation),
+            (
                 BuiltInAgentTools.FilesStat,
                 "Inspect file metadata",
+                AgentCapability.ReadFiles,
+                AgentActionRisk.Observation),
+            (
+                BuiltInAgentTools.FilesAccessRead,
+                "Read file access control",
+                AgentCapability.ReadFiles,
+                AgentActionRisk.Observation),
+            (
+                BuiltInAgentTools.FilesTransfers,
+                "List file transfers",
                 AgentCapability.ReadFiles,
                 AgentActionRisk.Observation),
             (
@@ -109,6 +143,11 @@ public sealed class AgentFileActionComposerTests
                 AgentCapability.EditFiles,
                 AgentActionRisk.Mutation),
             (
+                BuiltInAgentTools.FilesMove,
+                "Move or rename path",
+                AgentCapability.EditFiles,
+                AgentActionRisk.Mutation),
+            (
                 BuiltInAgentTools.FilesDelete,
                 "Permanently delete path",
                 AgentCapability.EditFiles,
@@ -116,9 +155,13 @@ public sealed class AgentFileActionComposerTests
         };
 
         Assert.Equal("files.list", BuiltInAgentTools.FilesList);
+        Assert.Equal("files.search", BuiltInAgentTools.FilesSearch);
         Assert.Equal("files.stat", BuiltInAgentTools.FilesStat);
         Assert.Equal("files.read", BuiltInAgentTools.FilesRead);
+        Assert.Equal("files.access_read", BuiltInAgentTools.FilesAccessRead);
+        Assert.Equal("files.transfers", BuiltInAgentTools.FilesTransfers);
         Assert.Equal("files.mkdir", BuiltInAgentTools.FilesCreateDirectory);
+        Assert.Equal("files.move", BuiltInAgentTools.FilesMove);
         Assert.Equal("files.delete", BuiltInAgentTools.FilesDelete);
         foreach (var (name, title, capability, risk) in expected)
         {
@@ -183,6 +226,48 @@ public sealed class AgentFileActionComposerTests
     }
 
     [Fact]
+    public void Search_access_and_transfer_observations_bind_exact_bounds()
+    {
+        var composer = new AgentFileActionComposer();
+        var context = FileContext();
+        var search = composer.Prepare(
+            Envelope(),
+            context,
+            new AgentFileRequest.Search(
+                Session(),
+                Segments("logs"),
+                "error",
+                FilePanelDiscoveryScope.Subtree,
+                17));
+        var access = composer.Prepare(
+            Envelope(),
+            context,
+            new AgentFileRequest.AccessRead(
+                Session(),
+                Segments("report.txt")));
+        var transfers = composer.Prepare(
+            Envelope(),
+            context,
+            new AgentFileRequest.Transfers(Session()));
+
+        Assert.Equal(BuiltInAgentTools.FilesSearch, search.Proposal.ToolName);
+        Assert.Contains(search.Proposal.Presentation.Arguments,
+            argument => argument.Name == "query" && argument.DisplayValue == "error");
+        Assert.Contains(search.Proposal.Presentation.Arguments,
+            argument => argument.Name == "scope" && argument.DisplayValue == "subtree");
+        Assert.Contains(search.Proposal.Presentation.Arguments,
+            argument => argument.Name == "maximum_results" && argument.DisplayValue == "17");
+        Assert.Contains(access.Proposal.Presentation.Arguments,
+            argument => argument.Name == "maximum_grants"
+                && argument.DisplayValue == "100");
+        Assert.Contains(transfers.Proposal.Presentation.Arguments,
+            argument => argument.Name == "owned_by_session"
+                && argument.DisplayValue == "true");
+        Assert.NotEqual(search.Proposal.ArgumentDigest, access.Proposal.ArgumentDigest);
+        Assert.NotEqual(access.Proposal.ArgumentDigest, transfers.Proposal.ArgumentDigest);
+    }
+
+    [Fact]
     public void List_binds_the_clamped_provider_page_limit()
     {
         var metadata = Metadata(maximumListPageSize: 7);
@@ -216,6 +301,10 @@ public sealed class AgentFileActionComposerTests
             envelope,
             context,
             Delete("obsolete.txt"));
+        var move = composer.Prepare(
+            envelope,
+            context,
+            Move(["draft.txt"], ["published", "report.txt"]));
 
         Assert.Collection(
             create.Proposal.Presentation.Arguments.TakeLast(2),
@@ -226,6 +315,17 @@ public sealed class AgentFileActionComposerTests
             argument => AssertArgument(
                 argument,
                 "precondition",
+                "must_not_exist"));
+        Assert.Collection(
+            move.Proposal.Presentation.Arguments.TakeLast(3),
+            argument => AssertArgument(
+                argument,
+                "destination_relative_path",
+                "published/report.txt"),
+            argument => AssertArgument(argument, "effect", "move_or_rename"),
+            argument => AssertArgument(
+                argument,
+                "destination_precondition",
                 "must_not_exist"));
         Assert.Collection(
             delete.Proposal.Presentation.Arguments.TakeLast(3),
@@ -295,6 +395,8 @@ public sealed class AgentFileActionComposerTests
             Read("second"),
             CreateDirectory("first"),
             CreateDirectory("second"),
+            Move(["first"], ["moved-first"]),
+            Move(["second"], ["moved-second"]),
             Delete("first"),
             Delete("second"),
         ];
@@ -546,7 +648,17 @@ public sealed class AgentFileActionComposerTests
             composer.Prepare(
                 Envelope(),
                 FileContext(),
+                Move([], ["destination"])));
+        Assert.Throws<ArgumentException>(() =>
+            composer.Prepare(
+                Envelope(),
+                FileContext(),
                 Delete()));
+        Assert.Throws<ArgumentException>(() =>
+            composer.Prepare(
+                Envelope(),
+                FileContext(),
+                Move(["same"], ["same"])));
     }
 
     [Fact]
@@ -724,6 +836,7 @@ public sealed class AgentFileActionComposerTests
             FileOperation.Stat => Stat(relativePath),
             FileOperation.Read => Read(relativePath),
             FileOperation.CreateDirectory => CreateDirectory(relativePath),
+            FileOperation.Move => Move(relativePath, ["moved", .. relativePath]),
             FileOperation.Delete => Delete(relativePath),
             _ => throw new ArgumentOutOfRangeException(nameof(operation)),
         };
@@ -742,6 +855,14 @@ public sealed class AgentFileActionComposerTests
         new AgentFileRequest.CreateDirectory(
             Session(),
             Segments(relativePath));
+
+    private static AgentFileRequest Move(
+        string[] sourceRelativePath,
+        string[] destinationRelativePath) =>
+        new AgentFileRequest.Move(
+            Session(),
+            Segments(sourceRelativePath),
+            Segments(destinationRelativePath));
 
     private static AgentFileRequest Delete(params string[] relativePath) =>
         new AgentFileRequest.Delete(Session(), Segments(relativePath));
@@ -989,17 +1110,25 @@ public sealed class AgentFileActionComposerTests
 
     private static FilePanelCapability AllProviderCapabilities() =>
         ReadCapabilities()
+        | FilePanelCapability.Search
+        | FilePanelCapability.Permissions
         | FilePanelCapability.CreateDirectory
+        | FilePanelCapability.Rename
         | FilePanelCapability.Delete
         | FilePanelCapability.GovernedCreateDirectory
+        | FilePanelCapability.GovernedRename
         | FilePanelCapability.GovernedDelete;
 
     private static string[] AllFileCapabilities() =>
     [
         SessionCapabilities.FilesList,
+        SessionCapabilities.FilesSearch,
         SessionCapabilities.FilesStat,
         SessionCapabilities.FilesPreview,
+        SessionCapabilities.FilesReadAccessControl,
+        SessionCapabilities.FilesTransfersRead,
         SessionCapabilities.FilesCreateDirectory,
+        SessionCapabilities.FilesRename,
         SessionCapabilities.FilesDelete,
     ];
 
@@ -1036,6 +1165,7 @@ public sealed class AgentFileActionComposerTests
         Stat,
         Read,
         CreateDirectory,
+        Move,
         Delete,
     }
 }

@@ -45,6 +45,11 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         Task<DatabaseConnectionProfile?>>? _passwordPersister;
     private readonly string? _forcedReadOnlyReason;
     private readonly CancellationTokenSource _lifetime = new();
+    private readonly string _hostBindingId = SessionId.New().Value;
+    private HostedPanelSessionLink? _hostedSession;
+    private ISessionHostClient? _hostSessionClient;
+    private Task _hostInitialization = Task.CompletedTask;
+    private long _hostBindingRevision;
     private bool _disposed;
     private ConnectionProfile? _tunnelConnection;
     private IReadOnlyList<string> _databases = [];
@@ -186,6 +191,40 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     /// <summary>Raised when connecting needs a password only the user can supply.</summary>
     public event EventHandler? PasswordRequested;
 
+    public SessionId? HostedSessionId => _hostedSession?.SessionId;
+
+    public CapabilitySet HostedCapabilities =>
+        _hostedSession?.Capabilities ?? CapabilitySet.Empty;
+
+    public bool HasHostedSession => _hostedSession?.IsLinked == true;
+
+    /// <summary>
+    /// Admits agent reachability only after MainWindow has registered the
+    /// panel's exact workspace owner with SessionHost.
+    /// </summary>
+    public Task StartHostingAsync(
+        ISessionHostClient sessionClient,
+        ClientId clientId,
+        SessionOwner owner)
+    {
+        ArgumentNullException.ThrowIfNull(sessionClient);
+        ArgumentNullException.ThrowIfNull(owner);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_hostedSession is not null)
+        {
+            return _hostInitialization;
+        }
+
+        _hostSessionClient = sessionClient;
+        _hostedSession = new HostedPanelSessionLink(
+            sessionClient,
+            clientId,
+            owner,
+            PanelKind.DatabaseViewer);
+        _hostInitialization = InitializeHostedSessionAsync();
+        return _hostInitialization;
+    }
+
     public bool IsSavedConnection => _savedConnection is not null;
 
     public DatabaseConnectionProfileId? SavedConnectionId => _savedConnection?.Id;
@@ -223,6 +262,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             return;
         }
 
+        InvalidateHostedBinding();
         _savedConnection = profile;
         _isPersistedConnection = persisted;
         _sessionPassword = string.IsNullOrEmpty(sessionPassword) ? null : sessionPassword;
@@ -249,8 +289,11 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
     }
 
     /// <summary>The prompt's answer; an empty value means connect without one.</summary>
-    public void SetSessionPassword(string password) =>
+    public void SetSessionPassword(string password)
+    {
+        InvalidateHostedBinding();
         _sessionPassword = password ?? string.Empty;
+    }
 
     public async Task<bool> StoreSessionPasswordAsync(
         string password,
@@ -269,6 +312,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             return false;
         }
 
+        InvalidateHostedBinding();
         _savedConnection = saved;
         OnPropertyChanged(nameof(CanStorePassword));
         return true;
@@ -724,6 +768,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
 
             if (SetProperty(ref _selectedDriver, value))
             {
+                InvalidateHostedBinding();
                 SetConnected(false);
                 ClearSelectedObject();
                 OnPropertyChanged(nameof(RecoveryTarget));
@@ -747,6 +792,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
 
             if (SetProperty(ref _connectionString, value ?? string.Empty))
             {
+                InvalidateHostedBinding();
                 SetConnected(false);
                 ClearSelectedObject();
                 OnPropertyChanged(nameof(MaskedConnectionString));
@@ -1333,6 +1379,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         SetDatabases([]);
         SessionInfo = new DatabaseSessionInfo();
         ErrorMessage = null;
+        InvalidateHostedSession();
     }
 
     /// <summary>
@@ -1355,6 +1402,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         }
 
         _tunnelConnection = tunnel;
+        InvalidateHostedBinding();
         OnPropertyChanged(nameof(TunnelConnectionId));
         OnPropertyChanged(nameof(ConnectionDisplayName));
         SetConnected(false);
@@ -1387,9 +1435,11 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
 
         await RunGuardedAsync(async cancellationToken =>
         {
+            var connectionString =
+                await ResolveEffectiveConnectionStringAsync(cancellationToken);
             var tables = await _client.ListTablesAsync(
                 SelectedDriver.Id,
-                await ResolveEffectiveConnectionStringAsync(cancellationToken),
+                connectionString,
                 _tunnelConnection,
                 cancellationToken);
             ResetDatabaseDiagram();
@@ -1400,6 +1450,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             SetConnected(true);
             OnPropertyChanged(nameof(RecoveryTarget));
             await RefreshSessionFactsAsync(cancellationToken);
+            QueueHostedSessionEnsure(connectionString);
         });
 
         if (IsConnected)
@@ -2093,6 +2144,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         if (!_disposed)
         {
             _disposed = true;
+            _hostedSession?.Dispose();
             _tableLoadCancellation?.Cancel();
             _tableLoadCancellation?.Dispose();
             ResetSqlLanguageSession();
@@ -2101,6 +2153,85 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         }
 
         base.Dispose();
+    }
+
+    private async Task InitializeHostedSessionAsync()
+    {
+        try
+        {
+            await Initialization.ConfigureAwait(true);
+            if (_disposed || !IsConnected || _hostedSession?.IsLinked == true)
+            {
+                return;
+            }
+
+            var connectionString =
+                await ResolveEffectiveConnectionStringAsync(_lifetime.Token)
+                    .ConfigureAwait(true);
+            await EnsureHostedSessionAsync(connectionString, _lifetime.Token)
+                .ConfigureAwait(true);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+        catch
+        {
+            // Hosting is an optional governed projection. Provider and secret
+            // failures must not replace the direct human panel's own state.
+        }
+    }
+
+    private void QueueHostedSessionEnsure(string connectionString)
+    {
+        if (_hostedSession is not null && _hostSessionClient is not null)
+        {
+            _ = EnsureHostedSessionAsync(connectionString, _lifetime.Token);
+        }
+    }
+
+    private Task<bool> EnsureHostedSessionAsync(
+        string connectionString,
+        CancellationToken cancellationToken)
+    {
+        var hosted = _hostedSession;
+        var sessionClient = _hostSessionClient;
+        if (hosted is null || sessionClient is null || _disposed)
+        {
+            return Task.FromResult(false);
+        }
+
+        var target = new DatabaseSessionTarget(
+            SelectedDriver.Id,
+            connectionString,
+            _hostBindingId,
+            _hostBindingRevision,
+            _tunnelConnection,
+            _savedConnection?.PasswordSecret);
+        return hosted.EnsureAsync(
+            (sessionId, context, token) =>
+                sessionClient.EnsureDatabaseSessionAsync(
+                    new EnsureDatabaseSessionRequest(
+                        sessionId,
+                        hosted.Owner,
+                        Title,
+                        target),
+                    context,
+                    token),
+            cancellationToken);
+    }
+
+    private void InvalidateHostedBinding()
+    {
+        _hostBindingRevision = checked(_hostBindingRevision + 1);
+        InvalidateHostedSession();
+    }
+
+    private void InvalidateHostedSession()
+    {
+        if (_hostedSession is not null)
+        {
+            _ = _hostedSession.InvalidateAsync();
+        }
     }
 
     private void BeginSqlLanguageInitialization()

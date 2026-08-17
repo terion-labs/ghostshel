@@ -60,17 +60,24 @@ public sealed partial class GovernedAgentRuntime
         try
         {
             var now = _timeProvider.GetUtcNow();
+            var proposalLifetime = selected.Intent is BrowserAgentIntent.Wait
+                ? descriptor.MaximumExecutionLifetime
+                    + TimeSpan.FromMinutes(5)
+                : ActionLifetime;
             var envelope = new AgentActionEnvelope(
                 AgentActionId.New(),
                 GetRequiredSession().RunId,
                 GetOrCreateAgent(),
                 GetPolicyGeneration(),
                 now,
-                now + ActionLifetime);
+                now + proposalLifetime);
             action = _browserComposer.Prepare(
                 envelope,
                 context,
-                CreateBrowserRequest(selected.Intent, sessionId));
+                CreateBrowserRequest(
+                    selected.Intent,
+                    sessionId,
+                    panel.BrowserMetadata));
         }
         catch (Exception exception)
             when (exception is ArgumentException or InvalidOperationException)
@@ -114,7 +121,8 @@ public sealed partial class GovernedAgentRuntime
         var actionCancellation = BeginToolActivity(
             descriptor,
             action.Proposal.Presentation,
-            cancellationToken);
+            cancellationToken,
+            selected.PanelId);
         HostResult<AgentBrowserActionResult> hostResult;
         try
         {
@@ -150,6 +158,10 @@ public sealed partial class GovernedAgentRuntime
                     action.Request is AgentBrowserRequest.Click
                         or AgentBrowserRequest.Fill
                         or AgentBrowserRequest.Check
+                        or AgentBrowserRequest.Mouse
+                        or AgentBrowserRequest.Key
+                        or AgentBrowserRequest.Scroll
+                        or AgentBrowserRequest.Evaluate
                         ? BrowserAgentToolResultJson
                             .InteractionOutcomeUnknownStableCode
                         : "browser_host_failed",
@@ -222,13 +234,25 @@ public sealed partial class GovernedAgentRuntime
 
     private static AgentBrowserRequest CreateBrowserRequest(
         BrowserAgentIntent intent,
-        SessionId sessionId) =>
+        SessionId sessionId,
+        BrowserSessionMetadata? metadata) =>
         intent switch
         {
             BrowserAgentIntent.ReadState =>
                 new AgentBrowserRequest.ReadState(sessionId),
-            BrowserAgentIntent.Snapshot =>
-                new AgentBrowserRequest.Snapshot(sessionId),
+            BrowserAgentIntent.Snapshot snapshot =>
+                new AgentBrowserRequest.Snapshot(
+                    sessionId,
+                    new BrowserSnapshotQuery(
+                        snapshot.InteractiveOnly,
+                        snapshot.Filter,
+                        snapshot.MaximumDepth)),
+            BrowserAgentIntent.Wait wait =>
+                new AgentBrowserRequest.Wait(
+                    new BrowserWaitRequest(
+                        sessionId,
+                        wait.Condition,
+                        wait.Timeout)),
             BrowserAgentIntent.Click click =>
                 new AgentBrowserRequest.Click(
                     new BrowserElementClickRequest(
@@ -248,6 +272,63 @@ public sealed partial class GovernedAgentRuntime
                         sessionId,
                         check.Reference,
                         check.DocumentRevision)),
+            BrowserAgentIntent.Mouse mouse =>
+                new AgentBrowserRequest.Mouse(
+                    new BrowserMouseRequest(
+                        sessionId,
+                        RequireAutomationBinding(
+                            metadata,
+                            mouse.DocumentRevision,
+                            mouse.ViewportRevision,
+                            mouse.InputEpoch),
+                        mouse.Action,
+                        mouse.XCss,
+                        mouse.YCss,
+                        mouse.Button,
+                        mouse.Buttons,
+                        mouse.Modifiers,
+                        mouse.ClickCount,
+                        mouse.DeltaX,
+                        mouse.DeltaY)),
+            BrowserAgentIntent.Key key =>
+                new AgentBrowserRequest.Key(
+                    new BrowserKeyRequest(
+                        sessionId,
+                        RequireAutomationBinding(
+                            metadata,
+                            key.DocumentRevision,
+                            key.ViewportRevision,
+                            key.InputEpoch),
+                        key.Action,
+                        key.KeyValue,
+                        key.Modifiers)),
+            BrowserAgentIntent.Scroll scroll =>
+                new AgentBrowserRequest.Scroll(
+                    new BrowserScrollRequest(
+                        sessionId,
+                        RequireAutomationBinding(
+                            metadata,
+                            scroll.DocumentRevision,
+                            scroll.ViewportRevision,
+                            scroll.InputEpoch),
+                        scroll.OriginXCss,
+                        scroll.OriginYCss,
+                        scroll.DeltaX,
+                        scroll.DeltaY,
+                        scroll.Modifiers)),
+            BrowserAgentIntent.Evaluate evaluate =>
+                new AgentBrowserRequest.Evaluate(
+                    new BrowserEvaluateRequest(
+                        sessionId,
+                        RequireAutomationBinding(
+                            metadata,
+                            evaluate.DocumentRevision,
+                            evaluate.ViewportRevision,
+                            evaluate.InputEpoch),
+                        evaluate.Source,
+                        evaluate.World,
+                        evaluate.AwaitPromise,
+                        evaluate.Timeout)),
             BrowserAgentIntent.Navigate navigate =>
                 new AgentBrowserRequest.Navigate(
                     new BrowserNavigateRequest(
@@ -267,6 +348,31 @@ public sealed partial class GovernedAgentRuntime
                 "The browser intent is unsupported."),
         };
 
+    private static BrowserAutomationBinding RequireAutomationBinding(
+        BrowserSessionMetadata? metadata,
+        long documentRevision,
+        long viewportRevision,
+        long inputEpoch)
+    {
+        if (metadata is not { Address: { } address }
+            || metadata.DocumentRevision != documentRevision
+            || metadata.ViewportRevision != viewportRevision
+            || metadata.InputEpoch != inputEpoch
+            || metadata.Viewport.WidthCss <= 0
+            || metadata.Viewport.HeightCss <= 0)
+        {
+            throw new ArgumentException(
+                "The browser document, viewport, or input epoch is stale.",
+                nameof(metadata));
+        }
+
+        return new BrowserAutomationBinding(
+            new BrowserDocumentBinding(address, documentRevision),
+            metadata.Viewport,
+            viewportRevision,
+            inputEpoch);
+    }
+
     private static AgentToolResult CreateSucceededResult(
         AgentToolProposal proposal,
         AgentBrowserActionResult result,
@@ -281,9 +387,14 @@ public sealed partial class GovernedAgentRuntime
         toolName is
             BuiltInAgentTools.BrowserReadState
             or BuiltInAgentTools.BrowserSnapshot
+            or BuiltInAgentTools.BrowserWait
             or BuiltInAgentTools.BrowserClick
             or BuiltInAgentTools.BrowserFill
             or BuiltInAgentTools.BrowserCheck
+            or BuiltInAgentTools.BrowserMouse
+            or BuiltInAgentTools.BrowserKey
+            or BuiltInAgentTools.BrowserScroll
+            or BuiltInAgentTools.BrowserEvaluate
             or BuiltInAgentTools.BrowserNavigate
             or BuiltInAgentTools.BrowserBack
             or BuiltInAgentTools.BrowserForward
@@ -302,7 +413,12 @@ public sealed partial class GovernedAgentRuntime
                 return [];
             }
 
-            var eligiblePanels = context.OperationalContext.Panels
+            if (context.Context.Target is AgentTarget.Workspace)
+            {
+                return BrowserAgentToolSet.ForWorkspace();
+            }
+
+            var eligiblePanels = context.Context.Panels
                 .Where(panel =>
                     panel.Kind == PanelKind.Browser
                     && context.BrowserEligiblePanelIds.Contains(panel.PanelId))
@@ -327,14 +443,14 @@ public sealed partial class GovernedAgentRuntime
         private ValueTask<AgentToolResult> ExecuteAsync(
             AgentToolExecutionRequest request,
             CancellationToken cancellationToken) =>
-            runtime.ExecuteOperationalToolContributionAsync(
+            runtime.ExecutePanelToolContributionAsync(
                 request,
                 ExecuteBoundAsync,
                 cancellationToken);
 
         private ValueTask<AgentToolResult> ExecuteBoundAsync(
             AgentToolExecutionRequest request,
-            OperationalAgentToolContext context,
+            AgentPanelToolContext context,
             CancellationToken cancellationToken) =>
             runtime.ExecuteBrowserProposalAsync(
                 request.Proposal,

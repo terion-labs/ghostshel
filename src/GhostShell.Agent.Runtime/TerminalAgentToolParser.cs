@@ -14,7 +14,7 @@ internal static class TerminalAgentToolParser
     private static readonly UTF8Encoding StrictUtf8 = new(
         encoderShouldEmitUTF8Identifier: false,
         throwOnInvalidBytes: true);
-    private static readonly TimeSpan MaximumWait = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan MaximumWait = TimeSpan.FromHours(1);
 
     public static TerminalAgentIntentResult Parse(AgentToolProposal proposal)
     {
@@ -152,10 +152,22 @@ internal static class TerminalAgentToolParser
                     properties,
                     new TerminalAgentIntent.ReadScreen(),
                     panelId),
+            BuiltInAgentTools.TerminalReadScreenDiff =>
+                ParseReadScreenDiff(properties, panelId),
+            BuiltInAgentTools.TerminalReadScrollback =>
+                ParseReadScrollback(properties, panelId),
+            BuiltInAgentTools.TerminalFind =>
+                ParseFind(properties, panelId),
+            BuiltInAgentTools.TerminalFindOnScreen =>
+                ParseFindOnScreen(properties, panelId),
+            BuiltInAgentTools.TerminalScrollViewport =>
+                ParseScrollViewport(properties, panelId),
             BuiltInAgentTools.TerminalSendText =>
                 ParseSendText(properties, panelId),
             BuiltInAgentTools.TerminalPaste =>
                 ParsePaste(properties, panelId),
+            BuiltInAgentTools.TerminalSubmitText =>
+                ParseSubmitText(properties, panelId),
             BuiltInAgentTools.TerminalSendKeys =>
                 ParseSendKey(properties, panelId),
             BuiltInAgentTools.TerminalSendChord =>
@@ -181,6 +193,30 @@ internal static class TerminalAgentToolParser
         properties.Count == 0
             ? new TerminalAgentIntentResult.Parsed(intent, panelId)
             : Invalid("This tool does not accept arguments.");
+
+    private static TerminalAgentIntentResult ParseReadScreenDiff(
+        IReadOnlyDictionary<string, JsonElement> properties,
+        PanelInstanceId? panelId)
+    {
+        if (properties.Count != 2
+            || !TryReadNonNegativeInt64(
+                properties,
+                "after_content_revision",
+                out var afterContentRevision)
+            || !properties.TryGetValue("max_changed_rows", out var maximumElement)
+            || maximumElement.ValueKind != JsonValueKind.Number
+            || !maximumElement.TryGetInt32(out var maximumRows)
+            || maximumRows is not (16 or 64 or 200))
+        {
+            return Invalid(
+                "Screen diff requires a non-negative content revision and 16, 64, or 200 changed rows.");
+        }
+
+        return new TerminalAgentIntentResult.Parsed(
+            new TerminalAgentIntent.ReadScreenDiff(
+                new TerminalScreenDiffInput(afterContentRevision, maximumRows)),
+            panelId);
+    }
 
     private static TerminalAgentIntentResult ParseSendText(
         IReadOnlyDictionary<string, JsonElement> properties,
@@ -215,11 +251,28 @@ internal static class TerminalAgentToolParser
             panelId);
     }
 
+    private static TerminalAgentIntentResult ParseSubmitText(
+        IReadOnlyDictionary<string, JsonElement> properties,
+        PanelInstanceId? panelId)
+    {
+        if (properties.Count != 1
+            || !properties.TryGetValue("text", out var textElement)
+            || !TryReadBoundedPasteText(textElement, out var text))
+        {
+            return Invalid(
+                "Submit text requires one bounded text field; only tabs and line breaks may be control characters.");
+        }
+
+        return new TerminalAgentIntentResult.Parsed(
+            new TerminalAgentIntent.SubmitText(text),
+            panelId);
+    }
+
     private static TerminalAgentIntentResult ParseSendKey(
         IReadOnlyDictionary<string, JsonElement> properties,
         PanelInstanceId? panelId)
     {
-        if (properties.Count is < 1 or > 2
+        if (properties.Count is < 1 or > 3
             || !properties.TryGetValue("key", out var keyElement)
             || keyElement.ValueKind != JsonValueKind.String
             || !TryParseKey(keyElement.GetString(), out var key))
@@ -234,14 +287,24 @@ internal static class TerminalAgentToolParser
             return Invalid("Terminal key modifiers are invalid.");
         }
 
-        if (properties.Keys.Any(name => name is not ("key" or "modifiers")))
+        var repeatCount = 1;
+        if (properties.TryGetValue("repeat", out var repeatElement)
+            && (repeatElement.ValueKind != JsonValueKind.Number
+                || !repeatElement.TryGetInt32(out repeatCount)
+                || repeatCount is < 1 or > TerminalKeyStroke.MaximumRepeatCount))
+        {
+            return Invalid("Terminal key repeat must be between 1 and 64.");
+        }
+
+        if (properties.Keys.Any(
+                name => name is not ("key" or "modifiers" or "repeat")))
         {
             return Invalid("Send keys contains an unknown field.");
         }
 
         return new TerminalAgentIntentResult.Parsed(
             new TerminalAgentIntent.SendKey(
-                new TerminalKeyStroke(key, modifiers)),
+                new TerminalKeyStroke(key, modifiers, repeatCount)),
             panelId);
     }
 
@@ -274,7 +337,7 @@ internal static class TerminalAgentToolParser
         IReadOnlyDictionary<string, JsonElement> properties,
         PanelInstanceId? panelId)
     {
-        if (properties.Count is < 3 or > 4
+        if (properties.Count is < 4 or > 5
             || !properties.TryGetValue("event", out var eventElement)
             || eventElement.ValueKind != JsonValueKind.String
             || !TryParseMouseEvent(
@@ -283,8 +346,17 @@ internal static class TerminalAgentToolParser
                 out var kind)
             || !TryReadMouseCoordinate(properties, "column", out var column)
             || !TryReadMouseCoordinate(properties, "row", out var row)
+            || !TryReadNonNegativeInt64(
+                properties,
+                "expected_content_revision",
+                out var expectedContentRevision)
             || properties.Keys.Any(
-                name => name is not ("event" or "column" or "row" or "modifiers")))
+                name => name is not (
+                    "event"
+                    or "column"
+                    or "row"
+                    or "modifiers"
+                    or "expected_content_revision")))
         {
             return Invalid(
                 "Send mouse requires one supported event and bounded zero-based cell coordinates.");
@@ -304,7 +376,139 @@ internal static class TerminalAgentToolParser
                     kind,
                     column,
                     row,
-                    modifiers)),
+                    modifiers),
+                expectedContentRevision),
+            panelId);
+    }
+
+    private static TerminalAgentIntentResult ParseReadScrollback(
+        IReadOnlyDictionary<string, JsonElement> properties,
+        PanelInstanceId? panelId)
+    {
+        if (properties.Count is < 2 or > 3
+            || !properties.TryGetValue("anchor", out var originElement)
+            || originElement.ValueKind != JsonValueKind.String
+            || !TryParseScrollbackOrigin(originElement.GetString(), out var origin)
+            || !properties.TryGetValue("max_lines", out var maximumElement)
+            || maximumElement.ValueKind != JsonValueKind.Number
+            || !maximumElement.TryGetInt32(out var maximumLines)
+            || !TerminalScrollbackReadInput.IsAllowedMaximumLines(maximumLines)
+            || properties.Keys.Any(
+                name => name is not ("anchor" or "row_anchor" or "max_lines")))
+        {
+            return Invalid(
+                "Scrollback read requires a known origin and 16, 64, or 200 rows.");
+        }
+
+        TerminalScrollbackRowAnchor? rowAnchor = null;
+        var requiresAnchor = origin is TerminalScrollbackReadOrigin.Before
+            or TerminalScrollbackReadOrigin.After;
+        if (requiresAnchor)
+        {
+            if (!properties.TryGetValue("row_anchor", out var anchorElement)
+                || anchorElement.ValueKind != JsonValueKind.String
+                || !TerminalScrollbackAnchorCodec.TryDecode(
+                    anchorElement.GetString(),
+                    out rowAnchor))
+            {
+                return Invalid(
+                    "Before and after scrollback reads require one valid opaque row anchor.");
+            }
+        }
+        else if (properties.ContainsKey("row_anchor"))
+        {
+            return Invalid("Top and bottom scrollback reads do not accept a row anchor.");
+        }
+
+        return new TerminalAgentIntentResult.Parsed(
+            new TerminalAgentIntent.ReadScrollback(
+                new TerminalScrollbackReadInput(origin, maximumLines, rowAnchor)),
+            panelId);
+    }
+
+    private static TerminalAgentIntentResult ParseFind(
+        IReadOnlyDictionary<string, JsonElement> properties,
+        PanelInstanceId? panelId)
+    {
+        if (properties.Count != 3
+            || !properties.TryGetValue("text", out var textElement)
+            || !TryReadBoundedText(
+                textElement,
+                TerminalScrollbackFindInput.MaximumQueryLength,
+                out var text)
+            || !properties.TryGetValue("direction", out var directionElement)
+            || directionElement.ValueKind != JsonValueKind.String
+            || !TryParseFindDirection(
+                directionElement.GetString(),
+                out var direction)
+            || !properties.TryGetValue("max_matches", out var maximumElement)
+            || maximumElement.ValueKind != JsonValueKind.Number
+            || !maximumElement.TryGetInt32(out var maximumMatches)
+            || maximumMatches is < 1 or > TerminalScrollbackFindInput.MaximumMatches)
+        {
+            return Invalid(
+                "Terminal find requires bounded literal text, direction, and 1 to 64 matches.");
+        }
+
+        return new TerminalAgentIntentResult.Parsed(
+            new TerminalAgentIntent.FindScrollback(
+                new TerminalScrollbackFindInput(text, direction, maximumMatches)),
+            panelId);
+    }
+
+    private static TerminalAgentIntentResult ParseFindOnScreen(
+        IReadOnlyDictionary<string, JsonElement> properties,
+        PanelInstanceId? panelId)
+    {
+        if (properties.Count != 2
+            || !properties.TryGetValue("text", out var textElement)
+            || !TryReadBoundedText(
+                textElement,
+                TerminalScreenFindInput.MaximumQueryLength,
+                out var text)
+            || !properties.TryGetValue("max_matches", out var maximumElement)
+            || maximumElement.ValueKind != JsonValueKind.Number
+            || !maximumElement.TryGetInt32(out var maximumMatches)
+            || maximumMatches is < 1 or > TerminalScreenFindInput.MaximumMatches)
+        {
+            return Invalid(
+                "Rendered-screen find requires bounded literal text and 1 to 64 matches.");
+        }
+
+        return new TerminalAgentIntentResult.Parsed(
+            new TerminalAgentIntent.FindOnScreen(
+                new TerminalScreenFindInput(text, maximumMatches)),
+            panelId);
+    }
+
+    private static TerminalAgentIntentResult ParseScrollViewport(
+        IReadOnlyDictionary<string, JsonElement> properties,
+        PanelInstanceId? panelId)
+    {
+        if (properties.Count != 3
+            || !properties.TryGetValue("direction", out var directionElement)
+            || directionElement.ValueKind != JsonValueKind.String
+            || !TryParseScrollDirection(
+                directionElement.GetString(),
+                out var direction)
+            || !properties.TryGetValue("unit", out var unitElement)
+            || unitElement.ValueKind != JsonValueKind.String
+            || !TryParseScrollUnit(unitElement.GetString(), out var unit)
+            || !properties.TryGetValue("amount", out var amountElement)
+            || amountElement.ValueKind != JsonValueKind.Number
+            || !amountElement.TryGetInt32(out var amount)
+            || amount is < 1 or > 1_000
+            || direction is TerminalViewportScrollDirection.Top
+                    or TerminalViewportScrollDirection.Bottom
+                && (unit != TerminalViewportScrollUnit.Line || amount != 1))
+        {
+            return Invalid(
+                "Viewport scroll requires bounded direction, unit, and amount; top and bottom use line amount 1.");
+        }
+
+        return new TerminalAgentIntentResult.Parsed(
+            new TerminalAgentIntent.ScrollViewport(
+                new TerminalViewportScrollInput(direction, unit, amount)),
             panelId);
     }
 
@@ -330,6 +534,24 @@ internal static class TerminalAgentToolParser
         IReadOnlyDictionary<string, JsonElement> properties,
         PanelInstanceId? panelId)
     {
+        if (properties.Count == 1
+            && properties.TryGetValue("delay_ms", out var delayElement)
+            && delayElement.ValueKind == JsonValueKind.Number
+            && delayElement.TryGetInt32(out var delayMilliseconds)
+            && delayMilliseconds >= 1
+            && delayMilliseconds <= MaximumWait.TotalMilliseconds)
+        {
+            return new TerminalAgentIntentResult.Parsed(
+                new TerminalAgentIntent.WaitForDelay(
+                    TimeSpan.FromMilliseconds(delayMilliseconds)),
+                panelId);
+        }
+
+        if (properties.Count == 3)
+        {
+            return ParseShellEventWait(properties, panelId);
+        }
+
         if (properties.Count != 2
             || !properties.TryGetValue("timeout_ms", out var timeoutElement)
             || timeoutElement.ValueKind != JsonValueKind.Number
@@ -338,7 +560,7 @@ internal static class TerminalAgentToolParser
             || timeoutMilliseconds > MaximumWait.TotalMilliseconds)
         {
             return Invalid(
-                "Terminal wait requires one bounded condition and a timeout up to 30 seconds.");
+                "Terminal wait requires one bounded condition and a timeout up to one hour.");
         }
 
         var timeout = TimeSpan.FromMilliseconds(timeoutMilliseconds);
@@ -394,6 +616,53 @@ internal static class TerminalAgentToolParser
             "Terminal wait requires text, after_content_revision, or stable_for_ms.");
     }
 
+    private static TerminalAgentIntentResult ParseShellEventWait(
+        IReadOnlyDictionary<string, JsonElement> properties,
+        PanelInstanceId? panelId)
+    {
+        if (!properties.TryGetValue(
+                "after_shell_event_sequence",
+                out var sequenceElement)
+            || sequenceElement.ValueKind != JsonValueKind.Number
+            || !sequenceElement.TryGetInt64(out var sequence)
+            || sequence < 0
+            || !properties.TryGetValue("timeout_ms", out var timeoutElement)
+            || timeoutElement.ValueKind != JsonValueKind.Number
+            || !timeoutElement.TryGetInt32(out var timeoutMilliseconds)
+            || timeoutMilliseconds < 1
+            || timeoutMilliseconds > MaximumWait.TotalMilliseconds)
+        {
+            return Invalid(
+                "Semantic terminal waits require a non-negative shell-event baseline and a timeout up to one hour.");
+        }
+
+        var promptReady = IsTrue(properties, "prompt_ready");
+        var commandFinished = IsTrue(properties, "command_finished");
+        if (promptReady == commandFinished
+            || properties.Keys.Any(name => name is not (
+                "prompt_ready"
+                    or "command_finished"
+                    or "after_shell_event_sequence"
+                    or "timeout_ms")))
+        {
+            return Invalid(
+                "Semantic terminal waits require exactly one true prompt_ready or command_finished condition.");
+        }
+
+        var timeout = TimeSpan.FromMilliseconds(timeoutMilliseconds);
+        return new TerminalAgentIntentResult.Parsed(
+            promptReady
+                ? new TerminalAgentIntent.WaitForPromptReady(sequence, timeout)
+                : new TerminalAgentIntent.WaitForCommandFinished(sequence, timeout),
+            panelId);
+    }
+
+    private static bool IsTrue(
+        IReadOnlyDictionary<string, JsonElement> properties,
+        string name) =>
+        properties.TryGetValue(name, out var element)
+        && element.ValueKind is JsonValueKind.True;
+
     private static bool TryReadUniqueProperties(
         JsonElement arguments,
         out Dictionary<string, JsonElement> properties)
@@ -414,6 +683,12 @@ internal static class TerminalAgentToolParser
     private static bool TryReadBoundedText(
         JsonElement element,
         out string text)
+        => TryReadBoundedText(element, MaximumTextBytes, out text);
+
+    private static bool TryReadBoundedText(
+        JsonElement element,
+        int maximumBytes,
+        out string text)
     {
         text = string.Empty;
         if (element.ValueKind != JsonValueKind.String
@@ -423,8 +698,17 @@ internal static class TerminalAgentToolParser
         }
 
         var value = element.GetString()!;
-        if (Encoding.UTF8.GetByteCount(value) > MaximumTextBytes
-            || value.Any(char.IsControl))
+        int byteCount;
+        try
+        {
+            byteCount = StrictUtf8.GetByteCount(value);
+        }
+        catch (EncoderFallbackException)
+        {
+            return false;
+        }
+
+        if (byteCount > maximumBytes || value.Any(char.IsControl))
         {
             return false;
         }
@@ -477,6 +761,68 @@ internal static class TerminalAgentToolParser
             && element.ValueKind == JsonValueKind.Number
             && element.TryGetInt32(out coordinate)
             && coordinate is >= 0 and <= 1_000_000;
+    }
+
+    private static bool TryReadNonNegativeInt64(
+        IReadOnlyDictionary<string, JsonElement> properties,
+        string name,
+        out long value)
+    {
+        value = 0;
+        return properties.TryGetValue(name, out var element)
+            && element.ValueKind == JsonValueKind.Number
+            && element.TryGetInt64(out value)
+            && value >= 0;
+    }
+
+    private static bool TryParseScrollbackOrigin(
+        string? value,
+        out TerminalScrollbackReadOrigin origin)
+    {
+        origin = value switch
+        {
+            "top" => TerminalScrollbackReadOrigin.Top,
+            "bottom" => TerminalScrollbackReadOrigin.Bottom,
+            "before" => TerminalScrollbackReadOrigin.Before,
+            "after" => TerminalScrollbackReadOrigin.After,
+            _ => default,
+        };
+        return value is "top" or "bottom" or "before" or "after";
+    }
+
+    private static bool TryParseFindDirection(
+        string? value,
+        out TerminalScrollbackFindDirection direction)
+    {
+        direction = value == "backward"
+            ? TerminalScrollbackFindDirection.Backward
+            : TerminalScrollbackFindDirection.Forward;
+        return value is "forward" or "backward";
+    }
+
+    private static bool TryParseScrollDirection(
+        string? value,
+        out TerminalViewportScrollDirection direction)
+    {
+        direction = value switch
+        {
+            "up" => TerminalViewportScrollDirection.Up,
+            "down" => TerminalViewportScrollDirection.Down,
+            "top" => TerminalViewportScrollDirection.Top,
+            "bottom" => TerminalViewportScrollDirection.Bottom,
+            _ => default,
+        };
+        return value is "up" or "down" or "top" or "bottom";
+    }
+
+    private static bool TryParseScrollUnit(
+        string? value,
+        out TerminalViewportScrollUnit unit)
+    {
+        unit = value == "page"
+            ? TerminalViewportScrollUnit.Page
+            : TerminalViewportScrollUnit.Line;
+        return value is "line" or "page";
     }
 
     private static bool TryReadGridDimension(

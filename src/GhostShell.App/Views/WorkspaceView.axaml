@@ -83,7 +83,7 @@
                           Click="OnWorkspacesMenuOpenClick"
                           HorizontalContentAlignment="Stretch"
                           AutomationProperties.Name="{Binding Name, StringFormat=Open workspace {0}}">
-                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                        <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                           <!-- One mark, read by its fill: an idle workspace is
                                an outline, a running one is solid, and one that
                                is calling breathes. All three in the workspace's
@@ -103,7 +103,16 @@
                                 IsVisible="{Binding IsOpen}" />
                           </Panel>
                           <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                          <icons:SymbolIcon Grid.Column="2" VerticalAlignment="Center" Symbol="Checkmark" FontSize="12" IsVisible="{Binding IsInFront}" />
+                          <icons:SymbolIcon
+                              Grid.Column="2"
+                              VerticalAlignment="Center"
+                              AutomationProperties.Name="AI agent active"
+                              Classes="PanelAgentActivity"
+                              FontSize="{DynamicResource ShellFontSize10}"
+                              Foreground="{DynamicResource ShellAccentBrush}"
+                              IsVisible="{Binding HasAgentActivity}"
+                              Symbol="Bot" />
+                          <icons:SymbolIcon Grid.Column="3" VerticalAlignment="Center" Symbol="Checkmark" FontSize="12" IsVisible="{Binding IsInFront}" />
                         </Grid>
                       </Button>
                       <Button
@@ -163,7 +172,27 @@
             VerticalAlignment="Center"
             Spacing="{DynamicResource ShellSpaceXs}"
             WindowDecorationProperties.ElementRole="User">
-          <Button x:Name="AgentToggleButton" Classes="IconButton" Click="OnToggleAgentClick" ToolTip.Tip="Toggle agent panel" AutomationProperties.Name="Toggle AI agent panel"><icons:SymbolIcon Symbol="Bot" FontSize="15" /></Button>
+          <Button
+              x:Name="AgentToggleButton"
+              Classes="IconButton"
+              Click="OnToggleAgentClick"
+              ToolTip.Tip="Toggle agent panel"
+              AutomationProperties.Name="Toggle AI agent panel">
+            <Grid>
+              <icons:SymbolIcon
+                  FontSize="15"
+                  Foreground="{DynamicResource ShellForegroundBrush}"
+                  Symbol="Bot" />
+              <icons:SymbolIcon
+                  x:Name="AgentToolbarActivityPulseIcon"
+                  Classes="AgentToolbarActivityPulse"
+                  Classes.running="{Binding HasRunningAgent}"
+                  FontSize="15"
+                  Foreground="{DynamicResource ShellAccentBrush}"
+                  Opacity="0"
+                  Symbol="Bot" />
+            </Grid>
+          </Button>
           <!--
             Where before what. The plus asks which edge the panel goes against, and
             the panel itself then asks what to open — rather than a modal asking
@@ -298,6 +327,7 @@
                     IsRunning="{Binding IsOpen}"
                     IsCurrent="{Binding IsInFront}"
                     HasAttention="{Binding HasAttention}"
+                    HasAgentActivity="{Binding HasAgentActivity}"
                     CanClose="{Binding CanClose}"
                     ExpandsLeft="{Binding $parent[ItemsControl].DataContext.IsWorkspacePanelOnRight}"
                     OpenRequested="OnOpenWorkspaceClick"
@@ -517,6 +547,7 @@
           EnableAgentYoloRequested="OnEnableAgentYoloClick"
           KeepAgentCapabilityOffRequested="OnKeepAgentCapabilityOffClick"
           LoadOlderAgentAuditRequested="OnLoadOlderAgentAuditClick"
+          MoveQueuedFollowUpRequested="OnMoveAgentQueuedFollowUpRequested"
           RefreshAgentAuditRequested="OnRefreshAgentAuditClick"
           StartNewAgentConversationRequested="OnStartNewAgentConversationClick"
           OpenAgentConversationRequested="OnOpenAgentConversationClick"
@@ -527,7 +558,7 @@
           ToggleAgentModelFavoriteRequested="OnToggleAgentModelFavoriteClick"
           RefreshAgentModelsRequested="OnRefreshAgentModelsClick"
           SendAgentChatRequested="OnSendAgentChatClick"
-          QueueAgentFollowUpRequested="OnQueueAgentFollowUpClick"
+          QueueAgentSteeringRequested="OnQueueAgentSteeringClick"
           AttachAgentImageRequested="OnAttachAgentImageClick"
           ClearAgentImagesRequested="OnClearAgentImagesClick"
           ShowAgentSettingsRequested="OnShowAgentSettingsClick"

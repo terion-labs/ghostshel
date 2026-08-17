@@ -50,6 +50,8 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Equal(
             [
                 BuiltInAgentTools.TerminalReadScreen,
+                BuiltInAgentTools.TerminalReadScreenDiff,
+                BuiltInAgentTools.TerminalFindOnScreen,
                 BuiltInAgentTools.TerminalWait,
                 BuiltInAgentTools.TerminalSendText,
                 BuiltInAgentTools.TerminalSendKeys,
@@ -122,8 +124,8 @@ public sealed partial class GovernedAgentRuntimeTests
             message => message.Role == AgentMessageRole.System).Content;
         Assert.Contains(
             expected
-                ? "operations=\"read_screen,wait,paste\""
-                : "operations=\"read_screen,wait\"",
+                ? "operations=\"read_screen,read_screen_diff,find_on_screen,wait,paste\""
+                : "operations=\"read_screen,read_screen_diff,find_on_screen,wait\"",
             systemPrompt,
             StringComparison.Ordinal);
     }
@@ -220,22 +222,20 @@ public sealed partial class GovernedAgentRuntimeTests
             ],
             fixture.Runtime.Snapshot.ContextItems.Select(item => item.PanelId));
         var continuation = fixture.Provider.Requests.ToArray()[1];
-        var refreshedPanelIds = continuation.Tools
+        var refreshedPanelSchema = continuation.Tools
             .Single(tool =>
                 tool.Name == BuiltInAgentTools.TerminalReadScreen)
             .InputSchema
             .GetProperty("properties")
-            .GetProperty("panel_id")
-            .GetProperty("enum")
-            .EnumerateArray()
-            .Select(panelId => panelId.GetString()!)
-            .ToArray();
+            .GetProperty("panel_id");
+        Assert.False(refreshedPanelSchema.TryGetProperty("enum", out _));
         Assert.Equal(
-            [
-                BroadScopeContextProxy.SecondPanelId.Value,
-                BroadScopeContextProxy.FirstPanelId.Value,
-            ],
-            refreshedPanelIds);
+            fixture.Provider.Requests.ToArray()[0].Tools
+                .Single(tool => tool.Name == BuiltInAgentTools.TerminalReadScreen)
+                .InputSchema.GetRawText(),
+            continuation.Tools
+                .Single(tool => tool.Name == BuiltInAgentTools.TerminalReadScreen)
+                .InputSchema.GetRawText());
         Assert.Equal(
             "tool_succeeded",
             Assert.Single(

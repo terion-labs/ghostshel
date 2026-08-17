@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using GhostShell.Application;
 using GhostShell.Core;
 
@@ -91,6 +92,20 @@ public sealed class CatalogFileProviderRuntime :
         FilePanelListRequest request,
         CancellationToken cancellationToken) =>
         UseActiveAsync((client, token) => client.ListAsync(request, token), cancellationToken);
+
+    public IAsyncEnumerable<FilePanelResult<FilePanelEntry>> SearchAsync(
+        FilePanelSearchRequest request,
+        CancellationToken cancellationToken) =>
+        UseActiveStream(
+            (client, token) => client.SearchAsync(request, token),
+            cancellationToken);
+
+    public IAsyncEnumerable<FilePanelResult<FilePanelChange>> WatchAsync(
+        FilePanelWatchRequest request,
+        CancellationToken cancellationToken) =>
+        UseActiveStream(
+            (client, token) => client.WatchAsync(request, token),
+            cancellationToken);
 
     public ValueTask<FilePanelResult<FilePanelEntry>> StatAsync(
         FilePanelLocation location,
@@ -386,6 +401,20 @@ public sealed class CatalogFileProviderRuntime :
     {
         using var lease = AcquireActive();
         return await operation(lease.Generation.Client, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async IAsyncEnumerable<T> UseActiveStream<T>(
+        Func<FilePanelClient, CancellationToken, IAsyncEnumerable<T>> operation,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        using var lease = AcquireActive();
+        await foreach (var item in operation(
+                lease.Generation.Client,
+                cancellationToken)
+            .ConfigureAwait(false))
+        {
+            yield return item;
+        }
     }
 
     private GenerationLease AcquireActive()
@@ -704,7 +733,11 @@ public sealed class CatalogFileProviderRuntime :
             OperatingSystem.IsWindows() ? FileProviderFamily.Windows : FileProviderFamily.Posix,
             provider,
             new FileLocation(provider.ProfileId, provider.Authority, FilePath.Root),
-            FilePanelCapability.None,
+            OperatingSystem.IsWindows()
+                ? FilePanelCapability.None
+                : FilePanelCapability.GovernedCreateDirectory
+                    | FilePanelCapability.GovernedDelete
+                    | FilePanelCapability.GovernedRename,
             LocalStart(provider, rootPath, homePath));
         return new OwnedFileProviderRegistration(
             new GhostShell.Core.FileProviderProfileId("builtin.files.home"),
@@ -964,6 +997,20 @@ internal sealed class GenerationBoundFilePanelClient :
             (client, token) => client.ListAsync(request, token),
             cancellationToken);
 
+    public IAsyncEnumerable<FilePanelResult<FilePanelEntry>> SearchAsync(
+        FilePanelSearchRequest request,
+        CancellationToken cancellationToken) =>
+        UseStream(
+            (client, token) => client.SearchAsync(request, token),
+            cancellationToken);
+
+    public IAsyncEnumerable<FilePanelResult<FilePanelChange>> WatchAsync(
+        FilePanelWatchRequest request,
+        CancellationToken cancellationToken) =>
+        UseStream(
+            (client, token) => client.WatchAsync(request, token),
+            cancellationToken);
+
     public ValueTask<FilePanelResult<FilePanelEntry>> StatAsync(
         FilePanelLocation location,
         CancellationToken cancellationToken) =>
@@ -1077,6 +1124,29 @@ internal sealed class GenerationBoundFilePanelClient :
                     operationLease.Generation.Client,
                     cancellationToken)
                 .ConfigureAwait(false);
+        }
+    }
+
+    private async IAsyncEnumerable<T> UseStream<T>(
+        Func<FilePanelClient, CancellationToken, IAsyncEnumerable<T>> operation,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        GenerationLease operationLease;
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_sessionLease is null, this);
+            operationLease = _sessionLease.Generation.Acquire();
+        }
+
+        using (operationLease)
+        {
+            await foreach (var item in operation(
+                    operationLease.Generation.Client,
+                    cancellationToken)
+                .ConfigureAwait(false))
+            {
+                yield return item;
+            }
         }
     }
 

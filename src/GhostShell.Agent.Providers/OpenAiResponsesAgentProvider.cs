@@ -313,8 +313,8 @@ internal sealed class OpenAiResponsesAgentProvider(
         switch (message.Role)
         {
             case AgentMessageRole.System:
-            case AgentMessageRole.Summary:
                 return;
+            case AgentMessageRole.Summary:
             case AgentMessageRole.User:
                 WriteUserInput(writer, message);
                 return;
@@ -658,8 +658,7 @@ internal sealed class OpenAiResponsesAgentProvider(
         string.Join(
             "\n\n",
             request.Messages
-                .Where(message => message.Role is AgentMessageRole.System
-                    or AgentMessageRole.Summary)
+                .Where(message => message.Role == AgentMessageRole.System)
                 .Select(message => message.Content));
 
     private sealed class ResponsesStreamState(

@@ -9,8 +9,9 @@ namespace GhostShell.Browser;
 public sealed class BrowserCapabilityProfile
 {
     /// <summary>
-    /// The capability set used by desktop production until a named native
-    /// adapter has passed the automation conformance suite.
+    /// The capability set used by desktop production. Semantic automation is
+    /// enabled only because the native CEF adapter is covered by the focused
+    /// conformance suite.
     /// </summary>
     public static BrowserCapabilityProfile Production { get; } = new(
     [
@@ -21,20 +22,27 @@ public sealed class BrowserCapabilityProfile
         SessionCapabilities.BrowserReload,
         SessionCapabilities.BrowserStop,
         SessionCapabilities.BrowserOriginGuard,
+        SessionCapabilities.BrowserAgentInputBarrier,
+        SessionCapabilities.BrowserSnapshot,
+        SessionCapabilities.BrowserWait,
+        SessionCapabilities.BrowserClick,
+        SessionCapabilities.BrowserFill,
+        SessionCapabilities.BrowserCheck,
+        SessionCapabilities.BrowserMouse,
+        SessionCapabilities.BrowserKey,
+        SessionCapabilities.BrowserScroll,
     ]);
 
     /// <summary>
     /// The complete implemented browser contract. Tests inject this profile
-    /// explicitly; production may select it only with platform conformance
-    /// evidence.
+    /// explicitly. Evaluate is deliberately dormant in production until a
+    /// credential-safe scripting boundary can prevent derived secret access;
+    /// source scanning and result-name filtering are not authority boundaries.
     /// </summary>
     public static BrowserCapabilityProfile FullAutomationCandidate { get; } = new(
     [
         .. Production.Capabilities.Values,
-        SessionCapabilities.BrowserSnapshot,
-        SessionCapabilities.BrowserClick,
-        SessionCapabilities.BrowserFill,
-        SessionCapabilities.BrowserCheck,
+        SessionCapabilities.BrowserEvaluate,
     ]);
 
     private BrowserCapabilityProfile(IEnumerable<string> capabilities)

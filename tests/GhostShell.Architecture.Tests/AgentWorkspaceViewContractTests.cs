@@ -152,6 +152,11 @@ public sealed class AgentWorkspaceViewContractTests
                 && AttributeValue(element, "Text") == "{Binding AgentChat.Status}");
         Assert.Equal("Center", AttributeValue(footerStatus, "HorizontalAlignment"));
         Assert.Equal("Center", AttributeValue(footerStatus, "TextAlignment"));
+        var statusRow = Assert.Single(
+            footerStatus.Ancestors(),
+            element => element.Name.LocalName == "Grid"
+                && AttributeValue(element, "Grid.Row") == "3");
+        Assert.NotNull(statusRow);
 
         var clearRetainedSession = Assert.Single(
             root.Descendants(),
@@ -169,15 +174,19 @@ public sealed class AgentWorkspaceViewContractTests
                 "AutomationProperties.Name")));
 
         var prompt = FindNamedElement(root, "AgentChatPromptInput");
+        var composerStack = Assert.Single(
+            prompt.Ancestors(),
+            element => element.Name.LocalName == "StackPanel"
+                && string.Equals(
+                    AttributeValue(element, "Grid.Row"),
+                    "4",
+                    StringComparison.Ordinal));
         var composer = Assert.Single(
             prompt.Ancestors(),
             element => element.Name.LocalName == "Border"
-                && string.Equals(
-                    AttributeValue(element, "Grid.Row"),
-                    "3",
-                    StringComparison.Ordinal));
+                && composerStack.Descendants().Contains(element));
         Assert.Equal(
-            "{Binding AgentChat.HasProvider}",
+            "{Binding AgentChat.HasProvider, FallbackValue=False}",
             AttributeValue(composer, "IsVisible"));
 
         var contextUsage = Assert.Single(
@@ -226,7 +235,7 @@ public sealed class AgentWorkspaceViewContractTests
                     "OnCancelAgentChatClick",
                     StringComparison.Ordinal));
         Assert.Equal(
-            "{Binding AgentChat.ShowStopAction}",
+            "{Binding AgentChat.ShowStopAction, FallbackValue=False}",
             AttributeValue(stop, "IsVisible"));
 
         var committedReasoning = Assert.Single(
@@ -268,7 +277,7 @@ public sealed class AgentWorkspaceViewContractTests
         Assert.Equal("0", AttributeValue(reasoningLoader, "MinWidth"));
         Assert.Equal("Stretch", AttributeValue(reasoningLoader, "HorizontalAlignment"));
         Assert.Equal(
-            "{Binding AgentChat.ShowProvisionalReasoningLoader}",
+            "{Binding AgentChat.ShowProvisionalReasoningLoader, FallbackValue=False}",
             AttributeValue(reasoningLoader, "IsVisible"));
         var provisionalReasoningBody = Assert.Single(
             root.Descendants(),
@@ -311,15 +320,52 @@ public sealed class AgentWorkspaceViewContractTests
                 && (AttributeValue(element, "Text") == "{Binding Content}"
                     || AttributeValue(element, "Text")
                         == "{Binding ReasoningSummaryDisplay}"));
-        Assert.Contains(
-            root.Descendants(),
-            element => element.Name.LocalName == "Button"
-                && AttributeValue(element, "Click") == "OnCopyAgentMessageClick");
+        var copyButtons = root.Descendants()
+            .Where(element => element.Name.LocalName == "Button"
+                && AttributeValue(element, "Click") == "OnCopyAgentMessageClick")
+            .ToArray();
+        Assert.NotEmpty(copyButtons);
+        Assert.All(
+            copyButtons,
+            button => Assert.Equal(
+                "{Binding HasMessageText}",
+                AttributeValue(button, "IsVisible")));
         Assert.Contains(
             root.Descendants(),
             element => element.Name.LocalName == "Button"
                 && AttributeValue(element, "Click") == "OnForkAgentConversationClick"
                 && AttributeValue(element, "IsVisible") == "{Binding CanFork}");
+    }
+
+    [Fact]
+    public void Agent_toolbar_icon_pulses_slowly_only_while_a_run_is_active()
+    {
+        var root = Assert.IsType<XElement>(LoadView().Root);
+        var pulseIcon = FindNamedElement(root, "AgentActivityPulseIcon");
+
+        Assert.Equal("0", AttributeValue(pulseIcon, "Opacity"));
+        Assert.Equal(
+            "{Binding AgentChat.IsBusy}",
+            AttributeValue(pulseIcon, "Classes.running"));
+        Assert.Equal(
+            "{DynamicResource ShellAccentBrush}",
+            AttributeValue(pulseIcon, "Foreground"));
+
+        var pulseStyle = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && AttributeValue(element, "Selector")
+                    == "icons|SymbolIcon.AgentActivityPulse.running");
+        var animation = Assert.Single(
+            pulseStyle.Descendants(),
+            element => element.Name.LocalName == "Animation");
+        Assert.Equal("0:0:5", AttributeValue(animation, "Duration"));
+        Assert.Equal("INFINITE", AttributeValue(animation, "IterationCount"));
+        Assert.Equal(
+            ["0%", "50%", "100%"],
+            animation.Elements()
+                .Where(element => element.Name.LocalName == "KeyFrame")
+                .Select(element => AttributeValue(element, "Cue")));
     }
 
     [Fact]
@@ -445,14 +491,14 @@ public sealed class AgentWorkspaceViewContractTests
     }
 
     [Fact]
-    public void Full_access_is_a_normal_run_scoped_terminal_option()
+    public void Full_access_is_a_normal_run_scoped_agent_option()
     {
         var root = Assert.IsType<XElement>(LoadView().Root);
         var fullAccess = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "Button"
+                element => element.Name.LocalName == "Button"
                 && AttributeValue(element, "Content")
-                    == "Full access for terminal actions");
+                    == "Full access for agent actions");
 
         Assert.Null(AttributeValue(fullAccess, "IsEnabled"));
         Assert.DoesNotContain(
@@ -462,21 +508,34 @@ public sealed class AgentWorkspaceViewContractTests
     }
 
     [Fact]
-    public void Macos_live_regions_always_have_stable_non_null_names()
+    public void Agent_surface_does_not_use_macos_native_live_regions()
     {
-        var root = Assert.IsType<XElement>(LoadView().Root);
-        var liveRegions = root.Descendants().Where(element =>
-            AttributeValue(element, "AutomationProperties.LiveSetting") is not null);
-
-        Assert.NotEmpty(liveRegions);
-        Assert.All(
-            liveRegions,
-            element =>
+        var root = ApplicationViews.RepositoryRoot;
+        var agentViews = new[]
             {
-                var name = AttributeValue(element, "AutomationProperties.Name");
-                Assert.False(string.IsNullOrWhiteSpace(name));
-                Assert.DoesNotContain("{Binding", name, StringComparison.Ordinal);
-            });
+                Path.Combine(
+                    root,
+                    "src",
+                    "GhostShell.App",
+                    "Views",
+                    "AgentWorkspaceView.axaml"),
+            }
+            .Concat(Directory.GetFiles(
+                Path.Combine(
+                    root,
+                    "src",
+                    "GhostShell.App",
+                    "Views",
+                    "Components"),
+                "Agent*View.axaml",
+                SearchOption.TopDirectoryOnly));
+        var liveRegions = agentViews
+            .Select(XDocument.Load)
+            .SelectMany(document => document.Descendants())
+            .Where(element =>
+                AttributeValue(element, "AutomationProperties.LiveSetting") is not null);
+
+        Assert.Empty(liveRegions);
     }
 
     [Fact]

@@ -39,6 +39,17 @@ internal sealed partial class GhosttyVtTerminalSession
                 GhosttyVtKeyAction.Press,
                 GhosttyVtModifiers.None,
                 composing: false);
+            if (keyStroke.RepeatCount > 1)
+            {
+                var repeated = GC.AllocateUninitializedArray<byte>(
+                    checked(encoded.Length * keyStroke.RepeatCount));
+                for (var index = 0; index < keyStroke.RepeatCount; index++)
+                {
+                    encoded.CopyTo(repeated, index * encoded.Length);
+                }
+
+                encoded = repeated;
+            }
         }
 
         return QueueInputAsync(encoded, cancellationToken);
@@ -151,77 +162,63 @@ internal sealed partial class GhosttyVtTerminalSession
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_closed, this);
-            GhosttyVtNative.MouseEncoderSetOptionsFromTerminal(_mouseEncoder, _terminal);
-
-            var size = GhosttyVtMouseEncoderSize.CreateSized();
-            size.ScreenWidth = checked((uint)_columns * _cellWidthPixels);
-            size.ScreenHeight = checked((uint)_rows * _cellHeightPixels);
-            size.CellWidth = _cellWidthPixels;
-            size.CellHeight = _cellHeightPixels;
-            GhosttyVtNative.MouseEncoderSetOption(
-                _mouseEncoder,
-                GhosttyVtMouseEncoderOption.Size,
-                &size);
-
-            byte anyPressed = mouseInput.Kind == TerminalMouseEventKind.Drag ? (byte)1 : (byte)0;
-            byte trackLastCell = 1;
-            GhosttyVtNative.MouseEncoderSetOption(
-                _mouseEncoder,
-                GhosttyVtMouseEncoderOption.AnyButtonPressed,
-                &anyPressed);
-            GhosttyVtNative.MouseEncoderSetOption(
-                _mouseEncoder,
-                GhosttyVtMouseEncoderOption.TrackLastCell,
-                &trackLastCell);
-
-            GhosttyVtNative.MouseEventSetModifiers(
-                _mouseEvent,
-                MapModifiers(mouseInput.Modifiers));
-            GhosttyVtNative.MouseEventSetPosition(
-                _mouseEvent,
-                new GhosttyVtMousePosition
-                {
-                    X = (mouseInput.Column + 0.5f) * _cellWidthPixels,
-                    Y = (mouseInput.Row + 0.5f) * _cellHeightPixels,
-                });
-
-            switch (mouseInput.Kind)
-            {
-                case TerminalMouseEventKind.Down:
-                    GhosttyVtNative.MouseEventSetAction(_mouseEvent, GhosttyVtMouseAction.Press);
-                    GhosttyVtNative.MouseEventSetButton(_mouseEvent, MapMouseButton(mouseInput.Button));
-                    break;
-                case TerminalMouseEventKind.Up:
-                    GhosttyVtNative.MouseEventSetAction(_mouseEvent, GhosttyVtMouseAction.Release);
-                    GhosttyVtNative.MouseEventSetButton(_mouseEvent, MapMouseButton(mouseInput.Button));
-                    break;
-                case TerminalMouseEventKind.Move:
-                    GhosttyVtNative.MouseEventSetAction(_mouseEvent, GhosttyVtMouseAction.Motion);
-                    GhosttyVtNative.MouseEventClearButton(_mouseEvent);
-                    break;
-                case TerminalMouseEventKind.Drag:
-                    GhosttyVtNative.MouseEventSetAction(_mouseEvent, GhosttyVtMouseAction.Motion);
-                    GhosttyVtNative.MouseEventSetButton(_mouseEvent, MapMouseButton(mouseInput.Button));
-                    break;
-                case TerminalMouseEventKind.WheelUp:
-                    GhosttyVtNative.MouseEventSetAction(_mouseEvent, GhosttyVtMouseAction.Press);
-                    GhosttyVtNative.MouseEventSetButton(_mouseEvent, GhosttyVtMouseButton.Four);
-                    break;
-                case TerminalMouseEventKind.WheelDown:
-                    GhosttyVtNative.MouseEventSetAction(_mouseEvent, GhosttyVtMouseAction.Press);
-                    GhosttyVtNative.MouseEventSetButton(_mouseEvent, GhosttyVtMouseButton.Five);
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException(
-                        nameof(mouseInput),
-                        mouseInput.Kind,
-                        "Unknown terminal mouse event kind.");
-            }
-
-            encoded = EncodeMouseUnsafe();
+            encoded = EncodeMouseInputUnsafe(mouseInput);
         }
 
         return QueueInputAsync(encoded, cancellationToken);
+    }
+
+    public ValueTask<TerminalRevisionBoundMouseOutcome>
+        SendMouseAtContentRevisionAsync(
+            TerminalMouseInput mouseInput,
+            long expectedContentRevision,
+            CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(mouseInput);
+        ArgumentOutOfRangeException.ThrowIfNegative(expectedContentRevision);
+        return QueueRevisionBoundMouseInputAsync(
+            mouseInput,
+            expectedContentRevision,
+            cancellationToken);
+    }
+
+    private async ValueTask<TerminalRevisionBoundMouseOutcome>
+        QueueRevisionBoundMouseInputAsync(
+            TerminalMouseInput mouseInput,
+            long expectedContentRevision,
+            CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_closed, this);
+            if (_processExited)
+            {
+                throw new InvalidOperationException("The terminal process has exited.");
+            }
+
+            if (_failure is not null)
+            {
+                throw new InvalidOperationException(
+                    $"The terminal session has failed: {_failure.StableCode}.");
+            }
+        }
+
+        var input = new QueuedTerminalInput(
+            mouseInput,
+            expectedContentRevision,
+            cancellationToken);
+        try
+        {
+            await _writes.Writer.WriteAsync(input, cancellationToken).ConfigureAwait(false);
+            return await input.Completion.ConfigureAwait(false);
+        }
+        catch (ChannelClosedException exception)
+        {
+            throw new InvalidOperationException(
+                "The terminal input queue is no longer accepting input.",
+                exception);
+        }
     }
 
     public async ValueTask<TerminalPasteResult> PasteAsync(
@@ -246,6 +243,48 @@ internal sealed partial class GhosttyVtTerminalSession
             encoded = EncodePasteUnsafe(Encoding.UTF8.GetBytes(normalized), bracketed);
         }
 
+        await QueueInputAsync(encoded, cancellationToken).ConfigureAwait(false);
+        return TerminalPasteResult.Completed(bracketed);
+    }
+
+    public async ValueTask<TerminalPasteResult> SubmitTextAsync(
+        TerminalPasteInput pasteInput,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(pasteInput);
+        byte[] encoded;
+        bool bracketed;
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_closed, this);
+            PrepareForTerminalInputUnsafe();
+            bracketed = ModeEnabledUnsafe(2004);
+            var policy = _renderProfile.ClipboardPolicy.PasteSafety;
+            if (TerminalPasteSafety.RequiresConfirmation(pasteInput, policy, bracketed))
+            {
+                return TerminalPasteResult.ConfirmationRequired(bracketed);
+            }
+
+            var normalized = PreparePasteText(pasteInput.Text, bracketed);
+            var paste = EncodePasteUnsafe(
+                Encoding.UTF8.GetBytes(normalized),
+                bracketed);
+            var enter = EncodeKeyUnsafe(
+                MapKey(TerminalKey.Enter),
+                GhosttyVtModifiers.None,
+                ReadOnlySpan<byte>.Empty,
+                unshiftedCodepoint: 0,
+                GhosttyVtKeyAction.Press,
+                GhosttyVtModifiers.None,
+                composing: false);
+            encoded = GC.AllocateUninitializedArray<byte>(
+                checked(paste.Length + enter.Length));
+            paste.CopyTo(encoded, 0);
+            enter.CopyTo(encoded, paste.Length);
+        }
+
+        // A single queue item is one PTY write, so neither user input nor
+        // another agent action can interleave between the text and Enter.
         await QueueInputAsync(encoded, cancellationToken).ConfigureAwait(false);
         return TerminalPasteResult.Completed(bracketed);
     }
@@ -376,9 +415,25 @@ internal sealed partial class GhosttyVtTerminalSession
                     using var deliveryCancellation = CancellationTokenSource.CreateLinkedTokenSource(
                         cancellationToken,
                         input.CancellationToken);
-                    await _pty.Writer
-                        .WriteAsync(input.Bytes, deliveryCancellation.Token)
-                        .ConfigureAwait(false);
+                    ValueTask pendingWrite;
+                    if (input.RevisionBoundMouseInput is not null)
+                    {
+                        if (!TryBeginRevisionBoundMouseWriteUnsafe(
+                                input,
+                                deliveryCancellation.Token,
+                                out pendingWrite))
+                        {
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        pendingWrite = _pty.Writer.WriteAsync(
+                            input.Bytes,
+                            deliveryCancellation.Token);
+                    }
+
+                    await pendingWrite.ConfigureAwait(false);
                     committed = true;
                     try
                     {
@@ -454,25 +509,93 @@ internal sealed partial class GhosttyVtTerminalSession
         }
     }
 
+    private unsafe bool TryBeginRevisionBoundMouseWriteUnsafe(
+        QueuedTerminalInput input,
+        CancellationToken cancellationToken,
+        out ValueTask pendingWrite)
+    {
+        lock (_gate)
+        {
+            if (GetInputRejectionUnsafe() is { } rejection)
+            {
+                input.Fail(rejection);
+                pendingWrite = default;
+                return false;
+            }
+
+            if (_contentRevision != input.ExpectedContentRevision)
+            {
+                input.Complete(TerminalRevisionBoundMouseOutcome.ContentRevisionChanged);
+                pendingWrite = default;
+                return false;
+            }
+
+            var mouseInput = input.RevisionBoundMouseInput!;
+            if (mouseInput.Column >= _columns || mouseInput.Row >= _rows)
+            {
+                input.Complete(TerminalRevisionBoundMouseOutcome.CoordinatesOutOfBounds);
+                pendingWrite = default;
+                return false;
+            }
+
+            byte[] encoded;
+            try
+            {
+                byte mouseTracking = 0;
+                EnsureSuccess(
+                    GhosttyVtNative.TerminalGet(
+                        _terminal,
+                        GhosttyVtTerminalData.MouseTracking,
+                        &mouseTracking),
+                    "read terminal mouse tracking");
+                if (mouseTracking == 0)
+                {
+                    input.Complete(TerminalRevisionBoundMouseOutcome.MouseTrackingDisabled);
+                    pendingWrite = default;
+                    return false;
+                }
+
+                encoded = EncodeMouseInputUnsafe(mouseInput);
+            }
+            catch (Exception exception)
+            {
+                // Encoding used to run on the caller before queueing. Moving it
+                // beside dispatch must not turn a single input failure into a
+                // terminal-writer failure that rejects unrelated queued work.
+                input.Fail(exception);
+                pendingWrite = default;
+                return false;
+            }
+
+            pendingWrite = _pty.Writer.WriteAsync(encoded, cancellationToken);
+            return true;
+        }
+    }
+
     private Exception? GetInputRejection()
     {
         lock (_gate)
         {
-            if (_closed)
-            {
-                return new ObjectDisposedException(nameof(GhosttyVtTerminalSession));
-            }
-
-            if (_processExited)
-            {
-                return new InvalidOperationException("The terminal process has exited.");
-            }
-
-            return _failure is null
-                ? null
-                : new InvalidOperationException(
-                    $"The terminal session has failed: {_failure.StableCode}.");
+            return GetInputRejectionUnsafe();
         }
+    }
+
+    private Exception? GetInputRejectionUnsafe()
+    {
+        if (_closed)
+        {
+            return new ObjectDisposedException(nameof(GhosttyVtTerminalSession));
+        }
+
+        if (_processExited)
+        {
+            return new InvalidOperationException("The terminal process has exited.");
+        }
+
+        return _failure is null
+            ? null
+            : new InvalidOperationException(
+                $"The terminal session has failed: {_failure.StableCode}.");
     }
 
     private unsafe byte[] EncodeKeyUnsafe(
@@ -532,6 +655,102 @@ internal sealed partial class GhosttyVtTerminalSession
                 return buffer.AsSpan(0, checked((int)written)).ToArray();
             }
         }
+    }
+
+    private unsafe byte[] EncodeMouseInputUnsafe(TerminalMouseInput mouseInput)
+    {
+        GhosttyVtNative.MouseEncoderSetOptionsFromTerminal(_mouseEncoder, _terminal);
+
+        var size = GhosttyVtMouseEncoderSize.CreateSized();
+        size.ScreenWidth = checked((uint)_columns * _cellWidthPixels);
+        size.ScreenHeight = checked((uint)_rows * _cellHeightPixels);
+        size.CellWidth = _cellWidthPixels;
+        size.CellHeight = _cellHeightPixels;
+        GhosttyVtNative.MouseEncoderSetOption(
+            _mouseEncoder,
+            GhosttyVtMouseEncoderOption.Size,
+            &size);
+
+        byte anyPressed = mouseInput.Kind == TerminalMouseEventKind.Drag
+            ? (byte)1
+            : (byte)0;
+        byte trackLastCell = 1;
+        GhosttyVtNative.MouseEncoderSetOption(
+            _mouseEncoder,
+            GhosttyVtMouseEncoderOption.AnyButtonPressed,
+            &anyPressed);
+        GhosttyVtNative.MouseEncoderSetOption(
+            _mouseEncoder,
+            GhosttyVtMouseEncoderOption.TrackLastCell,
+            &trackLastCell);
+
+        GhosttyVtNative.MouseEventSetModifiers(
+            _mouseEvent,
+            MapModifiers(mouseInput.Modifiers));
+        GhosttyVtNative.MouseEventSetPosition(
+            _mouseEvent,
+            new GhosttyVtMousePosition
+            {
+                X = (mouseInput.Column + 0.5f) * _cellWidthPixels,
+                Y = (mouseInput.Row + 0.5f) * _cellHeightPixels,
+            });
+
+        switch (mouseInput.Kind)
+        {
+            case TerminalMouseEventKind.Down:
+                GhosttyVtNative.MouseEventSetAction(
+                    _mouseEvent,
+                    GhosttyVtMouseAction.Press);
+                GhosttyVtNative.MouseEventSetButton(
+                    _mouseEvent,
+                    MapMouseButton(mouseInput.Button));
+                break;
+            case TerminalMouseEventKind.Up:
+                GhosttyVtNative.MouseEventSetAction(
+                    _mouseEvent,
+                    GhosttyVtMouseAction.Release);
+                GhosttyVtNative.MouseEventSetButton(
+                    _mouseEvent,
+                    MapMouseButton(mouseInput.Button));
+                break;
+            case TerminalMouseEventKind.Move:
+                GhosttyVtNative.MouseEventSetAction(
+                    _mouseEvent,
+                    GhosttyVtMouseAction.Motion);
+                GhosttyVtNative.MouseEventClearButton(_mouseEvent);
+                break;
+            case TerminalMouseEventKind.Drag:
+                GhosttyVtNative.MouseEventSetAction(
+                    _mouseEvent,
+                    GhosttyVtMouseAction.Motion);
+                GhosttyVtNative.MouseEventSetButton(
+                    _mouseEvent,
+                    MapMouseButton(mouseInput.Button));
+                break;
+            case TerminalMouseEventKind.WheelUp:
+                GhosttyVtNative.MouseEventSetAction(
+                    _mouseEvent,
+                    GhosttyVtMouseAction.Press);
+                GhosttyVtNative.MouseEventSetButton(
+                    _mouseEvent,
+                    GhosttyVtMouseButton.Four);
+                break;
+            case TerminalMouseEventKind.WheelDown:
+                GhosttyVtNative.MouseEventSetAction(
+                    _mouseEvent,
+                    GhosttyVtMouseAction.Press);
+                GhosttyVtNative.MouseEventSetButton(
+                    _mouseEvent,
+                    GhosttyVtMouseButton.Five);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(
+                    nameof(mouseInput),
+                    mouseInput.Kind,
+                    "Unknown terminal mouse event kind.");
+        }
+
+        return EncodeMouseUnsafe();
     }
 
     private unsafe byte[] EncodeMouseUnsafe()

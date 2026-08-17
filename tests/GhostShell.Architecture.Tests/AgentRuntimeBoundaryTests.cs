@@ -288,6 +288,9 @@ public sealed class AgentRuntimeBoundaryTests
             {
                 nameof(NativeAgentSession.Cancel),
                 nameof(NativeAgentSession.CaptureCheckpoint),
+                nameof(NativeAgentSession.CaptureInterruptedCheckpoint),
+                nameof(NativeAgentSession.CaptureInterruptedCheckpoint),
+                nameof(NativeAgentSession.CaptureInterruptedCheckpoint),
                 nameof(NativeAgentSession.CompactAsync),
                 nameof(NativeAgentSession.CompactAsync),
                 nameof(NativeAgentSession.DescribeConversation),
@@ -298,6 +301,7 @@ public sealed class AgentRuntimeBoundaryTests
                 nameof(NativeAgentSession.Snapshot),
                 nameof(NativeAgentSession.Steer),
                 nameof(NativeAgentSession.SubmitToolResultsAsync),
+                nameof(NativeAgentSession.TryRebaseSystemPrompt),
                 nameof(NativeAgentSession.TrySetConversationRoute),
                 nameof(NativeAgentSession.TrySetConversationTitle),
                 nameof(NativeAgentSession.WatchAsync),

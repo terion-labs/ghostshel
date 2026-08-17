@@ -199,7 +199,11 @@ public sealed class SqliteDefinitionRepositoryTests
             "model",
             ImmutableDictionary<AgentCapability, AgentPermission>.Empty.Add(
                 AgentCapability.RunCommands,
-                (AgentPermission)999));
+                (AgentPermission)999))
+        {
+            CompactionModel = new AgentModelSelection("provider", "model"),
+            TitleModel = new AgentModelSelection("provider", "model"),
+        };
         var screen = new ScreenDefinition(
             new ScreenId("policy-screen"),
             ScreenDefinition.CurrentSchemaVersion,
@@ -218,7 +222,11 @@ public sealed class SqliteDefinitionRepositoryTests
             agentPolicyOverride: new AgentPolicy(
                 " ",
                 "model",
-                AgentPolicy.Default.Permissions));
+                AgentPolicy.Default.Permissions)
+            {
+                CompactionModel = new AgentModelSelection("provider", "model"),
+                TitleModel = new AgentModelSelection("provider", "model"),
+            });
 
         var screenResult = await new SqliteDefinitionRepository<ScreenDefinition>(
                 temporary.Database,

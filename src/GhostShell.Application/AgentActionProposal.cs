@@ -5,7 +5,10 @@ namespace GhostShell.Application;
 
 public sealed record AgentActionProposal
 {
-    public static readonly TimeSpan MaximumLifetime = TimeSpan.FromMinutes(15);
+    // Long-lived observation waits reserve approval and provider-continuation
+    // grace around their one-hour condition. Runtime mutation proposals remain
+    // two minutes and mutation execution permits remain thirty seconds.
+    public static readonly TimeSpan MaximumLifetime = TimeSpan.FromMinutes(70);
 
     internal AgentActionProposal(
         AgentActionId id,

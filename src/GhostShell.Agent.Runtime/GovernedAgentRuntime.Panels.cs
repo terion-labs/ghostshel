@@ -101,7 +101,8 @@ public sealed partial class GovernedAgentRuntime
         var actionCancellation = BeginToolActivity(
             descriptor,
             action.Proposal.Presentation,
-            cancellationToken);
+            cancellationToken,
+            selected.PanelId);
         HostResult<AgentPanelActionResult> hostResult;
         try
         {
@@ -204,7 +205,9 @@ public sealed partial class GovernedAgentRuntime
             AgentToolBuildContext context) =>
             runtime._agentPanelHost is not null
                 && runtime._panelComposer is not null
-                    ? PanelAgentToolSet.For(context.OperationalContext)
+                    ? context.Context.Target is AgentTarget.Workspace
+                        ? PanelAgentToolSet.ForWorkspace()
+                        : PanelAgentToolSet.For(context.Context)
                     : [];
 
         public ResolvedAgentToolContribution? Resolve(string toolName) =>
@@ -217,14 +220,14 @@ public sealed partial class GovernedAgentRuntime
         private ValueTask<AgentToolResult> ExecuteAsync(
             AgentToolExecutionRequest request,
             CancellationToken cancellationToken) =>
-            runtime.ExecuteOperationalToolContributionAsync(
+            runtime.ExecutePanelToolContributionAsync(
                 request,
                 ExecuteBoundAsync,
                 cancellationToken);
 
         private ValueTask<AgentToolResult> ExecuteBoundAsync(
             AgentToolExecutionRequest request,
-            OperationalAgentToolContext context,
+            AgentPanelToolContext context,
             CancellationToken cancellationToken) =>
             runtime.ExecutePanelProposalAsync(
                 request.Proposal,

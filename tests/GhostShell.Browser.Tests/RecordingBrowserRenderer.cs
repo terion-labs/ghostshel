@@ -2,7 +2,9 @@ using GhostShell.Application;
 
 namespace GhostShell.Browser.Tests;
 
-internal sealed class RecordingBrowserRenderer : IBrowserRenderer
+internal sealed class RecordingBrowserRenderer :
+    IBrowserRenderer,
+    IBrowserPhysicalInputBarrier
 {
     private TaskCompletionSource? _reloadRelease;
     private TaskCompletionSource? _reloadStarted;
@@ -31,6 +33,12 @@ internal sealed class RecordingBrowserRenderer : IBrowserRenderer
     public int FillCount { get; private set; }
 
     public int CheckCount { get; private set; }
+
+    public int MouseCount { get; private set; }
+
+    public int EvaluateCount { get; private set; }
+
+    public BrowserAutomationBinding? LastAutomationBinding { get; private set; }
 
     public bool RejectStopAsUnavailable { get; set; }
 
@@ -67,6 +75,13 @@ internal sealed class RecordingBrowserRenderer : IBrowserRenderer
     public BrowserSessionState? StateAfterCheck { get; set; }
 
     public event EventHandler<BrowserStateChangedEventArgs>? StateChanged;
+
+    public Func<NativeRendererPhysicalInput, bool>? PhysicalInputGate
+    { get; private set; }
+
+    public void BindPhysicalInputGate(
+        Func<NativeRendererPhysicalInput, bool>? physicalInputGate) =>
+        PhysicalInputGate = physicalInputGate;
 
     public ValueTask<BrowserResult<BrowserSessionState>> NavigateAsync(
         BrowserAddress address,
@@ -161,7 +176,8 @@ internal sealed class RecordingBrowserRenderer : IBrowserRenderer
     public ValueTask<BrowserResult<BrowserDocumentSnapshot>>
         CaptureSnapshotAsync(
             BrowserDocumentBinding document,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            BrowserSnapshotQuery? query = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         LastSnapshotBinding = document;
@@ -269,6 +285,76 @@ internal sealed class RecordingBrowserRenderer : IBrowserRenderer
         }
 
         return ValueTask.FromResult(result);
+    }
+
+    public ValueTask<BrowserResult<BrowserAutomationReceipt>>
+        DispatchMouseWithinOriginAsync(
+            BrowserMouseRequest request,
+            BrowserNavigationOrigin allowedOrigin,
+            CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        MouseCount++;
+        LastAutomationBinding = request.Binding;
+        if (!request.Binding.Matches(State) || !allowedOrigin.Allows(State.Address))
+        {
+            return ValueTask.FromResult(
+                BrowserResult<BrowserAutomationReceipt>.Failure(
+                    BrowserError.Create(
+                        BrowserErrorCode.NavigationStateChanged,
+                        "The browser automation binding is stale.",
+                        retryable: true)));
+        }
+
+        Publish(new BrowserSessionState(
+            State.Address,
+            State.Title,
+            State.LoadState,
+            State.CanGoBack,
+            State.CanGoForward,
+            State.DocumentRevision,
+            State.Failure,
+            State.Viewport,
+            State.ViewportRevision,
+            State.InputEpoch + 1));
+        return ValueTask.FromResult(
+            BrowserResult<BrowserAutomationReceipt>.Success(
+                new BrowserAutomationReceipt(request.Binding, State)));
+    }
+
+    public ValueTask<BrowserResult<BrowserEvaluationResult>>
+        EvaluateWithinOriginAsync(
+            BrowserEvaluateRequest request,
+            BrowserNavigationOrigin allowedOrigin,
+            CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        EvaluateCount++;
+        LastAutomationBinding = request.Binding;
+        return request.Binding.Matches(State) && allowedOrigin.Allows(State.Address)
+            ? ValueTask.FromResult(
+                BrowserResult<BrowserEvaluationResult>.Success(
+                    new BrowserEvaluationResult(request.Binding, State, "2")))
+            : ValueTask.FromResult(
+                BrowserResult<BrowserEvaluationResult>.Failure(
+                    BrowserError.Create(
+                        BrowserErrorCode.NavigationStateChanged,
+                        "The browser automation binding is stale.",
+                        retryable: true)));
+    }
+
+    public void SetAutomationViewport(double width = 800, double height = 600)
+    {
+        Publish(new BrowserSessionState(
+            State.Address,
+            State.Title,
+            BrowserLoadState.Ready,
+            State.CanGoBack,
+            State.CanGoForward,
+            State.DocumentRevision,
+            viewport: new BrowserViewportState(width, height, 1),
+            viewportRevision: State.ViewportRevision + 1,
+            inputEpoch: State.InputEpoch));
     }
 
     private ValueTask<BrowserResult<BrowserSessionState>>

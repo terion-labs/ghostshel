@@ -5,4 +5,5 @@ public sealed record ProcessMonitorSnapshot(
     IReadOnlyList<ProcessMonitorEntry> Processes,
     int EnumeratedProcessCount,
     int ObservedProcessCount,
-    bool IsTruncated);
+    bool IsTruncated,
+    int? MatchingProcessCount = null);

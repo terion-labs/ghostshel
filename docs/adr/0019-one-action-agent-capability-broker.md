@@ -32,9 +32,14 @@ screen/wait/input/interrupt/resize operations, browser state/navigation and
 candidate exact-object interactions, and bounded read-only File Viewer
 list/stat/text-preview observations. Adding a tool is a code and test change,
 not runtime schema expansion from provider content.
-All six workspace-graph tools—`workspace.list`, `workspace.inspect`,
+All five workspace-graph tools—`workspace.inspect`,
 `tab.list`, `panel.list`, `panel.inspect`, and `panel.focus`—are
 production-reachable through this governed path.
+Workspace layout mutations—`tab.create`, `tab.close`, `panel.add`,
+`panel.split`, and `panel.close`—use the same one-action boundary under the
+separate `WorkspaceLayout` capability. SessionHost verifies the exact complete
+graph before consuming authority and verifies a fresh committed graph after the
+trusted desktop layout port returns.
 
 Capabilities distinguish terminal reads, terminal input, destructive terminal
 actions, file reads/writes, Git mutation, browser navigation/data, network
@@ -276,8 +281,8 @@ the run is cleared.
 
 Run-local YOLO is an ephemeral runtime overlay, not a durable setting. The
 runtime rejects any baseline policy containing YOLO. Enabling it requires an
-explicit selection whose run scope contains at least one terminal and a
-confirmation from the composition-owned authenticated desktop principal.
+explicit selection and a confirmation from the composition-owned authenticated
+desktop principal. It overlays every capability in that live run.
 The same contract supports the visible Workspace scope and the internal/testable
 exact-panel, `OpenTab`, and selected-panel targets. The desktop keeps that mode
 selected until the user chooses Ask or the run ends. Disable advances the
@@ -306,7 +311,7 @@ shows the selected approval mode directly in the composer.
   session-host consume-and-execute bridge, active cancellation, human input
   preemption, and restart-safe action audit state are implemented and covered
   by end-to-end broker/host tests.
-- All six workspace-graph tools are implemented through closed typed composers
+- All five workspace-graph tools are implemented through closed typed composers
   and session-host ports. Exact/broad schema selection, scope-clipped reads,
   permit-before-focus, revision drift, committed receipts, already-focused
   revision stability, and bounded redacted results have focused automated
@@ -321,7 +326,8 @@ shows the selected approval mode directly in the composer.
 - The host/working-directory and run-local `YOLO` lifecycle, including broad
   Workspace scopes containing terminals, immediate in-flight disable,
   run teardown, and policy-transition audit, is covered as a confirmed
-  run-scoped contract. Browser and MCP actions reject YOLO authority.
+  run-scoped contract. Browser and MCP actions consume the same confirmed
+  run-local authority while retaining their typed host and session checks.
 - Completion-audit uncertainty quarantines the immutable result, revokes run
   authority, prevents provider continuation, and never retries terminal input.
 - Saved-screen-template targeting, additional visible scope choices, and

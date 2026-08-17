@@ -2,7 +2,7 @@ using System.Runtime.CompilerServices;
 
 namespace GhostShell.Application;
 
-internal static class FilePanelSearch
+public static class FilePanelSearch
 {
     public static async IAsyncEnumerable<FilePanelResult<FilePanelEntry>> FindAsync(
         IFilePanelClient client,

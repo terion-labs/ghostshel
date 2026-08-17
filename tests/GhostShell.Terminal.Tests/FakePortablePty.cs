@@ -60,6 +60,8 @@ internal sealed class FakePortablePtyConnection : IPortablePtyConnection
 
     public string WrittenText => _input.Text;
 
+    public int InputWriteCount => _input.WriteCount;
+
     public void PauseInputWrites() => _input.PauseWrites();
 
     public Task WaitForInputWriteAttemptAsync() => _input.WaitForWriteAttemptAsync();
@@ -140,6 +142,7 @@ internal sealed class CapturingWriteStream : Stream
     private TaskCompletionSource? _flushRelease;
     private IOException? _nextWriteFailure;
     private IOException? _nextFlushFailure;
+    private int _writeCount;
 
     public string Text
     {
@@ -148,6 +151,17 @@ internal sealed class CapturingWriteStream : Stream
             lock (_gate)
             {
                 return Encoding.UTF8.GetString(_stream.ToArray());
+            }
+        }
+    }
+
+    public int WriteCount
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _writeCount;
             }
         }
     }
@@ -240,6 +254,7 @@ internal sealed class CapturingWriteStream : Stream
             if (failure is null)
             {
                 _stream.Write(buffer.Span);
+                _writeCount++;
             }
         }
 

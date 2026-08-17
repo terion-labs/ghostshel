@@ -109,7 +109,7 @@ Unsafe terminal paste fails closed into an explicit in-terminal confirmation pro
 - `src/GhostShell.Agent.Providers`: bounded native provider adapters, request-local API-key/OAuth resolution, OpenAI browser/device and GitHub device authorization, HTTP/SSE parsing, model discovery, and governed-runtime bindings.
 - `src/GhostShell.Agent.Runtime`: workspace-scoped provider/tool orchestration with a family contribution registry filtered by live panels, sequential correlated tool batches, steering/follow-ups, and closed typed execution requests.
 - `src/GhostShell.Mcp`: governed stdio and remote Streamable HTTP MCP sessions, bounded discovery/calls, and frozen run manifests.
-- `src/GhostShell.SessionHost`: in-process runtime registry, ordered events, revisions, attachments, leases, browser-domain policy, and close policy.
+- `src/GhostShell.SessionHost`: in-process runtime registry, ordered events, revisions, attachments, leases, browser action guards, and close policy.
 - `src/GhostShell.Terminal`: the cross-platform libghostty-vt state/input adapter and Porta.Pty process transport behind render-state, automation, typed input, and lifecycle ports.
 - `src/GhostShell.Monitoring`: package-free, cross-platform local resource sampling behind privacy-bounded statistics and process-session ports.
 - `src/GhostShell.App`: Avalonia presentation based on `design/design.pen`; it depends only on application ports and Core projections.

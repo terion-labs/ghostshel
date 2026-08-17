@@ -1339,10 +1339,7 @@ public sealed class AgentMcpSessionHostTests
                 or McpProfileChange.SameFingerprintEdit
                     ? profile.Name + " edited"
                     : profile.Name,
-            profile.Executable,
-            profile.Arguments,
-            profile.WorkingDirectory,
-            profile.Environment,
+            profile.Transport,
             profile.EnabledTools,
             isEnabled: change != McpProfileChange.Disable);
         var revision = change == McpProfileChange.Edit
@@ -1377,10 +1374,7 @@ public sealed class AgentMcpSessionHostTests
             advanceRevision
                 ? profile.Name + " edited"
                 : profile.Name,
-            profile.Executable,
-            profile.Arguments,
-            profile.WorkingDirectory,
-            profile.Environment,
+            profile.Transport,
             profile.EnabledTools,
             isEnabled: false);
         profiles[1] = new StoredDefinition<McpServerProfile>(
@@ -1579,17 +1573,18 @@ public sealed class AgentMcpSessionHostTests
                             ProfileId(index),
                             McpServerProfile.CurrentSchemaVersion,
                             $"Test MCP {index + 1}",
-                            dotnetPath,
-                            [
-                                assemblyPath,
-                                "--mcp-test-host",
-                                mode,
-                                .. (hostArguments ?? []),
-                            ],
-                            omitWorkingDirectory
-                                ? null
-                                : Path.GetDirectoryName(assemblyPath),
-                            environment,
+                            new McpServerTransport.Stdio(
+                                dotnetPath,
+                                [
+                                    assemblyPath,
+                                    "--mcp-test-host",
+                                    mode,
+                                    .. (hostArguments ?? []),
+                                ],
+                                omitWorkingDirectory
+                                    ? null
+                                    : Path.GetDirectoryName(assemblyPath),
+                                environment),
                             enabledTools ?? ["control"],
                             isEnabled)
                         : new McpServerProfile(

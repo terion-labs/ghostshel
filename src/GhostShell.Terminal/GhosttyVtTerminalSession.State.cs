@@ -7,6 +7,94 @@ namespace GhostShell.Terminal;
 internal sealed partial class GhosttyVtTerminalSession
 {
     private const int MaximumFindMatches = 4_096;
+    private const int MaximumProjectedHistoryRowBytes = 256 * 1024;
+    internal const int MaximumProjectedFindScanRows = 4_096;
+    internal const int MaximumProjectedFindScanBytes = 4 * 1024 * 1024;
+
+    public unsafe ValueTask<TerminalScrollbackSnapshot> ReadScrollbackAsync(
+        TerminalScrollbackReadInput input,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_closed, this);
+            var totalLines = ReadScrollbackLineCountUnsafe();
+            var (start, count) = ResolveScrollbackRangeUnsafe(input, totalLines);
+            var rows = new TerminalScrollbackRow[count];
+            for (var offset = 0; offset < count; offset++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var lineIndex = start + offset;
+                rows[offset] = ReadScrollbackRowUnsafe(lineIndex, _contentRevision);
+            }
+
+            return ValueTask.FromResult(new TerminalScrollbackSnapshot(
+                rows,
+                totalLines,
+                _contentRevision,
+                HasMoreBefore: start > 0,
+                HasMoreAfter: start + count < totalLines));
+        }
+    }
+
+    public unsafe ValueTask<TerminalScrollbackFindResult> FindScrollbackAsync(
+        TerminalScrollbackFindInput input,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_closed, this);
+            var totalLines = ReadScrollbackLineCountUnsafe();
+            var matches = new List<TerminalScrollbackRow>(input.MaximumMatchCount);
+            var truncated = false;
+            var index = input.Direction == TerminalScrollbackFindDirection.Forward
+                ? 0
+                : totalLines - 1;
+            var step = input.Direction == TerminalScrollbackFindDirection.Forward
+                ? 1
+                : -1;
+            var scannedRows = 0;
+            var scannedBytes = 0;
+            while (index >= 0 && index < totalLines)
+            {
+                if (scannedRows == MaximumProjectedFindScanRows
+                    || scannedBytes >= MaximumProjectedFindScanBytes)
+                {
+                    truncated = true;
+                    break;
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                var row = ReadScrollbackRowUnsafe(index, _contentRevision);
+                scannedRows++;
+                scannedBytes = Math.Min(
+                    MaximumProjectedFindScanBytes,
+                    scannedBytes + Encoding.UTF8.GetByteCount(row.Text));
+                if (row.Text.Contains(input.Query, StringComparison.Ordinal))
+                {
+                    if (matches.Count == input.MaximumMatchCount)
+                    {
+                        truncated = true;
+                        break;
+                    }
+
+                    matches.Add(row);
+                }
+
+                index += step;
+            }
+
+            return ValueTask.FromResult(new TerminalScrollbackFindResult(
+                matches,
+                totalLines,
+                _contentRevision,
+                truncated));
+        }
+    }
 
     public unsafe ValueTask ScrollViewportAsync(
         TerminalViewportScrollInput scrollInput,
@@ -17,19 +105,190 @@ internal sealed partial class GhosttyVtTerminalSession
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_closed, this);
-            var behavior = new GhosttyVtScrollViewport
-            {
-                Tag = GhosttyVtScrollViewportTag.Delta,
-                Value = new GhosttyVtScrollViewportValue
-                {
-                    Delta = scrollInput.Lines,
-                },
-            };
+            var behavior = BuildViewportScrollUnsafe(scrollInput);
             GhosttyVtNative.TerminalScrollViewport(_terminal, behavior);
             MarkContentChangedUnsafe();
         }
 
         return ValueTask.CompletedTask;
+    }
+
+    private unsafe int ReadScrollbackLineCountUnsafe()
+    {
+        nuint scrollbackRows = 0;
+        EnsureSuccess(
+            GhosttyVtNative.TerminalGet(
+                _terminal,
+                GhosttyVtTerminalData.ScrollbackRows,
+                &scrollbackRows),
+            "read terminal scrollback row count");
+        return checked((int)Math.Min(scrollbackRows, int.MaxValue));
+    }
+
+    private (int Start, int Count) ResolveScrollbackRangeUnsafe(
+        TerminalScrollbackReadInput input,
+        int totalLines)
+    {
+        if (input.RowAnchor is { } anchor
+            && anchor.ContentRevision != _contentRevision)
+        {
+            throw new TerminalScrollbackAnchorStaleException(
+                anchor.ContentRevision,
+                _contentRevision);
+        }
+
+        if (input.RowAnchor is { LineIndex: var lineIndex }
+            && lineIndex >= totalLines)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(input),
+                "The terminal history row anchor is outside current scrollback.");
+        }
+
+        var start = input.Origin switch
+        {
+            TerminalScrollbackReadOrigin.Top => 0,
+            TerminalScrollbackReadOrigin.Bottom =>
+                Math.Max(0, totalLines - input.MaximumLines),
+            TerminalScrollbackReadOrigin.Before =>
+                Math.Max(0, input.RowAnchor!.LineIndex - input.MaximumLines),
+            TerminalScrollbackReadOrigin.After =>
+                Math.Min(totalLines, input.RowAnchor!.LineIndex + 1),
+            _ => throw new ArgumentOutOfRangeException(nameof(input)),
+        };
+        var available = input.Origin == TerminalScrollbackReadOrigin.Before
+            ? input.RowAnchor!.LineIndex - start
+            : totalLines - start;
+        return (start, Math.Min(input.MaximumLines, Math.Max(0, available)));
+    }
+
+    private unsafe TerminalScrollbackRow ReadScrollbackRowUnsafe(
+        int lineIndex,
+        long contentRevision)
+    {
+        var point = new GhosttyVtPoint
+        {
+            Tag = GhosttyVtPointTag.History,
+            Value = new GhosttyVtPointValue
+            {
+                Coordinate = new GhosttyVtPointCoordinate
+                {
+                    X = 0,
+                    Y = checked((uint)lineIndex),
+                },
+            },
+        };
+        var reference = GhosttyVtGridRef.CreateSized();
+        EnsureSuccess(
+            GhosttyVtNative.TerminalGridRef(_terminal, point, &reference),
+            "map terminal history row");
+        var selection = GhosttyVtSelection.CreateSized();
+        selection.Start = reference;
+        selection.End = reference;
+        EnsureSuccess(
+            GhosttyVtNative.TerminalSelectionAdjust(
+                _terminal,
+                &selection,
+                GhosttyVtSelectionAdjust.EndOfLine),
+            "bound terminal history row");
+
+        var options = GhosttyVtSelectionFormatOptions.CreateSized();
+        options.Format = GhosttyVtFormatterFormat.Plain;
+        options.Unwrap = 0;
+        options.Trim = 1;
+        options.Selection = (nint)(&selection);
+        nuint required = 0;
+        var measure = GhosttyVtNative.TerminalSelectionFormat(
+            _terminal,
+            options,
+            null,
+            0,
+            &required);
+        if (measure == GhosttyVtResult.Success && required == 0)
+        {
+            return new TerminalScrollbackRow(
+                new TerminalScrollbackRowAnchor(contentRevision, lineIndex),
+                string.Empty);
+        }
+
+        if (measure != GhosttyVtResult.OutOfSpace)
+        {
+            EnsureSuccess(measure, "measure terminal history row");
+        }
+
+        if (required > MaximumProjectedHistoryRowBytes)
+        {
+            return new TerminalScrollbackRow(
+                new TerminalScrollbackRowAnchor(contentRevision, lineIndex),
+                string.Empty,
+                IsTruncated: true);
+        }
+
+        var bytes = new byte[checked((int)required)];
+        fixed (byte* output = bytes)
+        {
+            EnsureSuccess(
+                GhosttyVtNative.TerminalSelectionFormat(
+                    _terminal,
+                    options,
+                    output,
+                    checked((nuint)bytes.Length),
+                    &required),
+                "read terminal history row");
+        }
+
+        var text = Encoding.UTF8.GetString(bytes, 0, checked((int)required));
+        var truncated = text.Length > TerminalScrollbackRow.MaximumTextCharacters;
+        if (truncated)
+        {
+            text = text[..TerminalScrollbackRow.MaximumTextCharacters];
+            if (text.Length > 0 && char.IsHighSurrogate(text[^1]))
+            {
+                text = text[..^1];
+            }
+        }
+
+        return new TerminalScrollbackRow(
+            new TerminalScrollbackRowAnchor(contentRevision, lineIndex),
+            text,
+            truncated);
+    }
+
+    private GhosttyVtScrollViewport BuildViewportScrollUnsafe(
+        TerminalViewportScrollInput input)
+    {
+        if (input.Direction == TerminalViewportScrollDirection.Top)
+        {
+            return new GhosttyVtScrollViewport
+            {
+                Tag = GhosttyVtScrollViewportTag.Top,
+            };
+        }
+
+        if (input.Direction == TerminalViewportScrollDirection.Bottom)
+        {
+            return new GhosttyVtScrollViewport
+            {
+                Tag = GhosttyVtScrollViewportTag.Bottom,
+            };
+        }
+
+        var magnitude = input.Unit == TerminalViewportScrollUnit.Page
+            ? Math.Min(
+                TerminalViewportScrollInput.MaximumLineDelta,
+                checked((long)input.Amount * _rows))
+            : input.Amount;
+        var delta = input.Direction == TerminalViewportScrollDirection.Up
+            ? -magnitude
+            : magnitude;
+        return new GhosttyVtScrollViewport
+        {
+            Tag = GhosttyVtScrollViewportTag.Delta,
+            Value = new GhosttyVtScrollViewportValue
+            {
+                Delta = checked((nint)delta),
+            },
+        };
     }
 
     public unsafe ValueTask ClearScrollbackAsync(CancellationToken cancellationToken) =>

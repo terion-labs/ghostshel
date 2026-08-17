@@ -10,28 +10,43 @@ public sealed class BrowserCapabilityProfileTests
     {
         Assert.Equal(
         [
-            SessionCapabilities.BrowserBack,
-            SessionCapabilities.BrowserForward,
-            SessionCapabilities.BrowserNavigate,
-            SessionCapabilities.BrowserOriginGuard,
-            SessionCapabilities.BrowserReload,
-            SessionCapabilities.BrowserReadState,
-            SessionCapabilities.BrowserStop,
-        ],
-            BrowserCapabilityProfile.Production.Capabilities.Values);
-        Assert.Equal(
-        [
+            SessionCapabilities.BrowserAgentInputBarrier,
             SessionCapabilities.BrowserBack,
             SessionCapabilities.BrowserCheck,
             SessionCapabilities.BrowserClick,
             SessionCapabilities.BrowserFill,
             SessionCapabilities.BrowserForward,
+            SessionCapabilities.BrowserKey,
+            SessionCapabilities.BrowserMouse,
             SessionCapabilities.BrowserNavigate,
             SessionCapabilities.BrowserOriginGuard,
             SessionCapabilities.BrowserReload,
+            SessionCapabilities.BrowserScroll,
             SessionCapabilities.BrowserSnapshot,
             SessionCapabilities.BrowserReadState,
             SessionCapabilities.BrowserStop,
+            SessionCapabilities.BrowserWait,
+        ],
+            BrowserCapabilityProfile.Production.Capabilities.Values);
+        Assert.Equal(
+        [
+            SessionCapabilities.BrowserAgentInputBarrier,
+            SessionCapabilities.BrowserBack,
+            SessionCapabilities.BrowserCheck,
+            SessionCapabilities.BrowserClick,
+            SessionCapabilities.BrowserEvaluate,
+            SessionCapabilities.BrowserFill,
+            SessionCapabilities.BrowserForward,
+            SessionCapabilities.BrowserKey,
+            SessionCapabilities.BrowserMouse,
+            SessionCapabilities.BrowserNavigate,
+            SessionCapabilities.BrowserOriginGuard,
+            SessionCapabilities.BrowserReload,
+            SessionCapabilities.BrowserScroll,
+            SessionCapabilities.BrowserSnapshot,
+            SessionCapabilities.BrowserReadState,
+            SessionCapabilities.BrowserStop,
+            SessionCapabilities.BrowserWait,
         ],
             BrowserCapabilityProfile.FullAutomationCandidate.Capabilities.Values);
         Assert.Throws<NotSupportedException>(

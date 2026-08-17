@@ -38,6 +38,18 @@ public interface ISessionHostClient
         CancellationToken cancellationToken) =>
         Unsupported<SessionSnapshot>("Process-monitor sessions are not implemented by this client.");
 
+    ValueTask<HostResult<SessionSnapshot>> EnsureDatabaseSessionAsync(
+        EnsureDatabaseSessionRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<SessionSnapshot>("Database sessions are not implemented by this client.");
+
+    ValueTask<HostResult<SessionSnapshot>> EnsureDockerSessionAsync(
+        EnsureDockerSessionRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<SessionSnapshot>("Docker sessions are not implemented by this client.");
+
     ValueTask<HostResult<WorkspaceGraphSnapshot>> RegisterWorkspaceGraphAsync(
         RegisterWorkspaceGraphRequest request,
         OperationContext context,

@@ -91,7 +91,7 @@ public sealed partial class GovernedAgentRuntime
                 rejected.StableCode);
         }
 
-        var contexts = await InspectRunTargetContextsAsync(
+        var contexts = await InspectRunTargetContextAsync(
                 GetPinnedTarget(),
                 GetOrCreateAgent(),
                 cancellationToken)
@@ -163,7 +163,7 @@ public sealed partial class GovernedAgentRuntime
                 "user_input_expired");
         }
 
-        contexts = await InspectRunTargetContextsAsync(
+        contexts = await InspectRunTargetContextAsync(
                 GetPinnedTarget(),
                 GetOrCreateAgent(),
                 cancellationToken)

@@ -30,8 +30,9 @@ cannot prove that the page is unchanged.
 GhostSHELL adds `browser.check` as the tenth closed governed browser tool
 contract. It is a mutation under `BrowserInteraction`, with default permission
 `Ask`. The broker escalates `BrowserInteraction=Auto` to an exact
-`HumanApproval`, and the SessionHost domain gate independently accepts only
-`HumanApproval`. `AutoPolicy`, `YoloPolicy`, and every other source fail closed.
+`HumanApproval`, and the SessionHost domain gate independently accepts
+`HumanApproval` or explicitly confirmed run-local `YoloPolicy`. `AutoPolicy`
+and every other source fail closed.
 
 The provider schema accepts exactly one URL-safe opaque `reference` of at most
 128 bytes and one non-negative `document_revision`. There is no boolean
@@ -97,8 +98,9 @@ mismatch, dispatcher failure, or late cancellation become non-retryable
 result and resolves the caller before UI-thread quarantine work, so a stalled
 dispatcher or an earlier queued native result cannot convert a timeout into
 success. GhostSHELL never redispatches check. Native-surface ambiguity attempts
-adapter quarantine and replacement, and every unknown outcome revokes the
-agent run before provider continuation.
+adapter quarantine and replacement. Every unknown outcome becomes a
+non-retryable failed tool result, skips the remainder of the stale batch, and
+returns control to the provider for fresh inspection.
 
 Success records `check_completed`. A wrong control returns
 `browser_element_not_checkable`; a stale lease or non-interactable element uses

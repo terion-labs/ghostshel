@@ -57,9 +57,13 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable
         ClientId = mainWindow.ClientId;
         WindowId = WindowInstanceId.New();
         WorkspaceId = WorkspaceInstanceId.New();
-        _ownedAgentRuntime = agentRuntimeFactory?.Create(
-            WorkspaceId,
-            new AgentConversationScopeId("quick-terminal"));
+        _ownedAgentRuntime = agentRuntimeFactory is not null
+            && _agentPolicyCoordinator?.Policy is { } configuredPolicy
+                ? agentRuntimeFactory.Create(
+                    WorkspaceId,
+                    new AgentConversationScopeId("quick-terminal"),
+                    configuredPolicy)
+                : null;
         var effectiveAgentRuntime = _ownedAgentRuntime ?? agentRuntime;
         AgentChat = effectiveAgentRuntime is not null && aiProviderRuntime is not null
             ? new AgentChatViewModel(
@@ -69,6 +73,10 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable
                 agentRunAuditReader,
                 agentModelFavoriteStore)
             : null;
+        if (AgentChat is not null)
+        {
+            AgentChat.PropertyChanged += OnAgentChatPropertyChanged;
+        }
         _mainWindow.PropertyChanged += OnMainWindowPropertyChanged;
 
         var selection = QuickTerminalDefinitionSelection.Resolve(catalog.Snapshot);
@@ -505,6 +513,10 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable
 
         _disposed = true;
         _mainWindow.PropertyChanged -= OnMainWindowPropertyChanged;
+        if (AgentChat is not null)
+        {
+            AgentChat.PropertyChanged -= OnAgentChatPropertyChanged;
+        }
         _lifetime.Cancel();
         AgentChat?.Dispose();
         _ownedAgentRuntime?.Dispose();
@@ -514,6 +526,25 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable
 
     public void ToggleAgentPanel() =>
         IsAgentPanelVisible = !IsAgentPanelVisible;
+
+    private void OnAgentChatPropertyChanged(
+        object? sender,
+        PropertyChangedEventArgs eventArgs)
+    {
+        _ = sender;
+        if (eventArgs.PropertyName != nameof(AgentChatViewModel.PanelActivity))
+        {
+            return;
+        }
+
+        var activity = AgentChat?.PanelActivity;
+        foreach (var tab in Tabs)
+        {
+            tab.SetAgentActivity(tab.PanelId == activity?.PanelId
+                ? "AI agent working in this panel"
+                : null);
+        }
+    }
 
     public void ToggleAgentPanelPin()
     {
@@ -528,9 +559,9 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (agentChat.IsSteeringAvailable)
+        if (agentChat.CanOfferFollowUpQueue)
         {
-            await agentChat.SteerAsync(cancellationToken);
+            await agentChat.QueueFollowUpAsync(cancellationToken);
             return;
         }
 
@@ -586,14 +617,14 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable
                     "The selected agent scope is not supported.");
         }
 
-        if (_agentPolicyCoordinator?.Policy is { } policy)
+        if (_agentPolicyCoordinator?.Policy is not { } policy)
         {
-            await agentChat.SendAsync(target, policy, cancellationToken);
+            agentChat.ReportTargetUnavailable(
+                "Configure the primary, compaction, and title models in AI settings.");
+            return;
         }
-        else
-        {
-            await agentChat.SendAsync(target, cancellationToken);
-        }
+
+        await agentChat.SendAsync(target, policy, cancellationToken);
     }
 
     private void AddTabCore(QuickTerminalTabViewModel tab)

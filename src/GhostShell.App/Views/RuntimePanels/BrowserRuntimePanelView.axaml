@@ -20,6 +20,7 @@
       CloseLabel="Close browser panel"
       CloseRequested="OnCloseClick"
       IsActive="{Binding IsActive}"
+      IsAgentActive="{Binding IsAgentActive}"
       IsZoomed="{Binding IsZoomed}"
       SplitRequested="OnSplitRequested"
       Title="{Binding Title}">

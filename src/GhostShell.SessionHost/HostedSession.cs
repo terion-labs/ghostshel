@@ -522,6 +522,72 @@ internal sealed class HostedSession
         }
     }
 
+    public bool CanExecuteAgentDatabaseRead(
+        IDatabasePanelSession database,
+        long expectedSessionRevision,
+        string requiredCapability,
+        CancellationToken runtimeAuthority)
+    {
+        ArgumentNullException.ThrowIfNull(database);
+        ArgumentException.ThrowIfNullOrWhiteSpace(requiredCapability);
+        lock (_gate)
+        {
+            try
+            {
+                return _descriptor.Lifecycle == SessionLifecycle.Active
+                    && _descriptor.Revision == expectedSessionRevision
+                    && Engine.Kind == PanelKind.DatabaseViewer
+                    && ReferenceEquals(Engine, database)
+                    && _descriptor.Capabilities.Contains(requiredCapability)
+                    && database.Capabilities.Contains(requiredCapability)
+                    && _runtimeAuthority.Token.Equals(runtimeAuthority)
+                    && !runtimeAuthority.IsCancellationRequested;
+            }
+            catch (Exception)
+            {
+                // A provider cannot preserve agent execution authority by
+                // throwing during live capability revalidation.
+                return false;
+            }
+        }
+    }
+
+    public bool CanExecuteAgentDockerRead(
+        IDockerPanelSession docker,
+        DockerSessionBinding expectedBinding,
+        DockerEngineGeneration expectedEngineGeneration,
+        long expectedSessionRevision,
+        string requiredCapability,
+        CancellationToken runtimeAuthority)
+    {
+        ArgumentNullException.ThrowIfNull(docker);
+        ArgumentNullException.ThrowIfNull(expectedBinding);
+        ArgumentException.ThrowIfNullOrWhiteSpace(requiredCapability);
+        lock (_gate)
+        {
+            try
+            {
+                return _descriptor.Lifecycle == SessionLifecycle.Active
+                    && _descriptor.Revision == expectedSessionRevision
+                    && Engine.Kind == PanelKind.Docker
+                    && ReferenceEquals(Engine, docker)
+                    && docker.Binding == expectedBinding
+                    && docker.State.EngineGeneration == expectedEngineGeneration
+                    && _descriptor.Capabilities.Contains(requiredCapability)
+                    && docker.Capabilities.Contains(requiredCapability)
+                    && _runtimeAuthority.Token.Equals(runtimeAuthority)
+                    && !runtimeAuthority.IsCancellationRequested;
+            }
+            catch (Exception)
+            {
+                // A Docker provider cannot preserve agent authority by throwing
+                // while its exact binding, generation, and live capability are
+                // revalidated.
+                return false;
+            }
+        }
+    }
+
     /// <summary>
     /// Reclaims terminal input for the exact interactive human attachment before a native
     /// renderer delivers one physical input. This method is intentionally synchronous:

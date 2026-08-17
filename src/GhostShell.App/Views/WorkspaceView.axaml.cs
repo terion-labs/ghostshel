@@ -111,6 +111,9 @@ public sealed partial class WorkspaceView : UserControl
 
     public event EventHandler<RoutedEventArgs>? LoadOlderAgentAuditRequested;
 
+    public event EventHandler<AgentQueuedFollowUpMoveRequestedEventArgs>?
+        MoveQueuedFollowUpRequested;
+
     public event EventHandler<RoutedEventArgs>? OpenWorkspaceRequested;
 
     public event EventHandler<RoutedEventArgs>? CloseWorkspaceRequested;
@@ -161,7 +164,7 @@ public sealed partial class WorkspaceView : UserControl
 
     public event EventHandler<RoutedEventArgs>? SendAgentChatRequested;
 
-    public event EventHandler<RoutedEventArgs>? QueueAgentFollowUpRequested;
+    public event EventHandler<RoutedEventArgs>? QueueAgentSteeringRequested;
 
     public event EventHandler<RoutedEventArgs>? AttachAgentImageRequested;
 
@@ -251,6 +254,11 @@ public sealed partial class WorkspaceView : UserControl
     private void OnLoadOlderAgentAuditClick(object? sender, RoutedEventArgs e) =>
         LoadOlderAgentAuditRequested?.Invoke(sender, e);
 
+    private void OnMoveAgentQueuedFollowUpRequested(
+        object? sender,
+        AgentQueuedFollowUpMoveRequestedEventArgs e) =>
+        MoveQueuedFollowUpRequested?.Invoke(sender, e);
+
     private void OnOpenWorkspaceClick(object? sender, RoutedEventArgs e) =>
         OpenWorkspaceRequested?.Invoke(sender, e);
 
@@ -323,8 +331,8 @@ public sealed partial class WorkspaceView : UserControl
     private void OnSendAgentChatClick(object? sender, RoutedEventArgs e) =>
         SendAgentChatRequested?.Invoke(sender, e);
 
-    private void OnQueueAgentFollowUpClick(object? sender, RoutedEventArgs e) =>
-        QueueAgentFollowUpRequested?.Invoke(sender, e);
+    private void OnQueueAgentSteeringClick(object? sender, RoutedEventArgs e) =>
+        QueueAgentSteeringRequested?.Invoke(sender, e);
 
     private void OnAttachAgentImageClick(object? sender, RoutedEventArgs e) =>
         AttachAgentImageRequested?.Invoke(sender, e);

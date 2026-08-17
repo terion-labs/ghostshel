@@ -37,29 +37,20 @@ public sealed class AgentSafetyCardViewContractTests
     }
 
     [Fact]
-    public void Question_component_preserves_untrusted_copy_and_non_approval_order()
+    public void Question_component_presents_only_the_question_and_response_controls()
     {
         var document = LoadComponent("AgentQuestionCardView");
         var card = FindNamedElement(document, "AgentPendingQuestion");
 
         Assert.Equal(
-            "{Binding AgentChat.HasPendingQuestion}",
+            "{Binding AgentChat.HasPendingQuestion, FallbackValue=False}",
             AttributeValue(card, "IsVisible"));
-        Assert.Equal(
-            "Assertive",
-            AttributeValue(card, "AutomationProperties.LiveSetting"));
-        Assert.Contains(
-            card.Descendants(),
-            element => string.Equals(
-                AttributeValue(element, "Text"),
-                "Untrusted model question",
-                StringComparison.Ordinal));
-        Assert.Contains(
-            card.Descendants(),
-            element => string.Equals(
-                AttributeValue(element, "Content"),
-                "Not approval",
-                StringComparison.Ordinal));
+        Assert.Null(AttributeValue(card, "AutomationProperties.LiveSetting"));
+        var serialized = card.ToString();
+        Assert.DoesNotContain("Untrusted model question", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("Not approval", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("clarification only", serialized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Callout", serialized, StringComparison.Ordinal);
 
         var answer = FindNamedElement(document, "AgentQuestionResponseInput");
         Assert.Equal("False", AttributeValue(answer, "AcceptsReturn"));
@@ -83,11 +74,9 @@ public sealed class AgentSafetyCardViewContractTests
         var card = FindNamedElement(document, "AgentPendingCapabilityRequest");
 
         Assert.Equal(
-            "{Binding AgentChat.HasPendingCapabilityRequest}",
+            "{Binding AgentChat.HasPendingCapabilityRequest, FallbackValue=False}",
             AttributeValue(card, "IsVisible"));
-        Assert.Equal(
-            "Assertive",
-            AttributeValue(card, "AutomationProperties.LiveSetting"));
+        Assert.Null(AttributeValue(card, "AutomationProperties.LiveSetting"));
         var serialized = card.ToString();
         Assert.Contains(
             "{Binding AgentChat.PendingCapabilityRequest.ExactTarget}",

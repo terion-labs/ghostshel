@@ -9,7 +9,7 @@ namespace GhostShell.Application;
 /// </summary>
 public sealed record BrowserDocumentSnapshot
 {
-    public const int MaximumNodeCount = 128;
+    public const int MaximumNodeCount = 512;
 
     public BrowserDocumentSnapshot(
         BrowserDocumentBinding document,

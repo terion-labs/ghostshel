@@ -37,9 +37,11 @@ public sealed class SavedScreenAgentPolicyEditorViewModel : ObservableObject, ID
         IReadOnlyList<AiProviderProfileDescriptor>? providerProfiles = null)
     {
         _isEnabled = policy is not null;
-        var normalized = AgentPolicyResolver.Resolve(policy ?? AgentPolicy.Default);
-        _provider = normalized.Provider;
-        _model = normalized.Model;
+        var normalized = policy is null
+            ? null
+            : AgentPolicyResolver.Resolve(policy);
+        _provider = normalized?.Provider ?? string.Empty;
+        _model = normalized?.Model ?? string.Empty;
         _requiresAvailableProvider = providerProfiles is not null;
 
         var providerOptions = (providerProfiles ?? [])
@@ -54,9 +56,16 @@ public sealed class SavedScreenAgentPolicyEditorViewModel : ObservableObject, ID
                 IsAvailable: true,
                 BuildProviderModels(profile)))
             .ToList();
-        _selectedProvider = providerOptions.SingleOrDefault(option =>
-            string.Equals(option.Id.Value, normalized.Provider, StringComparison.Ordinal));
-        if (policy is not null && _selectedProvider is null && _requiresAvailableProvider)
+        _selectedProvider = normalized is null
+            ? null
+            : providerOptions.SingleOrDefault(option =>
+                string.Equals(
+                    option.Id.Value,
+                    normalized.Provider,
+                    StringComparison.Ordinal));
+        if (normalized is not null
+            && _selectedProvider is null
+            && _requiresAvailableProvider)
         {
             _selectedProvider = new ProviderOption(
                 new AiProviderProfileId(normalized.Provider),
@@ -67,7 +76,7 @@ public sealed class SavedScreenAgentPolicyEditorViewModel : ObservableObject, ID
                 [new ModelOption(normalized.Model, normalized.Model)]);
             providerOptions.Add(_selectedProvider);
         }
-        else if (policy is null && _requiresAvailableProvider)
+        else if (normalized is null && _requiresAvailableProvider)
         {
             _selectedProvider = providerOptions.FirstOrDefault(option => option.IsSelectable);
             if (_selectedProvider is { } selected)
@@ -83,24 +92,29 @@ public sealed class SavedScreenAgentPolicyEditorViewModel : ObservableObject, ID
         }
 
         ProviderOptions = providerOptions.AsReadOnly();
-        AgentTaskModelOptions = BuildAgentTaskModelOptions(providerOptions);
+        var primarySelection = new AgentModelSelection(_provider, _model);
+        var compactionSelection = normalized?.CompactionModel ?? primarySelection;
+        var titleSelection = normalized?.TitleModel ?? primarySelection;
+        AgentTaskModelOptions = BuildAgentTaskModelOptions(
+            providerOptions,
+            compactionSelection,
+            titleSelection,
+            primarySelection);
         TitleModelOptions = BuildTitleModelOptions(
-            policy?.TitleModel,
-            new AgentModelSelection(_provider, _model));
+            titleSelection,
+            primarySelection);
         _selectedCompactionModel = ResolveAgentTaskModelOption(
-            policy?.CompactionModel,
-            "Use default agent model");
+            compactionSelection);
         _selectedTitleModel = ResolveTitleModelOption(
-            policy?.TitleModel,
-            _provider,
-            _model);
-        _systemPrompt = policy?.SystemPrompt ?? string.Empty;
+            titleSelection);
+        _systemPrompt = normalized?.SystemPrompt ?? string.Empty;
         RefreshModelOptions(_model);
         _capabilities = Array.AsReadOnly(
             AgentPolicy.Capabilities
                 .Select(capability => new CapabilityEditorViewModel(
                     capability,
-                    normalized.GetPermission(capability),
+                    normalized?.GetPermission(capability)
+                        ?? AgentPolicy.InitialPermissions[capability],
                     DurablePermissionOptions))
                 .ToArray());
         foreach (var capability in _capabilities)
@@ -301,6 +315,8 @@ public sealed class SavedScreenAgentPolicyEditorViewModel : ObservableObject, ID
         && AgentPolicy.IsValidModel(Model)
         && AgentTaskModelOptions.Contains(SelectedCompactionModel)
         && TitleModelOptions.Contains(SelectedTitleModel)
+        && IsConfiguredRouteAvailable(SelectedCompactionModel.Selection)
+        && IsConfiguredRouteAvailable(SelectedTitleModel.Selection)
         && (string.IsNullOrWhiteSpace(SystemPrompt)
             || AgentPolicy.IsValidSystemPrompt(SystemPrompt))
         && (!_requiresAvailableProvider
@@ -382,20 +398,38 @@ public sealed class SavedScreenAgentPolicyEditorViewModel : ObservableObject, ID
     }
 
     private static IReadOnlyList<AgentTaskModelOption> BuildAgentTaskModelOptions(
-        IReadOnlyList<ProviderOption> providers)
+        IReadOnlyList<ProviderOption> providers,
+        params AgentModelSelection[] configuredSelections)
     {
         List<AgentTaskModelOption> options =
         [
-            new(null, "Use default agent model", string.Empty),
-        ];
-        options.AddRange(
+            ..
             providers
                 .Where(provider => provider.IsSelectable)
                 .SelectMany(provider => provider.Models.Select(model =>
                     new AgentTaskModelOption(
                         new AgentModelSelection(provider.Id.Value, model.Id),
                         model.DisplayName,
-                        provider.Name))));
+                        provider.Name))),
+        ];
+        foreach (var selection in configuredSelections)
+        {
+            if (options.Any(option => option.Selection == selection))
+            {
+                continue;
+            }
+
+            var provider = providers.SingleOrDefault(option =>
+                string.Equals(
+                    option.Id.Value,
+                    selection.Provider,
+                    StringComparison.Ordinal));
+            options.Add(new AgentTaskModelOption(
+                selection,
+                selection.Model,
+                provider?.Name ?? selection.Provider));
+        }
+
         return options.AsReadOnly();
     }
 
@@ -418,7 +452,7 @@ public sealed class SavedScreenAgentPolicyEditorViewModel : ObservableObject, ID
     }
 
     private IReadOnlyList<AgentTaskModelOption> BuildTitleModelOptions(
-        AgentModelSelection? configuredSelection,
+        AgentModelSelection configuredSelection,
         AgentModelSelection currentSelection)
     {
         List<AgentTaskModelOption> options =
@@ -454,62 +488,40 @@ public sealed class SavedScreenAgentPolicyEditorViewModel : ObservableObject, ID
     }
 
     private AgentTaskModelOption ResolveAgentTaskModelOption(
-        AgentModelSelection? selection,
-        string fallbackLabel,
+        AgentModelSelection selection,
         IReadOnlyList<AgentTaskModelOption>? availableOptions = null)
     {
         var options = availableOptions ?? AgentTaskModelOptions;
-        if (selection is null)
-        {
-            return options[0];
-        }
-
         var option = options.FirstOrDefault(candidate =>
-            candidate.Selection is { } value
-            && string.Equals(value.Provider, selection.Provider, StringComparison.Ordinal)
-            && string.Equals(value.Model, selection.Model, StringComparison.Ordinal));
-        if (option is not null)
-        {
-            return option;
-        }
-
-        return new AgentTaskModelOption(
-            null,
-            fallbackLabel,
-            "Configured model unavailable");
+            candidate.Selection == selection);
+        return option ?? throw new ArgumentException(
+            "The configured agent model route is not present in the model catalog.",
+            nameof(selection));
     }
 
     private AgentTaskModelOption ResolveTitleModelOption(
-        AgentModelSelection? selection,
-        string defaultProvider,
-        string defaultModel)
+        AgentModelSelection selection)
     {
-        var resolvedSelection = selection
-            ?? new AgentModelSelection(defaultProvider, defaultModel);
         var option = TitleModelOptions.FirstOrDefault(candidate =>
-            candidate.Selection is { } value
+            candidate.Selection == selection);
+        return option ?? throw new ArgumentException(
+            "The configured title model route is not present in the model catalog.",
+            nameof(selection));
+    }
+
+    private bool IsConfiguredRouteAvailable(AgentModelSelection selection)
+    {
+        if (!_requiresAvailableProvider)
+        {
+            return true;
+        }
+
+        return ProviderOptions.Any(provider =>
+            provider.IsSelectable
             && string.Equals(
-                value.Provider,
-                resolvedSelection.Provider,
-                StringComparison.Ordinal)
-            && string.Equals(
-                value.Model,
-                resolvedSelection.Model,
+                provider.Id.Value,
+                selection.Provider,
                 StringComparison.Ordinal));
-        if (option is not null)
-        {
-            return option;
-        }
-
-        if (TitleModelOptions.Count > 0)
-        {
-            return TitleModelOptions[0];
-        }
-
-        return new AgentTaskModelOption(
-            null,
-            "Configured title model unavailable",
-            string.Empty);
     }
 
     private void OnCapabilityChanged(object? sender, PropertyChangedEventArgs e)
@@ -548,7 +560,7 @@ public sealed class SavedScreenAgentPolicyEditorViewModel : ObservableObject, ID
     }
 
     public sealed record AgentTaskModelOption(
-        AgentModelSelection? Selection,
+        AgentModelSelection Selection,
         string ModelName,
         string ProviderName)
     {

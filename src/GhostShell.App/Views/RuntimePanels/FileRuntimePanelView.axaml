@@ -62,6 +62,7 @@
       CloseLabel="Close File Viewer panel"
       CloseRequested="OnCloseClick"
       IsActive="{Binding IsActive}"
+      IsAgentActive="{Binding IsAgentActive}"
       IsZoomed="{Binding IsZoomed}"
       SplitRequested="OnSplitRequested"
       Title="{Binding Title}">
@@ -262,7 +263,16 @@
                   <ColumnDefinition Width="5" />
                   <ColumnDefinition Width="{Binding FileModifiedColumnWidth, Mode=TwoWay}" MinWidth="112" />
                 </Grid.ColumnDefinitions>
-                <TextBlock VerticalAlignment="Center" Classes="Eyebrow" Text="Name" />
+                <Button
+                    HorizontalContentAlignment="Left"
+                    VerticalContentAlignment="Center"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Padding="0"
+                    Click="OnSortNameClick"
+                    AutomationProperties.Name="Sort files by name">
+                  <TextBlock Classes="Eyebrow" Text="Name" />
+                </Button>
                 <Border Grid.Column="1" Width="1" HorizontalAlignment="Center" Background="{DynamicResource ShellBorderBrush}" IsHitTestVisible="False" />
                 <GridSplitter
                     Grid.Column="1"
@@ -272,7 +282,18 @@
                     ResizeDirection="Columns"
                     ResizeBehavior="PreviousAndNext"
                     AutomationProperties.Name="Resize file name and size columns" />
-                <TextBlock Grid.Column="2" Margin="{controls:Inset Horizontal=Sm}" VerticalAlignment="Center" Classes="Eyebrow" Text="Size" />
+                <Button
+                    Grid.Column="2"
+                    HorizontalContentAlignment="Left"
+                    VerticalContentAlignment="Center"
+                    Margin="{controls:Inset Horizontal=Sm}"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Padding="0"
+                    Click="OnSortSizeClick"
+                    AutomationProperties.Name="Sort files by size">
+                  <TextBlock Classes="Eyebrow" Text="Size" />
+                </Button>
                 <Border Grid.Column="3" Width="1" HorizontalAlignment="Center" Background="{DynamicResource ShellBorderBrush}" IsHitTestVisible="False" />
                 <GridSplitter
                     Grid.Column="3"
@@ -282,7 +303,18 @@
                     ResizeDirection="Columns"
                     ResizeBehavior="PreviousAndNext"
                     AutomationProperties.Name="Resize file size and modified columns" />
-                <TextBlock Grid.Column="4" Margin="{controls:Inset Horizontal=Sm}" VerticalAlignment="Center" Classes="Eyebrow" Text="Modified" />
+                <Button
+                    Grid.Column="4"
+                    HorizontalContentAlignment="Left"
+                    VerticalContentAlignment="Center"
+                    Margin="{controls:Inset Horizontal=Sm}"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Padding="0"
+                    Click="OnSortModifiedClick"
+                    AutomationProperties.Name="Sort files by modified date">
+                  <TextBlock Classes="Eyebrow" Text="Modified" />
+                </Button>
               </Grid>
             </Border>
             <ListBox

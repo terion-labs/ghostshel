@@ -144,6 +144,15 @@ public sealed partial class FileRuntimePanelView : UserControl
     private void OnEntryDoubleTapped(object? sender, TappedEventArgs e) =>
         EntryDoubleTapped?.Invoke(sender, e);
 
+    private void OnSortNameClick(object? sender, RoutedEventArgs e) =>
+        _boundPanel?.ChangeSort(FileEntrySortField.Name);
+
+    private void OnSortSizeClick(object? sender, RoutedEventArgs e) =>
+        _boundPanel?.ChangeSort(FileEntrySortField.Size);
+
+    private void OnSortModifiedClick(object? sender, RoutedEventArgs e) =>
+        _boundPanel?.ChangeSort(FileEntrySortField.Modified);
+
     /// <summary>
     /// The browser showing the previewed page, created on first use and reused
     /// for later pages: an embedded Chromium renderer is expensive enough that

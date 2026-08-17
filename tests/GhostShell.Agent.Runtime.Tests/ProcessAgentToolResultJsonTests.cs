@@ -57,6 +57,7 @@ public sealed class ProcessAgentToolResultJsonTests
             root.GetProperty("content_origin").GetString());
         Assert.Equal("cpu_desc", root.GetProperty("sort").GetString());
         Assert.Equal(16, root.GetProperty("limit").GetInt32());
+        Assert.Equal(0, root.GetProperty("offset").GetInt32());
         Assert.Equal(1, root.GetProperty("returned").GetInt32());
         Assert.Equal(
             5,
@@ -64,6 +65,9 @@ public sealed class ProcessAgentToolResultJsonTests
         Assert.Equal(
             1,
             root.GetProperty("observed_process_count").GetInt32());
+        Assert.Equal(
+            1,
+            root.GetProperty("matching_process_count").GetInt32());
         Assert.True(root.GetProperty("truncated").GetBoolean());
         var row = Assert.Single(
             root.GetProperty("processes").EnumerateArray());

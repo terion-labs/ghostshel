@@ -25,15 +25,6 @@ internal static class WorkspaceGraphAgentToolResultJson
         var includeGraphClock = !result.ScopeLimited;
         switch (result)
         {
-            case AgentWorkspaceGraphActionResult.WorkspacesListed listed:
-                writer.WriteStartArray("workspaces");
-                foreach (var workspace in listed.Workspaces)
-                {
-                    WriteWorkspace(writer, workspace, includeGraphClock);
-                }
-
-                writer.WriteEndArray();
-                break;
             case AgentWorkspaceGraphActionResult.WorkspaceInspected inspected:
                 WriteWorkspaceInspection(
                     writer,
@@ -178,16 +169,6 @@ internal static class WorkspaceGraphAgentToolResultJson
         writer.WriteEndObject();
     }
 
-    private static void WriteWorkspace(
-        Utf8JsonWriter writer,
-        AgentWorkspaceGraphWorkspace workspace,
-        bool includeGraphClock)
-    {
-        writer.WriteStartObject();
-        WriteWorkspaceFields(writer, workspace, includeGraphClock);
-        writer.WriteEndObject();
-    }
-
     private static void WriteWorkspaceFields(
         Utf8JsonWriter writer,
         AgentWorkspaceGraphWorkspace workspace,
@@ -296,6 +277,9 @@ internal static class WorkspaceGraphAgentToolResultJson
             PanelKind.FileViewer => "file_viewer",
             PanelKind.Statistics => "statistics",
             PanelKind.ProcessMonitor => "process_monitor",
+            PanelKind.Placeholder => "placeholder",
+            PanelKind.DatabaseViewer => "database_viewer",
+            PanelKind.Docker => "docker",
             _ => throw new ArgumentOutOfRangeException(nameof(kind)),
         };
 
@@ -303,8 +287,6 @@ internal static class WorkspaceGraphAgentToolResultJson
         AgentWorkspaceGraphActionResult result) =>
         result switch
         {
-            AgentWorkspaceGraphActionResult.WorkspacesListed =>
-                "workspaces_listed",
             AgentWorkspaceGraphActionResult.WorkspaceInspected =>
                 "workspace_inspected",
             AgentWorkspaceGraphActionResult.TabsListed =>

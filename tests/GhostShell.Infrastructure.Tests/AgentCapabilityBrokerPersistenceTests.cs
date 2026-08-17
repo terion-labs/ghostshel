@@ -45,6 +45,66 @@ public sealed class AgentCapabilityBrokerPersistenceTests
             trail.Value!.Select(item => item.Outcome));
     }
 
+    [Fact]
+    public async Task RestoredConversationCanEnableFullAccessAtTheSameLiveGeneration()
+    {
+        await using var temporary = TemporaryDatabase.Create();
+        var auditStore = new SqliteAuditStore(temporary.Database);
+
+        await using (var first = new AgentCapabilityBroker(
+            BuiltInAgentTools.Catalog,
+            auditStore,
+            new FixedTimeProvider(Now)))
+        {
+            Assert.Null(await first.RegisterRunAsync(
+                Registration(),
+                CancellationToken.None));
+            Assert.Null(await first.UpdateRunPolicyAsync(
+                FullAccessUpdate(Now),
+                CancellationToken.None));
+        }
+
+        var restoredAt = Now.AddDays(1);
+        await using (var restored = new AgentCapabilityBroker(
+            BuiltInAgentTools.Catalog,
+            auditStore,
+            new FixedTimeProvider(restoredAt)))
+        {
+            Assert.Null(await restored.RegisterRunAsync(
+                Registration(),
+                CancellationToken.None));
+            _ = Assert.IsType<AgentAuthorizationResult.ApprovalRequired>(
+                await restored.RequestAsync(
+                    PanelFocusProposal(
+                        "pending-focus",
+                        policyGeneration: 1,
+                        restoredAt),
+                    CancellationToken.None));
+            Assert.Null(await restored.UpdateRunPolicyAsync(
+                FullAccessUpdate(restoredAt),
+                CancellationToken.None));
+            _ = Assert.IsType<AgentAuthorizationResult.Authorized>(
+                await restored.RequestAsync(
+                    PanelFocusProposal(
+                        "retried-focus",
+                        policyGeneration: 2,
+                        restoredAt),
+                    CancellationToken.None));
+        }
+
+        var trail = await auditStore.ListByCorrelationAsync(
+            Registration().RunId.Value,
+            CancellationToken.None);
+
+        Assert.True(trail.IsSuccess, trail.Error?.Message);
+        var transitions = trail.Value!
+            .Where(item =>
+                item.Details is AuditDetails.AgentRunPolicyTransitionDetails)
+            .ToArray();
+        Assert.Equal(2, transitions.Length);
+        Assert.Equal(2, transitions.Select(item => item.EventId).Distinct().Count());
+    }
+
     private static AgentRunRegistration Registration() =>
         new(
             new AgentRunId("run-1"),
@@ -71,6 +131,50 @@ public sealed class AgentCapabilityBrokerPersistenceTests
             Now,
             Now.AddMinutes(5));
 
+    private static AgentActionProposal PanelFocusProposal(
+        string actionId,
+        long policyGeneration,
+        DateTimeOffset requestedAt) =>
+        new(
+            new AgentActionId(actionId),
+            Registration().RunId,
+            Agent(),
+            BuiltInAgentTools.PanelFocus,
+            Target(),
+            AgentActionDigest.FromUtf8("workspace-revision-7"),
+            AgentActionDigest.FromUtf8(actionId),
+            new AgentApprovalPresentation(
+                "Local terminal",
+                "localhost",
+                null),
+            policyGeneration,
+            requestedAt,
+            requestedAt.AddMinutes(5));
+
+    private static AgentRunPolicyUpdate FullAccessUpdate(DateTimeOffset confirmedAt)
+    {
+        var policy = AgentPolicy.Default with
+        {
+            Permissions = AgentPolicy.Default.Permissions
+                .SetItem(AgentCapability.RunCommands, AgentPermission.Yolo)
+                .SetItem(
+                    AgentCapability.DestructiveTerminalActions,
+                    AgentPermission.Yolo),
+        };
+        return new AgentRunPolicyUpdate(
+            Registration().RunId,
+            policy,
+            policyGeneration: 2,
+            Human(),
+            new AgentYoloConfirmation(
+                Registration().RunId,
+                Target(),
+                policyGeneration: 2,
+                Human(),
+                confirmedAt,
+                AgentYoloConfirmation.RunLifetimeExpiry));
+    }
+
     private static AgentTarget.Workspace Target() =>
         new(
             new WindowInstanceId("window-1"),
@@ -78,6 +182,13 @@ public sealed class AgentCapabilityBrokerPersistenceTests
 
     private static ActorDescriptor Agent() =>
         new(new ActorId("agent-1"), ActorKind.Agent, "GhostSHELL agent");
+
+    private static ActorDescriptor Human() =>
+        new(
+            new ActorId("client-1"),
+            ActorKind.Human,
+            "Local user",
+            new ClientId("client-1"));
 
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
     {

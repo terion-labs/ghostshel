@@ -8,5 +8,6 @@ public interface IBrowserDocumentReader
 {
     ValueTask<BrowserResult<BrowserDocumentSnapshot>> CaptureSnapshotAsync(
         BrowserDocumentBinding document,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        BrowserSnapshotQuery? query = null);
 }

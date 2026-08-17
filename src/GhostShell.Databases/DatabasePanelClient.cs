@@ -1155,6 +1155,7 @@ public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
                 await connection.OpenAsync(token).ConfigureAwait(false);
                 var requestedLimit = query.Limit;
                 var readQuery = query with { Limit = requestedLimit + 1 };
+                var projectedColumns = dialect.ProjectColumns(sourceColumns, query);
                 var command = dialect.BuildQuerySelect(sourceSql, sourceColumns, readQuery);
                 var result = await ExecuteQueryAsync(
                         connection,
@@ -1163,7 +1164,7 @@ public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
                         schema: null,
                         token)
                     .ConfigureAwait(false);
-                result = PreserveQueryColumnContext(result, sourceColumns);
+                result = PreserveQueryColumnContext(result, projectedColumns);
                 var hasLookAheadRow = result.ValueRows.Count > requestedLimit;
                 var pageResult = hasLookAheadRow
                     ? result with
@@ -1173,17 +1174,25 @@ public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
                         Truncated = true,
                     }
                     : result;
-                var totalRows = await ExecuteCountAsync(
+                var filteredRows = await ExecuteCountAsync(
                         connection,
                         dialect.BuildQueryCount(sourceSql, sourceColumns, query.Filters),
                         token)
                     .ConfigureAwait(false);
+                var sourceRows = query.Filters.Count == 0
+                    ? filteredRows
+                    : await ExecuteCountAsync(
+                            connection,
+                            dialect.BuildQueryCount(sourceSql, sourceColumns, []),
+                            token)
+                        .ConfigureAwait(false);
                 return new DatabaseTablePage(
                     pageResult,
                     query.Offset,
                     requestedLimit,
                     hasLookAheadRow,
-                    totalRows);
+                    filteredRows,
+                    sourceRows);
             },
             cancellationToken).ConfigureAwait(false);
     }
@@ -1257,12 +1266,13 @@ public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
                 {
                     Limit = query.Limit + 1,
                 };
+                var projectedColumns = dialect.ProjectColumns(details.Columns, query);
                 var command = dialect.BuildSelect(table.Id, details.Columns, readQuery);
                 var result = await ExecuteQueryAsync(
                         connection,
                         command,
                         readQuery.Limit,
-                        details.Columns,
+                        projectedColumns,
                         token)
                     .ConfigureAwait(false);
                 var hasLookAheadRow = result.ValueRows.Count > requestedLimit;
@@ -1274,17 +1284,25 @@ public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
                         Truncated = true,
                     }
                     : result;
-                var totalRows = await ExecuteCountAsync(
+                var filteredRows = await ExecuteCountAsync(
                         connection,
                         dialect.BuildCount(table.Id, details.Columns, query.Filters),
                         token)
                     .ConfigureAwait(false);
+                var tableRows = query.Filters.Count == 0
+                    ? filteredRows
+                    : await ExecuteCountAsync(
+                            connection,
+                            dialect.BuildCount(table.Id, details.Columns, []),
+                            token)
+                        .ConfigureAwait(false);
                 return new DatabaseTablePage(
                     pageResult,
                     query.Offset,
                     requestedLimit,
                     hasLookAheadRow && canPage,
-                    totalRows);
+                    filteredRows,
+                    tableRows);
             },
             cancellationToken).ConfigureAwait(false);
     }

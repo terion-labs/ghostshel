@@ -16,7 +16,8 @@ public sealed record AgentProcessListResult
         IReadOnlyList<AgentProcessListEntry> processes,
         int enumeratedProcessCount,
         int observedProcessCount,
-        bool isTruncated)
+        bool isTruncated,
+        int? matchingProcessCount = null)
     {
         if (capturedAtUtc.Offset != TimeSpan.Zero)
         {
@@ -35,8 +36,13 @@ public sealed record AgentProcessListResult
 
         ArgumentOutOfRangeException.ThrowIfNegative(enumeratedProcessCount);
         ArgumentOutOfRangeException.ThrowIfNegative(observedProcessCount);
+        var resolvedMatchingProcessCount =
+            matchingProcessCount ?? observedProcessCount;
+        ArgumentOutOfRangeException.ThrowIfNegative(
+            resolvedMatchingProcessCount);
         if (observedProcessCount > enumeratedProcessCount
-            || processes.Count > enumeratedProcessCount)
+            || resolvedMatchingProcessCount > observedProcessCount
+            || processes.Count > resolvedMatchingProcessCount)
         {
             throw new ArgumentException(
                 "Process result counts are inconsistent with the returned projection.");
@@ -61,6 +67,7 @@ public sealed record AgentProcessListResult
         Processes = new ReadOnlyCollection<AgentProcessListEntry>(copies);
         EnumeratedProcessCount = enumeratedProcessCount;
         ObservedProcessCount = observedProcessCount;
+        MatchingProcessCount = resolvedMatchingProcessCount;
         IsTruncated = isTruncated;
     }
 
@@ -71,6 +78,8 @@ public sealed record AgentProcessListResult
     public int EnumeratedProcessCount { get; }
 
     public int ObservedProcessCount { get; }
+
+    public int MatchingProcessCount { get; }
 
     public bool IsTruncated { get; }
 

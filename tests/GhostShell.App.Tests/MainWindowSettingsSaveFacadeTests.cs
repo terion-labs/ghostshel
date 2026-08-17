@@ -175,10 +175,11 @@ public sealed class MainWindowSettingsSaveFacadeTests
             new McpServerProfileId("mcp.settings-save"),
             McpServerProfile.CurrentSchemaVersion,
             "Settings save",
-            Path.Combine(workingDirectory, "ghostshell-mcp-test"),
-            ["--stdio"],
-            workingDirectory,
-            [],
+            new McpServerTransport.Stdio(
+                Path.Combine(workingDirectory, "ghostshell-mcp-test"),
+                ["--stdio"],
+                workingDirectory,
+                []),
             ["inspect"]);
         var request = new McpServerProfileSaveRequest(
             profile,
@@ -187,8 +188,8 @@ public sealed class MainWindowSettingsSaveFacadeTests
             isTrustConfirmed: false,
             new McpServerTrustReview(
                 profile.Name,
-                profile.Executable,
-                profile.WorkingDirectory!,
+                Assert.IsType<McpServerTransport.Stdio>(profile.Transport).Executable,
+                Assert.IsType<McpServerTransport.Stdio>(profile.Transport).WorkingDirectory!,
                 [],
                 [],
                 [],

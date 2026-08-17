@@ -41,7 +41,7 @@ public sealed record ManagedRemoteSessionViewModel(
         Lease.State == TerminalMultiplexerLeaseState.TerminationPending;
 }
 
-public sealed class MainWindowViewModel : ObservableObject, IDisposable
+public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 {
     private enum McpServerTestPresentationState
     {
@@ -303,6 +303,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         _sessionRestoreCoordinator = sessionRestoreCoordinator;
         _terminalMultiplexerCoordinator = terminalMultiplexerCoordinator;
         _agentPolicyCoordinator = agentPolicyCoordinator;
+        if (_agentPolicyCoordinator is not null)
+        {
+            _agentPolicyCoordinator.Changed += OnAgentPolicyCoordinatorChanged;
+        }
         if (_terminalMultiplexerCoordinator is not null)
         {
             _terminalMultiplexerCoordinator.LeasesChanged +=
@@ -365,6 +369,12 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 }
             });
         }
+
+        // The editor displays a complete default as soon as an enabled
+        // provider exists. Persist that exact visible configuration so the
+        // Agent surface and Settings cannot disagree about whether AI is set
+        // up. Subsequent edits are persisted by OnDefaultAgentPolicyChanged.
+        QueueDefaultAgentPolicyPersistence(onlyWhenMissing: true);
     }
 
     public ISessionHostClient SessionClient { get; }
@@ -1149,6 +1159,12 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             return;
         }
 
+        if (_agentPolicyCoordinator?.Policy is not { } configuredPolicy)
+        {
+            AgentChat = null;
+            return;
+        }
+
         if (workspaceId is not { } id)
         {
             AgentChat = null;
@@ -1159,9 +1175,17 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         {
             var runtime = _agentRuntimeFactory.Create(
                 id,
-                ConversationScopeOf(id));
+                ConversationScopeOf(id),
+                configuredPolicy);
             try
             {
+                if (runtime is IAgentWorkspaceLayoutRuntime layoutRuntime)
+                {
+                    var layoutPort = new MainWindowAgentWorkspaceLayoutPort(this, id);
+                    _agentWorkspaceLayoutPorts[id] = layoutPort;
+                    layoutRuntime.AttachWorkspaceLayoutPort(layoutPort);
+                }
+
                 owned = new WorkspaceAgentChat(
                     runtime,
                     new AgentChatViewModel(
@@ -1169,7 +1193,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                         _aiProviderRuntime,
                         _uiThreadDispatcher,
                         _agentRunAuditReader,
-                        _agentModelFavoriteStore));
+                        _agentModelFavoriteStore),
+                    () => NotifyAgentRunFinished(id),
+                    NotifyAgentRunningStateChanged,
+                    activity => ApplyWorkspaceAgentActivity(id, activity));
                 _workspaceAgentChats.Add(id, owned);
             }
             catch
@@ -1180,6 +1207,47 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         AgentChat = owned.ViewModel;
+    }
+
+    private void NotifyAgentRunFinished(WorkspaceInstanceId workspaceId)
+    {
+        if (_openWorkspaces.FirstOrDefault(workspace => workspace.Id == workspaceId)
+            is { } workspace)
+        {
+            Notifications.NotifyWorkspace(workspace);
+        }
+    }
+
+    private void NotifyAgentRunningStateChanged() =>
+        OnPropertyChanged(nameof(HasRunningAgent));
+
+    private void ApplyWorkspaceAgentActivity(
+        WorkspaceInstanceId workspaceId,
+        AgentToolActivityViewModel? activity)
+    {
+        var workspace = _openWorkspaces.FirstOrDefault(
+            candidate => candidate.Id == workspaceId);
+        if (workspace is null)
+        {
+            return;
+        }
+
+        foreach (var tab in workspace.Tabs)
+        {
+            foreach (var panel in tab.Panels)
+            {
+                panel.SetAgentActivity(panel.Id == activity?.PanelId
+                    ? "AI agent working in this panel"
+                    : null);
+            }
+
+            tab.SetAgentActivity(tab.Panels
+                .FirstOrDefault(panel => panel.IsAgentActive)
+                ?.AgentActivity);
+        }
+
+        workspace.HasAgentActivity = workspace.Tabs.Any(tab => tab.HasAgentActivity);
+        RefreshWorkspaceRuntimeFlags();
     }
 
     private AgentConversationScopeId ConversationScopeOf(
@@ -1196,6 +1264,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         if (_workspaceAgentChats.Remove(workspaceId, out var owned))
         {
             owned.Dispose();
+            NotifyAgentRunningStateChanged();
         }
     }
 
@@ -1339,9 +1408,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             return Task.CompletedTask;
         }
 
-        if (agentChat.IsSteeringAvailable)
+        if (agentChat.CanOfferFollowUpQueue)
         {
-            return agentChat.SteerAsync(cancellationToken);
+            return agentChat.QueueFollowUpAsync(cancellationToken);
         }
 
         if (RuntimeWorkspace is not { ActiveTab: { } activeTab } workspace)
@@ -1407,13 +1476,15 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             return Task.CompletedTask;
         }
 
-        return policy is null
-            ? agentChat.SendAsync(target, cancellationToken)
-            : agentChat.SendAsync(target, policy, cancellationToken);
+        return agentChat.SendAsync(
+            target,
+            policy ?? throw new InvalidOperationException(
+                "Policy resolution succeeded without a complete agent policy."),
+            cancellationToken);
     }
 
     private RuntimeAgentPolicyProvenance CurrentAgentPolicyProvenance() =>
-        new(_agentPolicyCoordinator?.Policy ?? AgentPolicy.Default);
+        new(_agentPolicyCoordinator?.Policy);
 
     private bool TryResolveAgentPolicy(
         RuntimeWorkspaceViewModel workspace,
@@ -1452,7 +1523,14 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         var overrideCount = tabs.Count(tab => tab.AgentPolicy.HasPolicyOverride);
         if (overrideCount == 0)
         {
-            policy = _agentPolicyCoordinator?.Policy;
+            if (_agentPolicyCoordinator?.Policy is not { } configuredPolicy)
+            {
+                policy = null;
+                error = "Configure the primary, compaction, and title models in AI settings.";
+                return false;
+            }
+
+            policy = configuredPolicy;
             error = string.Empty;
             return true;
         }
@@ -1467,7 +1545,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         var policies = tabs
-            .Select(tab => tab.AgentPolicy.EffectivePolicy)
+            .Select(tab => tab.AgentPolicy.EffectivePolicy
+                ?? throw new InvalidOperationException(
+                    "A saved agent-policy override is missing its effective policy."))
             .ToArray();
         var first = policies[0];
         if (policies.Any(candidate =>
@@ -4978,7 +5058,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public async Task<bool> RemovePanelAsync(
         PanelInstanceId panelId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool retryAfterGraphChange = true)
     {
         var workspace = RuntimeWorkspace;
         if (workspace is null)
@@ -5010,7 +5091,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 return await RemoveTabUnderGateAsync(
                     workspace,
                     tab,
-                    linkedCancellation.Token);
+                    linkedCancellation.Token,
+                    retryAfterGraphChange);
             }
 
             var proposal = BuildPanelRemovalProposal(
@@ -5035,7 +5117,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                             "The runtime panel changed before the host-approved removal was applied.");
                     }
                 },
-                RuntimeGraphStaleProposalHandling.RefreshAndRetry,
+                retryAfterGraphChange
+                    ? RuntimeGraphStaleProposalHandling.RefreshAndRetry
+                    : RuntimeGraphStaleProposalHandling.Reject,
                 linkedCancellation.Token,
                 currentWorkspace => BuildPanelRemovalProposal(
                     currentWorkspace,
@@ -5050,7 +5134,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public async Task<bool> RemoveTabAsync(
         TabInstanceId tabId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool retryAfterGraphChange = true)
     {
         var workspace = RuntimeWorkspace;
         if (workspace is null)
@@ -5074,7 +5159,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             return await RemoveTabUnderGateAsync(
                 workspace,
                 tab,
-                linkedCancellation.Token);
+                linkedCancellation.Token,
+                retryAfterGraphChange);
         }
         finally
         {
@@ -5085,7 +5171,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private async Task<bool> RemoveTabUnderGateAsync(
         RuntimeWorkspaceViewModel workspace,
         RuntimeTabViewModel tab,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool retryAfterGraphChange = true)
     {
         if (!ReferenceEquals(RuntimeWorkspace, workspace)
             || !workspace.Tabs.Contains(tab))
@@ -5107,7 +5194,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 tab,
                 _ => CreateLauncherTab(),
                 "last tab removal",
-                cancellationToken);
+                cancellationToken,
+                retryAfterGraphChange
+                    ? RuntimeGraphStaleProposalHandling.RefreshAndRetry
+                    : RuntimeGraphStaleProposalHandling.Reject);
         }
 
         // The last launcher tab stays. Closing it would leave the window with
@@ -5146,7 +5236,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     workspace.ActiveTab = workspace.Tabs[Math.Max(0, at - 1)];
                 }
             },
-            RuntimeGraphStaleProposalHandling.RefreshAndRetry,
+            retryAfterGraphChange
+                ? RuntimeGraphStaleProposalHandling.RefreshAndRetry
+                : RuntimeGraphStaleProposalHandling.Reject,
             cancellationToken,
             currentWorkspace => BuildTabRemovalProposal(
                 currentWorkspace,
@@ -6088,7 +6180,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         RuntimePanelViewModel panel,
         string operation,
         Action commit,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        RuntimeGraphStaleProposalHandling staleProposalHandling =
+            RuntimeGraphStaleProposalHandling.RefreshAndRetry)
     {
         ArgumentNullException.ThrowIfNull(workspace);
         ArgumentNullException.ThrowIfNull(tab);
@@ -6113,7 +6207,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 return false;
             }
 
-            return await ReplaceRuntimeWorkspaceGraphAsync(
+            var changed = await ReplaceRuntimeWorkspaceGraphAsync(
                 workspace,
                 operation,
                 // Answering a placed cell swaps that cell for the panel; anything
@@ -6154,11 +6248,21 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                             tab.AdoptFirstPanelTitle(panel.Title);
                         }
 
-                        StartAcceptedRuntimePanel(panel);
                         CompleteRuntimeMutationNavigation(navigation);
                     }
                 },
-                cancellationToken);
+                cancellationToken,
+                staleProposalHandling);
+            if (changed && attached)
+            {
+                // A hosted panel can link its session immediately, advancing
+                // the graph again. Start it only after the accepted topology
+                // receipt has been applied, so that newer link event cannot
+                // overtake and invalidate the older layout receipt.
+                StartAcceptedRuntimePanel(panel);
+            }
+
+            return changed;
         }
         finally
         {
@@ -6652,7 +6756,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         RuntimeWorkspaceViewModel workspace,
         Func<RuntimeWorkspaceViewModel, RuntimeTabViewModel?> createTab,
         string operation,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        RuntimeGraphStaleProposalHandling staleProposalHandling =
+            RuntimeGraphStaleProposalHandling.RefreshAndRetry)
     {
         ArgumentNullException.ThrowIfNull(workspace);
         ArgumentNullException.ThrowIfNull(createTab);
@@ -6692,7 +6798,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 current.Title,
                 current.Tabs.Append(CaptureRuntimeTab(tab)),
                 tab.Id);
-            return await ReplaceRuntimeWorkspaceGraphUnderGateAsync(
+            var changed = await ReplaceRuntimeWorkspaceGraphUnderGateAsync(
                 workspace,
                 proposal,
                 operation,
@@ -6705,11 +6811,23 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                     CommitRuntimeTabAppend(workspace, tab);
                     CompleteRuntimeMutationNavigation(navigation);
                 },
-                RuntimeGraphStaleProposalHandling.RefreshAndRetry,
+                staleProposalHandling,
                 linkedCancellation.Token,
                 currentWorkspace => BuildTabAppendProposal(
                     currentWorkspace,
                     tab));
+            if (changed)
+            {
+                // Session startup belongs after graph projection, not inside
+                // its commit callback. Fast hosted sessions publish a newer
+                // graph revision as soon as they link.
+                foreach (var panel in tab.Panels)
+                {
+                    StartAcceptedRuntimePanel(panel);
+                }
+            }
+
+            return changed;
         }
         finally
         {
@@ -6767,7 +6885,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         RuntimeTabViewModel replacedTab,
         Func<RuntimeWorkspaceViewModel, RuntimeTabViewModel?> createTab,
         string operation,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        RuntimeGraphStaleProposalHandling staleProposalHandling =
+            RuntimeGraphStaleProposalHandling.RefreshAndRetry)
     {
         ArgumentNullException.ThrowIfNull(workspace);
         ArgumentNullException.ThrowIfNull(replacedTab);
@@ -6799,7 +6919,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 return false;
             }
 
-            return await ReplaceRuntimeWorkspaceGraphUnderGateAsync(
+            var changed = await ReplaceRuntimeWorkspaceGraphUnderGateAsync(
                 workspace,
                 BuildTabReplacementProposal(workspace, replacedTab, tab)!,
                 operation,
@@ -6824,19 +6944,25 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
                     TrackRecentSessions(tab.Panels);
                     workspace.ActiveTab = tab;
-                    foreach (var panel in tab.Panels)
-                    {
-                        StartAcceptedRuntimePanel(panel);
-                    }
-
                     CompleteRuntimeMutationNavigation(navigation);
                 },
-                RuntimeGraphStaleProposalHandling.RefreshAndRetry,
+                staleProposalHandling,
                 cancellationToken,
                 currentWorkspace => BuildTabReplacementProposal(
                     currentWorkspace,
                     replacedTab,
                     tab));
+            if (changed)
+            {
+                // See AppendRuntimeTabAsync: topology acceptance precedes
+                // every panel/session startup that can advance the graph.
+                foreach (var panel in tab.Panels)
+                {
+                    StartAcceptedRuntimePanel(panel);
+                }
+            }
+
+            return changed;
         }
         finally
         {
@@ -6887,10 +7013,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             connectionIds.Contains(connection.Id)));
         TrackRecentSessions(tab.Panels);
         workspace.ActiveTab = tab;
-        foreach (var panel in tab.Panels)
-        {
-            StartAcceptedRuntimePanel(panel);
-        }
     }
 
     private RuntimeMutationNavigationSnapshot CaptureRuntimeMutationNavigation() =>
@@ -7211,6 +7333,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         DefaultAgentPolicy.Changed += OnDefaultAgentPolicyChanged;
         OnPropertyChanged(nameof(DefaultAgentPolicy));
         OnPropertyChanged(nameof(CanSaveDefaultAgentPolicy));
+        QueueDefaultAgentPolicyPersistence(onlyWhenMissing: true);
     }
 
     private void OnDefaultAgentPolicyChanged(object? sender, EventArgs eventArgs)
@@ -7218,6 +7341,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         _ = sender;
         _ = eventArgs;
         OnPropertyChanged(nameof(CanSaveDefaultAgentPolicy));
+        QueueDefaultAgentPolicyPersistence(onlyWhenMissing: false);
     }
 
     private void StartTrackingAgentTerminalSelection(
@@ -8429,9 +8553,11 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             item.IsOpen = runtime is not null;
             item.IsInFront = runtime is not null && ReferenceEquals(runtime, RuntimeWorkspace);
             item.HasAttention = runtime?.HasAttention == true;
+            item.HasAgentActivity = runtime?.HasAgentActivity == true;
         }
 
         OnPropertyChanged(nameof(HasWorkspaceAttention));
+        OnPropertyChanged(nameof(HasWorkspaceAgentActivity));
     }
 
     /// <summary>
@@ -8444,6 +8570,17 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     public bool HasWorkspaceAttention =>
         !ShowWorkspacesPanel && Workspaces.Any(item => item.HasAttention);
+
+    public bool HasWorkspaceAgentActivity =>
+        Workspaces.Any(item => item.HasAgentActivity);
+
+    /// <summary>
+    /// Whether any open workspace has a live agent turn. Unlike panel activity,
+    /// this begins before the first tool call and remains true for provider
+    /// reasoning, approval, and tool phases, including background workspaces.
+    /// </summary>
+    public bool HasRunningAgent =>
+        _workspaceAgentChats.Values.Any(owned => owned.ViewModel.IsBusy);
 
     /// <summary>
     /// The running instance of a saved workspace, if it is running. The rail
@@ -8969,7 +9106,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         string operation,
         Func<RuntimeWorkspaceViewModel, WorkspaceInstance?> buildProposal,
         Action commit,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        RuntimeGraphStaleProposalHandling staleProposalHandling =
+            RuntimeGraphStaleProposalHandling.RefreshAndRetry)
     {
         ArgumentNullException.ThrowIfNull(runtime);
         ArgumentException.ThrowIfNullOrWhiteSpace(operation);
@@ -9010,7 +9149,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 proposal,
                 operation,
                 commit,
-                RuntimeGraphStaleProposalHandling.RefreshAndRetry,
+                staleProposalHandling,
                 linkedCancellation.Token,
                 buildProposal);
         }
@@ -9148,7 +9287,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
                 success.Value.Revision,
                 success.Value.LastSequence,
                 $"{operation} reconciliation")
-            : TryApplyRegisteredRuntimeWorkspace(runtime, success);
+            : TryApplyValidatedRuntimeWorkspaceReceipt(
+                runtime,
+                success,
+                operation);
         if (!applied)
         {
             throw new InvalidOperationException(
@@ -9326,17 +9468,66 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             return false;
         }
 
+        return TryApplyValidatedRuntimeWorkspaceReceipt(
+            runtime,
+            success,
+            "workspace registration");
+    }
+
+    /// <summary>
+    /// Applies a receipt whose window, cursor advance, and requested topology
+    /// have already been validated against the submitted proposal.
+    ///
+    /// A layout commit publishes the approved view models before their host
+    /// cursor is copied across. That publication can surface a newer
+    /// session-link projection before this method runs. Treating the older,
+    /// already-validated receipt as malformed at that point both reports a
+    /// false error and risks regressing the newer projection. A newer matching
+    /// projection wins; otherwise the validated receipt supplies the
+    /// authoritative focus/cursor.
+    /// </summary>
+    private bool TryApplyValidatedRuntimeWorkspaceReceipt(
+        RuntimeWorkspaceViewModel runtime,
+        HostResult<WorkspaceGraphSnapshot>.Success success,
+        string operation)
+    {
+        var receipt = success.Value;
+        var currentIsAtLeastAsNew =
+            runtime.HostRevision >= receipt.Revision
+            && runtime.HostSequence >= receipt.LastSequence;
+        if (currentIsAtLeastAsNew)
+        {
+            if (WorkspaceTopologyMatches(
+                    CaptureRuntimeWorkspaceGraph(runtime),
+                    receipt.Workspace))
+            {
+                return true;
+            }
+
+            SetError(
+                $"The runtime workspace changed while applying {operation}.");
+            return false;
+        }
+
+        if (receipt.Revision <= runtime.HostRevision
+            || receipt.LastSequence <= runtime.HostSequence)
+        {
+            SetError($"The session host returned an invalid {operation} cursor.");
+            return false;
+        }
+
         try
         {
             runtime.ApplyHostProjection(
-                success.Value.Workspace,
-                success.Value.Revision,
-                success.Value.LastSequence);
+                receipt.Workspace,
+                receipt.Revision,
+                receipt.LastSequence);
             return true;
         }
         catch (InvalidOperationException)
         {
-            SetError("The session host returned a different runtime workspace graph.");
+            SetError(
+                $"The session host returned a different {operation} graph.");
             return false;
         }
     }
@@ -10913,12 +11104,14 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             profile.Transport.Kind,
             profile.Transport switch
             {
-                McpServerTransport.Stdio stdio => stdio.Executable,
+                McpServerTransport.Stdio stdioTarget => stdioTarget.Executable,
                 McpServerTransport.StreamableHttp http =>
                     http.Endpoint.AbsoluteUri,
                 _ => string.Empty,
             },
-            profile.Arguments.Count,
+            profile.Transport is McpServerTransport.Stdio stdioArguments
+                ? stdioArguments.Arguments.Count
+                : 0,
             credentialBindings.Length,
             profile.EnabledTools.Count,
             currentTest?.Status ?? baselineStatus,
@@ -11717,7 +11910,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             recovered.Accent,
             Connections.Where(item => connectionIds.Contains(item.Id)).ToArray(),
             recovered.AgentPolicy?.ToProvenance()
-                ?? RuntimeAgentPolicyProvenance.LegacyFallback,
+                ?? RuntimeAgentPolicyProvenance.Unconfigured,
             ResolveRecoveredTerminalMultiplexingOverride(recovered));
         if (runtime.TerminalMultiplexingMode is { } recoveredMultiplexingOverride)
         {
@@ -11791,12 +11984,11 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             layout,
             recovered.HistorySource?.ToHistorySource(),
             recovered.AgentPolicy?.ToProvenance()
-                ?? RuntimeAgentPolicyProvenance.LegacyFallback,
+                ?? RuntimeAgentPolicyProvenance.Unconfigured,
             usesAutomaticLayout: recovered.UsesAutomaticLayout,
             icon: recovered.Icon,
-            // Older snapshots did not record field ownership. A non-default
-            // launcher title was necessarily user-authored; an explicit legacy
-            // icon is preserved conservatively rather than overwritten.
+            // A recovered launcher title/icon keeps the ownership recorded by
+            // the current recovery schema.
             hasChosenTitle: recovered.HasChosenTitle
                 ?? !string.Equals(recovered.Title, "New tab", StringComparison.Ordinal),
             hasChosenIcon: recovered.HasChosenIcon ?? recovered.Icon is not null);
@@ -13401,13 +13593,30 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     private void StartAcceptedRuntimePanels(RuntimeWorkspaceViewModel runtime)
     {
-        foreach (var panel in runtime.Tabs.SelectMany(tab => tab.Panels))
+        foreach (var tab in runtime.Tabs)
         {
-            StartAcceptedRuntimePanel(panel);
+            foreach (var panel in tab.Panels)
+            {
+                StartAcceptedRuntimePanel(
+                    panel,
+                    new SessionOwner(
+                        HostMode.Desktop,
+                        WindowId,
+                        runtime.Id,
+                        tab.Id,
+                        panel.Id));
+            }
         }
     }
 
     private void StartAcceptedRuntimePanel(RuntimePanelViewModel panel)
+    {
+        StartAcceptedRuntimePanel(panel, FindAcceptedPanelOwner(panel));
+    }
+
+    private void StartAcceptedRuntimePanel(
+        RuntimePanelViewModel panel,
+        SessionOwner? owner)
     {
         if (panel is FileRuntimePanelViewModel files)
         {
@@ -13416,12 +13625,233 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
         if (panel is BrowserRuntimePanelViewModel browser)
         {
+            var initialization = browser.StartInitialization();
             _ = TrackBrowserAfterInitializationAsync(
                 browser,
-                browser.StartInitialization());
+                initialization);
+            if (owner is not null)
+            {
+                _ = TrackHostedPanelInitializationAsync(
+                    StartAcceptedBrowserSessionAsync(
+                        browser,
+                        owner,
+                        initialization));
+            }
+        }
+
+        if (owner is not null)
+        {
+            var hostedInitialization = panel switch
+            {
+                TerminalRuntimePanelViewModel terminal =>
+                    StartAcceptedTerminalSessionAsync(terminal, owner),
+                DatabaseRuntimePanelViewModel database => database.StartHostingAsync(
+                    SessionClient,
+                    ClientId,
+                    owner),
+                RedisRuntimePanelViewModel redis => redis.StartHostingAsync(
+                    SessionClient,
+                    ClientId,
+                    owner),
+                DockerRuntimePanelViewModel docker => docker.StartHostingAsync(
+                    SessionClient,
+                    ClientId,
+                    owner),
+                _ => null,
+            };
+            if (hostedInitialization is not null)
+            {
+                _ = TrackHostedPanelInitializationAsync(hostedInitialization);
+            }
         }
 
         StartMonitorPanel(panel);
+    }
+
+    /// <summary>
+    /// Browser session identity and its renderer attachment belong to the
+    /// accepted workspace panel, not to whichever visual happens to be
+    /// mounted. A presentation host adopts that attachment when shown.
+    /// </summary>
+    private async Task StartAcceptedBrowserSessionAsync(
+        BrowserRuntimePanelViewModel browser,
+        SessionOwner owner,
+        Task rendererInitialization)
+    {
+        await rendererInitialization.ConfigureAwait(true);
+        if (_shutdownStarted
+            || _runtimeGraphLifetime.IsCancellationRequested
+            || browser.SessionRequest.Owner != owner)
+        {
+            return;
+        }
+
+        var result = await SessionClient.EnsureBrowserSessionAsync(
+            browser.SessionRequest,
+            OperationContext.ForHuman(
+                ClientId,
+                idempotencyKey: IdempotencyKey.New()),
+            _runtimeGraphLifetime.Token);
+        if (result is not HostResult<SessionSnapshot>.Success success
+            || success.ResultingRevision != success.Value.Descriptor.Revision
+            || success.Value.Descriptor.Id != browser.SessionRequest.SessionId
+            || success.Value.Descriptor.Owner != owner
+            || success.Value.Descriptor.Kind != PanelKind.Browser
+            || success.Value.Descriptor.Lifecycle != SessionLifecycle.Active)
+        {
+            return;
+        }
+
+        try
+        {
+            await browser.EnsureHostedRendererAsync(
+                _runtimeGraphLifetime.Token);
+        }
+        catch (OperationCanceledException) when (
+            _runtimeGraphLifetime.IsCancellationRequested || _shutdownStarted)
+        {
+        }
+        catch (Exception)
+        {
+            // A layout readiness check or mounted presentation host can retry
+            // the same panel-owned attachment. Until one succeeds, the panel
+            // remains unavailable; no provider-authored text is surfaced.
+        }
+    }
+
+    /// <summary>
+    /// Starts the terminal process for an accepted panel independently of its
+    /// renderer. A tab switch removes the inactive tab's visual tree, but that
+    /// presentation detail must not decide whether the terminal exists or
+    /// whether a workspace-scoped agent can reach it.
+    /// </summary>
+    private async Task StartAcceptedTerminalSessionAsync(
+        TerminalRuntimePanelViewModel terminal,
+        SessionOwner owner)
+    {
+        try
+        {
+            while (!_shutdownStarted
+                && !_runtimeGraphLifetime.IsCancellationRequested)
+            {
+                await terminal.Initialization.ConfigureAwait(true);
+                if (terminal.SessionRequest is not { } request
+                    || request.Owner != owner)
+                {
+                    return;
+                }
+
+                var result = await SessionClient.EnsureTerminalSessionAsync(
+                    request,
+                    OperationContext.ForHuman(
+                        ClientId,
+                        idempotencyKey: IdempotencyKey.New()),
+                    _runtimeGraphLifetime.Token);
+                if (result is not HostResult<SessionSnapshot>.Success success
+                    || success.ResultingRevision != success.Value.Descriptor.Revision
+                    || success.Value.Descriptor.Id != request.SessionId
+                    || success.Value.Descriptor.Owner != owner
+                    || success.Value.Descriptor.Kind != PanelKind.Terminal
+                    || success.Value.Descriptor.Lifecycle != SessionLifecycle.Active)
+                {
+                    return;
+                }
+
+                terminal.ObserveSessionSnapshot(success.Value);
+                await WatchAcceptedTerminalSessionAsync(
+                    terminal,
+                    request,
+                    _runtimeGraphLifetime.Token);
+                if (ReferenceEquals(terminal.SessionRequest, request))
+                {
+                    return;
+                }
+            }
+        }
+        catch (OperationCanceledException) when (
+            _runtimeGraphLifetime.IsCancellationRequested || _shutdownStarted)
+        {
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // The mounted terminal view will report its own renderer failure.
+            // Inactive panels have no surface on which to show a host transport
+            // error, and provider text must not leak through the shell status.
+        }
+    }
+
+    private async Task WatchAcceptedTerminalSessionAsync(
+        TerminalRuntimePanelViewModel terminal,
+        EnsureTerminalSessionRequest request,
+        CancellationToken cancellationToken)
+    {
+        await foreach (var item in SessionClient.WatchAsync(
+            new WatchSessionRequest(request.SessionId, AfterSequence: 0),
+            OperationContext.ForHuman(ClientId),
+            cancellationToken))
+        {
+            SessionSnapshot snapshot = item switch
+            {
+                SessionStreamItem.Event sessionEvent => new SessionSnapshot(
+                    sessionEvent.Value.Descriptor,
+                    sessionEvent.Value.Sequence,
+                    [],
+                    null),
+                SessionStreamItem.ResynchronizationRequired resynchronization =>
+                    resynchronization.Snapshot,
+                _ => throw new ArgumentOutOfRangeException(nameof(item)),
+            };
+            terminal.ObserveSessionSnapshot(snapshot);
+            if (!ReferenceEquals(terminal.SessionRequest, request))
+            {
+                return;
+            }
+        }
+    }
+
+    private SessionOwner? FindAcceptedPanelOwner(RuntimePanelViewModel panel)
+    {
+        foreach (var workspace in _openWorkspaces)
+        {
+            var tab = workspace.Tabs.FirstOrDefault(candidate =>
+                candidate.Panels.Contains(panel));
+            if (tab is not null)
+            {
+                return new SessionOwner(
+                    HostMode.Desktop,
+                    WindowId,
+                    workspace.Id,
+                    tab.Id,
+                    panel.Id);
+            }
+        }
+
+        if (RuntimeWorkspace is { } active
+            && !_openWorkspaces.Contains(active)
+            && active.Tabs.FirstOrDefault(candidate =>
+                candidate.Panels.Contains(panel)) is { } activeTab)
+        {
+            return new SessionOwner(
+                HostMode.Desktop,
+                WindowId,
+                active.Id,
+                activeTab.Id,
+                panel.Id);
+        }
+
+        return null;
+    }
+
+    private async Task TrackHostedPanelInitializationAsync(Task initialization)
+    {
+        try
+        {
+            await initialization;
+        }
+        catch (OperationCanceledException) when (
+            _runtimeGraphLifetime.IsCancellationRequested || _shutdownStarted)
+        {
+        }
     }
 
     private async Task TrackBrowserAfterInitializationAsync(
@@ -13786,10 +14216,21 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     private async Task QuiesceForShutdownCoreAsync()
     {
-        if (AgentChat is not null)
+        await WaitForDefaultAgentPolicyPersistenceAsync().ConfigureAwait(false);
+
+        if (_agentRuntimeFactory is null)
         {
-            await AgentChat.QuiesceAsync(CancellationToken.None).ConfigureAwait(false);
-            AgentChat.Dispose();
+            if (AgentChat is not null)
+            {
+                await AgentChat.QuiesceAsync(CancellationToken.None).ConfigureAwait(false);
+                AgentChat.Dispose();
+            }
+        }
+        else
+        {
+            await Task.WhenAll(
+                    _workspaceAgentChats.Values.Select(owned => owned.QuiesceAsync()))
+                .ConfigureAwait(false);
         }
 
         _catalog.Changed -= OnCatalogChanged;
@@ -13810,6 +14251,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         {
             _terminalMultiplexerCoordinator.LeasesChanged -=
                 OnTerminalMultiplexerLeasesChanged;
+        }
+        if (_agentPolicyCoordinator is not null)
+        {
+            _agentPolicyCoordinator.Changed -= OnAgentPolicyCoordinatorChanged;
         }
 
         lock (_historyGate)
@@ -13862,6 +14307,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             _terminalMultiplexerCoordinator.LeasesChanged -=
                 OnTerminalMultiplexerLeasesChanged;
         }
+        if (_agentPolicyCoordinator is not null)
+        {
+            _agentPolicyCoordinator.Changed -= OnAgentPolicyCoordinatorChanged;
+        }
         StopTrackingAgentTerminalSelection(_runtimeWorkspace);
         StopTrackingRecovery(_runtimeWorkspace);
         // Every open workspace, not only the one in front: the others are just
@@ -13903,17 +14352,65 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         _historyLifetime.Dispose();
     }
 
-    private sealed class WorkspaceAgentChat(
-        IGovernedAgentRuntime runtime,
-        AgentChatViewModel viewModel) : IDisposable
+    private sealed class WorkspaceAgentChat : IDisposable
     {
-        public AgentChatViewModel ViewModel { get; } = viewModel;
+        private readonly IGovernedAgentRuntime _runtime;
+        private readonly Action _runFinished;
+        private readonly Action _runningStateChanged;
+        private readonly Action<AgentToolActivityViewModel?> _activityChanged;
+
+        public WorkspaceAgentChat(
+            IGovernedAgentRuntime runtime,
+            AgentChatViewModel viewModel,
+            Action runFinished,
+            Action runningStateChanged,
+            Action<AgentToolActivityViewModel?> activityChanged)
+        {
+            _runtime = runtime;
+            ViewModel = viewModel;
+            _runFinished = runFinished;
+            _runningStateChanged = runningStateChanged;
+            _activityChanged = activityChanged;
+            ViewModel.RunFinished += OnRunFinished;
+            ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+        }
+
+        public AgentChatViewModel ViewModel { get; }
+
+        public Task QuiesceAsync() =>
+            ViewModel.QuiesceAsync(CancellationToken.None);
 
         public void Dispose()
         {
+            ViewModel.RunFinished -= OnRunFinished;
+            ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+            _activityChanged(null);
             ViewModel.Cancel();
             ViewModel.Dispose();
-            runtime.Dispose();
+            _runtime.Dispose();
+        }
+
+        private void OnRunFinished(object? sender, EventArgs e)
+        {
+            _ = sender;
+            _ = e;
+            _runFinished();
+        }
+
+        private void OnViewModelPropertyChanged(
+            object? sender,
+            PropertyChangedEventArgs eventArgs)
+        {
+            _ = sender;
+            if (eventArgs.PropertyName == nameof(AgentChatViewModel.PanelActivity))
+            {
+                _activityChanged(ViewModel.PanelActivity);
+            }
+
+            if (eventArgs.PropertyName == nameof(AgentChatViewModel.IsBusy))
+            {
+                _runningStateChanged();
+            }
         }
     }
 
@@ -13997,15 +14494,12 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
-    // Normalized before matching: the label doubles as a visible badge, whose
-    // casing follows the interface register, while older recovery rows carry
-    // the uppercase form.
     private static PanelKind PanelKindFromRecovery(string? kindLabel) =>
         kindLabel?.Replace(" ", string.Empty).ToUpperInvariant() switch
         {
             "TERMINAL" => PanelKind.Terminal,
             "BROWSER" => PanelKind.Browser,
-            "FILES" or "FILEVIEWER" => PanelKind.FileViewer,
+            "FILEVIEWER" => PanelKind.FileViewer,
             "STATISTICS" => PanelKind.Statistics,
             "PROCESSMONITOR" => PanelKind.ProcessMonitor,
             "DATABASE" or "DATABASEVIEWER" => PanelKind.DatabaseViewer,

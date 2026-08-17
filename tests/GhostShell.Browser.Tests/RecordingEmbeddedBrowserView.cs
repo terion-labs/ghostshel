@@ -44,6 +44,8 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
 
     public int SnapshotCount { get; private set; }
 
+    public BrowserSnapshotQuery? LastSnapshotQuery { get; private set; }
+
     public int ClickCount { get; private set; }
 
     public int FillCount { get; private set; }
@@ -92,6 +94,41 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
 
     public NativeBrowserCheckResult CheckResult { get; set; } =
         NativeBrowserCheckResult.Checked();
+
+    public NativeBrowserElementStateResult ElementStateResult { get; set; } =
+        NativeBrowserElementStateResult.Success(
+            new NativeBrowserElementState(
+                Visible: true,
+                Enabled: true,
+                Checked: false,
+                Selected: false,
+                Editable: true,
+                Focused: false));
+
+    public NativeBrowserNetworkActivity NetworkActivity { get; set; } =
+        new(
+            IsObservable: true,
+            ActiveRequestCount: 0,
+            QuietFor: TimeSpan.FromSeconds(1));
+
+    public NativeBrowserViewport Viewport { get; set; } = new(800, 600);
+
+    public NativeBrowserAutomationResult AutomationResult { get; set; } =
+        NativeBrowserAutomationResult.Acknowledged();
+
+    public NativeBrowserAutomationResult EvaluationResult { get; set; } =
+        NativeBrowserAutomationResult.Acknowledged("null");
+
+    public TaskCompletionSource<NativeBrowserAutomationResult>? PendingAutomation
+    { get; set; }
+
+    public BrowserMouseRequest? LastMouseRequest { get; private set; }
+
+    public BrowserKeyRequest? LastKeyRequest { get; private set; }
+
+    public BrowserScrollRequest? LastScrollRequest { get; private set; }
+
+    public BrowserEvaluateRequest? LastEvaluateRequest { get; private set; }
 
     public long LastNavigationGeneration => _lastNavigationGeneration;
 
@@ -157,9 +194,11 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
         return AcceptStop;
     }
 
-    public Task<NativeBrowserSnapshotResult> CaptureSnapshotAsync()
+    public Task<NativeBrowserSnapshotResult> CaptureSnapshotAsync(
+        BrowserSnapshotQuery? query = null)
     {
         SnapshotCount++;
+        LastSnapshotQuery = query;
         if (ThrowOnSnapshot)
         {
             throw new InvalidOperationException(
@@ -219,6 +258,47 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
 
         return PendingCheck?.Task
             ?? Task.FromResult(CheckResult);
+    }
+
+    public Task<NativeBrowserElementStateResult> ReadElementStateAsync(
+        NativeBrowserElementHandle handle)
+    {
+        ArgumentNullException.ThrowIfNull(handle);
+        return Task.FromResult(ElementStateResult);
+    }
+
+    public NativeBrowserNetworkActivity ReadNetworkActivity() =>
+        NetworkActivity;
+
+    public Task<NativeBrowserViewport> ReadViewportAsync() =>
+        Task.FromResult(Viewport);
+
+    public Task<NativeBrowserAutomationResult> DispatchMouseAsync(
+        BrowserMouseRequest request)
+    {
+        LastMouseRequest = request;
+        return PendingAutomation?.Task ?? Task.FromResult(AutomationResult);
+    }
+
+    public Task<NativeBrowserAutomationResult> DispatchKeyAsync(
+        BrowserKeyRequest request)
+    {
+        LastKeyRequest = request;
+        return PendingAutomation?.Task ?? Task.FromResult(AutomationResult);
+    }
+
+    public Task<NativeBrowserAutomationResult> DispatchScrollAsync(
+        BrowserScrollRequest request)
+    {
+        LastScrollRequest = request;
+        return PendingAutomation?.Task ?? Task.FromResult(AutomationResult);
+    }
+
+    public Task<NativeBrowserAutomationResult> EvaluateAsync(
+        BrowserEvaluateRequest request)
+    {
+        LastEvaluateRequest = request;
+        return PendingAutomation?.Task ?? Task.FromResult(EvaluationResult);
     }
 
     public bool RaiseNavigationStarted(

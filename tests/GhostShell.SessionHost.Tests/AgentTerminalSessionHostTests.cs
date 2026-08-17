@@ -106,7 +106,8 @@ public sealed class AgentTerminalSessionHostTests
         var action = await fixture.PrepareAsync(
             new AgentTerminalRequest.SendMouse(
                 fixture.SessionId,
-                mouseInput));
+                mouseInput,
+                ExpectedContentRevision: 0));
         var requested = Assert.IsType<AgentAuthorizationResult.ApprovalRequired>(
             await broker.RequestAsync(action.Proposal, default));
         var approved = Assert.IsType<AgentAuthorizationResult.Authorized>(
@@ -151,6 +152,33 @@ public sealed class AgentTerminalSessionHostTests
     }
 
     [Fact]
+    public async Task StaleContentRevisionRejectsMouseBeforePtyDispatch()
+    {
+        await using var fixture = await AgentTerminalHostFixture.CreateAsync();
+        var terminal = fixture.Factory[fixture.SessionId];
+        terminal.ScreenContentRevision = 8;
+        var action = await fixture.PrepareAsync(
+            new AgentTerminalRequest.SendMouse(
+                fixture.SessionId,
+                new TerminalMouseInput(
+                    TerminalMouseButton.Left,
+                    TerminalMouseEventKind.Down,
+                    Column: 3,
+                    Row: 2),
+                ExpectedContentRevision: 7));
+
+        var result = await fixture.Client.RunAgentTerminalActionAsync(
+            fixture.Authorization.Arm(action),
+            action,
+            default);
+
+        Assert.Equal(HostErrorCode.RevisionConflict, result.Error().Code);
+        Assert.Equal("terminal_content_revision_changed", result.Error().StableCode);
+        Assert.Equal(0, terminal.MouseCount);
+        Assert.Equal(1, fixture.Authorization.ConsumeCount);
+    }
+
+    [Fact]
     public async Task Mouse_completion_audit_failure_quarantines_the_run_without_redispatch()
     {
         var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
@@ -181,7 +209,8 @@ public sealed class AgentTerminalSessionHostTests
                     TerminalMouseButton.WheelDown,
                     TerminalMouseEventKind.WheelDown,
                     Column: 12,
-                    Row: 5)));
+                    Row: 5),
+                ExpectedContentRevision: 0));
         var requested = Assert.IsType<AgentAuthorizationResult.ApprovalRequired>(
             await broker.RequestAsync(action.Proposal, default));
         var approved = Assert.IsType<AgentAuthorizationResult.Authorized>(
@@ -256,6 +285,67 @@ public sealed class AgentTerminalSessionHostTests
         Assert.Equal(AgentActionOutcome.Succeeded, completion.Outcome);
         Assert.Equal("ok", completion.StableCode);
         Assert.Null((await fixture.SnapshotAsync()).InputLease);
+    }
+
+    [Theory]
+    [InlineData(AgentAuthorizationSource.HumanApproval)]
+    [InlineData(AgentAuthorizationSource.YoloPolicy)]
+    public async Task Confirmed_submit_text_dispatches_one_atomic_engine_operation(
+        AgentAuthorizationSource source)
+    {
+        await using var fixture = await AgentTerminalHostFixture.CreateAsync();
+        const string text = "echo one operation";
+        var action = await fixture.PrepareAsync(
+            new AgentTerminalRequest.SubmitText(
+                fixture.SessionId,
+                text));
+        var authorizationId = fixture.Authorization.Arm(
+            action,
+            source,
+            fixture.ClientId);
+
+        var result = await fixture.Client.RunAgentTerminalActionAsync(
+            authorizationId,
+            action,
+            default);
+
+        Assert.IsType<AgentTerminalActionResult.Completed>(result.Value());
+        var terminal = fixture.Factory[fixture.SessionId];
+        Assert.Equal(1, terminal.SubmitTextCount);
+        Assert.Equal(0, terminal.PasteCount);
+        Assert.Equal(0, terminal.EnterCount);
+        Assert.Equal(
+            new TerminalPasteInput(text, ConfirmedUnsafe: true),
+            terminal.LastPasteInput);
+        Assert.Equal(1, fixture.Authorization.ConsumeCount);
+        var completion = Assert.Single(fixture.Authorization.Completions);
+        Assert.Equal(AgentActionOutcome.Succeeded, completion.Outcome);
+        Assert.Equal("ok", completion.StableCode);
+        Assert.Null((await fixture.SnapshotAsync()).InputLease);
+    }
+
+    [Fact]
+    public async Task Repeated_key_is_dispatched_once_without_host_side_expansion()
+    {
+        await using var fixture = await AgentTerminalHostFixture.CreateAsync();
+        var keyStroke = new TerminalKeyStroke(
+            TerminalKey.Backspace,
+            TerminalKeyModifiers.None,
+            RepeatCount: 12);
+        var action = await fixture.PrepareAsync(
+            new AgentTerminalRequest.SendKey(
+                fixture.SessionId,
+                keyStroke));
+
+        var result = await fixture.Client.RunAgentTerminalActionAsync(
+            fixture.Authorization.Arm(action),
+            action,
+            default);
+
+        Assert.IsType<AgentTerminalActionResult.Completed>(result.Value());
+        var terminal = fixture.Factory[fixture.SessionId];
+        Assert.Equal(keyStroke, terminal.LastKeyStroke);
+        Assert.Equal(1, fixture.Authorization.ConsumeCount);
     }
 
     [Fact]
@@ -922,7 +1012,8 @@ public sealed class AgentTerminalSessionHostTests
         var action = await fixture.PrepareAsync(
             new AgentTerminalRequest.SendMouse(
                 fixture.SessionId,
-                mouseInput));
+                mouseInput,
+                ExpectedContentRevision: 0));
         var authorizationId = fixture.Authorization.Arm(action);
         var replacementId = new SessionId("replacement-mouse-session");
 
@@ -1446,7 +1537,8 @@ public sealed class AgentTerminalSessionHostTests
                     TerminalMouseButton.Middle,
                     TerminalMouseEventKind.Down,
                     Column: 4,
-                    Row: 6)));
+                    Row: 6),
+                ExpectedContentRevision: 0));
         var authorizationId = fixture.Authorization.Arm(action);
         var terminal = fixture.Factory[fixture.SessionId];
 
@@ -1475,7 +1567,8 @@ public sealed class AgentTerminalSessionHostTests
                     TerminalMouseButton.Middle,
                     TerminalMouseEventKind.Down,
                     Column: 4,
-                    Row: 6)));
+                    Row: 6),
+                ExpectedContentRevision: 0));
         var authorizationId = fixture.Authorization.Arm(action);
         var terminal = fixture.Factory[fixture.SessionId];
         terminal.RemoveCapability(SessionCapabilities.TerminalMouse);
@@ -1542,7 +1635,8 @@ public sealed class AgentTerminalSessionHostTests
         var action = await fixture.PrepareAsync(
             new AgentTerminalRequest.SendMouse(
                 fixture.SessionId,
-                mouseInput));
+                mouseInput,
+                ExpectedContentRevision: 0));
         var authorizationId = fixture.Authorization.Arm(action);
         var terminal = fixture.Factory[fixture.SessionId];
         terminal.BlockMouse = true;
@@ -1614,6 +1708,224 @@ public sealed class AgentTerminalSessionHostTests
             fixture.Authorization.Completions,
             completion => Assert.Equal("screen_read", completion.StableCode),
             completion => Assert.Equal("wait_matched", completion.StableCode));
+    }
+
+    [Fact]
+    public async Task CommandFinishedWaitPreservesBaselineEventAndExitCode()
+    {
+        await using var fixture = await AgentTerminalHostFixture.CreateAsync();
+        var terminal = fixture.Factory[fixture.SessionId];
+        terminal.ScreenText = "command done";
+        terminal.ScreenContentRevision = 9;
+        terminal.SemanticWaitExitCode = 23;
+        var action = await fixture.PrepareAsync(
+            new AgentTerminalRequest.WaitForCommandFinished(
+                new TerminalWaitForCommandFinishedRequest(
+                    fixture.SessionId,
+                    new TerminalWaitForCommandFinishedInput(
+                        AfterShellEventSequence: 7,
+                        TimeSpan.FromSeconds(1)))));
+
+        var result = await fixture.Client.RunAgentTerminalActionAsync(
+            fixture.Authorization.Arm(action),
+            action,
+            default);
+
+        var wait = Assert.IsType<AgentTerminalActionResult.Wait>(result.Value());
+        Assert.Equal(TerminalWaitOutcomeKind.CommandFinished, wait.Outcome.Kind);
+        Assert.Equal(8, wait.Outcome.ObservedShellEvent?.Sequence);
+        Assert.Equal(23, wait.Outcome.ObservedShellEvent?.ExitCode);
+        Assert.Equal(7, terminal.LastCommandFinishedWait?.AfterShellEventSequence);
+        var completion = Assert.Single(fixture.Authorization.Completions);
+        Assert.Equal(AgentActionOutcome.Succeeded, completion.Outcome);
+        Assert.Equal("wait_command_finished", completion.StableCode);
+    }
+
+    [Fact]
+    public async Task SemanticWaitFailsClosedWhenShellEventSupportIsUnavailable()
+    {
+        await using var fixture = await AgentTerminalHostFixture.CreateAsync();
+        var terminal = fixture.Factory[fixture.SessionId];
+        terminal.SupportsShellIntegrationEvents = false;
+        var action = await fixture.PrepareAsync(
+            new AgentTerminalRequest.WaitForPromptReady(
+                new TerminalWaitForPromptReadyRequest(
+                    fixture.SessionId,
+                    new TerminalWaitForPromptReadyInput(
+                        AfterShellEventSequence: 0,
+                        TimeSpan.FromSeconds(1)))));
+
+        var result = await fixture.Client.RunAgentTerminalActionAsync(
+            fixture.Authorization.Arm(action),
+            action,
+            default);
+
+        Assert.Equal(HostErrorCode.CapabilityNotSupported, result.Error().Code);
+        Assert.Equal(
+            "terminal_shell_integration_unavailable",
+            result.Error().StableCode);
+        Assert.Equal(0, terminal.LastPromptReadyWait?.AfterShellEventSequence);
+        var completion = Assert.Single(fixture.Authorization.Completions);
+        Assert.Equal(AgentActionOutcome.Failed, completion.Outcome);
+        Assert.Equal(
+            "terminal_shell_integration_unavailable",
+            completion.StableCode);
+    }
+
+    [Fact]
+    public async Task CancelledWaitPreservesItsFinalFreshScreenWhileAuditingCancellation()
+    {
+        await using var fixture = await AgentTerminalHostFixture.CreateAsync();
+        var terminal = fixture.Factory[fixture.SessionId];
+        terminal.ScreenText = "final terminal state";
+        terminal.ScreenContentRevision = 11;
+        var finalScreen = await terminal.ReadScreenAsync(default);
+        terminal.WaitOutcomeOverride = TerminalWaitOutcome.Cancelled(
+            finalScreen,
+            initialContentRevision: 7);
+        var action = await fixture.PrepareAsync(
+            new AgentTerminalRequest.WaitForText(
+                new TerminalWaitForTextRequest(
+                    fixture.SessionId,
+                    new TerminalWaitForTextInput(
+                        "never",
+                        TimeSpan.FromSeconds(1)))));
+
+        var result = await fixture.Client.RunAgentTerminalActionAsync(
+            fixture.Authorization.Arm(action),
+            action,
+            default);
+
+        var wait = Assert.IsType<AgentTerminalActionResult.Wait>(result.Value());
+        Assert.Equal(TerminalWaitOutcomeKind.Cancelled, wait.Outcome.Kind);
+        Assert.Same(finalScreen, wait.Outcome.Snapshot);
+        var completion = Assert.Single(fixture.Authorization.Completions);
+        Assert.Equal(AgentActionOutcome.Cancelled, completion.Outcome);
+        Assert.Equal("operation_cancelled", completion.StableCode);
+    }
+
+    [Fact]
+    public async Task HistoryProjectionViewportScrollAndDelayWaitDispatchTypedPorts()
+    {
+        await using var fixture = await AgentTerminalHostFixture.CreateAsync();
+        var terminal = fixture.Factory[fixture.SessionId];
+        terminal.ScreenText = "needle in history";
+        terminal.ScreenContentRevision = 5;
+
+        var readAction = await fixture.PrepareAsync(
+            new AgentTerminalRequest.ReadScrollback(
+                fixture.SessionId,
+                new TerminalScrollbackReadInput(
+                    TerminalScrollbackReadOrigin.Bottom,
+                    TerminalScrollbackReadInput.SmallRead)));
+        var read = Assert.IsType<AgentTerminalActionResult.Scrollback>(
+            (await fixture.Client.RunAgentTerminalActionAsync(
+                fixture.Authorization.Arm(readAction),
+                readAction,
+                default)).Value());
+
+        var findAction = await fixture.PrepareAsync(
+            new AgentTerminalRequest.FindScrollback(
+                fixture.SessionId,
+                new TerminalScrollbackFindInput(
+                    "needle",
+                    TerminalScrollbackFindDirection.Forward,
+                    MaximumMatchCount: 4)));
+        var find = Assert.IsType<AgentTerminalActionResult.Find>(
+            (await fixture.Client.RunAgentTerminalActionAsync(
+                fixture.Authorization.Arm(findAction),
+                findAction,
+                default)).Value());
+
+        var scrollInput = new TerminalViewportScrollInput(
+            TerminalViewportScrollDirection.Up,
+            TerminalViewportScrollUnit.Page,
+            Amount: 2);
+        var scrollAction = await fixture.PrepareAsync(
+            new AgentTerminalRequest.ScrollViewport(
+                fixture.SessionId,
+                scrollInput));
+        var scroll = Assert.IsType<AgentTerminalActionResult.Screen>(
+            (await fixture.Client.RunAgentTerminalActionAsync(
+                fixture.Authorization.Arm(scrollAction),
+                scrollAction,
+                default)).Value());
+
+        var delayAction = await fixture.PrepareAsync(
+            new AgentTerminalRequest.WaitForDelay(
+                new TerminalWaitForDelayRequest(
+                    fixture.SessionId,
+                    new TerminalWaitForDelayInput(TimeSpan.FromHours(1)))));
+        var delay = Assert.IsType<AgentTerminalActionResult.Wait>(
+            (await fixture.Client.RunAgentTerminalActionAsync(
+                fixture.Authorization.Arm(delayAction),
+                delayAction,
+                default)).Value());
+
+        Assert.Equal("needle in history", Assert.Single(read.Snapshot.Rows).Text);
+        Assert.Equal(5, read.Snapshot.ContentRevision);
+        Assert.Single(find.Result.Matches);
+        Assert.Same(scrollInput, terminal.LastScrollInput);
+        Assert.Equal(5, scroll.Snapshot.ContentRevision);
+        Assert.Equal(TerminalWaitOutcomeKind.Elapsed, delay.Outcome.Kind);
+        Assert.Equal(TimeSpan.FromHours(1), terminal.LastDelayWait?.Delay);
+        Assert.Equal(4, fixture.Authorization.ConsumeCount);
+    }
+
+    [Fact]
+    public async Task Rendered_screen_diff_and_search_dispatch_as_observations()
+    {
+        await using var fixture = await AgentTerminalHostFixture.CreateAsync();
+        var terminal = fixture.Factory[fixture.SessionId];
+        terminal.ScreenText = "header\nEDIT_PASS remains visible";
+        terminal.ScreenContentRevision = 9;
+        terminal.ScreenDiffResultOverride = new TerminalScreenDiffResult(
+            InitialContentRevision: 8,
+            CurrentContentRevision: 9,
+            BaselineAvailable: true,
+            [
+                new TerminalScreenDiffResult.RowChange(
+                    Row: 1,
+                    Text: "EDIT_PASS remains visible",
+                    IsWrapped: false,
+                    IsTextTruncated: false),
+            ],
+            IsTruncated: false,
+            CursorRow: 1,
+            CursorColumn: 25,
+            IsCursorVisible: true,
+            InteractiveState: null);
+
+        var diffInput = new TerminalScreenDiffInput(
+            AfterContentRevision: 8,
+            MaximumRowCount: 24);
+        var diffAction = await fixture.PrepareAsync(
+            new AgentTerminalRequest.ReadScreenDiff(
+                fixture.SessionId,
+                diffInput));
+        var diff = Assert.IsType<AgentTerminalActionResult.ScreenDiff>(
+            (await fixture.Client.RunAgentTerminalActionAsync(
+                fixture.Authorization.Arm(diffAction),
+                diffAction,
+                default)).Value());
+        var findAction = await fixture.PrepareAsync(
+            new AgentTerminalRequest.FindOnScreen(
+                fixture.SessionId,
+                new TerminalScreenFindInput(
+                    "EDIT_PASS",
+                    MaximumMatchCount: 4)));
+        var find = Assert.IsType<AgentTerminalActionResult.ScreenFind>(
+            (await fixture.Client.RunAgentTerminalActionAsync(
+                fixture.Authorization.Arm(findAction),
+                findAction,
+                default)).Value());
+
+        Assert.Same(diffInput, terminal.LastScreenDiffInput);
+        Assert.Equal(
+            "EDIT_PASS remains visible",
+            Assert.Single(diff.Result.ChangedRows).Text);
+        Assert.Equal(9, find.Result.ContentRevision);
+        Assert.Equal(1, Assert.Single(find.Result.Matches).Line);
     }
 
     [Fact]
@@ -1970,6 +2282,7 @@ public sealed class AgentTerminalSessionHostTests
             SessionCapabilities.TerminalAgentInputBarrier,
             SessionCapabilities.TerminalFocus,
             SessionCapabilities.TerminalMouse,
+            SessionCapabilities.TerminalRevisionBoundMouse,
             SessionCapabilities.TerminalReadScreen,
             SessionCapabilities.TerminalResize,
             SessionCapabilities.TerminalWrite,

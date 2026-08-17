@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Text;
 using System.Text.Json;
+using GhostShell.Core;
 
 namespace GhostShell.Agent;
 
@@ -36,8 +37,67 @@ public sealed partial class NativeAgentSession
         IAgentProvider provider,
         CancellationToken cancellationToken)
     {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(proposalGeneration);
         ArgumentNullException.ThrowIfNull(provider);
+        if (continuationTools.IsDefault)
+        {
+            throw new ArgumentException(
+                "The continuation tool collection is required.",
+                nameof(continuationTools));
+        }
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return AgentTurnResult.Failure(AgentTurnErrorCode.Cancelled);
+        }
+
+        Dictionary<string, string> continuationToolNamesByProviderName;
+        try
+        {
+            continuationToolNamesByProviderName = ValidateTools(continuationTools);
+            lock (_gate)
+            {
+                _ = CollectNewProviderToolBindings(
+                    continuationToolNamesByProviderName);
+            }
+        }
+        catch (AgentLimitException)
+        {
+            return AgentTurnResult.Failure(AgentTurnErrorCode.LimitExceeded);
+        }
+        catch (AgentConversationException exception)
+        {
+            throw new ArgumentException(
+                "A provider tool alias cannot be rebound within a session.",
+                nameof(continuationTools),
+                exception);
+        }
+
+        var commitError = CommitToolResults(
+            proposalGeneration,
+            results,
+            proposalTools);
+        if (commitError is not null)
+        {
+            return AgentTurnResult.Failure(commitError.Value);
+        }
+
+        return await ContinueToolTurnAsync(
+            continuationTools,
+            provider,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Settles an exact provider tool batch into the durable transcript without
+    /// starting another provider request. The runtime may compact and persist
+    /// this stable boundary before continuing the loop.
+    /// </summary>
+    internal AgentTurnErrorCode? CommitToolResults(
+        long proposalGeneration,
+        ImmutableArray<AgentToolResult> results,
+        ImmutableArray<AgentToolDefinition> proposalTools)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(proposalGeneration);
         if (results.IsDefault)
         {
             throw new ArgumentException(
@@ -52,6 +112,126 @@ public sealed partial class NativeAgentSession
                 nameof(proposalTools));
         }
 
+        Dictionary<string, string> proposalToolNamesByProviderName;
+        try
+        {
+            proposalToolNamesByProviderName = ValidateTools(proposalTools);
+            ValidateToolResultBounds(results);
+        }
+        catch (AgentLimitException)
+        {
+            return AgentTurnErrorCode.LimitExceeded;
+        }
+
+        lock (_gate)
+        {
+            if (_activeTurn is not null)
+            {
+                return AgentTurnErrorCode.AlreadyRunning;
+            }
+
+            if (_pendingToolContinuation is not null)
+            {
+                return AgentTurnErrorCode.PendingToolDecision;
+            }
+
+            if (_pendingToolProposals.Length == 0)
+            {
+                var isStale = proposalGeneration <= _lastSubmittedToolGeneration
+                    || proposalGeneration < _generation;
+                return
+                    isStale
+                        ? AgentTurnErrorCode.StaleToolResults
+                        : AgentTurnErrorCode.NoPendingToolDecision;
+            }
+
+            var pendingTurn = _pendingToolTurn
+                ?? throw new InvalidOperationException(
+                    "Pending tool proposals must retain their continuation context.");
+            var pendingGeneration = _pendingToolProposals[0].Generation;
+            if (proposalGeneration != pendingGeneration)
+            {
+                return
+                    proposalGeneration < pendingGeneration
+                        ? AgentTurnErrorCode.StaleToolResults
+                        : AgentTurnErrorCode.ToolResultMismatch;
+            }
+
+            if (!ToolDefinitionsEqual(pendingTurn.Tools, proposalTools)
+                || !ToolResultsMatchPendingProposals(results))
+            {
+                return AgentTurnErrorCode.ToolResultMismatch;
+            }
+
+            if (_conversation.Length
+                > _limits.MaximumConversationMessages - results.Length - 1)
+            {
+                return AgentTurnErrorCode.LimitExceeded;
+            }
+
+            ImmutableArray<AgentMessage> resultMessages;
+            ImmutableArray<AgentMessage> conversationWithResults;
+            try
+            {
+                resultMessages = results
+                    .Select(AgentMessage.FromToolResult)
+                    .ToImmutableArray();
+                conversationWithResults = _conversation.AddRange(resultMessages);
+                ValidateConversation(
+                    conversationWithResults,
+                    ConversationTail.ToolResults);
+            }
+            catch (AgentLimitException)
+            {
+                return AgentTurnErrorCode.LimitExceeded;
+            }
+            catch (AgentConversationException)
+            {
+                return AgentTurnErrorCode.ToolResultMismatch;
+            }
+
+            try
+            {
+                RegisterProviderToolBindings(proposalToolNamesByProviderName);
+            }
+            catch (AgentLimitException)
+            {
+                return AgentTurnErrorCode.LimitExceeded;
+            }
+            catch (AgentConversationException exception)
+            {
+                throw new ArgumentException(
+                    "A provider tool alias cannot be rebound within a session.",
+                    nameof(proposalTools),
+                    exception);
+            }
+
+            var nextConversationRevision = checked(_conversationRevision + 1);
+            // This is the settlement linearization point. Once the exact results enter the
+            // transcript, cancellation and provider failure may fence the continuation but
+            // never erase the observed tool outcome.
+            _conversation = conversationWithResults;
+            _transcript = _transcript.AddRange(resultMessages);
+            _conversationRevision = nextConversationRevision;
+            _lastSubmittedToolGeneration = proposalGeneration;
+            _pendingToolContinuation = new PendingToolContinuation(
+                pendingTurn.ReasoningEffort);
+            _pendingToolTurn = null;
+            _pendingToolProposals = [];
+            _state = NativeAgentSessionState.AwaitingProviderContinuation;
+            AppendEventUnsafe(
+                AgentRunEventKind.ToolResultsCommitted,
+                proposalGeneration);
+            return null;
+        }
+    }
+
+    internal async ValueTask<AgentTurnResult> ContinueToolTurnAsync(
+        ImmutableArray<AgentToolDefinition> continuationTools,
+        IAgentProvider provider,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(provider);
         if (continuationTools.IsDefault)
         {
             throw new ArgumentException(
@@ -61,16 +241,14 @@ public sealed partial class NativeAgentSession
 
         if (cancellationToken.IsCancellationRequested)
         {
+            Cancel();
             return AgentTurnResult.Failure(AgentTurnErrorCode.Cancelled);
         }
 
-        Dictionary<string, string> proposalToolNamesByProviderName;
         Dictionary<string, string> continuationToolNamesByProviderName;
         try
         {
-            proposalToolNamesByProviderName = ValidateTools(proposalTools);
             continuationToolNamesByProviderName = ValidateTools(continuationTools);
-            ValidateToolResultBounds(results);
         }
         catch (AgentLimitException)
         {
@@ -86,32 +264,11 @@ public sealed partial class NativeAgentSession
                 return AgentTurnResult.Failure(AgentTurnErrorCode.AlreadyRunning);
             }
 
-            if (_pendingToolProposals.Length == 0)
-            {
-                var isStale = proposalGeneration <= _lastSubmittedToolGeneration
-                    || proposalGeneration < _generation;
-                return AgentTurnResult.Failure(
-                    isStale
-                        ? AgentTurnErrorCode.StaleToolResults
-                        : AgentTurnErrorCode.NoPendingToolDecision);
-            }
-
-            var pendingTurn = _pendingToolTurn
-                ?? throw new InvalidOperationException(
-                    "Pending tool proposals must retain their continuation context.");
-            var pendingGeneration = _pendingToolProposals[0].Generation;
-            if (proposalGeneration != pendingGeneration)
+            var pendingContinuation = _pendingToolContinuation;
+            if (pendingContinuation is null)
             {
                 return AgentTurnResult.Failure(
-                    proposalGeneration < pendingGeneration
-                        ? AgentTurnErrorCode.StaleToolResults
-                        : AgentTurnErrorCode.ToolResultMismatch);
-            }
-
-            if (!ToolDefinitionsEqual(pendingTurn.Tools, proposalTools)
-                || !ToolResultsMatchPendingProposals(results))
-            {
-                return AgentTurnResult.Failure(AgentTurnErrorCode.ToolResultMismatch);
+                    AgentTurnErrorCode.NoPendingToolDecision);
             }
 
             if (_providerOperationsInFlight >= _limits.MaximumConcurrentProviderOperations)
@@ -120,40 +277,10 @@ public sealed partial class NativeAgentSession
                     AgentTurnErrorCode.ProviderOperationLimit);
             }
 
-            if (_conversation.Length
-                > _limits.MaximumConversationMessages - results.Length - 1)
-            {
-                return AgentTurnResult.Failure(AgentTurnErrorCode.LimitExceeded);
-            }
-
-            ImmutableArray<AgentMessage> conversationWithResults;
             try
             {
-                conversationWithResults = _conversation.AddRange(
-                    results.Select(AgentMessage.FromToolResult));
-                ValidateConversation(
-                    conversationWithResults,
-                    ConversationTail.ToolResults);
-            }
-            catch (AgentLimitException)
-            {
-                return AgentTurnResult.Failure(AgentTurnErrorCode.LimitExceeded);
-            }
-            catch (AgentConversationException)
-            {
-                return AgentTurnResult.Failure(AgentTurnErrorCode.ToolResultMismatch);
-            }
-
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return AgentTurnResult.Failure(AgentTurnErrorCode.Cancelled);
-            }
-
-            try
-            {
-                RegisterProviderToolBindings(
-                    proposalToolNamesByProviderName.Concat(
-                        continuationToolNamesByProviderName));
+                ValidateConversation(_conversation, ConversationTail.ToolResults);
+                RegisterProviderToolBindings(continuationToolNamesByProviderName);
             }
             catch (AgentLimitException)
             {
@@ -168,32 +295,25 @@ public sealed partial class NativeAgentSession
             }
 
             var generation = checked(_generation + 1);
-            var nextConversationRevision = checked(_conversationRevision + 1);
-            // This is the submission linearization point. Once the exact results enter the
-            // transcript, cancellation and provider failure may fence the turn but never erase it.
             _generation = generation;
-            _conversation = conversationWithResults;
-            _conversationRevision = nextConversationRevision;
-            _lastSubmittedToolGeneration = proposalGeneration;
-            _pendingToolTurn = null;
-            _pendingToolProposals = [];
             activeTurn = new ActiveTurn(
                 generation,
-                nextConversationRevision,
-                conversationWithResults,
+                _conversationRevision,
+                _conversation,
                 [],
                 continuationTools,
-                pendingTurn.ReasoningEffort,
+                pendingContinuation.ReasoningEffort,
                 ActiveTurnKind.ToolContinuation);
+            _pendingToolContinuation = null;
             _activeTurn = activeTurn;
             _providerOperationsInFlight = checked(_providerOperationsInFlight + 1);
             _state = NativeAgentSessionState.Streaming;
             request = new AgentProviderRequest(
                 RunId,
                 generation,
-                conversationWithResults,
+                _conversation,
                 continuationTools,
-                pendingTurn.ReasoningEffort);
+                pendingContinuation.ReasoningEffort);
             AppendEventUnsafe(AgentRunEventKind.TurnStarted, generation);
         }
 
@@ -201,6 +321,126 @@ public sealed partial class NativeAgentSession
             activeTurn,
             request,
             continuationToolNamesByProviderName,
+            provider,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Inserts a queued local-human message after a complete tool-result batch.
+    /// The current assistant step is already settled; this message becomes the
+    /// next provider input without cancelling or rewriting committed history.
+    /// </summary>
+    internal async ValueTask<AgentTurnResult> RunSteeringTurnAsync(
+        string userMessage,
+        ImmutableArray<AgentToolDefinition> tools,
+        AgentReasoningEffort reasoningEffort,
+        IAgentProvider provider,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userMessage);
+        ArgumentNullException.ThrowIfNull(provider);
+        if (tools.IsDefault)
+        {
+            throw new ArgumentException(
+                "The tool collection is required.",
+                nameof(tools));
+        }
+
+        if (!Enum.IsDefined(reasoningEffort))
+        {
+            throw new ArgumentOutOfRangeException(nameof(reasoningEffort));
+        }
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            Cancel();
+            return AgentTurnResult.Failure(AgentTurnErrorCode.Cancelled);
+        }
+
+        var user = new AgentMessage(AgentMessageRole.User, userMessage);
+        Dictionary<string, string> toolNamesByProviderName;
+        try
+        {
+            ValidateMessageBounds(user, _limits.MaximumUserTextBytes);
+            toolNamesByProviderName = ValidateTools(tools);
+        }
+        catch (AgentLimitException)
+        {
+            return AgentTurnResult.Failure(AgentTurnErrorCode.LimitExceeded);
+        }
+
+        ActiveTurn activeTurn;
+        AgentProviderRequest request;
+        lock (_gate)
+        {
+            if (_activeTurn is not null)
+            {
+                return AgentTurnResult.Failure(AgentTurnErrorCode.AlreadyRunning);
+            }
+
+            if (_pendingToolContinuation is null)
+            {
+                return AgentTurnResult.Failure(
+                    AgentTurnErrorCode.NoPendingToolDecision);
+            }
+
+            if (_providerOperationsInFlight >= _limits.MaximumConcurrentProviderOperations)
+            {
+                return AgentTurnResult.Failure(
+                    AgentTurnErrorCode.ProviderOperationLimit);
+            }
+
+            if (_conversation.Length > _limits.MaximumConversationMessages - 2)
+            {
+                return AgentTurnResult.Failure(AgentTurnErrorCode.LimitExceeded);
+            }
+
+            var requestConversation = _conversation.Add(user);
+            try
+            {
+                ValidateConversation(_conversation, ConversationTail.ToolResults);
+                ValidateConversation(requestConversation, ConversationTail.User);
+                RegisterProviderToolBindings(toolNamesByProviderName);
+            }
+            catch (AgentLimitException)
+            {
+                return AgentTurnResult.Failure(AgentTurnErrorCode.LimitExceeded);
+            }
+            catch (AgentConversationException exception)
+            {
+                throw new ArgumentException(
+                    "A provider tool alias cannot be rebound within a session.",
+                    nameof(tools),
+                    exception);
+            }
+
+            var generation = checked(_generation + 1);
+            _generation = generation;
+            activeTurn = new ActiveTurn(
+                generation,
+                _conversationRevision,
+                _conversation,
+                [user],
+                tools,
+                reasoningEffort,
+                ActiveTurnKind.QueuedSteering);
+            _pendingToolContinuation = null;
+            _activeTurn = activeTurn;
+            _providerOperationsInFlight = checked(_providerOperationsInFlight + 1);
+            _state = NativeAgentSessionState.Streaming;
+            request = new AgentProviderRequest(
+                RunId,
+                generation,
+                requestConversation,
+                tools,
+                reasoningEffort);
+            AppendEventUnsafe(AgentRunEventKind.TurnStarted, generation);
+        }
+
+        return await ExecuteProviderTurnAsync(
+            activeTurn,
+            request,
+            toolNamesByProviderName,
             provider,
             cancellationToken).ConfigureAwait(false);
     }

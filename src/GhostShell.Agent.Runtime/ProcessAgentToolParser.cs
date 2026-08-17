@@ -81,10 +81,11 @@ internal static class ProcessAgentToolParser
         IReadOnlyDictionary<string, JsonElement> properties,
         GhostShell.Core.PanelInstanceId panelId)
     {
-        if (properties.Keys.Any(name => name is not ("sort" or "limit")))
+        if (properties.Keys.Any(name => name is not (
+                "sort" or "limit" or "offset" or "name_contains" or "pid")))
         {
             return Invalid(
-                "Process tools accept only sort and limit options.");
+                "Process tools accept only sort, limit, offset, name_contains, and pid options.");
         }
 
         var sort = ProcessMonitorSort.CpuDescending;
@@ -105,8 +106,40 @@ internal static class ProcessAgentToolParser
                 "Process limit must be 16, 32, or 64.");
         }
 
+        var offset = 0;
+        if (properties.TryGetValue("offset", out var offsetElement)
+            && (offsetElement.ValueKind != JsonValueKind.Number
+                || !offsetElement.TryGetInt32(out offset)
+                || offset is < 0 or > 1_000_000))
+        {
+            return Invalid("Process offset must be between 0 and 1000000.");
+        }
+
+        string? nameContains = null;
+        if (properties.TryGetValue("name_contains", out var nameElement)
+            && (!TryGetString(nameElement, out nameContains)
+                || string.IsNullOrWhiteSpace(nameContains)
+                || nameContains.Length > 128
+                || nameContains.Any(char.IsControl)))
+        {
+            return Invalid("Process name_contains must be bounded printable text.");
+        }
+
+        int? processId = null;
+        if (properties.TryGetValue("pid", out var pidElement))
+        {
+            if (pidElement.ValueKind != JsonValueKind.Number
+                || !pidElement.TryGetInt32(out var parsedPid)
+                || parsedPid <= 0)
+            {
+                return Invalid("Process pid must be a positive integer.");
+            }
+
+            processId = parsedPid;
+        }
+
         return new ProcessAgentIntentResult.Parsed(
-            new ProcessAgentIntent(limit, sort),
+            new ProcessAgentIntent(limit, sort, offset, nameContains, processId),
             panelId);
     }
 

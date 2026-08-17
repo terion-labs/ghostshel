@@ -352,7 +352,7 @@ public sealed class GovernedAgentRuntimeBrowserTests
             firstRequest.Messages,
             message => message.Role == AgentMessageRole.System).Content;
         Assert.Contains(
-            "operations=\"read_state,snapshot,click,fill,check,",
+            "operations=\"read_state,snapshot,wait,click,fill,check,",
             systemPrompt,
             StringComparison.Ordinal);
         var requested = Assert.Single(
@@ -456,6 +456,7 @@ public sealed class GovernedAgentRuntimeBrowserTests
     [Theory]
     [InlineData(BuiltInAgentTools.BrowserReadState)]
     [InlineData(BuiltInAgentTools.BrowserSnapshot)]
+    [InlineData(BuiltInAgentTools.BrowserWait)]
     [InlineData(BuiltInAgentTools.BrowserClick)]
     [InlineData(BuiltInAgentTools.BrowserFill)]
     [InlineData(BuiltInAgentTools.BrowserCheck)]
@@ -477,6 +478,8 @@ public sealed class GovernedAgentRuntimeBrowserTests
                 """{"reference":"element_1","document_revision":1,"text":"value"}""",
             BuiltInAgentTools.BrowserCheck =>
                 """{"reference":"element_1","document_revision":1}""",
+            BuiltInAgentTools.BrowserWait =>
+                """{"timeout_ms":1000,"delay_ms":1}""",
             _ => "{}",
         };
         await using var fixture = BrowserRuntimeFixture.Create(
@@ -500,6 +503,51 @@ public sealed class GovernedAgentRuntimeBrowserTests
             Assert.Single(fixture.Browser.Actions).Request,
             toolName,
             fixture.Context.BrowserSessionId);
+    }
+
+    [Fact]
+    public async Task LowLevelMouseRunsThroughApprovalWithExactFreshBinding()
+    {
+        await using var fixture = BrowserRuntimeFixture.Create(
+            BrowserScope.ExactPanel,
+            ScriptedProvider.ToolThenAnswer(
+                BuiltInAgentTools.BrowserMouse,
+                """
+                {
+                  "action":"click","x":20,"y":30,"button":"left",
+                  "click_count":1,"document_revision":1,
+                  "viewport_revision":3,"input_epoch":4
+                }
+                """),
+            PolicyWith(
+                AgentCapability.BrowserInteraction,
+                AgentPermission.Auto),
+            includeLowLevelAutomation: true);
+
+        var sending = fixture.Runtime.SendAsync(
+            fixture.Prompt("Click at the observed coordinate."),
+            CancellationToken.None).AsTask();
+        var approval = await WaitForApprovalAsync(fixture.Runtime);
+        Assert.Equal(BuiltInAgentTools.BrowserMouse, approval.ToolName);
+        Assert.Equal(AgentActionRisk.Mutation, approval.Risk);
+        Assert.True((await fixture.Runtime.DecideAsync(
+            approval.Id,
+            approved: true,
+            CancellationToken.None)).IsAccepted);
+
+        var result = await sending.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(result.IsSuccess);
+        var mouse = Assert.IsType<AgentBrowserRequest.Mouse>(
+            Assert.Single(fixture.Browser.Actions).Request);
+        Assert.Equal((1L, 3L, 4L),
+            (mouse.Value.Binding.Document.DocumentRevision,
+                mouse.Value.Binding.ViewportRevision,
+                mouse.Value.Binding.InputEpoch));
+        Assert.Equal(new BrowserViewportState(800, 600, 1), mouse.Value.Binding.Viewport);
+        using var toolJson = JsonDocument.Parse(
+            ToolResultFromLastRequest(fixture.Provider).Value.Content);
+        Assert.Equal(5, toolJson.RootElement.GetProperty("input_epoch").GetInt64());
     }
 
     [Theory]
@@ -527,7 +575,7 @@ public sealed class GovernedAgentRuntimeBrowserTests
         var browserTools = firstRequest.Tools
             .Where(tool => tool.Name.StartsWith("browser.", StringComparison.Ordinal))
             .ToArray();
-        Assert.Equal(10, browserTools.Length);
+        Assert.Equal(scope == BrowserScope.Workspace ? 14 : 11, browserTools.Length);
         foreach (var tool in browserTools)
         {
             Assert.Contains(
@@ -536,14 +584,21 @@ public sealed class GovernedAgentRuntimeBrowserTests
                     .GetProperty("required")
                     .EnumerateArray()
                     .Select(item => item.GetString()));
-            Assert.Equal(
-                BrowserRuntimeContextProxy.BrowserPanelId.Value,
-                Assert.Single(
-                    tool.InputSchema
-                        .GetProperty("properties")
-                        .GetProperty("panel_id")
+            var panelSchema = tool.InputSchema
+                .GetProperty("properties")
+                .GetProperty("panel_id");
+            if (scope == BrowserScope.Workspace)
+            {
+                Assert.False(panelSchema.TryGetProperty("enum", out _));
+            }
+            else
+            {
+                Assert.Equal(
+                    BrowserRuntimeContextProxy.BrowserPanelId.Value,
+                    Assert.Single(panelSchema
                         .GetProperty("enum")
                         .EnumerateArray()).GetString());
+            }
         }
 
         Assert.Equal(
@@ -579,6 +634,31 @@ public sealed class GovernedAgentRuntimeBrowserTests
         Assert.Equal(PanelKind.Browser, item.Kind);
         Assert.Empty(item.SupportedOperations);
         Assert.Empty(fixture.Browser.Actions);
+    }
+
+    [Fact]
+    public async Task BrowserSessionRevisionAdvanceDoesNotHideAReadyWorkspacePanel()
+    {
+        await using var fixture = BrowserRuntimeFixture.Create(
+            BrowserScope.Workspace,
+            ScriptedProvider.ToolThenAnswer(
+                BuiltInAgentTools.BrowserReadState,
+                $$"""{"panel_id":"{{BrowserRuntimeContextProxy.BrowserPanelId.Value}}"}"""),
+            PolicyWith(
+                AgentCapability.BrowserData,
+                AgentPermission.Auto));
+        fixture.Context.SessionRevisionAdvanceAfterContextInspection = 1;
+
+        var result = await fixture.Runtime.SendAsync(
+            fixture.Prompt("Read the browser created in this workspace."),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.IsType<AgentBrowserRequest.ReadState>(
+            Assert.Single(fixture.Browser.Actions).Request);
+        Assert.Equal(
+            "tool_succeeded",
+            ToolResultFromLastRequest(fixture.Provider).StableCode);
     }
 
     [Fact]
@@ -789,7 +869,7 @@ public sealed class GovernedAgentRuntimeBrowserTests
     [InlineData(
         BuiltInAgentTools.BrowserCheck,
         """{"reference":"element_1","document_revision":1}""")]
-    public async Task UnexpectedInteractionHostFailureQuarantinesBeforeProviderContinuation(
+    public async Task UnexpectedInteractionHostFailureReturnsToProvider(
         string toolName,
         string arguments)
     {
@@ -809,20 +889,16 @@ public sealed class GovernedAgentRuntimeBrowserTests
 
         var result = await sending.WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.False(result.IsSuccess);
+        Assert.True(result.IsSuccess);
         Assert.Equal(
-            BrowserAgentToolResultJson.InteractionOutcomeUnknownStableCode,
-            result.Code);
-        Assert.Equal(
-            GovernedAgentState.Failed,
+            GovernedAgentState.Ready,
             fixture.Runtime.Snapshot.State);
-        Assert.Contains(
-            "quarantined",
-            fixture.Runtime.Snapshot.Status,
-            StringComparison.Ordinal);
         Assert.Equal(1, fixture.Browser.CallCount);
         Assert.Empty(fixture.Browser.Actions);
-        Assert.Single(fixture.Provider.Requests);
+        Assert.Equal(2, fixture.Provider.Requests.Count);
+        Assert.Equal(
+            BrowserAgentToolResultJson.InteractionOutcomeUnknownStableCode,
+            ToolResultFromLastRequest(fixture.Provider).StableCode);
     }
 
     [Fact]
@@ -902,11 +978,11 @@ public sealed class GovernedAgentRuntimeBrowserTests
     }
 
     [Fact]
-    public async Task UnknownClickOutcomeQuarantinesTheRunBeforeProviderContinuation()
+    public async Task UnknownClickOutcomeIsReportedAndTheRunRemainsUsable()
     {
         await using var fixture = BrowserRuntimeFixture.Create(
             BrowserScope.ExactPanel,
-            ScriptedProvider.ToolThenAnswer(
+            ScriptedProvider.UnknownToolThenAnswerThenReadThenAnswer(
                 BuiltInAgentTools.BrowserClick,
                 """{"reference":"element_1","document_revision":1}"""));
         fixture.Browser.Failure = new HostError(
@@ -926,23 +1002,79 @@ public sealed class GovernedAgentRuntimeBrowserTests
 
         var result = await sending.WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.False(result.IsSuccess);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(
+            GovernedAgentState.Ready,
+            fixture.Runtime.Snapshot.State);
+        Assert.Single(fixture.Browser.Actions);
+        Assert.Equal(2, fixture.Provider.Requests.Count);
         Assert.Equal(
             BrowserAgentToolResultJson.InteractionOutcomeUnknownStableCode,
-            result.Code);
-        Assert.Equal(
-            GovernedAgentState.Failed,
-            fixture.Runtime.Snapshot.State);
-        Assert.Contains(
-            "quarantined",
-            fixture.Runtime.Snapshot.Status,
-            StringComparison.Ordinal);
-        Assert.Single(fixture.Browser.Actions);
-        Assert.Single(fixture.Provider.Requests);
+            ToolResultFromLastRequest(fixture.Provider).StableCode);
+
+        fixture.Browser.Failure = null;
+        var retry = fixture.Runtime.SendAsync(
+            fixture.Prompt("Inspect the browser after the uncertain click."),
+            CancellationToken.None).AsTask();
+        var retryApproval = await WaitForApprovalAsync(fixture.Runtime);
+        Assert.True((await fixture.Runtime.DecideAsync(
+            retryApproval.Id,
+            approved: true,
+            CancellationToken.None)).IsAccepted);
+
+        Assert.True((await retry.WaitAsync(TimeSpan.FromSeconds(5))).IsSuccess);
+        Assert.Equal(4, fixture.Provider.Requests.Count);
+        Assert.IsType<AgentBrowserRequest.ReadState>(
+            fixture.Browser.Actions.ToArray()[1].Request);
     }
 
     [Fact]
-    public async Task UnknownFillOutcomeQuarantinesTheRunBeforeProviderContinuation()
+    public async Task UnknownInteractionStopsStaleBatchAndReturnsEveryResult()
+    {
+        await using var fixture = BrowserRuntimeFixture.Create(
+            BrowserScope.ExactPanel,
+            ScriptedProvider.UnknownInteractionBatchThenAnswer());
+        fixture.Browser.Failure = new HostError(
+            HostErrorCode.EngineFailed,
+            BrowserAgentToolResultJson.InteractionOutcomeUnknownStableCode,
+            "The native click may have executed.",
+            Retryable: false);
+
+        var sending = fixture.Runtime.SendAsync(
+            fixture.Prompt("Click the control, then inspect the browser."),
+            CancellationToken.None).AsTask();
+        var approval = await WaitForApprovalAsync(fixture.Runtime);
+        Assert.True((await fixture.Runtime.DecideAsync(
+            approval.Id,
+            approved: true,
+            CancellationToken.None)).IsAccepted);
+
+        Assert.True((await sending.WaitAsync(TimeSpan.FromSeconds(5))).IsSuccess);
+        Assert.Single(fixture.Browser.Actions);
+        Assert.Equal(2, fixture.Provider.Requests.Count);
+        var results = fixture.Provider.Requests.ToArray()[1].Messages
+            .Where(message => message.Role == AgentMessageRole.Tool)
+            .Select(message => Assert.IsType<AgentToolResult>(message.ToolResult))
+            .ToArray();
+        Assert.Collection(
+            results,
+            uncertain => Assert.Equal(
+                BrowserAgentToolResultJson.InteractionOutcomeUnknownStableCode,
+                uncertain.StableCode),
+            deferred =>
+            {
+                Assert.Equal(
+                    "tool_batch_reconciliation_required",
+                    deferred.StableCode);
+                Assert.Contains(
+                    "inspect_live_state",
+                    deferred.Value.Content,
+                    StringComparison.Ordinal);
+            });
+    }
+
+    [Fact]
+    public async Task UnknownFillOutcomeReturnsToProvider()
     {
         await using var fixture = BrowserRuntimeFixture.Create(
             BrowserScope.ExactPanel,
@@ -966,23 +1098,17 @@ public sealed class GovernedAgentRuntimeBrowserTests
 
         var result = await sending.WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.False(result.IsSuccess);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(GovernedAgentState.Ready, fixture.Runtime.Snapshot.State);
+        Assert.Single(fixture.Browser.Actions);
+        Assert.Equal(2, fixture.Provider.Requests.Count);
         Assert.Equal(
             BrowserAgentToolResultJson.InteractionOutcomeUnknownStableCode,
-            result.Code);
-        Assert.Equal(
-            GovernedAgentState.Failed,
-            fixture.Runtime.Snapshot.State);
-        Assert.Contains(
-            "quarantined",
-            fixture.Runtime.Snapshot.Status,
-            StringComparison.Ordinal);
-        Assert.Single(fixture.Browser.Actions);
-        Assert.Single(fixture.Provider.Requests);
+            ToolResultFromLastRequest(fixture.Provider).StableCode);
     }
 
     [Fact]
-    public async Task UnknownCheckOutcomeQuarantinesTheRunBeforeProviderContinuation()
+    public async Task UnknownCheckOutcomeReturnsToProvider()
     {
         await using var fixture = BrowserRuntimeFixture.Create(
             BrowserScope.ExactPanel,
@@ -1006,19 +1132,13 @@ public sealed class GovernedAgentRuntimeBrowserTests
 
         var result = await sending.WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.False(result.IsSuccess);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(GovernedAgentState.Ready, fixture.Runtime.Snapshot.State);
+        Assert.Single(fixture.Browser.Actions);
+        Assert.Equal(2, fixture.Provider.Requests.Count);
         Assert.Equal(
             BrowserAgentToolResultJson.InteractionOutcomeUnknownStableCode,
-            result.Code);
-        Assert.Equal(
-            GovernedAgentState.Failed,
-            fixture.Runtime.Snapshot.State);
-        Assert.Contains(
-            "quarantined",
-            fixture.Runtime.Snapshot.Status,
-            StringComparison.Ordinal);
-        Assert.Single(fixture.Browser.Actions);
-        Assert.Single(fixture.Provider.Requests);
+            ToolResultFromLastRequest(fixture.Provider).StableCode);
     }
 
     [Fact]
@@ -1142,6 +1262,15 @@ public sealed class GovernedAgentRuntimeBrowserTests
                     expectedSessionId,
                     Assert.IsType<AgentBrowserRequest.Snapshot>(
                         request).SessionId);
+                break;
+            case BuiltInAgentTools.BrowserWait:
+                var wait = Assert.IsType<AgentBrowserRequest.Wait>(request);
+                Assert.Equal(expectedSessionId, wait.Value.SessionId);
+                Assert.Equal(TimeSpan.FromSeconds(1), wait.Value.Timeout);
+                Assert.Equal(
+                    TimeSpan.FromMilliseconds(1),
+                    Assert.IsType<BrowserWaitCondition.Delay>(
+                        wait.Value.Condition).Value);
                 break;
             case BuiltInAgentTools.BrowserClick:
                 var click = Assert.IsType<AgentBrowserRequest.Click>(
@@ -1272,9 +1401,24 @@ public sealed class GovernedAgentRuntimeBrowserTests
         public static BrowserRuntimeFixture Create(
             BrowserScope scope,
             ScriptedProvider provider,
-            AgentPolicy? policy = null,
             bool includeTerminal = false,
-            long browserDocumentRevision = 1)
+            long browserDocumentRevision = 1,
+            bool includeLowLevelAutomation = false) =>
+            Create(
+                scope,
+                provider,
+                AgentPolicy.Default,
+                includeTerminal,
+                browserDocumentRevision,
+                includeLowLevelAutomation);
+
+        public static BrowserRuntimeFixture Create(
+            BrowserScope scope,
+            ScriptedProvider provider,
+            AgentPolicy policy,
+            bool includeTerminal = false,
+            long browserDocumentRevision = 1,
+            bool includeLowLevelAutomation = false)
         {
             var sessionHost = DispatchProxy.Create<
                 ISessionHostClient,
@@ -1283,19 +1427,23 @@ public sealed class GovernedAgentRuntimeBrowserTests
             context.Initialize(
                 scope,
                 includeTerminal,
-                browserDocumentRevision);
+                browserDocumentRevision,
+                includeLowLevelAutomation);
             return new BrowserRuntimeFixture(
                 sessionHost,
                 context,
                 provider,
-                policy ?? AgentPolicy.Default);
+                policy);
         }
 
         public GovernedAgentPrompt Prompt(string message) =>
             new(
                 new AiProviderProfileId("browser-provider"),
                 message,
-                Context.Target);
+                Context.Target,
+                Runtime.Snapshot.EffectivePolicy!.SelectPrimaryModel(
+                    "browser-provider",
+                    "browser-default-model"));
 
         public async ValueTask DisposeAsync()
         {
@@ -1326,6 +1474,7 @@ public sealed class GovernedAgentRuntimeBrowserTests
         private BrowserScope _scope;
         private long _browserDocumentRevision;
         private bool _includeTerminal;
+        private bool _includeLowLevelAutomation;
         private int _inspectionCount;
 
         public ClientId ApprovalClientId { get; } =
@@ -1340,6 +1489,8 @@ public sealed class GovernedAgentRuntimeBrowserTests
 
         public int DriftAfterInspection { get; set; } = int.MaxValue;
 
+        public long SessionRevisionAdvanceAfterContextInspection { get; set; }
+
         public SessionId BrowserSessionId =>
             Drift == BrowserDriftKind.Session
             && Volatile.Read(ref _inspectionCount) > DriftAfterInspection
@@ -1349,12 +1500,14 @@ public sealed class GovernedAgentRuntimeBrowserTests
         public void Initialize(
             BrowserScope scope,
             bool includeTerminal,
-            long browserDocumentRevision)
+            long browserDocumentRevision,
+            bool includeLowLevelAutomation)
         {
             ArgumentOutOfRangeException.ThrowIfNegative(
                 browserDocumentRevision);
             _scope = scope;
             _includeTerminal = includeTerminal;
+            _includeLowLevelAutomation = includeLowLevelAutomation;
             _browserDocumentRevision = browserDocumentRevision;
             Target = scope switch
             {
@@ -1383,7 +1536,10 @@ public sealed class GovernedAgentRuntimeBrowserTests
                     nameof(target));
             }
 
-            return CreateContext(target, exactBrowserOnly: true);
+            return CreateContext(
+                target,
+                exactBrowserOnly: true,
+                useCurrentSessionRevision: true);
         }
 
         protected override object? Invoke(
@@ -1432,10 +1588,12 @@ public sealed class GovernedAgentRuntimeBrowserTests
                     ? CreateContext(
                         request.Target,
                         exactBrowserOnly:
-                            request.Target is AgentTarget.Panel)
+                            request.Target is AgentTarget.Panel,
+                        useCurrentSessionRevision: false)
                     : CreateContext(
                         request.Target,
-                        exactBrowserOnly: true);
+                        exactBrowserOnly: true,
+                        useCurrentSessionRevision: false);
             }
             catch (ArgumentException)
             {
@@ -1468,7 +1626,8 @@ public sealed class GovernedAgentRuntimeBrowserTests
                         6));
             }
 
-            var descriptor = BrowserDescriptor();
+            var descriptor = BrowserDescriptor(
+                SessionRevisionAdvanceAfterContextInspection);
             var snapshot = new SessionSnapshot(
                 descriptor,
                 LastSequence: descriptor.Revision,
@@ -1490,14 +1649,18 @@ public sealed class GovernedAgentRuntimeBrowserTests
 
         private AgentContextSnapshot CreateContext(
             AgentTarget target,
-            bool exactBrowserOnly)
+            bool exactBrowserOnly,
+            bool useCurrentSessionRevision)
         {
             var graph = CreateGraph();
             var browser = AgentContextPanel.ForGraphPanel(
                 graph,
                 TabId,
                 BrowserPanelId,
-                BrowserDescriptor());
+                BrowserDescriptor(
+                    useCurrentSessionRevision
+                        ? SessionRevisionAdvanceAfterContextInspection
+                        : 0));
             if (exactBrowserOnly)
             {
                 if (target != ExactBrowserTarget())
@@ -1570,7 +1733,7 @@ public sealed class GovernedAgentRuntimeBrowserTests
                 lastSequence: 5);
         }
 
-        private SessionDescriptor BrowserDescriptor() =>
+        private SessionDescriptor BrowserDescriptor(long revisionAdvance = 0) =>
             new(
                 BrowserSessionId,
                 PanelKind.Browser,
@@ -1583,7 +1746,9 @@ public sealed class GovernedAgentRuntimeBrowserTests
                     TabId,
                     BrowserPanelId),
                 BrowserCapabilities,
-                Revision: BrowserSessionId == InitialBrowserSessionId ? 5 : 6,
+                Revision: checked(
+                    (BrowserSessionId == InitialBrowserSessionId ? 5 : 6)
+                    + revisionAdvance),
                 HasActiveWork: false,
                 StatusDetail: "Ready",
                 BrowserMetadata: new BrowserSessionMetadata(
@@ -1592,7 +1757,14 @@ public sealed class GovernedAgentRuntimeBrowserTests
                             new Uri(
                                 "https://example.test/source",
                                 UriKind.Absolute))),
-                    _browserDocumentRevision));
+                    _browserDocumentRevision,
+                    new BrowserViewportState(800, 600, 1),
+                    viewportRevision: 3,
+                    inputEpoch: 4,
+                    address: new BrowserAddress(
+                        new Uri(
+                            "https://example.test/source",
+                            UriKind.Absolute))));
 
         private static SessionDescriptor TerminalDescriptor() =>
             new(
@@ -1629,12 +1801,37 @@ public sealed class GovernedAgentRuntimeBrowserTests
                 TabId,
                 BrowserPanelId);
 
-        private static CapabilitySet BrowserCapabilities { get; } = new(
+        private CapabilitySet BrowserCapabilities => new(
+        _includeLowLevelAutomation
+            ?
         [
             SessionCapabilities.AttachRead,
             SessionCapabilities.AttachInteractive,
             SessionCapabilities.BrowserReadState,
             SessionCapabilities.BrowserSnapshot,
+            SessionCapabilities.BrowserWait,
+            SessionCapabilities.BrowserClick,
+            SessionCapabilities.BrowserFill,
+            SessionCapabilities.BrowserCheck,
+            SessionCapabilities.BrowserMouse,
+            SessionCapabilities.BrowserKey,
+            SessionCapabilities.BrowserScroll,
+            SessionCapabilities.BrowserEvaluate,
+            SessionCapabilities.BrowserNavigate,
+            SessionCapabilities.BrowserBack,
+            SessionCapabilities.BrowserForward,
+            SessionCapabilities.BrowserReload,
+            SessionCapabilities.BrowserStop,
+            SessionCapabilities.BrowserOriginGuard,
+            SessionCapabilities.BrowserAgentInputBarrier,
+        ]
+            :
+        [
+            SessionCapabilities.AttachRead,
+            SessionCapabilities.AttachInteractive,
+            SessionCapabilities.BrowserReadState,
+            SessionCapabilities.BrowserSnapshot,
+            SessionCapabilities.BrowserWait,
             SessionCapabilities.BrowserClick,
             SessionCapabilities.BrowserFill,
             SessionCapabilities.BrowserCheck,
@@ -1644,6 +1841,7 @@ public sealed class GovernedAgentRuntimeBrowserTests
             SessionCapabilities.BrowserReload,
             SessionCapabilities.BrowserStop,
             SessionCapabilities.BrowserOriginGuard,
+            SessionCapabilities.BrowserAgentInputBarrier,
         ]);
     }
 
@@ -1744,17 +1942,79 @@ public sealed class GovernedAgentRuntimeBrowserTests
                 AgentBrowserRequest.Snapshot =>
                     new AgentBrowserActionResult.Snapshot(
                         BrowserSnapshot()),
+                AgentBrowserRequest.Wait =>
+                    new AgentBrowserActionResult.Wait(
+                        new BrowserWaitOutcome(
+                            BrowserWaitCompletion.Matched,
+                            BrowserState(
+                                "https://example.test/",
+                                "Example"),
+                            BrowserSnapshot(),
+                            snapshotError: null,
+                            DateTimeOffset.UnixEpoch)),
+                AgentBrowserRequest.Mouse mouse =>
+                    new AgentBrowserActionResult.Automation(
+                        new BrowserAutomationReceipt(
+                            mouse.Value.Binding,
+                            FreshInputState(mouse.Value.Binding))),
+                AgentBrowserRequest.Key key =>
+                    new AgentBrowserActionResult.Automation(
+                        new BrowserAutomationReceipt(
+                            key.Value.Binding,
+                            FreshInputState(key.Value.Binding))),
+                AgentBrowserRequest.Scroll scroll =>
+                    new AgentBrowserActionResult.Automation(
+                        new BrowserAutomationReceipt(
+                            scroll.Value.Binding,
+                            FreshInputState(scroll.Value.Binding))),
+                AgentBrowserRequest.Evaluate evaluate =>
+                    new AgentBrowserActionResult.Evaluation(
+                        new BrowserEvaluationResult(
+                            evaluate.Value.Binding,
+                            FreshEvaluationState(evaluate.Value.Binding),
+                            "2")),
                 _ => new AgentBrowserActionResult.Completed(),
             };
+
+        private static BrowserSessionState FreshInputState(
+            BrowserAutomationBinding binding) =>
+            new(
+                binding.Document.Address,
+                "Example",
+                BrowserLoadState.Ready,
+                false,
+                false,
+                binding.Document.DocumentRevision,
+                viewport: binding.Viewport,
+                viewportRevision: binding.ViewportRevision,
+                inputEpoch: binding.InputEpoch + 1);
+
+        private static BrowserSessionState FreshEvaluationState(
+            BrowserAutomationBinding binding) =>
+            new(
+                binding.Document.Address,
+                "Example",
+                BrowserLoadState.Ready,
+                false,
+                false,
+                binding.Document.DocumentRevision,
+                viewport: binding.Viewport,
+                viewportRevision: binding.ViewportRevision,
+                inputEpoch: binding.InputEpoch);
 
         private static string CompletionCode(AgentBrowserRequest request) =>
             request switch
             {
                 AgentBrowserRequest.ReadState => "state_read",
                 AgentBrowserRequest.Snapshot => "snapshot_captured",
+                AgentBrowserRequest.Wait => "wait_completed",
                 AgentBrowserRequest.Click => "click_completed",
                 AgentBrowserRequest.Fill => "fill_completed",
                 AgentBrowserRequest.Check => "check_completed",
+                AgentBrowserRequest.Mouse => "mouse_completed",
+                AgentBrowserRequest.Key => "key_completed",
+                AgentBrowserRequest.Scroll => "scroll_completed",
+                AgentBrowserRequest.Evaluate => "evaluate_completed",
                 AgentBrowserRequest.Navigate => "navigate_completed",
                 AgentBrowserRequest.Back => "back_completed",
                 AgentBrowserRequest.Forward => "forward_completed",
@@ -1857,11 +2117,68 @@ public sealed class GovernedAgentRuntimeBrowserTests
                     "The browser provider received an unexpected round."),
             });
 
+        public static ScriptedProvider UnknownToolThenAnswerThenReadThenAnswer(
+            string toolName,
+            string arguments) =>
+            new((call, request) => call switch
+            {
+                1 => ToolCall(
+                    "browser-uncertain-tool-call",
+                    toolName,
+                    arguments),
+                2 when LastToolResultHasCode(
+                    request,
+                    BrowserAgentToolResultJson
+                        .InteractionOutcomeUnknownStableCode) =>
+                    Answer("The interaction outcome is unknown; I will inspect it next."),
+                3 => ToolCall(
+                    "browser-reconciliation-read",
+                    BuiltInAgentTools.BrowserReadState,
+                    "{}"),
+                4 when request.Messages.Any(
+                    message => message.Role == AgentMessageRole.Tool) =>
+                    Answer("The browser was reconciled from fresh state."),
+                _ => throw new InvalidOperationException(
+                    "The browser provider received an unexpected recovery round."),
+            });
+
+        public static ScriptedProvider UnknownInteractionBatchThenAnswer() =>
+            new((call, request) => call switch
+            {
+                1 => ToolBatch(
+                [
+                    (
+                        "browser-uncertain-click",
+                        BuiltInAgentTools.BrowserClick,
+                        """{"reference":"element_1","document_revision":1}"""),
+                    (
+                        "browser-stale-read",
+                        BuiltInAgentTools.BrowserReadState,
+                        "{}"),
+                ]),
+                2 when request.Messages.Count(
+                    message => message.Role == AgentMessageRole.Tool) == 2 =>
+                    Answer("The stale batch stopped and requires fresh inspection."),
+                _ => throw new InvalidOperationException(
+                    "The browser provider received an unexpected batch round."),
+            });
+
         public static ScriptedProvider AnswerOnly() =>
             new((call, _) => call == 1
                 ? Answer("No browser operation is available.")
                 : throw new InvalidOperationException(
                     "The browser provider received an unexpected round."));
+
+        private static bool LastToolResultHasCode(
+            AgentProviderRequest request,
+            string stableCode) =>
+            request.Messages.LastOrDefault(
+                message => message.Role == AgentMessageRole.Tool)?.ToolResult
+            is { } result
+            && string.Equals(
+                result.StableCode,
+                stableCode,
+                StringComparison.Ordinal);
 
         private static AgentProviderEvent[] ToolCall(
             string callId,
@@ -1880,6 +2197,31 @@ public sealed class GovernedAgentRuntimeBrowserTests
             new AgentProviderEvent.ResponseCompleted(
                 AgentProviderStopReason.ToolUse),
         ];
+
+        private static AgentProviderEvent[] ToolBatch(
+            IReadOnlyList<(string CallId, string ToolName, string Arguments)> calls)
+        {
+            var events = new List<AgentProviderEvent>
+            {
+                new AgentProviderEvent.ResponseStarted(),
+            };
+            for (var index = 0; index < calls.Count; index++)
+            {
+                var call = calls[index];
+                events.Add(new AgentProviderEvent.ToolCallStarted(
+                    index,
+                    call.CallId,
+                    ProviderToolName.FromInternal(call.ToolName)));
+                events.Add(new AgentProviderEvent.ToolCallArgumentsDelta(
+                    index,
+                    call.Arguments));
+                events.Add(new AgentProviderEvent.ToolCallCompleted(index));
+            }
+
+            events.Add(new AgentProviderEvent.ResponseCompleted(
+                AgentProviderStopReason.ToolUse));
+            return events.ToArray();
+        }
 
         private static AgentProviderEvent[] Answer(string text) =>
         [

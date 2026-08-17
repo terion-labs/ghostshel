@@ -150,6 +150,7 @@ public sealed class LauncherWorkspaceViewModel(
     private bool _isOpen;
     private bool _isInFront;
     private bool _hasAttention;
+    private bool _hasAgentActivity;
 
     public WorkspaceId Id { get; } = id;
 
@@ -208,6 +209,13 @@ public sealed class LauncherWorkspaceViewModel(
     {
         get => _hasAttention;
         internal set => SetProperty(ref _hasAttention, value);
+    }
+
+    /// <summary>Whether a governed agent is operating a panel in this workspace.</summary>
+    public bool HasAgentActivity
+    {
+        get => _hasAgentActivity;
+        internal set => SetProperty(ref _hasAgentActivity, value);
     }
 
     /// <summary>
@@ -879,6 +887,7 @@ public sealed class RuntimeWorkspaceViewModel : ObservableObject
     private RuntimeTabViewModel? _activeTab;
     private RuntimeTabViewModel? _lastActiveTab;
     private bool _hasAttention;
+    private bool _hasAgentActivity;
     private bool _isCanvasShown;
     private int _canvasDepth;
     private long _hostRevision;
@@ -897,7 +906,7 @@ public sealed class RuntimeWorkspaceViewModel : ObservableObject
         Name = name;
         Accent = accent;
         Connections = new ObservableCollection<LauncherConnectionViewModel>(connections);
-        AgentPolicy = agentPolicy ?? RuntimeAgentPolicyProvenance.Default;
+        AgentPolicy = agentPolicy ?? RuntimeAgentPolicyProvenance.Unconfigured;
         _terminalMultiplexingMode = terminalMultiplexingMode;
         // A tab in this workspace is governed by this workspace unless it
         // brought a policy of its own. Stated once, here, rather than asked of
@@ -1009,6 +1018,13 @@ public sealed class RuntimeWorkspaceViewModel : ObservableObject
     {
         get => _hasAttention;
         internal set => SetProperty(ref _hasAttention, value);
+    }
+
+    /// <summary>Whether an agent is currently operating one panel in this workspace.</summary>
+    public bool HasAgentActivity
+    {
+        get => _hasAgentActivity;
+        internal set => SetProperty(ref _hasAgentActivity, value);
     }
 
     public long HostRevision
@@ -1200,6 +1216,7 @@ public sealed class RuntimeTabViewModel : ObservableObject
     private bool _isActive;
     private bool _canClose = true;
     private bool _hasAttention;
+    private string _agentActivity = string.Empty;
     private bool _usesAutomaticLayout;
     private int _columns;
     private int _rows;
@@ -1224,7 +1241,7 @@ public sealed class RuntimeTabViewModel : ObservableObject
         _hasChosenIcon = hasChosenIcon ?? icon is not null;
         Source = source;
         HistorySource = historySource;
-        AgentPolicy = agentPolicy ?? RuntimeAgentPolicyProvenance.Default;
+        AgentPolicy = agentPolicy ?? RuntimeAgentPolicyProvenance.Unconfigured;
         _columns = layout?.Grid.Columns ?? 1;
         _rows = layout?.Grid.Rows ?? 1;
         _hasSavedLayout = layout is not null;
@@ -1285,8 +1302,7 @@ public sealed class RuntimeTabViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(workspacePolicy);
         if (AgentPolicy.Sources.Count != 0
-            || AgentPolicy.HasPolicyOverride
-            || AgentPolicy.IsLegacyFallback)
+            || AgentPolicy.HasPolicyOverride)
         {
             return;
         }
@@ -1370,6 +1386,24 @@ public sealed class RuntimeTabViewModel : ObservableObject
     {
         get => _hasAttention;
         internal set => SetProperty(ref _hasAttention, value);
+    }
+
+    public string AgentActivity => _agentActivity;
+
+    /// <summary>Whether an agent is currently operating one panel in this tab.</summary>
+    public bool HasAgentActivity => AgentActivity.Length > 0;
+
+    internal void SetAgentActivity(string? activity)
+    {
+        var next = string.IsNullOrWhiteSpace(activity)
+            ? string.Empty
+            : string.Concat(activity);
+        if (!SetProperty(ref _agentActivity, next, nameof(AgentActivity)))
+        {
+            return;
+        }
+
+        OnPropertyChanged(nameof(HasAgentActivity));
     }
 
     public int Columns => _columns;
@@ -2003,6 +2037,7 @@ public sealed class RuntimeTabViewModel : ObservableObject
                 current.LayoutMinimumWidth,
                 current.LayoutMinimumHeight));
         replacement.IsActive = current.IsActive;
+        replacement.SetAgentActivity(current.AgentActivity);
         replacement.IsVisibleInLayout = current.IsVisibleInLayout;
         replacement.IsZoomed = current.IsZoomed;
         _dockLayout.Rebind(current, replacement);
@@ -2202,10 +2237,29 @@ public sealed class RuntimeTabViewModel : ObservableObject
         PanelSplitOrientation orientation,
         PanelPlaceholderViewModel? placeholder = null)
     {
-        var target = Panels.SingleOrDefault(panel => panel.Id == panelId);
+        placeholder ??= NewPlaceholder();
+        return SplitWithPanel(panelId, orientation, placeholder)
+            ? placeholder
+            : null;
+    }
+
+    /// <summary>Places one already-created runtime panel beside an exact panel.</summary>
+    public bool SplitWithPanel(
+        PanelInstanceId panelId,
+        PanelSplitOrientation orientation,
+        RuntimePanelViewModel panel)
+    {
+        ArgumentNullException.ThrowIfNull(panel);
+        if (!Enum.IsDefined(orientation)
+            || Panels.Any(candidate => candidate.Id == panel.Id))
+        {
+            return false;
+        }
+
+        var target = Panels.SingleOrDefault(candidate => candidate.Id == panelId);
         if (target is null)
         {
-            return null;
+            return false;
         }
 
         ClearZoom();
@@ -2213,8 +2267,8 @@ public sealed class RuntimeTabViewModel : ObservableObject
         var start = column ? target.LayoutColumn : target.LayoutRow;
         var span = Math.Max(1, column ? target.LayoutColumnSpan : target.LayoutRowSpan);
 
-        int placeholderStart;
-        int placeholderSpan;
+        int panelStart;
+        int panelSpan;
         if (span > 1)
         {
             // The panel already covers more than one track, so the boundary this
@@ -2224,42 +2278,41 @@ public sealed class RuntimeTabViewModel : ObservableObject
             // twice produced a half and two quarters rather than three thirds, and
             // how panels in other columns were pushed into overlapping each other.
             var kept = (span + 1) / 2;
-            placeholderStart = start + kept;
-            placeholderSpan = span - kept;
+            panelStart = start + kept;
+            panelSpan = span - kept;
             AssignTrackSpan(target, column, start, kept);
         }
         else
         {
-            placeholderStart = start + 1;
-            placeholderSpan = 1;
-            InsertTrack(column, placeholderStart, target);
+            panelStart = start + 1;
+            panelSpan = 1;
+            InsertTrack(column, panelStart, target);
         }
 
-        placeholder ??= NewPlaceholder();
-        placeholder.AssignLayout(
+        panel.AssignLayout(
             _columns,
             _rows,
             column
                 ? new LayoutGridBounds(
-                    placeholderStart,
+                    panelStart,
                     target.LayoutRow,
-                    placeholderSpan,
+                    panelSpan,
                     Math.Max(1, target.LayoutRowSpan))
                 : new LayoutGridBounds(
                     target.LayoutColumn,
-                    placeholderStart,
+                    panelStart,
                     Math.Max(1, target.LayoutColumnSpan),
-                    placeholderSpan),
+                    panelSpan),
             new LayoutMinimumSize(DefaultPanelMinimumWidth, DefaultPanelMinimumHeight));
-        Panels.Add(placeholder);
+        Panels.Add(panel);
         _dockLayout.Attach(
-            placeholder,
+            panel,
             split: orientation,
             targetPanelId: target.Id);
         _usesAutomaticLayout = false;
-        ActivatePanel(placeholder.Id);
+        ActivatePanel(panel.Id);
         NotifyPanelLayoutChanged();
-        return placeholder;
+        return true;
     }
 
     /// <summary>Re-states one axis of a panel's cell, leaving the other alone.</summary>
@@ -2586,6 +2639,7 @@ public abstract class RuntimePanelViewModel(
 {
     private bool _isActive;
     private bool _hasAttention;
+    private string _agentActivity = string.Empty;
     private bool _isVisibleInLayout = true;
     private bool _isZoomed;
 
@@ -2615,6 +2669,27 @@ public abstract class RuntimePanelViewModel(
     {
         get => _hasAttention;
         internal set => SetProperty(ref _hasAttention, value);
+    }
+
+    /// <summary>
+    /// The trusted tool title while the governed agent is operating this exact
+    /// panel. Empty means no agent action currently owns the panel boundary.
+    /// </summary>
+    public string AgentActivity => _agentActivity;
+
+    public bool IsAgentActive => AgentActivity.Length > 0;
+
+    internal void SetAgentActivity(string? activity)
+    {
+        var next = string.IsNullOrWhiteSpace(activity)
+            ? string.Empty
+            : string.Concat(activity);
+        if (!SetProperty(ref _agentActivity, next, nameof(AgentActivity)))
+        {
+            return;
+        }
+
+        OnPropertyChanged(nameof(IsAgentActive));
     }
 
     public bool IsVisibleInLayout

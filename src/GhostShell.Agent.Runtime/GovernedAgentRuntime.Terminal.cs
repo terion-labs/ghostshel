@@ -9,15 +9,15 @@ public sealed partial class GovernedAgentRuntime
 {
     private async ValueTask<AgentToolResult> ExecuteTerminalProposalAsync(
         AgentToolExecutionRequest request,
-        OperationalAgentToolContext operationalContext,
+        AgentPanelToolContext panelContext,
         CancellationToken cancellationToken)
     {
         var proposal = request.Proposal;
         var descriptor = request.Descriptor;
-        var context = operationalContext.Context;
-        var resizeAttachments = operationalContext.ResizeAttachments;
+        var context = panelContext.Context;
+        var resizeAttachments = panelContext.ResizeAttachments;
         var resizeEligiblePanelIds =
-            operationalContext.ResizeEligiblePanelIds;
+            panelContext.ResizeEligiblePanelIds;
         var exactTarget = context.Target
             is AgentTarget.Panel or AgentTarget.ConnectionSession
             && context.Panels.Count == 1;
@@ -47,20 +47,29 @@ public sealed partial class GovernedAgentRuntime
         UpdateTargetPresentation(
             context,
             resizeEligiblePanelIds,
-            operationalContext.BrowserEligiblePanelIds,
-            operationalContext.FileMetadata);
+            panelContext.BrowserEligiblePanelIds,
+            panelContext.FileMetadata);
 
         AgentTerminalAction action;
         try
         {
             var now = _timeProvider.GetUtcNow();
+            var proposalLifetime = intent is TerminalAgentIntent.WaitForDelay
+                or TerminalAgentIntent.WaitForText
+                or TerminalAgentIntent.WaitForChange
+                or TerminalAgentIntent.WaitForStable
+                or TerminalAgentIntent.WaitForPromptReady
+                or TerminalAgentIntent.WaitForCommandFinished
+                    ? descriptor.MaximumExecutionLifetime
+                        + TimeSpan.FromMinutes(5)
+                    : ActionLifetime;
             var envelope = new AgentActionEnvelope(
                 AgentActionId.New(),
                 GetRequiredSession().RunId,
                 GetOrCreateAgent(),
                 GetPolicyGeneration(),
                 now,
-                now + ActionLifetime);
+                now + proposalLifetime);
             action = _composer.Prepare(
                 envelope,
                 context,
@@ -111,7 +120,8 @@ public sealed partial class GovernedAgentRuntime
         var actionCancellation = BeginToolActivity(
             descriptor,
             action.Proposal.Presentation,
-            cancellationToken);
+            cancellationToken,
+            selected.PanelId);
         HostResult<AgentTerminalActionResult> hostResult;
         try
         {
@@ -188,13 +198,15 @@ public sealed partial class GovernedAgentRuntime
     {
         public ImmutableArray<AgentToolDefinition> BuildTools(
             AgentToolBuildContext context) =>
-            context.HasExactTarget
-                && context.OperationalContext.Panels.Count == 1
+            context.Context.Target is AgentTarget.Workspace
+                ? TerminalAgentToolSet.ForWorkspace()
+                : context.HasExactTarget
+                && context.Context.Panels.Count == 1
                     ? TerminalAgentToolSet.For(
-                        context.OperationalContext.Panels[0],
+                        context.Context.Panels[0],
                         context.ResizeEligiblePanelIds)
                     : TerminalAgentToolSet.For(
-                        context.OperationalContext.Panels,
+                        context.Context.Panels,
                         context.ResizeEligiblePanelIds);
 
         public ResolvedAgentToolContribution? Resolve(string toolName) =>
@@ -207,7 +219,7 @@ public sealed partial class GovernedAgentRuntime
         private ValueTask<AgentToolResult> ExecuteAsync(
             AgentToolExecutionRequest request,
             CancellationToken cancellationToken) =>
-            runtime.ExecuteOperationalToolContributionAsync(
+            runtime.ExecutePanelToolContributionAsync(
                 request,
                 runtime.ExecuteTerminalProposalAsync,
                 cancellationToken);

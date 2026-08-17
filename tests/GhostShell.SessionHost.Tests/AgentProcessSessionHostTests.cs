@@ -545,7 +545,7 @@ public sealed class AgentProcessSessionHostTests
         var policy = AgentPolicy.Default with
         {
             Permissions = AgentPolicy.Default.Permissions.SetItem(
-                AgentCapability.ProcessControl,
+                AgentCapability.ProcessData,
                 AgentPermission.Auto),
         };
         Assert.Null(await broker.RegisterRunAsync(

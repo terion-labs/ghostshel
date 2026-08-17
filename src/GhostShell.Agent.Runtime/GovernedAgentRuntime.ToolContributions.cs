@@ -10,11 +10,14 @@ public sealed partial class GovernedAgentRuntime
     private ImmutableArray<IAgentToolContribution> CreateToolContributions() =>
     [
         new WorkspaceGraphToolContribution(this),
+        new WorkspaceLayoutToolContribution(this),
         new PanelToolContribution(this),
         new TerminalToolContribution(this),
         new BrowserToolContribution(this),
         new ProcessToolContribution(this),
         new StatisticsToolContribution(this),
+        new DatabaseToolContribution(this),
+        new DockerToolContribution(this),
         new FileToolContribution(this),
         new McpToolContribution(this),
     ];
@@ -45,16 +48,17 @@ public sealed partial class GovernedAgentRuntime
     }
 
     private async ValueTask<AgentToolResult>
-        ExecuteOperationalToolContributionAsync(
+        ExecutePanelToolContributionAsync(
             AgentToolExecutionRequest request,
-            OperationalAgentToolExecutor executor,
+            AgentPanelToolExecutor executor,
             CancellationToken cancellationToken)
     {
-        if (request.TargetContexts.Operational is not { } context
-            || !MatchesPinnedScope(request.TargetContexts))
+        if (!MatchesPinnedScope(request.Context))
         {
             return CreateRejectedResult(request.Proposal, "target_changed");
         }
+
+        var context = request.Context;
 
         var resizeAttachments = await InspectResizeAttachmentsAsync(
                 context,
@@ -68,14 +72,14 @@ public sealed partial class GovernedAgentRuntime
                 context,
                 cancellationToken)
             .ConfigureAwait(false);
-        var operationalContext = new OperationalAgentToolContext(
+        var panelContext = new AgentPanelToolContext(
             context,
             resizeAttachments,
             browserEligiblePanelIds,
             fileMetadata);
         return await executor(
                 request,
-                operationalContext,
+                panelContext,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -89,23 +93,22 @@ public sealed partial class GovernedAgentRuntime
     }
 
     private sealed record AgentToolBuildContext(
-        AgentContextSnapshot StructuralContext,
-        AgentContextSnapshot OperationalContext,
+        AgentContextSnapshot Context,
         IReadOnlySet<PanelInstanceId> ResizeEligiblePanelIds,
         IReadOnlySet<PanelInstanceId> BrowserEligiblePanelIds,
         IReadOnlyDictionary<PanelInstanceId, FileSessionMetadata> FileMetadata,
         AgentMcpRunManifest? McpManifest)
     {
-        public bool HasExactTarget => OperationalContext.Target
+        public bool HasExactTarget => Context.Target
             is AgentTarget.Panel or AgentTarget.ConnectionSession;
     }
 
     private sealed record AgentToolExecutionRequest(
         AgentToolProposal Proposal,
         AgentToolDescriptor Descriptor,
-        RunTargetContexts TargetContexts);
+        AgentContextSnapshot Context);
 
-    private sealed record OperationalAgentToolContext(
+    private sealed record AgentPanelToolContext(
         AgentContextSnapshot Context,
         IReadOnlyDictionary<PanelInstanceId, ResizeAttachmentBinding>
             ResizeAttachments,
@@ -123,8 +126,8 @@ public sealed partial class GovernedAgentRuntime
             CancellationToken,
             ValueTask<AgentToolResult>> ExecuteAsync);
 
-    private delegate ValueTask<AgentToolResult> OperationalAgentToolExecutor(
+    private delegate ValueTask<AgentToolResult> AgentPanelToolExecutor(
         AgentToolExecutionRequest request,
-        OperationalAgentToolContext context,
+        AgentPanelToolContext context,
         CancellationToken cancellationToken);
 }

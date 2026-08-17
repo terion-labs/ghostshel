@@ -82,6 +82,29 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
 
     public bool HasRouteError => RouteErrorMessage is not null;
 
+    internal bool HasInteractiveAttachment =>
+        RendererView?.Attachment?.Matches(
+            SessionClient,
+            ClientId,
+            SessionRequest.SessionId) is true;
+
+    internal async Task EnsureHostedRendererAsync(
+        CancellationToken cancellationToken)
+    {
+        using var linkedCancellation = CancellationTokenSource
+            .CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+        await StartInitialization().WaitAsync(linkedCancellation.Token);
+        var renderer = RendererView
+            ?? throw new InvalidOperationException(
+                "The browser renderer is unavailable.");
+        _ = await renderer.EnsureAttachmentAsync(
+            SessionClient,
+            ClientId,
+            SessionRequest,
+            ViewportDescriptor.Empty,
+            linkedCancellation.Token);
+    }
+
     public Task StartInitialization()
     {
         lock (_initializationGate)

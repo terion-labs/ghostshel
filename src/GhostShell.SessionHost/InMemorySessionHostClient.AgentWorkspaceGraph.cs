@@ -285,11 +285,6 @@ public sealed partial class InMemorySessionHostClient
                 (AgentActionOutcome.Failed, failure.Error.StableCode),
             HostResult<AgentWorkspaceGraphActionResult>.Success
             {
-                Value: AgentWorkspaceGraphActionResult.WorkspacesListed,
-            } =>
-                (AgentActionOutcome.Succeeded, "workspaces_listed"),
-            HostResult<AgentWorkspaceGraphActionResult>.Success
-            {
                 Value: AgentWorkspaceGraphActionResult.WorkspaceInspected,
             } =>
                 (AgentActionOutcome.Succeeded, "workspace_inspected"),
@@ -315,8 +310,6 @@ public sealed partial class InMemorySessionHostClient
     {
         var requiredTool = request switch
         {
-            AgentWorkspaceGraphRequest.WorkspaceList =>
-                BuiltInAgentTools.WorkspaceList,
             AgentWorkspaceGraphRequest.WorkspaceInspect =>
                 BuiltInAgentTools.WorkspaceInspect,
             AgentWorkspaceGraphRequest.TabList =>

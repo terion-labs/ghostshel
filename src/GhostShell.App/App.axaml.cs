@@ -734,6 +734,24 @@ public sealed partial class App : Avalonia.Application
                 resources.Accent.G,
                 resources.Accent.B),
         }));
+        Publish(
+            "ShellAgentPanelGlowBrush",
+            new SolidColorBrush(Color.FromArgb(
+                0x10,
+                resources.Accent.R,
+                resources.Accent.G,
+                resources.Accent.B)));
+        Publish(
+            "ShellAgentPanelGlowShadow",
+            BoxShadows.Parse(
+                "inset 0 0 224 0 "
+                + $"#46{resources.Accent.R:X2}{resources.Accent.G:X2}{resources.Accent.B:X2}, "
+                + "inset 0 0 112 0 "
+                + $"#5C{resources.Accent.R:X2}{resources.Accent.G:X2}{resources.Accent.B:X2}, "
+                + "inset 0 0 51.2 0 "
+                + $"#7A{resources.Accent.R:X2}{resources.Accent.G:X2}{resources.Accent.B:X2}, "
+                + "inset 0 0 17.6 0 "
+                + $"#C0{resources.Accent.R:X2}{resources.Accent.G:X2}{resources.Accent.B:X2}"));
         Publish("ShellUiFontFamily", resources.FontFamily);
         // Data surfaces (result grids, SQL editors) read in a monospace stack;
         // interface chrome stays on the UI family.

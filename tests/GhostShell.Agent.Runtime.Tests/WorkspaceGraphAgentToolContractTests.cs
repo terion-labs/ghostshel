@@ -18,7 +18,6 @@ public sealed class WorkspaceGraphAgentToolContractTests
 
         Assert.Equal(
             [
-                BuiltInAgentTools.WorkspaceList,
                 BuiltInAgentTools.WorkspaceInspect,
                 BuiltInAgentTools.TabList,
                 BuiltInAgentTools.PanelList,
@@ -62,18 +61,11 @@ public sealed class WorkspaceGraphAgentToolContractTests
                 StringComparison.OrdinalIgnoreCase);
         }
 
-        foreach (var toolName in new[]
-                 {
-                     BuiltInAgentTools.WorkspaceList,
-                     BuiltInAgentTools.WorkspaceInspect,
-                 })
-        {
-            var schema = tools
-                .Single(tool => tool.Name == toolName)
-                .InputSchema;
-            Assert.Empty(
-                schema.GetProperty("properties").EnumerateObject());
-        }
+        var inspectSchema = tools
+            .Single(tool => tool.Name == BuiltInAgentTools.WorkspaceInspect)
+            .InputSchema;
+        Assert.Empty(
+            inspectSchema.GetProperty("properties").EnumerateObject());
 
         foreach (var toolName in new[]
                  {
@@ -126,26 +118,40 @@ public sealed class WorkspaceGraphAgentToolContractTests
         Assert.Empty(WorkspaceGraphAgentToolSet.For(context));
     }
 
-    [Theory]
-    [InlineData(BuiltInAgentTools.WorkspaceList, typeof(WorkspaceGraphAgentIntent.WorkspaceList))]
-    [InlineData(BuiltInAgentTools.WorkspaceInspect, typeof(WorkspaceGraphAgentIntent.WorkspaceInspect))]
-    public void ClosedToolsAcceptOnlyAnEmptyObject(
-        string toolName,
-        Type expectedIntentType)
+    [Fact]
+    public void WorkspaceInspectAcceptsOnlyAnEmptyObject()
     {
         var accepted = WorkspaceGraphAgentToolParser.Parse(
-            Proposal(toolName, "{}"));
+            Proposal(BuiltInAgentTools.WorkspaceInspect, "{}"));
         var rejected = WorkspaceGraphAgentToolParser.Parse(
-            Proposal(toolName, """{"offset":0}"""));
+            Proposal(
+                BuiltInAgentTools.WorkspaceInspect,
+                """{"offset":0}"""));
 
-        Assert.IsType(
-            expectedIntentType,
+        Assert.IsType<WorkspaceGraphAgentIntent.WorkspaceInspect>(
             Assert.IsType<WorkspaceGraphAgentIntentResult.Parsed>(
                 accepted).Intent);
         Assert.Equal(
             "invalid_tool_arguments",
             Assert.IsType<WorkspaceGraphAgentIntentResult.Rejected>(
                 rejected).StableCode);
+    }
+
+    [Fact]
+    public void WorkspaceListIsAbsentAndRejectedAsUnknown()
+    {
+        const string removedTool = "workspace.list";
+        var context = RegisteredGraphContext();
+
+        Assert.False(BuiltInAgentTools.Catalog.TryGet(removedTool, out _));
+        Assert.DoesNotContain(
+            WorkspaceGraphAgentToolSet.For(context),
+            tool => string.Equals(tool.Name, removedTool, StringComparison.Ordinal));
+        Assert.Equal(
+            "unknown_tool",
+            Assert.IsType<WorkspaceGraphAgentIntentResult.Rejected>(
+                WorkspaceGraphAgentToolParser.Parse(
+                    Proposal(removedTool, "{}"))).StableCode);
     }
 
     [Fact]

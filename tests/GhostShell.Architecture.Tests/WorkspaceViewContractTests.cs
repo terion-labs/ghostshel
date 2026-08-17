@@ -51,6 +51,47 @@ public sealed class WorkspaceViewContractTests
         };
 
     [Fact]
+    public void Agent_toolbar_robot_pulses_for_a_run_in_any_workspace()
+    {
+        var root = Assert.IsType<XElement>(LoadView("WorkspaceView").Root);
+        var toggle = FindNamedElement(root, "AgentToggleButton");
+        var pulse = Assert.Single(
+            toggle.Descendants(),
+            element => AttributeValue(element, "Name")
+                == "AgentToolbarActivityPulseIcon");
+
+        Assert.Equal("Bot", AttributeValue(pulse, "Symbol"));
+        Assert.Equal("0", AttributeValue(pulse, "Opacity"));
+        Assert.Equal(
+            "{Binding HasRunningAgent}",
+            AttributeValue(pulse, "Classes.running"));
+        Assert.Equal(
+            "{DynamicResource ShellAccentBrush}",
+            AttributeValue(pulse, "Foreground"));
+
+        var designSystem = XDocument.Load(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Styles",
+            "DesignSystem.axaml"));
+        var pulseStyle = Assert.Single(
+            designSystem.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && AttributeValue(element, "Selector")
+                    == "icons|SymbolIcon.AgentToolbarActivityPulse.running");
+        var animation = Assert.Single(
+            pulseStyle.Descendants(),
+            element => element.Name.LocalName == "Animation");
+        Assert.Equal("0:0:2.5", AttributeValue(animation, "Duration"));
+        Assert.Equal(
+            ["0%", "50%", "100%"],
+            animation.Elements()
+                .Where(element => element.Name.LocalName == "KeyFrame")
+                .Select(element => AttributeValue(element, "Cue")));
+    }
+
+    [Fact]
     public void Main_window_delegates_the_workspace_route_to_one_named_view()
     {
         var mainWindow = LoadView("MainWindow");
@@ -143,6 +184,13 @@ public sealed class WorkspaceViewContractTests
         Assert.Null(AttributeValue(tabStrip, "ShowHomeTab"));
         var workspacesMenu = FindNamedElement(root, "WorkspacesMenuButton");
         Assert.Equal("Workspaces", AttributeValue(workspacesMenu, "ToolTip.Tip"));
+        var workspacesMenuIcon = Assert.Single(
+            workspacesMenu.Elements(),
+            element => element.Name.LocalName == "Panel");
+        Assert.DoesNotContain(
+            workspacesMenuIcon.Descendants(),
+            element => element.Name.LocalName == "SymbolIcon"
+                && AttributeValue(element, "Symbol") == "Bot");
         Assert.Single(
             workspacesMenu.Descendants(),
             element => element.Name.LocalName == "ItemsControl"

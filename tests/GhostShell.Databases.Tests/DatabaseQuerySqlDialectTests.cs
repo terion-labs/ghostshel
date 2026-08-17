@@ -186,16 +186,23 @@ public sealed class DatabaseQuerySqlDialectTests
                 Limit: 7));
 
         Assert.Equal("SELECT raw_name, raw_score\nFROM source_rows;\r\n\t", sourceSql);
+        var queryAlias = expectedAlias.StartsWith("AS ", StringComparison.Ordinal)
+            ? expectedAlias[3..]
+            : expectedAlias;
+        var expectedProjection = $"{queryAlias}.{expectedFilterColumn}, "
+            + $"{queryAlias}.{expectedSortColumn}";
         if (driverId == "duckdb")
         {
             Assert.StartsWith(
                 $"WITH \"__ghostshell_query\" AS MATERIALIZED (\n{sourceBody}\n)\n"
-                + "SELECT * FROM \"__ghostshell_query\"",
+                + $"SELECT {expectedProjection} FROM \"__ghostshell_query\"",
                 command.Sql);
         }
         else
         {
-            Assert.StartsWith($"SELECT * FROM ({sourceBody}\n) {expectedAlias}", command.Sql);
+            Assert.StartsWith(
+                $"SELECT {expectedProjection} FROM ({sourceBody}\n) {expectedAlias}",
+                command.Sql);
         }
         Assert.Contains(
             $"WHERE {expectedFilterColumn} = {expectedMarker}",
@@ -248,7 +255,7 @@ public sealed class DatabaseQuerySqlDialectTests
             SELECT "ghostshell_base".*, "ghostshell_base"."score" + 1 AS "ghostshell_expression"
             FROM (SELECT * FROM "main"."viewer_rows" LIMIT 500 OFFSET 0) AS "ghostshell_base"
             )
-            SELECT * FROM "__ghostshell_query" ORDER BY "id" DESC LIMIT 201 OFFSET 0;
+            SELECT "__ghostshell_query"."id", "__ghostshell_query"."code", "__ghostshell_query"."score", "__ghostshell_query"."ghostshell_expression" FROM "__ghostshell_query" ORDER BY "id" DESC LIMIT 201 OFFSET 0;
             """,
             command.Sql);
 

@@ -262,6 +262,7 @@ public sealed class GovernedAgentCapabilityRequestTests
             TargetTitle: request.TargetTitle,
             ContextItems: ImmutableArray<GovernedAgentContextItem>.Empty,
             Messages: Array.Empty<AgentChatMessage>(),
+            EffectivePolicy: AgentPolicy.Default,
             ProvisionalAssistantText: string.Empty,
             Status: "Waiting",
             PendingCapabilityRequest: request);
@@ -283,6 +284,7 @@ public sealed class GovernedAgentCapabilityRequestTests
             TargetTitle: request.TargetTitle,
             ContextItems: ImmutableArray<GovernedAgentContextItem>.Empty,
             Messages: Array.Empty<AgentChatMessage>(),
+            EffectivePolicy: AgentPolicy.Default,
             ProvisionalAssistantText: string.Empty,
             Status: "Ready",
             PendingCapabilityRequest: request);

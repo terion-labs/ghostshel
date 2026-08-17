@@ -1462,13 +1462,14 @@ public sealed class AgentMcpSessionHost :
         }
 
         var permit = ((AgentPermitResult.Granted)permitResult).Permit;
-        if (permit.Authorization.Source
-            != AgentAuthorizationSource.HumanApproval)
+        if (permit.Authorization.Source is not (
+                AgentAuthorizationSource.HumanApproval
+                or AgentAuthorizationSource.YoloPolicy))
         {
             return await CompleteFailureAsync(
                     permit,
                     "mcp_human_approval_required",
-                    "MCP tools require exact human approval.")
+                    "MCP tools require exact human approval or current full access.")
                 .ConfigureAwait(false);
         }
 
@@ -2186,8 +2187,17 @@ public sealed class AgentMcpSessionHost :
 
         public bool ReferencesSecret(SecretRef reference) =>
             _profiles.Any(profile =>
-                profile.Stored.Value.Environment.Any(variable =>
-                    variable.Reference == reference));
+                profile.Stored.Value.Transport switch
+                {
+                    McpServerTransport.Stdio stdio =>
+                        stdio.Environment.Any(variable =>
+                            variable.Reference == reference),
+                    McpServerTransport.StreamableHttp http =>
+                        http.Headers.Any(header =>
+                            header.Reference == reference),
+                    _ => throw new InvalidOperationException(
+                        "The MCP transport is unsupported."),
+                });
 
         public bool HasCurrentProfiles(
             McpCatalogState state) =>

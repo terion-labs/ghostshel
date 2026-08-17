@@ -34,9 +34,8 @@ trusted mutation under a distinct `BrowserInteraction` capability, separate
 from `BrowserData` observations and `BrowserNavigation` mutations. Its default
 permission is `Ask`. The broker binds one approval to the exact provider-visible
 reference and non-negative document revision. The session-host domain gate
-accepts only `HumanApproval` for click; `AutoPolicy`, `YoloPolicy`, and any
-other source fail closed even if a future broker rule or stored policy would
-otherwise allow them.
+accepts `HumanApproval` or explicitly confirmed run-local `YoloPolicy` for
+click; `AutoPolicy` and every other source fail closed.
 
 Click remains in ADR 0026's explicit full-automation candidate profile. The
 production desktop does not advertise it while the exact-object registry and
@@ -130,10 +129,13 @@ confined to the old adapter. If adapter, dispatcher, or receipt recovery cannot
 be confirmed, the surface remains unavailable rather than permitting another
 interaction.
 
-Every `browser_interaction_outcome_unknown` also revokes and quarantines the
-agent run before provider continuation, including paths where adapter recovery
-cannot be confirmed. The model therefore cannot retry an effect whose outcome
-is unknown.
+Every `browser_interaction_outcome_unknown` is committed as a non-retryable
+failed tool result. GhostSHELL skips the remainder of the stale provider batch,
+then lets the provider inspect the replacement/current browser state before it
+chooses another action. The native adapter may remain quarantined or
+unavailable when recovery cannot be confirmed, but ordinary interaction
+uncertainty does not destroy the conversation or revoke unrelated run
+authority.
 
 Interaction-specific provider-visible stable codes include
 `browser_element_reference_stale`,

@@ -64,6 +64,15 @@ public sealed class AgentCapabilityProtocolTests
     [InlineData(AgentCapability.McpTools, "mcp_tools")]
     [InlineData(AgentCapability.SecretUse, "secret_use")]
     [InlineData(AgentCapability.BrowserInteraction, "browser_interaction")]
+    [InlineData(AgentCapability.BrowserScripting, "browser_scripting")]
+    [InlineData(AgentCapability.BrowserDiagnostics, "browser_diagnostics")]
+    [InlineData(AgentCapability.DatabaseRead, "database_read")]
+    [InlineData(AgentCapability.DatabaseWrite, "database_write")]
+    [InlineData(AgentCapability.DockerData, "docker_data")]
+    [InlineData(AgentCapability.SystemData, "system_data")]
+    [InlineData(AgentCapability.ProcessData, "process_data")]
+    [InlineData(AgentCapability.ArtifactTransfer, "artifact_transfer")]
+    [InlineData(AgentCapability.WorkspaceLayout, "workspace_layout")]
     public void Capability_tokens_are_stable_protocol_values(
         AgentCapability capability,
         string expectedToken)

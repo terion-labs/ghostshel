@@ -11,13 +11,22 @@ public sealed class AgentTerminalActionComposerTests
 
     [Theory]
     [InlineData(TerminalOperation.ReadScreen, BuiltInAgentTools.TerminalReadScreen)]
+    [InlineData(TerminalOperation.ReadScreenDiff, BuiltInAgentTools.TerminalReadScreenDiff)]
+    [InlineData(TerminalOperation.FindOnScreen, BuiltInAgentTools.TerminalFindOnScreen)]
+    [InlineData(TerminalOperation.ReadScrollback, BuiltInAgentTools.TerminalReadScrollback)]
+    [InlineData(TerminalOperation.FindScrollback, BuiltInAgentTools.TerminalFind)]
+    [InlineData(TerminalOperation.ScrollViewport, BuiltInAgentTools.TerminalScrollViewport)]
     [InlineData(TerminalOperation.SendText, BuiltInAgentTools.TerminalSendText)]
     [InlineData(TerminalOperation.Paste, BuiltInAgentTools.TerminalPaste)]
+    [InlineData(TerminalOperation.SubmitText, BuiltInAgentTools.TerminalSubmitText)]
     [InlineData(TerminalOperation.SendKey, BuiltInAgentTools.TerminalSendKeys)]
     [InlineData(TerminalOperation.SendChord, BuiltInAgentTools.TerminalSendChord)]
     [InlineData(TerminalOperation.SendMouse, BuiltInAgentTools.TerminalSendMouse)]
     [InlineData(TerminalOperation.WaitForText, BuiltInAgentTools.TerminalWait)]
+    [InlineData(TerminalOperation.WaitForDelay, BuiltInAgentTools.TerminalWait)]
     [InlineData(TerminalOperation.WaitForChange, BuiltInAgentTools.TerminalWait)]
+    [InlineData(TerminalOperation.WaitForPromptReady, BuiltInAgentTools.TerminalWait)]
+    [InlineData(TerminalOperation.WaitForCommandFinished, BuiltInAgentTools.TerminalWait)]
     [InlineData(TerminalOperation.WaitForStable, BuiltInAgentTools.TerminalWait)]
     [InlineData(TerminalOperation.Interrupt, BuiltInAgentTools.TerminalInterrupt)]
     [InlineData(TerminalOperation.Resize, BuiltInAgentTools.TerminalResize)]
@@ -51,15 +60,24 @@ public sealed class AgentTerminalActionComposerTests
         Assert.True(typeof(AgentTerminalRequest).IsAbstract);
         Assert.Equal(
             [
+                "FindOnScreen",
+                "FindScrollback",
                 "Interrupt",
                 "Paste",
                 "ReadScreen",
+                "ReadScreenDiff",
+                "ReadScrollback",
                 "Resize",
+                "ScrollViewport",
                 "SendChord",
                 "SendKey",
                 "SendMouse",
                 "SendText",
+                "SubmitText",
                 "WaitForChange",
+                "WaitForCommandFinished",
+                "WaitForDelay",
+                "WaitForPromptReady",
                 "WaitForStable",
                 "WaitForText",
             ],
@@ -86,6 +104,12 @@ public sealed class AgentTerminalActionComposerTests
             (
                 SendKey(TerminalKey.Enter, TerminalKeyModifiers.None),
                 SendKey(TerminalKey.Enter, TerminalKeyModifiers.Control)),
+            (
+                SendKey(TerminalKey.Backspace, TerminalKeyModifiers.None),
+                SendKey(
+                    TerminalKey.Backspace,
+                    TerminalKeyModifiers.None,
+                    repeatCount: 12)),
             (
                 SendChord('d', TerminalCharacterChordModifier.Control),
                 SendChord('r', TerminalCharacterChordModifier.Control)),
@@ -115,6 +139,12 @@ public sealed class AgentTerminalActionComposerTests
                 WaitForStable(TimeSpan.FromMilliseconds(250), TimeSpan.FromSeconds(2)),
                 WaitForStable(TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(2))),
             (
+                WaitForPromptReady(5, TimeSpan.FromSeconds(2)),
+                WaitForPromptReady(6, TimeSpan.FromSeconds(2))),
+            (
+                WaitForCommandFinished(5, TimeSpan.FromSeconds(2)),
+                WaitForCommandFinished(5, TimeSpan.FromSeconds(3))),
+            (
                 Resize(new AttachmentId("attachment-1"), columns: 80),
                 Resize(new AttachmentId("attachment-1"), columns: 81)),
             (
@@ -139,6 +169,7 @@ public sealed class AgentTerminalActionComposerTests
     [Theory]
     [InlineData(TerminalOperation.SendText)]
     [InlineData(TerminalOperation.Paste)]
+    [InlineData(TerminalOperation.SubmitText)]
     [InlineData(TerminalOperation.SendKey)]
     [InlineData(TerminalOperation.SendChord)]
     [InlineData(TerminalOperation.SendMouse)]
@@ -309,6 +340,9 @@ public sealed class AgentTerminalActionComposerTests
                 (argument.Name, argument.DisplayValue)),
             argument => Assert.Equal(
                 ("modifiers", "Shift, Control"),
+                (argument.Name, argument.DisplayValue)),
+            argument => Assert.Equal(
+                ("expected_content_revision", "0"),
                 (argument.Name, argument.DisplayValue)));
     }
 
@@ -554,7 +588,8 @@ public sealed class AgentTerminalActionComposerTests
                 TerminalContext(),
                 new AgentTerminalRequest.SendMouse(
                     Session(),
-                    null!)));
+                    null!,
+                    ExpectedContentRevision: 0)));
     }
 
     [Fact]
@@ -567,6 +602,30 @@ public sealed class AgentTerminalActionComposerTests
 
         Assert.Equal("Local terminal", action.Proposal.Presentation.Host);
         Assert.Equal("<not reported>", action.Proposal.Presentation.WorkingDirectory);
+    }
+
+    [Fact]
+    public void Semantic_wait_binds_condition_baseline_and_timeout_in_canonical_order()
+    {
+        var action = new AgentTerminalActionComposer().Prepare(
+            Envelope(),
+            TerminalContext(),
+            WaitForCommandFinished(7, TimeSpan.FromMilliseconds(1250)));
+
+        Assert.Collection(
+            action.Proposal.Presentation.Arguments,
+            argument => Assert.Equal(
+                ("session_id", "session-1"),
+                (argument.Name, argument.DisplayValue)),
+            argument => Assert.Equal(
+                ("condition", "command_finished"),
+                (argument.Name, argument.DisplayValue)),
+            argument => Assert.Equal(
+                ("after_shell_event_sequence", "7"),
+                (argument.Name, argument.DisplayValue)),
+            argument => Assert.Equal(
+                ("timeout", "00:00:01.2500000"),
+                (argument.Name, argument.DisplayValue)));
     }
 
     [Fact]
@@ -959,8 +1018,37 @@ public sealed class AgentTerminalActionComposerTests
         operation switch
         {
             TerminalOperation.ReadScreen => new AgentTerminalRequest.ReadScreen(Session()),
+            TerminalOperation.ReadScreenDiff =>
+                new AgentTerminalRequest.ReadScreenDiff(
+                    Session(),
+                    new TerminalScreenDiffInput(7, MaximumRowCount: 24)),
+            TerminalOperation.FindOnScreen =>
+                new AgentTerminalRequest.FindOnScreen(
+                    Session(),
+                    new TerminalScreenFindInput("ready", MaximumMatchCount: 4)),
+            TerminalOperation.ReadScrollback =>
+                new AgentTerminalRequest.ReadScrollback(
+                    Session(),
+                    new TerminalScrollbackReadInput(
+                        TerminalScrollbackReadOrigin.Bottom,
+                        TerminalScrollbackReadInput.SmallRead)),
+            TerminalOperation.FindScrollback =>
+                new AgentTerminalRequest.FindScrollback(
+                    Session(),
+                    new TerminalScrollbackFindInput(
+                        "ready",
+                        TerminalScrollbackFindDirection.Forward,
+                        MaximumMatchCount: 4)),
+            TerminalOperation.ScrollViewport =>
+                new AgentTerminalRequest.ScrollViewport(
+                    Session(),
+                    new TerminalViewportScrollInput(
+                        TerminalViewportScrollDirection.Up,
+                        TerminalViewportScrollUnit.Page,
+                        Amount: 1)),
             TerminalOperation.SendText => SendText("echo safe"),
             TerminalOperation.Paste => Paste("first\r\nsecond"),
+            TerminalOperation.SubmitText => SubmitText("echo submitted"),
             TerminalOperation.SendKey => SendKey(
                 TerminalKey.Enter,
                 TerminalKeyModifiers.Control),
@@ -976,7 +1064,19 @@ public sealed class AgentTerminalActionComposerTests
             TerminalOperation.WaitForText => WaitForText(
                 "ready",
                 TimeSpan.FromSeconds(2)),
+            TerminalOperation.WaitForDelay =>
+                new AgentTerminalRequest.WaitForDelay(
+                    new TerminalWaitForDelayRequest(
+                        Session(),
+                        new TerminalWaitForDelayInput(
+                            TimeSpan.FromHours(1)))),
             TerminalOperation.WaitForChange => WaitForChange(
+                5,
+                TimeSpan.FromSeconds(2)),
+            TerminalOperation.WaitForPromptReady => WaitForPromptReady(
+                5,
+                TimeSpan.FromSeconds(2)),
+            TerminalOperation.WaitForCommandFinished => WaitForCommandFinished(
                 5,
                 TimeSpan.FromSeconds(2)),
             TerminalOperation.WaitForStable => WaitForStable(
@@ -999,12 +1099,18 @@ public sealed class AgentTerminalActionComposerTests
             Session(),
             text);
 
+    private static AgentTerminalRequest SubmitText(string text) =>
+        new AgentTerminalRequest.SubmitText(
+            Session(),
+            text);
+
     private static AgentTerminalRequest SendKey(
         TerminalKey key,
-        TerminalKeyModifiers modifiers) =>
+        TerminalKeyModifiers modifiers,
+        int repeatCount = 1) =>
         new AgentTerminalRequest.SendKey(
             Session(),
-            new TerminalKeyStroke(key, modifiers));
+            new TerminalKeyStroke(key, modifiers, repeatCount));
 
     private static AgentTerminalRequest SendChord(
         char character,
@@ -1030,7 +1136,8 @@ public sealed class AgentTerminalActionComposerTests
         TerminalKeyModifiers modifiers) =>
         new AgentTerminalRequest.SendMouse(
             sessionId,
-            new TerminalMouseInput(button, kind, column, row, modifiers));
+            new TerminalMouseInput(button, kind, column, row, modifiers),
+            ExpectedContentRevision: 0);
 
     private static AgentTerminalRequest WaitForText(
         string text,
@@ -1055,6 +1162,26 @@ public sealed class AgentTerminalActionComposerTests
             new TerminalWaitForStableRequest(
                 Session(),
                 new TerminalWaitForStableInput(stableFor, timeout)));
+
+    private static AgentTerminalRequest WaitForPromptReady(
+        long afterShellEventSequence,
+        TimeSpan timeout) =>
+        new AgentTerminalRequest.WaitForPromptReady(
+            new TerminalWaitForPromptReadyRequest(
+                Session(),
+                new TerminalWaitForPromptReadyInput(
+                    afterShellEventSequence,
+                    timeout)));
+
+    private static AgentTerminalRequest WaitForCommandFinished(
+        long afterShellEventSequence,
+        TimeSpan timeout) =>
+        new AgentTerminalRequest.WaitForCommandFinished(
+            new TerminalWaitForCommandFinishedRequest(
+                Session(),
+                new TerminalWaitForCommandFinishedInput(
+                    afterShellEventSequence,
+                    timeout)));
 
     private static AgentTerminalRequest Interrupt() =>
         new AgentTerminalRequest.Interrupt(Session());
@@ -1226,11 +1353,16 @@ public sealed class AgentTerminalActionComposerTests
     private static string[] AllTerminalCapabilities() =>
     [
         SessionCapabilities.TerminalReadScreen,
+        SessionCapabilities.TerminalScrollback,
+        SessionCapabilities.TerminalScrollbackRead,
+        SessionCapabilities.TerminalScrollbackFind,
         SessionCapabilities.TerminalWrite,
         SessionCapabilities.TerminalPaste,
+        SessionCapabilities.TerminalEnter,
         SessionCapabilities.TerminalSendKeys,
         SessionCapabilities.TerminalSendChord,
         SessionCapabilities.TerminalMouse,
+        SessionCapabilities.TerminalRevisionBoundMouse,
         SessionCapabilities.TerminalWait,
         SessionCapabilities.TerminalInterrupt,
         SessionCapabilities.TerminalResize,
@@ -1252,13 +1384,22 @@ public sealed class AgentTerminalActionComposerTests
     public enum TerminalOperation
     {
         ReadScreen,
+        ReadScreenDiff,
+        FindOnScreen,
+        ReadScrollback,
+        FindScrollback,
+        ScrollViewport,
         SendText,
         Paste,
+        SubmitText,
         SendKey,
         SendChord,
         SendMouse,
+        WaitForDelay,
         WaitForText,
         WaitForChange,
+        WaitForPromptReady,
+        WaitForCommandFinished,
         WaitForStable,
         Interrupt,
         Resize,

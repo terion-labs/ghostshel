@@ -16,6 +16,10 @@ public interface IFilePanelSession : IPanelSession
         FilePanelListRequest request,
         CancellationToken cancellationToken);
 
+    IAsyncEnumerable<FilePanelResult<FilePanelEntry>> SearchAsync(
+        FilePanelSearchRequest request,
+        CancellationToken cancellationToken);
+
     ValueTask<FilePanelResult<FilePanelEntry>> StatAsync(
         FilePanelLocation location,
         CancellationToken cancellationToken);

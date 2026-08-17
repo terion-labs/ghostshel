@@ -329,7 +329,7 @@ public sealed partial class GovernedAgentRuntimeTests
     }
 
     [Fact]
-    public async Task FailedYoloDowngradeCancelsTheRunAndClearsVisibleProgress()
+    public async Task FailedFullAccessDowngradeKeepsTheActiveTurnRecoverable()
     {
         var provider = new ProviderRound((call, _) => call switch
         {
@@ -368,14 +368,23 @@ public sealed partial class GovernedAgentRuntimeTests
 
         Assert.False(downgrade.IsAccepted);
         Assert.Equal(
-            GovernedAgentState.Cancelled,
+            GovernedAgentState.StreamingProvider,
             fixture.Runtime.Snapshot.State);
-        Assert.Null(fixture.Runtime.Snapshot.CurrentProgress);
-        var sendResult = await sending.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.False(sendResult.IsSuccess);
-        Assert.Equal("agent_cancelled", sendResult.Code);
         Assert.Equal(
-            GovernedAgentState.Cancelled,
+            new GovernedAgentProgress("Inspecting services", 40),
+            fixture.Runtime.Snapshot.CurrentProgress);
+        Assert.False(sending.IsCompleted);
+
+        fixture.Audit.FailurePredicate = null;
+        var retried = await fixture.Runtime.DisableYoloAsync(
+            CancellationToken.None);
+        provider.ReleaseBlockedCall.TrySetResult();
+        var sendResult = await sending.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(retried.IsAccepted);
+        Assert.True(sendResult.IsSuccess);
+        Assert.Equal(
+            GovernedAgentState.Ready,
             fixture.Runtime.Snapshot.State);
         Assert.Null(fixture.Runtime.Snapshot.CurrentProgress);
     }

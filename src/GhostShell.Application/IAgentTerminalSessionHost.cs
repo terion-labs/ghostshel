@@ -26,6 +26,18 @@ public abstract record AgentTerminalActionResult
     public sealed record Screen(TerminalScreenSnapshot Snapshot)
         : AgentTerminalActionResult;
 
+    public sealed record ScreenDiff(TerminalScreenDiffResult Result)
+        : AgentTerminalActionResult;
+
+    public sealed record Scrollback(TerminalScrollbackSnapshot Snapshot)
+        : AgentTerminalActionResult;
+
+    public sealed record Find(TerminalScrollbackFindResult Result)
+        : AgentTerminalActionResult;
+
+    public sealed record ScreenFind(TerminalScreenFindResult Result)
+        : AgentTerminalActionResult;
+
     public sealed record Wait(TerminalWaitOutcome Outcome)
         : AgentTerminalActionResult;
 }

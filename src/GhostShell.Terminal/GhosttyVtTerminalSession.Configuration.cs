@@ -323,7 +323,13 @@ internal sealed partial class GhosttyVtTerminalSession
             var body = notification->Body.CopyUtf8();
             if (GCHandle.FromIntPtr(userdata).Target is GhosttyVtTerminalSession session)
             {
-                session.PublishNotification(PanelNotificationKind.Notification, title, body);
+                if (!session.TryCaptureInteractiveStateNotification(
+                        title,
+                        body,
+                        DateTimeOffset.UtcNow))
+                {
+                    session.PublishNotification(PanelNotificationKind.Notification, title, body);
+                }
             }
         }
         catch

@@ -26,8 +26,6 @@ internal static class WorkspaceGraphAgentToolParser
 
         return proposal.ToolName switch
         {
-            BuiltInAgentTools.WorkspaceList when properties.Count == 0 =>
-                Parsed(new WorkspaceGraphAgentIntent.WorkspaceList()),
             BuiltInAgentTools.WorkspaceInspect when properties.Count == 0 =>
                 Parsed(new WorkspaceGraphAgentIntent.WorkspaceInspect()),
             BuiltInAgentTools.TabList =>
@@ -86,8 +84,7 @@ internal static class WorkspaceGraphAgentToolParser
 
     private static bool IsKnownTool(string toolName) =>
         toolName is
-            BuiltInAgentTools.WorkspaceList
-            or BuiltInAgentTools.WorkspaceInspect
+            BuiltInAgentTools.WorkspaceInspect
             or BuiltInAgentTools.TabList
             or BuiltInAgentTools.PanelList;
 

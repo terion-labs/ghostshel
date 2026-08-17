@@ -681,7 +681,10 @@ public sealed partial class GovernedAgentRuntimeTests
             new(
                 new AiProviderProfileId("provider-1"),
                 message,
-                Context.Target);
+                Context.Target,
+                Runtime.Snapshot.EffectivePolicy!.SelectPrimaryModel(
+                    "provider-1",
+                    ProviderResolver.Binding.DefaultModel));
 
         public async ValueTask DisposeAsync()
         {

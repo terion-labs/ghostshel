@@ -17,6 +17,7 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
     private readonly object _gate = new();
     private readonly TerminalLaunchRequest _launch;
     private readonly IPortablePtyConnection _pty;
+    private readonly bool _shellIntegrationApplied;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Channel<QueuedTerminalInput> _writes =
         Channel.CreateBounded<QueuedTerminalInput>(
@@ -89,6 +90,9 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
     private long _renderedContentRevision = -1;
     private long _deliveredRenderRevision = -1;
     private long _commandBoundarySequence;
+    private long _interactiveStateSequence;
+    private TerminalInteractiveStateSnapshot? _interactiveState;
+    private TerminalScreenSnapshot? _lastObservedScreen;
     private TerminalShellActivityState _shellActivity;
 
     internal GhosttyVtTerminalSession(
@@ -96,11 +100,13 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
         TerminalLaunchRequest launch,
         IPortablePtyConnection pty,
         int initialColumns,
-        int initialRows)
+        int initialRows,
+        bool shellIntegrationApplied)
     {
         Id = id;
         _launch = launch ?? throw new ArgumentNullException(nameof(launch));
         _pty = pty ?? throw new ArgumentNullException(nameof(pty));
+        _shellIntegrationApplied = shellIntegrationApplied;
         _renderProfile = launch.RenderProfile ?? CreateFallbackProfile();
         _columns = initialColumns;
         _rows = initialRows;
@@ -191,6 +197,9 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
         GhostShell.Application.SessionCapabilities.TerminalWait,
         GhostShell.Application.SessionCapabilities.TerminalMouse,
         GhostShell.Application.SessionCapabilities.TerminalScrollback,
+        GhostShell.Application.SessionCapabilities.TerminalScrollbackRead,
+        GhostShell.Application.SessionCapabilities.TerminalScrollbackFind,
+        GhostShell.Application.SessionCapabilities.TerminalRevisionBoundMouse,
         GhostShell.Application.SessionCapabilities.TerminalFind,
         GhostShell.Application.SessionCapabilities.TerminalSelection,
         GhostShell.Application.SessionCapabilities.TerminalPaste,
@@ -315,7 +324,21 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_closed, this);
-            return ValueTask.FromResult(BuildScreenSnapshotUnsafe(BuildRenderFrameUnsafe()));
+            var snapshot = BuildScreenSnapshotUnsafe(BuildRenderFrameUnsafe());
+            return ValueTask.FromResult(snapshot);
+        }
+    }
+
+    public ValueTask<TerminalScreenSnapshot> ObserveScreenAsync(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_closed, this);
+            var snapshot = BuildScreenSnapshotUnsafe(BuildRenderFrameUnsafe());
+            _lastObservedScreen = snapshot;
+            return ValueTask.FromResult(snapshot);
         }
     }
 
@@ -324,7 +347,16 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
         CancellationToken cancellationToken) =>
         TerminalAutomationWaiter.WaitForTextAsync(
             input,
-            ReadScreenAsync,
+            ObserveScreenAsync,
+            SnapshotAsync,
+            cancellationToken);
+
+    public ValueTask<TerminalWaitOutcome> WaitForDelayAsync(
+        TerminalWaitForDelayInput input,
+        CancellationToken cancellationToken) =>
+        TerminalAutomationWaiter.WaitForDelayAsync(
+            input,
+            ObserveScreenAsync,
             SnapshotAsync,
             cancellationToken);
 
@@ -333,7 +365,7 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
         CancellationToken cancellationToken) =>
         TerminalAutomationWaiter.WaitForChangeAsync(
             input,
-            ReadScreenAsync,
+            ObserveScreenAsync,
             SnapshotAsync,
             cancellationToken);
 
@@ -342,9 +374,39 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
         CancellationToken cancellationToken) =>
         TerminalAutomationWaiter.WaitForStableAsync(
             input,
-            ReadScreenAsync,
+            ObserveScreenAsync,
             SnapshotAsync,
             cancellationToken);
+
+    public ValueTask<TerminalWaitOutcome> WaitForPromptReadyAsync(
+        TerminalWaitForPromptReadyInput input,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        cancellationToken.ThrowIfCancellationRequested();
+        return _shellIntegrationApplied
+            ? TerminalAutomationWaiter.WaitForPromptReadyAsync(
+                input,
+                ObserveScreenAsync,
+                SnapshotAsync,
+                cancellationToken)
+            : ValueTask.FromResult(TerminalWaitOutcome.Unsupported());
+    }
+
+    public ValueTask<TerminalWaitOutcome> WaitForCommandFinishedAsync(
+        TerminalWaitForCommandFinishedInput input,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        cancellationToken.ThrowIfCancellationRequested();
+        return _shellIntegrationApplied
+            ? TerminalAutomationWaiter.WaitForCommandFinishedAsync(
+                input,
+                ObserveScreenAsync,
+                SnapshotAsync,
+                cancellationToken)
+            : ValueTask.FromResult(TerminalWaitOutcome.Unsupported());
+    }
 
     public ValueTask<PanelSessionSnapshot> SnapshotAsync(CancellationToken cancellationToken)
     {
@@ -442,6 +504,34 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
             title,
             body,
             DateTimeOffset.UtcNow));
+
+    internal bool TryCaptureInteractiveStateNotification(
+        string title,
+        string body,
+        DateTimeOffset observedAtUtc)
+    {
+        if (!TerminalInteractiveStateProtocol.IsProtocolNotification(title))
+        {
+            return false;
+        }
+
+        lock (_gate)
+        {
+            if (TerminalInteractiveStateProtocol.TryParse(
+                    body,
+                    _interactiveStateSequence,
+                    observedAtUtc,
+                    out var update))
+            {
+                _interactiveStateSequence = update.Sequence;
+                _interactiveState = update.Snapshot;
+            }
+        }
+
+        // Protocol messages are state transport, not user notifications. A
+        // malformed one is consumed and ignored instead of becoming UI noise.
+        return true;
+    }
 
     public async ValueTask<PanelCloseOutcome> CloseAsync(
         PanelCloseMode mode,
@@ -925,7 +1015,7 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
 
     private sealed class QueuedTerminalInput
     {
-        private readonly TaskCompletionSource _completion =
+        private readonly TaskCompletionSource<TerminalRevisionBoundMouseOutcome> _completion =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         internal QueuedTerminalInput(
@@ -938,15 +1028,33 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
             ProtocolResponse = protocolResponse;
         }
 
+        internal QueuedTerminalInput(
+            TerminalMouseInput mouseInput,
+            long expectedContentRevision,
+            CancellationToken cancellationToken)
+        {
+            RevisionBoundMouseInput = mouseInput;
+            ExpectedContentRevision = expectedContentRevision;
+            Bytes = [];
+            CancellationToken = cancellationToken;
+        }
+
         internal byte[] Bytes { get; }
 
         internal CancellationToken CancellationToken { get; }
 
         internal bool ProtocolResponse { get; }
 
-        internal Task Completion => _completion.Task;
+        internal TerminalMouseInput? RevisionBoundMouseInput { get; }
 
-        internal void Complete() => _completion.TrySetResult();
+        internal long ExpectedContentRevision { get; }
+
+        internal Task<TerminalRevisionBoundMouseOutcome> Completion => _completion.Task;
+
+        internal void Complete() => Complete(TerminalRevisionBoundMouseOutcome.Sent);
+
+        internal void Complete(TerminalRevisionBoundMouseOutcome outcome) =>
+            _completion.TrySetResult(outcome);
 
         internal void Cancel() => Cancel(CancellationToken);
 

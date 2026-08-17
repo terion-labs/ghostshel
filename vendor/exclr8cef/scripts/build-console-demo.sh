@@ -9,18 +9,6 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJ="${REPO_ROOT}/samples/Exclr8Cef.ConsoleDemo"
 NATIVE_DEMO="${REPO_ROOT}/native/build/demo/Release/exclr8cef_demo.app"
-SHIM_DYLIB="${REPO_ROOT}/native/build/shim/libexclr8cef.dylib"
-
-if [ ! -d "${NATIVE_DEMO}" ]; then
-  echo "Native demo bundle not found at ${NATIVE_DEMO}" >&2
-  echo "Run: cmake --build native/build" >&2
-  exit 1
-fi
-
-if [ ! -f "${SHIM_DYLIB}" ]; then
-  echo "Shim dylib not found at ${SHIM_DYLIB}" >&2
-  exit 1
-fi
 
 # Detect host RID.
 case "$(uname -s)/$(uname -m)" in
@@ -28,6 +16,18 @@ case "$(uname -s)/$(uname -m)" in
   Darwin/x86_64) RID="osx-x64" ;;
   *) echo "This bundling script targets macOS only" >&2; exit 1 ;;
 esac
+
+if [ -d "${NATIVE_DEMO}" ]; then
+  RUNTIME_ROOT="${NATIVE_DEMO}/Contents/Frameworks"
+else
+  RUNTIME_ROOT="${REPO_ROOT}/../../native/artifacts/${RID}/cef"
+fi
+SHIM_DYLIB="${RUNTIME_ROOT}/libexclr8cef.dylib"
+if [ ! -f "${SHIM_DYLIB}" ]; then
+  echo "Verified CEF runtime not found at ${RUNTIME_ROOT}" >&2
+  echo "Run: ./scripts/build-cef-runtime.sh --rid ${RID}" >&2
+  exit 1
+fi
 
 echo "==> Publishing .NET app for ${RID}..."
 dotnet publish "${PROJ}" \
@@ -82,8 +82,8 @@ PLIST
 
 # Copy CEF framework + all 5 helper bundles + shim dylib into Frameworks/.
 echo "==> Copying CEF framework + helpers + shim..."
-cp -R "${NATIVE_DEMO}/Contents/Frameworks/Chromium Embedded Framework.framework" "${APP}/Contents/Frameworks/"
-for HELPER in "${NATIVE_DEMO}/Contents/Frameworks/"*"Helper"*.app; do
+cp -R "${RUNTIME_ROOT}/Chromium Embedded Framework.framework" "${APP}/Contents/Frameworks/"
+for HELPER in "${RUNTIME_ROOT}/"*"Helper"*.app; do
   cp -R "${HELPER}" "${APP}/Contents/Frameworks/"
 done
 cp "${SHIM_DYLIB}" "${APP}/Contents/Frameworks/"

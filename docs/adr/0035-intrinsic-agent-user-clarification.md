@@ -63,7 +63,7 @@ decide every later action.
 ### Pending-question lifecycle
 
 Each accepted request receives a fresh opaque `AgentQuestionId` and a two-minute
-UTC expiry within the existing three-minute whole-turn lifetime. Runtime state
+UTC expiry. The provider/tool workflow itself has no whole-turn deadline. Runtime state
 transitions from `StreamingProvider` to `AwaitingUserInput`. One pending
 question is exposed in the presentation snapshot; current progress, approval,
 tool activity, and provisional text are cleared atomically. Stop remains

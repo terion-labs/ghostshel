@@ -27,6 +27,7 @@ public sealed partial class CefBrowser : IDisposable
     private bool _canGoForward;
     private double _zoomLevel;
     private bool _closed;
+    private int _closeRequestState;
 
     /// <summary>The currently-loaded URL (kept in sync with CEF's AddressChange).</summary>
     public string Url => _url;
@@ -1364,6 +1365,21 @@ public sealed partial class CefBrowser : IDisposable
     public void Close(bool force = false)
     {
         if (_closed) return;
+
+        var requestedState = force ? 2 : 1;
+        while (true)
+        {
+            var currentState = Volatile.Read(ref _closeRequestState);
+            if (currentState >= requestedState) return;
+            if (Interlocked.CompareExchange(
+                    ref _closeRequestState,
+                    requestedState,
+                    currentState) == currentState)
+            {
+                break;
+            }
+        }
+
         Excef.excef_close_browser(Id, force ? 1 : 0);
         // Actual transition to _closed happens in RaiseClosed (from the
         // OnBeforeClose native callback).

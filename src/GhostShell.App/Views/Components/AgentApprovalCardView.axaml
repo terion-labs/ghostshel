@@ -9,7 +9,6 @@
       Padding="{DynamicResource ShellCardPaddingCompact}"
       Focusable="True"
       KeyboardNavigation.TabNavigation="Local"
-      AutomationProperties.LiveSetting="Assertive"
       AutomationProperties.Name="AI agent action approval request"
       AutomationProperties.HelpText="Review the exact tool, target, host, working directory, material arguments, and input-yield warning before choosing. Approval applies once to this exact action.">
     <StackPanel Spacing="{DynamicResource ShellSpaceSm}">

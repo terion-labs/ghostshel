@@ -84,6 +84,16 @@ public sealed class FilePanelSession : IFilePanelSession
             ? _filePanel.ListAsync(request, cancellationToken)
             : ValueTask.FromResult(Closed<FilePanelPage>());
 
+    public IAsyncEnumerable<FilePanelResult<FilePanelEntry>> SearchAsync(
+        FilePanelSearchRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return IsOpen()
+            ? _filePanel.SearchAsync(request, cancellationToken)
+            : ClosedSearchAsync(cancellationToken);
+    }
+
     public ValueTask<FilePanelResult<FilePanelEntry>> StatAsync(
         FilePanelLocation location,
         CancellationToken cancellationToken) =>
@@ -422,6 +432,15 @@ public sealed class FilePanelSession : IFilePanelSession
             "file_panel_session_closed",
             "The file panel session is closed.",
             false));
+
+    private static async IAsyncEnumerable<FilePanelResult<FilePanelEntry>>
+        ClosedSearchAsync(
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        yield return Closed<FilePanelEntry>();
+        await Task.CompletedTask;
+    }
 
     private static FilePanelResult<T> TransferNotOwned<T>() => FilePanelResult<T>.Failure(
         new FilePanelError(

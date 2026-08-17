@@ -164,14 +164,14 @@ public sealed class AccessibilityClient : CdpDomainClient
 
     private static AxNode ParseNode(JsonElement n)
     {
-        string id          = n.TryGetProperty("nodeId", out var ni) ? ni.GetString() ?? "" : "";
-        bool ignored       = n.TryGetProperty("ignored", out var ig) && ig.GetBoolean();
-        string role        = ReadValueValue(n, "role");
-        string name        = ReadValueValue(n, "name");
+        string id = n.TryGetProperty("nodeId", out var ni) ? ni.GetString() ?? "" : "";
+        bool ignored = n.TryGetProperty("ignored", out var ig) && ig.GetBoolean();
+        string role = ReadValueValue(n, "role");
+        string name = ReadValueValue(n, "name");
         string description = ReadValueValue(n, "description");
-        string value       = ReadValueValue(n, "value");
-        int? backendDom    = n.TryGetProperty("backendDOMNodeId", out var b) ? b.GetInt32() : null;
-        string? parentId   = n.TryGetProperty("parentId", out var pi) ? pi.GetString() : null;
+        string value = ReadValueValue(n, "value");
+        int? backendDom = n.TryGetProperty("backendDOMNodeId", out var b) ? b.GetInt32() : null;
+        string? parentId = n.TryGetProperty("parentId", out var pi) ? pi.GetString() : null;
 
         var childIds = new List<string>();
         if (n.TryGetProperty("childIds", out var ci) && ci.ValueKind == JsonValueKind.Array)
@@ -186,7 +186,7 @@ public sealed class AccessibilityClient : CdpDomainClient
                 if (!prop.TryGetProperty("name", out var pn)) continue;
                 var key = pn.GetString();
                 if (key is null) continue;
-                properties[key] = ReadValue(prop);
+                properties[key] = ReadAxValue(prop);
             }
         }
 
@@ -199,19 +199,25 @@ public sealed class AccessibilityClient : CdpDomainClient
     /// envelope. Returns empty string if absent.
     /// </summary>
     private static string ReadValueValue(JsonElement node, string field)
-        => node.TryGetProperty(field, out var sub) ? ReadValue(sub) : "";
+        => node.TryGetProperty(field, out var sub) ? ReadAxValue(sub) : "";
 
-    private static string ReadValue(JsonElement sub)
+    internal static string ReadAxValue(JsonElement envelope)
     {
-        if (!sub.TryGetProperty("value", out var v)) return "";
-        return v.ValueKind switch
+        if (!envelope.TryGetProperty("value", out var value)) return "";
+        while (value.ValueKind is JsonValueKind.Object
+            && value.TryGetProperty("value", out var nestedValue))
         {
-            JsonValueKind.String                    => v.GetString() ?? "",
-            JsonValueKind.Number                    => v.GetRawText(),
-            JsonValueKind.True                      => "true",
-            JsonValueKind.False                     => "false",
-            JsonValueKind.Array or JsonValueKind.Object => v.GetRawText(),
-            _                                       => ""
+            value = nestedValue;
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString() ?? "",
+            JsonValueKind.Number => value.GetRawText(),
+            JsonValueKind.True => "true",
+            JsonValueKind.False => "false",
+            JsonValueKind.Array or JsonValueKind.Object => value.GetRawText(),
+            _ => ""
         };
     }
 }

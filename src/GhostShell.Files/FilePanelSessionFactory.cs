@@ -24,8 +24,11 @@ public sealed class FilePanelSessionFactory : IFilePanelSessionFactory
     [
         SessionCapabilities.AttachRead,
         SessionCapabilities.FilesList,
+        SessionCapabilities.FilesSearch,
         SessionCapabilities.FilesStat,
         SessionCapabilities.FilesPreview,
+        SessionCapabilities.FilesReadAccessControl,
+        SessionCapabilities.FilesTransfersRead,
         SessionCapabilities.FilesCreateDirectory,
         SessionCapabilities.FilesRename,
         SessionCapabilities.FilesDelete,

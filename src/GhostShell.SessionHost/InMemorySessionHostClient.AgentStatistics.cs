@@ -503,7 +503,7 @@ public sealed partial class InMemorySessionHostClient
         && BuiltInAgentTools.Catalog.TryGet(
             BuiltInAgentTools.StatisticsRead,
             out var descriptor)
-        && descriptor!.Capability == AgentCapability.ProcessControl
+        && descriptor!.Capability == AgentCapability.SystemData
         && descriptor.Risk == AgentActionRisk.Observation;
 
     private static bool AgentStatisticsBindingsMatch(

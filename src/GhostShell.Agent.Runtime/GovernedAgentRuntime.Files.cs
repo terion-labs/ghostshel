@@ -53,6 +53,7 @@ public sealed partial class GovernedAgentRuntime
             : selected.PanelId;
         var isMutation = selected.Intent is
             FileAgentIntent.CreateDirectory
+            or FileAgentIntent.Move
             or FileAgentIntent.Delete;
         var panel = context.Panels.SingleOrDefault(
             candidate => candidate.PanelId == selected.PanelId);
@@ -132,7 +133,8 @@ public sealed partial class GovernedAgentRuntime
         var actionCancellation = BeginToolActivity(
             descriptor,
             action.Proposal.Presentation,
-            cancellationToken);
+            cancellationToken,
+            selected.PanelId);
         HostResult<AgentFileActionResult> hostResult;
         try
         {
@@ -279,6 +281,13 @@ public sealed partial class GovernedAgentRuntime
                 new AgentFileRequest.List(
                     sessionId,
                     list.RelativePath),
+            FileAgentIntent.Search search =>
+                new AgentFileRequest.Search(
+                    sessionId,
+                    search.RelativePath,
+                    search.Query,
+                    search.Scope,
+                    search.MaximumResults),
             FileAgentIntent.Stat stat =>
                 new AgentFileRequest.Stat(
                     sessionId,
@@ -287,14 +296,26 @@ public sealed partial class GovernedAgentRuntime
                 new AgentFileRequest.Read(
                     sessionId,
                     read.RelativePath),
+            FileAgentIntent.AccessRead accessRead =>
+                new AgentFileRequest.AccessRead(
+                    sessionId,
+                    accessRead.RelativePath),
+            FileAgentIntent.Transfers =>
+                new AgentFileRequest.Transfers(sessionId),
             FileAgentIntent.CreateDirectory createDirectory =>
                 new AgentFileRequest.CreateDirectory(
                     sessionId,
                     createDirectory.RelativePath),
+            FileAgentIntent.Move move =>
+                new AgentFileRequest.Move(
+                    sessionId,
+                    move.RelativePath,
+                    move.DestinationRelativePath),
             FileAgentIntent.Delete delete =>
                 new AgentFileRequest.Delete(
                     sessionId,
-                    delete.RelativePath),
+                    delete.RelativePath,
+                    delete.Recursive),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(intent),
                 intent.GetType(),
@@ -304,9 +325,13 @@ public sealed partial class GovernedAgentRuntime
     private static bool IsFileTool(string toolName) =>
         toolName is
             BuiltInAgentTools.FilesList
+            or BuiltInAgentTools.FilesSearch
             or BuiltInAgentTools.FilesStat
             or BuiltInAgentTools.FilesRead
+            or BuiltInAgentTools.FilesAccessRead
+            or BuiltInAgentTools.FilesTransfers
             or BuiltInAgentTools.FilesCreateDirectory
+            or BuiltInAgentTools.FilesMove
             or BuiltInAgentTools.FilesDelete;
 
     private static HostResult<AgentFileActionResult>
@@ -326,13 +351,21 @@ public sealed partial class GovernedAgentRuntime
             AgentToolBuildContext context)
         {
             if (runtime._agentFileHost is null
-                || runtime._fileComposer is null
-                || context.FileMetadata.Count == 0)
+                || runtime._fileComposer is null)
             {
                 return [];
             }
 
-            var eligiblePanels = context.OperationalContext.Panels
+            if (context.Context.Target is AgentTarget.Workspace)
+            {
+                return FileAgentToolSet.ForWorkspace();
+            }
+            if (context.FileMetadata.Count == 0)
+            {
+                return [];
+            }
+
+            var eligiblePanels = context.Context.Panels
                 .Where(panel =>
                     panel.Kind == PanelKind.FileViewer
                     && context.FileMetadata.ContainsKey(panel.PanelId))
@@ -361,14 +394,14 @@ public sealed partial class GovernedAgentRuntime
         private ValueTask<AgentToolResult> ExecuteAsync(
             AgentToolExecutionRequest request,
             CancellationToken cancellationToken) =>
-            runtime.ExecuteOperationalToolContributionAsync(
+            runtime.ExecutePanelToolContributionAsync(
                 request,
                 ExecuteBoundAsync,
                 cancellationToken);
 
         private ValueTask<AgentToolResult> ExecuteBoundAsync(
             AgentToolExecutionRequest request,
-            OperationalAgentToolContext context,
+            AgentPanelToolContext context,
             CancellationToken cancellationToken) =>
             runtime.ExecuteFileProposalAsync(
                 request.Proposal,

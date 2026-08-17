@@ -49,7 +49,8 @@ public sealed class GhosttyVtTerminalSessionFactory : ITerminalSessionFactory
 
         // Shell scripts affect only the child process. The session retains the
         // original launch as its durable connection and recovery identity.
-        var processLaunch = _shellIntegration.Prepare(launch).Launch;
+        var shellIntegration = _shellIntegration.Prepare(launch);
+        var processLaunch = shellIntegration.Launch;
         var pty = await _ptyFactory.SpawnAsync(
                 processLaunch,
                 InitialColumns,
@@ -63,7 +64,8 @@ public sealed class GhosttyVtTerminalSessionFactory : ITerminalSessionFactory
                 launch,
                 pty,
                 InitialColumns,
-                InitialRows);
+                InitialRows,
+                shellIntegration.IsApplied);
         }
         catch
         {

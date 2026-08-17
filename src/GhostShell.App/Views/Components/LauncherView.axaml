@@ -135,6 +135,7 @@
                   IsRunning="{Binding IsOpen}"
                   IsCurrent="{Binding IsInFront}"
                   HasAttention="{Binding HasAttention}"
+                  HasAgentActivity="{Binding HasAgentActivity}"
                   OpenRequested="OnOpenWorkspaceClick"
                   ToolTip.Tip="{Binding Name}"
                   AutomationProperties.Name="{Binding Name}" />

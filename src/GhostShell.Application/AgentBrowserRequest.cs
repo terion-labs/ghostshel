@@ -14,13 +14,25 @@ public abstract record AgentBrowserRequest
 
     public sealed record ReadState(SessionId SessionId) : AgentBrowserRequest;
 
-    public sealed record Snapshot(SessionId SessionId) : AgentBrowserRequest;
+    public sealed record Snapshot(
+        SessionId SessionId,
+        BrowserSnapshotQuery? Query = null) : AgentBrowserRequest;
+
+    public sealed record Wait(BrowserWaitRequest Value) : AgentBrowserRequest;
 
     public sealed record Click(BrowserElementClickRequest Value) : AgentBrowserRequest;
 
     public sealed record Fill(BrowserElementFillRequest Value) : AgentBrowserRequest;
 
     public sealed record Check(BrowserElementCheckRequest Value) : AgentBrowserRequest;
+
+    public sealed record Mouse(BrowserMouseRequest Value) : AgentBrowserRequest;
+
+    public sealed record Key(BrowserKeyRequest Value) : AgentBrowserRequest;
+
+    public sealed record Scroll(BrowserScrollRequest Value) : AgentBrowserRequest;
+
+    public sealed record Evaluate(BrowserEvaluateRequest Value) : AgentBrowserRequest;
 
     public sealed record Navigate(BrowserNavigateRequest Value) : AgentBrowserRequest;
 

@@ -435,10 +435,6 @@ public sealed class BrowserPresentationHost : ContentControl
         long generation,
         CancellationToken cancellationToken)
     {
-        ISessionHostClient? pendingClient = null;
-        ClientId? pendingClientId = null;
-        SessionId? pendingSessionId = null;
-        AttachmentId? pendingAttachmentId = null;
         try
         {
             var client = SessionClient
@@ -450,38 +446,21 @@ public sealed class BrowserPresentationHost : ContentControl
             var clientId = ClientId
                 ?? throw new InvalidOperationException(
                     "The desktop client identity is unavailable.");
-            var renderer = RendererView?.Renderer
+            var rendererView = RendererView
                 ?? throw new InvalidOperationException(
                     "The browser renderer is unavailable.");
             var context = OperationContext.ForHuman(clientId);
-            _ = RequireSuccess(await client.EnsureBrowserSessionAsync(
-                request,
-                context,
-                cancellationToken));
-
-            var attachment = await AttachInteractiveAsync(
+            var attachment = await rendererView.EnsureAttachmentAsync(
                 client,
-                request.SessionId,
                 clientId,
-                renderer.Capabilities,
+                request,
+                CurrentViewport(),
                 cancellationToken);
-            pendingClient = client;
-            pendingClientId = clientId;
-            pendingSessionId = request.SessionId;
-            pendingAttachmentId = attachment.Attachment.Id;
             if (generation != _initializationGeneration)
             {
                 return;
             }
 
-            SubscribeRenderer(renderer);
-            _ = RequireSuccess(await client.AttachBrowserRendererAsync(
-                new AttachBrowserRendererRequest(
-                    request.SessionId,
-                    attachment.Attachment.Id,
-                    renderer),
-                context,
-                cancellationToken));
             var state = RequireSuccess(await client.ReadBrowserStateAsync(
                 request.SessionId,
                 context,
@@ -491,22 +470,7 @@ public sealed class BrowserPresentationHost : ContentControl
                 return;
             }
 
-            _attachedClient = client;
-            _attachedClientId = clientId;
-            _attachedSessionId = request.SessionId;
-            _attachmentId = attachment.Attachment.Id;
-            if (RendererView is { } owner)
-            {
-                owner.Attachment = new BrowserRendererAttachment(
-                    client,
-                    clientId,
-                    request.SessionId,
-                    attachment.Attachment.Id);
-            }
-
-            pendingAttachmentId = null;
-            IsLive = true;
-            ShowFallback = false;
+            AdoptAttachment(rendererView, attachment);
             if (state.IsSuccess && state.Value is { } browserState)
             {
                 ApplyBrowserState(browserState);
@@ -534,67 +498,6 @@ public sealed class BrowserPresentationHost : ContentControl
 
             Trace.TraceError("Unable to attach the browser session: {0}", exception);
         }
-        finally
-        {
-            if (pendingClient is not null
-                && pendingClientId is { } staleClientId
-                && pendingSessionId is { } staleSessionId
-                && pendingAttachmentId is { } staleAttachmentId)
-            {
-                await DetachStaleAttachmentAsync(
-                    pendingClient,
-                    staleClientId,
-                    staleSessionId,
-                    staleAttachmentId);
-            }
-        }
-    }
-
-    private async Task<AttachmentResult> AttachInteractiveAsync(
-        ISessionHostClient client,
-        SessionId sessionId,
-        ClientId clientId,
-        CapabilitySet rendererCapabilities,
-        CancellationToken cancellationToken)
-    {
-        var capabilities = new CapabilitySet(
-        [
-            SessionCapabilities.AttachInteractive,
-            .. rendererCapabilities.Values,
-        ]);
-        HostResult<AttachmentResult>? lastResult = null;
-        for (var attempt = 0; attempt < 8; attempt++)
-        {
-            lastResult = await client.AttachAsync(
-                new AttachSessionRequest(
-                    sessionId,
-                    clientId,
-                    AttachmentKind.Interactive,
-                    CurrentViewport(),
-                    capabilities),
-                OperationContext.ForHuman(clientId),
-                cancellationToken);
-            if (lastResult is HostResult<AttachmentResult>.Success success)
-            {
-                return success.Value;
-            }
-
-            if (lastResult is not HostResult<AttachmentResult>.Failure
-                {
-                    Error.Code: HostErrorCode.CapabilityNotSupported,
-                })
-            {
-                return RequireSuccess(lastResult);
-            }
-
-            await Task.Delay(
-                TimeSpan.FromMilliseconds(20 * (attempt + 1)),
-                cancellationToken);
-        }
-
-        return RequireSuccess(lastResult
-            ?? throw new InvalidOperationException(
-                "The browser attachment did not start."));
     }
 
     private void ApplyOperationResult(
@@ -767,24 +670,4 @@ public sealed class BrowserPresentationHost : ContentControl
         _ => throw new ArgumentOutOfRangeException(nameof(result)),
     };
 
-    private static async ValueTask DetachStaleAttachmentAsync(
-        ISessionHostClient client,
-        ClientId clientId,
-        SessionId sessionId,
-        AttachmentId attachmentId)
-    {
-        try
-        {
-            _ = await client.DetachAsync(
-                new DetachSessionRequest(attachmentId, sessionId),
-                OperationContext.ForHuman(clientId),
-                CancellationToken.None);
-        }
-        catch (Exception exception)
-        {
-            Trace.TraceError(
-                "Unable to detach a superseded browser renderer: {0}",
-                exception);
-        }
-    }
 }

@@ -1818,10 +1818,7 @@ public sealed class SavedScreenRuntimeIdentityTests
             "Recovered tab",
             "SAVED SCREEN",
             historySource: source,
-            agentPolicy: RuntimeAgentPolicyProvenance.Default.WithOverride(
-                policy: null,
-                source.SourceDefinition,
-                revision: 7));
+            agentPolicy: RuntimeAgentPolicyProvenance.Unconfigured);
         tab.AddPanel(new UnavailableRuntimePanelViewModel(
             PanelInstanceId.New(),
             PanelKind.Browser,
@@ -1845,11 +1842,8 @@ public sealed class SavedScreenRuntimeIdentityTests
         var recoveredSource = Assert.IsType<RuntimeHistorySourceRecoveryPayload>(
             Assert.Single(payload!.Workspace!.Tabs).HistorySource);
         Assert.Equal(source, recoveredSource.ToHistorySource());
-        var recoveredPolicy = Assert.IsType<RuntimeAgentPolicyRecoveryPayload>(
-            Assert.Single(payload.Workspace.Tabs).AgentPolicy).ToProvenance();
-        var policySource = Assert.Single(recoveredPolicy.Sources);
-        Assert.Equal(source.SourceDefinition, policySource.Definition);
-        Assert.Equal(7, policySource.Revision);
+        Assert.Null(payload.Workspace.AgentPolicy);
+        Assert.Null(Assert.Single(payload.Workspace.Tabs).AgentPolicy);
 
         var mislabeledVersionOneSnapshot = snapshot with { SchemaVersion = 1 };
         Assert.False(RuntimeWorkspaceRecoveryCodec.TryDeserialize(
@@ -1949,13 +1943,17 @@ public sealed class SavedScreenRuntimeIdentityTests
         var workspaceDefinition = new DefinitionKey(
             DefinitionKind.Workspace,
             "policy-workspace");
-        var provenance = RuntimeAgentPolicyProvenance.Default.WithOverride(
+        var provenance = RuntimeAgentPolicyProvenance.Unconfigured.WithOverride(
             new AgentPolicy(
                 "Trusted provider",
                 "trusted-model",
                 AgentPolicy.Capabilities.ToImmutableDictionary(
                     capability => capability,
-                    _ => AgentPermission.Ask)),
+                    _ => AgentPermission.Ask))
+            {
+                CompactionModel = new AgentModelSelection("Trusted provider", "compact-model"),
+                TitleModel = new AgentModelSelection("Trusted provider", "title-model"),
+            },
             workspaceDefinition,
             revision: 11);
         var workspace = new RuntimeWorkspaceViewModel(
@@ -2003,7 +2001,7 @@ public sealed class SavedScreenRuntimeIdentityTests
             11,
             Assert.Single(tabPolicy.Sources).Revision);
 
-        var legacyPayload = new RuntimeWindowRecoveryPayload(
+        var unsupportedPayload = new RuntimeWindowRecoveryPayload(
             workspacePayload with
             {
                 AgentPolicy = null,
@@ -2015,19 +2013,22 @@ public sealed class SavedScreenRuntimeIdentityTests
                     },
                 ],
             });
-        var legacySnapshot = snapshot with
+        var unsupportedSchemaSnapshot = snapshot with
         {
             SchemaVersion = 2,
             PayloadJson = JsonSerializer.Serialize(
-                legacyPayload,
+                unsupportedPayload,
                 RuntimeWorkspaceRecoveryJsonContext.Default
                     .RuntimeWindowRecoveryPayload),
         };
         Assert.False(RuntimeWorkspaceRecoveryCodec.TryDeserialize(
-            legacySnapshot,
+            unsupportedSchemaSnapshot,
             out _,
-            out var legacyError));
-        Assert.Contains("not supported", legacyError, StringComparison.OrdinalIgnoreCase);
+            out var unsupportedSchemaError));
+        Assert.Contains(
+            "not supported",
+            unsupportedSchemaError,
+            StringComparison.OrdinalIgnoreCase);
 
         var mismatchedTabPolicy = tabPolicy with
         {
@@ -2073,6 +2074,9 @@ public sealed class SavedScreenRuntimeIdentityTests
             Permissions = AgentPolicy.Default.Permissions.ToDictionary(
                 item => item.Key,
                 item => item.Value),
+            CompactionModel = AgentPolicy.Default.CompactionModel,
+            TitleModel = AgentPolicy.Default.TitleModel,
+            SystemPrompt = AgentPolicy.Default.SystemPrompt,
             HasPolicyOverride = false,
         };
         var forgedOverrideMarkerPayload = new RuntimeWindowRecoveryPayload(
@@ -2155,25 +2159,22 @@ public sealed class SavedScreenRuntimeIdentityTests
     }
 
     [Fact]
-    public void SchemaTwoScreenHistoryIsRejectedWithoutCompatibility()
+    public void NonCurrentScreenHistorySchemaIsRejected()
     {
         var source = new RuntimeHistorySource(
-            new DefinitionKey(DefinitionKind.Screen, "legacy-policy-screen"),
-            "Legacy policy screen");
+            new DefinitionKey(DefinitionKind.Screen, "unsupported-policy-screen"),
+            "Unsupported policy screen");
         var workspace = new RuntimeWorkspaceViewModel(
             WorkspaceInstanceId.New(),
-            "Legacy policy workspace",
+            "Unsupported policy workspace",
             "Bronze",
             []);
         var tab = new RuntimeTabViewModel(
             TabInstanceId.New(),
-            "Legacy policy tab",
+            "Unsupported policy tab",
             "SAVED SCREEN",
             historySource: source,
-            agentPolicy: RuntimeAgentPolicyProvenance.Default.WithOverride(
-                policy: null,
-                source.SourceDefinition,
-                revision: 4));
+            agentPolicy: RuntimeAgentPolicyProvenance.Unconfigured);
         tab.AddPanel(new UnavailableRuntimePanelViewModel(
             PanelInstanceId.New(),
             PanelKind.Browser,
@@ -2193,7 +2194,7 @@ public sealed class SavedScreenRuntimeIdentityTests
             out var currentPayload,
             out var currentError), currentError);
         var currentWorkspace = currentPayload!.Workspace!;
-        var legacyPayload = new RuntimeWindowRecoveryPayload(
+        var unsupportedPayload = new RuntimeWindowRecoveryPayload(
             currentWorkspace with
             {
                 AgentPolicy = null,
@@ -2201,46 +2202,22 @@ public sealed class SavedScreenRuntimeIdentityTests
                     .Select(currentTab => currentTab with { AgentPolicy = null })
                     .ToArray(),
             });
-        var legacySnapshot = currentSnapshot with
+        var unsupportedSnapshot = currentSnapshot with
         {
             SchemaVersion = 2,
             PayloadJson = JsonSerializer.Serialize(
-                legacyPayload,
+                unsupportedPayload,
                 RuntimeWorkspaceRecoveryJsonContext.Default
                     .RuntimeWindowRecoveryPayload),
         };
         Assert.False(RuntimeWorkspaceRecoveryCodec.TryDeserialize(
-            legacySnapshot,
+            unsupportedSnapshot,
             out _,
-            out var legacyError));
-        Assert.Contains("not supported", legacyError, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void LegacyPolicyFallbackIsSourceFreeDefaultAndCurrentAcceptanceClearsIt()
-    {
-        var screen = new DefinitionKey(DefinitionKind.Screen, "current-screen");
-
-        Assert.Throws<ArgumentException>(() =>
-            new RuntimeAgentPolicyProvenance(
-                AgentPolicy.Default with { Model = "other-model" },
-                isLegacyFallback: true));
-        Assert.Throws<ArgumentException>(() =>
-            new RuntimeAgentPolicyProvenance(
-                AgentPolicy.Default,
-                [new RuntimeAgentPolicyProvenance.Source(screen, revision: 1)],
-                isLegacyFallback: true));
-
-        var accepted = RuntimeAgentPolicyProvenance.LegacyFallback.WithOverride(
-            policy: null,
-            screen,
-            revision: 2);
-
-        Assert.False(accepted.IsLegacyFallback);
-        Assert.False(accepted.HasPolicyOverride);
-        var source = Assert.Single(accepted.Sources);
-        Assert.Equal(screen, source.Definition);
-        Assert.Equal(2, source.Revision);
+            out var unsupportedError));
+        Assert.Contains(
+            "not supported",
+            unsupportedError,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

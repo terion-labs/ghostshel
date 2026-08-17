@@ -2,7 +2,7 @@ using System.Runtime.CompilerServices;
 
 namespace GhostShell.Application;
 
-internal static class FilePanelWatch
+public static class FilePanelWatch
 {
     public static async IAsyncEnumerable<FilePanelResult<FilePanelChange>> ObserveAsync(
         IFilePanelClient client,

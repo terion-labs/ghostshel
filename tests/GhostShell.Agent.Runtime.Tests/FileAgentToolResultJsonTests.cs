@@ -297,6 +297,19 @@ public sealed class FileAgentToolResultJsonTests
             LastModifiedAt: DateTimeOffset.UnixEpoch,
             IsHidden: true);
         var deletePath = Segments("deploy", "obsolete");
+        var moveSourcePath = Segments("deploy", "draft.txt");
+        var moveDestinationPath = Segments("archive", "report.txt");
+        var moved = new FilePanelEntry(
+            Location(
+                metadata,
+                "archive",
+                "report.txt",
+                version: "opaque-moved-version"),
+            "report.txt",
+            FilePanelEntryKind.File,
+            Size: 111,
+            LastModifiedAt: DateTimeOffset.UnixEpoch,
+            IsHidden: true);
         var deleted = new FilePanelDeleteReceipt(
             Location(
                 metadata,
@@ -314,6 +327,11 @@ public sealed class FileAgentToolResultJsonTests
             new FileAgentIntent.Delete(deletePath),
             metadata,
             new PanelInstanceId("files-panel"));
+        var movedProjection = FileAgentToolResultJson.Project(
+            new AgentFileActionResult.Moved(moved),
+            new FileAgentIntent.Move(moveSourcePath, moveDestinationPath),
+            metadata,
+            new PanelInstanceId("files-panel"));
 
         Assert.True(createdProjection.IsSuccess);
         Assert.Equal(
@@ -325,6 +343,12 @@ public sealed class FileAgentToolResultJsonTests
             {"ok":true,"panel_id":"files-panel","deleted":true,"permanent":true}
             """,
             deletedProjection.Json);
+        Assert.True(movedProjection.IsSuccess);
+        Assert.Equal(
+            """
+            {"ok":true,"panel_id":"files-panel","moved":true,"destination_created":true}
+            """,
+            movedProjection.Json);
         foreach (var sensitive in new[]
         {
             metadata.TrustedRoot.ProviderProfileId,
@@ -332,6 +356,8 @@ public sealed class FileAgentToolResultJsonTests
             "deploy",
             "current",
             "obsolete",
+            "report.txt",
+            "opaque-moved-version",
             "opaque-created-version",
             "opaque-deleted-version",
         })
@@ -341,6 +367,120 @@ public sealed class FileAgentToolResultJsonTests
                 createdProjection.Json + deletedProjection.Json,
                 StringComparison.Ordinal);
         }
+    }
+
+    [Fact]
+    public void SearchAccessAndTransferObservationsAreBoundedAndSanitized()
+    {
+        var metadata = Metadata();
+        var searchEntry = new FilePanelEntry(
+            Location(metadata, "logs", "error.log"),
+            "error.log",
+            FilePanelEntryKind.File,
+            5,
+            null,
+            false);
+        var search = FileAgentToolResultJson.Project(
+            new AgentFileActionResult.SearchResults([searchEntry], false),
+            new FileAgentIntent.Search(
+                Segments("logs"),
+                "error",
+                FilePanelDiscoveryScope.Subtree,
+                10),
+            metadata);
+        var access = FileAgentToolResultJson.Project(
+            new AgentFileActionResult.AccessControl(
+                new FilePanelAccessControl(
+                    Location(metadata, "report.txt"),
+                    new FilePanelPosixMode(0x1A4),
+                    owner: "alice",
+                    group: "staff",
+                    grants:
+                    [
+                        new FilePanelAccessGrant(
+                            new FilePanelGrantee(
+                                FilePanelGranteeKind.User,
+                                "user-1",
+                                "Alice"),
+                            FilePanelAccessRight.Read
+                            | FilePanelAccessRight.ReadAcl),
+                    ])),
+            new FileAgentIntent.AccessRead(Segments("report.txt")),
+            metadata);
+        var transfer = new FilePanelTransferSnapshot(
+            FilePanelTransferId.New(),
+            new FilePanelTransferRequest(
+                Location(metadata, "source.txt"),
+                new FilePanelLocation(
+                    "external-provider-canary",
+                    "external-authority-canary",
+                    new FilePanelAddress.ObjectKey(
+                        "external/destination-canary")),
+                FilePanelTransferOperation.Copy,
+                FilePanelConflictPolicy.Fail),
+            new FilePanelLocation(
+                "external-provider-canary",
+                "external-authority-canary",
+                new FilePanelAddress.ObjectKey(
+                    "external/effective-canary")),
+            FilePanelTransferState.Running,
+            "Copying",
+            12,
+            24,
+            null,
+            DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch,
+            null);
+        var transfers = FileAgentToolResultJson.Project(
+            new AgentFileActionResult.Transfers([transfer], false),
+            new FileAgentIntent.Transfers(),
+            metadata);
+
+        Assert.All(new[] { search, access, transfers }, projection =>
+        {
+            Assert.True(projection.IsSuccess);
+            Assert.True(
+                Encoding.UTF8.GetByteCount(projection.Json)
+                <= AgentKernelLimits.Default.MaximumToolResultBytes);
+        });
+        using var searchDocument = JsonDocument.Parse(search.Json);
+        Assert.Equal("error.log", Assert.Single(
+            searchDocument.RootElement.GetProperty("matches")
+                .EnumerateArray()).GetProperty("name").GetString());
+        using var accessDocument = JsonDocument.Parse(access.Json);
+        Assert.Equal(
+            "644",
+            accessDocument.RootElement.GetProperty("mode_octal").GetString());
+        Assert.Equal(
+            ["read", "read_acl"],
+            Assert.Single(accessDocument.RootElement.GetProperty("grants")
+                    .EnumerateArray())
+                .GetProperty("rights")
+                .EnumerateArray()
+                .Select(value => value.GetString()));
+        using var transferDocument = JsonDocument.Parse(transfers.Json);
+        var transferRoot = transferDocument.RootElement;
+        Assert.True(transferRoot.GetProperty(
+            "cancellation_does_not_rollback_bytes").GetBoolean());
+        var projectedTransfer = Assert.Single(
+            transferRoot.GetProperty("transfers").EnumerateArray());
+        Assert.False(projectedTransfer.GetProperty(
+            "governed_cancel_available").GetBoolean());
+        Assert.False(projectedTransfer.GetProperty(
+            "governed_retry_available").GetBoolean());
+        Assert.DoesNotContain(
+            metadata.TrustedRoot.ProviderProfileId,
+            transfers.Json,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            metadata.TrustedRoot.Authority!,
+            transfers.Json,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("source.txt", transfers.Json, StringComparison.Ordinal);
+        Assert.DoesNotContain("external-provider-canary", transfers.Json, StringComparison.Ordinal);
+        Assert.DoesNotContain("external-authority-canary", transfers.Json, StringComparison.Ordinal);
+        Assert.DoesNotContain("destination-canary", transfers.Json, StringComparison.Ordinal);
+        Assert.DoesNotContain("effective-canary", transfers.Json, StringComparison.Ordinal);
     }
 
     [Fact]

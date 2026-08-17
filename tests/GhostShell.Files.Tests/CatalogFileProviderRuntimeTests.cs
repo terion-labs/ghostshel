@@ -79,6 +79,72 @@ public sealed class CatalogFileProviderRuntimeTests
     }
 
     [Fact]
+    public async Task PosixCatalogSessionAdvertisesAndExecutesGovernedExactMutations()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var root = Directory.CreateTempSubdirectory("ghostshell-governed-local-");
+        try
+        {
+            var catalog = CreateCatalog();
+            Assert.True((await catalog.InitializeAsync(CancellationToken.None)).IsSuccess);
+            using var vault = new RejectingSecretVault();
+            using var runtime = new CatalogFileProviderRuntime(
+                catalog,
+                vault,
+                new InMemorySftpKnownHostStore());
+            var profile = new FileProviderProfile(
+                new RuntimeProfileId("files.governed-local"),
+                FileProviderProfile.CurrentSchemaVersion,
+                "Governed local",
+                new FileProviderConfiguration.Local(root.FullName));
+            var refreshed = WaitForProfileChangeAsync(runtime);
+            var saved = await catalog.SaveFileProviderProfileAsync(
+                profile,
+                expectedRevision: null,
+                CancellationToken.None);
+            Assert.True(saved.IsSuccess, saved.Error?.Message);
+            await refreshed;
+            var descriptor = Assert.Single(runtime.Profiles, item =>
+                item.Id == profile.Id.Value);
+            Assert.True(descriptor.Capabilities.HasFlag(
+                FilePanelCapability.GovernedCreateDirectory));
+            Assert.True(descriptor.Capabilities.HasFlag(
+                FilePanelCapability.GovernedDelete));
+            var factory = new FilePanelSessionFactory(runtime, runtime);
+            await using var session = await factory.CreateAsync(
+                new SessionId("governed-local-session"),
+                descriptor.Root,
+                CancellationToken.None);
+            var directory = descriptor.Root.Child(
+                new FilePanelPathSegment("agent-created"));
+
+            var created = await session.CreateDirectoryAsync(
+                new FilePanelCreateDirectoryRequest(
+                    directory,
+                    FilePanelMutationPrecondition.MustNotExist),
+                CancellationToken.None);
+            var deleted = await session.DeleteAsync(
+                new FilePanelDeleteRequest(
+                    directory,
+                    Recursive: false,
+                    FilePanelMutationPrecondition.MustExist),
+                CancellationToken.None);
+
+            Assert.True(created.IsSuccess, created.Error?.Message);
+            Assert.True(deleted.IsSuccess, deleted.Error?.Message);
+            Assert.False(Directory.Exists(Path.Combine(root.FullName, "agent-created")));
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task HostedFileSessionsRemainBoundToTheirProviderGenerationAcrossRefresh()
     {
         var oldRoot = Directory.CreateTempSubdirectory(

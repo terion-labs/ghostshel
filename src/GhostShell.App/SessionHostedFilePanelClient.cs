@@ -135,6 +135,16 @@ public sealed class SessionHostedFilePanelClient :
         }
     }
 
+    public IAsyncEnumerable<FilePanelResult<FilePanelEntry>> SearchAsync(
+        FilePanelSearchRequest request,
+        CancellationToken cancellationToken) =>
+        FilePanelSearch.FindAsync(this, request, cancellationToken);
+
+    public IAsyncEnumerable<FilePanelResult<FilePanelChange>> WatchAsync(
+        FilePanelWatchRequest request,
+        CancellationToken cancellationToken) =>
+        FilePanelWatch.ObserveAsync(this, request, cancellationToken);
+
     public async ValueTask<HostResult<SessionSnapshot>> InitializeAsync(
         CancellationToken cancellationToken) =>
         await InitializeAsync(_options.InitialLocation, cancellationToken)

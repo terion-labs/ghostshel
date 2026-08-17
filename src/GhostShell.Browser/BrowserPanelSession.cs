@@ -9,7 +9,7 @@ namespace GhostShell.Browser;
 /// control. Detaching a renderer preserves the current address and history
 /// state, while every operation fails closed until another renderer attaches.
 /// </summary>
-public sealed class BrowserPanelSession : IBrowserPanelSession
+public sealed partial class BrowserPanelSession : IBrowserPanelSession
 {
     // Page navigation can continue for the lifetime of a workspace. The host
     // snapshot is authoritative, so only recent lifecycle events stay in memory.
@@ -339,9 +339,11 @@ public sealed class BrowserPanelSession : IBrowserPanelSession
     public ValueTask<BrowserResult<BrowserDocumentSnapshot>>
         CaptureSnapshotAsync(
             BrowserDocumentBinding document,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            BrowserSnapshotQuery? query = null)
     {
         ArgumentNullException.ThrowIfNull(document);
+        query ??= BrowserSnapshotQuery.Lean;
         if (!CapabilityProfile.Supports(SessionCapabilities.BrowserSnapshot))
         {
             return ValueTask.FromResult(
@@ -351,6 +353,7 @@ public sealed class BrowserPanelSession : IBrowserPanelSession
 
         return ExecuteDocumentSnapshotAsync(
             document,
+            query,
             cancellationToken);
     }
 
@@ -418,6 +421,35 @@ public sealed class BrowserPanelSession : IBrowserPanelSession
             reference,
             allowedOrigin,
             cancellationToken);
+    }
+
+    public ValueTask<BrowserResult<BrowserElementStateSnapshot>>
+        ReadElementStateAsync(
+            BrowserElementReference reference,
+            CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(reference);
+        if (!CapabilityProfile.Supports(SessionCapabilities.BrowserWait))
+        {
+            return ValueTask.FromResult(
+                UnsupportedCapability<BrowserElementStateSnapshot>(
+                    SessionCapabilities.BrowserWait));
+        }
+
+        return ExecuteElementStateReadAsync(reference, cancellationToken);
+    }
+
+    public ValueTask<BrowserResult<BrowserNetworkActivitySnapshot>>
+        ReadNetworkActivityAsync(CancellationToken cancellationToken)
+    {
+        if (!CapabilityProfile.Supports(SessionCapabilities.BrowserWait))
+        {
+            return ValueTask.FromResult(
+                UnsupportedCapability<BrowserNetworkActivitySnapshot>(
+                    SessionCapabilities.BrowserWait));
+        }
+
+        return ExecuteNetworkActivityReadAsync(cancellationToken);
     }
 
     public ValueTask<PanelSessionSnapshot> SnapshotAsync(
@@ -559,6 +591,7 @@ public sealed class BrowserPanelSession : IBrowserPanelSession
     private async ValueTask<BrowserResult<BrowserDocumentSnapshot>>
         ExecuteDocumentSnapshotAsync(
             BrowserDocumentBinding logicalDocument,
+            BrowserSnapshotQuery query,
             CancellationToken cancellationToken)
     {
         try
@@ -606,7 +639,8 @@ public sealed class BrowserPanelSession : IBrowserPanelSession
             {
                 result = await renderer.CaptureSnapshotAsync(
                         rendererDocument,
-                        cancellationToken)
+                        cancellationToken,
+                        query)
                     .ConfigureAwait(false);
             }
             catch (OperationCanceledException)
@@ -652,6 +686,165 @@ public sealed class BrowserPanelSession : IBrowserPanelSession
                     BrowserError.Create(
                         BrowserErrorCode.SnapshotInvalid,
                         "The browser returned an invalid document snapshot."));
+            }
+        }
+        finally
+        {
+            CompleteOperation(ActiveOperation.Serialized);
+        }
+    }
+
+    private async ValueTask<BrowserResult<BrowserElementStateSnapshot>>
+        ExecuteElementStateReadAsync(
+            BrowserElementReference logicalReference,
+            CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _operationGate.WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return WaitObservationCancelled<BrowserElementStateSnapshot>();
+        }
+
+        BeginOperation(ActiveOperation.Serialized);
+        try
+        {
+            IBrowserRenderer renderer;
+            BrowserDocumentBinding rendererDocument;
+            lock (_gate)
+            {
+                if (_closed || _disposed)
+                {
+                    return WaitObservationSessionClosed<
+                        BrowserElementStateSnapshot>();
+                }
+
+                if (_renderer is null)
+                {
+                    return WaitObservationRendererUnavailable<
+                        BrowserElementStateSnapshot>();
+                }
+
+                renderer = _renderer;
+                var rendererState = renderer.State;
+                if (!logicalReference.Document.Matches(_state)
+                    || _rendererStateAtLastProjection != rendererState
+                    || rendererState.Address != _state.Address)
+                {
+                    return WaitObservationStateChanged<
+                        BrowserElementStateSnapshot>();
+                }
+
+                rendererDocument = BrowserDocumentBinding.FromState(
+                    rendererState);
+            }
+
+            var rendererReference = new BrowserElementReference(
+                logicalReference.Id,
+                rendererDocument);
+            BrowserResult<BrowserElementStateSnapshot> result;
+            try
+            {
+                result = await renderer.ReadElementStateAsync(
+                        rendererReference,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return WaitObservationCancelled<BrowserElementStateSnapshot>();
+            }
+            catch (Exception)
+            {
+                return WaitObservationRendererUnavailable<
+                    BrowserElementStateSnapshot>();
+            }
+
+            if (!result.IsSuccess)
+            {
+                return result;
+            }
+
+            lock (_gate)
+            {
+                if (!ReferenceEquals(_renderer, renderer)
+                    || !logicalReference.Document.Matches(_state)
+                    || _rendererStateAtLastProjection != renderer.State
+                    || !rendererDocument.Matches(renderer.State))
+                {
+                    return WaitObservationStateChanged<
+                        BrowserElementStateSnapshot>();
+                }
+            }
+
+            var value = result.Value!;
+            if (value.Document != rendererDocument)
+            {
+                return WaitObservationStateChanged<
+                    BrowserElementStateSnapshot>();
+            }
+
+            return BrowserResult<BrowserElementStateSnapshot>.Success(
+                value with { Document = logicalReference.Document });
+        }
+        finally
+        {
+            CompleteOperation(ActiveOperation.Serialized);
+        }
+    }
+
+    private async ValueTask<BrowserResult<BrowserNetworkActivitySnapshot>>
+        ExecuteNetworkActivityReadAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _operationGate.WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return WaitObservationCancelled<BrowserNetworkActivitySnapshot>();
+        }
+
+        BeginOperation(ActiveOperation.Serialized);
+        try
+        {
+            IBrowserRenderer renderer;
+            lock (_gate)
+            {
+                if (_closed || _disposed)
+                {
+                    return WaitObservationSessionClosed<
+                        BrowserNetworkActivitySnapshot>();
+                }
+
+                if (_renderer is null)
+                {
+                    return WaitObservationRendererUnavailable<
+                        BrowserNetworkActivitySnapshot>();
+                }
+
+                renderer = _renderer;
+            }
+
+            try
+            {
+                return await renderer.ReadNetworkActivityAsync(
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return WaitObservationCancelled<
+                    BrowserNetworkActivitySnapshot>();
+            }
+            catch (Exception)
+            {
+                return WaitObservationRendererUnavailable<
+                    BrowserNetworkActivitySnapshot>();
             }
         }
         finally
@@ -1341,7 +1534,10 @@ public sealed class BrowserPanelSession : IBrowserPanelSession
                 rendererState.CanGoBack,
                 rendererState.CanGoForward,
                 logicalRevision,
-                rendererState.Failure);
+                rendererState.Failure,
+                rendererState.Viewport,
+                rendererState.ViewportRevision,
+                rendererState.InputEpoch);
             _rendererStateAtLastProjection = rendererState;
             if (_state == state)
             {
@@ -1373,7 +1569,10 @@ public sealed class BrowserPanelSession : IBrowserPanelSession
             _state.CanGoBack,
             _state.CanGoForward,
             _state.DocumentRevision,
-            error);
+            error,
+            _state.Viewport,
+            _state.ViewportRevision,
+            _state.InputEpoch);
         PublishStateUnsafe();
     }
 
@@ -1393,7 +1592,10 @@ public sealed class BrowserPanelSession : IBrowserPanelSession
                 _state.CanGoBack,
                 _state.CanGoForward,
                 _state.DocumentRevision,
-                error);
+                error,
+                _state.Viewport,
+                _state.ViewportRevision,
+                _state.InputEpoch);
             PublishStateUnsafe();
         }
     }
@@ -1422,6 +1624,11 @@ public sealed class BrowserPanelSession : IBrowserPanelSession
             registry.InvalidateElementReferences();
         }
 
+        if (_renderer is IBrowserPhysicalInputBarrier inputBarrier)
+        {
+            inputBarrier.BindPhysicalInputGate(null);
+        }
+
         _lastDetachedRenderer = rememberRenderer ? _renderer : null;
         _lastDetachedRendererStateAtProjection = rememberRenderer
             ? _rendererStateAtLastProjection
@@ -1442,6 +1649,11 @@ public sealed class BrowserPanelSession : IBrowserPanelSession
             if (_renderer is IBrowserElementReferenceRegistry registry)
             {
                 registry.InvalidateElementReferences();
+            }
+
+            if (_renderer is IBrowserPhysicalInputBarrier inputBarrier)
+            {
+                inputBarrier.BindPhysicalInputGate(null);
             }
 
             _renderer = null;
@@ -1549,15 +1761,21 @@ public sealed class BrowserPanelSession : IBrowserPanelSession
 
     private void EnsureExactCapabilities(IBrowserRenderer renderer)
     {
-        if (Capabilities.Values.SequenceEqual(
+        if (!Capabilities.Values.SequenceEqual(
                 renderer.Capabilities.Values,
                 StringComparer.Ordinal))
         {
-            return;
+            throw new InvalidOperationException(
+                "The browser renderer capability profile does not match the session.");
         }
 
-        throw new InvalidOperationException(
-            "The browser renderer capability profile does not match the session.");
+        if (Capabilities.Contains(
+                SessionCapabilities.BrowserAgentInputBarrier)
+            && renderer is not IBrowserPhysicalInputBarrier)
+        {
+            throw new InvalidOperationException(
+                "The browser renderer advertises no enforceable physical input barrier.");
+        }
     }
 
     private static BrowserResult<T> UnsupportedCapability<T>(
@@ -1566,6 +1784,32 @@ public sealed class BrowserPanelSession : IBrowserPanelSession
             BrowserError.Create(
                 BrowserErrorCode.UnsupportedCapability,
                 $"The browser capability '{capability}' is not enabled for this session."));
+
+    private static BrowserResult<T> WaitObservationRendererUnavailable<T>() =>
+        BrowserResult<T>.Failure(
+            BrowserError.Create(
+                BrowserErrorCode.RendererUnavailable,
+                "The browser renderer is detached.",
+                retryable: true));
+
+    private static BrowserResult<T> WaitObservationSessionClosed<T>() =>
+        BrowserResult<T>.Failure(
+            BrowserError.Create(
+                BrowserErrorCode.SessionClosed,
+                "The browser session is closed."));
+
+    private static BrowserResult<T> WaitObservationCancelled<T>() =>
+        BrowserResult<T>.Failure(
+            BrowserError.Create(
+                BrowserErrorCode.Cancelled,
+                "The browser wait observation was cancelled."));
+
+    private static BrowserResult<T> WaitObservationStateChanged<T>() =>
+        BrowserResult<T>.Failure(
+            BrowserError.Create(
+                BrowserErrorCode.NavigationStateChanged,
+                "The browser document changed while its wait condition was observed.",
+                retryable: true));
 
     private static BrowserResult<BrowserSessionState> RendererUnavailable() =>
         BrowserResult<BrowserSessionState>.Failure(

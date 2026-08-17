@@ -232,6 +232,42 @@ public sealed class BrowserAgentToolResultJsonTests
     }
 
     [Fact]
+    public void CancelledWaitReturnsItsFreshBoundSnapshotAsTypedData()
+    {
+        var state = State(
+            "https://example.test/ready",
+            "Ready",
+            documentRevision: 23);
+        var binding = BrowserDocumentBinding.FromState(state);
+        var snapshot = new BrowserDocumentSnapshot(
+            binding,
+            [new BrowserSnapshotNode(0, "document", "Ready")],
+            new DateTimeOffset(2026, 8, 15, 8, 0, 0, TimeSpan.Zero));
+        var outcome = new BrowserWaitOutcome(
+            BrowserWaitCompletion.Cancelled,
+            state,
+            snapshot,
+            snapshotError: null,
+            new DateTimeOffset(2026, 8, 15, 8, 0, 1, TimeSpan.Zero));
+
+        var json = BrowserAgentToolResultJson.Success(
+            new AgentBrowserActionResult.Wait(outcome),
+            new PanelInstanceId("panel-browser"));
+
+        using var result = JsonDocument.Parse(json);
+        var root = result.RootElement;
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("cancelled", root.GetProperty("wait_outcome").GetString());
+        Assert.Equal(23, root.GetProperty("document_revision").GetInt64());
+        Assert.Equal(
+            23,
+            root.GetProperty("snapshot")
+                .GetProperty("document_revision")
+                .GetInt64());
+        Assert.False(root.TryGetProperty("snapshot_error", out _));
+    }
+
+    [Fact]
     public void WorstCaseSnapshotProjectionStaysInsideKernelResultLimit()
     {
         var addressPrefix = "https://example.test/";
@@ -305,6 +341,37 @@ public sealed class BrowserAgentToolResultJsonTests
     }
 
     [Fact]
+    public void CompactSnapshotIsNotCutOffAtTheFormerFortyEightNodeLimit()
+    {
+        var document = new BrowserDocumentBinding(
+            new BrowserAddress(new Uri("https://example.test/results")),
+            documentRevision: 3);
+        var nodes = Enumerable.Range(0, 96)
+            .Select(index => new BrowserSnapshotNode(
+                0,
+                "link",
+                $"Result {index}",
+                new BrowserElementReference($"ref_{index}", document)))
+            .ToArray();
+        var snapshot = new BrowserDocumentSnapshot(
+            document,
+            nodes,
+            DateTimeOffset.UnixEpoch);
+
+        var json = BrowserAgentToolResultJson.Success(
+            new AgentBrowserActionResult.Snapshot(snapshot));
+
+        using var result = JsonDocument.Parse(json);
+        Assert.Equal(
+            nodes.Length,
+            result.RootElement.GetProperty("nodes").GetArrayLength());
+        Assert.Equal(
+            nodes.Length,
+            result.RootElement.GetProperty("returned_node_count").GetInt32());
+        Assert.False(result.RootElement.GetProperty("is_truncated").GetBoolean());
+    }
+
+    [Fact]
     public void ProviderFacingPanelIdentifiersAreBounded()
     {
         var oversized = new PanelInstanceId(
@@ -352,8 +419,12 @@ public sealed class BrowserAgentToolResultJsonTests
     [InlineData("browser_element_not_interactable")]
     [InlineData("browser_element_not_fillable")]
     [InlineData("browser_element_not_checkable")]
+    [InlineData("browser_check_state_not_applied")]
     [InlineData("browser_fill_value_not_supported")]
+    [InlineData("browser_script_rejected")]
+    [InlineData("browser_script_result_rejected")]
     [InlineData("browser_interaction_outcome_unknown")]
+    [InlineData("browser_action_not_authorized")]
     public void ClosedInteractionStableCodesCrossTheProviderBoundary(
         string stableCode)
     {
@@ -435,6 +506,40 @@ public sealed class BrowserAgentToolResultJsonTests
                 .GetProperty("error")
                 .GetProperty("retryable")
                 .GetBoolean());
+    }
+
+    [Fact]
+    public void MaximumEvaluationValueFitsTheKernelEnvelopeAndIsOneJsonValue()
+    {
+        var state = new BrowserSessionState(
+            new BrowserAddress(new Uri("https://example.test/page")),
+            "Example",
+            BrowserLoadState.Ready,
+            false,
+            false,
+            7,
+            viewport: new BrowserViewportState(800, 600, 1),
+            viewportRevision: 3,
+            inputEpoch: 4);
+        var binding = BrowserAutomationBinding.FromState(state);
+        var valueJson = "\"" + new string(
+            'x',
+            BrowserEvaluationResult.MaximumJsonBytes - 2) + "\"";
+
+        var json = BrowserAgentToolResultJson.Success(
+            new AgentBrowserActionResult.Evaluation(
+                new BrowserEvaluationResult(binding, state, valueJson)));
+
+        Assert.True(
+            Encoding.UTF8.GetByteCount(json)
+            <= AgentKernelLimits.Default.MaximumToolResultBytes);
+        using var document = JsonDocument.Parse(json);
+        Assert.Equal(
+            BrowserEvaluationResult.MaximumJsonBytes - 2,
+            document.RootElement.GetProperty("result").GetString()!.Length);
+        Assert.Equal(800, document.RootElement.GetProperty("viewport_width_css").GetDouble());
+        Assert.Equal(3, document.RootElement.GetProperty("viewport_revision").GetInt64());
+        Assert.Equal(4, document.RootElement.GetProperty("input_epoch").GetInt64());
     }
 
     private static BrowserSessionState State(

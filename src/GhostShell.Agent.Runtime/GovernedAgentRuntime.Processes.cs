@@ -80,7 +80,10 @@ public sealed partial class GovernedAgentRuntime
                 new AgentProcessListRequest(
                     selected.PanelId,
                     selected.Intent.Limit,
-                    selected.Intent.Sort));
+                    selected.Intent.Sort,
+                    selected.Intent.Offset,
+                    selected.Intent.NameContains,
+                    selected.Intent.ProcessId));
         }
         catch (Exception exception)
             when (exception is ArgumentException or InvalidOperationException)
@@ -125,7 +128,8 @@ public sealed partial class GovernedAgentRuntime
         var actionCancellation = BeginToolActivity(
             descriptor,
             action.Proposal.Presentation,
-            cancellationToken);
+            cancellationToken,
+            selected.PanelId);
         HostResult<AgentProcessListResult> hostResult;
         try
         {
@@ -271,7 +275,12 @@ public sealed partial class GovernedAgentRuntime
                 return [];
             }
 
-            var eligiblePanels = context.OperationalContext.Panels
+            if (context.Context.Target is AgentTarget.Workspace)
+            {
+                return ProcessAgentToolSet.ForWorkspace();
+            }
+
+            var eligiblePanels = context.Context.Panels
                 .Where(ProcessAgentToolSet.Supports)
                 .ToArray();
             if (eligiblePanels.Length == 0)
@@ -294,14 +303,14 @@ public sealed partial class GovernedAgentRuntime
         private ValueTask<AgentToolResult> ExecuteAsync(
             AgentToolExecutionRequest request,
             CancellationToken cancellationToken) =>
-            runtime.ExecuteOperationalToolContributionAsync(
+            runtime.ExecutePanelToolContributionAsync(
                 request,
                 ExecuteBoundAsync,
                 cancellationToken);
 
         private ValueTask<AgentToolResult> ExecuteBoundAsync(
             AgentToolExecutionRequest request,
-            OperationalAgentToolContext context,
+            AgentPanelToolContext context,
             CancellationToken cancellationToken) =>
             runtime.ExecuteProcessProposalAsync(
                 request.Proposal,

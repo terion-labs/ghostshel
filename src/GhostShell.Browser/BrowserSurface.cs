@@ -1,6 +1,7 @@
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using GhostShell.Application;
 using System.Security.Cryptography;
 using System.Text;
@@ -11,10 +12,11 @@ namespace GhostShell.Browser;
 /// A GhostSHELL-owned browser surface backed by the operating system web
 /// engine. It exposes only bounded, engine-neutral navigation operations.
 /// </summary>
-public sealed class BrowserSurface :
+public sealed partial class BrowserSurface :
     ContentControl,
     IBrowserRenderer,
     IBrowserElementReferenceRegistry,
+    IBrowserPhysicalInputBarrier,
     IDisposable
 {
     private static readonly TimeSpan ElementReferenceLifetime =
@@ -42,9 +44,11 @@ public sealed class BrowserSurface :
     private PendingElementClick? _pendingElementClick;
     private PendingElementFill? _pendingElementFill;
     private PendingElementCheck? _pendingElementCheck;
+    private PendingBrowserAutomation? _pendingBrowserAutomation;
     private DrainingNativeNavigation? _drainingNativeNavigation;
     private long _lastTerminalNavigationGeneration;
     private volatile bool _interactionRecoveryFailed;
+    private Func<NativeRendererPhysicalInput, bool>? _physicalInputGate;
     private bool _disposed;
 
     public BrowserSurface()
@@ -134,6 +138,41 @@ public sealed class BrowserSurface :
 
         State = BrowserSessionState.Initial(BrowserAddress.Blank);
         Content = _nativeView.View;
+        AddHandler(
+            KeyDownEvent,
+            OnPhysicalKeyDown,
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
+        AddHandler(
+            KeyUpEvent,
+            OnPhysicalKeyUp,
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
+        AddHandler(
+            TextInputEvent,
+            OnPhysicalTextInput,
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
+        AddHandler(
+            PointerMovedEvent,
+            OnPhysicalPointerMoved,
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
+        AddHandler(
+            PointerPressedEvent,
+            OnPhysicalPointerPressed,
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
+        AddHandler(
+            PointerReleasedEvent,
+            OnPhysicalPointerReleased,
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
+        AddHandler(
+            PointerWheelChangedEvent,
+            OnPhysicalPointerWheel,
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
     }
 
     public BrowserSessionState State { get; private set; }
@@ -152,6 +191,7 @@ public sealed class BrowserSurface :
         }
 
         _disposed = true;
+        Volatile.Write(ref _physicalInputGate, null);
         if (_pendingGovernedNavigation is { } pending
             && RetireGovernedNavigation(pending))
         {
@@ -179,6 +219,10 @@ public sealed class BrowserSurface :
         }
     }
 
+    public void BindPhysicalInputGate(
+        Func<NativeRendererPhysicalInput, bool>? physicalInputGate) =>
+        Volatile.Write(ref _physicalInputGate, physicalInputGate);
+
     protected override void OnGotFocus(FocusChangedEventArgs e)
     {
         base.OnGotFocus(e);
@@ -187,6 +231,86 @@ public sealed class BrowserSurface :
             && !_interactionRecoveryFailed)
         {
             _nativeView.View.Focus();
+        }
+    }
+
+    private void OnPhysicalKeyDown(object? sender, KeyEventArgs args) =>
+        ApplyPhysicalInputGate(
+            args,
+            NativeRendererPhysicalInputKind.KeyDown);
+
+    private void OnPhysicalKeyUp(object? sender, KeyEventArgs args) =>
+        ApplyPhysicalInputGate(
+            args,
+            NativeRendererPhysicalInputKind.KeyUp);
+
+    private void OnPhysicalTextInput(
+        object? sender,
+        TextInputEventArgs args) =>
+        ApplyPhysicalInputGate(
+            args,
+            NativeRendererPhysicalInputKind.ImeCommit);
+
+    private void OnPhysicalPointerMoved(
+        object? sender,
+        PointerEventArgs args)
+    {
+        var properties = args.GetCurrentPoint(this).Properties;
+        var kind = properties.IsLeftButtonPressed
+            || properties.IsMiddleButtonPressed
+            || properties.IsRightButtonPressed
+            ? NativeRendererPhysicalInputKind.MouseDrag
+            : NativeRendererPhysicalInputKind.MouseMove;
+        ApplyPhysicalInputGate(args, kind);
+    }
+
+    private void OnPhysicalPointerPressed(
+        object? sender,
+        PointerPressedEventArgs args) =>
+        ApplyPhysicalInputGate(
+            args,
+            NativeRendererPhysicalInputKind.MouseButtonDown);
+
+    private void OnPhysicalPointerReleased(
+        object? sender,
+        PointerReleasedEventArgs args) =>
+        ApplyPhysicalInputGate(
+            args,
+            NativeRendererPhysicalInputKind.MouseButtonUp);
+
+    private void OnPhysicalPointerWheel(
+        object? sender,
+        PointerWheelEventArgs args) =>
+        ApplyPhysicalInputGate(
+            args,
+            NativeRendererPhysicalInputKind.MouseScroll);
+
+    private void ApplyPhysicalInputGate(
+        RoutedEventArgs args,
+        NativeRendererPhysicalInputKind kind)
+    {
+        var gate = Volatile.Read(ref _physicalInputGate);
+        if (gate is null)
+        {
+            args.Handled = true;
+            return;
+        }
+
+        try
+        {
+            if (!gate(new NativeRendererPhysicalInput(kind)))
+            {
+                args.Handled = true;
+                return;
+            }
+
+            AdvanceInputEpoch();
+        }
+        catch
+        {
+            // A renderer callback is a security boundary. Input cannot reach
+            // CEF if the authoritative session gate is unavailable.
+            args.Handled = true;
         }
     }
 
@@ -339,7 +463,10 @@ public sealed class BrowserSurface :
                     BrowserLoadState.Ready,
                     _nativeView.CanGoBack,
                     _nativeView.CanGoForward,
-                    State.DocumentRevision));
+                    State.DocumentRevision,
+                    viewport: State.Viewport,
+                    viewportRevision: State.ViewportRevision,
+                    inputEpoch: State.InputEpoch));
                 return BrowserResult<BrowserSessionState>.Success(State);
             },
             cancellationToken);
@@ -402,9 +529,11 @@ public sealed class BrowserSurface :
     public async ValueTask<BrowserResult<BrowserDocumentSnapshot>>
         CaptureSnapshotAsync(
             BrowserDocumentBinding document,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            BrowserSnapshotQuery? query = null)
     {
         ArgumentNullException.ThrowIfNull(document);
+        query ??= BrowserSnapshotQuery.Lean;
         if (!CapabilityProfile.Supports(SessionCapabilities.BrowserSnapshot))
         {
             return UnsupportedCapability<BrowserDocumentSnapshot>(
@@ -423,6 +552,7 @@ public sealed class BrowserSurface :
             {
                 completion = BeginDocumentSnapshot(
                     document,
+                    query,
                     cancellationToken);
             }
             else
@@ -430,6 +560,7 @@ public sealed class BrowserSurface :
                 completion = await _dispatcher.InvokeAsync(
                     () => BeginDocumentSnapshot(
                         document,
+                        query,
                         cancellationToken));
             }
 
@@ -604,6 +735,91 @@ public sealed class BrowserSurface :
         }
     }
 
+    public async ValueTask<BrowserResult<BrowserElementStateSnapshot>>
+        ReadElementStateAsync(
+            BrowserElementReference reference,
+            CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(reference);
+        if (!CapabilityProfile.Supports(SessionCapabilities.BrowserWait))
+        {
+            return UnsupportedCapability<BrowserElementStateSnapshot>(
+                SessionCapabilities.BrowserWait);
+        }
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return WaitObservationCancelled<BrowserElementStateSnapshot>();
+        }
+
+        try
+        {
+            ElementStateReadStart start;
+            if (_dispatcher.CheckAccess())
+            {
+                start = BeginElementStateRead(reference);
+            }
+            else
+            {
+                start = await _dispatcher.InvokeAsync(
+                    () => BeginElementStateRead(reference));
+            }
+
+            if (start.Error is { } error)
+            {
+                return BrowserResult<BrowserElementStateSnapshot>.Failure(error);
+            }
+
+            var nativeResult = await start.Completion!.ConfigureAwait(false);
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return WaitObservationCancelled<BrowserElementStateSnapshot>();
+            }
+
+            return _dispatcher.CheckAccess()
+                ? CompleteElementStateRead(start, nativeResult)
+                : await _dispatcher.InvokeAsync(
+                    () => CompleteElementStateRead(start, nativeResult));
+        }
+        catch (OperationCanceledException)
+        {
+            return WaitObservationCancelled<BrowserElementStateSnapshot>();
+        }
+        catch (Exception)
+        {
+            return BrowserResult<BrowserElementStateSnapshot>.Failure(
+                BrowserError.Create(
+                    BrowserErrorCode.RendererUnavailable,
+                    "The browser could not observe the referenced element.",
+                    retryable: true));
+        }
+    }
+
+    public ValueTask<BrowserResult<BrowserNetworkActivitySnapshot>>
+        ReadNetworkActivityAsync(CancellationToken cancellationToken)
+    {
+        if (!CapabilityProfile.Supports(SessionCapabilities.BrowserWait))
+        {
+            return ValueTask.FromResult(
+                UnsupportedCapability<BrowserNetworkActivitySnapshot>(
+                    SessionCapabilities.BrowserWait));
+        }
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return ValueTask.FromResult(
+                WaitObservationCancelled<BrowserNetworkActivitySnapshot>());
+        }
+
+        var activity = _nativeView.ReadNetworkActivity();
+        return ValueTask.FromResult(
+            BrowserResult<BrowserNetworkActivitySnapshot>.Success(
+                new BrowserNetworkActivitySnapshot(
+                    activity.IsObservable,
+                    activity.ActiveRequestCount,
+                    activity.QuietFor)));
+    }
+
     void IBrowserElementReferenceRegistry.InvalidateElementReferences() =>
         InvalidateElementReferences();
 
@@ -629,6 +845,80 @@ public sealed class BrowserSurface :
             handle = lease.Handle;
             return true;
         }
+    }
+
+    private ElementStateReadStart BeginElementStateRead(
+        BrowserElementReference reference)
+    {
+        if (_disposed || _interactionRecoveryFailed)
+        {
+            return ElementStateReadStart.Failure(
+                BrowserError.Create(
+                    BrowserErrorCode.RendererUnavailable,
+                    "The browser renderer is unavailable.",
+                    retryable: true));
+        }
+
+        if (State.LoadState != BrowserLoadState.Ready
+            || HasGovernedNavigationActivity
+            || !reference.Document.Matches(State))
+        {
+            return ElementStateReadStart.Failure(
+                BrowserError.Create(
+                    BrowserErrorCode.NavigationStateChanged,
+                    "The browser document changed before its element state could be observed.",
+                    retryable: true));
+        }
+
+        if (!TryResolveElementReference(reference, out var handle))
+        {
+            return ElementStateReadStart.Failure(ElementReferenceStale());
+        }
+
+        var nativeView = _nativeView;
+        return ElementStateReadStart.Started(
+            nativeView,
+            reference.Document,
+            nativeView.ReadElementStateAsync(handle!));
+    }
+
+    private BrowserResult<BrowserElementStateSnapshot>
+        CompleteElementStateRead(
+            ElementStateReadStart start,
+            NativeBrowserElementStateResult nativeResult)
+    {
+        if (!ReferenceEquals(start.NativeView, _nativeView)
+            || start.Document is null
+            || !start.Document.Matches(State))
+        {
+            return BrowserResult<BrowserElementStateSnapshot>.Failure(
+                BrowserError.Create(
+                    BrowserErrorCode.NavigationStateChanged,
+                    "The browser document changed while its element state was observed.",
+                    retryable: true));
+        }
+
+        if (!nativeResult.IsSuccess)
+        {
+            return BrowserResult<BrowserElementStateSnapshot>.Failure(
+                nativeResult.Failure == NativeBrowserElementStateFailure.Stale
+                    ? ElementReferenceStale()
+                    : BrowserError.Create(
+                        BrowserErrorCode.RendererUnavailable,
+                        "The browser could not observe the referenced element.",
+                        retryable: true));
+        }
+
+        var value = nativeResult.Value!;
+        return BrowserResult<BrowserElementStateSnapshot>.Success(
+            new BrowserElementStateSnapshot(
+                start.Document,
+                value.Visible,
+                value.Enabled,
+                value.Checked,
+                value.Selected,
+                value.Editable,
+                value.Focused));
     }
 
     private Task<BrowserResult<BrowserClickReceipt>>
@@ -1539,17 +1829,24 @@ public sealed class BrowserSurface :
         }
 
         pending.RetireDeadline();
-        pending.Completion.TrySetResult(
-            BrowserResult<BrowserCheckReceipt>.Failure(
-                InteractionOutcomeUnknown()));
         try
         {
             if (_dispatcher.CheckAccess())
             {
                 TimeoutElementCheck(pending);
+                pending.Completion.TrySetResult(
+                    BrowserResult<BrowserCheckReceipt>.Failure(
+                        InteractionOutcomeUnknown()));
             }
             else
             {
+                // Do not make completion depend on a suspended UI loop. The
+                // timed-out operation is already terminal and non-retryable;
+                // the queued callback performs renderer quarantine before the
+                // loop can accept another interaction.
+                pending.Completion.TrySetResult(
+                    BrowserResult<BrowserCheckReceipt>.Failure(
+                        InteractionOutcomeUnknown()));
                 await _dispatcher.InvokeAsync(
                     () =>
                     {
@@ -1561,6 +1858,7 @@ public sealed class BrowserSurface :
         catch (Exception)
         {
             CompleteElementCheckAfterDispatcherFailure(pending);
+            return;
         }
     }
 
@@ -1651,6 +1949,12 @@ public sealed class BrowserSurface :
                     BrowserResult<BrowserCheckReceipt>.Failure(
                         ElementNotCheckable()));
                 return;
+            case NativeBrowserCheckStatus.Unchecked:
+                CompleteElementCheck(
+                    pending,
+                    BrowserResult<BrowserCheckReceipt>.Failure(
+                        CheckStateNotApplied()));
+                return;
             case NativeBrowserCheckStatus.Checked:
                 if (pending.HasObservedNavigationStart
                     && !pending.NavigationTerminal)
@@ -1718,13 +2022,12 @@ public sealed class BrowserSurface :
             return;
         }
 
+        // Ensuring a checkbox is checked is idempotent. An inconclusive
+        // postcondition invalidates the source snapshot, but it must not
+        // destroy the user's live page by replacing the renderer with its
+        // initial about:blank document. The governed run still receives the
+        // explicit unknown outcome and can fail closed at its own boundary.
         InvalidateElementReferences();
-        var replaced = TryReplaceQuarantinedNativeView();
-        pending.NativeViewWasReplaced = replaced;
-        if (!replaced)
-        {
-            _interactionRecoveryFailed = true;
-        }
 
         _pendingElementCheck = null;
     }
@@ -1815,6 +2118,7 @@ public sealed class BrowserSurface :
     private Task<BrowserResult<BrowserDocumentSnapshot>>
         BeginDocumentSnapshot(
             BrowserDocumentBinding document,
+            BrowserSnapshotQuery query,
             CancellationToken cancellationToken)
     {
         if (cancellationToken.IsCancellationRequested)
@@ -1861,7 +2165,7 @@ public sealed class BrowserSurface :
         Task<NativeBrowserSnapshotResult> nativeCompletion;
         try
         {
-            nativeCompletion = _nativeView.CaptureSnapshotAsync();
+            nativeCompletion = _nativeView.CaptureSnapshotAsync(query);
         }
         catch (Exception)
         {
@@ -2445,6 +2749,17 @@ public sealed class BrowserSurface :
 
         if (PendingInteraction is { } interaction)
         {
+            if (interaction is PendingElementCheck)
+            {
+                // A check operation is a state assertion, not navigation.
+                // Page handlers may try to navigate on click; reject that
+                // navigation while still allowing the native postcondition
+                // read to determine whether the checkbox became checked.
+                RecordTerminalNavigation(args.NavigationGeneration);
+                args.Cancel = true;
+                return;
+            }
+
             if (!interaction.ObserveStart(args.NavigationGeneration))
             {
                 interaction.NavigationError =
@@ -2572,7 +2887,10 @@ public sealed class BrowserSurface :
                     BrowserLoadState.Ready,
                     _nativeView.CanGoBack,
                     _nativeView.CanGoForward,
-                    interaction.SourceDocument.DocumentRevision + 1));
+                    interaction.SourceDocument.DocumentRevision + 1,
+                    viewport: State.Viewport,
+                    viewportRevision: State.ViewportRevision,
+                    inputEpoch: State.InputEpoch));
             }
 
             CompleteElementInteractionAfterNavigation(interaction);
@@ -2605,7 +2923,10 @@ public sealed class BrowserSurface :
                 BrowserLoadState.Ready,
                 _nativeView.CanGoBack,
                 _nativeView.CanGoForward,
-                State.DocumentRevision));
+                State.DocumentRevision,
+                viewport: State.Viewport,
+                viewportRevision: State.ViewportRevision,
+                inputEpoch: State.InputEpoch));
             return;
         }
 
@@ -2633,7 +2954,10 @@ public sealed class BrowserSurface :
             BrowserLoadState.Ready,
             _nativeView.CanGoBack,
             _nativeView.CanGoForward,
-            State.DocumentRevision + 1));
+            State.DocumentRevision + 1,
+            viewport: State.Viewport,
+            viewportRevision: State.ViewportRevision,
+            inputEpoch: State.InputEpoch));
     }
 
     private void OnAddressChanged(
@@ -2658,7 +2982,10 @@ public sealed class BrowserSurface :
             _nativeView.CanGoBack,
             _nativeView.CanGoForward,
             State.DocumentRevision,
-            State.Failure));
+            State.Failure,
+            State.Viewport,
+            State.ViewportRevision,
+            State.InputEpoch));
     }
 
     private void OnNavigationRejected(
@@ -2833,7 +3160,10 @@ public sealed class BrowserSurface :
             BrowserLoadState.Ready,
             _nativeView.CanGoBack,
             _nativeView.CanGoForward,
-            pending.CommittedState.DocumentRevision + 1));
+            pending.CommittedState.DocumentRevision + 1,
+            viewport: State.Viewport,
+            viewportRevision: State.ViewportRevision,
+            inputEpoch: State.InputEpoch));
         CompleteRetiredGovernedNavigation(
             pending,
             BrowserResult<BrowserSessionState>.Success(State));
@@ -2975,7 +3305,10 @@ public sealed class BrowserSurface :
             BrowserLoadState.Ready,
             _nativeView.CanGoBack,
             _nativeView.CanGoForward,
-            State.DocumentRevision + 1));
+            State.DocumentRevision + 1,
+            viewport: State.Viewport,
+            viewportRevision: State.ViewportRevision,
+            inputEpoch: State.InputEpoch));
         if (IsFocused)
         {
             try
@@ -3023,7 +3356,10 @@ public sealed class BrowserSurface :
             pending.CommittedState.CanGoBack,
             pending.CommittedState.CanGoForward,
             pending.CommittedState.DocumentRevision,
-            error));
+            error,
+            pending.CommittedState.Viewport,
+            pending.CommittedState.ViewportRevision,
+            pending.CommittedState.InputEpoch));
 
     private void CompleteGovernedNavigation(
         PendingOriginConstrainedNavigation pending,
@@ -3067,7 +3403,10 @@ public sealed class BrowserSurface :
             BrowserLoadState.Loading,
             _nativeView.CanGoBack,
             _nativeView.CanGoForward,
-            State.DocumentRevision));
+            State.DocumentRevision,
+            viewport: State.Viewport,
+            viewportRevision: State.ViewportRevision,
+            inputEpoch: State.InputEpoch));
     }
 
     private void PublishFailure(BrowserAddress address, BrowserError error) =>
@@ -3078,7 +3417,10 @@ public sealed class BrowserSurface :
             _nativeView.CanGoBack,
             _nativeView.CanGoForward,
             State.DocumentRevision,
-            error));
+            error,
+            State.Viewport,
+            State.ViewportRevision,
+            State.InputEpoch));
 
     private BrowserResult<BrowserSessionState> FailEngine()
     {
@@ -3099,6 +3441,12 @@ public sealed class BrowserSurface :
             BrowserError.Create(
                 BrowserErrorCode.UnsupportedCapability,
                 $"The browser capability '{capability}' is not enabled for this surface."));
+
+    private static BrowserResult<T> WaitObservationCancelled<T>() =>
+        BrowserResult<T>.Failure(
+            BrowserError.Create(
+                BrowserErrorCode.Cancelled,
+                "The browser wait observation was cancelled."));
 
     private static BrowserResult<BrowserSessionState> Cancelled() =>
         BrowserResult<BrowserSessionState>.Failure(
@@ -3234,6 +3582,12 @@ public sealed class BrowserSurface :
             BrowserErrorCode.ElementNotCheckable,
             "The referenced browser element is not a checkbox or radio button.");
 
+    private static BrowserError CheckStateNotApplied() =>
+        BrowserError.Create(
+            BrowserErrorCode.CheckStateNotApplied,
+            "The browser observed that the referenced element remained unchecked.",
+            retryable: true);
+
     private static BrowserError FillValueNotSupported() =>
         BrowserError.Create(
             BrowserErrorCode.FillValueNotSupported,
@@ -3322,7 +3676,9 @@ public sealed class BrowserSurface :
             ? click
             : _pendingElementFill is { } fill
                 ? fill
-                : _pendingElementCheck;
+                : _pendingElementCheck is { } check
+                    ? check
+                    : _pendingBrowserAutomation;
 
     private void CompleteElementInteractionAfterNavigation(
         PendingElementInteraction interaction)
@@ -3342,6 +3698,12 @@ public sealed class BrowserSurface :
         if (interaction is PendingElementCheck check)
         {
             TryCompleteElementCheck(check);
+            return;
+        }
+
+        if (interaction is PendingBrowserAutomation automation)
+        {
+            TryCompleteBrowserAutomation(automation);
         }
     }
 
@@ -3448,6 +3810,22 @@ public sealed class BrowserSurface :
         IEmbeddedBrowserView NativeView,
         NativeBrowserElementHandle Handle,
         DateTimeOffset ExpiresAtUtc);
+
+    private sealed record ElementStateReadStart(
+        IEmbeddedBrowserView? NativeView,
+        BrowserDocumentBinding? Document,
+        Task<NativeBrowserElementStateResult>? Completion,
+        BrowserError? Error)
+    {
+        public static ElementStateReadStart Started(
+            IEmbeddedBrowserView nativeView,
+            BrowserDocumentBinding document,
+            Task<NativeBrowserElementStateResult> completion) =>
+            new(nativeView, document, completion, null);
+
+        public static ElementStateReadStart Failure(BrowserError error) =>
+            new(null, null, null, error);
+    }
 
     private abstract class PendingElementInteraction(
         IEmbeddedBrowserView nativeView,

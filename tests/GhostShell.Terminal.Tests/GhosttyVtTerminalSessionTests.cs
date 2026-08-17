@@ -164,6 +164,91 @@ public sealed class GhosttyVtTerminalSessionTests
     }
 
     [Fact]
+    public async Task ProjectedHistoryReadAndFindDoNotMutateViewportOrSelection()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+        await session.AttachRendererAsync(
+            new NativeRendererHost(
+                "GhostShell.Managed",
+                Handle: 0,
+                new ViewportDescriptor(80, 64, 1, Columns: 10, Rows: 4)),
+            default);
+        var output = string.Concat(
+            Enumerable.Range(0, 80).Select(index =>
+                $"history-{index:D3}-needle\r\n"))
+            + "PROJECTION_READY";
+        await harness.Pty.WriteOutputAsync(output);
+        _ = await WaitForScreenAsync(
+            session,
+            snapshot => snapshot.PlainText.Contains(
+                "PROJECTION_READY",
+                StringComparison.Ordinal));
+        _ = await session.FindAsync(
+            new TerminalFindInput("history-040-needle"),
+            default);
+        var screenBefore = await session.ReadScreenAsync(default);
+        var selectionBefore = await session.ReadSelectionAsync(default);
+
+        var projected = await session.ReadScrollbackAsync(
+            new TerminalScrollbackReadInput(
+                TerminalScrollbackReadOrigin.Bottom,
+                TerminalScrollbackReadInput.MediumRead),
+            default);
+        var found = await session.FindScrollbackAsync(
+            new TerminalScrollbackFindInput(
+                "needle",
+                TerminalScrollbackFindDirection.Backward,
+                MaximumMatchCount: 4),
+            default);
+        var screenAfter = await session.ReadScreenAsync(default);
+        var selectionAfter = await session.ReadSelectionAsync(default);
+
+        Assert.NotEmpty(projected.Rows);
+        Assert.Equal(4, found.Matches.Count);
+        Assert.Equal(screenBefore.ContentRevision, projected.ContentRevision);
+        Assert.Equal(screenBefore.ContentRevision, found.ContentRevision);
+        Assert.Equal(screenBefore.ContentRevision, screenAfter.ContentRevision);
+        Assert.Equal(screenBefore.PlainText, screenAfter.PlainText);
+        Assert.Equal(
+            screenBefore.ScrollbackLinesAbove,
+            screenAfter.ScrollbackLinesAbove);
+        Assert.Equal(
+            screenBefore.ScrollbackLinesBelow,
+            screenAfter.ScrollbackLinesBelow);
+        Assert.Equal(selectionBefore, selectionAfter);
+    }
+
+    [Fact]
+    public async Task ProjectedFindStopsAtTheExplicitHistoryScanCap()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+        var output = string.Concat(
+            Enumerable.Repeat("bounded-projection-row\r\n", 4_200))
+            + "PROJECTED_SEARCH_READY";
+        await harness.Pty.WriteOutputAsync(output);
+        _ = await WaitForScreenAsync(
+            session,
+            snapshot => snapshot.PlainText.Contains(
+                "PROJECTED_SEARCH_READY",
+                StringComparison.Ordinal));
+
+        var result = await session.FindScrollbackAsync(
+            new TerminalScrollbackFindInput(
+                "absent-projection-needle",
+                TerminalScrollbackFindDirection.Forward,
+                MaximumMatchCount: 1),
+            default);
+
+        Assert.True(
+            result.TotalLines
+            > GhosttyVtTerminalSession.MaximumProjectedFindScanRows);
+        Assert.Empty(result.Matches);
+        Assert.True(result.IsTruncated);
+    }
+
+    [Fact]
     public async Task Render_frame_preserves_terminal_cursor_underline_color_and_damage()
     {
         var harness = await CreateAsync();
@@ -255,6 +340,105 @@ public sealed class GhosttyVtTerminalSessionTests
         Assert.Equal(4, later.ShellIntegrationEvents.Count);
     }
 
+    [Fact]
+    public async Task SemanticWaitsMatchOnlyNewExactOsc133EventsAndExposeExitCode()
+    {
+        var harness = CreateWithShellIntegrationSupport();
+        await using var session = harness.Session;
+
+        var promptWaiting = session.WaitForPromptReadyAsync(
+            new TerminalWaitForPromptReadyInput(
+                AfterShellEventSequence: 0,
+                TimeSpan.FromSeconds(2)),
+            default).AsTask();
+        await harness.Pty.WriteOutputAsync("\u001b]133;A\u0007$ ");
+        _ = await WaitForScreenAsync(
+            session,
+            current => current.ShellIntegrationEvents.Count == 1);
+        Assert.False(promptWaiting.IsCompleted);
+
+        await harness.Pty.WriteOutputAsync("\u001b]133;B\u0007");
+        var prompt = await promptWaiting.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(TerminalWaitOutcomeKind.PromptReady, prompt.Kind);
+        Assert.Equal(2, prompt.ObservedShellEvent?.Sequence);
+        Assert.Equal(
+            TerminalCommandBoundaryKind.CommandInputStarted,
+            prompt.ObservedShellEvent?.Kind);
+
+        var commandWaiting = session.WaitForCommandFinishedAsync(
+            new TerminalWaitForCommandFinishedInput(
+                AfterShellEventSequence: 2,
+                TimeSpan.FromSeconds(2)),
+            default).AsTask();
+        await harness.Pty.WriteOutputAsync("echo ok\u001b]133;C\u0007\r\nok\r\n");
+        _ = await WaitForScreenAsync(
+            session,
+            current => current.ShellIntegrationEvents.Count == 3);
+        Assert.False(commandWaiting.IsCompleted);
+
+        await harness.Pty.WriteOutputAsync("\u001b]133;D;17\u0007");
+        var finished = await commandWaiting.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(TerminalWaitOutcomeKind.CommandFinished, finished.Kind);
+        Assert.Equal(4, finished.ObservedShellEvent?.Sequence);
+        Assert.Equal(17, finished.ObservedShellEvent?.ExitCode);
+
+        var afterPreviousFinish = session.WaitForCommandFinishedAsync(
+            new TerminalWaitForCommandFinishedInput(
+                AfterShellEventSequence: 4,
+                TimeSpan.FromSeconds(2)),
+            default).AsTask();
+        Assert.False(afterPreviousFinish.IsCompleted);
+        await harness.Pty.WriteOutputAsync(
+            "\u001b]133;C\u0007\u001b]133;D;23\u0007");
+        var nextFinished = await afterPreviousFinish.WaitAsync(
+            TimeSpan.FromSeconds(2));
+
+        Assert.Equal(6, nextFinished.ObservedShellEvent?.Sequence);
+        Assert.Equal(23, nextFinished.ObservedShellEvent?.ExitCode);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FactoryPropagatesUnavailableShellIntegrationStatusToSemanticWaits(
+        bool disabledExplicitly)
+    {
+        _ = GhosttyVtTestRuntime.RequireStagedRuntime();
+        var ptyFactory = new FakePortablePtyFactory();
+        var factory = new GhosttyVtTerminalSessionFactory(ptyFactory);
+        var launch = disabledExplicitly
+            ? new TerminalLaunchRequest(
+                Environment.CurrentDirectory,
+                renderProfile: new TerminalRenderProfileSnapshot(
+                    13,
+                    TerminalCursorStyle.Block,
+                    cursorBlink: false,
+                    scrollbackLines: 10_000,
+                    TerminalPalette.GhostShellDark,
+                    shellIntegration: TerminalShellIntegrationMode.Disabled))
+            : new TerminalLaunchRequest(
+                Environment.CurrentDirectory,
+                executable: "/usr/bin/python3");
+        await using var session = await factory.CreateAsync(
+            SessionId.New(),
+            launch,
+            default);
+
+        var prompt = await session.WaitForPromptReadyAsync(
+            new TerminalWaitForPromptReadyInput(0, TimeSpan.FromHours(1)),
+            default);
+        var command = await session.WaitForCommandFinishedAsync(
+            new TerminalWaitForCommandFinishedInput(0, TimeSpan.FromHours(1)),
+            default);
+
+        Assert.Equal(TerminalWaitOutcomeKind.Unsupported, prompt.Kind);
+        Assert.Equal(TerminalWaitOutcomeKind.Unsupported, command.Kind);
+        Assert.Null(prompt.Snapshot);
+        Assert.Null(command.ObservedShellEvent);
+    }
+
     /// <summary>
     /// The two sequences a program actually uses to ask for attention, plus the
     /// bell. Agents and long builds send these from panels nobody is looking
@@ -313,6 +497,26 @@ public sealed class GhosttyVtTerminalSessionTests
         Assert.Equal("Waiting for input", notifications[1].Body);
         Assert.Equal(string.Empty, notifications[2].Body);
         Assert.Equal([1L, 2L, 3L], notifications.Select(notification => notification.Sequence));
+    }
+
+    [Fact]
+    public async Task Interactive_state_protocol_is_exposed_on_screen()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+
+        await harness.Pty.WriteOutputAsync(
+            "\u001b]777;notify;terminal.interactive-state.v1;"
+            + "{\"sequence\":1,\"state\":\"approval_required\",\"ttl_ms\":5000}\u0007");
+
+        var screen = await WaitForScreenAsync(
+            session,
+            snapshot => snapshot.InteractiveState is not null);
+        var state = Assert.IsType<TerminalInteractiveStateSnapshot>(screen.InteractiveState);
+
+        Assert.Equal(1, state.Sequence);
+        Assert.Equal(TerminalInteractiveStateKind.ApprovalRequired, state.Kind);
+        Assert.True(state.ExpiresAtUtc > state.ObservedAtUtc);
     }
 
     /// <summary>
@@ -666,6 +870,45 @@ public sealed class GhosttyVtTerminalSessionTests
     }
 
     [Fact]
+    public async Task Revision_bound_mouse_is_rejected_when_output_changes_while_queued()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+        var beforeTracking = await session.ReadScreenAsync(default);
+        await harness.Pty.WriteOutputAsync("\u001b[?1000h");
+        _ = await WaitForScreenAsync(
+            session,
+            snapshot => snapshot.ContentRevision > beforeTracking.ContentRevision);
+
+        harness.Pty.PauseInputWrites();
+        var blockedWrite = session.WriteAsync("blocker", default).AsTask();
+        await harness.Pty.WaitForInputWriteAttemptAsync();
+        var boundSnapshot = await session.ReadScreenAsync(default);
+        var mouse = session.SendMouseAtContentRevisionAsync(
+            new TerminalMouseInput(
+                TerminalMouseButton.Left,
+                TerminalMouseEventKind.Down,
+                Column: 0,
+                Row: 0),
+            boundSnapshot.ContentRevision,
+            default).AsTask();
+        Assert.False(mouse.IsCompleted);
+
+        await harness.Pty.WriteOutputAsync("changed while mouse was queued");
+        _ = await WaitForScreenAsync(
+            session,
+            snapshot => snapshot.ContentRevision > boundSnapshot.ContentRevision);
+        harness.Pty.ResumeInputWrites();
+
+        await blockedWrite.WaitAsync(TimeSpan.FromSeconds(3));
+        var outcome = await mouse.WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.Equal(
+            TerminalRevisionBoundMouseOutcome.ContentRevisionChanged,
+            outcome);
+        Assert.Equal("blocker", harness.Pty.WrittenText);
+    }
+
+    [Fact]
     public async Task Force_shutdown_cancels_in_flight_input_and_kills_the_process_once()
     {
         var harness = await CreateAsync();
@@ -748,6 +991,90 @@ public sealed class GhosttyVtTerminalSessionTests
         Assert.EndsWith("q", ptyFactory.Connection.WrittenText, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Submit_text_delivers_paste_and_enter_in_one_pty_write()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+
+        var result = await session.SubmitTextAsync(
+            new TerminalPasteInput("printf ATOMIC", ConfirmedUnsafe: true),
+            default);
+
+        Assert.Equal(
+            TerminalPasteResult.Completed(bracketed: false),
+            result);
+        Assert.Equal("printf ATOMIC\r", harness.Pty.WrittenText);
+        Assert.Equal(1, harness.Pty.InputWriteCount);
+    }
+
+    [Fact]
+    public async Task Repeated_special_key_is_delivered_in_one_pty_write()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+
+        await session.SendKeyAsync(
+            new TerminalKeyStroke(
+                TerminalKey.Backspace,
+                TerminalKeyModifiers.None),
+            default);
+        var encodedOnce = harness.Pty.WrittenText;
+        await session.SendKeyAsync(
+            new TerminalKeyStroke(
+                TerminalKey.Backspace,
+                TerminalKeyModifiers.None,
+                RepeatCount: 12),
+            default);
+
+        Assert.NotEmpty(encodedOnce);
+        Assert.Equal(
+            encodedOnce + string.Concat(Enumerable.Repeat(encodedOnce, 12)),
+            harness.Pty.WrittenText);
+        Assert.Equal(2, harness.Pty.InputWriteCount);
+    }
+
+    [Fact]
+    public async Task Screen_input_internal_read_then_diff_preserves_agent_observation_baseline()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+        await harness.Pty.WriteOutputAsync("before");
+        _ = await WaitForScreenAsync(
+            session,
+            snapshot => snapshot.PlainText.Contains(
+                "before",
+                StringComparison.Ordinal));
+        var baseline = await session.ObserveScreenAsync(default);
+
+        await session.SendKeyAsync(
+            new TerminalKeyStroke(TerminalKey.Backspace),
+            default);
+        await harness.Pty.WriteOutputAsync("\rAFTER");
+        await WaitUntilAsync(() => Task.FromResult(
+            ReadPrivateField<long>(session, "_contentRevision")
+            > baseline.ContentRevision));
+        var internalRead = await session.ReadScreenAsync(default);
+        Assert.True(internalRead.ContentRevision > baseline.ContentRevision);
+        var diff = await session.ReadScreenDiffAsync(
+            new TerminalScreenDiffInput(
+                baseline.ContentRevision,
+                MaximumRowCount: 24),
+            default);
+        var stale = await session.ReadScreenDiffAsync(
+            new TerminalScreenDiffInput(
+                baseline.ContentRevision,
+                MaximumRowCount: 24),
+            default);
+
+        Assert.True(diff.BaselineAvailable);
+        Assert.Contains(
+            diff.ChangedRows,
+            row => row.Text.Contains("AFTER", StringComparison.Ordinal));
+        Assert.False(stale.BaselineAvailable);
+        Assert.Empty(stale.ChangedRows);
+    }
+
     private static async Task<GhosttyVtHarness> CreateAsync(
         TerminalLaunchRequest? launch = null)
     {
@@ -761,6 +1088,21 @@ public sealed class GhosttyVtTerminalSessionTests
         return new GhosttyVtHarness(
             Assert.IsType<GhosttyVtTerminalSession>(session),
             ptyFactory.Connection);
+    }
+
+    private static GhosttyVtHarness CreateWithShellIntegrationSupport()
+    {
+        _ = GhosttyVtTestRuntime.RequireStagedRuntime();
+        var launch = new TerminalLaunchRequest(Environment.CurrentDirectory);
+        var pty = new FakePortablePtyConnection();
+        var session = new GhosttyVtTerminalSession(
+            SessionId.New(),
+            launch,
+            pty,
+            initialColumns: 80,
+            initialRows: 24,
+            shellIntegrationApplied: true);
+        return new GhosttyVtHarness(session, pty);
     }
 
     private static TerminalPhysicalKeyEvent PhysicalKey(

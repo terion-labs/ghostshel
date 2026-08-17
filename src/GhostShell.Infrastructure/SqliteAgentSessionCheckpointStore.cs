@@ -90,38 +90,48 @@ public sealed class SqliteAgentSessionCheckpointStore : IAgentSessionCheckpointS
                 }
             }
 
+            // Keep insert and update as separate statements. SQLite3MC 3.49.1
+            // could return SQLITE_NOMEM for an UPSERT whose DO UPDATE arm had
+            // a revision predicate. The immediate transaction and version read
+            // above retain the same atomic compare-and-swap fence without that
+            // historically unsafe statement shape.
             await using var command = connection.CreateCommand();
             command.Transaction = transaction;
-            command.CommandText = """
-                INSERT INTO agent_session_checkpoints(
-                    run_id,
-                    workspace_id,
-                    schema_version,
-                    generation,
-                    revision,
-                    payload_json,
-                    payload_sha256,
-                    updated_utc)
-                VALUES (
-                    $runId,
-                    $workspaceId,
-                    $schemaVersion,
-                    $generation,
-                    $revision,
-                    $payloadJson,
-                    $payloadSha256,
-                    $updatedUtc)
-                ON CONFLICT(run_id) DO UPDATE SET
-                    schema_version = excluded.schema_version,
-                    workspace_id = excluded.workspace_id,
-                    generation = excluded.generation,
-                    revision = excluded.revision,
-                    payload_json = excluded.payload_json,
-                    payload_sha256 = excluded.payload_sha256,
-                    updated_utc = excluded.updated_utc
-                WHERE agent_session_checkpoints.revision = $expectedRevision
-                    AND agent_session_checkpoints.workspace_id IS $workspaceId;
-                """;
+            command.CommandText = current is null
+                ? """
+                    INSERT INTO agent_session_checkpoints(
+                        run_id,
+                        workspace_id,
+                        schema_version,
+                        generation,
+                        revision,
+                        payload_json,
+                        payload_sha256,
+                        updated_utc)
+                    VALUES (
+                        $runId,
+                        $workspaceId,
+                        $schemaVersion,
+                        $generation,
+                        $revision,
+                        $payloadJson,
+                        $payloadSha256,
+                        $updatedUtc);
+                    """
+                : """
+                    UPDATE agent_session_checkpoints
+                    SET
+                        workspace_id = $workspaceId,
+                        schema_version = $schemaVersion,
+                        generation = $generation,
+                        revision = $revision,
+                        payload_json = $payloadJson,
+                        payload_sha256 = $payloadSha256,
+                        updated_utc = $updatedUtc
+                    WHERE run_id = $runId
+                        AND revision = $expectedRevision
+                        AND workspace_id IS $workspaceId;
+                    """;
             command.Parameters.AddWithValue("$runId", checkpoint.RunId.Value);
             command.Parameters.AddWithValue(
                 "$workspaceId",
@@ -132,7 +142,10 @@ public sealed class SqliteAgentSessionCheckpointStore : IAgentSessionCheckpointS
             command.Parameters.AddWithValue("$payloadJson", checkpoint.PayloadJson);
             command.Parameters.AddWithValue("$payloadSha256", checksum);
             command.Parameters.AddWithValue("$updatedUtc", FormatTimestamp(checkpoint.UpdatedAt));
-            command.Parameters.AddWithValue("$expectedRevision", current?.Revision ?? -1);
+            if (current is not null)
+            {
+                command.Parameters.AddWithValue("$expectedRevision", current.Revision);
+            }
             if (await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
             {
                 throw new InvalidOperationException(

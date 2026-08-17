@@ -373,12 +373,28 @@ public sealed class DatabasePanelClientSqliteBrowsingTests : IDisposable
 
         Assert.False(filtered.HasMore);
         Assert.Equal(1, filtered.TotalRows);
+        Assert.Equal(4, filtered.TableRows);
         Assert.Equal(["id", "name", "note", "name_upper"], filtered.Result.Columns.Select(column => column.Name));
         var hostileRow = Assert.Single(filtered.Result.ValueRows);
         Assert.Equal(2L, Assert.IsType<long>(hostileRow[0].RawValue));
         Assert.Equal(DatabaseValueKind.SignedInteger, hostileRow[0].Kind);
         Assert.Equal(HostileName, Assert.IsType<string>(hostileRow[1].RawValue));
         Assert.Equal(DatabaseValueKind.Text, hostileRow[1].Kind);
+
+        var projected = await client.ReadTableAsync(
+            "sqlite",
+            ConnectionString,
+            tunnel: null,
+            table,
+            new DatabaseTableQuery(
+                [],
+                [new DatabaseSort("id")],
+                Offset: 0,
+                Limit: 2,
+                Columns: ["id", "name"]),
+            CancellationToken.None);
+        Assert.Equal(["id", "name"], projected.Result.Columns.Select(column => column.Name));
+        Assert.All(projected.Result.ValueRows, row => Assert.Equal(2, row.Count));
 
         // The payload contains a complete DROP statement. A second catalog read
         // proves it remained a bound value rather than becoming SQL text.

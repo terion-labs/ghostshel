@@ -38,6 +38,7 @@ public sealed class TerminalRuntimePanelContinuityBadgeHeadlessTests
             if (isContinuityActive)
             {
                 var badge = Assert.Single(visibleBadges);
+                Assert.Equal("Agents", badge.Symbol.ToString());
                 var titleLine = Assert.Single(
                     view.GetVisualDescendants().OfType<PanelTitleLine>());
                 var title = Assert.IsType<TextBlock>(titleLine.Children[0]);

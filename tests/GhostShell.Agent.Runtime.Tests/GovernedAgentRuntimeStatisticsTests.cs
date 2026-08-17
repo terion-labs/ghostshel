@@ -15,7 +15,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             ScriptedProvider.ToolThenAnswer(
                 BuiltInAgentTools.StatisticsRead,
                 "{}"),
-            ProcessPolicy(AgentPermission.Auto));
+            StatisticsPolicy(AgentPermission.Auto));
         var statistics = Assert.IsType<ConsumingStatisticsHost>(
             fixture.Statistics);
         statistics.Snapshot = new SystemStatisticsSnapshot(
@@ -96,7 +96,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
                 && auditEvent.Outcome == AuditOutcome.Succeeded);
         var details = Assert.IsType<AuditDetails.AgentActionDetails>(
             completed.Details);
-        Assert.Equal(AgentCapability.ProcessControl, details.Capability);
+        Assert.Equal(AgentCapability.SystemData, details.Capability);
         Assert.Equal(AgentActionRisk.Observation, details.Risk);
         Assert.Equal(1, details.Binding.ResultCount);
     }
@@ -109,7 +109,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             ScriptedProvider.ToolThenAnswer(
                 BuiltInAgentTools.StatisticsRead,
                 "{}"),
-            ProcessPolicy(AgentPermission.Ask));
+            StatisticsPolicy(AgentPermission.Ask));
         var statistics = Assert.IsType<ConsumingStatisticsHost>(
             fixture.Statistics);
 
@@ -149,7 +149,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             ScriptedProvider.ToolThenAnswer(
                 BuiltInAgentTools.StatisticsRead,
                 "{}"),
-            ProcessPolicy(AgentPermission.Off));
+            StatisticsPolicy(AgentPermission.Off));
         var statistics = Assert.IsType<ConsumingStatisticsHost>(
             fixture.Statistics);
 
@@ -172,7 +172,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             ScriptedProvider.ToolThenAnswer(
                 BuiltInAgentTools.StatisticsRead,
                 "{}"),
-            ProcessPolicy(AgentPermission.Auto));
+            StatisticsPolicy(AgentPermission.Auto));
         var omittedStatistics = Assert.IsType<ConsumingStatisticsHost>(
             omitted.Statistics);
 
@@ -201,7 +201,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             ScriptedProvider.ToolThenAnswer(
                 BuiltInAgentTools.StatisticsRead,
                 $$"""{"panel_id":"{{ProcessRuntimeContextProxy.StatisticsPanelId.Value}}"}"""),
-            ProcessPolicy(AgentPermission.Auto));
+            StatisticsPolicy(AgentPermission.Auto));
         var selectedStatistics = Assert.IsType<ConsumingStatisticsHost>(
             selected.Statistics);
 
@@ -226,7 +226,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             ScriptedProvider.ToolThenAnswer(
                 BuiltInAgentTools.StatisticsRead,
                 "{}"),
-            ProcessPolicy(AgentPermission.Auto));
+            StatisticsPolicy(AgentPermission.Auto));
         var statistics = Assert.IsType<ConsumingStatisticsHost>(
             fixture.Statistics);
         statistics.BlockAfterAuthorization = true;

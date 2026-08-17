@@ -48,7 +48,9 @@ public sealed class FileAgentToolContractTests
                 Assert.False(
                     schema.GetProperty("additionalProperties").GetBoolean());
                 Assert.Equal(
-                    ["path_segments"],
+                    tool.Name == BuiltInAgentTools.FilesDelete
+                        ? ["path_segments", "recursive"]
+                        : ["path_segments"],
                     schema.GetProperty("properties")
                         .EnumerateObject()
                         .Select(property => property.Name));
@@ -225,6 +227,99 @@ public sealed class FileAgentToolContractTests
         Assert.Empty(FileAgentToolSet.For(panel, panel.FileMetadata!));
     }
 
+    [Fact]
+    public async Task Observation_tools_are_closed_bounded_and_live_capability_gated()
+    {
+        var panel = ContextPanel(
+            "observations",
+            FilePanelCapability.Search
+            | FilePanelCapability.Permissions,
+            SessionCapabilities.FilesSearch,
+            SessionCapabilities.FilesReadAccessControl,
+            SessionCapabilities.FilesTransfersRead);
+
+        var tools = FileAgentToolSet.For(panel, panel.FileMetadata!);
+
+        Assert.Equal(
+            [
+                BuiltInAgentTools.FilesSearch,
+                BuiltInAgentTools.FilesAccessRead,
+                BuiltInAgentTools.FilesTransfers,
+            ],
+            tools.Select(tool => tool.Name));
+        var searchSchema = tools.Single(tool =>
+            tool.Name == BuiltInAgentTools.FilesSearch).InputSchema;
+        Assert.Equal(
+            ["path_segments", "query", "scope", "max_results"],
+            searchSchema.GetProperty("required")
+                .EnumerateArray()
+                .Select(item => item.GetString()));
+        Assert.Empty(tools.Single(tool =>
+                tool.Name == BuiltInAgentTools.FilesTransfers)
+            .InputSchema.GetProperty("properties")
+            .EnumerateObject());
+
+        var searchProposal = await ProposalAsync(
+            BuiltInAgentTools.FilesSearch,
+            """{"path_segments":["logs"],"query":"error","scope":"subtree","max_results":17}""");
+        var parsedSearch = Assert.IsType<FileAgentIntentResult.Parsed>(
+            FileAgentToolParser.Parse(
+                searchProposal,
+                panel,
+                panel.FileMetadata!));
+        var search = Assert.IsType<FileAgentIntent.Search>(parsedSearch.Intent);
+        Assert.Equal("error", search.Query);
+        Assert.Equal(FilePanelDiscoveryScope.Subtree, search.Scope);
+        Assert.Equal(17, search.MaximumResults);
+
+        var accessProposal = await ProposalAsync(
+            BuiltInAgentTools.FilesAccessRead,
+            """{"path_segments":[]}""");
+        Assert.IsType<FileAgentIntent.AccessRead>(
+            Assert.IsType<FileAgentIntentResult.Parsed>(
+                FileAgentToolParser.Parse(
+                    accessProposal,
+                    panel,
+                    panel.FileMetadata!)).Intent);
+        var transfersProposal = await ProposalAsync(
+            BuiltInAgentTools.FilesTransfers,
+            "{}");
+        Assert.IsType<FileAgentIntent.Transfers>(
+            Assert.IsType<FileAgentIntentResult.Parsed>(
+                FileAgentToolParser.Parse(
+                    transfersProposal,
+                    panel,
+                    panel.FileMetadata!)).Intent);
+
+        var searchWithoutProviderSupport = ContextPanel(
+            "search-unavailable",
+            FilePanelCapability.List,
+            SessionCapabilities.FilesSearch);
+        Assert.Empty(FileAgentToolSet.For(
+            searchWithoutProviderSupport,
+            searchWithoutProviderSupport.FileMetadata!));
+
+        foreach (var arguments in new[]
+        {
+            """{"path_segments":[],"query":" error","scope":"subtree","max_results":1}""",
+            """{"path_segments":[],"query":"error","scope":"all","max_results":1}""",
+            """{"path_segments":[],"query":"error","scope":"subtree","max_results":0}""",
+            """{"path_segments":[],"query":"error","scope":"subtree","max_results":1,"show_hidden":true}""",
+        })
+        {
+            var proposal = await ProposalAsync(
+                BuiltInAgentTools.FilesSearch,
+                arguments);
+            Assert.Equal(
+                "invalid_tool_arguments",
+                Assert.IsType<FileAgentIntentResult.Rejected>(
+                    FileAgentToolParser.Parse(
+                        proposal,
+                        panel,
+                        panel.FileMetadata!)).StableCode);
+        }
+    }
+
     [Theory]
     [InlineData("""{"path_segments":[".."]}""")]
     [InlineData("""{"path_segments":["."]}""")]
@@ -386,10 +481,13 @@ public sealed class FileAgentToolContractTests
         var panel = ContextPanel(
             "mutation-parser",
             FilePanelCapability.CreateDirectory
+            | FilePanelCapability.Rename
             | FilePanelCapability.Delete
             | FilePanelCapability.GovernedCreateDirectory
+            | FilePanelCapability.GovernedRename
             | FilePanelCapability.GovernedDelete,
             SessionCapabilities.FilesCreateDirectory,
+            SessionCapabilities.FilesRename,
             SessionCapabilities.FilesDelete);
         var createDirectory = await ProposalAsync(
             BuiltInAgentTools.FilesCreateDirectory,
@@ -397,6 +495,9 @@ public sealed class FileAgentToolContractTests
         var delete = await ProposalAsync(
             BuiltInAgentTools.FilesDelete,
             """{"path_segments":["deploy","old"]}""");
+        var move = await ProposalAsync(
+            BuiltInAgentTools.FilesMove,
+            """{"source_path_segments":["deploy","draft"],"destination_path_segments":["archive","draft"]}""");
 
         var parsedCreate = Assert.IsType<FileAgentIntentResult.Parsed>(
             FileAgentToolParser.Parse(
@@ -406,6 +507,11 @@ public sealed class FileAgentToolContractTests
         var parsedDelete = Assert.IsType<FileAgentIntentResult.Parsed>(
             FileAgentToolParser.Parse(
                 delete,
+                panel,
+                panel.FileMetadata!));
+        var parsedMove = Assert.IsType<FileAgentIntentResult.Parsed>(
+            FileAgentToolParser.Parse(
+                move,
                 panel,
                 panel.FileMetadata!));
 
@@ -420,10 +526,53 @@ public sealed class FileAgentToolContractTests
             Assert.IsType<FileAgentIntent.Delete>(parsedDelete.Intent)
                 .RelativePath
                 .Select(segment => segment.Value));
+        var moveIntent = Assert.IsType<FileAgentIntent.Move>(parsedMove.Intent);
+        Assert.Equal(
+            ["deploy", "draft"],
+            moveIntent.RelativePath.Select(segment => segment.Value));
+        Assert.Equal(
+            ["archive", "draft"],
+            moveIntent.DestinationRelativePath.Select(segment => segment.Value));
+
+        var moveSchema = FileAgentToolSet.For(panel, panel.FileMetadata!)
+            .Single(tool => tool.Name == BuiltInAgentTools.FilesMove)
+            .InputSchema;
+        Assert.Equal(
+            ["source_path_segments", "destination_path_segments"],
+            moveSchema.GetProperty("required")
+                .EnumerateArray()
+                .Select(value => value.GetString()));
+        Assert.All(
+            new[] { "source_path_segments", "destination_path_segments" },
+            property => Assert.Equal(
+                1,
+                moveSchema.GetProperty("properties")
+                    .GetProperty(property)
+                    .GetProperty("minItems")
+                    .GetInt32()));
+
+        var samePathMove = await ProposalAsync(
+            BuiltInAgentTools.FilesMove,
+            """{"source_path_segments":["same"],"destination_path_segments":["same"]}""");
+        Assert.Equal(
+            "invalid_tool_arguments",
+            Assert.IsType<FileAgentIntentResult.Rejected>(
+                FileAgentToolParser.Parse(
+                    samePathMove,
+                    panel,
+                    panel.FileMetadata!)).StableCode);
+
+        var recursiveDelete = Assert.IsType<FileAgentIntentResult.Parsed>(
+            FileAgentToolParser.Parse(
+                await ProposalAsync(
+                    BuiltInAgentTools.FilesDelete,
+                    """{"path_segments":["old"],"recursive":true}"""),
+                panel,
+                panel.FileMetadata!));
+        Assert.True(Assert.IsType<FileAgentIntent.Delete>(recursiveDelete.Intent).Recursive);
 
         foreach (var forbiddenArguments in new[]
         {
-            """{"path_segments":["old"],"recursive":true}""",
             """{"path_segments":["old"],"precondition":"any"}""",
             """{"path_segments":["old"],"version":"opaque"}""",
             """{"path_segments":["old"],"retry":true}""",
@@ -451,7 +600,6 @@ public sealed class FileAgentToolContractTests
         "continuation",
         "show_hidden",
         "maximum_bytes",
-        "recursive",
         "precondition",
         "version",
         "retry",

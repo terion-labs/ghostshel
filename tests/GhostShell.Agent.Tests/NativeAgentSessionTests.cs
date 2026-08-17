@@ -295,6 +295,57 @@ public sealed partial class NativeAgentSessionTests
     }
 
     [Fact]
+    public async Task ToolResultsSettleBeforeCompactionAndProviderContinuation()
+    {
+        var session = CreateSession();
+        Assert.True((await session.RunTurnAsync(
+            "Remember this older turn",
+            [],
+            TextProvider("Older answer"),
+            CancellationToken.None)).Succeeded);
+        var tools = ImmutableArray.Create(Tool("terminal.read_screen"));
+        var proposalTurn = await session.RunTurnAsync(
+            "Inspect after maintenance",
+            tools,
+            ToolProvider("terminal.read_screen", "{}"),
+            CancellationToken.None);
+        var proposal = Assert.Single(proposalTurn.ToolProposals);
+
+        var commitError = session.CommitToolResults(
+            proposal.Generation,
+            [SuccessJson(proposal, "{\"text\":\"ready\"}")],
+            tools);
+
+        Assert.Null(commitError);
+        Assert.Equal(
+            NativeAgentSessionState.AwaitingProviderContinuation,
+            session.Snapshot().State);
+        Assert.True(session.CaptureInterruptedCheckpoint().Succeeded);
+        var compacted = await session.CompactAsync(
+            1,
+            new ImmediateCompactor(
+                new AgentMessage(AgentMessageRole.Summary, "Older turn summary")),
+            CancellationToken.None);
+        Assert.True(compacted.Succeeded);
+        var provider = TextProvider("Continued after compaction");
+
+        var continuation = await session.ContinueToolTurnAsync(
+            tools,
+            provider,
+            CancellationToken.None);
+
+        Assert.True(continuation.Succeeded);
+        Assert.NotNull(provider.LastRequest);
+        Assert.Contains(
+            provider.LastRequest.Messages,
+            message => message.Role == AgentMessageRole.Summary
+                && message.Content == "Older turn summary");
+        Assert.Contains(
+            provider.LastRequest.Messages,
+            message => message.ToolResult is not null);
+    }
+
+    [Fact]
     public async Task AContinuationCanEmitAnotherBoundedProposalRound()
     {
         var session = CreateSession();
@@ -1498,6 +1549,7 @@ public sealed partial class NativeAgentSessionTests
             message => Assert.Equal("summary", message.Content),
             message => Assert.Same(initial[3], message),
             message => Assert.Same(initial[4], message));
+        Assert.Equal(initial.ToArray(), session.Snapshot().Transcript.ToArray());
         Assert.NotNull(compactor.LastRequest);
         Assert.Collection(
             compactor.LastRequest.Messages,
@@ -1506,6 +1558,52 @@ public sealed partial class NativeAgentSessionTests
         var events = await ReadCurrentEventBatchAsync(session);
         Assert.Single(events);
         Assert.Equal(AgentRunEventKind.ConversationCompacted, events[0].Kind);
+    }
+
+    [Fact]
+    public async Task TurnAfterCompactionKeepsVisibleTranscriptAndUsesSummaryContext()
+    {
+        var initial = ConversationFixture();
+        var session = CreateSession(initial);
+        Assert.True((await session.CompactAsync(
+            1,
+            new ImmediateCompactor(
+                new AgentMessage(AgentMessageRole.Summary, "summary")),
+            CancellationToken.None)).Succeeded);
+        var provider = TextProvider("next assistant");
+
+        var result = await session.RunTurnAsync(
+            "next user",
+            [],
+            provider,
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(
+            [
+                "system",
+                "summary",
+                "current user",
+                "current assistant",
+                "next user",
+                "next assistant",
+            ],
+            session.Snapshot().Conversation.Select(message => message.Content));
+        Assert.Equal(
+            [
+                "system",
+                "old user",
+                "old assistant",
+                "current user",
+                "current assistant",
+                "next user",
+                "next assistant",
+            ],
+            session.Snapshot().Transcript.Select(message => message.Content));
+        Assert.NotNull(provider.LastRequest);
+        Assert.Equal(
+            ["system", "summary", "current user", "current assistant", "next user"],
+            provider.LastRequest.Messages.Select(message => message.Content));
     }
 
     [Fact]
@@ -1716,7 +1814,7 @@ public sealed partial class NativeAgentSessionTests
     }
 
     [Fact]
-    public async Task TokenBudgetCompactionUsesPiThresholdAndKeepsRecentWholeTurn()
+    public async Task TokenBudgetCompactionUsesPiThresholdAndSplitsRecentTurn()
     {
         ImmutableArray<AgentMessage> initial =
         [
@@ -1738,11 +1836,101 @@ public sealed partial class NativeAgentSessionTests
         Assert.True(result.Succeeded);
         Assert.NotNull(compactor.LastRequest);
         Assert.Equal(initial[..2].ToArray(), compactor.LastRequest.Messages.ToArray());
+        Assert.Equal(
+            initial[2..3].ToArray(),
+            compactor.LastRequest.TurnPrefixMessages.ToArray());
+        Assert.True(compactor.LastRequest.IsSplitTurn);
         Assert.Collection(
             session.Snapshot().Conversation,
             message => Assert.Equal(AgentMessageRole.Summary, message.Role),
-            message => Assert.Same(initial[2], message),
             message => Assert.Same(initial[3], message));
+    }
+
+    [Fact]
+    public async Task TokenBudgetCompactionSplitsOneToolTurnAndKeepsContinuationValid()
+    {
+        var session = CreateSession();
+        var tools = ImmutableArray.Create(Tool("terminal.read_screen"));
+        var proposalTurn = await session.RunTurnAsync(
+            "Inspect the terminal",
+            tools,
+            ToolProvider("terminal.read_screen", "{}"),
+            CancellationToken.None);
+        var proposal = Assert.Single(proposalTurn.ToolProposals);
+        Assert.Null(session.CommitToolResults(
+            proposal.Generation,
+            [SuccessJson(proposal, $"{{\"text\":\"{new string('x', 400)}\"}}")],
+            tools));
+        var compactor = new ImmediateCompactor(
+            new AgentMessage(AgentMessageRole.Summary, "split-turn summary"));
+
+        var compacted = await session.CompactAsync(
+            contextWindowTokens: 100,
+            new AgentCompactionSettings(reserveTokens: 16, keepRecentTokens: 80),
+            compactor,
+            CancellationToken.None);
+
+        Assert.True(compacted.Succeeded);
+        Assert.NotNull(compactor.LastRequest);
+        Assert.Empty(compactor.LastRequest.Messages);
+        Assert.Equal(
+            new[] { AgentMessageRole.User },
+            compactor.LastRequest.TurnPrefixMessages.Select(message => message.Role));
+        Assert.Collection(
+            session.Snapshot().Conversation,
+            message => Assert.Equal(AgentMessageRole.Summary, message.Role),
+            message => Assert.Equal(AgentMessageRole.Assistant, message.Role),
+            message => Assert.Equal(AgentMessageRole.Tool, message.Role));
+
+        var continuation = await session.ContinueToolTurnAsync(
+            tools,
+            TextProvider("The terminal is ready."),
+            CancellationToken.None);
+
+        Assert.True(continuation.Succeeded);
+        Assert.Equal(
+            "The terminal is ready.",
+            session.Snapshot().Conversation[^1].Content);
+    }
+
+    [Fact]
+    public async Task PostCompactionUsageReplacesStaleRetainedUsage()
+    {
+        var staleUsage = new AgentTokenUsage(90, 10);
+        ImmutableArray<AgentMessage> initial =
+        [
+            new(AgentMessageRole.User, new string('a', 120)),
+            AgentMessage.Assistant(new string('b', 120), [], usage: staleUsage),
+            new(AgentMessageRole.User, new string('c', 80)),
+            AgentMessage.Assistant(new string('d', 80), [], usage: staleUsage),
+        ];
+        var session = CreateSession(initial);
+        var compacted = await session.CompactAsync(
+            contextWindowTokens: 100,
+            new AgentCompactionSettings(reserveTokens: 16, keepRecentTokens: 20),
+            new ImmediateCompactor(
+                new AgentMessage(AgentMessageRole.Summary, "summary")),
+            CancellationToken.None);
+
+        Assert.True(compacted.Succeeded);
+        Assert.Null(session.Snapshot().Conversation[^1].Usage);
+        Assert.False(session.EstimateContextUsage().UsesProviderReportedUsage);
+
+        var freshUsage = new AgentTokenUsage(40, 5);
+        var provider = new SequenceProvider(
+            new AgentProviderEvent.ResponseStarted(),
+            new AgentProviderEvent.TextDelta("fresh answer"),
+            new AgentProviderEvent.Usage(freshUsage),
+            new AgentProviderEvent.ResponseCompleted(AgentProviderStopReason.EndTurn));
+        Assert.True((await session.RunTurnAsync(
+            "Continue",
+            [],
+            provider,
+            CancellationToken.None)).Succeeded);
+
+        var usage = session.EstimateContextUsage();
+        Assert.True(usage.UsesProviderReportedUsage);
+        Assert.Equal(freshUsage.TotalTokens, usage.EstimatedTokens);
     }
 
     [Fact]

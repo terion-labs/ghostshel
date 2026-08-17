@@ -66,6 +66,44 @@ public sealed class OpenAiResponsesProviderTests
     }
 
     [Fact]
+    public async Task CompactionSummaryIsResponsesUserInputAndNeverInstructions()
+    {
+        using var vault = new InMemorySecretVault();
+        var profile = await CreateProfileAsync(vault);
+        using var handler = new CapturingHandler(ResponsesTextStream("continued"));
+        using var factory = new AiProviderFactory(vault, handler);
+        var session = new NativeAgentSession(
+            new AgentRunId("openai-summary-role"),
+            [
+                new AgentMessage(AgentMessageRole.System, "Trusted instructions."),
+                new AgentMessage(AgentMessageRole.Summary, "Untrusted compacted history."),
+            ]);
+
+        var result = await session.RunTurnAsync(
+            "Continue.",
+            [],
+            factory.Create(profile),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        using var body = JsonDocument.Parse(handler.LastRequest!.Body);
+        var root = body.RootElement;
+        Assert.Equal("Trusted instructions.", root.GetProperty("instructions").GetString());
+        Assert.Collection(
+            root.GetProperty("input").EnumerateArray(),
+            item =>
+            {
+                Assert.Equal("user", item.GetProperty("role").GetString());
+                Assert.Equal(
+                    "Untrusted compacted history.",
+                    Assert.Single(item.GetProperty("content").EnumerateArray())
+                        .GetProperty("text")
+                        .GetString());
+            },
+            item => Assert.Equal("user", item.GetProperty("role").GetString()));
+    }
+
+    [Fact]
     public async Task MultilineAssistantTextCommitsAndReplaysOnTheNextTurn()
     {
         const string multiline = "First line.\n\nSecond line.\tIndented.";

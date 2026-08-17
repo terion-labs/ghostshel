@@ -8,15 +8,15 @@ namespace GhostShell.Infrastructure.Tests;
 public sealed class DefinitionBundleTests
 {
     [Fact]
-    public void LegacyAiProviderProfileMigratesToProtocolSchemaInMemory()
+    public void AiProviderProfileRejectsNonCurrentSchema()
     {
         var document = new PortableDefinitionDocument(
             DefinitionKind.AiProviderProfile,
-            "ai.legacy-openai",
-            AiProviderProfile.LegacySchemaVersion,
-            "Legacy OpenAI",
+            "ai.non-current",
+            AiProviderProfile.CurrentSchemaVersion - 1,
+            "Non-current OpenAI",
             """
-            {"id":{"value":"ai.legacy-openai"},"schemaVersion":1,"name":"Legacy OpenAI","providerKind":"openAi","endpoint":"https://api.openai.com/v1/","authentication":{"$type":"api-key","secret":{"value":"vault-openai-key"}},"defaultModel":"gpt-test","order":0,"isEnabled":true}
+            {"id":{"value":"ai.non-current"},"schemaVersion":1,"name":"Non-current OpenAI","providerKind":"openAi","endpoint":"https://api.openai.com/v1/","authentication":{"$type":"api-key","secret":{"value":"vault-openai-key"}},"defaultModel":"gpt-test","order":0,"isEnabled":true}
             """);
 
         var parsed = KnownDefinitionRegistry.TryParse(
@@ -24,26 +24,21 @@ public sealed class DefinitionBundleTests
             out var definition,
             out var problem);
 
-        Assert.True(parsed, problem?.Message);
-        var profile = Assert.IsType<AiProviderProfile>(definition);
-        Assert.Equal(AiProviderProfile.CurrentSchemaVersion, profile.SchemaVersion);
-        Assert.Equal(AiProviderProtocol.OpenAiResponses, profile.Protocol);
-        Assert.Equal(
-            "vault-openai-key",
-            Assert.IsType<AiProviderAuthentication.ApiKey>(profile.Authentication)
-                .Secret.Value);
+        Assert.False(parsed);
+        Assert.Null(definition);
+        Assert.Equal(DefinitionProblemKind.UnsupportedSchema, problem?.Kind);
     }
 
     [Fact]
-    public void LegacyStdioMcpProfileMigratesToTransportSchemaInMemory()
+    public void McpServerProfileRejectsNonCurrentSchema()
     {
         var document = new PortableDefinitionDocument(
             DefinitionKind.McpServerProfile,
-            "mcp.legacy",
-            1,
-            "Legacy MCP",
+            "mcp.non-current",
+            McpServerProfile.CurrentSchemaVersion - 1,
+            "Non-current MCP",
             """
-            {"id":{"value":"mcp.legacy"},"schemaVersion":1,"name":"Legacy MCP","executable":"/opt/mcp/server","arguments":["--stdio"],"workingDirectory":"/srv/mcp","environment":[{"name":"TOKEN","reference":{"value":"vault-token"}}],"enabledTools":["status.read"],"isEnabled":true}
+            {"id":{"value":"mcp.non-current"},"schemaVersion":1,"name":"Non-current MCP","executable":"/opt/mcp/server","arguments":["--stdio"],"workingDirectory":"/srv/mcp","environment":[{"name":"TOKEN","reference":{"value":"vault-token"}}],"enabledTools":["status.read"],"isEnabled":true}
             """);
 
         var parsed = KnownDefinitionRegistry.TryParse(
@@ -51,67 +46,9 @@ public sealed class DefinitionBundleTests
             out var definition,
             out var problem);
 
-        Assert.True(parsed, problem?.Message);
-        var profile = Assert.IsType<McpServerProfile>(definition);
-        Assert.Equal(McpServerProfile.CurrentSchemaVersion, profile.SchemaVersion);
-        var transport = Assert.IsType<McpServerTransport.Stdio>(
-            profile.Transport);
-        Assert.Equal("/opt/mcp/server", transport.Executable);
-        Assert.Equal(["--stdio"], transport.Arguments);
-        Assert.Equal("/srv/mcp", transport.WorkingDirectory);
-        Assert.Equal(
-            "vault-token",
-            Assert.Single(transport.Environment).Reference.Value);
-    }
-
-    [Fact]
-    public async Task LegacyStdioMcpImportPersistsCurrentEnvelopeAndLoadsAndExports()
-    {
-        await using var temporary = TemporaryDatabase.Create();
-        var document = new PortableDefinitionDocument(
-            DefinitionKind.McpServerProfile,
-            "mcp.legacy-import",
-            1,
-            "Legacy imported MCP",
-            """
-            {"id":{"value":"mcp.legacy-import"},"schemaVersion":1,"name":"Legacy imported MCP","executable":"/opt/mcp/server","arguments":["--stdio"],"workingDirectory":"/srv/mcp","environment":[{"name":"TOKEN","reference":{"value":"vault-token"}}],"enabledTools":["status.read"],"isEnabled":true}
-            """);
-        var bundles = CreateBundleStore(temporary);
-
-        var preflight = await bundles.PreflightImportAsync(
-            Bundle(document),
-            DefinitionImportMode.FailOnConflict,
-            CancellationToken.None);
-        Assert.True(preflight.IsSuccess, preflight.Error?.Message);
-        Assert.True(preflight.Value!.CanCommit);
-        var committed = await bundles.CommitImportAsync(
-            preflight.Value,
-            CancellationToken.None);
-        var repository = new SqliteDefinitionRepository<McpServerProfile>(
-            temporary.Database,
-            TimeProvider.System);
-        var loaded = await repository.GetAsync(
-            new DefinitionKey(DefinitionKind.McpServerProfile, document.Id),
-            CancellationToken.None);
-        var exported = await bundles.ExportAsync(CancellationToken.None);
-
-        Assert.True(committed.IsSuccess, committed.Error?.Message);
-        Assert.True(loaded.IsSuccess, loaded.Error?.Message);
-        Assert.Equal(
-            McpServerProfile.CurrentSchemaVersion,
-            loaded.Value!.Value.SchemaVersion);
-        Assert.False(loaded.Value.Value.IsEnabled);
-        Assert.True(exported.IsSuccess, exported.Error?.Message);
-        var exportedDocument = Assert.Single(exported.Value!.Definitions);
-        Assert.Equal(McpServerProfile.CurrentSchemaVersion, exportedDocument.SchemaVersion);
-        Assert.Contains(
-            $"\"schemaVersion\":{McpServerProfile.CurrentSchemaVersion}",
-            exportedDocument.PayloadJson,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "\"isEnabled\":false",
-            exportedDocument.PayloadJson,
-            StringComparison.Ordinal);
+        Assert.False(parsed);
+        Assert.Null(definition);
+        Assert.Equal(DefinitionProblemKind.UnsupportedSchema, problem?.Kind);
     }
 
     [Fact]
@@ -180,7 +117,9 @@ public sealed class DefinitionBundleTests
             exportedProfile.PayloadJson,
             StringComparison.Ordinal);
         Assert.True(loaded.IsSuccess, loaded.Error?.Message);
-        Assert.Equal(reference, Assert.Single(loaded.Value!.Value.Environment).Reference);
+        var loadedTransport = Assert.IsType<McpServerTransport.Stdio>(
+            loaded.Value!.Value.Transport);
+        Assert.Equal(reference, Assert.Single(loadedTransport.Environment).Reference);
         Assert.False(loaded.Value.Value.IsEnabled);
         Assert.Empty(DefinitionReferenceExtractor.Extract(loaded.Value.Value));
     }
@@ -635,7 +574,7 @@ public sealed class DefinitionBundleTests
     }
 
     [Fact]
-    public async Task ImportRejectsDuplicateAiProviderFallbackOrdersWithoutWritingAnything()
+    public async Task ImportRejectsDuplicateAiProviderDisplayOrdersWithoutWritingAnything()
     {
         await using var temporary = TemporaryDatabase.Create();
         var bundles = CreateBundleStore(temporary);
@@ -676,7 +615,7 @@ public sealed class DefinitionBundleTests
     }
 
     [Fact]
-    public async Task ImportAcceptsDistinctAiProviderFallbackOrders()
+    public async Task ImportAcceptsDistinctAiProviderDisplayOrders()
     {
         await using var temporary = TemporaryDatabase.Create();
         var providers = new SqliteDefinitionRepository<AiProviderProfile>(
@@ -686,16 +625,16 @@ public sealed class DefinitionBundleTests
             "ai-primary",
             "Primary",
             order: 0);
-        var storedFallback = DurableDefinitionFixtures.AiProvider(
-            "ai-fallback",
-            "Fallback",
+        var storedSecondary = DurableDefinitionFixtures.AiProvider(
+            "ai-secondary",
+            "Secondary",
             order: 1);
         Assert.True((await providers.SaveAsync(
             storedPrimary,
             expectedRevision: null,
             CancellationToken.None)).IsSuccess);
         Assert.True((await providers.SaveAsync(
-            storedFallback,
+            storedSecondary,
             expectedRevision: null,
             CancellationToken.None)).IsSuccess);
         var bundles = CreateBundleStore(temporary);
@@ -703,14 +642,14 @@ public sealed class DefinitionBundleTests
             "ai-primary",
             "Primary",
             order: 1);
-        var fallback = DurableDefinitionFixtures.AiProvider(
-            "ai-fallback",
-            "Fallback",
+        var secondary = DurableDefinitionFixtures.AiProvider(
+            "ai-secondary",
+            "Secondary",
             order: 0);
         var preflight = await bundles.PreflightImportAsync(
             Bundle(
                 DurableDefinitionFixtures.Document(primary),
-                DurableDefinitionFixtures.Document(fallback)),
+                DurableDefinitionFixtures.Document(secondary)),
             DefinitionImportMode.ReplaceExisting,
             CancellationToken.None);
 
@@ -724,7 +663,7 @@ public sealed class DefinitionBundleTests
         Assert.Equal(2, committed.Value.Replaced);
         var stored = await providers.ListAsync(CancellationToken.None);
         Assert.Equal(
-            [("ai-fallback", 0), ("ai-primary", 1)],
+            [("ai-secondary", 0), ("ai-primary", 1)],
             stored.Value!
                 .Select(item => (item.Value.Id.Value, item.Value.Order))
                 .OrderBy(item => item.Order)

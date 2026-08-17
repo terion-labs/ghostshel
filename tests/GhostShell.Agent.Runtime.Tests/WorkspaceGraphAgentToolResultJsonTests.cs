@@ -14,34 +14,6 @@ public sealed class WorkspaceGraphAgentToolResultJsonTests
         new(2026, 7, 24, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public void WorkspaceListShapeIsLabeledAndContainsOnlyTheClippedShell()
-    {
-        var fixture = GraphFixture.Create();
-        var result = fixture.Project(
-            new AgentTarget.Workspace(
-                fixture.WindowId,
-                fixture.WorkspaceId),
-            fixture.AllPanels,
-            new AgentWorkspaceGraphRequest.WorkspaceList());
-
-        var projection = WorkspaceGraphAgentToolResultJson.Project(result);
-
-        Assert.True(projection.IsSuccess);
-        Assert.Equal("workspaces_listed", projection.StableCode);
-        using var document = JsonDocument.Parse(projection.Json);
-        var root = document.RootElement;
-        AssertRoot(
-            root,
-            "workspace",
-            scopeLimited: false,
-            "workspaces");
-        var workspace = Assert.Single(
-            root.GetProperty("workspaces").EnumerateArray());
-        AssertWorkspaceShape(workspace, includesGraphClock: true);
-        AssertNoSensitiveOrOutOfScopeFields(root);
-    }
-
-    [Fact]
     public void WorkspaceInspectShapeNestsOnlyTabsAndPanelsInsideTheRunScope()
     {
         var fixture = GraphFixture.Create();
@@ -216,7 +188,7 @@ public sealed class WorkspaceGraphAgentToolResultJsonTests
             var result = fixture.Project(
                 item.Target,
                 item.Panels,
-                new AgentWorkspaceGraphRequest.WorkspaceList());
+                new AgentWorkspaceGraphRequest.WorkspaceInspect());
             var projection = WorkspaceGraphAgentToolResultJson.Project(result);
             using var document = JsonDocument.Parse(projection.Json);
 
@@ -228,10 +200,8 @@ public sealed class WorkspaceGraphAgentToolResultJsonTests
                 document.RootElement
                     .GetProperty("scope_limited")
                     .GetBoolean());
-            Assert.Single(
-                document.RootElement
-                    .GetProperty("workspaces")
-                    .EnumerateArray());
+            Assert.True(
+                document.RootElement.TryGetProperty("workspace", out _));
         }
     }
 
@@ -335,15 +305,13 @@ public sealed class WorkspaceGraphAgentToolResultJsonTests
                     unsafeFixture.WindowId,
                     unsafeFixture.WorkspaceId),
                 unsafeFixture.AllPanels,
-                new AgentWorkspaceGraphRequest.WorkspaceList());
+                new AgentWorkspaceGraphRequest.WorkspaceInspect());
             var unsafeProjection =
                 WorkspaceGraphAgentToolResultJson.Project(unsafeResult);
             using var unsafeDocument = JsonDocument.Parse(
                 unsafeProjection.Json);
-            var title = Assert.Single(
-                    unsafeDocument.RootElement
-                        .GetProperty("workspaces")
-                        .EnumerateArray())
+            var title = unsafeDocument.RootElement
+                .GetProperty("workspace")
                 .GetProperty("title");
 
             Assert.Equal(
@@ -369,15 +337,13 @@ public sealed class WorkspaceGraphAgentToolResultJsonTests
                     secretFixture.WindowId,
                     secretFixture.WorkspaceId),
                 secretFixture.AllPanels,
-                new AgentWorkspaceGraphRequest.WorkspaceList());
+                new AgentWorkspaceGraphRequest.WorkspaceInspect());
             var secretProjection =
                 WorkspaceGraphAgentToolResultJson.Project(secretResult);
             using var secretDocument = JsonDocument.Parse(
                 secretProjection.Json);
-            var title = Assert.Single(
-                    secretDocument.RootElement
-                        .GetProperty("workspaces")
-                        .EnumerateArray())
+            var title = secretDocument.RootElement
+                .GetProperty("workspace")
                 .GetProperty("title");
 
             Assert.Equal(
@@ -395,7 +361,7 @@ public sealed class WorkspaceGraphAgentToolResultJsonTests
     public void FinalJsonGuardAcceptsExactly64KiBAndRejectsOneByteMore()
     {
         var baseline = WorkspaceGraphAgentToolResultJson.Project(
-            WorkspacesListedWithWindowId("x"));
+            WorkspaceInspectedWithWindowId("x"));
         Assert.True(baseline.IsSuccess);
         var baselineBytes = Encoding.UTF8.GetByteCount(baseline.Json);
         var limit = AgentKernelLimits.Default.MaximumToolResultBytes;
@@ -407,9 +373,9 @@ public sealed class WorkspaceGraphAgentToolResultJsonTests
             'x',
             limit - baselineBytes + 1);
         var exact = WorkspaceGraphAgentToolResultJson.Project(
-            WorkspacesListedWithWindowId(exactWindowId));
+            WorkspaceInspectedWithWindowId(exactWindowId));
         var oneByteOver = WorkspaceGraphAgentToolResultJson.Project(
-            WorkspacesListedWithWindowId(exactWindowId + "x"));
+            WorkspaceInspectedWithWindowId(exactWindowId + "x"));
 
         Assert.True(exact.IsSuccess);
         Assert.Equal(limit, Encoding.UTF8.GetByteCount(exact.Json));
@@ -448,27 +414,6 @@ public sealed class WorkspaceGraphAgentToolResultJsonTests
         Assert.Equal(
             scopeLimited,
             root.GetProperty("scope_limited").GetBoolean());
-    }
-
-    private static void AssertWorkspaceShape(
-        JsonElement workspace,
-        bool includesGraphClock)
-    {
-        var expected = new List<string>
-        {
-            "window_id",
-            "workspace_id",
-        };
-        if (includesGraphClock)
-        {
-            expected.Add("workspace_revision");
-            expected.Add("graph_sequence");
-        }
-
-        expected.Add("title");
-        Assert.Equal(
-            expected,
-            workspace.EnumerateObject().Select(property => property.Name));
     }
 
     private static void AssertTabShape(
@@ -640,37 +585,50 @@ public sealed class WorkspaceGraphAgentToolResultJsonTests
     }
 
     private static AgentWorkspaceGraphActionResult
-        WorkspacesListedWithWindowId(string windowId)
+        WorkspaceInspectedWithWindowId(string windowId)
     {
-        var workspaces = new[]
-        {
-            new AgentWorkspaceGraphWorkspace(
-                new WindowInstanceId(windowId),
-                new WorkspaceInstanceId("workspace"),
-                WorkspaceRevision: 1,
-                GraphSequence: 1,
-                Title: null),
-        };
-        var constructor =
-            typeof(AgentWorkspaceGraphActionResult.WorkspacesListed)
+        var workspace = new AgentWorkspaceGraphWorkspace(
+            new WindowInstanceId(windowId),
+            new WorkspaceInstanceId("workspace"),
+            WorkspaceRevision: 1,
+            GraphSequence: 1,
+            Title: null);
+        var inspectionConstructor =
+            typeof(AgentWorkspaceGraphWorkspaceInspection)
+                .GetConstructor(
+                    BindingFlags.Instance | BindingFlags.NonPublic,
+                    binder: null,
+                    [
+                        typeof(AgentWorkspaceGraphWorkspace),
+                        typeof(IReadOnlyList<AgentWorkspaceGraphTabInspection>),
+                    ],
+                    modifiers: null)
+            ?? throw new InvalidOperationException(
+                "The workspace inspection constructor is unavailable.");
+        var inspection =
+            (AgentWorkspaceGraphWorkspaceInspection)inspectionConstructor.Invoke(
+            [
+                workspace,
+                Array.Empty<AgentWorkspaceGraphTabInspection>(),
+            ]);
+        var resultConstructor =
+            typeof(AgentWorkspaceGraphActionResult.WorkspaceInspected)
                 .GetConstructor(
                     BindingFlags.Instance | BindingFlags.NonPublic,
                     binder: null,
                     [
                         typeof(AgentWorkspaceGraphScopeKind),
                         typeof(bool),
-                        typeof(
-                            IReadOnlyList<
-                                AgentWorkspaceGraphWorkspace>),
+                        typeof(AgentWorkspaceGraphWorkspaceInspection),
                     ],
                     modifiers: null)
             ?? throw new InvalidOperationException(
-                "The workspace-list result constructor is unavailable.");
-        return (AgentWorkspaceGraphActionResult)constructor.Invoke(
+                "The workspace-inspect result constructor is unavailable.");
+        return (AgentWorkspaceGraphActionResult)resultConstructor.Invoke(
         [
             AgentWorkspaceGraphScopeKind.Workspace,
             false,
-            workspaces,
+            inspection,
         ]);
     }
 

@@ -14,6 +14,7 @@
   <controls:PanelChrome
       CloseRequested="OnCloseClick"
       IsActive="{Binding IsActive}"
+      IsAgentActive="{Binding IsAgentActive}"
       IsTitleAdornmentVisible="{Binding IsContinuityActive}"
       IsZoomed="{Binding IsZoomed}"
       SplitRequested="OnSplitRequested"

@@ -11,5 +11,16 @@ public interface IAgentWorkspaceRuntimeFactory
 {
     IGovernedAgentRuntime Create(
         WorkspaceInstanceId workspaceId,
-        AgentConversationScopeId conversationScopeId);
+        AgentConversationScopeId conversationScopeId,
+        AgentPolicy policy);
+}
+
+/// <summary>
+/// Optional trusted desktop attachment for workspace-layout tools. Runtimes
+/// without a live visual workspace never advertise those tools.
+/// </summary>
+public interface IAgentWorkspaceLayoutRuntime
+{
+    void AttachWorkspaceLayoutPort(
+        IAgentWorkspaceLayoutMutationPort mutationPort);
 }

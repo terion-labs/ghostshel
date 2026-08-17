@@ -14,8 +14,11 @@ public sealed partial class InMemorySessionHostClient :
     IAgentFileSessionHost,
     IAgentPanelSessionHost,
     IAgentWorkspaceGraphSessionHost,
+    IAgentWorkspaceLayoutSessionHost,
     IAgentProcessSessionHost,
     IAgentStatisticsSessionHost,
+    IAgentDatabaseSessionHost,
+    IAgentDockerSessionHost,
     IAsyncDisposable
 {
     private const int DefaultEventRetention = 256;
@@ -35,6 +38,8 @@ public sealed partial class InMemorySessionHostClient :
     private readonly IBrowserPanelSessionFactory? _browserPanelFactory;
     private readonly CapabilitySet _browserPanelCapabilities;
     private readonly ISystemMonitorPanelSessionFactory? _systemMonitorFactory;
+    private readonly IDatabasePanelSessionFactory? _databasePanelFactory;
+    private readonly IDockerPanelSessionFactory? _dockerPanelFactory;
     private readonly ISessionLifecyclePolicy _lifecyclePolicy;
     private readonly TimeProvider _timeProvider;
     private readonly AgentTerminalActionComposer? _agentTerminalActionComposer;
@@ -43,10 +48,16 @@ public sealed partial class InMemorySessionHostClient :
     private readonly AgentPanelActionComposer? _agentPanelActionComposer;
     private readonly AgentWorkspaceGraphActionComposer?
         _agentWorkspaceGraphActionComposer;
+    private readonly AgentWorkspaceLayoutActionComposer?
+        _agentWorkspaceLayoutActionComposer;
     private readonly AgentProcessListActionComposer?
         _agentProcessListActionComposer;
     private readonly AgentStatisticsReadActionComposer?
         _agentStatisticsReadActionComposer;
+    private readonly AgentDatabaseReadActionComposer?
+        _agentDatabaseReadActionComposer;
+    private readonly AgentDockerReadActionComposer?
+        _agentDockerReadActionComposer;
     private readonly IAgentAuthorizationConsumer? _agentAuthorizationConsumer;
     private readonly int _eventRetention;
     private readonly CapabilitySet _hostCapabilities;
@@ -70,7 +81,15 @@ public sealed partial class InMemorySessionHostClient :
         AgentProcessListActionComposer?
             agentProcessListActionComposer = null,
         AgentStatisticsReadActionComposer?
-            agentStatisticsReadActionComposer = null)
+            agentStatisticsReadActionComposer = null,
+        IDatabasePanelSessionFactory? databasePanelFactory = null,
+        IDockerPanelSessionFactory? dockerPanelFactory = null,
+        AgentDatabaseReadActionComposer?
+            agentDatabaseReadActionComposer = null,
+        AgentDockerReadActionComposer?
+            agentDockerReadActionComposer = null,
+        AgentWorkspaceLayoutActionComposer?
+            agentWorkspaceLayoutActionComposer = null)
     {
         ArgumentNullException.ThrowIfNull(terminalFactory);
         ArgumentNullException.ThrowIfNull(lifecyclePolicy);
@@ -86,6 +105,8 @@ public sealed partial class InMemorySessionHostClient :
             ? CapabilitySet.Empty
             : new CapabilitySet(browserPanelFactory.Capabilities.Values);
         _systemMonitorFactory = systemMonitorFactory;
+        _databasePanelFactory = databasePanelFactory;
+        _dockerPanelFactory = dockerPanelFactory;
         _lifecyclePolicy = lifecyclePolicy;
         _timeProvider = timeProvider ?? TimeProvider.System;
         _agentTerminalActionComposer = agentActionComposer;
@@ -94,9 +115,13 @@ public sealed partial class InMemorySessionHostClient :
         _agentPanelActionComposer = agentPanelActionComposer;
         _agentWorkspaceGraphActionComposer =
             agentWorkspaceGraphActionComposer;
+        _agentWorkspaceLayoutActionComposer =
+            agentWorkspaceLayoutActionComposer;
         _agentProcessListActionComposer = agentProcessListActionComposer;
         _agentStatisticsReadActionComposer =
             agentStatisticsReadActionComposer;
+        _agentDatabaseReadActionComposer = agentDatabaseReadActionComposer;
+        _agentDockerReadActionComposer = agentDockerReadActionComposer;
         _agentAuthorizationConsumer = agentAuthorizationConsumer;
         _eventRetention = eventRetention;
         _workspaceGraphs = new WorkspaceGraphRegistry(_eventRetention, _timeProvider);
@@ -111,6 +136,9 @@ public sealed partial class InMemorySessionHostClient :
             .. _browserPanelCapabilities.Values,
             .. (systemMonitorFactory?.StatisticsCapabilities.Values ?? Array.Empty<string>()),
             .. (systemMonitorFactory?.ProcessMonitorCapabilities.Values ?? Array.Empty<string>()),
+            .. (databasePanelFactory?.RelationalCapabilities.Values ?? Array.Empty<string>()),
+            .. (databasePanelFactory?.RedisCapabilities.Values ?? Array.Empty<string>()),
+            .. (dockerPanelFactory?.Capabilities.Values ?? Array.Empty<string>()),
         ]);
     }
 

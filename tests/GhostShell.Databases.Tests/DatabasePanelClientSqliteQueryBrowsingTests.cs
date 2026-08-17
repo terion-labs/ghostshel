@@ -86,6 +86,7 @@ public sealed class DatabasePanelClientSqliteQueryBrowsingTests : IDisposable
 
         Assert.Equal((0, 2, true), (ascending.Offset, ascending.Limit, ascending.HasMore));
         Assert.Equal(3, ascending.TotalRows);
+        Assert.Equal(5, ascending.TableRows);
         Assert.True(ascending.Result.Truncated);
         Assert.Equal(
             [3L, 1L],

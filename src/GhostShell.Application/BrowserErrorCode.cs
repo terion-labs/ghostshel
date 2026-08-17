@@ -19,4 +19,7 @@ public enum BrowserErrorCode
     ElementNotFillable,
     FillValueNotSupported,
     ElementNotCheckable,
+    CheckStateNotApplied,
+    ScriptRejected,
+    ScriptResultRejected,
 }

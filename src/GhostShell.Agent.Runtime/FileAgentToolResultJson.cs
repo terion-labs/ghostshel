@@ -8,7 +8,7 @@ using GhostShell.Core;
 
 namespace GhostShell.Agent.Runtime;
 
-internal static class FileAgentToolResultJson
+internal static partial class FileAgentToolResultJson
 {
     internal const string FileMutationOutcomeUnknownStableCode =
         "file_mutation_outcome_unknown";
@@ -36,6 +36,14 @@ internal static class FileAgentToolResultJson
                     list.RelativePath,
                     metadata,
                     panelId),
+            (
+                AgentFileActionResult.SearchResults searchResults,
+                FileAgentIntent.Search search) =>
+                ProjectSearchResults(
+                    searchResults,
+                    search,
+                    metadata,
+                    panelId),
             (AgentFileActionResult.Entry entry, FileAgentIntent.Stat stat) =>
                 ProjectEntry(
                     entry.Value,
@@ -49,11 +57,31 @@ internal static class FileAgentToolResultJson
                     metadata,
                     panelId),
             (
+                AgentFileActionResult.AccessControl accessControl,
+                FileAgentIntent.AccessRead accessRead) =>
+                ProjectAccessControl(
+                    accessControl,
+                    accessRead,
+                    metadata,
+                    panelId),
+            (
+                AgentFileActionResult.Transfers transfers,
+                FileAgentIntent.Transfers) =>
+                ProjectTransfers(transfers, panelId),
+            (
                 AgentFileActionResult.CreatedDirectory created,
                 FileAgentIntent.CreateDirectory createDirectory) =>
                 ProjectCreatedDirectory(
                     created.Value,
                     createDirectory.RelativePath,
+                    metadata,
+                    panelId),
+            (
+                AgentFileActionResult.Moved moved,
+                FileAgentIntent.Move move) =>
+                ProjectMoved(
+                    moved.Value,
+                    move.DestinationRelativePath,
                     metadata,
                     panelId),
             (
@@ -340,6 +368,32 @@ internal static class FileAgentToolResultJson
         return Succeeded(SerializeDeletedSuccess(panelId));
     }
 
+    private static FileAgentToolJsonProjection ProjectMoved(
+        FilePanelEntry? entry,
+        ImmutableArray<FilePanelPathSegment> destinationPath,
+        FileSessionMetadata metadata,
+        PanelInstanceId? panelId)
+    {
+        if (entry is null
+            || destinationPath.IsDefaultOrEmpty
+            || !string.Equals(
+                entry.Name,
+                destinationPath[^1].Value,
+                StringComparison.Ordinal)
+            || !TryGetRelativePath(
+                metadata.TrustedRoot,
+                entry.Location,
+                out var relativePath)
+            || !relativePath.SequenceEqual(destinationPath))
+        {
+            return Rejected(
+                FileMutationOutcomeUnknownStableCode,
+                panelId);
+        }
+
+        return Succeeded(SerializeMovedSuccess(panelId));
+    }
+
     private static bool TryProjectListEntry(
         FilePanelEntry entry,
         ImmutableArray<FilePanelPathSegment> requestedPath,
@@ -583,6 +637,20 @@ internal static class FileAgentToolResultJson
         return Encoding.UTF8.GetString(buffer.WrittenSpan);
     }
 
+    private static string SerializeMovedSuccess(
+        PanelInstanceId? panelId)
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+        using var writer = new Utf8JsonWriter(buffer);
+        WriteSuccessStart(writer, panelId);
+        writer.WriteBoolean("moved", true);
+        writer.WriteBoolean("destination_created", true);
+
+        writer.WriteEndObject();
+        writer.Flush();
+        return Encoding.UTF8.GetString(buffer.WrittenSpan);
+    }
+
     private static void WriteSuccessStart(
         Utf8JsonWriter writer,
         PanelInstanceId? panelId)
@@ -703,7 +771,9 @@ internal static class FileAgentToolResultJson
         };
 
     private static bool IsMutation(FileAgentIntent intent) =>
-        intent is FileAgentIntent.CreateDirectory or FileAgentIntent.Delete;
+        intent is FileAgentIntent.CreateDirectory
+            or FileAgentIntent.Move
+            or FileAgentIntent.Delete;
 
     private static bool IsKnownProviderStableCode(string stableCode) =>
         stableCode is
@@ -713,6 +783,18 @@ internal static class FileAgentToolResultJson
             or "file_content_sensitive"
             or "file_not_found"
             or "file_access_denied"
+            or "file_location_invalid"
+            or "file_name_invalid"
+            or "file_outside_root"
+            or "file_root_mutation_not_allowed"
+            or "file_already_exists"
+            or "file_conflict"
+            or "file_precondition_failed"
+            or "file_not_directory"
+            or "file_is_directory"
+            or "file_directory_not_empty"
+            or "file_link_not_allowed"
+            or "file_quota_exceeded"
             or "file_capability_not_supported"
             or "file_limit_exceeded"
             or "file_provider_offline"

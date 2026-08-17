@@ -86,8 +86,11 @@ public static class DesktopComposition
         services.AddSingleton<AgentFileActionComposer>();
         services.AddSingleton<AgentProcessListActionComposer>();
         services.AddSingleton<AgentStatisticsReadActionComposer>();
+        services.AddSingleton<AgentDatabaseReadActionComposer>();
+        services.AddSingleton<AgentDockerReadActionComposer>();
         services.AddSingleton<AgentMcpToolCallActionComposer>();
         services.AddSingleton<AgentPanelActionComposer>();
+        services.AddSingleton<AgentWorkspaceLayoutActionComposer>();
         services.AddSingleton<AgentWorkspaceGraphActionComposer>();
         services.AddSingleton<TerminalStartupCommandDispatcher>();
         services.AddSingleton<ISecretAccessAuditSink, SqliteSecretAccessAuditSink>();
@@ -153,6 +156,8 @@ public static class DesktopComposition
         services.AddSingleton<IRedisPanelSessionFactory>(provider =>
             new RedisPanelSessionFactory(
                 provider.GetRequiredService<IDatabaseTunnelFactory>()));
+        services.AddSingleton<IDatabasePanelSessionFactory, DatabasePanelSessionFactory>();
+        services.AddSingleton<IDockerPanelSessionFactory, DockerPanelSessionFactory>();
         services.AddSingleton<IDatabaseConnectionCatalog, RedisConnectionCatalog>();
         services.AddSingleton<ISqlLanguageService, CalciteSqlLanguageService>();
         services.AddSingleton<IImagePreviewDecoder, MagickImagePreviewDecoder>();
@@ -242,9 +247,15 @@ public static class DesktopComposition
             provider.GetRequiredService<InMemorySessionHostClient>());
         services.AddSingleton<IAgentStatisticsSessionHost>(provider =>
             provider.GetRequiredService<InMemorySessionHostClient>());
+        services.AddSingleton<IAgentDatabaseSessionHost>(provider =>
+            provider.GetRequiredService<InMemorySessionHostClient>());
+        services.AddSingleton<IAgentDockerSessionHost>(provider =>
+            provider.GetRequiredService<InMemorySessionHostClient>());
         services.AddSingleton<IAgentPanelSessionHost>(provider =>
             provider.GetRequiredService<InMemorySessionHostClient>());
         services.AddSingleton<IAgentWorkspaceGraphSessionHost>(provider =>
+            provider.GetRequiredService<InMemorySessionHostClient>());
+        services.AddSingleton<IAgentWorkspaceLayoutSessionHost>(provider =>
             provider.GetRequiredService<InMemorySessionHostClient>());
         services.AddSingleton<IGlobalHotkeyService>(_ =>
             GlobalHotkeyServiceSelector.CreateForCurrentPlatform());

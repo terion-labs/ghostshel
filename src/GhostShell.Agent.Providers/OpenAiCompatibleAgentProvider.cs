@@ -220,10 +220,10 @@ internal sealed class OpenAiCompatibleAgentProvider(
         switch (message.Role)
         {
             case AgentMessageRole.System:
-            case AgentMessageRole.Summary:
                 writer.WriteString("role", "system");
                 writer.WriteString("content", message.Content);
                 break;
+            case AgentMessageRole.Summary:
             case AgentMessageRole.User:
                 writer.WriteString("role", "user");
                 if (message.Images.Length == 0)

@@ -23,7 +23,11 @@ internal sealed class DesktopProductComponentCatalog : IProductComponentCatalog
             "Native terminal rendering and shell integration",
             "MIT + GPL-3.0-or-later resources"),
         new(".NET", "10", "Managed runtime", "MIT + bundled notices"),
-        new("SQLitePCLRaw", "2.1.12", "Local durable storage", "Apache-2.0"),
+        new(
+            "SQLite3 Multiple Ciphers",
+            "2.4.0",
+            "Encrypted local durable storage",
+            "MIT"),
         new("SSH.NET", "2025.1.0", "SSH and SFTP connectivity", "MIT"),
         new("Fluent Icons", "2.1.333", "Interface iconography", "MIT"),
     ];

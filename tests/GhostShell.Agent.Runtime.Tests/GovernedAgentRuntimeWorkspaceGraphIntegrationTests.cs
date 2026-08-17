@@ -14,11 +14,219 @@ public sealed partial class GovernedAgentRuntimeTests
 {
     private static readonly string[] WorkspaceGraphToolNames =
     [
-        BuiltInAgentTools.WorkspaceList,
         BuiltInAgentTools.WorkspaceInspect,
         BuiltInAgentTools.TabList,
         BuiltInAgentTools.PanelList,
     ];
+
+    [Fact]
+    public async Task WorkspaceWithOnlyLauncherCanAnswerAndInspectItsGraph()
+    {
+        var provider = ScriptedWorkspaceGraphProvider.Create(
+            WorkspaceGraphProviderRound.Tool(
+                BuiltInAgentTools.WorkspaceInspect,
+                "{}"),
+            WorkspaceGraphProviderRound.Answer(
+                "The workspace is ready for a new panel."));
+        await using var fixture =
+            await WorkspaceGraphRuntimeFixture.CreateAsync(
+                provider,
+                WorkspaceGraphFixtureKind.GraphBackedWorkspaceLauncher,
+                ExactWorkspaceGraphPolicy(AgentPermission.Auto));
+
+        var result = await fixture.Runtime.SendAsync(
+            fixture.Prompt("Create something in this workspace."),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var requests = provider.Requests.ToArray();
+        Assert.Equal(2, requests.Length);
+        Assert.All(
+            WorkspaceGraphToolNames,
+            toolName => Assert.Contains(
+                requests[0].Tools,
+                tool => tool.Name == toolName));
+        Assert.Contains(
+            requests[0].Tools,
+            tool => tool.Name == BuiltInAgentTools.TabCreate);
+        Assert.Contains(
+            requests[0].Tools,
+            tool => tool.Name == BuiltInAgentTools.PanelAdd);
+        Assert.Contains(
+            requests[0].Tools,
+            tool => tool.Name.StartsWith("terminal.", StringComparison.Ordinal));
+        Assert.Contains(
+            requests[0].Tools,
+            tool => tool.Name == BuiltInAgentTools.BrowserReadState);
+        Assert.Contains(
+            requests[0].Tools,
+            tool => tool.Name == BuiltInAgentTools.FilesList);
+        Assert.Contains(
+            requests[0].Tools,
+            tool => tool.Name == BuiltInAgentTools.ProcessesList);
+        Assert.Contains(
+            requests[0].Tools,
+            tool => tool.Name == BuiltInAgentTools.StatisticsRead);
+        Assert.Contains(
+            requests[0].Tools,
+            tool => tool.Name == BuiltInAgentTools.DatabaseReadState);
+        Assert.Contains(
+            requests[0].Tools,
+            tool => tool.Name == BuiltInAgentTools.RedisScan);
+        Assert.Contains(
+            requests[0].Tools,
+            tool => tool.Name == BuiltInAgentTools.DockerReadState);
+        Assert.Contains(
+            "kind=\"placeholder\"",
+            Assert.Single(
+                requests[0].Messages,
+                message => message.Role == AgentMessageRole.System).Content,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "fixed for this conversation",
+            Assert.Single(
+                requests[0].Messages,
+                message => message.Role == AgentMessageRole.System).Content,
+            StringComparison.Ordinal);
+        Assert.Equal(
+            "workspace_inspected",
+            ToolResult(requests[1], "workspace-graph-call-1").StableCode);
+        Assert.Equal(GovernedAgentState.Ready, fixture.Runtime.Snapshot.State);
+    }
+
+    [Fact]
+    public async Task UnknownLayoutOutcomeIsReportedWithoutStoppingTheRun()
+    {
+        var provider = ScriptedWorkspaceGraphProvider.Create(
+            WorkspaceGraphProviderRound.Tool(
+                BuiltInAgentTools.TabCreate,
+                """{"kind":"placeholder"}"""),
+            WorkspaceGraphProviderRound.Answer(
+                "The layout result needs inspection before another mutation."));
+        var basePolicy = ExactWorkspaceGraphPolicy(AgentPermission.Auto);
+        var policy = basePolicy with
+        {
+            Permissions = basePolicy.Permissions.SetItem(
+                AgentCapability.WorkspaceLayout,
+                AgentPermission.Ask),
+        };
+        await using var fixture =
+            await WorkspaceGraphRuntimeFixture.CreateAsync(
+                provider,
+                WorkspaceGraphFixtureKind.GraphBackedWorkspaceLauncher,
+                policy);
+        fixture.LayoutPort.ReturnOutcomeUnknown = true;
+        var sending = fixture.Runtime.SendAsync(
+            fixture.Prompt("Create a placeholder tab."),
+            CancellationToken.None).AsTask();
+        _ = await WaitForNewApprovalAsync(
+            fixture.Runtime,
+            previousApproval: null);
+        Assert.True((await fixture.Runtime.EnableFullAccessAsync(
+            CancellationToken.None)).IsAccepted);
+
+        var result = await sending.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(GovernedAgentState.Ready, fixture.Runtime.Snapshot.State);
+        Assert.Equal(2, provider.Requests.Count);
+        var toolResult = ToolResult(
+            provider.Requests.ToArray()[1],
+            "workspace-graph-call-1");
+        Assert.Equal(
+            WorkspaceLayoutAgentToolResultJson.OutcomeUnknownStableCode,
+            toolResult.StableCode);
+        Assert.Equal(AgentToolResultStatus.Failed, toolResult.Status);
+        Assert.DoesNotContain(
+            "quarantined",
+            fixture.Runtime.Snapshot.Status,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ActiveLauncherDoesNotHideLiveTerminalsInSiblingTabs()
+    {
+        var provider = ScriptedWorkspaceGraphProvider.Create(
+            WorkspaceGraphProviderRound.Answer("The terminals remain available."));
+        await using var fixture =
+            await WorkspaceGraphRuntimeFixture.CreateAsync(
+                provider,
+                WorkspaceGraphFixtureKind.GraphBackedWorkspaceWithLauncher,
+                ExactWorkspaceGraphPolicy(AgentPermission.Auto));
+
+        var result = await fixture.Runtime.SendAsync(
+            fixture.Prompt("Read the workspace."),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var request = Assert.Single(provider.Requests);
+        Assert.Contains(
+            request.Tools,
+            tool => tool.Name == BuiltInAgentTools.TerminalReadScreen);
+        Assert.Contains(
+            request.Tools,
+            tool => tool.Name == BuiltInAgentTools.WorkspaceInspect);
+        Assert.Contains(
+            "terminal_count=1",
+            Assert.Single(
+                request.Messages,
+                message => message.Role == AgentMessageRole.System).Content,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task FullAccessSelectedDuringPanelFocusApprovalAppliesToTheLiveRun()
+    {
+        var provider = ScriptedWorkspaceGraphProvider.Create(
+            WorkspaceGraphProviderRound.Answer("Workspace inspected."),
+            WorkspaceGraphProviderRound.Tool(
+                BuiltInAgentTools.PanelFocus,
+                """{"panel_id":"workspace-graph-terminal"}"""),
+            WorkspaceGraphProviderRound.Answer("Terminal focused."));
+        var basePolicy = ExactWorkspaceGraphPolicy(AgentPermission.Auto);
+        var policy = basePolicy with
+        {
+            Permissions = basePolicy.Permissions.SetItem(
+                AgentCapability.RunCommands,
+                AgentPermission.Ask),
+        };
+        await using var fixture =
+            await WorkspaceGraphRuntimeFixture.CreateAsync(
+                provider,
+                WorkspaceGraphFixtureKind.GraphBackedWorkspaceWithLauncher,
+                policy);
+
+        Assert.True((await fixture.Runtime.SendAsync(
+            fixture.Prompt("Inspect the workspace."),
+            CancellationToken.None)).IsSuccess);
+
+        var focusing = fixture.Runtime.SendAsync(
+            fixture.Prompt("Focus the terminal."),
+            CancellationToken.None).AsTask();
+        var approval = await WaitForNewApprovalAsync(
+            fixture.Runtime,
+            previousApproval: null);
+
+        Assert.Equal(BuiltInAgentTools.PanelFocus, approval.ToolName);
+        Assert.True((await fixture.Runtime.EnableFullAccessAsync(
+            CancellationToken.None)).IsAccepted);
+        Assert.True((await focusing.WaitAsync(TimeSpan.FromSeconds(5))).IsSuccess);
+        Assert.Null(fixture.Runtime.Snapshot.PendingApproval);
+        Assert.Equal(
+            "tool_succeeded",
+            ToolResult(
+                provider.Requests.ToArray()[2],
+                "workspace-graph-call-2").StableCode);
+        Assert.Contains(
+            fixture.Audit.Events,
+            auditEvent =>
+                auditEvent.Action == BuiltInAgentTools.PanelFocus
+                && auditEvent.Outcome == AuditOutcome.Succeeded
+                && auditEvent.Details is AuditDetails.AgentActionDetails
+                {
+                    AuthorizationSource: AgentAuthorizationSource.YoloPolicy,
+                });
+    }
 
     [Fact]
     public async Task GraphBackedOpenTabProjectsNonSessionPanelsAndContinuesIntoTerminalTool()
@@ -148,7 +356,7 @@ public sealed partial class GovernedAgentRuntimeTests
     {
         var provider = ScriptedWorkspaceGraphProvider.Create(
             WorkspaceGraphProviderRound.Tool(
-                BuiltInAgentTools.WorkspaceList,
+                BuiltInAgentTools.WorkspaceInspect,
                 "{}"),
             WorkspaceGraphProviderRound.Answer(
                 "The exact connection session was superseded."));
@@ -169,7 +377,7 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.True(result.IsSuccess);
         Assert.Contains(
             provider.Requests.ToArray()[0].Tools,
-            tool => tool.Name == BuiltInAgentTools.WorkspaceList);
+            tool => tool.Name == BuiltInAgentTools.WorkspaceInspect);
         Assert.Equal(0, fixture.GraphHost.CallCount);
         var rejected = ToolResult(
             provider.Requests.ToArray()[1],
@@ -183,7 +391,7 @@ public sealed partial class GovernedAgentRuntimeTests
     {
         var provider = ScriptedWorkspaceGraphProvider.Create(
             WorkspaceGraphProviderRound.Tool(
-                BuiltInAgentTools.WorkspaceList,
+                BuiltInAgentTools.WorkspaceInspect,
                 "{}"),
             WorkspaceGraphProviderRound.Answer("Search is disabled."));
         var policy = ExactWorkspaceGraphPolicy(AgentPermission.Off);
@@ -209,7 +417,7 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Contains(
             fixture.Audit.Events,
             auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.WorkspaceList
+                auditEvent.Action == BuiltInAgentTools.WorkspaceInspect
                 && auditEvent.Outcome == AuditOutcome.Denied);
         Assert.Equal(
             policy.Model,
@@ -278,7 +486,7 @@ public sealed partial class GovernedAgentRuntimeTests
     {
         var provider = ScriptedWorkspaceGraphProvider.Create(
             WorkspaceGraphProviderRound.Tool(
-                BuiltInAgentTools.WorkspaceList,
+                BuiltInAgentTools.WorkspaceInspect,
                 "{}"),
             WorkspaceGraphProviderRound.Tool(
                 BuiltInAgentTools.TerminalReadScreen,
@@ -308,14 +516,14 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Equal(1, fixture.GraphHost.CallCount);
         var requests = provider.Requests.ToArray();
         Assert.Equal(
-            "workspaces_listed",
+            "workspace_inspected",
             ToolResult(
                 requests[1],
                 "workspace-graph-call-1").StableCode);
         var terminalResult = ToolResult(
             requests[2],
             "workspace-graph-call-2");
-        Assert.Equal("target_changed", terminalResult.StableCode);
+        Assert.Equal("tool_not_available", terminalResult.StableCode);
         Assert.DoesNotContain(
             fixture.Audit.Events,
             auditEvent =>
@@ -478,6 +686,8 @@ public sealed partial class GovernedAgentRuntimeTests
 
     private enum WorkspaceGraphFixtureKind
     {
+        GraphBackedWorkspaceLauncher,
+        GraphBackedWorkspaceWithLauncher,
         GraphBackedOpenTab,
         GraphBackedExactPanel,
         GraphBackedConnectionSession,
@@ -590,6 +800,11 @@ public sealed partial class GovernedAgentRuntimeTests
             var fileComposer = new AgentFileActionComposer();
             var panelComposer = new AgentPanelActionComposer();
             var graphComposer = new AgentWorkspaceGraphActionComposer();
+            var layoutComposer = new AgentWorkspaceLayoutActionComposer();
+            var processComposer = new AgentProcessListActionComposer();
+            var statisticsComposer = new AgentStatisticsReadActionComposer();
+            var databaseComposer = new AgentDatabaseReadActionComposer();
+            var dockerComposer = new AgentDockerReadActionComposer();
             Client = new InMemorySessionHostClient(
                 new WorkspaceGraphTerminalFactory(),
                 new DesktopLifecyclePolicy(),
@@ -599,7 +814,12 @@ public sealed partial class GovernedAgentRuntimeTests
                 agentAuthorizationConsumer: Broker,
                 agentFileActionComposer: fileComposer,
                 agentPanelActionComposer: panelComposer,
-                agentWorkspaceGraphActionComposer: graphComposer);
+                agentWorkspaceGraphActionComposer: graphComposer,
+                agentProcessListActionComposer: processComposer,
+                agentStatisticsReadActionComposer: statisticsComposer,
+                agentDatabaseReadActionComposer: databaseComposer,
+                agentDockerReadActionComposer: dockerComposer,
+                agentWorkspaceLayoutActionComposer: layoutComposer);
             var contextClient = DispatchProxy.Create<
                 ISessionHostClient,
                 WorkspaceGraphContextProxy>();
@@ -623,8 +843,27 @@ public sealed partial class GovernedAgentRuntimeTests
                 ProviderResolver,
                 new TestApprovalPrincipal(ClientId),
                 TimeProvider.System,
+                AgentPolicy.Default,
                 GraphHost,
-                graphComposer);
+                graphComposer,
+                agentProcessHost: Client,
+                processComposer: processComposer,
+                agentStatisticsHost: Client,
+                statisticsComposer: statisticsComposer,
+                agentDatabaseHost: Client,
+                databaseComposer: databaseComposer,
+                workspaceId: IsWorkspaceFixture(kind)
+                    ? WorkspaceId
+                    : default,
+                agentDockerHost: Client,
+                dockerComposer: dockerComposer,
+                agentWorkspaceLayoutHost: Client,
+                workspaceLayoutComposer: layoutComposer);
+            if (IsWorkspaceFixture(kind))
+            {
+                LayoutPort = new WorkspaceLayoutPort(WindowId, WorkspaceId);
+                Runtime.AttachWorkspaceLayoutPort(LayoutPort);
+            }
         }
 
         public WindowInstanceId WindowId { get; } =
@@ -654,6 +893,9 @@ public sealed partial class GovernedAgentRuntimeTests
         public PanelInstanceId AddedPanelId { get; } =
             new("workspace-graph-added");
 
+        public PanelInstanceId LauncherPanelId { get; } =
+            new("workspace-graph-launcher");
+
         public SessionId SessionId { get; } =
             new("workspace-graph-session");
 
@@ -677,7 +919,14 @@ public sealed partial class GovernedAgentRuntimeTests
 
         public GovernedAgentRuntime Runtime { get; }
 
+        public WorkspaceLayoutPort LayoutPort { get; } = null!;
+
         public WorkspaceGraphSnapshot? InitialGraph { get; private set; }
+
+        private static bool IsWorkspaceFixture(
+            WorkspaceGraphFixtureKind kind) => kind is
+            WorkspaceGraphFixtureKind.GraphBackedWorkspaceLauncher
+            or WorkspaceGraphFixtureKind.GraphBackedWorkspaceWithLauncher;
 
         public static async ValueTask<WorkspaceGraphRuntimeFixture> CreateAsync(
             ScriptedWorkspaceGraphProvider provider,
@@ -706,6 +955,10 @@ public sealed partial class GovernedAgentRuntimeTests
                 message,
                 _kind switch
                 {
+                    WorkspaceGraphFixtureKind.GraphBackedWorkspaceLauncher =>
+                        new AgentTarget.Workspace(WindowId, WorkspaceId),
+                    WorkspaceGraphFixtureKind.GraphBackedWorkspaceWithLauncher =>
+                        new AgentTarget.Workspace(WindowId, WorkspaceId),
                     WorkspaceGraphFixtureKind.GraphBackedOpenTab =>
                         new AgentTarget.OpenTab(
                         WindowId,
@@ -781,8 +1034,12 @@ public sealed partial class GovernedAgentRuntimeTests
                     .ConfigureAwait(false));
             }
 
-            await OpenAndActivateSessionAsync(SessionId)
-                .ConfigureAwait(false);
+            if (_kind
+                != WorkspaceGraphFixtureKind.GraphBackedWorkspaceLauncher)
+            {
+                await OpenAndActivateSessionAsync(SessionId)
+                    .ConfigureAwait(false);
+            }
             if (_kind != WorkspaceGraphFixtureKind.GraphlessConnectionSession)
             {
                 InitialGraph = Value(await Client.GetWorkspaceGraphAsync(
@@ -846,6 +1103,53 @@ public sealed partial class GovernedAgentRuntimeTests
         private WorkspaceInstance Workspace(
             WorkspaceGraphChange? change)
         {
+            if (_kind
+                == WorkspaceGraphFixtureKind.GraphBackedWorkspaceLauncher)
+            {
+                var launcher = new PanelInstance(
+                    LauncherPanelId,
+                    PanelKind.Placeholder,
+                    "Choose");
+                var launcherTab = new TabInstance(
+                    TabId,
+                    "New tab",
+                    [launcher],
+                    launcher.Id);
+                return new WorkspaceInstance(
+                    WorkspaceId,
+                    "Workspace",
+                    [launcherTab],
+                    launcherTab.Id);
+            }
+
+            if (_kind
+                == WorkspaceGraphFixtureKind.GraphBackedWorkspaceWithLauncher)
+            {
+                var liveTerminal = new PanelInstance(
+                    TerminalPanelId,
+                    PanelKind.Terminal,
+                    "Terminal");
+                var terminalTab = new TabInstance(
+                    TabId,
+                    "Terminal",
+                    [liveTerminal],
+                    liveTerminal.Id);
+                var launcher = new PanelInstance(
+                    LauncherPanelId,
+                    PanelKind.Placeholder,
+                    "Choose");
+                var launcherTab = new TabInstance(
+                    SiblingTabId,
+                    "New tab",
+                    [launcher],
+                    launcher.Id);
+                return new WorkspaceInstance(
+                    WorkspaceId,
+                    "Workspace",
+                    [terminalTab, launcherTab],
+                    launcherTab.Id);
+            }
+
             var terminal = new PanelInstance(
                 TerminalPanelId,
                 PanelKind.Terminal,
@@ -921,6 +1225,30 @@ public sealed partial class GovernedAgentRuntimeTests
 
         private static T Value<T>(HostResult<T> result) =>
             Assert.IsType<HostResult<T>.Success>(result).Value;
+    }
+
+    private sealed class WorkspaceLayoutPort(
+        WindowInstanceId windowId,
+        WorkspaceInstanceId workspaceId)
+        : IAgentWorkspaceLayoutMutationPort
+    {
+        public WindowInstanceId WindowId { get; } = windowId;
+
+        public WorkspaceInstanceId WorkspaceId { get; } = workspaceId;
+
+        public IReadOnlySet<PanelKind> SupportedPanelKinds { get; } =
+            new HashSet<PanelKind> { PanelKind.Placeholder };
+
+        public bool ReturnOutcomeUnknown { get; set; }
+
+        public ValueTask<AgentWorkspaceLayoutMutationResult> MutateAsync(
+            AgentWorkspaceLayoutRequest request,
+            long expectedWorkspaceRevision,
+            CancellationToken cancellationToken) => ReturnOutcomeUnknown
+                ? ValueTask.FromResult<AgentWorkspaceLayoutMutationResult>(
+                    new AgentWorkspaceLayoutMutationResult.OutcomeUnknown())
+                : throw new NotSupportedException(
+                    "This fixture verifies layout advertisement only.");
     }
 
     public class WorkspaceGraphContextProxy : DispatchProxy

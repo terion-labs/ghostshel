@@ -87,13 +87,19 @@ The current production matrix is deliberately narrow:
 |---|---:|---:|
 | WebDAV | Yes | No |
 | S3/S3-compatible | No | No |
-| Local POSIX/Windows, SFTP, FTP, SMB | No | No |
+| Local POSIX | Yes | Yes |
+| Local Windows, SFTP, FTP, SMB | No | No |
 
-This does not remove ordinary human File Viewer mutations. Local, SFTP, FTP,
-and SMB adapters check links or reparse points before pathname mutation, but
-those checks are not bound to the later operation. A concurrent namespace
-actor can replace an already checked ancestor, so those adapters are not an
-authorization boundary against the same-account/process threat model.
+This does not remove ordinary human File Viewer mutations. The POSIX local
+adapter opens the configured root and every ancestor directory by descriptor
+with `O_NOFOLLOW`, then performs exact non-recursive creation/deletion with
+`mkdirat`/`unlinkat`. Namespace replacement cannot redirect the authorized
+operation through a symlink between validation and dispatch. Recursive local
+delete remains human-only. Windows, SFTP, FTP, and SMB adapters check links or
+reparse points before pathname mutation, but those checks are not bound to the
+later operation. A concurrent namespace actor can replace an already checked
+ancestor, so those adapters are not an authorization boundary against the
+same-account/process threat model.
 
 Production WebDAV construction disables redirects and mkdir targets one exact
 configured-origin URI. WebDAV delete remains ordinary-only: it must inspect
@@ -122,13 +128,16 @@ retry at either boundary. Once the provider invocation begins:
 
 - a valid success receipt wins over late caller cancellation, permit
   revocation, or graph/session drift;
-- any provider failure, cancellation exception, other exception, or malformed,
+- a definite typed provider rejection such as access denied, already exists,
+  or precondition failed becomes a bounded failed tool result and is returned
+  to the provider for recovery without redispatching the action;
+- an ambiguous transport/cancellation failure, exception, or malformed,
   mismatched, wrong-kind, or out-of-root receipt becomes the non-retryable
   stable failure `file_mutation_outcome_unknown`;
 - that ambiguous result is audited as `Failed`, never `Cancelled`;
-- the runtime stops provider continuation, cancels the agent session, revokes
-  the registered run's remaining authority, and leaves the run quarantined
-  until the user clears it.
+- the runtime commits that result, skips the stale remainder of the current
+  tool batch, and returns control to the provider so it can inspect fresh file
+  state before choosing another action.
 
 The provider operation is never redispatched to discover or repair an unknown
 outcome. Only the exact immutable completion-audit event may use the broker's
@@ -192,13 +201,14 @@ conflict semantics.
 
 ## Consequences
 
-- The agent can create one exact WebDAV directory without receiving ambient
-  filesystem authority. The permanent-delete contract is fail-closed in
-  production until a provider can prove its stronger semantics.
+- The agent can create one exact WebDAV or local POSIX directory without
+  receiving ambient filesystem authority, and can permanently delete one exact
+  non-recursive local POSIX entry through descriptor-relative mutation.
 - The approval and dispatch cannot be widened by model-supplied provider
   identity, recursion, precondition, or retry fields.
-- A caller cannot safely retry an ambiguous mutation through the live run; the
-  user must inspect current provider state after clearing the quarantine.
+- A caller cannot safely redispatch an ambiguous mutation. The live run remains
+  usable, but it must inspect current provider state before choosing a new
+  action.
 - `MustExist` protects against deleting an already absent path, but it does not
   protect the identity of an entry replaced at the same path.
 - Ordinary human mutation capabilities remain available on providers that do

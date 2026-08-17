@@ -23,6 +23,9 @@ internal sealed record NativeBrowserCheckResult
     public static NativeBrowserCheckResult NotCheckable() =>
         new(NativeBrowserCheckStatus.NotCheckable);
 
+    public static NativeBrowserCheckResult Unchecked() =>
+        new(NativeBrowserCheckStatus.Unchecked);
+
     public static NativeBrowserCheckResult OutcomeUnknown() =>
         new(NativeBrowserCheckStatus.OutcomeUnknown);
 }
@@ -33,5 +36,6 @@ internal enum NativeBrowserCheckStatus
     Stale,
     NotInteractable,
     NotCheckable,
+    Unchecked,
     OutcomeUnknown,
 }

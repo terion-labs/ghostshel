@@ -58,6 +58,12 @@ internal static class PanelAgentToolSet
         ];
     }
 
+    public static ImmutableArray<AgentToolDefinition> ForWorkspace() =>
+    [
+        AgentToolScopeSchema.WithRequiredPanelId(Inspect),
+        AgentToolScopeSchema.WithRequiredPanelId(Focus),
+    ];
+
     public static ImmutableArray<AgentToolDefinition> For(
         AgentContextPanel panel)
     {

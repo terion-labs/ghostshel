@@ -27,7 +27,10 @@ public sealed partial class GovernedAgentRuntimeTests
                 target.WindowId,
                 new WorkspaceInstanceId("workspace-other"),
                 target.TabId,
-                target.PanelId));
+                target.PanelId),
+            fixture.Runtime.Snapshot.EffectivePolicy!.SelectPrimaryModel(
+                "provider-1",
+                fixture.ProviderResolver.Binding.DefaultModel));
 
         var result = await fixture.Runtime.SendAsync(request, CancellationToken.None);
 
@@ -46,7 +49,10 @@ public sealed partial class GovernedAgentRuntimeTests
             fixture.Target,
             [],
             AgentReasoningEffort.Automatic,
-            AgentServiceTier.Priority);
+            AgentServiceTier.Priority,
+            fixture.Runtime.Snapshot.EffectivePolicy!.SelectPrimaryModel(
+                "provider-1",
+                fixture.ProviderResolver.Binding.DefaultModel));
 
         var result = await fixture.Runtime.SendAsync(prompt, CancellationToken.None);
 
@@ -63,7 +69,15 @@ public sealed partial class GovernedAgentRuntimeTests
         var baseline = new AgentPolicy(
             "provider-1",
             "provider-default-model",
-            AgentPolicy.Default.Permissions);
+            AgentPolicy.Default.Permissions)
+        {
+            CompactionModel = new AgentModelSelection(
+                "provider-1",
+                "provider-default-model"),
+            TitleModel = new AgentModelSelection(
+                "provider-1",
+                "provider-default-model"),
+        };
         var prompt = new GovernedAgentPrompt(
             new AiProviderProfileId("provider-1"),
             "Inspect the terminal.",
@@ -116,6 +130,72 @@ public sealed partial class GovernedAgentRuntimeTests
     }
 
     [Fact]
+    public async Task Full_access_preserves_the_compaction_route_and_conversation_metadata()
+    {
+        var provider = new ProviderRound((call, _) => call switch
+        {
+            1 =>
+            [
+                new AgentProviderEvent.ResponseStarted(),
+                new AgentProviderEvent.TextDelta("First answer"),
+                new AgentProviderEvent.Usage(new AgentTokenUsage(900, 100)),
+                new AgentProviderEvent.ResponseCompleted(AgentProviderStopReason.EndTurn),
+            ],
+            2 =>
+            [
+                new AgentProviderEvent.ResponseStarted(),
+                new AgentProviderEvent.TextDelta("Second answer"),
+                new AgentProviderEvent.Usage(new AgentTokenUsage(4_900, 100)),
+                new AgentProviderEvent.ResponseCompleted(AgentProviderStopReason.EndTurn),
+            ],
+            3 =>
+            [
+                new AgentProviderEvent.ResponseStarted(),
+                new AgentProviderEvent.TextDelta(
+                    "## Goal\nContinue testing.\n\n## Critical Context\n- Earlier turns summarized."),
+                new AgentProviderEvent.ResponseCompleted(AgentProviderStopReason.EndTurn),
+            ],
+            _ => throw new InvalidOperationException("Unexpected provider call."),
+        });
+        var policy = new AgentPolicy(
+            "provider-1",
+            "provider-default-model",
+            AgentPolicy.Default.Permissions)
+        {
+            CompactionModel = new AgentModelSelection(
+                "provider-1",
+                "provider-default-model"),
+            TitleModel = new AgentModelSelection(
+                "title-provider",
+                "title-model"),
+            SystemPrompt = "Keep answers concise.",
+        };
+        await using var fixture = new RuntimeFixture(provider, policy);
+        fixture.ProviderResolver.Binding.ContextWindowTokenLimit = 20_000;
+
+        Assert.True((await fixture.Runtime.SendAsync(
+            fixture.Prompt("First question", policy),
+            CancellationToken.None)).IsSuccess);
+        Assert.True((await fixture.Runtime.EnableFullAccessAsync(
+            CancellationToken.None)).IsAccepted);
+
+        var fullAccessPolicy = Assert.IsType<AgentPolicy>(
+            fixture.Runtime.Snapshot.EffectivePolicy);
+        Assert.Equal(policy.CompactionModel, fullAccessPolicy.CompactionModel);
+        Assert.Equal(policy.SystemPrompt, fullAccessPolicy.SystemPrompt);
+
+        Assert.True((await fixture.Runtime.SendAsync(
+            fixture.Prompt("Second question", policy),
+            CancellationToken.None)).IsSuccess);
+
+        Assert.Equal(3, provider.Requests.Count);
+        Assert.Contains(
+            "## Critical Context",
+            provider.Requests.ToArray()[2].Messages[^1].Content,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task CompletedTurnsAutomaticallyCompactAtTheModelContextThreshold()
     {
         var provider = new ProviderRound((call, _) => call switch
@@ -156,12 +236,255 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Equal(3, provider.Requests.Count);
         Assert.Collection(
             fixture.Runtime.Snapshot.Messages,
+            message => Assert.Equal("First question", message.Content),
+            message => Assert.Equal("First answer", message.Content),
             message => Assert.Equal("Second question", message.Content),
             message => Assert.Equal("Second answer", message.Content));
+        Assert.DoesNotContain(
+            fixture.Runtime.Snapshot.Messages,
+            message => message.Content.Contains(
+                "## Critical Context",
+                StringComparison.Ordinal));
         Assert.Contains(
             "## Critical Context",
             provider.Requests.ToArray()[2].Messages[^1].Content,
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OverThresholdConversationRetriesCompactionBeforeTheNextUserTurn()
+    {
+        var provider = new ProviderRound((call, request) => call switch
+        {
+            1 =>
+            [
+                new AgentProviderEvent.ResponseStarted(),
+                new AgentProviderEvent.TextDelta("First answer"),
+                new AgentProviderEvent.Usage(new AgentTokenUsage(4_900, 100)),
+                new AgentProviderEvent.ResponseCompleted(AgentProviderStopReason.EndTurn),
+            ],
+            2 when request.Messages[^1].Content.Contains(
+                "PREFIX of a turn",
+                StringComparison.Ordinal) =>
+            [
+                new AgentProviderEvent.ResponseStarted(),
+                new AgentProviderEvent.TextDelta(
+                    "## Original Request\nFirst question.\n\n"
+                    + "## Context for Suffix\nThe first answer is retained."),
+                new AgentProviderEvent.ResponseCompleted(AgentProviderStopReason.EndTurn),
+            ],
+            3 when request.Messages.Any(message =>
+                message.Role == AgentMessageRole.Summary)
+                && request.Messages[^1].Content == "Second question" =>
+                ProviderRound.Answer("Second answer"),
+            _ => throw new InvalidOperationException("Unexpected provider call."),
+        });
+        await using var fixture = new RuntimeFixture(provider);
+
+        Assert.True((await fixture.Runtime.SendAsync(
+            fixture.Prompt("First question"),
+            CancellationToken.None)).IsSuccess);
+        fixture.ProviderResolver.Binding.ContextWindowTokenLimit = 20_000;
+        var second = await fixture.Runtime.SendAsync(
+            fixture.Prompt("Second question"),
+            CancellationToken.None);
+
+        Assert.True(second.IsSuccess, $"{second.Code}: {second.Message}");
+        Assert.Equal(3, provider.Requests.Count);
+        Assert.Contains(
+            provider.Requests.ToArray()[2].Messages,
+            message => message.Role == AgentMessageRole.Summary);
+        Assert.Equal("Second answer", fixture.Runtime.Snapshot.Messages[^1].Content);
+    }
+
+    [Fact]
+    public async Task FailedPreflightCompactionNeverSendsTheOversizedUserTurn()
+    {
+        var provider = new ProviderRound((call, _) => call switch
+        {
+            1 =>
+            [
+                new AgentProviderEvent.ResponseStarted(),
+                new AgentProviderEvent.TextDelta("First answer"),
+                new AgentProviderEvent.Usage(new AgentTokenUsage(4_900, 100)),
+                new AgentProviderEvent.ResponseCompleted(AgentProviderStopReason.EndTurn),
+            ],
+            2 => throw new TestProviderException(
+                "ai_provider_maintenance_failed",
+                "The maintenance request failed."),
+            _ => throw new InvalidOperationException("Unexpected provider call."),
+        });
+        await using var fixture = new RuntimeFixture(provider);
+
+        Assert.True((await fixture.Runtime.SendAsync(
+            fixture.Prompt("First question"),
+            CancellationToken.None)).IsSuccess);
+        fixture.ProviderResolver.Binding.ContextWindowTokenLimit = 20_000;
+
+        var second = await fixture.Runtime.SendAsync(
+            fixture.Prompt("Second question"),
+            CancellationToken.None);
+
+        Assert.False(second.IsSuccess);
+        Assert.False(second.InitialPromptCommitted);
+        Assert.Equal("agent_compaction_provider_failed", second.Code);
+        Assert.Equal(GovernedAgentState.Ready, fixture.Runtime.Snapshot.State);
+        Assert.Equal(2, provider.Requests.Count);
+        Assert.DoesNotContain(
+            provider.Requests,
+            request => request.Messages.Any(message =>
+                message.Content == "Second question"));
+        Assert.DoesNotContain(
+            fixture.Runtime.Snapshot.Messages,
+            message => message.Content == "Second question");
+    }
+
+    [Fact]
+    public async Task LongToolWorkflowsCompactBeforeTheNextProviderRound()
+    {
+        var provider = new ProviderRound((call, request) => call switch
+        {
+            1 =>
+            [
+                new AgentProviderEvent.ResponseStarted(),
+                new AgentProviderEvent.TextDelta("Older answer"),
+                new AgentProviderEvent.Usage(new AgentTokenUsage(900, 100)),
+                new AgentProviderEvent.ResponseCompleted(AgentProviderStopReason.EndTurn),
+            ],
+            2 =>
+            [
+                new AgentProviderEvent.ResponseStarted(),
+                new AgentProviderEvent.ToolCallStarted(
+                    0,
+                    "read-before-compaction",
+                    ProviderToolName.FromInternal(
+                        BuiltInAgentTools.TerminalReadScreen)),
+                new AgentProviderEvent.ToolCallArgumentsDelta(0, "{}"),
+                new AgentProviderEvent.ToolCallCompleted(0),
+                new AgentProviderEvent.Usage(new AgentTokenUsage(19_000, 100)),
+                new AgentProviderEvent.ResponseCompleted(AgentProviderStopReason.ToolUse),
+            ],
+            3 =>
+            [
+                new AgentProviderEvent.ResponseStarted(),
+                new AgentProviderEvent.TextDelta(
+                    "## Goal\nContinue the tool workflow.\n\n## Critical Context\n- Older turn summarized."),
+                new AgentProviderEvent.ResponseCompleted(AgentProviderStopReason.EndTurn),
+            ],
+            4 when request.Messages.Any(message =>
+                message.Role == AgentMessageRole.Summary)
+                && request.Messages.Any(message =>
+                    message.Role == AgentMessageRole.Tool) =>
+                ProviderRound.Answer("Continued after maintenance."),
+            _ => throw new InvalidOperationException("Unexpected provider call."),
+        });
+        await using var fixture = new RuntimeFixture(provider);
+        fixture.ProviderResolver.Binding.ContextWindowTokenLimit = 20_000;
+        fixture.Terminal.Results.Enqueue(
+            new AgentTerminalActionResult.Screen(
+                fixture.Context.Screen("ready", contentRevision: 7)));
+
+        Assert.True((await fixture.Runtime.SendAsync(
+            fixture.Prompt("First question"),
+            CancellationToken.None)).IsSuccess);
+        var result = await fixture.Runtime.SendAsync(
+            fixture.Prompt("Inspect the terminal"),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(4, provider.Requests.Count);
+        var continuation = provider.Requests.ToArray()[3];
+        Assert.Contains(
+            continuation.Messages,
+            message => message.Role == AgentMessageRole.Summary);
+        Assert.Contains(
+            continuation.Messages,
+            message => message.Role == AgentMessageRole.Tool);
+    }
+
+    [Fact]
+    public async Task OneLongToolTurnCompactsAtASplitTurnBoundary()
+    {
+        var provider = new ProviderRound((call, request) => call switch
+        {
+            1 =>
+            [
+                new AgentProviderEvent.ResponseStarted(),
+                new AgentProviderEvent.ToolCallStarted(
+                    0,
+                    "read-first",
+                    ProviderToolName.FromInternal(
+                        BuiltInAgentTools.TerminalReadScreen)),
+                new AgentProviderEvent.ToolCallArgumentsDelta(0, "{}"),
+                new AgentProviderEvent.ToolCallCompleted(0),
+                new AgentProviderEvent.Usage(new AgentTokenUsage(900, 100)),
+                new AgentProviderEvent.ResponseCompleted(AgentProviderStopReason.ToolUse),
+            ],
+            2 =>
+            [
+                new AgentProviderEvent.ResponseStarted(),
+                new AgentProviderEvent.TextDelta(new string('a', 8_000)),
+                new AgentProviderEvent.TextDelta(new string('b', 8_000)),
+                new AgentProviderEvent.TextDelta(new string('c', 8_000)),
+                new AgentProviderEvent.ToolCallStarted(
+                    0,
+                    "read-second",
+                    ProviderToolName.FromInternal(
+                        BuiltInAgentTools.TerminalReadScreen)),
+                new AgentProviderEvent.ToolCallArgumentsDelta(0, "{}"),
+                new AgentProviderEvent.ToolCallCompleted(0),
+                new AgentProviderEvent.Usage(new AgentTokenUsage(30_000, 100)),
+                new AgentProviderEvent.ResponseCompleted(AgentProviderStopReason.ToolUse),
+            ],
+            3 when request.Messages[^1].Content.Contains(
+                "PREFIX of a turn",
+                StringComparison.Ordinal) =>
+            [
+                new AgentProviderEvent.ResponseStarted(),
+                new AgentProviderEvent.TextDelta(
+                    "## Original Request\nInspect the terminal.\n\n"
+                    + "## Early Progress\n- Read the first screen.\n\n"
+                    + "## Context for Suffix\n- Continue from the second read."),
+                new AgentProviderEvent.ResponseCompleted(AgentProviderStopReason.EndTurn),
+            ],
+            4 when request.Messages.Select(message => message.Role).SequenceEqual(
+                new[]
+                {
+                    AgentMessageRole.System,
+                    AgentMessageRole.Summary,
+                    AgentMessageRole.Assistant,
+                    AgentMessageRole.Tool,
+                }) => ProviderRound.Answer("Continued after split-turn maintenance."),
+            _ => throw new InvalidOperationException("Unexpected provider call."),
+        });
+        await using var fixture = new RuntimeFixture(provider);
+        fixture.ProviderResolver.Binding.ContextWindowTokenLimit = 45_000;
+        fixture.Terminal.Results.Enqueue(
+            new AgentTerminalActionResult.Screen(
+                fixture.Context.Screen(new string('x', 4_000), contentRevision: 7)));
+        fixture.Terminal.Results.Enqueue(
+            new AgentTerminalActionResult.Screen(
+                fixture.Context.Screen(new string('y', 52_000), contentRevision: 8)));
+
+        var result = await fixture.Runtime.SendAsync(
+            fixture.Prompt("Inspect the terminal until you have enough context."),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(4, provider.Requests.Count);
+        var continuation = provider.Requests.ToArray()[3];
+        Assert.Contains(
+            continuation.Messages,
+            message => message.Role == AgentMessageRole.Summary
+                && message.Content.Contains(
+                    "Turn Context (split turn)",
+                    StringComparison.Ordinal));
+        Assert.Equal(
+            "Continued after split-turn maintenance.",
+            fixture.Runtime.Snapshot.Messages[^1].Content);
+        Assert.True(
+            fixture.Runtime.Snapshot.ContextTokensUsed
+                < fixture.ProviderResolver.Binding.ContextWindowTokenLimit);
     }
 
     [Fact]
@@ -325,10 +648,50 @@ public sealed partial class GovernedAgentRuntimeTests
     }
 
     [Fact]
+    public async Task Submit_text_is_one_typed_governed_action_not_paste_plus_enter()
+    {
+        await using var fixture = new RuntimeFixture(
+            ProviderRound.SubmitTextThenAnswer());
+        fixture.Terminal.Results.Enqueue(
+            new AgentTerminalActionResult.Completed());
+
+        var sending = fixture.Runtime.SendAsync(
+            fixture.Prompt("Run the command."),
+            CancellationToken.None).AsTask();
+        await WaitUntilAsync(
+            () => fixture.Runtime.Snapshot.State
+                == GovernedAgentState.AwaitingApproval);
+
+        var pending = Assert.IsType<GovernedAgentApproval>(
+            fixture.Runtime.Snapshot.PendingApproval);
+        Assert.Equal(BuiltInAgentTools.TerminalSubmitText, pending.ToolName);
+        Assert.True(pending.TemporarilyYieldsTerminalInput);
+        Assert.True((await fixture.Runtime.DecideAsync(
+            pending.Id,
+            approved: true,
+            CancellationToken.None)).IsAccepted);
+        Assert.True((await sending).IsSuccess);
+
+        var action = Assert.Single(fixture.Terminal.Actions);
+        var request = Assert.IsType<AgentTerminalRequest.SubmitText>(
+            action.Request);
+        Assert.Equal("printf ready", request.Text);
+        Assert.DoesNotContain(
+            fixture.Terminal.Actions,
+            candidate => candidate.Request is AgentTerminalRequest.Paste
+                or AgentTerminalRequest.SendKey);
+    }
+
+    [Fact]
     public async Task MouseMutationUsesTypedApprovalAndReturnsOnlyAReceipt()
     {
         await using var fixture = new RuntimeFixture(
             ProviderRound.SendMouseThenAnswer());
+        fixture.Context.Capabilities = new CapabilitySet(
+        [
+            .. fixture.Context.Capabilities.Values,
+            SessionCapabilities.TerminalRevisionBoundMouse,
+        ]);
         fixture.Terminal.Results.Enqueue(
             new AgentTerminalActionResult.Completed());
 
@@ -368,6 +731,7 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Equal(TerminalMouseEventKind.Drag, request.MouseInput.Kind);
         Assert.Equal(12, request.MouseInput.Column);
         Assert.Equal(8, request.MouseInput.Row);
+        Assert.Equal(0, request.ExpectedContentRevision);
         Assert.Equal(
             TerminalKeyModifiers.Shift | TerminalKeyModifiers.Alt,
             request.MouseInput.Modifiers);
@@ -761,9 +1125,117 @@ public sealed partial class GovernedAgentRuntimeTests
     }
 
     [Fact]
+    public async Task ContextAdapterFailureIsReturnedToProviderWithoutEndingRun()
+    {
+        var provider = new ProviderRound((call, request) => call switch
+        {
+            1 => ProviderRound.ToolCall(
+                "read-after-context-refresh",
+                BuiltInAgentTools.TerminalReadScreen,
+                "{}"),
+            2 when request.Messages.Any(message =>
+                message.ToolResult?.StableCode == "tool_context_unavailable") =>
+                ProviderRound.Answer("The panel context could not be refreshed."),
+            _ => throw new InvalidOperationException(
+                "The context-failure provider received an unexpected round."),
+        });
+        await using var fixture = new RuntimeFixture(provider);
+        fixture.Context.ThrowOnInspectionNumber = 2;
+
+        var result = await fixture.Runtime.SendAsync(
+            fixture.Prompt("Inspect the terminal."),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(GovernedAgentState.Ready, fixture.Runtime.Snapshot.State);
+        Assert.Equal(
+            "The panel context could not be refreshed.",
+            fixture.Runtime.Snapshot.Messages[^1].Content);
+        Assert.Equal(2, provider.Requests.Count);
+    }
+
+    [Fact]
+    public async Task InitialContextAdapterTransientFailureIsRetried()
+    {
+        await using var fixture = new RuntimeFixture(ProviderRound.AnswerEveryTurn());
+        fixture.Context.ThrowOnInspectionNumber = 1;
+
+        var result = await fixture.Runtime.SendAsync(
+            fixture.Prompt("Inspect the terminal."),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess, $"{result.Code}: {result.Message}");
+        Assert.Equal(2, fixture.Context.InspectionCount);
+        Assert.Single(fixture.Provider.Requests);
+        Assert.Equal(GovernedAgentState.Ready, fixture.Runtime.Snapshot.State);
+    }
+
+    [Fact]
+    public async Task PersistentInitialContextFailureLeavesConversationRetryable()
+    {
+        await using var fixture = new RuntimeFixture(ProviderRound.AnswerEveryTurn());
+        fixture.Context.AlwaysThrowOnInspection = true;
+
+        var failed = await fixture.Runtime.SendAsync(
+            fixture.Prompt("Inspect the terminal."),
+            CancellationToken.None);
+
+        Assert.False(failed.IsSuccess);
+        Assert.Equal("agent_target_unavailable", failed.Code);
+        Assert.False(failed.InitialPromptCommitted);
+        Assert.Equal(GovernedAgentState.Ready, fixture.Runtime.Snapshot.State);
+        Assert.Empty(fixture.Runtime.Snapshot.Messages);
+        Assert.Empty(fixture.Provider.Requests);
+
+        fixture.Context.AlwaysThrowOnInspection = false;
+        var retried = await fixture.Runtime.SendAsync(
+            fixture.Prompt("Inspect the terminal."),
+            CancellationToken.None);
+
+        Assert.True(retried.IsSuccess, $"{retried.Code}: {retried.Message}");
+        Assert.Equal(GovernedAgentState.Ready, fixture.Runtime.Snapshot.State);
+        Assert.Equal(
+            ["Inspect the terminal.", "Completed."],
+            fixture.Runtime.Snapshot.Messages.Select(message => message.Content));
+    }
+
+    [Fact]
+    public async Task TerminalHostFailureIsReturnedToProviderWithoutEndingRun()
+    {
+        var provider = new ProviderRound((call, request) => call switch
+        {
+            1 => ProviderRound.ToolCall(
+                "read-with-adapter-failure",
+                BuiltInAgentTools.TerminalReadScreen,
+                "{}"),
+            2 => ProviderRound.Answer(
+                request.Messages
+                    .Single(message => message.ToolResult is not null)
+                    .ToolResult!
+                    .StableCode),
+            _ => throw new InvalidOperationException(
+                "The adapter-failure provider received an unexpected round."),
+        });
+        await using var fixture = new RuntimeFixture(provider);
+        fixture.Terminal.ThrowBeforeExecution = true;
+
+        var result = await fixture.Runtime.SendAsync(
+            fixture.Prompt("Inspect the terminal."),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess, $"{result.Code}: {result.Message}");
+        Assert.Equal(GovernedAgentState.Ready, fixture.Runtime.Snapshot.State);
+        Assert.Equal(
+            "terminal_host_failed",
+            fixture.Runtime.Snapshot.Messages[^1].Content);
+        Assert.Equal(2, provider.Requests.Count);
+    }
+
+    [Fact]
     public async Task CompletedConversationIsSavedRestoredAndContinued()
     {
         var checkpoints = new InMemoryCheckpointStore();
+        long originalRevision;
         await using (var first = new RuntimeFixture(
                          ProviderRound.AnswerEveryTurn(),
                          checkpointStore: checkpoints))
@@ -773,7 +1245,7 @@ public sealed partial class GovernedAgentRuntimeTests
                 CancellationToken.None);
 
             Assert.True(sent.IsSuccess);
-            Assert.Single(checkpoints.Values);
+            originalRevision = Assert.Single(checkpoints.Values).Revision;
             var summary = Assert.Single(first.Runtime.Snapshot.Conversations);
             Assert.Equal(new AiProviderProfileId("provider-1"), summary.ProviderId);
             Assert.Equal("provider-default-model", summary.Model);
@@ -793,6 +1265,9 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Equal(
             "provider-default-model",
             Assert.Single(restored.Runtime.Snapshot.Conversations).Model);
+        Assert.Equal(
+            new AgentModelSelection("provider-1", "provider-default-model"),
+            restored.Runtime.Snapshot.EffectivePolicy?.CompactionModel);
 
         restored.Context.PanelTitle = "Recovered operations terminal";
         var continued = await restored.Runtime.SendAsync(
@@ -810,7 +1285,110 @@ public sealed partial class GovernedAgentRuntimeTests
                 continuedRequest.Messages,
                 message => message.Role == AgentMessageRole.System).Content,
             StringComparison.Ordinal);
-        Assert.Single(checkpoints.Values);
+        var continuedCheckpoint = Assert.Single(checkpoints.Values);
+        Assert.True(continuedCheckpoint.Revision > originalRevision);
+        Assert.NotEqual(
+            "This conversation could not be saved locally.",
+            restored.Runtime.Snapshot.Status);
+    }
+
+    [Fact]
+    public async Task ThrowingCheckpointStoreCannotTurnCompletedAnswerIntoFailedRun()
+    {
+        var checkpoints = new InMemoryCheckpointStore
+        {
+            ThrowOnSave = true,
+        };
+        await using var fixture = new RuntimeFixture(
+            ProviderRound.AnswerEveryTurn(),
+            checkpointStore: checkpoints);
+
+        var result = await fixture.Runtime.SendAsync(
+            fixture.Prompt("complete even when persistence is unavailable"),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess, $"{result.Code}: {result.Message}");
+        Assert.Equal(GovernedAgentState.Ready, fixture.Runtime.Snapshot.State);
+        Assert.Equal(
+            "Completed.",
+            fixture.Runtime.Snapshot.Messages[^1].Content);
+        Assert.Equal(
+            "This conversation could not be saved locally.",
+            fixture.Runtime.Snapshot.Status);
+    }
+
+    [Fact]
+    public async Task CompletedResponseIsCheckpointedBeforeTitleGeneration()
+    {
+        var checkpoints = new InMemoryCheckpointStore();
+        var provider = ProviderRound.AnswerEveryTurn(blockOnCall: 2);
+        var policy = AgentPolicy.Default with
+        {
+            TitleModel = new AgentModelSelection("provider-1", "title-model"),
+        };
+        await using var fixture = new RuntimeFixture(
+            provider,
+            configuredPolicy: policy,
+            checkpointStore: checkpoints);
+
+        var sending = fixture.Runtime.SendAsync(
+            fixture.Prompt("preserve the completed answer"),
+            CancellationToken.None).AsTask();
+        await provider.BlockedCall.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var checkpoint = Assert.Single(checkpoints.Values);
+        var restored = NativeAgentSession.RestoreCheckpoint(checkpoint);
+        Assert.True(restored.Succeeded);
+        Assert.Equal(
+            ["preserve the completed answer", "Completed."],
+            Assert.IsType<NativeAgentSession>(restored.Session)
+                .Snapshot()
+                .Conversation
+                .Where(message => message.Role is
+                    AgentMessageRole.User or AgentMessageRole.Assistant)
+                .Select(message => message.Content));
+
+        provider.ReleaseBlockedCall.TrySetResult();
+        Assert.True((await sending.WaitAsync(TimeSpan.FromSeconds(5))).IsSuccess);
+    }
+
+    [Fact]
+    public async Task FailedTurnIsRestoredAsSendableHistoryWithoutResumingIt()
+    {
+        var checkpoints = new InMemoryCheckpointStore();
+        await using (var first = new RuntimeFixture(
+                         ProviderRound.Invalid(),
+                         checkpointStore: checkpoints))
+        {
+            var failed = await first.Runtime.SendAsync(
+                first.Prompt("unfinished request"),
+                CancellationToken.None);
+
+            Assert.False(failed.IsSuccess);
+            Assert.Single(checkpoints.Values);
+        }
+
+        await using var restored = new RuntimeFixture(
+            ProviderRound.AnswerEveryTurn(),
+            checkpointStore: checkpoints);
+        await restored.Runtime.RestoreLatestConversationAsync(
+            CancellationToken.None);
+
+        Assert.Equal(GovernedAgentState.Ready, restored.Runtime.Snapshot.State);
+        Assert.True(restored.Runtime.Snapshot.CanSend);
+        Assert.Equal(
+            [
+                "unfinished request",
+                "The previous agent turn was interrupted. No pending tool action was resumed.",
+            ],
+            restored.Runtime.Snapshot.Messages.Select(message => message.Content));
+
+        var continued = await restored.Runtime.SendAsync(
+            restored.Prompt("continue from the recovered transcript"),
+            CancellationToken.None);
+
+        Assert.True(continued.IsSuccess);
+        Assert.Equal("Completed.", restored.Runtime.Snapshot.Messages[^1].Content);
     }
 
     [Fact]
@@ -920,7 +1498,11 @@ public sealed partial class GovernedAgentRuntimeTests
                 capability => capability,
                 capability => capability == AgentCapability.RunCommands
                     ? AgentPermission.Off
-                    : AgentPermission.Auto));
+                    : AgentPermission.Auto))
+        {
+            CompactionModel = new AgentModelSelection("provider-1", "saved-model"),
+            TitleModel = new AgentModelSelection("provider-1", "saved-model"),
+        };
         await using var runtime = new GovernedAgentRuntime(
             context,
             broker,
@@ -929,7 +1511,8 @@ public sealed partial class GovernedAgentRuntimeTests
             BuiltInAgentTools.Catalog,
             providerResolver,
             new TestApprovalPrincipal(new ClientId("desktop-client")),
-            TimeProvider.System);
+            TimeProvider.System,
+            policy);
         var sending = runtime.SendAsync(
             new GovernedAgentPrompt(
                 new AiProviderProfileId("provider-1"),
@@ -958,7 +1541,7 @@ public sealed partial class GovernedAgentRuntimeTests
     }
 
     [Fact]
-    public async Task LegacyPromptPreservesConfiguredPermissionsAndBindsExactEndpoint()
+    public async Task ExplicitPromptPolicyUsesItsPermissionsAndExactEndpoint()
     {
         var configuredPolicy = new AgentPolicy(
             "Configured provider",
@@ -967,7 +1550,15 @@ public sealed partial class GovernedAgentRuntimeTests
                 capability => capability,
                 capability => capability == AgentCapability.RunCommands
                     ? AgentPermission.Auto
-                    : AgentPermission.Off));
+                    : AgentPermission.Off))
+        {
+            CompactionModel = new AgentModelSelection(
+                "Configured provider",
+                "configured-model"),
+            TitleModel = new AgentModelSelection(
+                "Configured provider",
+                "configured-model"),
+        };
         await using var fixture = new RuntimeFixture(
             ProviderRound.AnswerEveryTurn(),
             configuredPolicy);
@@ -990,7 +1581,7 @@ public sealed partial class GovernedAgentRuntimeTests
     }
 
     [Fact]
-    public async Task LegacyPromptRegistersSelectedProfileAndCapturedDefaultModel()
+    public async Task ExplicitPromptPolicyRegistersSelectedProfileAndMaintenanceRoutes()
     {
         var context = new ContextClient();
         var audit = new RecordingAuditStore();
@@ -1026,7 +1617,10 @@ public sealed partial class GovernedAgentRuntimeTests
             new GovernedAgentPrompt(
                 providerResolver.Binding.ProfileId,
                 "Inspect.",
-                context.Target),
+                context.Target,
+                configuredPolicy.SelectPrimaryModel(
+                    providerResolver.Binding.ProfileId.Value,
+                    providerResolver.Binding.DefaultModel)),
             CancellationToken.None).AsTask();
 
         var expected = configuredPolicy with
@@ -1101,7 +1695,8 @@ public sealed partial class GovernedAgentRuntimeTests
             BuiltInAgentTools.Catalog,
             new ReturningProviderResolver(mismatchedBinding),
             new TestApprovalPrincipal(new ClientId("desktop-client")),
-            TimeProvider.System);
+            TimeProvider.System,
+            AgentPolicy.Default);
         var policy = AgentPolicy.Default with
         {
             Provider = "requested-provider",
@@ -1137,37 +1732,41 @@ public sealed partial class GovernedAgentRuntimeTests
             "first-model",
             AgentPolicy.Capabilities.ToImmutableDictionary(
                 capability => capability,
-                _ => AgentPermission.Ask));
+                _ => AgentPermission.Ask))
+        {
+            CompactionModel = new AgentModelSelection("provider-1", "compact-model"),
+            TitleModel = fixture.ConfiguredPolicy.TitleModel,
+        };
         var secondModel = new AgentPolicy(
             "provider-1",
             "second-model",
-            firstPolicy.Permissions);
+            firstPolicy.Permissions)
+        {
+            CompactionModel = firstPolicy.CompactionModel,
+            TitleModel = firstPolicy.TitleModel,
+        };
         var changedPermissions = new AgentPolicy(
             "provider-1",
             "second-model",
             AgentPolicy.Capabilities.ToImmutableDictionary(
                 capability => capability,
-                _ => AgentPermission.Off));
+                _ => AgentPermission.Off))
+        {
+            CompactionModel = firstPolicy.CompactionModel,
+            TitleModel = firstPolicy.TitleModel,
+        };
 
         Assert.True((await fixture.Runtime.SendAsync(
             fixture.Prompt("Start.", firstPolicy),
             CancellationToken.None)).IsSuccess);
 
-        var missingOverride = await fixture.Runtime.SendAsync(
-            fixture.Prompt("Drop the explicit policy."),
-            CancellationToken.None);
         var switched = await fixture.Runtime.SendAsync(
-            fixture.Prompt("Continue with another model.", secondModel) with
-            {
-                Model = "second-model",
-            },
+            fixture.Prompt("Continue with another model.", secondModel),
             CancellationToken.None);
         var rejected = await fixture.Runtime.SendAsync(
             fixture.Prompt("Use changed permissions.", changedPermissions),
             CancellationToken.None);
 
-        Assert.False(missingOverride.IsSuccess);
-        Assert.Equal("agent_policy_changed", missingOverride.Code);
         Assert.True(switched.IsSuccess);
         Assert.False(rejected.IsSuccess);
         Assert.Equal("agent_policy_changed", rejected.Code);
@@ -1182,7 +1781,7 @@ public sealed partial class GovernedAgentRuntimeTests
 
         Assert.True(await fixture.Runtime.ClearAsync(CancellationToken.None));
         AssertPolicyEqual(
-            AgentPolicy.Default,
+            fixture.ConfiguredPolicy,
             Assert.IsType<AgentPolicy>(fixture.Runtime.Snapshot.EffectivePolicy));
         Assert.True((await fixture.Runtime.SendAsync(
             fixture.Prompt("Start again.", changedPermissions),
@@ -1263,6 +1862,13 @@ public sealed partial class GovernedAgentRuntimeTests
             AgentPermission.Yolo,
             Assert.IsType<AgentPolicy>(fixture.Runtime.Snapshot.EffectivePolicy)
                 .GetPermission(AgentCapability.RunCommands));
+        Assert.All(
+            AgentPolicy.Capabilities,
+            capability => Assert.Equal(
+                AgentPermission.Yolo,
+                Assert.IsType<AgentPolicy>(
+                        fixture.Runtime.Snapshot.EffectivePolicy)
+                    .GetPermission(capability)));
         var authority = Assert.IsType<GovernedAgentYoloAuthority>(
             fixture.Runtime.Snapshot.YoloAuthority);
         Assert.Equal(fixture.Target, authority.Target);
@@ -1307,6 +1913,126 @@ public sealed partial class GovernedAgentRuntimeTests
             approved: true,
             CancellationToken.None)).IsAccepted);
         Assert.True((await askTurn.WaitAsync(TimeSpan.FromSeconds(5))).IsSuccess);
+    }
+
+    [Fact]
+    public async Task EnablingFullAccessDuringApprovalReevaluatesUndispatchedActionImmediately()
+    {
+        await using var fixture = new RuntimeFixture(
+            ProviderRound.ReadThenTwoTextTurns(
+                "echo first",
+                "echo second"));
+        fixture.Terminal.Results.Enqueue(
+            new AgentTerminalActionResult.Screen(
+                fixture.Context.Screen("ready", contentRevision: 1)));
+
+        Assert.True((await fixture.Runtime.SendAsync(
+            fixture.Prompt("Inspect."),
+            CancellationToken.None)).IsSuccess);
+
+        var turn = fixture.Runtime.SendAsync(
+            fixture.Prompt("Run the first command."),
+            CancellationToken.None).AsTask();
+        _ = await WaitForNewApprovalAsync(
+            fixture.Runtime,
+            previousApproval: null);
+
+        var enabled = await fixture.Runtime.EnableFullAccessAsync(
+            CancellationToken.None);
+        var result = await turn.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(enabled.IsAccepted);
+        Assert.True(result.IsSuccess);
+        Assert.Null(fixture.Runtime.Snapshot.PendingApproval);
+        Assert.Contains(
+            fixture.Audit.Events,
+            item => item.Action == BuiltInAgentTools.TerminalSendText
+                && item.Outcome == AuditOutcome.Succeeded
+                && item.Details is AuditDetails.AgentActionDetails
+                {
+                    AuthorizationSource: AgentAuthorizationSource.YoloPolicy,
+                });
+    }
+
+    [Fact]
+    public async Task FullAccessPolicyAuditIsRetriedWithoutBreakingThePendingTurn()
+    {
+        await using var fixture = new RuntimeFixture(
+            ProviderRound.ReadThenTwoTextTurns(
+                "echo first",
+                "echo second"));
+        fixture.Terminal.Results.Enqueue(
+            new AgentTerminalActionResult.Screen(
+                fixture.Context.Screen("ready", contentRevision: 1)));
+
+        Assert.True((await fixture.Runtime.SendAsync(
+            fixture.Prompt("Inspect."),
+            CancellationToken.None)).IsSuccess);
+
+        var turn = fixture.Runtime.SendAsync(
+            fixture.Prompt("Run the first command."),
+            CancellationToken.None).AsTask();
+        _ = await WaitForNewApprovalAsync(
+            fixture.Runtime,
+            previousApproval: null);
+        var failuresRemaining = 1;
+        fixture.Audit.FailurePredicate = auditEvent =>
+            auditEvent.Details is AuditDetails.AgentRunPolicyTransitionDetails
+            && Interlocked.Decrement(ref failuresRemaining) >= 0;
+
+        var enabled = await fixture.Runtime.EnableFullAccessAsync(
+            CancellationToken.None);
+        var result = await turn.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(enabled.IsAccepted);
+        Assert.True(result.IsSuccess);
+        Assert.NotEqual(GovernedAgentState.Cancelled, fixture.Runtime.Snapshot.State);
+        Assert.Null(fixture.Runtime.Snapshot.PendingApproval);
+    }
+
+    [Fact]
+    public async Task FailedFullAccessAuditKeepsPendingApprovalRecoverableForExactRetry()
+    {
+        await using var fixture = new RuntimeFixture(
+            ProviderRound.ReadThenTwoTextTurns(
+                "echo first",
+                "echo second"));
+        fixture.Terminal.Results.Enqueue(
+            new AgentTerminalActionResult.Screen(
+                fixture.Context.Screen("ready", contentRevision: 1)));
+
+        Assert.True((await fixture.Runtime.SendAsync(
+            fixture.Prompt("Inspect."),
+            CancellationToken.None)).IsSuccess);
+
+        var turn = fixture.Runtime.SendAsync(
+            fixture.Prompt("Run the first command."),
+            CancellationToken.None).AsTask();
+        var approval = await WaitForNewApprovalAsync(
+            fixture.Runtime,
+            previousApproval: null);
+        fixture.Audit.FailurePredicate = auditEvent =>
+            auditEvent.Details is AuditDetails.AgentRunPolicyTransitionDetails;
+
+        var failed = await fixture.Runtime.EnableFullAccessAsync(
+            CancellationToken.None);
+
+        Assert.False(failed.IsAccepted);
+        Assert.Equal("audit_unavailable", failed.Code);
+        Assert.Equal(
+            GovernedAgentState.AwaitingApproval,
+            fixture.Runtime.Snapshot.State);
+        Assert.Equal(approval.Id, fixture.Runtime.Snapshot.PendingApproval?.Id);
+        Assert.False(turn.IsCompleted);
+
+        fixture.Audit.FailurePredicate = null;
+        var enabled = await fixture.Runtime.EnableFullAccessAsync(
+            CancellationToken.None);
+        var result = await turn.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(enabled.IsAccepted);
+        Assert.True(result.IsSuccess);
+        Assert.Null(fixture.Runtime.Snapshot.PendingApproval);
     }
 
     [Fact]
@@ -1465,12 +2191,16 @@ public sealed partial class GovernedAgentRuntimeTests
             BuiltInAgentTools.Catalog,
             providerResolver,
             new TestApprovalPrincipal(clientId),
-            TimeProvider.System);
+            TimeProvider.System,
+            AgentPolicy.Default);
         var sending = runtime.SendAsync(
             new GovernedAgentPrompt(
                 new AiProviderProfileId("provider-1"),
                 "Inspect.",
-                context.Target),
+                context.Target,
+                AgentPolicy.Default.SelectPrimaryModel(
+                    "provider-1",
+                    providerResolver.Binding.DefaultModel)),
             CancellationToken.None).AsTask();
         await broker.Registered.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -1542,21 +2272,21 @@ public sealed partial class GovernedAgentRuntimeTests
     }
 
     [Fact]
-    public async Task RepeatingAutoToolsHitBoundAndRevokeRun()
+    public async Task ManyAutoToolRoundsCompleteWithoutRevokingRun()
     {
+        const int toolRoundCount = 2_000;
         await using var fixture = new RuntimeFixture(
-            ProviderRound.RepeatingRead());
+            ProviderRound.ReadRepeatedlyThenAnswer(toolRoundCount));
 
         var result = await fixture.Runtime.SendAsync(
             fixture.Prompt("Keep reading."),
             CancellationToken.None);
 
-        Assert.False(result.IsSuccess);
-        Assert.Equal("agent_tool_round_limit", result.Code);
-        Assert.Equal(16, fixture.Terminal.Actions.Count);
-        Assert.Equal(17, fixture.Provider.Requests.Count);
-        Assert.Equal(GovernedAgentState.Failed, fixture.Runtime.Snapshot.State);
-        Assert.False(fixture.Runtime.Snapshot.CanSend);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(toolRoundCount, fixture.Terminal.Actions.Count);
+        Assert.Equal(toolRoundCount + 1, fixture.Provider.Requests.Count);
+        Assert.Equal(GovernedAgentState.Ready, fixture.Runtime.Snapshot.State);
+        Assert.True(fixture.Runtime.Snapshot.CanSend);
     }
 
     [Fact]
@@ -1877,7 +2607,8 @@ public sealed partial class GovernedAgentRuntimeTests
                 BuiltInAgentTools.Catalog,
                 new FixedProviderResolver(provider),
                 new TestApprovalPrincipal(ClientId),
-                TimeProvider.System);
+                TimeProvider.System,
+                AgentPolicy.Default);
         }
 
         public WindowInstanceId WindowId { get; } = new("tui-window");
@@ -1935,7 +2666,10 @@ public sealed partial class GovernedAgentRuntimeTests
                     WindowId,
                     WorkspaceId,
                     TabId,
-                    PanelId));
+                    PanelId),
+                Runtime.Snapshot.EffectivePolicy!.SelectPrimaryModel(
+                    "provider-1",
+                    "provider-default-model"));
 
         public OperationContext HumanContext() =>
             OperationContext.ForHuman(ClientId);
@@ -2608,11 +3342,46 @@ public sealed partial class GovernedAgentRuntimeTests
 
         public IReadOnlyCollection<AgentSessionCheckpoint> Values => _values.Values;
 
+        public bool ThrowOnSave { get; init; }
+
         public ValueTask<AgentSessionCheckpointStoreResult<Unit>> SaveAsync(
             AgentSessionCheckpoint checkpoint,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (ThrowOnSave)
+            {
+                throw new InvalidOperationException(
+                    "Injected checkpoint-store failure.");
+            }
+
+            if (_values.TryGetValue(checkpoint.RunId, out var current))
+            {
+                var changedAtSameRevision = current.Revision == checkpoint.Revision
+                    && (current.SchemaVersion != checkpoint.SchemaVersion
+                        || current.Generation != checkpoint.Generation
+                        || !string.Equals(
+                            current.PayloadJson,
+                            checkpoint.PayloadJson,
+                            StringComparison.Ordinal)
+                        || current.UpdatedAt != checkpoint.UpdatedAt);
+                if (current.Revision > checkpoint.Revision || changedAtSameRevision)
+                {
+                    return ValueTask.FromResult(
+                        AgentSessionCheckpointStoreResult<Unit>.Failure(
+                            new AgentSessionCheckpointStoreError(
+                                AgentSessionCheckpointStoreErrorCode.RevisionConflict,
+                                "revision conflict",
+                                current.Revision)));
+                }
+
+                if (current.Revision == checkpoint.Revision)
+                {
+                    return ValueTask.FromResult(
+                        AgentSessionCheckpointStoreResult<Unit>.Success(Unit.Value));
+                }
+            }
+
             _values[checkpoint.RunId] = checkpoint;
             return ValueTask.FromResult(
                 AgentSessionCheckpointStoreResult<Unit>.Success(Unit.Value));
@@ -2698,6 +3467,8 @@ public sealed partial class GovernedAgentRuntimeTests
         {
             timeProvider ??= TimeProvider.System;
             Provider = provider;
+            ConfiguredPolicy = AgentPolicyResolver.Resolve(
+                configuredPolicy ?? CreateConfiguredPolicy());
             Context = new ContextClient();
             Target = Context.Target;
             ClientId = new ClientId("desktop-client");
@@ -2722,12 +3493,14 @@ public sealed partial class GovernedAgentRuntimeTests
                 ProviderResolver,
                 new TestApprovalPrincipal(ClientId),
                 timeProvider,
-                configuredPolicy ?? AgentPolicy.Default,
+                ConfiguredPolicy,
                 checkpointStore: checkpointStore,
                 workspaceId: workspaceId);
         }
 
         public ProviderRound Provider { get; }
+
+        public AgentPolicy ConfiguredPolicy { get; }
 
         public ContextClient Context { get; }
 
@@ -2749,7 +3522,10 @@ public sealed partial class GovernedAgentRuntimeTests
             new(
                 new AiProviderProfileId("provider-1"),
                 message,
-                Target);
+                Target,
+                ConfiguredPolicy.SelectPrimaryModel(
+                    "provider-1",
+                    ProviderResolver.Binding.DefaultModel));
 
         public GovernedAgentPrompt Prompt(string message, AgentPolicy policy) =>
             new(
@@ -2770,29 +3546,80 @@ public sealed partial class GovernedAgentRuntimeTests
                 Context.DisposeCancellationRegistration();
             }
         }
+
+        private static AgentPolicy CreateConfiguredPolicy() =>
+            new(
+                "provider-1",
+                "provider-default-model",
+                AgentPolicy.Default.Permissions)
+            {
+                CompactionModel = new AgentModelSelection(
+                    "provider-1",
+                    "provider-default-model"),
+                TitleModel = new AgentModelSelection(
+                    "title-provider",
+                    "title-model"),
+            };
     }
 
     private sealed class FixedProviderResolver(IAgentProvider provider)
         : IAgentProviderResolver
     {
-        public FixedProviderBinding Binding { get; } = new(provider);
+        public FixedProviderBinding Binding { get; } = new(
+            new AiProviderProfileId("provider-1"),
+            "provider-default-model",
+            provider);
+
+        private FixedProviderBinding TitleBinding { get; } = new(
+            new AiProviderProfileId("title-provider"),
+            "title-model",
+            new ProviderRound((_, request) =>
+                ProviderRound.Answer(ConversationTitle(request))));
 
         public IAgentProviderBinding PinProvider(AiProviderProfileId profileId)
         {
-            Assert.Equal(new AiProviderProfileId("provider-1"), profileId);
-            return Binding;
+            if (profileId == Binding.ProfileId)
+            {
+                return Binding;
+            }
+
+            Assert.Equal(TitleBinding.ProfileId, profileId);
+            return TitleBinding;
+        }
+
+        private static string ConversationTitle(AgentProviderRequest request)
+        {
+            const string userMarker = "[User]\n";
+            const string assistantMarker = "\n\n[Assistant]";
+            var prompt = request.Messages[^1].Content;
+            var userStart = prompt.IndexOf(userMarker, StringComparison.Ordinal);
+            if (userStart < 0)
+            {
+                return "Test conversation";
+            }
+
+            userStart += userMarker.Length;
+            var userEnd = prompt.IndexOf(
+                assistantMarker,
+                userStart,
+                StringComparison.Ordinal);
+            return userEnd < 0
+                ? prompt[userStart..].Trim()
+                : prompt[userStart..userEnd].Trim();
         }
     }
 
-    private sealed class FixedProviderBinding(IAgentProvider provider)
+    private sealed class FixedProviderBinding(
+        AiProviderProfileId profileId,
+        string defaultModel,
+        IAgentProvider provider)
         : IAgentProviderBinding
     {
-        public AiProviderProfileId ProfileId =>
-            new("provider-1");
+        public AiProviderProfileId ProfileId => profileId;
 
         public long Revision => 1;
 
-        public string DefaultModel => "provider-default-model";
+        public string DefaultModel => defaultModel;
 
         public bool IsCurrent { get; set; } = true;
 
@@ -2937,6 +3764,12 @@ public sealed partial class GovernedAgentRuntimeTests
                 "{\"text\":\"first\\n\\tsecond\"}",
                 "The paste was sent.");
 
+        public static ProviderRound SubmitTextThenAnswer() =>
+            ToolThenAnswer(
+                BuiltInAgentTools.TerminalSubmitText,
+                "{\"text\":\"printf ready\"}",
+                "The command was submitted.");
+
         public static ProviderRound SendMouseThenAnswer() =>
             ToolThenAnswer(
                 BuiltInAgentTools.TerminalSendMouse,
@@ -2945,7 +3778,8 @@ public sealed partial class GovernedAgentRuntimeTests
                   "event": "right_drag",
                   "column": 12,
                   "row": 8,
-                  "modifiers": ["shift", "alt"]
+                  "modifiers": ["shift", "alt"],
+                  "expected_content_revision": 0
                 }
                 """,
                 "The mouse event was sent.");
@@ -3104,22 +3938,25 @@ public sealed partial class GovernedAgentRuntimeTests
         public static ProviderRound Invalid() =>
             new((_, _) => [new AgentProviderEvent.ResponseStarted()]);
 
-        public static ProviderRound RepeatingRead() =>
-            new((call, _) =>
-            [
-                new AgentProviderEvent.ResponseStarted(),
-                new AgentProviderEvent.ToolCallStarted(
-                    0,
+        public static ProviderRound ReadRepeatedlyThenAnswer(int toolRoundCount) =>
+            new((call, _) => call <= toolRoundCount
+                ? ToolCall(
                     $"provider-call-{call}",
-                    ProviderToolName.FromInternal(BuiltInAgentTools.TerminalReadScreen)),
-                new AgentProviderEvent.ToolCallArgumentsDelta(0, "{}"),
-                new AgentProviderEvent.ToolCallCompleted(0),
-                new AgentProviderEvent.ResponseCompleted(
-                    AgentProviderStopReason.ToolUse),
-            ]);
+                    BuiltInAgentTools.TerminalReadScreen,
+                    "{}")
+                : call == toolRoundCount + 1
+                    ? Answer("Completed.")
+                    : throw new InvalidOperationException(
+                        "The provider received an unexpected round."));
 
         public static ProviderRound AnswerEveryTurn() =>
             new((_, _) => Answer("Completed."));
+
+        public static ProviderRound AnswerEveryTurn(int blockOnCall) =>
+            new((_, _) => Answer("Completed."))
+            {
+                BlockOnCall = blockOnCall,
+            };
 
         private static ProviderRound ToolThenAnswer(
             string toolName,
@@ -3161,7 +3998,7 @@ public sealed partial class GovernedAgentRuntimeTests
                 ];
             });
 
-        private static AgentProviderEvent[] ToolCall(
+        public static AgentProviderEvent[] ToolCall(
             string callId,
             string toolName,
             string arguments) =>
@@ -3177,7 +4014,7 @@ public sealed partial class GovernedAgentRuntimeTests
                 AgentProviderStopReason.ToolUse),
         ];
 
-        private static AgentProviderEvent[] Answer(string text) =>
+        public static AgentProviderEvent[] Answer(string text) =>
         [
             new AgentProviderEvent.ResponseStarted(),
             new AgentProviderEvent.TextDelta(text),
@@ -3219,6 +4056,8 @@ public sealed partial class GovernedAgentRuntimeTests
 
         public bool ThrowOnCallerCancellation { get; set; }
 
+        public bool ThrowBeforeExecution { get; set; }
+
         public void BlockNextAction() =>
             Interlocked.Exchange(ref _blockNextAction, 1);
 
@@ -3228,6 +4067,12 @@ public sealed partial class GovernedAgentRuntimeTests
                 AgentTerminalAction action,
                 CancellationToken cancellationToken)
         {
+            if (ThrowBeforeExecution)
+            {
+                throw new InvalidOperationException(
+                    "Injected terminal-adapter failure.");
+            }
+
             var binding = composer.BindForExecution(
                 action,
                 context.CurrentContext());
@@ -3435,6 +4280,7 @@ public sealed partial class GovernedAgentRuntimeTests
             SessionCapabilities.TerminalWait,
             SessionCapabilities.TerminalWrite,
             SessionCapabilities.TerminalPaste,
+            SessionCapabilities.TerminalEnter,
             SessionCapabilities.TerminalSendKeys,
             SessionCapabilities.TerminalMouse,
             SessionCapabilities.TerminalInterrupt,
@@ -3443,6 +4289,10 @@ public sealed partial class GovernedAgentRuntimeTests
         public int ReplaceSessionAfterInspection { get; set; } = int.MaxValue;
 
         public int BlockInspectionNumber { get; set; } = int.MaxValue;
+
+        public int ThrowOnInspectionNumber { get; set; } = int.MaxValue;
+
+        public bool AlwaysThrowOnInspection { get; set; }
 
         public bool IgnoreBlockedInspectionCancellation { get; set; }
 
@@ -3495,6 +4345,12 @@ public sealed partial class GovernedAgentRuntimeTests
 
             Assert.Equal(Target, request.Target);
             var current = Interlocked.Increment(ref _inspectionCount);
+            if (AlwaysThrowOnInspection || current == ThrowOnInspectionNumber)
+            {
+                throw new InvalidOperationException(
+                    "Injected context-adapter failure.");
+            }
+
             if (current == BlockInspectionNumber)
             {
                 BlockedInspection.TrySetResult();
@@ -3580,7 +4436,8 @@ public sealed partial class GovernedAgentRuntimeTests
 
         public TerminalScreenSnapshot Screen(
             string text,
-            long contentRevision) =>
+            long contentRevision,
+            IReadOnlyList<TerminalShellIntegrationEvent>? shellIntegrationEvents = null) =>
             new(
                 text,
                 CursorRow: 0,
@@ -3591,7 +4448,8 @@ public sealed partial class GovernedAgentRuntimeTests
                 WorkingDirectory: "/private",
                 CapturedAtUtc: DateTimeOffset.UtcNow,
                 ContentRevision: contentRevision,
-                WindowTitle: "private host");
+                WindowTitle: "private host",
+                ShellIntegrationEvents: shellIntegrationEvents);
 
         public ValueTask<HostResult<HostHello>> NegotiateAsync(
             ClientHello request,

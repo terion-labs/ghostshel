@@ -154,6 +154,46 @@ public class WebView : Control, IWebView, IDisposable
     public int BrowserId => _browser?.Id ?? 0;
 
     /// <summary>
+    /// Creates a CPU-rendered off-screen browser without requiring this control
+    /// to be mounted in an Avalonia visual tree. This is for background tabs and
+    /// headless hosts that still need Chromium's semantic/input APIs. A browser
+    /// already created by normal layout is left untouched.
+    /// </summary>
+    public bool EnsureOffscreenBrowserCreated(
+        int logicalWidth = 1280,
+        int logicalHeight = 720,
+        double renderScale = 1)
+    {
+        Dispatcher.UIThread.VerifyAccess();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_browser is not null)
+        {
+            return true;
+        }
+
+        if (logicalWidth <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(logicalWidth));
+        }
+
+        if (logicalHeight <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(logicalHeight));
+        }
+
+        if (!double.IsFinite(renderScale) || renderScale <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(renderScale));
+        }
+
+        return TryCreateBrowser(
+            logicalWidth,
+            logicalHeight,
+            renderScale,
+            BrowserCreationFlags(accelerated: false));
+    }
+
+    /// <summary>
     /// Optional isolated request context (separate cookies / cache /
     /// storage from other browsers). MUST be set before the WebView is
     /// arranged / attached for the first time — after the underlying
@@ -312,9 +352,9 @@ public class WebView : Control, IWebView, IDisposable
         // that just want files-into-the-page to Just Work.
         DragDrop.SetAllowDrop(this, true);
         AddHandler(DragDrop.DragEnterEvent, OnAvDragEnter);
-        AddHandler(DragDrop.DragOverEvent,  OnAvDragOver);
+        AddHandler(DragDrop.DragOverEvent, OnAvDragOver);
         AddHandler(DragDrop.DragLeaveEvent, OnAvDragLeave);
-        AddHandler(DragDrop.DropEvent,      OnAvDrop);
+        AddHandler(DragDrop.DropEvent, OnAvDrop);
     }
 
     // ---- Drag-drop forwarding (Avalonia → CEF) -------------------------
@@ -431,19 +471,19 @@ public class WebView : Control, IWebView, IDisposable
             switch (e.Key)
             {
                 case Key.OemPlus:
-                case Key.Add:        _browser.ZoomLevel += 0.5; return;
+                case Key.Add: _browser.ZoomLevel += 0.5; return;
                 case Key.OemMinus:
-                case Key.Subtract:   _browser.ZoomLevel -= 0.5; return;
+                case Key.Subtract: _browser.ZoomLevel -= 0.5; return;
                 case Key.D0:
-                case Key.NumPad0:    _browser.ZoomLevel = 0;    return;
-                case Key.C:          _browser.Copy();      return;
-                case Key.V:          _browser.Paste();     return;
-                case Key.X:          _browser.Cut();       return;
-                case Key.A:          _browser.SelectAll(); return;
+                case Key.NumPad0: _browser.ZoomLevel = 0; return;
+                case Key.C: _browser.Copy(); return;
+                case Key.V: _browser.Paste(); return;
+                case Key.X: _browser.Cut(); return;
+                case Key.A: _browser.SelectAll(); return;
                 case Key.Z:
                     if (shiftAccel) _browser.Redo(); else _browser.Undo();
                     return;
-                case Key.Y:          _browser.Redo();      return;
+                case Key.Y: _browser.Redo(); return;
             }
         }
 
@@ -455,9 +495,9 @@ public class WebView : Control, IWebView, IDisposable
         bool shifted = (e.KeyModifiers & KeyModifiers.Shift) != 0;
         char keyChar = e.Key switch
         {
-            Key.Enter  => '\r',
-            Key.Space  => ' ',
-            Key.Back   => '\b',
+            Key.Enter => '\r',
+            Key.Space => ' ',
+            Key.Back => '\b',
             Key.Escape => (char)27,
             _ => '\0',
         };
@@ -621,61 +661,14 @@ public class WebView : Control, IWebView, IDisposable
                 return size;
             }
 
-            _browserWidth = w;
-            _browserHeight = h;
-            _renderScale = scale;
             bool accelerated = _gpuInterop is not null;
             bool displayLinked = accelerated
                 && DisplayLinkedFramePacingEnabled();
-            var flags = BrowserCreationFlags(accelerated, displayLinked);
-            var browser = Cef.CreateOffscreenBrowserEx(
+            _ = TryCreateBrowser(
                 w,
                 h,
-                (float)scale,
-                Url ?? "about:blank",
-                RequestContext,
-                flags);
-            if (browser is not null)
-            {
-                _browser = browser;
-                IsAcceleratedRenderingActive =
-                    (flags & Cef.OffscreenFlags.SharedTexture) != 0;
-                _usesExternalFramePacing =
-                    (flags & Cef.OffscreenFlags.ExternalBeginFrame) != 0;
-                if (AccelerationDiagnosticsEnabled())
-                {
-                    Console.Error.WriteLine(
-                        IsAcceleratedRenderingActive
-                            ? _usesExternalFramePacing
-                                ? "[exclr8cef] CEF shared-texture mode uses " +
-                                    "CoreVideo display-link pacing."
-                                : "[exclr8cef] CEF shared-texture mode uses " +
-                                    "the fixed 60 fps CEF timer."
-                            : "[exclr8cef] CEF is using the CPU paint fallback.");
-                }
-                SubscribeBrowserEvents(browser);
-                // BrowserReady fires when CEF's OnAfterCreated has run —
-                // that's when the underlying CefBrowser ref is populated
-                // and calls like LoadUrl / ExecuteJavaScript actually do
-                // something. CefBrowser.Initialized is "fire now if
-                // already initialized" so this is safe regardless of
-                // timing.
-                browser.Initialized += (_, _) =>
-                {
-                    if (!IsAcceleratedRenderingActive)
-                    {
-                        browser.WindowlessFrameRate = CpuFallbackFrameRate;
-                    }
-                    else if (!_usesExternalFramePacing)
-                    {
-                        browser.WindowlessFrameRate = 60;
-                    }
-                    _browserReady = true;
-                    StartExternalFramePacingIfReady();
-                    StartPerformanceDiagnostics(browser);
-                    _browserReadyHandlers?.Invoke(this, EventArgs.Empty);
-                };
-            }
+                scale,
+                BrowserCreationFlags(accelerated, displayLinked));
         }
         else
         {
@@ -693,6 +686,81 @@ public class WebView : Control, IWebView, IDisposable
         }
 
         return size;
+    }
+
+    private bool TryCreateBrowser(
+        int width,
+        int height,
+        double renderScale,
+        Cef.OffscreenFlags flags)
+    {
+        if (_browser is not null)
+        {
+            return true;
+        }
+
+        _browserWidth = width;
+        _browserHeight = height;
+        _renderScale = renderScale;
+        var browser = Cef.CreateOffscreenBrowserEx(
+            width,
+            height,
+            (float)renderScale,
+            Url ?? "about:blank",
+            RequestContext,
+            flags);
+        if (browser is null)
+        {
+            return false;
+        }
+
+        _browser = browser;
+        IsAcceleratedRenderingActive =
+            (flags & Cef.OffscreenFlags.SharedTexture) != 0;
+        _usesExternalFramePacing =
+            (flags & Cef.OffscreenFlags.ExternalBeginFrame) != 0;
+        if (AccelerationDiagnosticsEnabled())
+        {
+            Console.Error.WriteLine(
+                IsAcceleratedRenderingActive
+                    ? _usesExternalFramePacing
+                        ? "[exclr8cef] CEF shared-texture mode uses " +
+                            "CoreVideo display-link pacing."
+                        : "[exclr8cef] CEF shared-texture mode uses " +
+                            "the fixed 60 fps CEF timer."
+                    : "[exclr8cef] CEF is using the CPU paint fallback.");
+        }
+
+        SubscribeBrowserEvents(browser);
+        // BrowserReady fires when CEF's OnAfterCreated has run — that's
+        // when the underlying CefBrowser ref is populated and calls like
+        // LoadUrl / ExecuteJavaScript actually do something.
+        browser.Initialized += (_, _) =>
+        {
+            if (!IsAcceleratedRenderingActive)
+            {
+                browser.WindowlessFrameRate = CpuFallbackFrameRate;
+            }
+            else if (!_usesExternalFramePacing)
+            {
+                browser.WindowlessFrameRate = 60;
+            }
+
+            // A browser created for an inactive workspace panel has no visual
+            // attachment yet. Keep its renderer available to DevTools and
+            // accessibility automation without spending a continuous paint
+            // budget until the panel is actually shown.
+            if (!_attached)
+            {
+                browser.WasHidden(true);
+            }
+
+            _browserReady = true;
+            StartExternalFramePacingIfReady();
+            StartPerformanceDiagnostics(browser);
+            _browserReadyHandlers?.Invoke(this, EventArgs.Empty);
+        };
+        return true;
     }
 
     internal static Cef.OffscreenFlags BrowserCreationFlags(
@@ -726,34 +794,34 @@ public class WebView : Control, IWebView, IDisposable
 
     private void SubscribeBrowserEvents(CefBrowser b)
     {
-        b.AddressChanged       += OnBrowserAddressChanged;
-        b.TitleChanged         += OnBrowserTitleChanged;
-        b.LoadingStateChanged  += OnBrowserLoadingStateChanged;
-        b.CursorChanged        += OnBrowserCursorChanged;
-        b.Painted              += OnBrowserPainted;
-        b.AcceleratedPaint     += OnBrowserAcceleratedPaint;
-        b.ContextMenu          += OnBrowserContextMenu;
-        b.PopupShow            += OnBrowserPopupShow;
-        b.PopupSize            += OnBrowserPopupSize;
-        b.PopupPainted         += OnBrowserPopupPainted;
-        b.DragImage            += OnBrowserDragImage;
-        b.Closed               += OnBrowserClosed;
+        b.AddressChanged += OnBrowserAddressChanged;
+        b.TitleChanged += OnBrowserTitleChanged;
+        b.LoadingStateChanged += OnBrowserLoadingStateChanged;
+        b.CursorChanged += OnBrowserCursorChanged;
+        b.Painted += OnBrowserPainted;
+        b.AcceleratedPaint += OnBrowserAcceleratedPaint;
+        b.ContextMenu += OnBrowserContextMenu;
+        b.PopupShow += OnBrowserPopupShow;
+        b.PopupSize += OnBrowserPopupSize;
+        b.PopupPainted += OnBrowserPopupPainted;
+        b.DragImage += OnBrowserDragImage;
+        b.Closed += OnBrowserClosed;
     }
 
     private void UnsubscribeBrowserEvents(CefBrowser b)
     {
-        b.AddressChanged       -= OnBrowserAddressChanged;
-        b.TitleChanged         -= OnBrowserTitleChanged;
-        b.LoadingStateChanged  -= OnBrowserLoadingStateChanged;
-        b.CursorChanged        -= OnBrowserCursorChanged;
-        b.Painted              -= OnBrowserPainted;
-        b.AcceleratedPaint     -= OnBrowserAcceleratedPaint;
-        b.ContextMenu          -= OnBrowserContextMenu;
-        b.PopupShow            -= OnBrowserPopupShow;
-        b.PopupSize            -= OnBrowserPopupSize;
-        b.PopupPainted         -= OnBrowserPopupPainted;
-        b.DragImage            -= OnBrowserDragImage;
-        b.Closed               -= OnBrowserClosed;
+        b.AddressChanged -= OnBrowserAddressChanged;
+        b.TitleChanged -= OnBrowserTitleChanged;
+        b.LoadingStateChanged -= OnBrowserLoadingStateChanged;
+        b.CursorChanged -= OnBrowserCursorChanged;
+        b.Painted -= OnBrowserPainted;
+        b.AcceleratedPaint -= OnBrowserAcceleratedPaint;
+        b.ContextMenu -= OnBrowserContextMenu;
+        b.PopupShow -= OnBrowserPopupShow;
+        b.PopupSize -= OnBrowserPopupSize;
+        b.PopupPainted -= OnBrowserPopupPainted;
+        b.DragImage -= OnBrowserDragImage;
+        b.Closed -= OnBrowserClosed;
     }
 
     private void OnBrowserClosed(object? sender, EventArgs e)
@@ -1902,7 +1970,7 @@ public class WebView : Control, IWebView, IDisposable
         if (_dragOverlayVisible && _dragBitmap is not null)
         {
             double scale = _renderScale > 0 ? _renderScale : 1.0;
-            double wDip = _dragBitmapWidthPx  / scale;
+            double wDip = _dragBitmapWidthPx / scale;
             double hDip = _dragBitmapHeightPx / scale;
             double hsXDip = _dragHotspotX / scale;
             double hsYDip = _dragHotspotY / scale;
@@ -2048,57 +2116,57 @@ public class WebView : Control, IWebView, IDisposable
 
     private static Cursor BuildCursor(Cef.CefCursorType t) => t switch
     {
-        Cef.CefCursorType.Pointer                  => new Cursor(StandardCursorType.Arrow),
-        Cef.CefCursorType.Cross                    => new Cursor(StandardCursorType.Cross),
-        Cef.CefCursorType.Hand                     => new Cursor(StandardCursorType.Hand),
-        Cef.CefCursorType.IBeam                    => new Cursor(StandardCursorType.Ibeam),
-        Cef.CefCursorType.Wait                     => new Cursor(StandardCursorType.Wait),
-        Cef.CefCursorType.Help                     => new Cursor(StandardCursorType.Help),
-        Cef.CefCursorType.EastResize               => new Cursor(StandardCursorType.SizeWestEast),
-        Cef.CefCursorType.NorthResize              => new Cursor(StandardCursorType.SizeNorthSouth),
-        Cef.CefCursorType.NorthEastResize          => new Cursor(StandardCursorType.TopRightCorner),
-        Cef.CefCursorType.NorthWestResize          => new Cursor(StandardCursorType.TopLeftCorner),
-        Cef.CefCursorType.SouthResize              => new Cursor(StandardCursorType.SizeNorthSouth),
-        Cef.CefCursorType.SouthEastResize          => new Cursor(StandardCursorType.BottomRightCorner),
-        Cef.CefCursorType.SouthWestResize          => new Cursor(StandardCursorType.BottomLeftCorner),
-        Cef.CefCursorType.WestResize               => new Cursor(StandardCursorType.SizeWestEast),
-        Cef.CefCursorType.NorthSouthResize         => new Cursor(StandardCursorType.SizeNorthSouth),
-        Cef.CefCursorType.EastWestResize           => new Cursor(StandardCursorType.SizeWestEast),
+        Cef.CefCursorType.Pointer => new Cursor(StandardCursorType.Arrow),
+        Cef.CefCursorType.Cross => new Cursor(StandardCursorType.Cross),
+        Cef.CefCursorType.Hand => new Cursor(StandardCursorType.Hand),
+        Cef.CefCursorType.IBeam => new Cursor(StandardCursorType.Ibeam),
+        Cef.CefCursorType.Wait => new Cursor(StandardCursorType.Wait),
+        Cef.CefCursorType.Help => new Cursor(StandardCursorType.Help),
+        Cef.CefCursorType.EastResize => new Cursor(StandardCursorType.SizeWestEast),
+        Cef.CefCursorType.NorthResize => new Cursor(StandardCursorType.SizeNorthSouth),
+        Cef.CefCursorType.NorthEastResize => new Cursor(StandardCursorType.TopRightCorner),
+        Cef.CefCursorType.NorthWestResize => new Cursor(StandardCursorType.TopLeftCorner),
+        Cef.CefCursorType.SouthResize => new Cursor(StandardCursorType.SizeNorthSouth),
+        Cef.CefCursorType.SouthEastResize => new Cursor(StandardCursorType.BottomRightCorner),
+        Cef.CefCursorType.SouthWestResize => new Cursor(StandardCursorType.BottomLeftCorner),
+        Cef.CefCursorType.WestResize => new Cursor(StandardCursorType.SizeWestEast),
+        Cef.CefCursorType.NorthSouthResize => new Cursor(StandardCursorType.SizeNorthSouth),
+        Cef.CefCursorType.EastWestResize => new Cursor(StandardCursorType.SizeWestEast),
         Cef.CefCursorType.NorthEastSouthWestResize => new Cursor(StandardCursorType.SizeAll),
         Cef.CefCursorType.NorthWestSouthEastResize => new Cursor(StandardCursorType.SizeAll),
-        Cef.CefCursorType.ColumnResize             => new Cursor(StandardCursorType.SizeWestEast),
-        Cef.CefCursorType.RowResize                => new Cursor(StandardCursorType.SizeNorthSouth),
-        Cef.CefCursorType.MiddlePanning            => new Cursor(StandardCursorType.SizeAll),
-        Cef.CefCursorType.MiddlePanningHorizontal  => new Cursor(StandardCursorType.SizeWestEast),
-        Cef.CefCursorType.MiddlePanningVertical    => new Cursor(StandardCursorType.SizeNorthSouth),
-        Cef.CefCursorType.EastPanning              => new Cursor(StandardCursorType.SizeWestEast),
-        Cef.CefCursorType.WestPanning              => new Cursor(StandardCursorType.SizeWestEast),
-        Cef.CefCursorType.NorthPanning             => new Cursor(StandardCursorType.SizeNorthSouth),
-        Cef.CefCursorType.SouthPanning             => new Cursor(StandardCursorType.SizeNorthSouth),
-        Cef.CefCursorType.NorthEastPanning         => new Cursor(StandardCursorType.SizeAll),
-        Cef.CefCursorType.NorthWestPanning         => new Cursor(StandardCursorType.SizeAll),
-        Cef.CefCursorType.SouthEastPanning         => new Cursor(StandardCursorType.SizeAll),
-        Cef.CefCursorType.SouthWestPanning         => new Cursor(StandardCursorType.SizeAll),
-        Cef.CefCursorType.Move                     => new Cursor(StandardCursorType.SizeAll),
-        Cef.CefCursorType.VerticalText             => new Cursor(StandardCursorType.Ibeam),
-        Cef.CefCursorType.Cell                     => new Cursor(StandardCursorType.Cross),
-        Cef.CefCursorType.ContextMenu              => new Cursor(StandardCursorType.Arrow),
-        Cef.CefCursorType.Alias                    => new Cursor(StandardCursorType.DragLink),
-        Cef.CefCursorType.Progress                 => new Cursor(StandardCursorType.AppStarting),
-        Cef.CefCursorType.NoDrop                   => new Cursor(StandardCursorType.No),
-        Cef.CefCursorType.Copy                     => new Cursor(StandardCursorType.DragCopy),
-        Cef.CefCursorType.None                     => new Cursor(StandardCursorType.None),
-        Cef.CefCursorType.NotAllowed               => new Cursor(StandardCursorType.No),
-        Cef.CefCursorType.ZoomIn                   => new Cursor(StandardCursorType.Cross),
-        Cef.CefCursorType.ZoomOut                  => new Cursor(StandardCursorType.Cross),
-        Cef.CefCursorType.Grab                     => new Cursor(StandardCursorType.Hand),
-        Cef.CefCursorType.Grabbing                 => new Cursor(StandardCursorType.DragMove),
-        Cef.CefCursorType.Custom                   => new Cursor(StandardCursorType.Arrow),
-        Cef.CefCursorType.DndNone                  => new Cursor(StandardCursorType.No),
-        Cef.CefCursorType.DndMove                  => new Cursor(StandardCursorType.DragMove),
-        Cef.CefCursorType.DndCopy                  => new Cursor(StandardCursorType.DragCopy),
-        Cef.CefCursorType.DndLink                  => new Cursor(StandardCursorType.DragLink),
-        _                                          => new Cursor(StandardCursorType.Arrow),
+        Cef.CefCursorType.ColumnResize => new Cursor(StandardCursorType.SizeWestEast),
+        Cef.CefCursorType.RowResize => new Cursor(StandardCursorType.SizeNorthSouth),
+        Cef.CefCursorType.MiddlePanning => new Cursor(StandardCursorType.SizeAll),
+        Cef.CefCursorType.MiddlePanningHorizontal => new Cursor(StandardCursorType.SizeWestEast),
+        Cef.CefCursorType.MiddlePanningVertical => new Cursor(StandardCursorType.SizeNorthSouth),
+        Cef.CefCursorType.EastPanning => new Cursor(StandardCursorType.SizeWestEast),
+        Cef.CefCursorType.WestPanning => new Cursor(StandardCursorType.SizeWestEast),
+        Cef.CefCursorType.NorthPanning => new Cursor(StandardCursorType.SizeNorthSouth),
+        Cef.CefCursorType.SouthPanning => new Cursor(StandardCursorType.SizeNorthSouth),
+        Cef.CefCursorType.NorthEastPanning => new Cursor(StandardCursorType.SizeAll),
+        Cef.CefCursorType.NorthWestPanning => new Cursor(StandardCursorType.SizeAll),
+        Cef.CefCursorType.SouthEastPanning => new Cursor(StandardCursorType.SizeAll),
+        Cef.CefCursorType.SouthWestPanning => new Cursor(StandardCursorType.SizeAll),
+        Cef.CefCursorType.Move => new Cursor(StandardCursorType.SizeAll),
+        Cef.CefCursorType.VerticalText => new Cursor(StandardCursorType.Ibeam),
+        Cef.CefCursorType.Cell => new Cursor(StandardCursorType.Cross),
+        Cef.CefCursorType.ContextMenu => new Cursor(StandardCursorType.Arrow),
+        Cef.CefCursorType.Alias => new Cursor(StandardCursorType.DragLink),
+        Cef.CefCursorType.Progress => new Cursor(StandardCursorType.AppStarting),
+        Cef.CefCursorType.NoDrop => new Cursor(StandardCursorType.No),
+        Cef.CefCursorType.Copy => new Cursor(StandardCursorType.DragCopy),
+        Cef.CefCursorType.None => new Cursor(StandardCursorType.None),
+        Cef.CefCursorType.NotAllowed => new Cursor(StandardCursorType.No),
+        Cef.CefCursorType.ZoomIn => new Cursor(StandardCursorType.Cross),
+        Cef.CefCursorType.ZoomOut => new Cursor(StandardCursorType.Cross),
+        Cef.CefCursorType.Grab => new Cursor(StandardCursorType.Hand),
+        Cef.CefCursorType.Grabbing => new Cursor(StandardCursorType.DragMove),
+        Cef.CefCursorType.Custom => new Cursor(StandardCursorType.Arrow),
+        Cef.CefCursorType.DndNone => new Cursor(StandardCursorType.No),
+        Cef.CefCursorType.DndMove => new Cursor(StandardCursorType.DragMove),
+        Cef.CefCursorType.DndCopy => new Cursor(StandardCursorType.DragCopy),
+        Cef.CefCursorType.DndLink => new Cursor(StandardCursorType.DragLink),
+        _ => new Cursor(StandardCursorType.Arrow),
     };
 
     // ---- Input forwarding ----------------------------------------------
@@ -2268,16 +2336,42 @@ public class WebView : Control, IWebView, IDisposable
         return c switch
         {
             ' ' => 0x31,
-            'A' => 0x00, 'B' => 0x0B, 'C' => 0x08, 'D' => 0x02,
-            'E' => 0x0E, 'F' => 0x03, 'G' => 0x05, 'H' => 0x04,
-            'I' => 0x22, 'J' => 0x26, 'K' => 0x28, 'L' => 0x25,
-            'M' => 0x2E, 'N' => 0x2D, 'O' => 0x1F, 'P' => 0x23,
-            'Q' => 0x0C, 'R' => 0x0F, 'S' => 0x01, 'T' => 0x11,
-            'U' => 0x20, 'V' => 0x09, 'W' => 0x0D, 'X' => 0x07,
-            'Y' => 0x10, 'Z' => 0x06,
-            '0' => 0x1D, '1' => 0x12, '2' => 0x13, '3' => 0x14,
-            '4' => 0x15, '5' => 0x17, '6' => 0x16, '7' => 0x1A,
-            '8' => 0x1C, '9' => 0x19,
+            'A' => 0x00,
+            'B' => 0x0B,
+            'C' => 0x08,
+            'D' => 0x02,
+            'E' => 0x0E,
+            'F' => 0x03,
+            'G' => 0x05,
+            'H' => 0x04,
+            'I' => 0x22,
+            'J' => 0x26,
+            'K' => 0x28,
+            'L' => 0x25,
+            'M' => 0x2E,
+            'N' => 0x2D,
+            'O' => 0x1F,
+            'P' => 0x23,
+            'Q' => 0x0C,
+            'R' => 0x0F,
+            'S' => 0x01,
+            'T' => 0x11,
+            'U' => 0x20,
+            'V' => 0x09,
+            'W' => 0x0D,
+            'X' => 0x07,
+            'Y' => 0x10,
+            'Z' => 0x06,
+            '0' => 0x1D,
+            '1' => 0x12,
+            '2' => 0x13,
+            '3' => 0x14,
+            '4' => 0x15,
+            '5' => 0x17,
+            '6' => 0x16,
+            '7' => 0x1A,
+            '8' => 0x1C,
+            '9' => 0x19,
             _ => 0,
         };
     }

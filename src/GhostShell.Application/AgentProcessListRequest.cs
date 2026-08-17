@@ -20,7 +20,10 @@ public sealed record AgentProcessListRequest
     public AgentProcessListRequest(
         PanelInstanceId panelId,
         int limit = DefaultLimit,
-        ProcessMonitorSort sort = ProcessMonitorSort.CpuDescending)
+        ProcessMonitorSort sort = ProcessMonitorSort.CpuDescending,
+        int offset = 0,
+        string? nameContains = null,
+        int? processId = null)
     {
         RequirePanelId(panelId);
         if (limit is not (MinimumLimit or DefaultLimit or MaximumLimit))
@@ -35,9 +38,30 @@ public sealed record AgentProcessListRequest
             throw new ArgumentOutOfRangeException(nameof(sort));
         }
 
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(offset, 1_000_000);
+        if (nameContains is not null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(nameContains);
+            if (nameContains.Length > 128 || nameContains.Any(char.IsControl))
+            {
+                throw new ArgumentException(
+                    "A process-name filter must be bounded printable text.",
+                    nameof(nameContains));
+            }
+        }
+
+        if (processId is <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(processId));
+        }
+
         PanelId = panelId;
         Limit = limit;
         Sort = sort;
+        Offset = offset;
+        NameContains = nameContains is null ? null : string.Concat(nameContains);
+        ProcessId = processId;
     }
 
     public PanelInstanceId PanelId { get; }
@@ -45,6 +69,12 @@ public sealed record AgentProcessListRequest
     public int Limit { get; }
 
     public ProcessMonitorSort Sort { get; }
+
+    public int Offset { get; }
+
+    public string? NameContains { get; }
+
+    public int? ProcessId { get; }
 
     private static void RequirePanelId(PanelInstanceId panelId)
     {

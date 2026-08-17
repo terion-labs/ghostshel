@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using GhostShell.Application;
 using GhostShell.Core;
 using GhostShell.SessionHost;
@@ -7,7 +8,9 @@ namespace GhostShell.SessionHost.Tests;
 
 public sealed class AgentBrowserSessionHostTests
 {
-    private const string DomainPolicyDeniedCode =
+    private const string ActionNotAuthorizedCode =
+        "browser_action_not_authorized";
+    private const string RendererNavigationPolicyDeniedCode =
         "browser_domain_policy_denied";
 
     [Fact]
@@ -74,6 +77,68 @@ public sealed class AgentBrowserSessionHostTests
             AgentAuthorizationSource.HumanApproval,
             Assert.IsType<AuditDetails.AgentActionDetails>(
                 events[^1].Details).AuthorizationSource);
+    }
+
+    [Fact]
+    public async Task Real_broker_keeps_ready_wait_bound_to_panel_across_navigation()
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var audit = new InMemoryAuditStore();
+        await using var broker = new AgentCapabilityBroker(
+            BuiltInAgentTools.Catalog,
+            audit,
+            clock);
+        await using var fixture = await AgentBrowserHostFixture.CreateAsync(
+            authorizationConsumer: broker);
+        Assert.Null(await broker.RegisterRunAsync(
+            new AgentRunRegistration(
+                fixture.RunId,
+                fixture.Agent,
+                fixture.ClientId,
+                new AgentTarget.Workspace(
+                    fixture.WindowId,
+                    fixture.WorkspaceId),
+                AgentPolicy.Default,
+                policyGeneration: 0),
+            default));
+        var action = await fixture.PrepareAsync(
+            new AgentBrowserRequest.Wait(
+                new BrowserWaitRequest(
+                    fixture.SessionId,
+                    new BrowserWaitCondition.LoadState(
+                        BrowserLoadState.Ready),
+                    TimeSpan.FromSeconds(1))));
+        var requested =
+            Assert.IsType<AgentAuthorizationResult.ApprovalRequired>(
+                await broker.RequestAsync(action.Proposal, default));
+        var authorized = Assert.IsType<AgentAuthorizationResult.Authorized>(
+            await broker.DecideAsync(
+                new AgentApprovalDecision(
+                    requested.Approval.Id,
+                    fixture.HumanContext().Actor,
+                    approved: true,
+                    AgentApprovalDuration.Once,
+                    clock.GetUtcNow()),
+                default));
+        var destination = Address("https://other.example.test/ready");
+        _ = (await fixture.Renderer.NavigateAsync(destination, default)).Value;
+
+        var wait = Assert.IsType<AgentBrowserActionResult.Wait>(
+            (await fixture.Client.RunAgentBrowserActionAsync(
+                authorized.Authorization.Id,
+                action,
+                default)).Value()).Value;
+
+        Assert.Equal(BrowserWaitCompletion.Matched, wait.Completion);
+        Assert.Equal(destination, wait.State.Address);
+        Assert.Contains(
+            audit.Events,
+            item => item.CorrelationId == action.Proposal.Id.Value
+                && item.Outcome == AuditOutcome.Succeeded);
+        Assert.DoesNotContain(
+            audit.Events,
+            item => item.CorrelationId == action.Proposal.Id.Value
+                && item.Outcome == AuditOutcome.Denied);
     }
 
     [Fact]
@@ -184,7 +249,7 @@ public sealed class AgentBrowserSessionHostTests
     }
 
     [Fact]
-    public async Task HumanApprovedClickBindsExactReferenceRevisionAndCurrentOriginOnce()
+    public async Task HumanApprovedClickBindsExactReferenceRevisionWithoutOriginRestriction()
     {
         await using var fixture = await AgentBrowserHostFixture.CreateAsync();
         var sourceState = fixture.Renderer.State;
@@ -216,7 +281,7 @@ public sealed class AgentBrowserSessionHostTests
             sourceState.DocumentRevision,
             reference.Document.DocumentRevision);
         Assert.Equal(
-            BrowserNavigationOrigin.FromAddress(sourceState.Address),
+            BrowserNavigationOrigin.Unrestricted,
             fixture.Renderer.LastClickOrigin);
         AssertCompletion(
             Assert.Single(fixture.Authorization.Completions),
@@ -249,7 +314,7 @@ public sealed class AgentBrowserSessionHostTests
     }
 
     [Fact]
-    public async Task HumanApprovedFillBindsExactReferenceTextRevisionAndCurrentOriginOnce()
+    public async Task HumanApprovedFillBindsExactReferenceTextRevisionWithoutOriginRestriction()
     {
         const string Text = "replacement value 😀";
         await using var fixture = await AgentBrowserHostFixture.CreateAsync();
@@ -277,7 +342,7 @@ public sealed class AgentBrowserSessionHostTests
             reference.Document.DocumentRevision);
         Assert.Equal(Text, fixture.Renderer.LastFillText);
         Assert.Equal(
-            BrowserNavigationOrigin.FromAddress(sourceState.Address),
+            BrowserNavigationOrigin.Unrestricted,
             fixture.Renderer.LastFillOrigin);
         AssertCompletion(
             Assert.Single(fixture.Authorization.Completions),
@@ -286,7 +351,7 @@ public sealed class AgentBrowserSessionHostTests
     }
 
     [Fact]
-    public async Task HumanApprovedCheckBindsExactReferenceRevisionAndCurrentOriginOnce()
+    public async Task HumanApprovedCheckBindsExactReferenceRevisionWithoutOriginRestriction()
     {
         await using var fixture = await AgentBrowserHostFixture.CreateAsync();
         var sourceState = fixture.Renderer.State;
@@ -311,7 +376,7 @@ public sealed class AgentBrowserSessionHostTests
             sourceState.DocumentRevision,
             reference.Document.DocumentRevision);
         Assert.Equal(
-            BrowserNavigationOrigin.FromAddress(sourceState.Address),
+            BrowserNavigationOrigin.Unrestricted,
             fixture.Renderer.LastCheckOrigin);
         AssertCompletion(
             Assert.Single(fixture.Authorization.Completions),
@@ -321,8 +386,7 @@ public sealed class AgentBrowserSessionHostTests
 
     [Theory]
     [InlineData(AgentAuthorizationSource.AutoPolicy)]
-    [InlineData(AgentAuthorizationSource.YoloPolicy)]
-    public async Task ClickRequiresExactHumanApprovalAtTheHostBoundary(
+    public async Task ClickRejectsAutomaticPolicyAtTheHostBoundary(
         AgentAuthorizationSource source)
     {
         await using var fixture = await AgentBrowserHostFixture.CreateAsync();
@@ -337,18 +401,17 @@ public sealed class AgentBrowserSessionHostTests
             action,
             default);
 
-        Assert.Equal(DomainPolicyDeniedCode, result.Error().StableCode);
+        Assert.Equal(ActionNotAuthorizedCode, result.Error().StableCode);
         Assert.Equal(0, fixture.Renderer.ClickCount);
         AssertCompletion(
             Assert.Single(fixture.Authorization.Completions),
             AgentActionOutcome.Failed,
-            DomainPolicyDeniedCode);
+            ActionNotAuthorizedCode);
     }
 
     [Theory]
     [InlineData(AgentAuthorizationSource.AutoPolicy)]
-    [InlineData(AgentAuthorizationSource.YoloPolicy)]
-    public async Task FillRequiresExactHumanApprovalAtTheHostBoundary(
+    public async Task FillRejectsAutomaticPolicyAtTheHostBoundary(
         AgentAuthorizationSource source)
     {
         await using var fixture = await AgentBrowserHostFixture.CreateAsync();
@@ -364,18 +427,17 @@ public sealed class AgentBrowserSessionHostTests
             action,
             default);
 
-        Assert.Equal(DomainPolicyDeniedCode, result.Error().StableCode);
+        Assert.Equal(ActionNotAuthorizedCode, result.Error().StableCode);
         Assert.Equal(0, fixture.Renderer.FillCount);
         AssertCompletion(
             Assert.Single(fixture.Authorization.Completions),
             AgentActionOutcome.Failed,
-            DomainPolicyDeniedCode);
+            ActionNotAuthorizedCode);
     }
 
     [Theory]
     [InlineData(AgentAuthorizationSource.AutoPolicy)]
-    [InlineData(AgentAuthorizationSource.YoloPolicy)]
-    public async Task CheckRequiresExactHumanApprovalAtTheHostBoundary(
+    public async Task CheckRejectsAutomaticPolicyAtTheHostBoundary(
         AgentAuthorizationSource source)
     {
         await using var fixture = await AgentBrowserHostFixture.CreateAsync();
@@ -390,12 +452,12 @@ public sealed class AgentBrowserSessionHostTests
             action,
             default);
 
-        Assert.Equal(DomainPolicyDeniedCode, result.Error().StableCode);
+        Assert.Equal(ActionNotAuthorizedCode, result.Error().StableCode);
         Assert.Equal(0, fixture.Renderer.CheckCount);
         AssertCompletion(
             Assert.Single(fixture.Authorization.Completions),
             AgentActionOutcome.Failed,
-            DomainPolicyDeniedCode);
+            ActionNotAuthorizedCode);
     }
 
     [Fact]
@@ -843,7 +905,7 @@ public sealed class AgentBrowserSessionHostTests
     }
 
     [Fact]
-    public async Task Auto_policy_allows_state_same_origin_navigation_reload_and_stop()
+    public async Task Auto_policy_allows_state_cross_origin_navigation_reload_and_stop()
     {
         await using var fixture = await AgentBrowserHostFixture.CreateAsync();
         AgentBrowserRequest[] requests =
@@ -852,7 +914,7 @@ public sealed class AgentBrowserSessionHostTests
             new AgentBrowserRequest.Snapshot(fixture.SessionId),
             Navigate(
                 fixture.SessionId,
-                "https://INITIAL.example.test:443/next"),
+                "https://other.example.test/next"),
             new AgentBrowserRequest.Reload(fixture.SessionId),
             new AgentBrowserRequest.Stop(fixture.SessionId),
         ];
@@ -881,12 +943,259 @@ public sealed class AgentBrowserSessionHostTests
                 completion.Outcome));
     }
 
+    [Fact]
+    public async Task Cancelled_wait_returns_a_fresh_final_snapshot_as_typed_data()
+    {
+        await using var fixture = await AgentBrowserHostFixture.CreateAsync();
+        var action = await fixture.PrepareAsync(
+            new AgentBrowserRequest.Wait(
+                new BrowserWaitRequest(
+                    fixture.SessionId,
+                    new BrowserWaitCondition.Delay(TimeSpan.FromHours(1)),
+                    TimeSpan.FromHours(1))));
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = fixture.Client.RunAgentBrowserActionAsync(
+                fixture.Authorization.Arm(
+                    action,
+                    source: AgentAuthorizationSource.AutoPolicy),
+                action,
+                cancellation.Token)
+            .AsTask();
+        cancellation.Cancel();
+        var result = Assert.IsType<AgentBrowserActionResult.Wait>(
+            (await pending).Value()).Value;
+
+        Assert.Equal(BrowserWaitCompletion.Cancelled, result.Completion);
+        Assert.NotNull(result.Snapshot);
+        Assert.Null(result.SnapshotError);
+        Assert.True(result.Snapshot!.Document.Matches(result.State));
+        Assert.Equal(1, fixture.Renderer.SnapshotCount);
+        AssertCompletion(
+            Assert.Single(fixture.Authorization.Completions),
+            AgentActionOutcome.Cancelled,
+            "caller_cancelled");
+    }
+
+    [Fact]
+    public async Task Delay_equal_to_timeout_completes_the_full_read_after_interval()
+    {
+        await using var fixture = await AgentBrowserHostFixture.CreateAsync(
+            timeProvider: TimeProvider.System);
+        var interval = TimeSpan.FromMilliseconds(25);
+        var action = await fixture.PrepareAsync(
+            new AgentBrowserRequest.Wait(
+                new BrowserWaitRequest(
+                    fixture.SessionId,
+                    new BrowserWaitCondition.Delay(interval),
+                    interval)));
+
+        var result = Assert.IsType<AgentBrowserActionResult.Wait>(
+            (await fixture.Client.RunAgentBrowserActionAsync(
+                fixture.Authorization.Arm(
+                    action,
+                    source: AgentAuthorizationSource.AutoPolicy),
+                action,
+                default)).Value()).Value;
+
+        Assert.Equal(BrowserWaitCompletion.Matched, result.Completion);
+        Assert.NotNull(result.Snapshot);
+        Assert.Null(result.SnapshotError);
+        Assert.True(result.Snapshot!.Document.Matches(result.State));
+    }
+
+    [Fact]
+    public async Task Ready_wait_survives_browser_state_change_after_authorization()
+    {
+        await using var fixture = await AgentBrowserHostFixture.CreateAsync();
+        var action = await fixture.PrepareAsync(
+            new AgentBrowserRequest.Wait(
+                new BrowserWaitRequest(
+                    fixture.SessionId,
+                    new BrowserWaitCondition.LoadState(
+                        BrowserLoadState.Ready),
+                    TimeSpan.FromSeconds(1))));
+        var authorizationId = fixture.Authorization.Arm(
+            action,
+            source: AgentAuthorizationSource.AutoPolicy);
+        var destination = Address("https://other.example.test/ready");
+        _ = (await fixture.Renderer.NavigateAsync(destination, default)).Value;
+
+        var result = Assert.IsType<AgentBrowserActionResult.Wait>(
+            (await fixture.Client.RunAgentBrowserActionAsync(
+                authorizationId,
+                action,
+                default)).Value()).Value;
+
+        Assert.Equal(BrowserWaitCompletion.Matched, result.Completion);
+        Assert.Equal(destination, result.State.Address);
+        Assert.NotNull(result.Snapshot);
+        Assert.True(result.Snapshot!.Document.Matches(result.State));
+        AssertCompletion(
+            Assert.Single(fixture.Authorization.Completions),
+            AgentActionOutcome.Succeeded,
+            "wait_completed");
+    }
+
+    [Fact]
+    public async Task Text_wait_adaptively_backs_off_and_bounds_snapshot_reads()
+    {
+        await using var fixture = await AgentBrowserHostFixture.CreateAsync(
+            timeProvider: TimeProvider.System);
+        var action = await fixture.PrepareAsync(
+            new AgentBrowserRequest.Wait(
+                new BrowserWaitRequest(
+                    fixture.SessionId,
+                    new BrowserWaitCondition.Text("never appears"),
+                    TimeSpan.FromMilliseconds(1_100))));
+
+        var result = Assert.IsType<AgentBrowserActionResult.Wait>(
+            (await fixture.Client.RunAgentBrowserActionAsync(
+                fixture.Authorization.Arm(
+                    action,
+                    source: AgentAuthorizationSource.AutoPolicy),
+                action,
+                default)).Value()).Value;
+
+        Assert.Equal(BrowserWaitCompletion.TimedOut, result.Completion);
+        Assert.NotNull(result.Snapshot);
+        Assert.Null(result.SnapshotError);
+        Assert.InRange(fixture.Renderer.SnapshotCount, 5, 7);
+    }
+
+    [Fact]
+    public async Task Text_wait_deadline_bounds_a_snapshot_provider_that_ignores_cancellation()
+    {
+        await using var fixture = await AgentBrowserHostFixture.CreateAsync(
+            timeProvider: TimeProvider.System);
+        fixture.Renderer.BlockOperations = true;
+        fixture.Renderer.BlockedSnapshotCount = 1;
+        fixture.Renderer.CancellationMode = ControlledCancellationMode.Ignore;
+        var action = await fixture.PrepareAsync(
+            new AgentBrowserRequest.Wait(
+                new BrowserWaitRequest(
+                    fixture.SessionId,
+                    new BrowserWaitCondition.Text("never appears"),
+                    TimeSpan.FromMilliseconds(50))));
+        var started = Stopwatch.StartNew();
+
+        try
+        {
+            var result = Assert.IsType<AgentBrowserActionResult.Wait>(
+                (await fixture.Client.RunAgentBrowserActionAsync(
+                    fixture.Authorization.Arm(
+                        action,
+                        source: AgentAuthorizationSource.AutoPolicy),
+                    action,
+                    default)).Value()).Value;
+
+            Assert.Equal(BrowserWaitCompletion.TimedOut, result.Completion);
+            Assert.NotNull(result.Snapshot);
+            Assert.Null(result.SnapshotError);
+            Assert.True(result.Snapshot!.Document.Matches(result.State));
+            Assert.Equal(2, fixture.Renderer.SnapshotCount);
+            Assert.InRange(started.Elapsed, TimeSpan.Zero, TimeSpan.FromSeconds(1));
+        }
+        finally
+        {
+            fixture.Renderer.ReleaseOperation.TrySetResult();
+        }
+    }
+
+    [Fact]
+    public async Task Caller_cancellation_bounds_a_snapshot_provider_that_ignores_cancellation()
+    {
+        await using var fixture = await AgentBrowserHostFixture.CreateAsync(
+            timeProvider: TimeProvider.System);
+        fixture.Renderer.BlockOperations = true;
+        fixture.Renderer.BlockedSnapshotCount = 1;
+        fixture.Renderer.CancellationMode = ControlledCancellationMode.Ignore;
+        var action = await fixture.PrepareAsync(
+            new AgentBrowserRequest.Wait(
+                new BrowserWaitRequest(
+                    fixture.SessionId,
+                    new BrowserWaitCondition.Text("never appears"),
+                    TimeSpan.FromHours(1))));
+        using var cancellation = new CancellationTokenSource();
+        var pending = fixture.Client.RunAgentBrowserActionAsync(
+                fixture.Authorization.Arm(
+                    action,
+                    source: AgentAuthorizationSource.AutoPolicy),
+                action,
+                cancellation.Token)
+            .AsTask();
+
+        await fixture.Renderer.OperationStarted.Task.WaitAsync(
+            TimeSpan.FromSeconds(1));
+        var started = Stopwatch.StartNew();
+        cancellation.Cancel();
+        try
+        {
+            var result = Assert.IsType<AgentBrowserActionResult.Wait>(
+                (await pending).Value()).Value;
+
+            Assert.Equal(BrowserWaitCompletion.Cancelled, result.Completion);
+            Assert.NotNull(result.Snapshot);
+            Assert.Null(result.SnapshotError);
+            Assert.True(result.Snapshot!.Document.Matches(result.State));
+            Assert.Equal(2, fixture.Renderer.SnapshotCount);
+            Assert.InRange(started.Elapsed, TimeSpan.Zero, TimeSpan.FromSeconds(1));
+        }
+        finally
+        {
+            fixture.Renderer.ReleaseOperation.TrySetResult();
+        }
+    }
+
+    [Fact]
+    public async Task Final_wait_snapshot_has_a_hard_cleanup_deadline_when_provider_ignores_cancellation()
+    {
+        await using var fixture = await AgentBrowserHostFixture.CreateAsync(
+            timeProvider: TimeProvider.System);
+        fixture.Renderer.BlockOperations = true;
+        fixture.Renderer.CancellationMode = ControlledCancellationMode.Ignore;
+        var action = await fixture.PrepareAsync(
+            new AgentBrowserRequest.Wait(
+                new BrowserWaitRequest(
+                    fixture.SessionId,
+                    new BrowserWaitCondition.LoadState(BrowserLoadState.Ready),
+                    TimeSpan.FromHours(1))));
+        var pending = fixture.Client.RunAgentBrowserActionAsync(
+                fixture.Authorization.Arm(
+                    action,
+                    source: AgentAuthorizationSource.AutoPolicy),
+                action,
+                default)
+            .AsTask();
+
+        await fixture.Renderer.OperationStarted.Task.WaitAsync(
+            TimeSpan.FromSeconds(1));
+        var started = Stopwatch.StartNew();
+        try
+        {
+            var result = Assert.IsType<AgentBrowserActionResult.Wait>(
+                (await pending.WaitAsync(TimeSpan.FromSeconds(8))).Value()).Value;
+
+            Assert.Equal(BrowserWaitCompletion.Matched, result.Completion);
+            Assert.Null(result.Snapshot);
+            Assert.Equal(BrowserErrorCode.Cancelled, result.SnapshotError?.Code);
+            Assert.InRange(
+                started.Elapsed,
+                TimeSpan.FromSeconds(4),
+                TimeSpan.FromSeconds(8));
+        }
+        finally
+        {
+            fixture.Renderer.ReleaseOperation.TrySetResult();
+        }
+    }
+
     [Theory]
     [InlineData("http://initial.example.test/")]
     [InlineData("https://other.example.test/")]
     [InlineData("https://initial.example.test:444/")]
     [InlineData("about:blank")]
-    public async Task Auto_policy_denies_navigation_outside_the_current_origin(
+    public async Task Authorized_navigation_is_not_restricted_to_the_current_origin(
         string destination)
     {
         await using var fixture = await AgentBrowserHostFixture.CreateAsync();
@@ -900,15 +1209,15 @@ public sealed class AgentBrowserSessionHostTests
             action,
             default);
 
-        Assert.Equal(HostErrorCode.InvalidRequest, result.Error().Code);
+        Assert.IsType<AgentBrowserActionResult.Completed>(result.Value());
+        Assert.Equal(1, fixture.Renderer.NavigateCount);
         Assert.Equal(
-            DomainPolicyDeniedCode,
-            result.Error().StableCode);
-        Assert.Equal(0, fixture.Renderer.NavigateCount);
+            BrowserNavigationOrigin.Unrestricted,
+            fixture.Renderer.LastNavigationOrigin);
         AssertCompletion(
             Assert.Single(fixture.Authorization.Completions),
-            AgentActionOutcome.Failed,
-            DomainPolicyDeniedCode);
+            AgentActionOutcome.Succeeded,
+            "navigate_completed");
     }
 
     [Theory]
@@ -932,14 +1241,14 @@ public sealed class AgentBrowserSessionHostTests
             default);
 
         Assert.Equal(
-            DomainPolicyDeniedCode,
+            ActionNotAuthorizedCode,
             result.Error().StableCode);
         Assert.Equal(0, fixture.Renderer.BackCount);
         Assert.Equal(0, fixture.Renderer.ForwardCount);
         AssertCompletion(
             Assert.Single(fixture.Authorization.Completions),
             AgentActionOutcome.Failed,
-            DomainPolicyDeniedCode);
+            ActionNotAuthorizedCode);
     }
 
     [Fact]
@@ -1043,7 +1352,7 @@ public sealed class AgentBrowserSessionHostTests
     }
 
     [Fact]
-    public async Task Auto_policy_can_remain_on_about_blank_but_cannot_bootstrap_an_origin()
+    public async Task Authorized_navigation_can_leave_about_blank()
     {
         await using var fixture = await AgentBrowserHostFixture.CreateAsync(
             initialAddress: BrowserAddress.Blank);
@@ -1068,14 +1377,13 @@ public sealed class AgentBrowserSessionHostTests
                 bootstrap,
                 default);
 
-        Assert.Equal(
-            DomainPolicyDeniedCode,
-            bootstrapResult.Error().StableCode);
-        Assert.Equal(1, fixture.Renderer.NavigateCount);
+        Assert.IsType<AgentBrowserActionResult.Completed>(
+            bootstrapResult.Value());
+        Assert.Equal(2, fixture.Renderer.NavigateCount);
     }
 
     [Fact]
-    public async Task Yolo_policy_never_reaches_the_browser_renderer()
+    public async Task Full_access_reaches_the_browser_renderer()
     {
         await using var fixture = await AgentBrowserHostFixture.CreateAsync();
         var action = await fixture.PrepareAsync(
@@ -1088,18 +1396,16 @@ public sealed class AgentBrowserSessionHostTests
             action,
             default);
 
-        Assert.Equal(
-            DomainPolicyDeniedCode,
-            result.Error().StableCode);
-        Assert.Equal(0, fixture.Renderer.ReloadCount);
+        Assert.IsType<AgentBrowserActionResult.Completed>(result.Value());
+        Assert.Equal(1, fixture.Renderer.ReloadCount);
         AssertCompletion(
             Assert.Single(fixture.Authorization.Completions),
-            AgentActionOutcome.Failed,
-            DomainPolicyDeniedCode);
+            AgentActionOutcome.Succeeded,
+            "reload_completed");
     }
 
     [Fact]
-    public async Task Yolo_policy_never_reaches_browser_snapshot()
+    public async Task Full_access_reaches_browser_snapshot()
     {
         await using var fixture = await AgentBrowserHostFixture.CreateAsync();
         var action = await fixture.PrepareAsync(
@@ -1112,14 +1418,12 @@ public sealed class AgentBrowserSessionHostTests
             action,
             default);
 
-        Assert.Equal(
-            DomainPolicyDeniedCode,
-            result.Error().StableCode);
-        Assert.Equal(0, fixture.Renderer.SnapshotCount);
+        Assert.IsType<AgentBrowserActionResult.Snapshot>(result.Value());
+        Assert.Equal(1, fixture.Renderer.SnapshotCount);
         AssertCompletion(
             Assert.Single(fixture.Authorization.Completions),
-            AgentActionOutcome.Failed,
-            DomainPolicyDeniedCode);
+            AgentActionOutcome.Succeeded,
+            "snapshot_captured");
     }
 
     [Fact]
@@ -1404,6 +1708,169 @@ public sealed class AgentBrowserSessionHostTests
             expectedStableCode);
     }
 
+    [Fact]
+    public async Task PhysicalHumanInputPreemptsTheOneActionBrowserLease()
+    {
+        await using var fixture = await AgentBrowserHostFixture.CreateAsync();
+        fixture.Renderer.BlockOperations = true;
+        fixture.Renderer.CancellationMode =
+            ControlledCancellationMode.ObserveWhileBlocked;
+        var action = await fixture.PrepareAsync(
+            Navigate(fixture.SessionId, "https://blocked.example.test/"));
+
+        var running = fixture.Client.RunAgentBrowserActionAsync(
+            fixture.Authorization.Arm(action),
+            action,
+            default).AsTask();
+        await fixture.Renderer.OperationStarted.Task.WaitAsync(
+            TimeSpan.FromSeconds(1));
+
+        Assert.NotNull(fixture.Renderer.PhysicalInputGate);
+        Assert.True(fixture.Renderer.PhysicalInputGate!(
+            new NativeRendererPhysicalInput(
+                NativeRendererPhysicalInputKind.KeyDown)));
+        var result = await running.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.Equal(HostErrorCode.Cancelled, result.Error().Code);
+        Assert.Equal("human_input_preempted", result.Error().StableCode);
+        AssertCompletion(
+            Assert.Single(fixture.Authorization.Completions),
+            AgentActionOutcome.Cancelled,
+            "human_input_preempted");
+    }
+
+    [Fact]
+    public async Task LowLevelMouseDispatchBindsFreshViewportAndAdvancesInputEpoch()
+    {
+        await using var fixture = await AgentBrowserHostFixture.CreateAsync();
+        fixture.Renderer.SetViewport();
+        var binding = BrowserAutomationBinding.FromState(fixture.Renderer.State);
+        var action = await fixture.PrepareAsync(
+            new AgentBrowserRequest.Mouse(
+                new BrowserMouseRequest(
+                    fixture.SessionId,
+                    binding,
+                    BrowserMouseAction.Click,
+                    20,
+                    30,
+                    BrowserMouseButton.Left,
+                    clickCount: 1)));
+
+        var result = await fixture.Client.RunAgentBrowserActionAsync(
+            fixture.Authorization.Arm(action),
+            action,
+            default);
+
+        var automation = Assert.IsType<AgentBrowserActionResult.Automation>(
+            result.Value());
+        Assert.Equal(1, fixture.Renderer.MouseCount);
+        Assert.Equal(binding, automation.Value.SourceBinding);
+        Assert.Equal(binding.InputEpoch + 1, automation.Value.FreshState.InputEpoch);
+        AssertCompletion(
+            Assert.Single(fixture.Authorization.Completions),
+            AgentActionOutcome.Succeeded,
+            "mouse_completed");
+    }
+
+    [Fact]
+    public async Task ViewportRevisionChangeRejectsLowLevelInputBeforeDispatch()
+    {
+        await using var fixture = await AgentBrowserHostFixture.CreateAsync();
+        fixture.Renderer.SetViewport();
+        var binding = BrowserAutomationBinding.FromState(fixture.Renderer.State);
+        var action = await fixture.PrepareAsync(
+            new AgentBrowserRequest.Key(
+                new BrowserKeyRequest(
+                    fixture.SessionId,
+                    binding,
+                    BrowserKeyAction.Press,
+                    BrowserKey.Enter)));
+        fixture.Renderer.SetViewport(width: 799);
+
+        var result = await fixture.Client.RunAgentBrowserActionAsync(
+            fixture.Authorization.Arm(action),
+            action,
+            default);
+
+        Assert.Equal(HostErrorCode.InvalidRequest, result.Error().Code);
+        Assert.Equal(0, fixture.Renderer.KeyCount);
+    }
+
+    [Fact]
+    public async Task HumanInputAfterMouseDispatchStartsReturnsOutcomeUnknown()
+    {
+        await using var fixture = await AgentBrowserHostFixture.CreateAsync();
+        fixture.Renderer.SetViewport();
+        fixture.Renderer.BlockOperations = true;
+        fixture.Renderer.CancellationMode =
+            ControlledCancellationMode.ObserveWhileBlocked;
+        var binding = BrowserAutomationBinding.FromState(fixture.Renderer.State);
+        var action = await fixture.PrepareAsync(
+            new AgentBrowserRequest.Mouse(
+                new BrowserMouseRequest(
+                    fixture.SessionId,
+                    binding,
+                    BrowserMouseAction.Click,
+                    20,
+                    30,
+                    BrowserMouseButton.Left,
+                    clickCount: 1)));
+
+        var running = fixture.Client.RunAgentBrowserActionAsync(
+            fixture.Authorization.Arm(action),
+            action,
+            default).AsTask();
+        await fixture.Renderer.OperationStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.True(fixture.Renderer.PhysicalInputGate!(
+            new NativeRendererPhysicalInput(NativeRendererPhysicalInputKind.KeyDown)));
+        var result = await running.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.Equal(
+            "browser_interaction_outcome_unknown",
+            result.Error().StableCode);
+        Assert.False(result.Error().Retryable);
+        AssertCompletion(
+            Assert.Single(fixture.Authorization.Completions),
+            AgentActionOutcome.Failed,
+            "browser_interaction_outcome_unknown");
+    }
+
+    [Fact]
+    public async Task MainWorldEvaluationRequiresHumanApprovalAndReturnsJsonValue()
+    {
+        await using var fixture = await AgentBrowserHostFixture.CreateAsync();
+        fixture.Renderer.SetViewport();
+        var binding = BrowserAutomationBinding.FromState(fixture.Renderer.State);
+        var request = new AgentBrowserRequest.Evaluate(
+            new BrowserEvaluateRequest(
+                fixture.SessionId,
+                binding,
+                "1 + 1",
+                BrowserEvaluationWorld.Main));
+        var deniedAction = await fixture.PrepareAsync(request);
+
+        var denied = await fixture.Client.RunAgentBrowserActionAsync(
+            fixture.Authorization.Arm(
+                deniedAction,
+                source: AgentAuthorizationSource.AutoPolicy),
+            deniedAction,
+            default);
+
+        Assert.Equal(ActionNotAuthorizedCode, denied.Error().StableCode);
+        Assert.Equal(0, fixture.Renderer.EvaluateCount);
+
+        var approvedAction = await fixture.PrepareAsync(request);
+        var approved = await fixture.Client.RunAgentBrowserActionAsync(
+            fixture.Authorization.Arm(approvedAction),
+            approvedAction,
+            default);
+
+        var evaluation = Assert.IsType<AgentBrowserActionResult.Evaluation>(
+            approved.Value());
+        Assert.Equal("2", evaluation.Value.Json);
+        Assert.Equal(1, fixture.Renderer.EvaluateCount);
+    }
+
     [Theory]
     [InlineData(false, "navigation_failed")]
     [InlineData(true, "engine_failed")]
@@ -1463,7 +1930,9 @@ public sealed class AgentBrowserSessionHostTests
             default);
 
         Assert.Equal(HostErrorCode.InvalidRequest, result.Error().Code);
-        Assert.Equal(DomainPolicyDeniedCode, result.Error().StableCode);
+        Assert.Equal(
+            RendererNavigationPolicyDeniedCode,
+            result.Error().StableCode);
         Assert.DoesNotContain(
             "Renderer-private",
             result.Error().Message,
@@ -1472,7 +1941,7 @@ public sealed class AgentBrowserSessionHostTests
         AssertCompletion(
             Assert.Single(fixture.Authorization.Completions),
             AgentActionOutcome.Failed,
-            DomainPolicyDeniedCode);
+            RendererNavigationPolicyDeniedCode);
     }
 
     [Fact]
@@ -1653,9 +2122,11 @@ public sealed class AgentBrowserSessionHostTests
             bool includeComposer,
             bool includeAuthorizationConsumer,
             BrowserAddress? initialAddress,
-            IAgentAuthorizationConsumer? authorizationConsumer)
+            IAgentAuthorizationConsumer? authorizationConsumer,
+            TimeProvider? timeProvider)
         {
-            Clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+            Clock = timeProvider
+                ?? new ManualTimeProvider(DateTimeOffset.UnixEpoch);
             BrowserFactory = new FakeBrowserPanelSessionFactory();
             Composer = new AgentBrowserActionComposer();
             Authorization = new FakeBrowserAuthorizationConsumer(Clock);
@@ -1674,7 +2145,7 @@ public sealed class AgentBrowserSessionHostTests
                         : null);
         }
 
-        public ManualTimeProvider Clock { get; }
+        public TimeProvider Clock { get; }
 
         public FakeBrowserPanelSessionFactory BrowserFactory { get; }
 
@@ -1714,13 +2185,15 @@ public sealed class AgentBrowserSessionHostTests
             bool includeAuthorizationConsumer = true,
             bool attachInteractive = true,
             BrowserAddress? initialAddress = null,
-            IAgentAuthorizationConsumer? authorizationConsumer = null)
+            IAgentAuthorizationConsumer? authorizationConsumer = null,
+            TimeProvider? timeProvider = null)
         {
             var fixture = new AgentBrowserHostFixture(
                 includeComposer,
                 includeAuthorizationConsumer,
                 initialAddress,
-                authorizationConsumer);
+                authorizationConsumer,
+                timeProvider);
             var panel = new PanelInstance(
                 fixture.PanelId,
                 PanelKind.Browser,
@@ -1852,15 +2325,21 @@ public sealed class AgentBrowserSessionHostTests
             SessionCapabilities.AttachInteractive,
             SessionCapabilities.BrowserReadState,
             SessionCapabilities.BrowserSnapshot,
+            SessionCapabilities.BrowserWait,
             SessionCapabilities.BrowserClick,
             SessionCapabilities.BrowserFill,
             SessionCapabilities.BrowserCheck,
+            SessionCapabilities.BrowserMouse,
+            SessionCapabilities.BrowserKey,
+            SessionCapabilities.BrowserScroll,
+            SessionCapabilities.BrowserEvaluate,
             SessionCapabilities.BrowserNavigate,
             SessionCapabilities.BrowserBack,
             SessionCapabilities.BrowserForward,
             SessionCapabilities.BrowserReload,
             SessionCapabilities.BrowserStop,
             SessionCapabilities.BrowserOriginGuard,
+            SessionCapabilities.BrowserAgentInputBarrier,
         ]);
     }
 
@@ -2073,26 +2552,37 @@ public sealed class AgentBrowserSessionHostTests
     }
 
     private sealed class ControlledBrowserRenderer(
-        BrowserAddress initialAddress) : IBrowserRenderer
+        BrowserAddress initialAddress) :
+        IBrowserRenderer,
+        IBrowserPhysicalInputBarrier
     {
         public CapabilitySet Capabilities { get; } = new(
         [
             SessionCapabilities.BrowserReadState,
+            SessionCapabilities.BrowserSnapshot,
+            SessionCapabilities.BrowserWait,
             SessionCapabilities.BrowserClick,
             SessionCapabilities.BrowserFill,
             SessionCapabilities.BrowserCheck,
+            SessionCapabilities.BrowserMouse,
+            SessionCapabilities.BrowserKey,
+            SessionCapabilities.BrowserScroll,
+            SessionCapabilities.BrowserEvaluate,
             SessionCapabilities.BrowserNavigate,
             SessionCapabilities.BrowserBack,
             SessionCapabilities.BrowserForward,
             SessionCapabilities.BrowserReload,
             SessionCapabilities.BrowserStop,
             SessionCapabilities.BrowserOriginGuard,
+            SessionCapabilities.BrowserAgentInputBarrier,
         ]);
 
         public BrowserSessionState State { get; private set; } =
             BrowserSessionState.Initial(initialAddress);
 
         public int NavigateCount { get; private set; }
+
+        public BrowserNavigationOrigin? LastNavigationOrigin { get; private set; }
 
         public int BackCount { get; private set; }
 
@@ -2120,11 +2610,21 @@ public sealed class AgentBrowserSessionHostTests
 
         public int CheckCount { get; private set; }
 
+        public int MouseCount { get; private set; }
+
+        public int KeyCount { get; private set; }
+
+        public int ScrollCount { get; private set; }
+
+        public int EvaluateCount { get; private set; }
+
         public BrowserElementReference? LastCheckedReference { get; private set; }
 
         public BrowserNavigationOrigin? LastCheckOrigin { get; private set; }
 
         public bool BlockOperations { get; set; }
+
+        public int BlockedSnapshotCount { get; set; } = int.MaxValue;
 
         public bool AdvanceDocumentBeforeBindingValidation { get; set; }
 
@@ -2142,6 +2642,13 @@ public sealed class AgentBrowserSessionHostTests
 
         public event EventHandler<BrowserStateChangedEventArgs>? StateChanged;
 
+        public Func<NativeRendererPhysicalInput, bool>? PhysicalInputGate
+        { get; private set; }
+
+        public void BindPhysicalInputGate(
+            Func<NativeRendererPhysicalInput, bool>? physicalInputGate) =>
+            PhysicalInputGate = physicalInputGate;
+
         public void BeginExternalLoad()
         {
             State = new BrowserSessionState(
@@ -2154,6 +2661,22 @@ public sealed class AgentBrowserSessionHostTests
             StateChanged?.Invoke(
                 this,
                 new BrowserStateChangedEventArgs(State));
+        }
+
+        public void SetViewport(double width = 800, double height = 600)
+        {
+            State = new BrowserSessionState(
+                State.Address,
+                State.Title,
+                State.LoadState,
+                State.CanGoBack,
+                State.CanGoForward,
+                State.DocumentRevision,
+                State.Failure,
+                new BrowserViewportState(width, height, 1),
+                State.ViewportRevision + 1,
+                State.InputEpoch);
+            StateChanged?.Invoke(this, new BrowserStateChangedEventArgs(State));
         }
 
         public ValueTask<BrowserResult<BrowserSessionState>> NavigateAsync(
@@ -2202,6 +2725,7 @@ public sealed class AgentBrowserSessionHostTests
             ArgumentNullException.ThrowIfNull(request);
             ArgumentNullException.ThrowIfNull(allowedOrigin);
             ArgumentNullException.ThrowIfNull(startBinding);
+            LastNavigationOrigin = allowedOrigin;
             if (AdvanceDocumentBeforeBindingValidation)
             {
                 AdvanceDocumentBeforeBindingValidation = false;
@@ -2260,7 +2784,8 @@ public sealed class AgentBrowserSessionHostTests
         public async ValueTask<BrowserResult<BrowserDocumentSnapshot>>
             CaptureSnapshotAsync(
                 BrowserDocumentBinding document,
-                CancellationToken cancellationToken)
+                CancellationToken cancellationToken,
+                BrowserSnapshotQuery? query = null)
         {
             SnapshotCount++;
             if (AdvanceDocumentBeforeBindingValidation)
@@ -2288,7 +2813,7 @@ public sealed class AgentBrowserSessionHostTests
             }
 
             OperationStarted.TrySetResult();
-            if (BlockOperations)
+            if (BlockOperations && SnapshotCount <= BlockedSnapshotCount)
             {
                 if (CancellationMode
                     == ControlledCancellationMode.ObserveWhileBlocked)
@@ -2556,6 +3081,134 @@ public sealed class AgentBrowserSessionHostTests
 
             return BrowserResult<BrowserCheckReceipt>.Success(
                 new BrowserCheckReceipt(reference.Document));
+        }
+
+        public async ValueTask<BrowserResult<BrowserAutomationReceipt>>
+            DispatchMouseWithinOriginAsync(
+                BrowserMouseRequest request,
+                BrowserNavigationOrigin allowedOrigin,
+                CancellationToken cancellationToken)
+        {
+            MouseCount++;
+            return await RunInputAutomationAsync(
+                request.Binding,
+                allowedOrigin,
+                cancellationToken);
+        }
+
+        public async ValueTask<BrowserResult<BrowserAutomationReceipt>>
+            DispatchKeyWithinOriginAsync(
+                BrowserKeyRequest request,
+                BrowserNavigationOrigin allowedOrigin,
+                CancellationToken cancellationToken)
+        {
+            KeyCount++;
+            return await RunInputAutomationAsync(
+                request.Binding,
+                allowedOrigin,
+                cancellationToken);
+        }
+
+        public async ValueTask<BrowserResult<BrowserAutomationReceipt>>
+            ScrollWithinOriginAsync(
+                BrowserScrollRequest request,
+                BrowserNavigationOrigin allowedOrigin,
+                CancellationToken cancellationToken)
+        {
+            ScrollCount++;
+            return await RunInputAutomationAsync(
+                request.Binding,
+                allowedOrigin,
+                cancellationToken);
+        }
+
+        public async ValueTask<BrowserResult<BrowserEvaluationResult>>
+            EvaluateWithinOriginAsync(
+                BrowserEvaluateRequest request,
+                BrowserNavigationOrigin allowedOrigin,
+                CancellationToken cancellationToken)
+        {
+            EvaluateCount++;
+            var source = request.Binding;
+            var failure = ValidateAutomation(source, allowedOrigin);
+            if (failure is not null)
+            {
+                return BrowserResult<BrowserEvaluationResult>.Failure(failure);
+            }
+
+            await AwaitControlledOperationAsync(cancellationToken);
+            return BrowserResult<BrowserEvaluationResult>.Success(
+                new BrowserEvaluationResult(source, State, "2"));
+        }
+
+        private async ValueTask<BrowserResult<BrowserAutomationReceipt>>
+            RunInputAutomationAsync(
+                BrowserAutomationBinding source,
+                BrowserNavigationOrigin allowedOrigin,
+                CancellationToken cancellationToken)
+        {
+            var failure = ValidateAutomation(source, allowedOrigin);
+            if (failure is not null)
+            {
+                return BrowserResult<BrowserAutomationReceipt>.Failure(failure);
+            }
+
+            await AwaitControlledOperationAsync(cancellationToken);
+            State = new BrowserSessionState(
+                State.Address,
+                State.Title,
+                State.LoadState,
+                State.CanGoBack,
+                State.CanGoForward,
+                State.DocumentRevision,
+                State.Failure,
+                State.Viewport,
+                State.ViewportRevision,
+                State.InputEpoch + 1);
+            StateChanged?.Invoke(this, new BrowserStateChangedEventArgs(State));
+            return BrowserResult<BrowserAutomationReceipt>.Success(
+                new BrowserAutomationReceipt(source, State));
+        }
+
+        private BrowserError? ValidateAutomation(
+            BrowserAutomationBinding source,
+            BrowserNavigationOrigin allowedOrigin)
+        {
+            if (!source.Matches(State))
+            {
+                return BrowserError.Create(
+                    BrowserErrorCode.NavigationStateChanged,
+                    "The browser automation binding is stale.",
+                    retryable: true);
+            }
+
+            return allowedOrigin.Allows(State.Address)
+                ? null
+                : BrowserError.Create(
+                    BrowserErrorCode.NavigationPolicyDenied,
+                    "The browser automation origin is denied.");
+        }
+
+        private async Task AwaitControlledOperationAsync(
+            CancellationToken cancellationToken)
+        {
+            OperationStarted.TrySetResult();
+            if (BlockOperations)
+            {
+                if (CancellationMode == ControlledCancellationMode.ObserveWhileBlocked)
+                {
+                    await ReleaseOperation.Task.WaitAsync(cancellationToken);
+                }
+                else
+                {
+                    await ReleaseOperation.Task;
+                }
+            }
+
+            if (CancellationMode != ControlledCancellationMode.Ignore)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
         }
 
         private async ValueTask<BrowserResult<BrowserSessionState>> RunAsync(

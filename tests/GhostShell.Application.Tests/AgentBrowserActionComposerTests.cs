@@ -11,9 +11,14 @@ public sealed class AgentBrowserActionComposerTests
     [Theory]
     [InlineData(BrowserOperation.ReadState, BuiltInAgentTools.BrowserReadState)]
     [InlineData(BrowserOperation.Snapshot, BuiltInAgentTools.BrowserSnapshot)]
+    [InlineData(BrowserOperation.Wait, BuiltInAgentTools.BrowserWait)]
     [InlineData(BrowserOperation.Click, BuiltInAgentTools.BrowserClick)]
     [InlineData(BrowserOperation.Fill, BuiltInAgentTools.BrowserFill)]
     [InlineData(BrowserOperation.Check, BuiltInAgentTools.BrowserCheck)]
+    [InlineData(BrowserOperation.Mouse, BuiltInAgentTools.BrowserMouse)]
+    [InlineData(BrowserOperation.Key, BuiltInAgentTools.BrowserKey)]
+    [InlineData(BrowserOperation.Scroll, BuiltInAgentTools.BrowserScroll)]
+    [InlineData(BrowserOperation.Evaluate, BuiltInAgentTools.BrowserEvaluate)]
     [InlineData(BrowserOperation.Navigate, BuiltInAgentTools.BrowserNavigate)]
     [InlineData(BrowserOperation.Back, BuiltInAgentTools.BrowserBack)]
     [InlineData(BrowserOperation.Forward, BuiltInAgentTools.BrowserForward)]
@@ -59,19 +64,24 @@ public sealed class AgentBrowserActionComposerTests
                 "Back",
                 "Check",
                 "Click",
+                "Evaluate",
                 "Fill",
                 "Forward",
+                "Key",
+                "Mouse",
                 "Navigate",
                 "ReadState",
                 "Reload",
+                "Scroll",
                 "Snapshot",
                 "Stop",
+                "Wait",
             ],
             requestKinds.Select(type => type.Name));
         Assert.All(requestKinds, type => Assert.True(type.IsSealed));
         Assert.True(typeof(AgentBrowserActionResult).IsAbstract);
         Assert.Equal(
-            ["Completed", "Snapshot", "State"],
+            ["Automation", "Completed", "Evaluation", "Snapshot", "State", "Wait"],
             resultKinds.Select(type => type.Name));
         Assert.All(resultKinds, type => Assert.True(type.IsSealed));
         Assert.Empty(typeof(AgentBrowserAction).GetConstructors());
@@ -97,6 +107,11 @@ public sealed class AgentBrowserActionComposerTests
                 "Capture browser snapshot",
                 AgentCapability.BrowserData,
                 AgentActionRisk.Observation),
+            (
+                BuiltInAgentTools.BrowserWait,
+                "Wait for browser state",
+                AgentCapability.BrowserData,
+                AgentActionRisk.Routine),
             (
                 BuiltInAgentTools.BrowserClick,
                 "Click browser element",
@@ -154,6 +169,7 @@ public sealed class AgentBrowserActionComposerTests
     {
         Assert.Equal("browser.read_state", BuiltInAgentTools.BrowserReadState);
         Assert.Equal("browser.snapshot", BuiltInAgentTools.BrowserSnapshot);
+        Assert.Equal("browser.wait", BuiltInAgentTools.BrowserWait);
         Assert.Equal("browser.click", BuiltInAgentTools.BrowserClick);
         Assert.Equal("browser.fill", BuiltInAgentTools.BrowserFill);
         Assert.Equal("browser.check", BuiltInAgentTools.BrowserCheck);
@@ -315,6 +331,53 @@ public sealed class AgentBrowserActionComposerTests
             revisionChanged.Proposal.ArgumentDigest);
         Assert.NotEqual(ApprovalMaterial(action), ApprovalMaterial(referenceChanged));
         Assert.NotEqual(ApprovalMaterial(action), ApprovalMaterial(revisionChanged));
+    }
+
+    [Fact]
+    public void ElementStateWaitBindsExactOriginDocumentAndDesiredState()
+    {
+        var request = new AgentBrowserRequest.Wait(
+            new BrowserWaitRequest(
+                Session(),
+                new BrowserWaitCondition.ElementState(
+                    new BrowserElementReferenceId("checkbox_1"),
+                    SourceDocumentRevision: 7,
+                    BrowserElementStateKind.Checked,
+                    Expected: false),
+                TimeSpan.FromMinutes(1)));
+
+        var action = new AgentBrowserActionComposer().Prepare(
+            Envelope(),
+            BrowserContext(browserDocumentRevision: 7),
+            request);
+
+        Assert.Equal(BuiltInAgentTools.BrowserWait, action.Proposal.ToolName);
+        Assert.Contains(
+            action.Proposal.Presentation.Arguments,
+            argument => argument is
+            {
+                Name: "origin",
+                DisplayValue: "https://example.test:443",
+            });
+        Assert.Contains(
+            action.Proposal.Presentation.Arguments,
+            argument => argument is
+            {
+                Name: "reference",
+                DisplayValue: "checkbox_1",
+            });
+        Assert.Contains(
+            action.Proposal.Presentation.Arguments,
+            argument => argument is
+            {
+                Name: "expected",
+                DisplayValue: "false",
+            });
+        Assert.Throws<ArgumentException>(() =>
+            new AgentBrowserActionComposer().Prepare(
+                Envelope(),
+                BrowserContext(browserDocumentRevision: 8),
+                request));
     }
 
     [Fact]
@@ -530,6 +593,7 @@ public sealed class AgentBrowserActionComposerTests
     [Theory]
     [InlineData(BrowserOperation.ReadState)]
     [InlineData(BrowserOperation.Snapshot)]
+    [InlineData(BrowserOperation.Wait)]
     [InlineData(BrowserOperation.Click)]
     [InlineData(BrowserOperation.Fill)]
     [InlineData(BrowserOperation.Check)]
@@ -608,7 +672,7 @@ public sealed class AgentBrowserActionComposerTests
     }
 
     [Fact]
-    public void Execution_binding_recomputes_fresh_context_evidence()
+    public void Execution_binding_preserves_authorized_target_after_fresh_validation()
     {
         var composer = new AgentBrowserActionComposer();
         var action = composer.Prepare(
@@ -626,8 +690,8 @@ public sealed class AgentBrowserActionComposerTests
         Assert.Equal(action.Proposal.TargetIdentity, binding.TargetIdentity);
         Assert.Equal(action.Proposal.ArgumentDigest, binding.ArgumentDigest);
         Assert.Equal(action.Proposal.PolicyGeneration, binding.PolicyGeneration);
-        Assert.NotEqual(action.Proposal.TargetFingerprint, binding.TargetFingerprint);
-        Assert.Equal(fresh.BindingFingerprint, binding.TargetFingerprint);
+        Assert.Equal(action.Proposal.TargetFingerprint, binding.TargetFingerprint);
+        Assert.NotEqual(fresh.BindingFingerprint, binding.TargetFingerprint);
     }
 
     [Fact]
@@ -862,6 +926,13 @@ public sealed class AgentBrowserActionComposerTests
                 new AgentBrowserRequest.ReadState(Session()),
             BrowserOperation.Snapshot =>
                 new AgentBrowserRequest.Snapshot(Session()),
+            BrowserOperation.Wait =>
+                new AgentBrowserRequest.Wait(
+                    new BrowserWaitRequest(
+                        Session(),
+                        new BrowserWaitCondition.Delay(
+                            TimeSpan.FromSeconds(1)),
+                        TimeSpan.FromSeconds(2))),
             BrowserOperation.Click =>
                 Click(
                     new BrowserElementReferenceId("element_1"),
@@ -875,6 +946,38 @@ public sealed class AgentBrowserActionComposerTests
                 Check(
                     new BrowserElementReferenceId("element_1"),
                     documentRevision: 7),
+            BrowserOperation.Mouse =>
+                new AgentBrowserRequest.Mouse(
+                    new BrowserMouseRequest(
+                        Session(),
+                        AutomationBinding(),
+                        BrowserMouseAction.Click,
+                        10,
+                        10,
+                        BrowserMouseButton.Left,
+                        clickCount: 1)),
+            BrowserOperation.Key =>
+                new AgentBrowserRequest.Key(
+                    new BrowserKeyRequest(
+                        Session(),
+                        AutomationBinding(),
+                        BrowserKeyAction.Press,
+                        BrowserKey.Enter)),
+            BrowserOperation.Scroll =>
+                new AgentBrowserRequest.Scroll(
+                    new BrowserScrollRequest(
+                        Session(),
+                        AutomationBinding(),
+                        10,
+                        10,
+                        0,
+                        100)),
+            BrowserOperation.Evaluate =>
+                new AgentBrowserRequest.Evaluate(
+                    new BrowserEvaluateRequest(
+                        Session(),
+                        AutomationBinding(),
+                        "1 + 1")),
             BrowserOperation.Navigate =>
                 Navigate(BrowserAddress("https://example.test/")),
             BrowserOperation.Back =>
@@ -923,6 +1026,15 @@ public sealed class AgentBrowserActionComposerTests
 
     private static BrowserAddress BrowserAddress(string address) =>
         new(new Uri(address, UriKind.Absolute));
+
+    private static BrowserAutomationBinding AutomationBinding() =>
+        new(
+            new BrowserDocumentBinding(
+                BrowserAddress("https://example.test/source"),
+                7),
+            new BrowserViewportState(800, 600, 1),
+            viewportRevision: 3,
+            inputEpoch: 4);
 
     private static string AddressWithLength(int length, char fill)
     {
@@ -1111,22 +1223,32 @@ public sealed class AgentBrowserActionComposerTests
                 ? new BrowserSessionMetadata(
                     BrowserNavigationOrigin.FromAddress(
                         BrowserAddress(browserAddress)),
-                    browserDocumentRevision)
+                    browserDocumentRevision,
+                    new BrowserViewportState(800, 600, 1),
+                    viewportRevision: 3,
+                    inputEpoch: 4,
+                    address: BrowserAddress(browserAddress))
                 : null);
 
     private static string[] AllBrowserCapabilities() =>
     [
         SessionCapabilities.BrowserReadState,
         SessionCapabilities.BrowserSnapshot,
+        SessionCapabilities.BrowserWait,
         SessionCapabilities.BrowserClick,
         SessionCapabilities.BrowserFill,
         SessionCapabilities.BrowserCheck,
+        SessionCapabilities.BrowserMouse,
+        SessionCapabilities.BrowserKey,
+        SessionCapabilities.BrowserScroll,
+        SessionCapabilities.BrowserEvaluate,
         SessionCapabilities.BrowserNavigate,
         SessionCapabilities.BrowserBack,
         SessionCapabilities.BrowserForward,
         SessionCapabilities.BrowserReload,
         SessionCapabilities.BrowserStop,
         SessionCapabilities.BrowserOriginGuard,
+        SessionCapabilities.BrowserAgentInputBarrier,
     ];
 
     private static AgentTarget.Panel ExactPanelTarget() =>
@@ -1146,9 +1268,14 @@ public sealed class AgentBrowserActionComposerTests
     {
         ReadState,
         Snapshot,
+        Wait,
         Click,
         Fill,
         Check,
+        Mouse,
+        Key,
+        Scroll,
+        Evaluate,
         Navigate,
         Back,
         Forward,

@@ -25,11 +25,14 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Equal(
         [
             "WorkspaceGraphToolContribution",
+            "WorkspaceLayoutToolContribution",
             "PanelToolContribution",
             "TerminalToolContribution",
             "BrowserToolContribution",
             "ProcessToolContribution",
             "StatisticsToolContribution",
+            "DatabaseToolContribution",
+            "DockerToolContribution",
             "FileToolContribution",
             "McpToolContribution",
         ],
