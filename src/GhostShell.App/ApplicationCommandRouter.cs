@@ -17,6 +17,7 @@ internal enum ApplicationCommandActionKind
     SelectRelativeTab,
     SelectLastTab,
     SelectTab,
+    SelectWorkspace,
     EnterTerminalCopyMode,
     SendPrefix,
 }
@@ -26,7 +27,8 @@ internal sealed record ApplicationCommandAction(
     PanelSplitOrientation? SplitOrientation = null,
     PanelFocusDirection? FocusDirection = null,
     int? TabOffset = null,
-    int? TabPosition = null);
+    int? TabPosition = null,
+    int? WorkspacePosition = null);
 
 internal sealed record ApplicationCommandRouteResult(
     ApplicationCommandAction? Action,
@@ -124,6 +126,11 @@ internal static class ApplicationCommandRouter
             return ParseTabPosition(arguments);
         }
 
+        if (commandId == BuiltInCommands.SelectWorkspace)
+        {
+            return ParseWorkspacePosition(arguments);
+        }
+
         if (commandId == BuiltInCommands.EnterTerminalCopyMode)
         {
             return Success(ApplicationCommandActionKind.EnterTerminalCopyMode);
@@ -193,6 +200,26 @@ internal static class ApplicationCommandRouter
             new ApplicationCommandAction(
                 ApplicationCommandActionKind.SelectTab,
                 TabPosition: position),
+            null);
+    }
+
+    private static ApplicationCommandRouteResult ParseWorkspacePosition(
+        IReadOnlyDictionary<string, string> arguments)
+    {
+        if (!int.TryParse(
+                arguments["position"],
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out var position)
+            || position is < 0 or > 8)
+        {
+            return Failure("The workspace position must be between 0 and 8.");
+        }
+
+        return new ApplicationCommandRouteResult(
+            new ApplicationCommandAction(
+                ApplicationCommandActionKind.SelectWorkspace,
+                WorkspacePosition: position),
             null);
     }
 

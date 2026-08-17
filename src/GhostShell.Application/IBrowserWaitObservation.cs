@@ -7,6 +7,20 @@ namespace GhostShell.Application;
 /// </summary>
 public interface IBrowserWaitObservation
 {
+    ValueTask BeginNetworkActivityObservationAsync(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.CompletedTask;
+    }
+
+    ValueTask EndNetworkActivityObservationAsync(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.CompletedTask;
+    }
+
     ValueTask<BrowserResult<BrowserElementStateSnapshot>>
         ReadElementStateAsync(
             BrowserElementReference reference,

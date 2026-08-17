@@ -490,7 +490,9 @@ public sealed partial class MainWindow
                 workspace.Id,
                 tab.Id,
                 tab.Title));
-        e.Handled = true;
+        // A press is still a normal tab click until movement crosses the drag
+        // threshold. Consuming it here would make the whole-tab drag target
+        // replace activation instead of coexist with it.
     }
 
     private void OnRuntimeTabDragPointerMoved(

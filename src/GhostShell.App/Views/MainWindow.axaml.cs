@@ -404,43 +404,6 @@ public sealed partial class MainWindow : Window
         ?? throw new InvalidOperationException(
             "The new panel chooser overlay view is unavailable.");
 
-    private void OnTitleBarPointerPressed(object? sender, PointerPressedEventArgs e)
-    {
-        _ = sender;
-        if (!e.Pointer.IsPrimary)
-        {
-            return;
-        }
-
-        var point = e.GetCurrentPoint(this);
-        if (!point.Properties.IsLeftButtonPressed
-            && e.Pointer.Type != PointerType.Touch)
-        {
-            return;
-        }
-
-        // A double-click on a title bar is its own gesture, and the move-drag
-        // this hands every press to is not it. The platform decides what the
-        // gesture means; elsewhere it is the window's own maximise.
-        if (e.ClickCount == 2)
-        {
-            if (!MacOsWindowTitleBar.TryDoWhatADoubleClickDoes(this))
-            {
-                WindowState = WindowState == WindowState.Maximized
-                    ? WindowState.Normal
-                    : WindowState.Maximized;
-            }
-
-            e.Handled = true;
-            return;
-        }
-
-        // Avalonia's native TitleBar role is not consistently honored on macOS.
-        // Keep the role for native hit-testing and use this client event as a fallback.
-        BeginMoveDrag(e);
-        e.Handled = true;
-    }
-
     public void ShowCommandPalette()
     {
         ViewModel.ShowOverlay(ShellOverlay.CommandPalette);
@@ -1801,6 +1764,12 @@ public sealed partial class MainWindow : Window
 
                     FocusActivePanel();
                     break;
+                case ApplicationCommandActionKind.SelectWorkspace:
+                    await OpenRuntimeWorkspaceAsync(token =>
+                        ViewModel.SelectWorkspaceAtPositionAsync(
+                            action.WorkspacePosition!.Value,
+                            token));
+                    break;
                 case ApplicationCommandActionKind.EnterTerminalCopyMode:
                     _ = ViewModel.EnterTerminalCopyMode();
                     FocusActivePanel();
@@ -1874,7 +1843,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (ViewModel.IsWorkspaceVisible && !ViewModel.HasOverlay)
+        if (!ViewModel.HasOverlay)
         {
             SynchronizeApplicationKeymap();
             var resolution = _applicationKeys.Resolve(
@@ -1921,11 +1890,6 @@ public sealed partial class MainWindow : Window
         if (IsExactGlobalGesture(e.Key, e.KeyModifiers, Key.K, commandModifier))
         {
             ShowCommandPalette();
-            e.Handled = true;
-        }
-        else if (IsExactGlobalGesture(e.Key, e.KeyModifiers, Key.D1, commandModifier))
-        {
-            _ = NavigateToLauncherAsync();
             e.Handled = true;
         }
         else if (IsExactGlobalGesture(

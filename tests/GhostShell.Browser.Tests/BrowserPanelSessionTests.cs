@@ -53,6 +53,44 @@ public sealed class BrowserPanelSessionTests
     }
 
     [Fact]
+    public async Task NetworkObservationLifetimeReachesTheAttachedRenderer()
+    {
+        await using var session = Session(
+            Address("https://example.test/network"));
+        var renderer = new RecordingBrowserRenderer();
+        await session.AttachRendererAsync(renderer, CancellationToken.None);
+
+        await session.BeginNetworkActivityObservationAsync(
+            CancellationToken.None);
+        await session.EndNetworkActivityObservationAsync(
+            CancellationToken.None);
+
+        Assert.Equal(1, renderer.BeginNetworkActivityObservationCount);
+        Assert.Equal(1, renderer.EndNetworkActivityObservationCount);
+    }
+
+    [Fact]
+    public async Task NetworkObservationCleanupReturnsToItsOriginalRenderer()
+    {
+        await using var session = Session(
+            Address("https://example.test/network-replacement"));
+        var original = new RecordingBrowserRenderer();
+        await session.AttachRendererAsync(original, CancellationToken.None);
+        await session.BeginNetworkActivityObservationAsync(
+            CancellationToken.None);
+
+        await session.DetachRendererAsync(CancellationToken.None);
+        var replacement = new RecordingBrowserRenderer();
+        await session.AttachRendererAsync(replacement, CancellationToken.None);
+        await session.EndNetworkActivityObservationAsync(
+            CancellationToken.None);
+
+        Assert.Equal(1, original.BeginNetworkActivityObservationCount);
+        Assert.Equal(1, original.EndNetworkActivityObservationCount);
+        Assert.Equal(0, replacement.EndNetworkActivityObservationCount);
+    }
+
+    [Fact]
     public async Task RendererStateUpdatesTheLogicalStateAndPanelSnapshot()
     {
         var address = Address("https://example.test/document");

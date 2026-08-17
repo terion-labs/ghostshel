@@ -471,8 +471,6 @@ public sealed partial class QuickTerminalWindow : Window
             e.Pointer,
             tab,
             IsDragging: false);
-        e.Pointer.Capture(source);
-        e.Handled = true;
     }
 
     private void OnTabReorderPointerMoved(object? sender, PointerEventArgs e)
@@ -502,6 +500,7 @@ public sealed partial class QuickTerminalWindow : Window
 
             reorder = reorder with { IsDragging = true };
             _tabReorder = reorder;
+            reorder.Pointer.Capture(reorder.Source);
         }
 
         ShowTabDropTarget(ResolveTabDrop(e.GetPosition(this), reorder.Tab));
@@ -517,9 +516,13 @@ public sealed partial class QuickTerminalWindow : Window
             return;
         }
 
-        var drop = reorder.IsDragging
-            ? ResolveTabDrop(e.GetPosition(this), reorder.Tab)
-            : null;
+        if (!reorder.IsDragging)
+        {
+            _tabReorder = null;
+            return;
+        }
+
+        var drop = ResolveTabDrop(e.GetPosition(this), reorder.Tab);
         _tabReorder = null;
         ClearTabDropTarget();
         reorder.Pointer.Capture(null);

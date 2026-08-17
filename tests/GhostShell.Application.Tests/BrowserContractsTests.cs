@@ -949,7 +949,12 @@ public sealed class BrowserContractsTests
             ["CaptureSnapshotAsync"],
             OperationNames(typeof(IBrowserDocumentReader)));
         Assert.Equal(
-            ["ReadElementStateAsync", "ReadNetworkActivityAsync"],
+            [
+                "BeginNetworkActivityObservationAsync",
+                "EndNetworkActivityObservationAsync",
+                "ReadElementStateAsync",
+                "ReadNetworkActivityAsync",
+            ],
             OperationNames(typeof(IBrowserWaitObservation)));
 
         Type[] ports =

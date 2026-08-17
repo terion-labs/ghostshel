@@ -14,6 +14,7 @@ namespace GhostShell.App.Views.Components;
 
 public sealed partial class RuntimeTabStripView
 {
+    private const double OverflowFadePixels = 56;
     private INotifyCollectionChanged? _observedCollection;
     private readonly List<INotifyPropertyChanged> _observedTabs = [];
 
@@ -94,8 +95,8 @@ public sealed partial class RuntimeTabStripView
 
     private void UpdateOverflowPresentation()
     {
-        var pinnedEdges = PinActiveTab();
-        UpdateOverflowFade(pinnedEdges.Leading, pinnedEdges.Trailing);
+        var activeBounds = PinActiveTab();
+        UpdateOverflowFade(activeBounds);
     }
 
     /// <summary>
@@ -106,7 +107,7 @@ public sealed partial class RuntimeTabStripView
     /// transform and z-index; raising the template's inner grid cannot reorder
     /// it against sibling presenters.
     /// </summary>
-    private (bool Leading, bool Trailing) PinActiveTab()
+    private (double Leading, double Trailing)? PinActiveTab()
     {
         var tabHosts = this.GetVisualDescendants()
             .OfType<Grid>()
@@ -155,15 +156,16 @@ public sealed partial class RuntimeTabStripView
             : trailing > viewport
                 ? viewport - trailing
                 : 0;
-        if (Math.Abs(translation) < 0.5)
+        if (Math.Abs(translation) >= 0.5)
         {
-            return default;
+            activeContainer.RenderTransform = horizontal
+                ? new TranslateTransform(translation, 0)
+                : new TranslateTransform(0, translation);
         }
 
-        activeContainer.RenderTransform = horizontal
-            ? new TranslateTransform(translation, 0)
-            : new TranslateTransform(0, translation);
-        return (translation > 0, translation < 0);
+        var displayedLeading = leading + translation;
+        var displayedTrailing = trailing + translation;
+        return (displayedLeading, displayedTrailing);
     }
 
     /// <summary>
@@ -171,7 +173,7 @@ public sealed partial class RuntimeTabStripView
     /// more of them are hiding behind. At rest with everything visible there
     /// is no mask at all.
     /// </summary>
-    private void UpdateOverflowFade(bool activePinnedLeading, bool activePinnedTrailing)
+    private void UpdateOverflowFade((double Leading, double Trailing)? activeBounds)
     {
         var horizontal = Orientation == Orientation.Horizontal;
         var extent = horizontal
@@ -184,8 +186,8 @@ public sealed partial class RuntimeTabStripView
         OverflowSeparator.IsVisible = ShowsOverflowSeparator
             && horizontal
             && extent - viewport > 1;
-        var fadeStart = offset > 1 && !activePinnedLeading;
-        var fadeEnd = extent - viewport - offset > 1 && !activePinnedTrailing;
+        var fadeStart = offset > 1;
+        var fadeEnd = extent - viewport - offset > 1;
         if (viewport <= 0 || (!fadeStart && !fadeEnd))
         {
             TabScrollViewer.OpacityMask = null;
@@ -195,7 +197,7 @@ public sealed partial class RuntimeTabStripView
         // A soft, eased dissolve rather than a linear wipe: the ramp follows a
         // smoothstep curve sampled into stops, so tabs melt away instead of
         // hitting a visible gradient edge.
-        var fade = Math.Min(56, viewport / 3) / viewport;
+        var fade = Math.Min(OverflowFadePixels, viewport / 3) / viewport;
         var samples = new List<GradientStop>();
         const int sampleCount = 6;
         for (var i = 0; i <= sampleCount; i++)
@@ -225,6 +227,40 @@ public sealed partial class RuntimeTabStripView
             samples.Add(new GradientStop(Colors.Black, 1));
         }
 
+        // The mask belongs to the ScrollViewer, so z-index alone cannot keep a
+        // child opaque. Cut out only the active tab's interval instead of
+        // removing the whole edge ramp; scrolling siblings then keep fading in
+        // the gap before the selected chip reaches its sticky boundary.
+        if (activeBounds is { } active)
+        {
+            var activeStart = Math.Clamp(active.Leading / viewport, 0, 1);
+            var activeEnd = Math.Clamp(active.Trailing / viewport, 0, 1);
+            var overlapsFade = (fadeStart && activeStart < fade)
+                || (fadeEnd && activeEnd > 1 - fade);
+            if (activeStart < activeEnd && overlapsFade)
+            {
+                samples.RemoveAll(stop =>
+                    stop.Offset >= activeStart && stop.Offset <= activeEnd);
+
+                if (activeStart > 0)
+                {
+                    samples.Add(new GradientStop(
+                        FadeColourAt(activeStart, fade, fadeStart, fadeEnd),
+                        activeStart));
+                }
+
+                samples.Add(new GradientStop(Colors.Black, activeStart));
+                samples.Add(new GradientStop(Colors.Black, activeEnd));
+
+                if (activeEnd < 1)
+                {
+                    samples.Add(new GradientStop(
+                        FadeColourAt(activeEnd, fade, fadeStart, fadeEnd),
+                        activeEnd));
+                }
+            }
+        }
+
         var stops = new GradientStops();
         foreach (var stop in samples.OrderBy(candidate => candidate.Offset))
         {
@@ -239,5 +275,31 @@ public sealed partial class RuntimeTabStripView
                 : new RelativePoint(0, 1, RelativeUnit.Relative),
             GradientStops = stops,
         };
+    }
+
+    private static Color FadeColourAt(
+        double position,
+        double fade,
+        bool fadeStart,
+        bool fadeEnd)
+    {
+        var opacity = 1d;
+        if (fadeStart)
+        {
+            var t = Math.Clamp(position / fade, 0, 1);
+            opacity = Math.Min(opacity, t * t * (3 - (2 * t)));
+        }
+
+        if (fadeEnd)
+        {
+            var t = Math.Clamp((1 - position) / fade, 0, 1);
+            opacity = Math.Min(opacity, t * t * (3 - (2 * t)));
+        }
+
+        return Color.FromArgb(
+            (byte)Math.Round(opacity * byte.MaxValue),
+            0,
+            0,
+            0);
     }
 }

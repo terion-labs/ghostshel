@@ -103,9 +103,7 @@ public sealed class TransientOverlayViewContractTests
         Assert.Equal(
             "TitleBar",
             AttributeValue(titleBar, "WindowDecorationProperties.ElementRole"));
-        Assert.Equal(
-            "OnTitleBarPointerPressed",
-            AttributeValue(titleBar, "PointerPressed"));
+        Assert.Null(AttributeValue(titleBar, "PointerPressed"));
     }
 
     [Fact]

@@ -46,7 +46,6 @@ public sealed class WorkspaceViewContractTests
             ["ShowNewPanelRequested"] = "OnShowNewPanelClick",
             ["ShowSettingsRequested"] = "OnShowSettingsClick",
             ["SubmitAgentQuestionRequested"] = "OnSubmitAgentQuestionClick",
-            ["TitleBarPointerPressedRequested"] = "OnTitleBarPointerPressed",
             ["ToggleAgentRequested"] = "OnToggleAgentClick",
         };
 
@@ -466,9 +465,7 @@ public sealed class WorkspaceViewContractTests
         Assert.Equal(
             "TitleBar",
             AttributeValue(titleBar, "WindowDecorationProperties.ElementRole"));
-        Assert.Equal(
-            "OnTitleBarPointerPressed",
-            AttributeValue(titleBar, "PointerPressed"));
+        Assert.Null(AttributeValue(titleBar, "PointerPressed"));
         Assert.Equal(
             "{Binding $parent[Window].TitleBarChromeHeight}",
             AttributeValue(titleBar, "MinHeight"));

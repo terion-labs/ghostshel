@@ -9,7 +9,7 @@ namespace GhostShell.App.Tests;
 public sealed class ApplicationKeySequenceResolverTests
 {
     [Fact]
-    public void EveryDeclaredTmuxBindingResolvesWithItsArgumentsIntact()
+    public void EveryDeclaredApplicationBindingResolvesWithItsArgumentsIntact()
     {
         var resolver = new ApplicationKeySequenceResolver(BuiltInKeymaps.TmuxApplication);
         var timestamp = DateTimeOffset.Parse("2026-07-22T12:00:00Z");
@@ -18,13 +18,21 @@ public sealed class ApplicationKeySequenceResolverTests
         {
             resolver.Reset();
 
-            var prefix = resolver.Resolve(binding.Sequence[0], binding.Contexts, timestamp);
-            var match = resolver.Resolve(
-                binding.Sequence[1],
-                binding.Contexts,
-                timestamp.AddMilliseconds(10));
+            ApplicationKeyResolution match;
+            if (binding.Sequence.Count == 1)
+            {
+                match = resolver.Resolve(binding.Sequence[0], binding.Contexts, timestamp);
+            }
+            else
+            {
+                var prefix = resolver.Resolve(binding.Sequence[0], binding.Contexts, timestamp);
+                Assert.Equal(ApplicationKeyResolutionKind.Pending, prefix.Kind);
+                match = resolver.Resolve(
+                    binding.Sequence[1],
+                    binding.Contexts,
+                    timestamp.AddMilliseconds(10));
+            }
 
-            Assert.Equal(ApplicationKeyResolutionKind.Pending, prefix.Kind);
             Assert.Equal(ApplicationKeyResolutionKind.Matched, match.Kind);
             Assert.Same(binding, match.Binding);
             Assert.Equal(binding.Arguments, match.Binding!.Arguments);
@@ -295,11 +303,15 @@ public sealed class ApplicationCommandRouterTests
         var position = Route(bindings.Single(binding =>
             binding.CommandId == BuiltInCommands.SelectTab
             && binding.Arguments["position"] == "9"));
+        var workspace = Route(bindings.Single(binding =>
+            binding.CommandId == BuiltInCommands.SelectWorkspace
+            && binding.Arguments["position"] == "8"));
 
         Assert.Equal(PanelSplitOrientation.LeftRight, horizontal.SplitOrientation);
         Assert.Equal(PanelSplitOrientation.TopBottom, vertical.SplitOrientation);
         Assert.Equal(PanelFocusDirection.Down, focus.FocusDirection);
         Assert.Equal(9, position.TabPosition);
+        Assert.Equal(8, workspace.WorkspacePosition);
     }
 
     [Fact]

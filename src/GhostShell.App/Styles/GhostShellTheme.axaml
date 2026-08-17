@@ -781,8 +781,8 @@
     <Setter Property="Background" Value="{DynamicResource ShellAccentBrush}" />
   </Style>
 
-  <!-- The reorder handle and the close button are the tab's siblings rather
-       than its content, so they take the tab's own text colour from here. -->
+  <!-- The close button is the tab's sibling rather than its content, so it
+       takes the tab's own text colour from here. -->
   <Style Selector="Grid.RuntimeTabDropTarget">
     <Setter Property="TextElement.Foreground" Value="{DynamicResource ShellMutedBrush}" />
   </Style>

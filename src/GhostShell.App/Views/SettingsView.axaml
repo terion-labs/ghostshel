@@ -13,7 +13,6 @@
       <Border
           Classes="TopChrome"
           MinHeight="{Binding $parent[Window].TitleBarChromeHeight}"
-          PointerPressed="OnTitleBarPointerPressed"
           WindowDecorationProperties.ElementRole="TitleBar">
         <Grid>
           <Button

@@ -265,7 +265,6 @@
         ShowNewPanelRequested="OnShowNewPanelClick"
         ShowSettingsRequested="OnShowSettingsClick"
         SubmitAgentQuestionRequested="OnSubmitAgentQuestionClick"
-        TitleBarPointerPressedRequested="OnTitleBarPointerPressed"
         ToggleAgentRequested="OnToggleAgentClick"
         ToggleAgentPinRequested="OnToggleAgentPinClick" />
 
@@ -344,7 +343,6 @@
         ResetRecentSessionHistoryRequested="OnResetRecentSessionHistoryClick"
         TerminalSettingsRequested="OnTerminalSettingsClick"
         TestMcpServerRequested="OnTestMcpServerClick"
-        TitleBarPointerPressedRequested="OnTitleBarPointerPressed"
         UnbindKeybindingRequested="OnUnbindKeybindingClick"
         UndoDeletedSavedScreenRequested="OnUndoDeletedSavedScreenClick"
         WorkspaceSettingsRequested="OnWorkspaceSettingsClick" />
@@ -410,7 +408,6 @@
           HorizontalAlignment="Stretch"
           VerticalAlignment="Top"
           Background="Transparent"
-          PointerPressed="OnTitleBarPointerPressed"
           WindowDecorationProperties.ElementRole="TitleBar" />
     </Grid>
 

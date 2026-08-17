@@ -51,7 +51,6 @@
     <Border
         Classes="TopChrome"
         MinHeight="{Binding $parent[Window].TitleBarChromeHeight}"
-        PointerPressed="OnTitleBarPointerPressed"
         WindowDecorationProperties.ElementRole="TitleBar">
       <Grid ColumnDefinitions="Auto,*,Auto" Margin="{Binding $parent[Window].WindowTitleBarContentMargin}" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <!-- Where the home tab used to sit. Home was a screen you left the work

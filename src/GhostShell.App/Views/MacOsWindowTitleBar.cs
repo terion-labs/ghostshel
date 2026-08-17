@@ -228,74 +228,6 @@ internal static class MacOsWindowTitleBar
         ? string.Empty
         : Marshal.PtrToStringAnsi(object_getClassName(instance)) ?? string.Empty;
 
-    /// <summary>
-    /// Does what double-clicking a title bar does on this desktop.
-    ///
-    /// The shell draws its own tab bar across that band and hands every press
-    /// to the window's move-drag, so the second click of a double-click never
-    /// reaches the platform as one. What the gesture means is a system
-    /// setting — zoom, minimise, or nothing — so it is read rather than
-    /// assumed.
-    /// </summary>
-    public static bool TryDoWhatADoubleClickDoes(Window window)
-    {
-        ArgumentNullException.ThrowIfNull(window);
-        if (!OperatingSystem.IsMacOS()
-            || window.TryGetPlatformHandle() is not IMacOSTopLevelPlatformHandle handle
-            || handle.NSWindow == 0)
-        {
-            return false;
-        }
-
-        try
-        {
-            var action = StandardUserDefaultsString("AppleActionOnDoubleClick");
-            switch (action)
-            {
-                case "Minimize":
-                    SendIdArgument(handle.NSWindow, Selector("performMiniaturize:"), 0);
-                    return true;
-                case "None":
-                    return true;
-                default:
-                    // Unset means Maximize, which is this desktop's default.
-                    SendIdArgument(handle.NSWindow, Selector("performZoom:"), 0);
-                    return true;
-            }
-        }
-        catch (Exception exception) when (exception is DllNotFoundException
-            or EntryPointNotFoundException
-            or BadImageFormatException)
-        {
-            return false;
-        }
-    }
-
-    private static string? StandardUserDefaultsString(string key)
-    {
-        var defaults = SendId(
-            objc_getClass("NSUserDefaults"),
-            Selector("standardUserDefaults"));
-        if (defaults == 0)
-        {
-            return null;
-        }
-
-        var name = SendIdArgumentReturningId(
-            objc_getClass("NSString"),
-            Selector("stringWithUTF8String:"),
-            Marshal.StringToHGlobalAnsi(key));
-        if (name == 0)
-        {
-            return null;
-        }
-
-        var value = SendIdArgumentReturningId(defaults, Selector("stringForKey:"), name);
-        return value == 0
-            ? null
-            : Marshal.PtrToStringUTF8(SendId(value, Selector("UTF8String")));
-    }
-
     private static nint Selector(string name) => sel_registerName(name);
 
     [DllImport(ObjectiveCLibrary, EntryPoint = "sel_registerName")]
@@ -314,12 +246,6 @@ internal static class MacOsWindowTitleBar
 
     [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
     private static extern void SendNUIntArgument(nint receiver, nint selector, nuint value);
-
-    [DllImport(ObjectiveCLibrary, EntryPoint = "objc_msgSend")]
-    private static extern nint SendIdArgumentReturningId(
-        nint receiver,
-        nint selector,
-        nint value);
 
     [DllImport(ObjectiveCLibrary, EntryPoint = "object_getClassName")]
     private static extern nint object_getClassName(nint instance);

@@ -113,6 +113,10 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
             ActiveRequestCount: 0,
             QuietFor: TimeSpan.FromSeconds(1));
 
+    public int BeginNetworkActivityObservationCount { get; private set; }
+
+    public int EndNetworkActivityObservationCount { get; private set; }
+
     public NativeBrowserViewport Viewport { get; set; } = new(800, 600);
 
     public NativeBrowserAutomationResult AutomationResult { get; set; } =
@@ -270,6 +274,12 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
         ArgumentNullException.ThrowIfNull(handle);
         return Task.FromResult(ElementStateResult);
     }
+
+    public void BeginNetworkActivityObservation() =>
+        BeginNetworkActivityObservationCount++;
+
+    public void EndNetworkActivityObservation() =>
+        EndNetworkActivityObservationCount++;
 
     public NativeBrowserNetworkActivity ReadNetworkActivity() =>
         NetworkActivity;

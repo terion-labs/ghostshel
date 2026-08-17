@@ -576,30 +576,22 @@ public sealed partial class RepositoryConventionTests
                 StringComparison.Ordinal);
         });
 
-        var dragHandle = Assert.Single(
+        var activator = Assert.Single(
             dropTarget.Elements(),
-            element => element.Name.LocalName == "Border"
-                && string.Equals(
-                    AttributeValue(element, "PointerPressed"),
-                    "OnDragPointerPressed",
-                    StringComparison.Ordinal));
-        Assert.Equal(
-            "OnDragPointerMoved",
-            AttributeValue(dragHandle, "PointerMoved"));
-        Assert.Equal(
-            "OnDragPointerReleased",
-            AttributeValue(dragHandle, "PointerReleased"));
-        Assert.Equal(
-            "OnDragPointerCaptureLost",
-            AttributeValue(dragHandle, "PointerCaptureLost"));
-        Assert.False(
-            string.IsNullOrWhiteSpace(
-                AttributeValue(dragHandle, "AutomationProperties.Name")));
-        Assert.False(
-            string.IsNullOrWhiteSpace(
-                AttributeValue(dragHandle, "AutomationProperties.HelpText")));
-        Assert.Contains(
-            dragHandle.Descendants(),
+            element => element.Name.LocalName == "Button"
+                && HasClass(element, "RuntimeTabActivator"));
+        Assert.Null(AttributeValue(activator, "PointerMoved"));
+        Assert.Null(AttributeValue(activator, "PointerReleased"));
+        Assert.Null(AttributeValue(activator, "PointerCaptureLost"));
+        Assert.Null(AttributeValue(activator, "PointerPressed"));
+        Assert.Contains("OnTabPointerPressed", stripCode, StringComparison.Ordinal);
+        Assert.Contains("OnTabPointerMoved", stripCode, StringComparison.Ordinal);
+        Assert.Contains("OnTabPointerReleased", stripCode, StringComparison.Ordinal);
+        Assert.Contains("OnTabPointerCaptureLost", stripCode, StringComparison.Ordinal);
+        Assert.Contains("RoutingStrategies.Tunnel", stripCode, StringComparison.Ordinal);
+        Assert.Contains("FindTabActivator(e.Source)", stripCode, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            dropTarget.Descendants(),
             element => element.Name.LocalName == "SymbolIcon"
                 && string.Equals(
                     AttributeValue(element, "Symbol"),
@@ -615,21 +607,17 @@ public sealed partial class RepositoryConventionTests
             StringComparison.Ordinal);
         Assert.True(pointerPressedStart >= 0);
         Assert.True(pointerMovedStart > pointerPressedStart);
-        Assert.Contains(
+        Assert.DoesNotContain(
             "e.Handled = true;",
             mainWindowCodeBehind[pointerPressedStart..pointerMovedStart],
             StringComparison.Ordinal);
 
-        var activator = Assert.Single(
-            dropTarget.Elements(),
-            element => element.Name.LocalName == "Button"
-                && HasClass(element, "RuntimeTabActivator"));
         Assert.Contains(
             "Activate tab",
             AttributeValue(activator, "AutomationProperties.Name"),
             StringComparison.Ordinal);
         Assert.Contains(
-            "Move tab left",
+            "Drag the tab to reorder it",
             AttributeValue(activator, "AutomationProperties.HelpText"),
             StringComparison.Ordinal);
         var close = Assert.Single(

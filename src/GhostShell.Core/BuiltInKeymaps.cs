@@ -68,6 +68,16 @@ public static class BuiltInKeymaps
                 CommandContext.Tab),
             Prefixed(BuiltInCommands.NextTab, "N", CommandContext.Tab),
             Prefixed(BuiltInCommands.PreviousTab, "P", CommandContext.Tab),
+            Direct(
+                BuiltInCommands.PreviousTab,
+                "ARROWLEFT",
+                KeyModifiers.Meta | KeyModifiers.Alt,
+                CommandContext.Tab),
+            Direct(
+                BuiltInCommands.NextTab,
+                "ARROWRIGHT",
+                KeyModifiers.Meta | KeyModifiers.Alt,
+                CommandContext.Tab),
             Prefixed(BuiltInCommands.LastTab, "L", CommandContext.Tab),
             Prefixed(BuiltInCommands.EnterTerminalCopyMode, "[", CommandContext.Terminal),
             new(
@@ -82,6 +92,17 @@ public static class BuiltInKeymaps
                 BuiltInCommands.SelectTab,
                 position.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 CommandContext.Tab,
+                ("position", position.ToString(System.Globalization.CultureInfo.InvariantCulture))));
+        }
+
+        for (var position = 0; position < 9; position++)
+        {
+            var key = (position + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            bindings.Add(Direct(
+                BuiltInCommands.SelectWorkspace,
+                key,
+                KeyModifiers.Meta,
+                CommandContext.Window,
                 ("position", position.ToString(System.Globalization.CultureInfo.InvariantCulture))));
         }
 
@@ -161,6 +182,17 @@ public static class BuiltInKeymaps
             commandId,
             KeySequence.Of(new KeyStroke(key, modifiers)),
             CommandContext.Terminal);
+
+    private static CommandBinding Direct(
+        CommandId commandId,
+        string key,
+        KeyModifiers modifiers,
+        CommandContext contexts,
+        params (string Name, string Value)[] arguments) => new(
+            commandId,
+            KeySequence.Of(new KeyStroke(key, modifiers)),
+            contexts,
+            arguments.ToDictionary(argument => argument.Name, argument => argument.Value, StringComparer.Ordinal));
 
     private static CommandBinding Prefixed(
         CommandId commandId,

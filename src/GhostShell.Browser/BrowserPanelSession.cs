@@ -17,6 +17,7 @@ public sealed partial class BrowserPanelSession : IBrowserPanelSession
 
     private readonly object _gate = new();
     private readonly List<PanelSessionEvent> _events = [];
+    private readonly Stack<IBrowserRenderer> _networkObservationRenderers = [];
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private readonly TimeProvider _timeProvider;
     private TaskCompletionSource _eventsChanged = NewSignal();
@@ -439,6 +440,32 @@ public sealed partial class BrowserPanelSession : IBrowserPanelSession
         return ExecuteElementStateReadAsync(reference, cancellationToken);
     }
 
+    public ValueTask BeginNetworkActivityObservationAsync(
+        CancellationToken cancellationToken)
+    {
+        if (!CapabilityProfile.Supports(SessionCapabilities.BrowserWait))
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        return ExecuteNetworkActivityObservationTransitionAsync(
+            NetworkActivityObservationTransition.Begin,
+            cancellationToken);
+    }
+
+    public ValueTask EndNetworkActivityObservationAsync(
+        CancellationToken cancellationToken)
+    {
+        if (!CapabilityProfile.Supports(SessionCapabilities.BrowserWait))
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        return ExecuteNetworkActivityObservationTransitionAsync(
+            NetworkActivityObservationTransition.End,
+            cancellationToken);
+    }
+
     public ValueTask<BrowserResult<BrowserNetworkActivitySnapshot>>
         ReadNetworkActivityAsync(CancellationToken cancellationToken)
     {
@@ -846,6 +873,61 @@ public sealed partial class BrowserPanelSession : IBrowserPanelSession
                 return WaitObservationRendererUnavailable<
                     BrowserNetworkActivitySnapshot>();
             }
+        }
+        finally
+        {
+            CompleteOperation(ActiveOperation.Serialized);
+        }
+    }
+
+    private async ValueTask ExecuteNetworkActivityObservationTransitionAsync(
+        NetworkActivityObservationTransition transition,
+        CancellationToken cancellationToken)
+    {
+        await _operationGate.WaitAsync(cancellationToken)
+            .ConfigureAwait(false);
+        BeginOperation(ActiveOperation.Serialized);
+        try
+        {
+            IBrowserRenderer? renderer;
+            if (transition == NetworkActivityObservationTransition.Begin)
+            {
+                lock (_gate)
+                {
+                    renderer = _closed || _disposed ? null : _renderer;
+                }
+
+                if (renderer is null)
+                {
+                    return;
+                }
+
+                await renderer.BeginNetworkActivityObservationAsync(
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                lock (_gate)
+                {
+                    _networkObservationRenderers.Push(renderer);
+                }
+
+                return;
+            }
+
+            lock (_gate)
+            {
+                renderer = _networkObservationRenderers.Count == 0
+                    ? null
+                    : _networkObservationRenderers.Pop();
+            }
+
+            if (renderer is null)
+            {
+                return;
+            }
+
+            await renderer.EndNetworkActivityObservationAsync(
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
         finally
         {
@@ -1986,6 +2068,12 @@ public sealed partial class BrowserPanelSession : IBrowserPanelSession
         None,
         Serialized,
         GovernedNavigation,
+    }
+
+    private enum NetworkActivityObservationTransition
+    {
+        Begin,
+        End,
     }
 
     private sealed record GovernedInterruption(

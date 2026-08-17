@@ -17,7 +17,6 @@
           Click="OnSettingsMenuClick" />
       <NativeMenuItem
           Header="Launcher"
-          Gesture="Meta+D1"
           Click="OnLauncherMenuClick" />
       <NativeMenuItem
           Header="Quick Terminal"

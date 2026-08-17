@@ -5,6 +5,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Avalonia.VisualTree;
 
 namespace GhostShell.App.Views.Components;
 
@@ -16,6 +17,9 @@ namespace GhostShell.App.Views.Components;
 /// </summary>
 public sealed partial class RuntimeTabStripView : UserControl
 {
+    private Control? _reorderPointerSource;
+    private IPointer? _reorderPointer;
+
     public static readonly StyledProperty<IEnumerable?> TabsProperty =
         AvaloniaProperty.Register<RuntimeTabStripView, IEnumerable?>(nameof(Tabs));
 
@@ -48,6 +52,26 @@ public sealed partial class RuntimeTabStripView : UserControl
         InitializeComponent();
         SyncScrollBars();
         SyncAddButtonDock();
+        AddHandler(
+            PointerPressedEvent,
+            OnTabPointerPressed,
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
+        AddHandler(
+            PointerMovedEvent,
+            OnTabPointerMoved,
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
+        AddHandler(
+            PointerReleasedEvent,
+            OnTabPointerReleased,
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
+        AddHandler(
+            PointerCaptureLostEvent,
+            OnTabPointerCaptureLost,
+            RoutingStrategies.Bubble,
+            handledEventsToo: true);
         SizeChanged += (_, _) => UpdateOverflowPresentation();
     }
 
@@ -184,15 +208,67 @@ public sealed partial class RuntimeTabStripView : UserControl
     private void OnDrop(object? sender, DragEventArgs e) =>
         TabDrop?.Invoke(sender, e);
 
-    private void OnDragPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e) =>
-        ReorderPointerCaptureLost?.Invoke(sender, e);
+    private void OnTabPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        _ = sender;
+        if (!e.Pointer.IsPrimary || FindTabActivator(e.Source) is not { } source)
+        {
+            return;
+        }
 
-    private void OnDragPointerMoved(object? sender, PointerEventArgs e) =>
-        ReorderPointerMoved?.Invoke(sender, e);
+        _reorderPointerSource = source;
+        _reorderPointer = e.Pointer;
+        ReorderPointerPressed?.Invoke(source, e);
+    }
 
-    private void OnDragPointerPressed(object? sender, PointerPressedEventArgs e) =>
-        ReorderPointerPressed?.Invoke(sender, e);
+    private void OnTabPointerMoved(object? sender, PointerEventArgs e)
+    {
+        _ = sender;
+        if (_reorderPointerSource is { } source
+            && ReferenceEquals(e.Pointer, _reorderPointer))
+        {
+            ReorderPointerMoved?.Invoke(source, e);
+        }
+    }
 
-    private void OnDragPointerReleased(object? sender, PointerReleasedEventArgs e) =>
-        ReorderPointerReleased?.Invoke(sender, e);
+    private void OnTabPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        _ = sender;
+        if (_reorderPointerSource is not { } source
+            || !ReferenceEquals(e.Pointer, _reorderPointer))
+        {
+            return;
+        }
+
+        ReorderPointerReleased?.Invoke(source, e);
+        _reorderPointerSource = null;
+        _reorderPointer = null;
+    }
+
+    private void OnTabPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
+    {
+        _ = sender;
+        if (_reorderPointerSource is not { } source
+            || !ReferenceEquals(e.Pointer, _reorderPointer))
+        {
+            return;
+        }
+
+        ReorderPointerCaptureLost?.Invoke(source, e);
+        _reorderPointerSource = null;
+        _reorderPointer = null;
+    }
+
+    private static Control? FindTabActivator(object? eventSource)
+    {
+        if (eventSource is Control control
+            && control.Classes.Contains("RuntimeTabActivator"))
+        {
+            return control;
+        }
+
+        return (eventSource as Visual)?.GetVisualAncestors()
+            .OfType<Control>()
+            .FirstOrDefault(candidate => candidate.Classes.Contains("RuntimeTabActivator"));
+    }
 }

@@ -71,8 +71,21 @@ public sealed partial class InMemorySessionHostClient
                 conditionDeadline.Token);
         var pollInterval = BrowserWaitPollInterval;
         int? lastChangeToken = null;
+        var observesNetworkActivity =
+            condition is BrowserWaitCondition.NetworkIdle;
+        var networkObservationStarted = false;
         try
         {
+            if (observesNetworkActivity)
+            {
+                await browser.BeginNetworkActivityObservationAsync(
+                        conditionCancellation.Token)
+                    .AsTask()
+                    .WaitAsync(conditionCancellation.Token)
+                    .ConfigureAwait(false);
+                networkObservationStarted = true;
+            }
+
             while (true)
             {
                 var observation = await ObserveBrowserWaitConditionAsync(
@@ -118,6 +131,29 @@ public sealed partial class InMemorySessionHostClient
             conditionDeadline.IsCancellationRequested)
         {
             return BrowserWaitCompletion.TimedOut;
+        }
+        finally
+        {
+            if (networkObservationStarted)
+            {
+                using var cleanup = new CancellationTokenSource(
+                    BrowserWaitFinalReadDeadline,
+                    _timeProvider);
+                try
+                {
+                    await browser.EndNetworkActivityObservationAsync(
+                            cleanup.Token)
+                        .AsTask()
+                        .WaitAsync(cleanup.Token)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // Cleanup is best-effort after the wait's outcome is
+                    // already known. Production renderers enqueue Network.disable
+                    // synchronously before completing this operation.
+                }
+            }
         }
     }
 

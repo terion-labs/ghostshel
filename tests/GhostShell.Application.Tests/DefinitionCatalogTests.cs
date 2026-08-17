@@ -87,6 +87,62 @@ public sealed class DefinitionCatalogTests
         Assert.Equal(attemptsAfterFirstInitialization, fixture.TotalSaveAttempts);
     }
 
+    [Fact]
+    public async Task Initialize_refreshes_code_owned_keymaps_once_and_preserves_custom_profiles()
+    {
+        var fixture = new CatalogFixture();
+        var current = BuiltInKeymaps.TmuxApplication;
+        var stale = new KeymapProfile(
+            current.Id,
+            current.Name,
+            current.Layer,
+            current.Bindings
+                .Where(binding => binding.CommandId != BuiltInCommands.SelectWorkspace)
+                .ToArray(),
+            current.Prefix,
+            current.BasedOn);
+        fixture.Keymaps.Add(stale, revision: 7);
+        foreach (var builtIn in BuiltInKeymaps.All.Where(profile => profile.Id != current.Id))
+        {
+            fixture.Keymaps.Add(builtIn, revision: 4);
+        }
+
+        var custom = new KeymapProfile(
+            new KeymapProfileId("operator.application"),
+            "Operator application",
+            KeymapLayer.Application,
+            stale.Bindings,
+            stale.Prefix,
+            current.Id);
+        fixture.Keymaps.Add(custom, revision: 11);
+
+        var first = await fixture.Catalog.InitializeAsync(CancellationToken.None);
+        var savesAfterRefresh = fixture.Keymaps.SaveAttempts;
+        var second = await fixture.CreateCatalog().InitializeAsync(CancellationToken.None);
+
+        Assert.True(first.IsSuccess, first.Error?.Message);
+        Assert.True(second.IsSuccess, second.Error?.Message);
+        Assert.Equal(1, savesAfterRefresh);
+        Assert.Equal(savesAfterRefresh, fixture.Keymaps.SaveAttempts);
+
+        var refreshed = Assert.Single(
+            second.Value!.Keymaps,
+            item => item.Value.Id == current.Id);
+        Assert.Equal(8, refreshed.Revision);
+        Assert.Equal(
+            9,
+            refreshed.Value.Bindings.Count(binding =>
+                binding.CommandId == BuiltInCommands.SelectWorkspace));
+
+        var preserved = Assert.Single(
+            second.Value.Keymaps,
+            item => item.Value.Id == custom.Id);
+        Assert.Equal(11, preserved.Revision);
+        Assert.DoesNotContain(
+            preserved.Value.Bindings,
+            binding => binding.CommandId == BuiltInCommands.SelectWorkspace);
+    }
+
     /// <summary>
     /// The always-present workspace is called Main. A profile made before that
     /// carries the name it was seeded with, which is not a name anyone chose,

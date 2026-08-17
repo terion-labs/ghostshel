@@ -1985,7 +1985,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         QuickTerminalHotkeyText.FormatApplicationCommand("K");
 
     public string LauncherShortcutSummary =>
-        $"{QuickTerminalHotkeyText.FormatApplicationCommand("1")} launcher   " +
+        $"{QuickTerminalHotkeyText.Format(new KeyStroke("1–9", KeyModifiers.Meta))} workspaces   " +
         $"{QuickTerminalHotkeyText.FormatApplicationCommand(",")} settings   " +
         $"{CommandPaletteShortcut} search";
 
@@ -2731,6 +2731,19 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             DisposeRuntimeWorkspaceUnlessOwned(runtime);
         }
+    }
+
+    public Task<bool> SelectWorkspaceAtPositionAsync(
+        int position,
+        CancellationToken cancellationToken = default)
+    {
+        if (position < 0 || position >= Workspaces.Count)
+        {
+            SetError($"Workspace position {position + 1} is not available.");
+            return Task.FromResult(false);
+        }
+
+        return OpenWorkspaceAsync(Workspaces[position].Id, cancellationToken);
     }
 
     public async Task<bool> OpenConnectionAsync(
@@ -11732,6 +11745,18 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             return id == BuiltInCommands.MoveTabLeft
                 ? activeIndex > 0
                 : activeIndex < workspace.Tabs.Count - 1;
+        }
+
+        if (id == BuiltInCommands.SelectWorkspace)
+        {
+            return arguments.TryGetValue("position", out var value)
+                && int.TryParse(
+                    value,
+                    System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var position)
+                && position >= 0
+                && position < Workspaces.Count;
         }
 
         var hasTab = RuntimeWorkspace?.ActiveTab is not null;

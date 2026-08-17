@@ -1038,6 +1038,62 @@ public sealed class AgentBrowserSessionHostTests
     }
 
     [Fact]
+    public async Task Network_idle_wait_releases_its_observation_after_matching()
+    {
+        await using var fixture = await AgentBrowserHostFixture.CreateAsync(
+            timeProvider: TimeProvider.System);
+        var action = await fixture.PrepareAsync(
+            new AgentBrowserRequest.Wait(
+                new BrowserWaitRequest(
+                    fixture.SessionId,
+                    new BrowserWaitCondition.NetworkIdle(
+                        TimeSpan.FromMilliseconds(1)),
+                    TimeSpan.FromSeconds(1))));
+
+        var result = Assert.IsType<AgentBrowserActionResult.Wait>(
+            (await fixture.Client.RunAgentBrowserActionAsync(
+                fixture.Authorization.Arm(
+                    action,
+                    source: AgentAuthorizationSource.AutoPolicy),
+                action,
+                default)).Value()).Value;
+
+        Assert.Equal(BrowserWaitCompletion.Matched, result.Completion);
+        Assert.Equal(1, fixture.Renderer.BeginNetworkActivityObservationCount);
+        Assert.Equal(1, fixture.Renderer.EndNetworkActivityObservationCount);
+    }
+
+    [Fact]
+    public async Task Network_idle_wait_releases_its_observation_after_timeout()
+    {
+        await using var fixture = await AgentBrowserHostFixture.CreateAsync(
+            timeProvider: TimeProvider.System);
+        fixture.Renderer.NetworkActivity = new BrowserNetworkActivitySnapshot(
+            isObservable: true,
+            activeRequestCount: 1,
+            quietFor: TimeSpan.Zero);
+        var action = await fixture.PrepareAsync(
+            new AgentBrowserRequest.Wait(
+                new BrowserWaitRequest(
+                    fixture.SessionId,
+                    new BrowserWaitCondition.NetworkIdle(
+                        TimeSpan.FromMilliseconds(1)),
+                    TimeSpan.FromMilliseconds(25))));
+
+        var result = Assert.IsType<AgentBrowserActionResult.Wait>(
+            (await fixture.Client.RunAgentBrowserActionAsync(
+                fixture.Authorization.Arm(
+                    action,
+                    source: AgentAuthorizationSource.AutoPolicy),
+                action,
+                default)).Value()).Value;
+
+        Assert.Equal(BrowserWaitCompletion.TimedOut, result.Completion);
+        Assert.Equal(1, fixture.Renderer.BeginNetworkActivityObservationCount);
+        Assert.Equal(1, fixture.Renderer.EndNetworkActivityObservationCount);
+    }
+
+    [Fact]
     public async Task Text_wait_adaptively_backs_off_and_bounds_snapshot_reads()
     {
         await using var fixture = await AgentBrowserHostFixture.CreateAsync(
@@ -2618,6 +2674,16 @@ public sealed class AgentBrowserSessionHostTests
 
         public int EvaluateCount { get; private set; }
 
+        public int BeginNetworkActivityObservationCount { get; private set; }
+
+        public int EndNetworkActivityObservationCount { get; private set; }
+
+        public BrowserNetworkActivitySnapshot NetworkActivity { get; set; } =
+            new(
+                isObservable: true,
+                activeRequestCount: 0,
+                quietFor: TimeSpan.FromSeconds(1));
+
         public BrowserElementReference? LastCheckedReference { get; private set; }
 
         public BrowserNavigationOrigin? LastCheckOrigin { get; private set; }
@@ -2641,6 +2707,31 @@ public sealed class AgentBrowserSessionHostTests
             TaskCreationOptions.RunContinuationsAsynchronously);
 
         public event EventHandler<BrowserStateChangedEventArgs>? StateChanged;
+
+        public ValueTask BeginNetworkActivityObservationAsync(
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            BeginNetworkActivityObservationCount++;
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask EndNetworkActivityObservationAsync(
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            EndNetworkActivityObservationCount++;
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask<BrowserResult<BrowserNetworkActivitySnapshot>>
+            ReadNetworkActivityAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(
+                BrowserResult<BrowserNetworkActivitySnapshot>.Success(
+                    NetworkActivity));
+        }
 
         public Func<NativeRendererPhysicalInput, bool>? PhysicalInputGate
         { get; private set; }

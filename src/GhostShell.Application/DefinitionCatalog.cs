@@ -1145,12 +1145,16 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
     {
         foreach (var keymap in BuiltInKeymaps.All)
         {
-            if (Snapshot.Keymaps.Any(item => item.Value.Id == keymap.Id))
+            var existing = Snapshot.Keymaps.SingleOrDefault(item => item.Value.Id == keymap.Id);
+            if (existing is not null && BuiltInKeymapMatches(existing.Value, keymap))
             {
                 continue;
             }
 
-            var saved = await _keymaps.SaveAsync(keymap, null, cancellationToken)
+            var saved = await _keymaps.SaveAsync(
+                    keymap,
+                    existing?.Revision,
+                    cancellationToken)
                 .ConfigureAwait(false);
             if (!saved.IsSuccess)
             {
@@ -1288,6 +1292,30 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
             100_000,
             TerminalPalette.GhostShellDark,
             keymap);
+    }
+
+    private static bool BuiltInKeymapMatches(
+        KeymapProfile stored,
+        KeymapProfile current)
+    {
+        if (stored.Id != current.Id
+            || !string.Equals(stored.Name, current.Name, StringComparison.Ordinal)
+            || stored.Layer != current.Layer
+            || stored.Prefix != current.Prefix
+            || stored.BasedOn != current.BasedOn
+            || stored.Bindings.Count != current.Bindings.Count)
+        {
+            return false;
+        }
+
+        return stored.Bindings.Zip(current.Bindings).All(pair =>
+            pair.First.CommandId == pair.Second.CommandId
+            && pair.First.Sequence.Equals(pair.Second.Sequence)
+            && pair.First.Contexts == pair.Second.Contexts
+            && pair.First.Arguments.Count == pair.Second.Arguments.Count
+            && pair.First.Arguments.All(argument =>
+                pair.Second.Arguments.TryGetValue(argument.Key, out var value)
+                && string.Equals(argument.Value, value, StringComparison.Ordinal)));
     }
 
     /// <summary>

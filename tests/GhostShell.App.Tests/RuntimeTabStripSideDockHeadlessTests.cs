@@ -6,7 +6,9 @@ using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Avalonia.Media;
 using Avalonia.VisualTree;
+using FluentIcons.Avalonia;
 using FluentIcons.Common;
 using GhostShell.App.Controls;
 using GhostShell.App.Views.Components;
@@ -84,6 +86,155 @@ public sealed class RuntimeTabStripSideDockHeadlessTests
             Assert.InRange(left.Value.X, -1, 1);
             Assert.Equal(1, activeContainer.ZIndex);
 
+            window.Close();
+            return Task.CompletedTask;
+        });
+
+    [Fact]
+    public Task Active_tab_is_cut_out_of_fade_without_revealing_siblings() =>
+        RunHeadlessAsync(() =>
+        {
+            var tabs = Enumerable.Range(0, 6)
+                .Select(index => new FakeTab(
+                    $"tab-{index}",
+                    IsActive: index == 2,
+                    CanClose: true,
+                    HasAttention: false))
+                .ToArray();
+            var strip = new RuntimeTabStripView
+            {
+                Width = 360,
+                Orientation = Orientation.Horizontal,
+                Tabs = tabs,
+            };
+            var window = new Window
+            {
+                Width = 360,
+                Height = 80,
+                Content = strip,
+            };
+            window.Show();
+            window.UpdateLayout();
+
+            var scroll = strip.GetVisualDescendants().OfType<ScrollViewer>().Single();
+            var active = strip.GetVisualDescendants()
+                .OfType<Grid>()
+                .Single(grid => grid.Classes.Contains("RuntimeTabDropTarget")
+                    && ReferenceEquals(grid.DataContext, tabs[2]));
+            var activeContainer = active.GetVisualAncestors().OfType<ContentPresenter>().First();
+            var fadeExtent = Math.Min(56, scroll.Viewport.Width / 3);
+            var maxOffset = scroll.Extent.Width - scroll.Viewport.Width;
+
+            var leadingBandOffset = activeContainer.Bounds.X - (fadeExtent / 2);
+            Assert.InRange(leadingBandOffset, 1, maxOffset - 1);
+            scroll.Offset = new Vector(leadingBandOffset, 0);
+            window.UpdateLayout();
+            var leading = active.TranslatePoint(default, scroll);
+            Assert.NotNull(leading);
+            Assert.InRange(leading.Value.X, 1, fadeExtent - 1);
+            AssertActiveMaskCutout(
+                scroll,
+                leading.Value.X,
+                leadingEdge: true);
+
+            var trailingBandOffset = activeContainer.Bounds.X
+                + activeContainer.Bounds.Width
+                - scroll.Viewport.Width
+                + (fadeExtent / 2);
+            Assert.InRange(trailingBandOffset, 1, maxOffset - 1);
+            scroll.Offset = new Vector(trailingBandOffset, 0);
+            window.UpdateLayout();
+            var trailing = active.TranslatePoint(
+                new Point(active.Bounds.Width, 0),
+                scroll);
+            Assert.NotNull(trailing);
+            Assert.InRange(
+                scroll.Viewport.Width - trailing.Value.X,
+                1,
+                fadeExtent - 1);
+            AssertActiveMaskCutout(
+                scroll,
+                trailing.Value.X,
+                leadingEdge: false);
+
+            window.Close();
+            return Task.CompletedTask;
+        });
+
+    [Fact]
+    public Task The_tab_surface_is_both_the_activation_and_drag_target() =>
+        RunHeadlessAsync(() =>
+        {
+            var tab = new FakeTab(
+                "production-api",
+                IsActive: true,
+                CanClose: true,
+                HasAttention: false);
+            var strip = new RuntimeTabStripView
+            {
+                Orientation = Orientation.Horizontal,
+                Tabs = new[] { tab },
+            };
+            var window = new Window
+            {
+                Width = 320,
+                Height = 80,
+                Content = strip,
+            };
+            object? activatedBy = null;
+            object? closedBy = null;
+            object? dragStartedBy = null;
+            object? dragMovedBy = null;
+            object? dragReleasedBy = null;
+            strip.ActivateRequested += (sender, _) => activatedBy = sender;
+            strip.CloseRequested += (sender, _) => closedBy = sender;
+            strip.ReorderPointerPressed += (sender, _) => dragStartedBy = sender;
+            strip.ReorderPointerMoved += (sender, _) => dragMovedBy = sender;
+            strip.ReorderPointerReleased += (sender, _) => dragReleasedBy = sender;
+            window.Show();
+            window.UpdateLayout();
+
+            var activator = strip.GetVisualDescendants()
+                .OfType<Button>()
+                .Single(button => button.Classes.Contains("RuntimeTabActivator"));
+            var centre = activator.TranslatePoint(
+                new Point(activator.Bounds.Width / 2, activator.Bounds.Height / 2),
+                window);
+            Assert.NotNull(centre);
+            window.MouseDown(centre.Value, MouseButton.Left);
+            window.MouseUp(centre.Value, MouseButton.Left);
+
+            Assert.Same(activator, dragStartedBy);
+            Assert.Same(activator, dragReleasedBy);
+            Assert.Same(activator, activatedBy);
+
+            window.MouseDown(centre.Value, MouseButton.Left);
+            window.MouseMove(
+                centre.Value + new Vector(8, 0),
+                RawInputModifiers.LeftMouseButton);
+            window.MouseUp(
+                centre.Value + new Vector(8, 0),
+                MouseButton.Left,
+                RawInputModifiers.None);
+            Assert.Same(activator, dragMovedBy);
+
+            dragStartedBy = null;
+            dragMovedBy = null;
+            dragReleasedBy = null;
+            var close = strip.GetVisualDescendants()
+                .OfType<Button>()
+                .Single(button => ToolTip.GetTip(button) as string == "Close tab");
+            var closeCentre = close.TranslatePoint(
+                new Point(close.Bounds.Width / 2, close.Bounds.Height / 2),
+                window);
+            Assert.NotNull(closeCentre);
+            window.MouseDown(closeCentre.Value, MouseButton.Left);
+            window.MouseUp(closeCentre.Value, MouseButton.Left);
+
+            Assert.Same(close, closedBy);
+            Assert.Null(dragStartedBy);
+            Assert.Null(dragMovedBy);
+            Assert.Null(dragReleasedBy);
             window.Close();
             return Task.CompletedTask;
         });
@@ -303,24 +454,20 @@ public sealed class RuntimeTabStripSideDockHeadlessTests
                 0,
                 1);
 
-            // The reorder handle keeps its grab column; a collapsed handle is
-            // a 1px sliver nobody can drag.
-            var handle = rows[0].GetVisualDescendants()
-                .OfType<Border>()
-                .First(border => ToolTip.GetTip(border) as string == "Drag to reorder tab");
             var chip = rows[0].GetVisualDescendants()
                 .OfType<Button>()
                 .First(button => button.Classes.Contains("RuntimeTabActivator"));
+            Assert.DoesNotContain(
+                rows[0].GetVisualDescendants().OfType<SymbolIcon>(),
+                icon => icon.Symbol == Symbol.ReOrderDotsVertical);
+            var chipLeft = chip.TranslatePoint(default, rows[0]);
+            Assert.NotNull(chipLeft);
+            Assert.InRange(chipLeft.Value.X, -1, 1);
             var title = chip.GetVisualDescendants()
                 .OfType<TextBlock>()
                 .First();
             var titleTop = title.TranslatePoint(default, rows[0]);
             Assert.NotNull(titleTop);
-            Assert.True(
-                handle.Bounds.Width >= 16,
-                $"handle={handle.Bounds.Width}x{handle.Bounds.Height} "
-                + $"row={rows[0].Bounds.Height} chip={chip.Bounds.Height} "
-                + $"titleY={titleTop.Value.Y} titleH={title.Bounds.Height}");
             // The title sits on the row's vertical centre.
             var titleCentreOffset = titleTop.Value.Y + (title.Bounds.Height / 2)
                 - (rows[0].Bounds.Height / 2);
@@ -352,5 +499,27 @@ public sealed class RuntimeTabStripSideDockHeadlessTests
         {
             await session.DisposeAsync();
         }
+    }
+
+    private static void AssertActiveMaskCutout(
+        ScrollViewer scroll,
+        double activeBoundary,
+        bool leadingEdge)
+    {
+        var mask = Assert.IsType<LinearGradientBrush>(scroll.OpacityMask);
+        var expectedOffset = leadingEdge ? 0 : 1;
+        var edge = mask.GradientStops
+            .OrderBy(stop => Math.Abs(stop.Offset - expectedOffset))
+            .First();
+        Assert.Equal(expectedOffset, edge.Offset, precision: 6);
+        Assert.Equal(0, edge.Color.A);
+
+        var boundaryOffset = activeBoundary / scroll.Viewport.Width;
+        var boundaryStops = mask.GradientStops
+            .Where(stop => Math.Abs(stop.Offset - boundaryOffset) < 0.000001)
+            .ToArray();
+        Assert.Equal(2, boundaryStops.Length);
+        Assert.Equal(byte.MaxValue, boundaryStops[leadingEdge ? 1 : 0].Color.A);
+        Assert.True(boundaryStops[leadingEdge ? 0 : 1].Color.A < byte.MaxValue);
     }
 }

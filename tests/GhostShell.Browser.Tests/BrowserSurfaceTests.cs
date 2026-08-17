@@ -62,6 +62,21 @@ public sealed class BrowserSurfaceTests
     }
 
     [Fact]
+    public async Task NetworkObservationLifetimeReachesTheNativeBrowserView()
+    {
+        var nativeView = new RecordingEmbeddedBrowserView();
+        var surface = Surface(nativeView);
+
+        await surface.BeginNetworkActivityObservationAsync(
+            CancellationToken.None);
+        await surface.EndNetworkActivityObservationAsync(
+            CancellationToken.None);
+
+        Assert.Equal(1, nativeView.BeginNetworkActivityObservationCount);
+        Assert.Equal(1, nativeView.EndNetworkActivityObservationCount);
+    }
+
+    [Fact]
     public async Task ProductionProfileDispatchesNativeSemanticSnapshots()
     {
         var nativeView = new RecordingEmbeddedBrowserView

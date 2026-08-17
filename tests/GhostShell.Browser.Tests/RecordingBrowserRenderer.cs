@@ -38,6 +38,10 @@ internal sealed class RecordingBrowserRenderer :
 
     public int EvaluateCount { get; private set; }
 
+    public int BeginNetworkActivityObservationCount { get; private set; }
+
+    public int EndNetworkActivityObservationCount { get; private set; }
+
     public BrowserAutomationBinding? LastAutomationBinding { get; private set; }
 
     public bool RejectStopAsUnavailable { get; set; }
@@ -75,6 +79,22 @@ internal sealed class RecordingBrowserRenderer :
     public BrowserSessionState? StateAfterCheck { get; set; }
 
     public event EventHandler<BrowserStateChangedEventArgs>? StateChanged;
+
+    public ValueTask BeginNetworkActivityObservationAsync(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        BeginNetworkActivityObservationCount++;
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask EndNetworkActivityObservationAsync(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        EndNetworkActivityObservationCount++;
+        return ValueTask.CompletedTask;
+    }
 
     public Func<NativeRendererPhysicalInput, bool>? PhysicalInputGate
     { get; private set; }

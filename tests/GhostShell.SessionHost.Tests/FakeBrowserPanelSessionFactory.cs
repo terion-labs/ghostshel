@@ -328,6 +328,26 @@ internal sealed class FakeBrowserPanelSession(
             : _renderer.ReadElementStateAsync(reference, cancellationToken);
     }
 
+    public ValueTask BeginNetworkActivityObservationAsync(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return _closed || _renderer is null
+            ? ValueTask.CompletedTask
+            : _renderer.BeginNetworkActivityObservationAsync(
+                cancellationToken);
+    }
+
+    public ValueTask EndNetworkActivityObservationAsync(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return _closed || _renderer is null
+            ? ValueTask.CompletedTask
+            : _renderer.EndNetworkActivityObservationAsync(
+                cancellationToken);
+    }
+
     public ValueTask<BrowserResult<BrowserNetworkActivitySnapshot>>
         ReadNetworkActivityAsync(CancellationToken cancellationToken)
     {

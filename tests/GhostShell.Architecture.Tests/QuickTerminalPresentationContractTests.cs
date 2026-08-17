@@ -311,6 +311,37 @@ public sealed class QuickTerminalPresentationContractTests
     }
 
     [Fact]
+    public void Quick_terminal_tab_drag_preserves_an_ordinary_tab_click()
+    {
+        var window = File.ReadAllText(Path.Combine(
+            ApplicationViewCatalog.Load().RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Views",
+            "QuickTerminalWindow.axaml.cs"));
+        var pressed = Regex.Match(
+            window,
+            @"private void OnTabReorderPointerPressed\(.*?private void OnTabReorderPointerMoved\(",
+            RegexOptions.Singleline);
+        var moved = Regex.Match(
+            window,
+            @"private void OnTabReorderPointerMoved\(.*?private void OnTabReorderPointerReleased\(",
+            RegexOptions.Singleline);
+        var released = Regex.Match(
+            window,
+            @"private void OnTabReorderPointerReleased\(.*?private void OnTabReorderPointerCaptureLost\(",
+            RegexOptions.Singleline);
+
+        Assert.True(pressed.Success);
+        Assert.True(moved.Success);
+        Assert.True(released.Success);
+        Assert.DoesNotContain("Capture(", pressed.Value, StringComparison.Ordinal);
+        Assert.DoesNotContain("e.Handled = true", pressed.Value, StringComparison.Ordinal);
+        Assert.Contains("reorder.Pointer.Capture(reorder.Source)", moved.Value, StringComparison.Ordinal);
+        Assert.Contains("if (!reorder.IsDragging)", released.Value, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Quick_terminal_forced_close_is_safe_when_shutdown_reenters()
     {
         var window = File.ReadAllText(Path.Combine(

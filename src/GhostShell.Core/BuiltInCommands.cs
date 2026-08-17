@@ -17,6 +17,7 @@ public static class BuiltInCommands
     public static CommandId PreviousTab { get; } = new("tab.previous");
     public static CommandId LastTab { get; } = new("tab.last");
     public static CommandId SelectTab { get; } = new("tab.select-position");
+    public static CommandId SelectWorkspace { get; } = new("workspace.select-position");
     public static CommandId EnterTerminalCopyMode { get; } = new("terminal.copy-mode");
     public static CommandId SendPrefix { get; } = new("terminal.send-prefix");
 
@@ -64,6 +65,12 @@ public static class BuiltInCommands
             Define(PreviousTab, "Previous tab", "Tabs", CommandContext.Tab),
             Define(LastTab, "Last active tab", "Tabs", CommandContext.Tab),
             Define(SelectTab, "Select tab by position", "Tabs", CommandContext.Tab, positionSchema),
+            Define(
+                SelectWorkspace,
+                "Select workspace by position",
+                "Workspaces",
+                CommandContext.Window,
+                positionSchema),
             Define(EnterTerminalCopyMode, "Enter terminal copy mode", "Terminal", CommandContext.Terminal),
             Define(SendPrefix, "Send literal prefix", "Terminal", CommandContext.Terminal),
             Define(Copy, "Copy", "Terminal", CommandContext.Terminal),

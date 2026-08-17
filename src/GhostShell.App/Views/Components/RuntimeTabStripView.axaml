@@ -29,11 +29,8 @@
     <!-- A row's label starts where a row's label starts, not where a 158px
          chip's did: the horizontal chip spends Lg because its label floats in
          a fixed box, and that inset carried over as dead air. -->
-    <!-- Left padding hosts the 18px reorder column, so the tab's icon starts
-         clear of the drag dots instead of burying them to a sliver; the right
-         side is where the dead air was, and stays tight. -->
     <Style Selector="components|RuntimeTabStripView[Orientation=Vertical] Button.RuntimeTabActivator">
-      <Setter Property="Padding" Value="{controls:Inset Left=Lg, Right=Sm}" />
+      <Setter Property="Padding" Value="{controls:Inset Horizontal=Sm}" />
     </Style>
     <Style Selector="components|RuntimeTabStripView[Orientation=Vertical] Button#AddTabButton">
       <Setter Property="Margin" Value="{controls:Inset Top=Xs}" />
@@ -101,7 +98,7 @@
           <Grid
               Classes="RuntimeTabDropTarget"
               Classes.active="{Binding IsActive}"
-              ColumnDefinitions="18,*,Auto,20"
+              ColumnDefinitions="*,Auto,20"
               DragDrop.AllowDrop="True"
               DragDrop.DragEnter="OnDragEnter"
               DragDrop.DragLeave="OnDragLeave"
@@ -118,7 +115,7 @@
             <!-- No inline Padding: the orientation styles above own it, and an
                  inline value would silently beat them both. -->
             <Button
-                Grid.ColumnSpan="4"
+                Grid.ColumnSpan="3"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Stretch"
                 Classes="RuntimeTabActivator"
@@ -127,7 +124,7 @@
                 HorizontalContentAlignment="Left"
                 VerticalContentAlignment="Center"
                 AutomationProperties.Name="{Binding Title, StringFormat={}Activate tab {0}}"
-                AutomationProperties.HelpText="Double-click the title to rename it, or the icon to choose another icon. Use the reorder handle to drag it, or use Move tab left and Move tab right from the command palette.">
+                AutomationProperties.HelpText="Drag the tab to reorder it. Double-click the title to rename it, or the icon to choose another icon. Move tab left and Move tab right are also available from the command palette.">
               <!-- A grid, not a stack: a stacked label takes whatever width it
                    wants, so a long tab name ran under its own attention dot and
                    out through the close button instead of trimming. The label is
@@ -177,7 +174,7 @@
               </Grid>
             </Button>
             <Border
-                Grid.ColumnSpan="4"
+                Grid.ColumnSpan="3"
                 Width="3"
                 Margin="{controls:Inset Vertical=Xs}"
                 HorizontalAlignment="Left"
@@ -186,7 +183,7 @@
                 IsHitTestVisible="False"
                 IsVisible="False" />
             <Border
-                Grid.ColumnSpan="4"
+                Grid.ColumnSpan="3"
                 Width="3"
                 Margin="{controls:Inset Vertical=Xs}"
                 HorizontalAlignment="Right"
@@ -194,25 +191,8 @@
                 Classes="RuntimeTabDropIndicator After"
                 IsHitTestVisible="False"
                 IsVisible="False" />
-            <Border
-                Grid.Column="0"
-                Background="Transparent"
-                PointerCaptureLost="OnDragPointerCaptureLost"
-                PointerMoved="OnDragPointerMoved"
-                PointerPressed="OnDragPointerPressed"
-                PointerReleased="OnDragPointerReleased"
-                ToolTip.Tip="Drag to reorder tab"
-                AutomationProperties.Name="{Binding Title, StringFormat={}Reorder tab {0}}"
-                AutomationProperties.HelpText="Drag to change this tab's position without activating it.">
-              <icons:SymbolIcon
-                  Classes="ReorderGlyph"
-                  HorizontalAlignment="Center"
-                  VerticalAlignment="Center"
-                  Symbol="ReOrderDotsVertical"
-                  FontSize="10" />
-            </Border>
             <StackPanel
-                Grid.Column="2"
+                Grid.Column="1"
                 Margin="{controls:Inset Right=Xs}"
                 VerticalAlignment="Center"
                 IsHitTestVisible="False"
@@ -228,7 +208,7 @@
               <controls:SignalDot IsVisible="{Binding HasAttention}" />
             </StackPanel>
             <Button
-                Grid.Column="3"
+                Grid.Column="2"
                 Width="18"
                 Height="18"
                 Classes="IconButton"

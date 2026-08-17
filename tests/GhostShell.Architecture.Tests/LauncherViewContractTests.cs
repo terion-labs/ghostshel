@@ -40,7 +40,6 @@ public sealed class LauncherViewContractTests
             ["ShowCommandPaletteRequested"] = "OnShowCommandPaletteClick",
             ["ShowNewItemRequested"] = "OnShowNewItemClick",
             ["ShowSettingsRequested"] = "OnShowSettingsClick",
-            ["TitleBarPointerPressedRequested"] = "OnTitleBarPointerPressed",
         };
 
     /// <summary>
@@ -197,16 +196,14 @@ public sealed class LauncherViewContractTests
         Assert.Equal(
             "TitleBar",
             AttributeValue(titleBar, "WindowDecorationProperties.ElementRole"));
-        Assert.Equal(
-            "OnTitleBarPointerPressed",
-            AttributeValue(titleBar, "PointerPressed"));
+        Assert.Null(AttributeValue(titleBar, "PointerPressed"));
         Assert.Equal(
             "{Binding $parent[Window].TitleBarChromeHeight}",
             AttributeValue(titleBar, "MinHeight"));
     }
 
     [Fact]
-    public void Main_window_owns_the_titlebar_move_fallback()
+    public void Native_titlebar_role_owns_window_drag_and_double_click()
     {
         var mainWindow = Assert.IsType<XElement>(LoadView("MainWindow").Root);
         // The window keeps its system decorations — its frame, its rounded
@@ -263,13 +260,23 @@ public sealed class LauncherViewContractTests
             codeBehind,
             StringComparison.Ordinal);
         Assert.Contains("RefreshWindowChromeMetrics();", codeBehind, StringComparison.Ordinal);
-        Assert.Contains(
-            "private void OnTitleBarPointerPressed(",
+        Assert.DoesNotContain(
+            "OnTitleBarPointerPressed",
             codeBehind,
             StringComparison.Ordinal);
-        Assert.Contains("e.Pointer.IsPrimary", codeBehind, StringComparison.Ordinal);
-        Assert.Contains("BeginMoveDrag(e);", codeBehind, StringComparison.Ordinal);
-        Assert.Contains("e.Handled = true;", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("BeginMoveDrag(e);", codeBehind, StringComparison.Ordinal);
+
+        var nativeTitleBar = File.ReadAllText(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Views",
+            "MacOsWindowTitleBar.cs"));
+        Assert.DoesNotContain(
+            "TryDoWhatADoubleClickDoes",
+            nativeTitleBar,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("performZoom:", nativeTitleBar, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -812,6 +812,30 @@ public sealed partial class BrowserSurface :
         }
     }
 
+    public ValueTask BeginNetworkActivityObservationAsync(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (CapabilityProfile.Supports(SessionCapabilities.BrowserWait))
+        {
+            _nativeView.BeginNetworkActivityObservation();
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask EndNetworkActivityObservationAsync(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (CapabilityProfile.Supports(SessionCapabilities.BrowserWait))
+        {
+            _nativeView.EndNetworkActivityObservation();
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
     public ValueTask<BrowserResult<BrowserNetworkActivitySnapshot>>
         ReadNetworkActivityAsync(CancellationToken cancellationToken)
     {

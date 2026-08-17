@@ -16,6 +16,8 @@ internal sealed class CefBrowserNetworkActivityTracker : IDisposable
     private readonly HashSet<string> _activeRequests =
         new(StringComparer.Ordinal);
     private long _lastActivityTimestamp = Stopwatch.GetTimestamp();
+    private long _observationGeneration;
+    private int _observerCount;
     private bool _isObservable;
     private bool _disposed;
 
@@ -26,7 +28,56 @@ internal sealed class CefBrowserNetworkActivityTracker : IDisposable
         _network.RequestWillBeSent += OnRequestWillBeSent;
         _network.LoadingFinished += OnLoadingFinished;
         _network.LoadingFailed += OnLoadingFailed;
-        _ = EnableAsync();
+    }
+
+    public void BeginObservation()
+    {
+        long generation;
+        lock (_gate)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _observerCount++;
+            if (_observerCount > 1)
+            {
+                return;
+            }
+
+            generation = ++_observationGeneration;
+            _isObservable = false;
+            _activeRequests.Clear();
+        }
+
+        // Network.enable sends every request lifecycle event through CDP and
+        // parses it on the managed callback path. Only an active agent wait
+        // owns that cost.
+        _ = EnableAsync(generation);
+    }
+
+    public void EndObservation()
+    {
+        lock (_gate)
+        {
+            if (_disposed || _observerCount == 0)
+            {
+                return;
+            }
+
+            _observerCount--;
+            if (_observerCount > 0)
+            {
+                return;
+            }
+
+            _observationGeneration++;
+            _isObservable = false;
+            _activeRequests.Clear();
+        }
+
+        _ = DisableAsync();
     }
 
     public NativeBrowserNetworkActivity Snapshot()
@@ -53,6 +104,8 @@ internal sealed class CefBrowserNetworkActivityTracker : IDisposable
             }
 
             _disposed = true;
+            _observerCount = 0;
+            _observationGeneration++;
             _isObservable = false;
             _activeRequests.Clear();
         }
@@ -62,14 +115,16 @@ internal sealed class CefBrowserNetworkActivityTracker : IDisposable
         _network.LoadingFailed -= OnLoadingFailed;
     }
 
-    private async Task EnableAsync()
+    private async Task EnableAsync(long generation)
     {
         try
         {
             await _network.EnableAsync().ConfigureAwait(false);
             lock (_gate)
             {
-                if (!_disposed)
+                if (!_disposed
+                    && _observerCount > 0
+                    && _observationGeneration == generation)
                 {
                     _isObservable = true;
                     _lastActivityTimestamp = Stopwatch.GetTimestamp();
@@ -80,6 +135,19 @@ internal sealed class CefBrowserNetworkActivityTracker : IDisposable
         {
             // Snapshot remains explicitly unobservable. A wait therefore
             // continues or times out instead of claiming a false idle state.
+        }
+    }
+
+    private async Task DisableAsync()
+    {
+        try
+        {
+            await _network.DisableAsync().ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Browser shutdown can win the race with cleanup. The renderer is
+            // already closing in that case, so no live workload remains.
         }
     }
 
@@ -94,7 +162,7 @@ internal sealed class CefBrowserNetworkActivityTracker : IDisposable
 
         lock (_gate)
         {
-            if (_disposed)
+            if (_disposed || _observerCount == 0)
             {
                 return;
             }
@@ -118,7 +186,7 @@ internal sealed class CefBrowserNetworkActivityTracker : IDisposable
     {
         lock (_gate)
         {
-            if (_disposed)
+            if (_disposed || _observerCount == 0)
             {
                 return;
             }

@@ -63,6 +63,10 @@ internal interface IEmbeddedBrowserView : IDisposable
     Task<NativeBrowserElementStateResult> ReadElementStateAsync(
         NativeBrowserElementHandle handle);
 
+    void BeginNetworkActivityObservation();
+
+    void EndNetworkActivityObservation();
+
     NativeBrowserNetworkActivity ReadNetworkActivity();
 
     Task<NativeBrowserViewport> ReadViewportAsync();

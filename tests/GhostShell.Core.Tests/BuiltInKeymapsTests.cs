@@ -28,6 +28,31 @@ public sealed class BuiltInKeymapsTests
                 profile.Bindings,
                 binding => binding.CommandId == BuiltInCommands.MoveTabRight).Sequence);
         Assert.Equal(10, profile.Bindings.Count(binding => binding.CommandId == BuiltInCommands.SelectTab));
+        Assert.Equal(
+            new KeyStroke("ARROWLEFT", KeyModifiers.Meta | KeyModifiers.Alt),
+            Assert.Single(
+                profile.Bindings,
+                binding => binding.CommandId == BuiltInCommands.PreviousTab
+                    && binding.Sequence.Count == 1).Sequence[0]);
+        Assert.Equal(
+            new KeyStroke("ARROWRIGHT", KeyModifiers.Meta | KeyModifiers.Alt),
+            Assert.Single(
+                profile.Bindings,
+                binding => binding.CommandId == BuiltInCommands.NextTab
+                    && binding.Sequence.Count == 1).Sequence[0]);
+
+        var workspaceBindings = profile.Bindings
+            .Where(binding => binding.CommandId == BuiltInCommands.SelectWorkspace)
+            .ToArray();
+        Assert.Equal(9, workspaceBindings.Length);
+        for (var position = 0; position < workspaceBindings.Length; position++)
+        {
+            var binding = workspaceBindings[position];
+            Assert.Equal(
+                new KeyStroke((position + 1).ToString(), KeyModifiers.Meta),
+                binding.Sequence[0]);
+            Assert.Equal(position.ToString(), binding.Arguments["position"]);
+        }
     }
 
     [Fact]
