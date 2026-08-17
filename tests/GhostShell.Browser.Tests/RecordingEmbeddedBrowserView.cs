@@ -14,6 +14,8 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
 
     public bool CanGoForward { get; set; }
 
+    public bool IsAgentActive { get; private set; }
+
     public bool IsDisposed { get; private set; }
 
     public bool AcceptBack { get; set; }
@@ -142,6 +144,8 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
         NavigationRejected;
 
     public event EventHandler? RenderProcessFailed;
+
+    public void SetAgentActivity(bool isActive) => IsAgentActive = isActive;
 
     public void Dispose() => IsDisposed = true;
 

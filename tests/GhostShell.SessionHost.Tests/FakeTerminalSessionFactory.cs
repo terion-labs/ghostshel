@@ -23,6 +23,7 @@ internal sealed class FakeTerminalSessionFactory : ITerminalSessionFactory
         SessionCapabilities.TerminalScrollback,
         SessionCapabilities.TerminalScrollbackRead,
         SessionCapabilities.TerminalScrollbackFind,
+        SessionCapabilities.TerminalRenderedHistory,
         SessionCapabilities.TerminalClearScrollback,
         SessionCapabilities.TerminalFind,
         SessionCapabilities.TerminalSelection,

@@ -2316,7 +2316,8 @@ public sealed partial class GovernedAgentRuntime :
             return CreateRejectedResult(proposal, "unknown_tool");
         }
 
-        for (var attempt = 0; attempt < 2; attempt++)
+        var policyChangeRetried = false;
+        while (true)
         {
             var policyGeneration = GetPolicyGeneration();
             AgentContextSnapshot? contexts;
@@ -2381,20 +2382,34 @@ public sealed partial class GovernedAgentRuntime :
                         retryable: stableCode == "tool_execution_failed"));
             }
 
-            if (attempt != 0
-                || !string.Equals(
+            // Approval and authorization leases are deliberately short-lived and
+            // single-use. Expiry does not change the model's requested operation,
+            // so rebuild it from the original provider proposal. The contribution
+            // re-inspects the target and creates a fresh action ID, digest, deadline,
+            // and visible approval request; no expired authority is ever reused.
+            if (IsRenewableApprovalExpiry(result))
+            {
+                continue;
+            }
+
+            if (!policyChangeRetried
+                && string.Equals(
                     result.StableCode,
                     "policy_changed",
                     StringComparison.Ordinal)
-                || GetPolicyGeneration() == policyGeneration)
+                && GetPolicyGeneration() != policyGeneration)
             {
-                return result;
+                policyChangeRetried = true;
+                continue;
             }
-        }
 
-        throw new InvalidOperationException(
-            "The bounded policy-change retry did not return a tool result.");
+            return result;
+        }
     }
+
+    private static bool IsRenewableApprovalExpiry(AgentToolResult result) =>
+        result.Status == AgentToolResultStatus.Failed
+        && result.StableCode is "approval_expired" or "authorization_expired";
 
     private static HostResult<AgentTerminalActionResult>
         NormalizeRequestedActionCancellation(
@@ -2567,11 +2582,17 @@ public sealed partial class GovernedAgentRuntime :
                 State = result is AgentAuthorizationResult.Authorized
                     ? GovernedAgentState.RunningTool
                     : GovernedAgentState.StreamingProvider,
-                Status = result is AgentAuthorizationResult.Authorized
-                    ? "Approval accepted; preparing the exact action…"
-                    : approved
-                        ? "Approval could not be applied."
-                        : "Action denied; returning that result to the provider…",
+                Status = result switch
+                {
+                    AgentAuthorizationResult.Authorized =>
+                        "Approval accepted; preparing the exact action…",
+                    AgentAuthorizationResult.Denied
+                    {
+                        Error.Code: AgentAuthorizationErrorCode.ApprovalExpired,
+                    } => "Approval expired; preparing a fresh request…",
+                    _ when approved => "Approval could not be applied.",
+                    _ => "Action denied; returning that result to the provider…",
+                },
             };
         }
 
@@ -4682,6 +4703,12 @@ public sealed partial class GovernedAgentRuntime :
                 new AgentTerminalRequest.FindScrollback(sessionId, find.Input),
             TerminalAgentIntent.FindOnScreen find =>
                 new AgentTerminalRequest.FindOnScreen(sessionId, find.Input),
+            TerminalAgentIntent.FindRenderedHistory find =>
+                new AgentTerminalRequest.FindRenderedHistory(sessionId, find.Input),
+            TerminalAgentIntent.JumpToRenderedHistory jump =>
+                new AgentTerminalRequest.JumpToRenderedHistory(
+                    sessionId,
+                    jump.Anchor),
             TerminalAgentIntent.ScrollViewport scroll =>
                 new AgentTerminalRequest.ScrollViewport(sessionId, scroll.Input),
             TerminalAgentIntent.SendText text =>
@@ -4771,6 +4798,7 @@ public sealed partial class GovernedAgentRuntime :
             or TerminalAgentIntent.SendChord
             or TerminalAgentIntent.SendMouse
             or TerminalAgentIntent.ScrollViewport
+            or TerminalAgentIntent.JumpToRenderedHistory
             or TerminalAgentIntent.Interrupt;
 
     private static AgentToolResult CreateSucceededResult(
@@ -5015,9 +5043,8 @@ public sealed partial class GovernedAgentRuntime :
                 "The exact action was approved once."),
             AgentAuthorizationResult.Denied denied
                 when !approved
-                     && denied.Error.Code is
-                         AgentAuthorizationErrorCode.ApprovalDenied
-                         or AgentAuthorizationErrorCode.ApprovalExpired =>
+                     && denied.Error.Code
+                     == AgentAuthorizationErrorCode.ApprovalDenied =>
                 new GovernedAgentDecisionResult(
                     true,
                     "approval_denied",

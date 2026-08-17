@@ -70,6 +70,27 @@ public sealed class BrowserRuntimePanelViewModelTests
         Assert.Same(host, rendererView.PresentationHost);
     }
 
+    [Fact]
+    public void Browser_panel_activity_controls_the_panel_owned_renderer_indicator()
+    {
+        var activityStates = new List<bool>();
+        var rendererView = new BrowserRendererView(
+            new Border(),
+            new RecordingBrowserRenderer(),
+            agentActivityChanged: activityStates.Add);
+        var host = new BrowserPresentationHost
+        {
+            RendererView = rendererView,
+            IsAgentActive = true,
+        };
+
+        Assert.Equal([true], activityStates);
+
+        host.IsAgentActive = false;
+
+        Assert.Equal([true, false], activityStates);
+    }
+
     /// <summary>
     /// A panel floated into a window of its own takes its surface with it, and
     /// brings it back. By the time it comes back the window it was in has closed

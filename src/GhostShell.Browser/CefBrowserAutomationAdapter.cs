@@ -24,27 +24,33 @@ internal sealed class CefDevToolsTransport(CefBrowser browser)
 /// Private typed CDP adapter. No method name, target identifier, execution
 /// context, or remote-object handle crosses the Browser assembly boundary.
 /// </summary>
-internal sealed class CefBrowserAutomationAdapter(ICefDevToolsTransport transport)
+internal sealed class CefBrowserAutomationAdapter
 {
     private const string IsolatedWorldName = "ghostshell-agent-isolated";
     private const int MaximumCdpReplyBytes = 256 * 1024;
     private static readonly UTF8Encoding StrictUtf8 = new(
         encoderShouldEmitUTF8Identifier: false,
         throwOnInvalidBytes: true);
-    private readonly ICefDevToolsTransport _transport = transport
-        ?? throw new ArgumentNullException(nameof(transport));
+    private readonly ICefDevToolsTransport _transport;
+    private readonly CefHumanizedInput _humanizedInput;
+
+    public CefBrowserAutomationAdapter(ICefDevToolsTransport transport)
+        : this(transport, new CefHumanizedInput(transport))
+    {
+    }
+
+    public CefBrowserAutomationAdapter(
+        ICefDevToolsTransport transport,
+        CefHumanizedInput humanizedInput)
+    {
+        _transport = transport ?? throw new ArgumentNullException(nameof(transport));
+        _humanizedInput = humanizedInput
+            ?? throw new ArgumentNullException(nameof(humanizedInput));
+    }
 
     public async Task<NativeBrowserViewport> ReadViewportAsync()
     {
-        using var reply = await ExecuteAsync("Page.getLayoutMetrics", parameters: null)
-            .ConfigureAwait(false);
-        var result = RequireResult(reply.RootElement);
-        var viewport = result.TryGetProperty("cssVisualViewport", out var visual)
-            ? visual
-            : result.GetProperty("cssLayoutViewport");
-        return new NativeBrowserViewport(
-            viewport.GetProperty("clientWidth").GetDouble(),
-            viewport.GetProperty("clientHeight").GetDouble()).Validate();
+        return await _humanizedInput.ReadViewportAsync().ConfigureAwait(false);
     }
 
     public Task<NativeBrowserAutomationResult> DispatchMouseAsync(
@@ -57,21 +63,7 @@ internal sealed class CefBrowserAutomationAdapter(ICefDevToolsTransport transpor
 
     public Task<NativeBrowserAutomationResult> DispatchScrollAsync(
         BrowserScrollRequest request) =>
-        CaptureOutcomeAsync(async () =>
-        {
-            await DispatchMouseEventAsync(
-                    "mouseWheel",
-                    request.OriginXCss,
-                    request.OriginYCss,
-                    BrowserMouseButton.None,
-                    BrowserMouseButtons.None,
-                    request.Modifiers,
-                    clickCount: 0,
-                    request.DeltaX,
-                    request.DeltaY)
-                .ConfigureAwait(false);
-            return NativeBrowserAutomationResult.Acknowledged();
-        });
+        CaptureOutcomeAsync(() => DispatchScrollCoreAsync(request));
 
     public Task<NativeBrowserAutomationResult> EvaluateAsync(
         BrowserEvaluateRequest request) =>
@@ -83,31 +75,31 @@ internal sealed class CefBrowserAutomationAdapter(ICefDevToolsTransport transpor
         switch (request.Action)
         {
             case BrowserMouseAction.Move:
-                await DispatchMouseEventAsync(
-                        "mouseMoved", request.XCss, request.YCss,
-                        BrowserMouseButton.None, request.Buttons,
-                        request.Modifiers, 0, 0, 0)
+                await _humanizedInput.MoveAsync(
+                        request.XCss,
+                        request.YCss,
+                        request.Buttons,
+                        request.Modifiers)
                     .ConfigureAwait(false);
                 break;
             case BrowserMouseAction.Click:
-                await DispatchMouseEventAsync(
-                        "mousePressed", request.XCss, request.YCss,
+                await _humanizedInput.ClickAsync(
+                        request.XCss,
+                        request.YCss,
                         request.Button,
-                        request.Buttons | ButtonFlag(request.Button),
-                        request.Modifiers, request.ClickCount, 0, 0)
-                    .ConfigureAwait(false);
-                await DispatchMouseEventAsync(
-                        "mouseReleased", request.XCss, request.YCss,
-                        request.Button,
-                        request.Buttons & ~ButtonFlag(request.Button),
-                        request.Modifiers, request.ClickCount, 0, 0)
+                        request.Buttons,
+                        request.Modifiers,
+                        request.ClickCount)
                     .ConfigureAwait(false);
                 break;
             case BrowserMouseAction.Wheel:
-                await DispatchMouseEventAsync(
-                        "mouseWheel", request.XCss, request.YCss,
-                        BrowserMouseButton.None, request.Buttons,
-                        request.Modifiers, 0, request.DeltaX, request.DeltaY)
+                await _humanizedInput.ScrollAsync(
+                        request.XCss,
+                        request.YCss,
+                        request.DeltaX,
+                        request.DeltaY,
+                        request.Modifiers,
+                        request.Buttons)
                     .ConfigureAwait(false);
                 break;
             default:
@@ -117,14 +109,29 @@ internal sealed class CefBrowserAutomationAdapter(ICefDevToolsTransport transpor
         return NativeBrowserAutomationResult.Acknowledged();
     }
 
+    private async Task<NativeBrowserAutomationResult> DispatchScrollCoreAsync(
+        BrowserScrollRequest request)
+    {
+        await _humanizedInput.ScrollAsync(
+                request.OriginXCss,
+                request.OriginYCss,
+                request.DeltaX,
+                request.DeltaY,
+                request.Modifiers)
+            .ConfigureAwait(false);
+        return NativeBrowserAutomationResult.Acknowledged();
+    }
+
     private async Task<NativeBrowserAutomationResult> DispatchKeyCoreAsync(
         BrowserKeyRequest request)
     {
+        await _humanizedInput.EnsureCursorVisibleAsync().ConfigureAwait(false);
         var key = KeyDescriptor.For(request.Key, request.Modifiers);
         await DispatchKeyEventAsync("keyDown", key, request.Modifiers)
             .ConfigureAwait(false);
         await DispatchKeyEventAsync("keyUp", key, request.Modifiers)
             .ConfigureAwait(false);
+        _humanizedInput.KeepCursorVisible();
 
         return NativeBrowserAutomationResult.Acknowledged();
     }
@@ -201,32 +208,6 @@ internal sealed class CefBrowserAutomationAdapter(ICefDevToolsTransport transpor
             : "null";
         return NativeBrowserAutomationResult.Acknowledged(json);
     }
-
-    private Task DispatchMouseEventAsync(
-        string type,
-        double x,
-        double y,
-        BrowserMouseButton button,
-        BrowserMouseButtons buttons,
-        BrowserInputModifiers modifiers,
-        int clickCount,
-        double deltaX,
-        double deltaY) =>
-        ExecuteAcknowledgedAsync(
-            "Input.dispatchMouseEvent",
-            new
-            {
-                type,
-                x,
-                y,
-                button = MouseButtonName(button),
-                buttons = (int)buttons,
-                modifiers = (int)modifiers,
-                clickCount,
-                deltaX,
-                deltaY,
-                pointerType = "mouse",
-            });
 
     private Task DispatchKeyEventAsync(
         string type,
@@ -309,30 +290,6 @@ internal sealed class CefBrowserAutomationAdapter(ICefDevToolsTransport transpor
             return NativeBrowserAutomationResult.OutcomeUnknown();
         }
     }
-
-    private static string MouseButtonName(BrowserMouseButton button) =>
-        button switch
-        {
-            BrowserMouseButton.None => "none",
-            BrowserMouseButton.Left => "left",
-            BrowserMouseButton.Right => "right",
-            BrowserMouseButton.Middle => "middle",
-            BrowserMouseButton.Back => "back",
-            BrowserMouseButton.Forward => "forward",
-            _ => throw new ArgumentOutOfRangeException(nameof(button)),
-        };
-
-    private static BrowserMouseButtons ButtonFlag(BrowserMouseButton button) =>
-        button switch
-        {
-            BrowserMouseButton.None => BrowserMouseButtons.None,
-            BrowserMouseButton.Left => BrowserMouseButtons.Left,
-            BrowserMouseButton.Right => BrowserMouseButtons.Right,
-            BrowserMouseButton.Middle => BrowserMouseButtons.Middle,
-            BrowserMouseButton.Back => BrowserMouseButtons.Back,
-            BrowserMouseButton.Forward => BrowserMouseButtons.Forward,
-            _ => throw new ArgumentOutOfRangeException(nameof(button)),
-        };
 
     private sealed record KeyDescriptor(
         string Key,

@@ -16,7 +16,9 @@ internal interface ICefSemanticBrowser
         CefSemanticPoint point,
         int backendNodeId);
 
-    Task DispatchClickAsync(CefSemanticPoint point);
+    Task<bool> DispatchClickAsync(
+        CefSemanticPoint point,
+        int backendNodeId);
 
     Task ReplaceFocusedTextAsync(int backendNodeId, string text);
 

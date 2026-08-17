@@ -115,6 +115,10 @@ public sealed class AgentTerminalActionComposer
             AgentTerminalRequest.ReadScrollback read => PrepareReadScrollback(read),
             AgentTerminalRequest.FindScrollback find => PrepareFindScrollback(find),
             AgentTerminalRequest.FindOnScreen find => PrepareFindOnScreen(find),
+            AgentTerminalRequest.FindRenderedHistory find =>
+                PrepareFindRenderedHistory(find),
+            AgentTerminalRequest.JumpToRenderedHistory jump =>
+                PrepareJumpToRenderedHistory(jump),
             AgentTerminalRequest.ScrollViewport scroll => PrepareScrollViewport(scroll),
             AgentTerminalRequest.SendText write => PrepareSendText(write),
             AgentTerminalRequest.Paste paste => PreparePaste(paste),
@@ -228,6 +232,41 @@ public sealed class AgentTerminalActionComposer
             Argument("session_id", sessionId),
             Argument("query", RequireMaterialText(input.Query, "terminal screen query")),
             Argument("maximum_matches", Invariant(input.MaximumMatchCount)));
+    }
+
+    private static PreparedRequest PrepareFindRenderedHistory(
+        AgentTerminalRequest.FindRenderedHistory request)
+    {
+        var input = request.Input
+            ?? throw new ArgumentException(
+                "A rendered terminal history search requires bounded input.",
+                nameof(request));
+        var sessionId = RequireIdentifier(request.SessionId.Value, "session ID");
+        return Prepared(
+            BuiltInAgentTools.TerminalFindRenderedHistory,
+            SessionCapabilities.TerminalRenderedHistory,
+            request.SessionId,
+            Argument("session_id", sessionId),
+            Argument("query", RequireMaterialText(input.Query, "rendered terminal history query")),
+            Argument("direction", input.Direction.ToString()),
+            Argument("maximum_matches", Invariant(input.MaximumMatchCount)));
+    }
+
+    private static PreparedRequest PrepareJumpToRenderedHistory(
+        AgentTerminalRequest.JumpToRenderedHistory request)
+    {
+        var anchor = request.Anchor
+            ?? throw new ArgumentException(
+                "A rendered terminal history jump requires one row anchor.",
+                nameof(request));
+        var sessionId = RequireIdentifier(request.SessionId.Value, "session ID");
+        return Prepared(
+            BuiltInAgentTools.TerminalJumpToRenderedHistory,
+            SessionCapabilities.TerminalRenderedHistory,
+            request.SessionId,
+            Argument("session_id", sessionId),
+            Argument("anchor_content_revision", Invariant(anchor.ContentRevision)),
+            Argument("anchor_row_index", Invariant(anchor.RowIndex)));
     }
 
     private static PreparedRequest PrepareScrollViewport(

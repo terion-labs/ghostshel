@@ -13,6 +13,8 @@ public sealed class AgentTerminalActionComposerTests
     [InlineData(TerminalOperation.ReadScreen, BuiltInAgentTools.TerminalReadScreen)]
     [InlineData(TerminalOperation.ReadScreenDiff, BuiltInAgentTools.TerminalReadScreenDiff)]
     [InlineData(TerminalOperation.FindOnScreen, BuiltInAgentTools.TerminalFindOnScreen)]
+    [InlineData(TerminalOperation.FindRenderedHistory, BuiltInAgentTools.TerminalFindRenderedHistory)]
+    [InlineData(TerminalOperation.JumpToRenderedHistory, BuiltInAgentTools.TerminalJumpToRenderedHistory)]
     [InlineData(TerminalOperation.ReadScrollback, BuiltInAgentTools.TerminalReadScrollback)]
     [InlineData(TerminalOperation.FindScrollback, BuiltInAgentTools.TerminalFind)]
     [InlineData(TerminalOperation.ScrollViewport, BuiltInAgentTools.TerminalScrollViewport)]
@@ -61,8 +63,10 @@ public sealed class AgentTerminalActionComposerTests
         Assert.Equal(
             [
                 "FindOnScreen",
+                "FindRenderedHistory",
                 "FindScrollback",
                 "Interrupt",
+                "JumpToRenderedHistory",
                 "Paste",
                 "ReadScreen",
                 "ReadScreenDiff",
@@ -1026,6 +1030,17 @@ public sealed class AgentTerminalActionComposerTests
                 new AgentTerminalRequest.FindOnScreen(
                     Session(),
                     new TerminalScreenFindInput("ready", MaximumMatchCount: 4)),
+            TerminalOperation.FindRenderedHistory =>
+                new AgentTerminalRequest.FindRenderedHistory(
+                    Session(),
+                    new TerminalRenderedHistoryFindInput(
+                        "ready",
+                        TerminalScrollbackFindDirection.Forward,
+                        MaximumMatchCount: 4)),
+            TerminalOperation.JumpToRenderedHistory =>
+                new AgentTerminalRequest.JumpToRenderedHistory(
+                    Session(),
+                    new TerminalRenderedHistoryRowAnchor(7, 3)),
             TerminalOperation.ReadScrollback =>
                 new AgentTerminalRequest.ReadScrollback(
                     Session(),
@@ -1356,6 +1371,7 @@ public sealed class AgentTerminalActionComposerTests
         SessionCapabilities.TerminalScrollback,
         SessionCapabilities.TerminalScrollbackRead,
         SessionCapabilities.TerminalScrollbackFind,
+        SessionCapabilities.TerminalRenderedHistory,
         SessionCapabilities.TerminalWrite,
         SessionCapabilities.TerminalPaste,
         SessionCapabilities.TerminalEnter,
@@ -1386,8 +1402,10 @@ public sealed class AgentTerminalActionComposerTests
         ReadScreen,
         ReadScreenDiff,
         FindOnScreen,
+        FindRenderedHistory,
         ReadScrollback,
         FindScrollback,
+        JumpToRenderedHistory,
         ScrollViewport,
         SendText,
         Paste,

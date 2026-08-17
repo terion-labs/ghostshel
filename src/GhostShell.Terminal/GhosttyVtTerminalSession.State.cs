@@ -96,6 +96,103 @@ internal sealed partial class GhosttyVtTerminalSession
         }
     }
 
+    public unsafe ValueTask<TerminalRenderedHistoryFindResult> FindRenderedHistoryAsync(
+        TerminalRenderedHistoryFindInput input,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_closed, this);
+            var totalRows = ReadTotalRowCountUnsafe();
+            var matches = new List<TerminalRenderedHistoryRow>(input.MaximumMatchCount);
+            var truncated = false;
+            var index = input.Direction == TerminalScrollbackFindDirection.Forward
+                ? 0
+                : totalRows - 1;
+            var step = input.Direction == TerminalScrollbackFindDirection.Forward
+                ? 1
+                : -1;
+            var scannedRows = 0;
+            var scannedBytes = 0;
+            while (index >= 0 && index < totalRows)
+            {
+                if (scannedRows == MaximumProjectedFindScanRows
+                    || scannedBytes >= MaximumProjectedFindScanBytes)
+                {
+                    truncated = true;
+                    break;
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                var row = ReadRenderedHistoryRowUnsafe(index, _contentRevision);
+                scannedRows++;
+                scannedBytes = Math.Min(
+                    MaximumProjectedFindScanBytes,
+                    scannedBytes + Encoding.UTF8.GetByteCount(row.Text));
+                if (row.Text.Contains(input.Query, StringComparison.Ordinal))
+                {
+                    if (matches.Count == input.MaximumMatchCount)
+                    {
+                        truncated = true;
+                        break;
+                    }
+
+                    matches.Add(row);
+                }
+
+                index += step;
+            }
+
+            return ValueTask.FromResult(new TerminalRenderedHistoryFindResult(
+                matches,
+                totalRows,
+                _contentRevision,
+                truncated));
+        }
+    }
+
+    public unsafe ValueTask JumpToRenderedHistoryAsync(
+        TerminalRenderedHistoryRowAnchor anchor,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(anchor);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_closed, this);
+            if (anchor.ContentRevision != _contentRevision)
+            {
+                throw new TerminalRenderedHistoryAnchorStaleException(
+                    anchor.ContentRevision,
+                    _contentRevision);
+            }
+
+            var totalRows = ReadTotalRowCountUnsafe();
+            if (anchor.RowIndex >= totalRows)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(anchor),
+                    "The rendered terminal history row is outside the retained screen.");
+            }
+
+            GhosttyVtNative.TerminalScrollViewport(
+                _terminal,
+                new GhosttyVtScrollViewport
+                {
+                    Tag = GhosttyVtScrollViewportTag.Row,
+                    Value = new GhosttyVtScrollViewportValue
+                    {
+                        Row = checked((nuint)anchor.RowIndex),
+                    },
+                });
+            MarkContentChangedUnsafe();
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
     public unsafe ValueTask ScrollViewportAsync(
         TerminalViewportScrollInput scrollInput,
         CancellationToken cancellationToken)
@@ -123,6 +220,18 @@ internal sealed partial class GhosttyVtTerminalSession
                 &scrollbackRows),
             "read terminal scrollback row count");
         return checked((int)Math.Min(scrollbackRows, int.MaxValue));
+    }
+
+    private unsafe int ReadTotalRowCountUnsafe()
+    {
+        nuint totalRows = 0;
+        EnsureSuccess(
+            GhosttyVtNative.TerminalGet(
+                _terminal,
+                GhosttyVtTerminalData.TotalRows,
+                &totalRows),
+            "read total rendered terminal row count");
+        return checked((int)Math.Min(totalRows, int.MaxValue));
     }
 
     private (int Start, int Count) ResolveScrollbackRangeUnsafe(
@@ -166,22 +275,51 @@ internal sealed partial class GhosttyVtTerminalSession
         int lineIndex,
         long contentRevision)
     {
+        var projected = ReadProjectedRowUnsafe(
+            GhosttyVtPointTag.History,
+            lineIndex,
+            "terminal history");
+        return new TerminalScrollbackRow(
+            new TerminalScrollbackRowAnchor(contentRevision, lineIndex),
+            projected.Text,
+            projected.IsTruncated);
+    }
+
+    private unsafe TerminalRenderedHistoryRow ReadRenderedHistoryRowUnsafe(
+        int rowIndex,
+        long contentRevision)
+    {
+        var projected = ReadProjectedRowUnsafe(
+            GhosttyVtPointTag.Screen,
+            rowIndex,
+            "rendered terminal history");
+        return new TerminalRenderedHistoryRow(
+            new TerminalRenderedHistoryRowAnchor(contentRevision, rowIndex),
+            projected.Text,
+            projected.IsTruncated);
+    }
+
+    private unsafe ProjectedRow ReadProjectedRowUnsafe(
+        GhosttyVtPointTag pointTag,
+        int rowIndex,
+        string operation)
+    {
         var point = new GhosttyVtPoint
         {
-            Tag = GhosttyVtPointTag.History,
+            Tag = pointTag,
             Value = new GhosttyVtPointValue
             {
                 Coordinate = new GhosttyVtPointCoordinate
                 {
                     X = 0,
-                    Y = checked((uint)lineIndex),
+                    Y = checked((uint)rowIndex),
                 },
             },
         };
         var reference = GhosttyVtGridRef.CreateSized();
         EnsureSuccess(
             GhosttyVtNative.TerminalGridRef(_terminal, point, &reference),
-            "map terminal history row");
+            $"map {operation} row");
         var selection = GhosttyVtSelection.CreateSized();
         selection.Start = reference;
         selection.End = reference;
@@ -190,7 +328,7 @@ internal sealed partial class GhosttyVtTerminalSession
                 _terminal,
                 &selection,
                 GhosttyVtSelectionAdjust.EndOfLine),
-            "bound terminal history row");
+            $"bound {operation} row");
 
         var options = GhosttyVtSelectionFormatOptions.CreateSized();
         options.Format = GhosttyVtFormatterFormat.Plain;
@@ -204,24 +342,22 @@ internal sealed partial class GhosttyVtTerminalSession
             null,
             0,
             &required);
-        if (measure == GhosttyVtResult.Success && required == 0)
-        {
-            return new TerminalScrollbackRow(
-                new TerminalScrollbackRowAnchor(contentRevision, lineIndex),
-                string.Empty);
-        }
-
         if (measure != GhosttyVtResult.OutOfSpace)
         {
-            EnsureSuccess(measure, "measure terminal history row");
+            EnsureSuccess(measure, $"measure {operation} row");
+        }
+
+        // libghostty-vt reports an empty, trimmed physical row as
+        // OutOfSpace with a required size of zero. Treat that as a valid
+        // empty history row instead of issuing a zero-length second read.
+        if (required == 0)
+        {
+            return new ProjectedRow(string.Empty, IsTruncated: false);
         }
 
         if (required > MaximumProjectedHistoryRowBytes)
         {
-            return new TerminalScrollbackRow(
-                new TerminalScrollbackRowAnchor(contentRevision, lineIndex),
-                string.Empty,
-                IsTruncated: true);
+            return new ProjectedRow(string.Empty, IsTruncated: true);
         }
 
         var bytes = new byte[checked((int)required)];
@@ -234,7 +370,7 @@ internal sealed partial class GhosttyVtTerminalSession
                     output,
                     checked((nuint)bytes.Length),
                     &required),
-                "read terminal history row");
+                $"read {operation} row");
         }
 
         var text = Encoding.UTF8.GetString(bytes, 0, checked((int)required));
@@ -248,11 +384,10 @@ internal sealed partial class GhosttyVtTerminalSession
             }
         }
 
-        return new TerminalScrollbackRow(
-            new TerminalScrollbackRowAnchor(contentRevision, lineIndex),
-            text,
-            truncated);
+        return new ProjectedRow(text, truncated);
     }
+
+    private readonly record struct ProjectedRow(string Text, bool IsTruncated);
 
     private GhosttyVtScrollViewport BuildViewportScrollUnsafe(
         TerminalViewportScrollInput input)

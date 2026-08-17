@@ -1873,6 +1873,71 @@ public sealed class AgentTerminalSessionHostTests
     }
 
     [Fact]
+    public async Task RenderedHistorySearchAndJumpDispatchTypedPorts()
+    {
+        await using var fixture = await AgentTerminalHostFixture.CreateAsync();
+        var terminal = fixture.Factory[fixture.SessionId];
+        terminal.ScreenText = "offscreen TUIHISTORY_START row";
+        terminal.ScreenContentRevision = 12;
+
+        var findInput = new TerminalRenderedHistoryFindInput(
+            "TUIHISTORY_START",
+            TerminalScrollbackFindDirection.Backward,
+            MaximumMatchCount: 4);
+        var findAction = await fixture.PrepareAsync(
+            new AgentTerminalRequest.FindRenderedHistory(
+                fixture.SessionId,
+                findInput));
+        var find = Assert.IsType<AgentTerminalActionResult.RenderedHistoryFind>(
+            (await fixture.Client.RunAgentTerminalActionAsync(
+                fixture.Authorization.Arm(findAction),
+                findAction,
+                default)).Value());
+        var match = Assert.Single(find.Result.Matches);
+
+        var jumpAction = await fixture.PrepareAsync(
+            new AgentTerminalRequest.JumpToRenderedHistory(
+                fixture.SessionId,
+                match.Anchor));
+        var jump = Assert.IsType<AgentTerminalActionResult.Screen>(
+            (await fixture.Client.RunAgentTerminalActionAsync(
+                fixture.Authorization.Arm(jumpAction),
+                jumpAction,
+                default)).Value());
+
+        Assert.Same(findInput, terminal.LastRenderedHistoryFind);
+        Assert.Equal(match.Anchor, terminal.LastRenderedHistoryJump);
+        Assert.Equal(12, jump.Snapshot.ContentRevision);
+        Assert.Equal(2, fixture.Authorization.ConsumeCount);
+    }
+
+    [Fact]
+    public async Task StaleRenderedHistoryJumpReturnsTypedRetryableFailure()
+    {
+        await using var fixture = await AgentTerminalHostFixture.CreateAsync();
+        var terminal = fixture.Factory[fixture.SessionId];
+        terminal.ScreenContentRevision = 13;
+        var action = await fixture.PrepareAsync(
+            new AgentTerminalRequest.JumpToRenderedHistory(
+                fixture.SessionId,
+                new TerminalRenderedHistoryRowAnchor(
+                    ContentRevision: 12,
+                    RowIndex: 2)));
+
+        var result = await fixture.Client.RunAgentTerminalActionAsync(
+            fixture.Authorization.Arm(action),
+            action,
+            default);
+
+        Assert.Equal(HostErrorCode.RevisionConflict, result.Error().Code);
+        Assert.Equal("terminal_rendered_history_anchor_stale", result.Error().StableCode);
+        Assert.True(result.Error().Retryable);
+        var completion = Assert.Single(fixture.Authorization.Completions);
+        Assert.Equal(AgentActionOutcome.Failed, completion.Outcome);
+        Assert.Equal("terminal_rendered_history_anchor_stale", completion.StableCode);
+    }
+
+    [Fact]
     public async Task Rendered_screen_diff_and_search_dispatch_as_observations()
     {
         await using var fixture = await AgentTerminalHostFixture.CreateAsync();

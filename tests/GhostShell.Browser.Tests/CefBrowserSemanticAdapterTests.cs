@@ -439,7 +439,9 @@ public sealed class CefBrowserSemanticAdapterTests
             return Task.FromResult(HitTestResult);
         }
 
-        public Task DispatchClickAsync(CefSemanticPoint point)
+        public Task<bool> DispatchClickAsync(
+            CefSemanticPoint point,
+            int backendNodeId)
         {
             ClickDispatchCount++;
             if (ThrowDuringClickDispatch)
@@ -458,7 +460,7 @@ public sealed class CefBrowserSemanticAdapterTests
                 _nodes[nodeId] = node with { Properties = properties };
             }
 
-            return Task.CompletedTask;
+            return Task.FromResult(true);
         }
 
         public Task ReplaceFocusedTextAsync(int backendNodeId, string text)

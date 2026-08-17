@@ -258,3 +258,147 @@ public sealed class TerminalScrollbackAnchorStaleException(
 
     public long CurrentContentRevision { get; } = currentContentRevision;
 }
+
+public sealed class TerminalRenderedHistoryAnchorStaleException(
+    long expectedContentRevision,
+    long currentContentRevision)
+    : InvalidOperationException(
+        $"Rendered terminal history revision changed from {expectedContentRevision} to {currentContentRevision}.")
+{
+    public long ExpectedContentRevision { get; } = expectedContentRevision;
+
+    public long CurrentContentRevision { get; } = currentContentRevision;
+}
+
+/// <summary>
+/// Identifies one row in the terminal engine's retained rendered screen: history plus
+/// the currently written screen. This coordinate space is separate from shell scrollback.
+/// </summary>
+public sealed record TerminalRenderedHistoryRowAnchor
+{
+    public TerminalRenderedHistoryRowAnchor(long ContentRevision, int RowIndex)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(ContentRevision);
+        ArgumentOutOfRangeException.ThrowIfNegative(RowIndex);
+        this.ContentRevision = ContentRevision;
+        this.RowIndex = RowIndex;
+    }
+
+    public long ContentRevision { get; }
+
+    public int RowIndex { get; }
+}
+
+public sealed record TerminalRenderedHistoryFindInput
+{
+    public const int MaximumQueryLength = TerminalScrollbackFindInput.MaximumQueryLength;
+    public const int MaximumMatches = TerminalScrollbackFindInput.MaximumMatches;
+
+    public TerminalRenderedHistoryFindInput(
+        string Query,
+        TerminalScrollbackFindDirection Direction,
+        int MaximumMatchCount)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(Query);
+        if (Query.Length > MaximumQueryLength || Query.Any(char.IsControl))
+        {
+            throw new ArgumentException(
+                $"A rendered terminal history query must be printable and at most {MaximumQueryLength} characters.",
+                nameof(Query));
+        }
+
+        if (!Enum.IsDefined(Direction))
+        {
+            throw new ArgumentOutOfRangeException(nameof(Direction));
+        }
+
+        if (MaximumMatchCount is < 1 or > MaximumMatches)
+        {
+            throw new ArgumentOutOfRangeException(nameof(MaximumMatchCount));
+        }
+
+        this.Query = string.Concat(Query);
+        this.Direction = Direction;
+        this.MaximumMatchCount = MaximumMatchCount;
+    }
+
+    public string Query { get; }
+
+    public TerminalScrollbackFindDirection Direction { get; }
+
+    public int MaximumMatchCount { get; }
+}
+
+public sealed record TerminalRenderedHistoryRow
+{
+    public TerminalRenderedHistoryRow(
+        TerminalRenderedHistoryRowAnchor Anchor,
+        string Text,
+        bool IsTruncated = false)
+    {
+        ArgumentNullException.ThrowIfNull(Anchor);
+        ArgumentNullException.ThrowIfNull(Text);
+        if (Text.Length > TerminalScrollbackRow.MaximumTextCharacters)
+        {
+            throw new ArgumentException(
+                $"A rendered terminal row cannot exceed {TerminalScrollbackRow.MaximumTextCharacters} characters.",
+                nameof(Text));
+        }
+
+        this.Anchor = Anchor;
+        this.Text = string.Concat(Text);
+        this.IsTruncated = IsTruncated;
+    }
+
+    public TerminalRenderedHistoryRowAnchor Anchor { get; }
+
+    public string Text { get; }
+
+    public bool IsTruncated { get; }
+}
+
+public sealed record TerminalRenderedHistoryFindResult
+{
+    public TerminalRenderedHistoryFindResult(
+        IReadOnlyList<TerminalRenderedHistoryRow> Matches,
+        int TotalRows,
+        long ContentRevision,
+        bool IsTruncated)
+    {
+        ArgumentNullException.ThrowIfNull(Matches);
+        ArgumentOutOfRangeException.ThrowIfNegative(TotalRows);
+        ArgumentOutOfRangeException.ThrowIfNegative(ContentRevision);
+        if (Matches.Count > TerminalRenderedHistoryFindInput.MaximumMatches)
+        {
+            throw new ArgumentException(
+                "A rendered terminal history search returned too many matches.",
+                nameof(Matches));
+        }
+
+        var snapshot = Matches.ToArray();
+        foreach (var match in snapshot)
+        {
+            if (match is null
+                || match.Anchor.ContentRevision != ContentRevision
+                || match.Anchor.RowIndex >= TotalRows)
+            {
+                throw new ArgumentException(
+                    "Rendered terminal history matches must belong to the result revision.",
+                    nameof(Matches));
+            }
+        }
+
+        this.Matches = new ReadOnlyCollection<TerminalRenderedHistoryRow>(snapshot);
+        this.TotalRows = TotalRows;
+        this.ContentRevision = ContentRevision;
+        this.IsTruncated = IsTruncated;
+    }
+
+    public IReadOnlyList<TerminalRenderedHistoryRow> Matches { get; }
+
+    public int TotalRows { get; }
+
+    public long ContentRevision { get; }
+
+    public bool IsTruncated { get; }
+}

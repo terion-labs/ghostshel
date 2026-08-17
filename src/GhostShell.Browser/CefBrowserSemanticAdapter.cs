@@ -172,8 +172,15 @@ internal sealed class CefBrowserSemanticAdapter(ICefSemanticBrowser browser)
 
         try
         {
-            await _browser.DispatchClickAsync(point.Value)
-                .ConfigureAwait(false);
+            if (!await _browser.DispatchClickAsync(
+                    point.Value,
+                    lease.BackendNodeId)
+                    .ConfigureAwait(false))
+            {
+                ConsumeLeases();
+                return NativeBrowserClickResult.NotInteractable();
+            }
+
             ConsumeLeases();
             return NativeBrowserClickResult.Activated();
         }
@@ -327,8 +334,15 @@ internal sealed class CefBrowserSemanticAdapter(ICefSemanticBrowser browser)
             // and immediately uncheck it while Chromium's AX tree was still
             // publishing the first change. Dispatch one verified pointer
             // activation and wait only for its observable postcondition.
-            await _browser.DispatchClickAsync(point.Value)
-                .ConfigureAwait(false);
+            if (!await _browser.DispatchClickAsync(
+                    point.Value,
+                    lease.BackendNodeId)
+                    .ConfigureAwait(false))
+            {
+                ConsumeLeases();
+                return NativeBrowserCheckResult.NotInteractable();
+            }
+
             var verification = await ReadVerifiedNodeAsync(
                     lease,
                     node => PropertyIsTrue(node, "checked"))

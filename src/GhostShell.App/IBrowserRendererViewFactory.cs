@@ -33,10 +33,13 @@ public interface IBrowserRendererViewFactory
 public sealed class BrowserRendererView(
     Control view,
     IBrowserRenderer renderer,
-    IDisposable? lifetime = null) : IDisposable
+    IDisposable? lifetime = null,
+    Action<bool>? agentActivityChanged = null) : IDisposable
 {
     private readonly SemaphoreSlim _attachmentGate = new(1, 1);
     private readonly IDisposable? _lifetime = lifetime;
+    private readonly Action<bool>? _agentActivityChanged = agentActivityChanged;
+    private bool _isAgentActive;
     private bool _disposed;
 
     public Control View { get; } =
@@ -57,6 +60,17 @@ public sealed class BrowserRendererView(
     /// renderer or session lifetime.
     /// </summary>
     internal BrowserPresentationHost? PresentationHost { get; set; }
+
+    internal void SetAgentActivity(bool isActive)
+    {
+        if (_disposed || _isAgentActive == isActive)
+        {
+            return;
+        }
+
+        _isAgentActive = isActive;
+        _agentActivityChanged?.Invoke(isActive);
+    }
 
     /// <summary>
     /// Ensures the panel-owned renderer is linked to its hosted session. This
@@ -139,6 +153,12 @@ public sealed class BrowserRendererView(
         }
 
         _disposed = true;
+        if (_isAgentActive)
+        {
+            _isAgentActive = false;
+            _agentActivityChanged?.Invoke(false);
+        }
+
         var attachment = Attachment;
         Attachment = null;
         attachment?.Release();

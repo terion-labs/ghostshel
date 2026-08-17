@@ -26,6 +26,8 @@ internal static class TerminalAgentToolResultJson
                 diff.Result.ChangedRows.Count,
             AgentTerminalActionResult.ScreenFind find =>
                 find.Result.Matches.Count,
+            AgentTerminalActionResult.RenderedHistoryFind find =>
+                find.Result.Matches.Count,
             AgentTerminalActionResult.Scrollback scrollback =>
                 scrollback.Snapshot.Rows.Count,
             AgentTerminalActionResult.Find find => find.Result.Matches.Count,
@@ -58,6 +60,7 @@ internal static class TerminalAgentToolResultJson
 
             if (result is AgentTerminalActionResult.ScreenDiff
                 or AgentTerminalActionResult.ScreenFind
+                or AgentTerminalActionResult.RenderedHistoryFind
                 or AgentTerminalActionResult.Scrollback
                 or AgentTerminalActionResult.Find)
             {
@@ -100,6 +103,12 @@ internal static class TerminalAgentToolResultJson
                 break;
             case AgentTerminalActionResult.ScreenFind find:
                 WriteScreenFind(writer, find.Result, maximumHistoryRows);
+                break;
+            case AgentTerminalActionResult.RenderedHistoryFind find:
+                WriteRenderedHistoryFind(
+                    writer,
+                    find.Result,
+                    maximumHistoryRows);
                 break;
             case AgentTerminalActionResult.Scrollback scrollback:
                 WriteScrollback(
@@ -460,6 +469,49 @@ internal static class TerminalAgentToolResultJson
             result.Matches,
             maximumRows,
             out var resultTruncated);
+        writer.WriteBoolean("truncated", result.IsTruncated || resultTruncated);
+    }
+
+    private static void WriteRenderedHistoryFind(
+        Utf8JsonWriter writer,
+        TerminalRenderedHistoryFindResult result,
+        int maximumRows)
+    {
+        writer.WriteString("content_origin", "untrusted_terminal");
+        writer.WriteNumber("content_revision", result.ContentRevision);
+        writer.WriteNumber("total_rows", result.TotalRows);
+        var emittedBytes = 0;
+        var resultTruncated = result.Matches.Count > maximumRows;
+        writer.WritePropertyName("matches");
+        writer.WriteStartArray();
+        foreach (var row in result.Matches.Take(maximumRows))
+        {
+            var redacted = TerminalContentRedactor.Redact(row.Text);
+            var bounded = TruncateUtf8(
+                redacted.Text,
+                MaximumHistoryRowTextBytes,
+                out var rowResultTruncated);
+            var bytes = Encoding.UTF8.GetByteCount(bounded);
+            if (emittedBytes + bytes > MaximumHistoryTextBytes)
+            {
+                resultTruncated = true;
+                break;
+            }
+
+            emittedBytes += bytes;
+            writer.WriteStartObject();
+            writer.WriteString(
+                "row_anchor",
+                TerminalRenderedHistoryAnchorCodec.Encode(row.Anchor));
+            writer.WriteBoolean(
+                "truncated",
+                row.IsTruncated || rowResultTruncated);
+            writer.WriteNumber("redactions", redacted.RedactionCount);
+            writer.WriteString("text", bounded);
+            writer.WriteEndObject();
+        }
+
+        writer.WriteEndArray();
         writer.WriteBoolean("truncated", result.IsTruncated || resultTruncated);
     }
 

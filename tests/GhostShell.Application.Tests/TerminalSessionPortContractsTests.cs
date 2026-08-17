@@ -30,7 +30,9 @@ public sealed class TerminalSessionPortContractsTests
             [
                 "ClearScrollbackAsync",
                 "FindAsync",
+                "FindRenderedHistoryAsync",
                 "FindScrollbackAsync",
+                "JumpToRenderedHistoryAsync",
                 "ReadScreenAsync",
                 "ReadScrollbackAsync",
                 "ReadSelectionAsync",

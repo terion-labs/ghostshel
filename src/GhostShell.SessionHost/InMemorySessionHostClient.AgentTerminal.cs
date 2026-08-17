@@ -265,6 +265,7 @@ public sealed partial class InMemorySessionHostClient
                     revision);
             case AgentTerminalRequest.ReadScrollback:
             case AgentTerminalRequest.FindScrollback:
+            case AgentTerminalRequest.FindRenderedHistory:
                 return new AgentTerminalDispatch(
                     request,
                     session,
@@ -313,6 +314,7 @@ public sealed partial class InMemorySessionHostClient
                     runtimeCancellation,
                     revision);
             case AgentTerminalRequest.ScrollViewport:
+            case AgentTerminalRequest.JumpToRenderedHistory:
                 RequireAgentScrollCapabilities(session);
                 return new AgentTerminalDispatch(
                     request,
@@ -492,6 +494,7 @@ public sealed partial class InMemorySessionHostClient
             or AgentTerminalRequest.SendChord
             or AgentTerminalRequest.SendMouse
             or AgentTerminalRequest.ScrollViewport
+            or AgentTerminalRequest.JumpToRenderedHistory
             or AgentTerminalRequest.Interrupt;
 
     private async ValueTask<HostResult<AgentTerminalActionResult>>
@@ -638,6 +641,21 @@ public sealed partial class InMemorySessionHostClient
                                     cancellationToken)
                                 .ConfigureAwait(false)),
                         dispatch.Revision),
+                AgentTerminalRequest.FindRenderedHistory find =>
+                    HostResult<AgentTerminalActionResult>.Succeed(
+                        new AgentTerminalActionResult.RenderedHistoryFind(
+                            await dispatch.State!
+                                .FindRenderedHistoryAsync(
+                                    find.Input,
+                                    cancellationToken)
+                                .ConfigureAwait(false)),
+                        dispatch.Revision),
+                AgentTerminalRequest.JumpToRenderedHistory jump =>
+                    await JumpToRenderedHistoryAsync(
+                            dispatch,
+                            jump.Anchor,
+                            cancellationToken)
+                        .ConfigureAwait(false),
                 AgentTerminalRequest.ScrollViewport scroll =>
                     await ScrollViewportAsync(
                             dispatch,
@@ -758,6 +776,16 @@ public sealed partial class InMemorySessionHostClient
                     HostErrorCode.RevisionConflict,
                     "terminal_scrollback_anchor_stale",
                     exception.Message),
+                dispatch.Revision);
+        }
+        catch (TerminalRenderedHistoryAnchorStaleException exception)
+        {
+            return HostResult<AgentTerminalActionResult>.Fail(
+                new HostError(
+                    HostErrorCode.RevisionConflict,
+                    "terminal_rendered_history_anchor_stale",
+                    exception.Message,
+                    Retryable: true),
                 dispatch.Revision);
         }
         catch (OperationCanceledException)
@@ -1035,6 +1063,23 @@ public sealed partial class InMemorySessionHostClient
     }
 
     private static async ValueTask<HostResult<AgentTerminalActionResult>>
+        JumpToRenderedHistoryAsync(
+            AgentTerminalDispatch dispatch,
+            TerminalRenderedHistoryRowAnchor anchor,
+            CancellationToken cancellationToken)
+    {
+        await dispatch.State!
+            .JumpToRenderedHistoryAsync(anchor, cancellationToken)
+            .ConfigureAwait(false);
+        var after = await dispatch.Automation!
+            .ObserveScreenAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return HostResult<AgentTerminalActionResult>.Succeed(
+            new AgentTerminalActionResult.Screen(after),
+            dispatch.Session.Snapshot().Descriptor.Revision);
+    }
+
+    private static async ValueTask<HostResult<AgentTerminalActionResult>>
         InterruptAsync(
             AgentTerminalDispatch dispatch,
             CancellationToken cancellationToken)
@@ -1229,6 +1274,8 @@ public sealed partial class InMemorySessionHostClient
             AgentTerminalActionResult.Screen => "screen_read",
             AgentTerminalActionResult.ScreenDiff => "screen_diff_read",
             AgentTerminalActionResult.ScreenFind => "screen_found",
+            AgentTerminalActionResult.RenderedHistoryFind =>
+                "rendered_history_found",
             AgentTerminalActionResult.Scrollback => "scrollback_read",
             AgentTerminalActionResult.Find => "scrollback_found",
             AgentTerminalActionResult.Wait wait => wait.Outcome.Kind switch
@@ -1262,6 +1309,8 @@ public sealed partial class InMemorySessionHostClient
             AgentTerminalRequest.ReadScreen read => read.SessionId,
             AgentTerminalRequest.ReadScreenDiff read => read.SessionId,
             AgentTerminalRequest.FindOnScreen find => find.SessionId,
+            AgentTerminalRequest.FindRenderedHistory find => find.SessionId,
+            AgentTerminalRequest.JumpToRenderedHistory jump => jump.SessionId,
             AgentTerminalRequest.ReadScrollback read => read.SessionId,
             AgentTerminalRequest.FindScrollback find => find.SessionId,
             AgentTerminalRequest.ScrollViewport scroll => scroll.SessionId,

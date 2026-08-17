@@ -12,7 +12,11 @@ internal sealed class DesktopBrowserRendererViewFactory(
     public BrowserRendererView Create()
     {
         var surface = new BrowserSurface(sessionFactory.CapabilityProfile);
-        return new BrowserRendererView(surface, surface, surface);
+        return new BrowserRendererView(
+            surface,
+            surface,
+            surface,
+            surface.SetAgentActivity);
     }
 
     public async ValueTask<BrowserRendererView> CreateAsync(
@@ -42,7 +46,8 @@ internal sealed class DesktopBrowserRendererViewFactory(
             return new BrowserRendererView(
                 surface,
                 surface,
-                new RoutedBrowserLifetime(surface, tunnel));
+                new RoutedBrowserLifetime(surface, tunnel),
+                surface.SetAgentActivity);
         }
         catch
         {

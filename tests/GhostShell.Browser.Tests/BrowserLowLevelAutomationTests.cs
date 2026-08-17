@@ -1,5 +1,9 @@
 using System.Text.Json;
 using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Media;
+using FluentIcons.Avalonia;
+using FluentIcons.Common;
 using GhostShell.Application;
 using GhostShell.Core;
 
@@ -129,12 +133,14 @@ public sealed class BrowserLowLevelAutomationTests
     }
 
     [Fact]
-    public async Task CdpClickIsAnAtomicAcknowledgedPressReleaseGesture()
+    public async Task CdpClickMovesHumanelyThenDispatchesPressAndRelease()
     {
-        var transport = new RecordingTransport(
-            "{\"result\":{}}",
-            "{\"result\":{}}");
-        var adapter = new CefBrowserAutomationAdapter(transport);
+        var transport = new RecordingTransport();
+        var moved = new List<CefCursorPoint>();
+        var humanizedInput = HumanizedInput(transport, moved.Add);
+        var adapter = new CefBrowserAutomationAdapter(
+            transport,
+            humanizedInput);
 
         var result = await adapter.DispatchMouseAsync(
             new BrowserMouseRequest(
@@ -142,11 +148,189 @@ public sealed class BrowserLowLevelAutomationTests
                 20, 30, BrowserMouseButton.Left, clickCount: 1));
 
         Assert.Equal(NativeBrowserAutomationStatus.Acknowledged, result.Status);
+        Assert.Equal("Page.getLayoutMetrics", transport.Calls[0].Method);
+        var mouseCalls = transport.Calls
+            .Where(call => call.Method == "Input.dispatchMouseEvent")
+            .ToArray();
+        Assert.True(mouseCalls.Length >= 6);
+        Assert.All(
+            mouseCalls,
+            call => Assert.Equal("Input.dispatchMouseEvent", call.Method));
+        Assert.All(
+            mouseCalls[..^2],
+            call => Assert.Equal("mouseMoved", EventType(call)));
+        Assert.Equal("mousePressed", EventType(mouseCalls[^2]));
+        Assert.Equal("mouseReleased", EventType(mouseCalls[^1]));
+        Assert.Equal(new CefCursorPoint(20, 30), moved[^1]);
+        Assert.True(moved.Select(point => point.X).Distinct().Count() > 2);
+        Assert.True(moved.Select(point => point.Y).Distinct().Count() > 2);
+    }
+
+    [Fact]
+    public async Task CursorMovementTimeBudgetScalesWithDistance()
+    {
+        var shortDelays = new List<TimeSpan>();
+        var shortInput = new CefHumanizedInput(
+            new RecordingTransport(),
+            new Random(23),
+            duration =>
+            {
+                shortDelays.Add(duration);
+                return Task.CompletedTask;
+            });
+        var longDelays = new List<TimeSpan>();
+        var longInput = new CefHumanizedInput(
+            new RecordingTransport(),
+            new Random(23),
+            duration =>
+            {
+                longDelays.Add(duration);
+                return Task.CompletedTask;
+            });
+
+        await shortInput.MoveAsync(0, 0);
+        await longInput.MoveAsync(0, 0);
+        shortDelays.Clear();
+        longDelays.Clear();
+        await shortInput.MoveAsync(30, 40);
+        await longInput.MoveAsync(1_000, 0);
+
+        var shortDuration = shortDelays.Aggregate(
+            TimeSpan.Zero,
+            (sum, next) => sum + next);
+        var longDuration = longDelays.Aggregate(
+            TimeSpan.Zero,
+            (sum, next) => sum + next);
+        Assert.InRange(shortDuration.TotalMilliseconds, 32, 38);
+        Assert.InRange(longDuration.TotalMilliseconds, 174, 180);
+        Assert.True(longDuration > shortDuration * 3);
+    }
+
+    [Fact]
+    public async Task FirstAgentGestureSeedsCursorInsideViewport()
+    {
+        var transport = new RecordingTransport();
+        var positions = new List<CefCursorPoint>();
+        var input = HumanizedInput(transport, positions.Add);
+
+        await input.MoveAsync(700, 500);
+
+        Assert.Equal("Page.getLayoutMetrics", transport.Calls[0].Method);
+        Assert.InRange(positions[0].X, 32, 768);
+        Assert.InRange(positions[0].Y, 32, 568);
+        Assert.NotEqual(new CefCursorPoint(0, 0), positions[0]);
+        Assert.Equal(new CefCursorPoint(700, 500), positions[^1]);
+    }
+
+    [Fact]
+    public void AgentCursorUsesFilledAccentFluentIconWithShadow()
+    {
+        var overlay = new CefAgentCursorOverlay();
+        var workspace = new Border { Child = overlay };
+        var workspaceAccent = Color.Parse("#FF35B779");
+        workspace.Resources["ShellAccentBrush"] = new SolidColorBrush(workspaceAccent);
+        overlay.ShowAt(new CefCursorPoint(40, 60));
+
+        var cursor = Assert.IsType<FluentIcon>(Assert.Single(overlay.Children));
+        Assert.Equal(Icon.Cursor, cursor.Icon);
+        Assert.Equal(IconVariant.Filled, cursor.IconVariant);
+        Assert.Equal(34, cursor.Width);
+        Assert.Equal(34, cursor.Height);
+        Assert.Equal(31, cursor.FontSize);
+        var foreground = Assert.IsType<SolidColorBrush>(cursor.Foreground);
+        Assert.Equal(workspaceAccent, foreground.Color);
+        var shadow = Assert.IsType<DropShadowEffect>(cursor.Effect);
+        Assert.Equal(Colors.Black, shadow.Color);
+        Assert.Equal(8, shadow.BlurRadius);
+        Assert.Equal(1, shadow.OffsetX);
+        Assert.Equal(2, shadow.OffsetY);
+        Assert.Equal(0.55, shadow.Opacity);
+
+        var changedAccent = Color.Parse("#FF4B8FE8");
+        workspace.Resources["ShellAccentBrush"] = new SolidColorBrush(changedAccent);
+
+        foreground = Assert.IsType<SolidColorBrush>(cursor.Foreground);
+        Assert.Equal(changedAccent, foreground.Color);
+        Assert.Equal(Colors.Black, shadow.Color);
+    }
+
+    [Fact]
+    public async Task WheelGestureMovesCursorAndUsesUnevenExactDeltas()
+    {
+        var transport = new RecordingTransport();
+        var adapter = new CefBrowserAutomationAdapter(
+            transport,
+            HumanizedInput(transport));
+
+        var result = await adapter.DispatchScrollAsync(
+            new BrowserScrollRequest(
+                new SessionId("browser"),
+                Binding(),
+                400,
+                300,
+                35,
+                420));
+
+        Assert.Equal(NativeBrowserAutomationStatus.Acknowledged, result.Status);
+        var wheelCalls = transport.Calls
+            .Where(call => call.Method == "Input.dispatchMouseEvent")
+            .Where(call => EventType(call) == "mouseWheel")
+            .ToArray();
+        Assert.InRange(wheelCalls.Length, 3, 18);
+        Assert.Contains(
+            transport.Calls.Where(
+                call => call.Method == "Input.dispatchMouseEvent"),
+            call => EventType(call) == "mouseMoved");
         Assert.Equal(
-            ["Input.dispatchMouseEvent", "Input.dispatchMouseEvent"],
-            transport.Calls.Select(call => call.Method));
-        Assert.Contains("mousePressed", transport.Calls[0].Parameters);
-        Assert.Contains("mouseReleased", transport.Calls[1].Parameters);
+            35,
+            wheelCalls.Sum(call => EventDelta(call, "deltaX")),
+            precision: 8);
+        Assert.Equal(
+            420,
+            wheelCalls.Sum(call => EventDelta(call, "deltaY")),
+            precision: 8);
+        Assert.True(
+            wheelCalls
+                .Select(call => Math.Round(EventDelta(call, "deltaY"), 4))
+                .Distinct()
+                .Count() > 1);
+    }
+
+    [Fact]
+    public async Task TypingUsesBoundedUnevenBurstsWithoutChangingText()
+    {
+        var transport = new RecordingTransport();
+        var delays = new List<TimeSpan>();
+        var cursorActivity = new List<CefCursorPoint>();
+        var input = new CefHumanizedInput(
+            transport,
+            new Random(19),
+            duration =>
+            {
+                delays.Add(duration);
+                return Task.CompletedTask;
+            },
+            cursorActivity.Add);
+        const string text = "Hello, world! This is typed humanely.";
+
+        await input.TypeTextAsync(text);
+
+        var insertCalls = transport.Calls
+            .Where(call => call.Method == "Input.insertText")
+            .ToArray();
+        Assert.InRange(insertCalls.Length, 2, 96);
+        Assert.All(
+            insertCalls,
+            call => Assert.Equal("Input.insertText", call.Method));
+        Assert.Equal(
+            text,
+            string.Concat(insertCalls.Select(InsertedText)));
+        Assert.Equal(insertCalls.Length - 1, delays.Count);
+        Assert.True(delays.Distinct().Count() > 1);
+        Assert.Equal(insertCalls.Length + 1, cursorActivity.Count);
+        Assert.All(
+            cursorActivity,
+            point => Assert.Equal(cursorActivity[0], point));
     }
 
     [Fact]
@@ -194,6 +378,8 @@ public sealed class BrowserLowLevelAutomationTests
     public async Task OversizedCdpReplyFailsClosedAfterDispatch()
     {
         var transport = new RecordingTransport(
+            "{\"result\":{\"cssVisualViewport\":{\"clientWidth\":800,\"clientHeight\":600}}}",
+            "{\"result\":{}}",
             "{\"result\":{\"padding\":\"" + new string('x', 300_000) + "\"}}");
         var adapter = new CefBrowserAutomationAdapter(transport);
 
@@ -250,6 +436,36 @@ public sealed class BrowserLowLevelAutomationTests
         Assert.True(condition());
     }
 
+    private static CefHumanizedInput HumanizedInput(
+        RecordingTransport transport,
+        Action<CefCursorPoint>? cursorActivity = null) =>
+        new(
+            transport,
+            new Random(17),
+            static _ => Task.CompletedTask,
+            cursorActivity);
+
+    private static string EventType((string Method, string? Parameters) call)
+    {
+        using var parameters = JsonDocument.Parse(call.Parameters!);
+        return parameters.RootElement.GetProperty("type").GetString()!;
+    }
+
+    private static double EventDelta(
+        (string Method, string? Parameters) call,
+        string property)
+    {
+        using var parameters = JsonDocument.Parse(call.Parameters!);
+        return parameters.RootElement.GetProperty(property).GetDouble();
+    }
+
+    private static string InsertedText(
+        (string Method, string? Parameters) call)
+    {
+        using var parameters = JsonDocument.Parse(call.Parameters!);
+        return parameters.RootElement.GetProperty("text").GetString()!;
+    }
+
     private sealed class RecordingTransport(params string[] replies)
         : ICefDevToolsTransport
     {
@@ -260,7 +476,12 @@ public sealed class BrowserLowLevelAutomationTests
         public Task<string> ExecuteAsync(string method, string? parametersJson)
         {
             Calls.Add((method, parametersJson));
-            return Task.FromResult(_replies.Dequeue());
+            return Task.FromResult(
+                _replies.TryDequeue(out var reply)
+                    ? reply
+                    : method == "Page.getLayoutMetrics"
+                        ? "{\"result\":{\"cssVisualViewport\":{\"clientWidth\":800,\"clientHeight\":600}}}"
+                    : "{\"result\":{}}");
         }
     }
 }

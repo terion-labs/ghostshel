@@ -199,6 +199,7 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
         GhostShell.Application.SessionCapabilities.TerminalScrollback,
         GhostShell.Application.SessionCapabilities.TerminalScrollbackRead,
         GhostShell.Application.SessionCapabilities.TerminalScrollbackFind,
+        GhostShell.Application.SessionCapabilities.TerminalRenderedHistory,
         GhostShell.Application.SessionCapabilities.TerminalRevisionBoundMouse,
         GhostShell.Application.SessionCapabilities.TerminalFind,
         GhostShell.Application.SessionCapabilities.TerminalSelection,

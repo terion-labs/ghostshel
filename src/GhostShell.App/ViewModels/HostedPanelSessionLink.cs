@@ -235,12 +235,12 @@ internal sealed class HostedPanelSessionLink
         var acceptedOutcome = completed.Sessions.Count == 0
             || completed.Sessions is
             [
-                {
-                    SessionId: var closedSessionId,
-                    Outcome: SessionCloseOutcome.GracefullyClosed
+            {
+                SessionId: var closedSessionId,
+                Outcome: SessionCloseOutcome.GracefullyClosed
                         or SessionCloseOutcome.ForceTerminated
                         or SessionCloseOutcome.AlreadyClosed,
-                },
+            },
             ] && closedSessionId == current.Descriptor.Id;
         if (!exactTarget || !acceptedOutcome)
         {

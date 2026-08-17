@@ -19,6 +19,7 @@ public static class SessionCapabilities
     public const string TerminalScrollback = "terminal.scrollback";
     public const string TerminalScrollbackRead = "terminal.scrollback.read";
     public const string TerminalScrollbackFind = "terminal.scrollback.find";
+    public const string TerminalRenderedHistory = "terminal.rendered_history";
     public const string TerminalRevisionBoundMouse =
         "terminal.mouse.content_revision_bound";
     public const string TerminalClearScrollback = "terminal.scrollback.clear";

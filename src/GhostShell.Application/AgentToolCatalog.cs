@@ -136,6 +136,8 @@ public static class BuiltInAgentTools
     public const string TerminalReadScrollback = "terminal.read_scrollback";
     public const string TerminalFind = "terminal.find";
     public const string TerminalFindOnScreen = "terminal.find_on_screen";
+    public const string TerminalFindRenderedHistory = "terminal.find_rendered_history";
+    public const string TerminalJumpToRenderedHistory = "terminal.jump_to_rendered_history";
     public const string TerminalScrollViewport = "terminal.scroll_viewport";
     public const string TerminalSendText = "terminal.send_text";
     public const string TerminalPaste = "terminal.paste";
@@ -228,6 +230,16 @@ public static class BuiltInAgentTools
             "Find text on terminal screen",
             AgentCapability.TerminalRead,
             AgentActionRisk.Observation),
+        Tool(
+            TerminalFindRenderedHistory,
+            "Find rendered terminal history",
+            AgentCapability.TerminalRead,
+            AgentActionRisk.Observation),
+        Tool(
+            TerminalJumpToRenderedHistory,
+            "Jump to rendered terminal history",
+            AgentCapability.RunCommands,
+            AgentActionRisk.Routine),
         Tool(
             TerminalScrollViewport,
             "Scroll terminal viewport",

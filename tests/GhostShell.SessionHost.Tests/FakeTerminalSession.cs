@@ -36,6 +36,7 @@ internal sealed class FakeTerminalSession(
         SessionCapabilities.TerminalScrollback,
         SessionCapabilities.TerminalScrollbackRead,
         SessionCapabilities.TerminalScrollbackFind,
+        SessionCapabilities.TerminalRenderedHistory,
         SessionCapabilities.TerminalClearScrollback,
         SessionCapabilities.TerminalFind,
         SessionCapabilities.TerminalSelection,
@@ -167,6 +168,10 @@ internal sealed class FakeTerminalSession(
     public TerminalScrollbackReadInput? LastScrollbackRead { get; private set; }
 
     public TerminalScrollbackFindInput? LastScrollbackFind { get; private set; }
+
+    public TerminalRenderedHistoryFindInput? LastRenderedHistoryFind { get; private set; }
+
+    public TerminalRenderedHistoryRowAnchor? LastRenderedHistoryJump { get; private set; }
 
     public TerminalWaitForChangeInput? LastChangeWait { get; private set; }
 
@@ -394,6 +399,47 @@ internal sealed class FakeTerminalSession(
             TotalLines: 1,
             ContentRevision: ScreenContentRevision,
             IsTruncated: false));
+    }
+
+    public ValueTask<TerminalRenderedHistoryFindResult> FindRenderedHistoryAsync(
+        TerminalRenderedHistoryFindInput input,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        LastRenderedHistoryFind = input;
+        IReadOnlyList<TerminalRenderedHistoryRow> matches = ScreenText.Contains(
+            input.Query,
+            StringComparison.Ordinal)
+                ?
+                [
+                    new TerminalRenderedHistoryRow(
+                        new TerminalRenderedHistoryRowAnchor(
+                            ScreenContentRevision,
+                            2),
+                        ScreenText),
+                ]
+                : [];
+        return ValueTask.FromResult(new TerminalRenderedHistoryFindResult(
+            matches,
+            TotalRows: 24,
+            ContentRevision: ScreenContentRevision,
+            IsTruncated: false));
+    }
+
+    public ValueTask JumpToRenderedHistoryAsync(
+        TerminalRenderedHistoryRowAnchor anchor,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (anchor.ContentRevision != ScreenContentRevision)
+        {
+            throw new TerminalRenderedHistoryAnchorStaleException(
+                anchor.ContentRevision,
+                ScreenContentRevision);
+        }
+
+        LastRenderedHistoryJump = anchor;
+        return ValueTask.CompletedTask;
     }
 
     public ValueTask ClearScrollbackAsync(CancellationToken cancellationToken)

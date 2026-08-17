@@ -49,6 +49,7 @@ public sealed partial class BrowserSurface :
     private long _lastTerminalNavigationGeneration;
     private volatile bool _interactionRecoveryFailed;
     private Func<NativeRendererPhysicalInput, bool>? _physicalInputGate;
+    private bool _isAgentActive;
     private bool _disposed;
 
     public BrowserSurface()
@@ -183,6 +184,21 @@ public sealed partial class BrowserSurface :
 
     public event EventHandler<BrowserStateChangedEventArgs>? StateChanged;
 
+    /// <summary>
+    /// Keeps browser-owned agent presentation aligned with the panel activity
+    /// lease. The native view retains this state across renderer replacement.
+    /// </summary>
+    public void SetAgentActivity(bool isActive)
+    {
+        if (_disposed || _isAgentActive == isActive)
+        {
+            return;
+        }
+
+        _isAgentActive = isActive;
+        _nativeView.SetAgentActivity(isActive);
+    }
+
     public void Dispose()
     {
         if (_disposed)
@@ -191,6 +207,7 @@ public sealed partial class BrowserSurface :
         }
 
         _disposed = true;
+        _isAgentActive = false;
         Volatile.Write(ref _physicalInputGate, null);
         if (_pendingGovernedNavigation is { } pending
             && RetireGovernedNavigation(pending))
@@ -3271,6 +3288,7 @@ public sealed partial class BrowserSurface :
         _nativeView = replacement;
         try
         {
+            replacement.SetAgentActivity(_isAgentActive);
             if (_nativeViewReplacementPresenter is { } present)
             {
                 present(replacement.View);

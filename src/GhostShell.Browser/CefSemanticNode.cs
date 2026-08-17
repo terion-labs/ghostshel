@@ -11,4 +11,11 @@ internal sealed record CefSemanticNode(
     IReadOnlyDictionary<string, string> Properties,
     string Value);
 
-internal readonly record struct CefSemanticPoint(double X, double Y);
+internal readonly record struct CefSemanticPoint(
+    double X,
+    double Y,
+    double Width = 100,
+    double Height = 40)
+{
+    public double TargetWidth => Math.Clamp(Math.Min(Width, Height), 4, 200);
+}

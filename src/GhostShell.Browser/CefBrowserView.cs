@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Avalonia.Controls;
 using Avalonia.Threading;
@@ -19,11 +20,14 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
     private const int HeadlessViewportHeight = 720;
 
     private readonly CefWebView _webView;
+    private readonly Grid _view;
+    private readonly CefAgentCursorOverlay _agentCursorOverlay;
     private readonly TaskCompletionSource<bool> _rendererReady = new(
         TaskCreationOptions.RunContinuationsAsynchronously);
     private CefBrowser? _browser;
     private CefBrowserSemanticAdapter? _semanticAdapter;
     private CefBrowserAutomationAdapter? _automationAdapter;
+    private CefHumanizedInput? _humanizedInput;
     private CefBrowserNetworkActivityTracker? _networkActivity;
     private ActiveNativeNavigation? _activeNavigation;
     private BrowserAddress? _queuedAddress;
@@ -31,6 +35,7 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         CefLocalDocumentAccessPolicy.None;
     private long _lastNavigationGeneration;
     private bool _ignoreInitialBlank = true;
+    private bool _isAgentActive;
     private bool _disposed;
 
     public CefBrowserView(CefRequestContext? requestContext = null)
@@ -40,14 +45,33 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
             Url = BrowserAddress.Blank.Value.AbsoluteUri,
             RequestContext = requestContext,
         };
+        _agentCursorOverlay = new CefAgentCursorOverlay();
+        _view = new Grid();
+        _view.Children.Add(_webView);
+        _view.Children.Add(_agentCursorOverlay);
         _webView.BrowserReady += OnBrowserReady;
     }
 
-    public Control View => _webView;
+    public Control View => _view;
 
     public bool CanGoBack => _browser?.CanGoBack ?? false;
 
     public bool CanGoForward => _browser?.CanGoForward ?? false;
+
+    public void SetAgentActivity(bool isActive)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _isAgentActive = isActive;
+        _agentCursorOverlay.SetAgentActivity(isActive);
+        if (isActive && _humanizedInput is { } humanizedInput)
+        {
+            _ = EnsureAgentCursorAsync(humanizedInput);
+        }
+    }
 
     public event EventHandler<NativeBrowserNavigationEventArgs>? NavigationStarted;
 
@@ -267,6 +291,8 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         _semanticAdapter?.InvalidateDocument();
         _semanticAdapter = null;
         _automationAdapter = null;
+        _humanizedInput = null;
+        _agentCursorOverlay.SetAgentActivity(isActive: false);
         _networkActivity?.Dispose();
         _networkActivity = null;
         _rendererReady.TrySetResult(false);
@@ -291,12 +317,22 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
             _browser = browser;
             _semanticAdapter?.InvalidateDocument();
             _networkActivity?.Dispose();
+            var transport = new CefDevToolsTransport(browser);
+            var humanizedInput = new CefHumanizedInput(
+                transport,
+                cursorActivity: _agentCursorOverlay.ShowAt);
+            _humanizedInput = humanizedInput;
             _semanticAdapter = new CefBrowserSemanticAdapter(
-                new CefSemanticBrowser(browser));
+                new CefSemanticBrowser(browser, humanizedInput));
             _automationAdapter = new CefBrowserAutomationAdapter(
-                new CefDevToolsTransport(browser));
+                transport,
+                humanizedInput);
             _networkActivity = new CefBrowserNetworkActivityTracker(browser);
             Subscribe(browser);
+            if (_isAgentActive)
+            {
+                _ = EnsureAgentCursorAsync(humanizedInput);
+            }
         }
 
         _rendererReady.TrySetResult(true);
@@ -304,6 +340,20 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         // CEF reports BrowserReady while its initial about:blank load is still
         // in flight. Dispatching here can silently lose LoadUrl/LoadString.
         // OnLoadEnd owns the handoff after that bootstrap navigation settles.
+    }
+
+    private async Task EnsureAgentCursorAsync(CefHumanizedInput humanizedInput)
+    {
+        try
+        {
+            await humanizedInput.EnsureCursorVisibleAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception) when (!_disposed)
+        {
+            Trace.TraceWarning(
+                "Unable to initialize the browser agent cursor: {0}",
+                exception);
+        }
     }
 
     private async Task<NativeBrowserAutomationResult> DispatchAutomationAsync(

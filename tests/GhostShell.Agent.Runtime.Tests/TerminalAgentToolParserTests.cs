@@ -13,9 +13,11 @@ public sealed class TerminalAgentToolParserTests
     [InlineData(BuiltInAgentTools.TerminalReadScreen, "{}", typeof(TerminalAgentIntent.ReadScreen))]
     [InlineData(BuiltInAgentTools.TerminalReadScreenDiff, "{\"after_content_revision\":7,\"max_changed_rows\":16}", typeof(TerminalAgentIntent.ReadScreenDiff))]
     [InlineData(BuiltInAgentTools.TerminalFindOnScreen, "{\"text\":\"EDIT_PASS\",\"max_matches\":8}", typeof(TerminalAgentIntent.FindOnScreen))]
+    [InlineData(BuiltInAgentTools.TerminalFindRenderedHistory, "{\"text\":\"TUIHISTORY_START\",\"direction\":\"backward\",\"max_matches\":8}", typeof(TerminalAgentIntent.FindRenderedHistory))]
     [InlineData(BuiltInAgentTools.TerminalReadScrollback, "{\"anchor\":\"bottom\",\"max_lines\":64}", typeof(TerminalAgentIntent.ReadScrollback))]
     [InlineData(BuiltInAgentTools.TerminalFind, "{\"text\":\"ready\",\"direction\":\"backward\",\"max_matches\":8}", typeof(TerminalAgentIntent.FindScrollback))]
     [InlineData(BuiltInAgentTools.TerminalScrollViewport, "{\"direction\":\"up\",\"unit\":\"page\",\"amount\":2}", typeof(TerminalAgentIntent.ScrollViewport))]
+    [InlineData(BuiltInAgentTools.TerminalScrollViewport, "{\"direction\":\"bottom\"}", typeof(TerminalAgentIntent.ScrollViewport))]
     [InlineData(BuiltInAgentTools.TerminalSendText, "{\"text\":\"menu\"}", typeof(TerminalAgentIntent.SendText))]
     [InlineData(BuiltInAgentTools.TerminalPaste, "{\"text\":\"first\\n\\tsecond\"}", typeof(TerminalAgentIntent.Paste))]
     [InlineData(BuiltInAgentTools.TerminalSubmitText, "{\"text\":\"echo ready\"}", typeof(TerminalAgentIntent.SubmitText))]
@@ -44,9 +46,12 @@ public sealed class TerminalAgentToolParserTests
     [InlineData(BuiltInAgentTools.TerminalReadScreen, "{\"extra\":true}")]
     [InlineData(BuiltInAgentTools.TerminalReadScreenDiff, "{\"after_content_revision\":7,\"max_changed_rows\":0}")]
     [InlineData(BuiltInAgentTools.TerminalFindOnScreen, "{\"text\":\"\",\"max_matches\":8}")]
+    [InlineData(BuiltInAgentTools.TerminalFindRenderedHistory, "{\"text\":\"ready\",\"direction\":\"sideways\",\"max_matches\":8}")]
+    [InlineData(BuiltInAgentTools.TerminalJumpToRenderedHistory, "{\"row_anchor\":\"invalid\"}")]
     [InlineData(BuiltInAgentTools.TerminalReadScrollback, "{\"anchor\":\"before\",\"max_lines\":64,\"row_anchor\":\"invalid\"}")]
     [InlineData(BuiltInAgentTools.TerminalFind, "{\"text\":\"ready\",\"direction\":\"sideways\",\"max_matches\":8}")]
     [InlineData(BuiltInAgentTools.TerminalScrollViewport, "{\"direction\":\"top\",\"unit\":\"page\",\"amount\":1}")]
+    [InlineData(BuiltInAgentTools.TerminalScrollViewport, "{\"direction\":\"down\"}")]
     [InlineData(BuiltInAgentTools.TerminalSendText, "{\"text\":\"line\\nfeed\"}")]
     [InlineData(BuiltInAgentTools.TerminalPaste, "{\"text\":\"\\u0000\"}")]
     [InlineData(BuiltInAgentTools.TerminalPaste, "{\"text\":\"\\u001b[31m\"}")]
@@ -90,6 +95,63 @@ public sealed class TerminalAgentToolParserTests
 
         Assert.Equal(TerminalKey.Backspace, intent.KeyStroke.Key);
         Assert.Equal(12, intent.KeyStroke.RepeatCount);
+    }
+
+    [Fact]
+    public async Task Absolute_viewport_scroll_requires_no_synthetic_unit_or_amount()
+    {
+        var proposal = await ProposalAsync(
+            BuiltInAgentTools.TerminalScrollViewport,
+            "{\"direction\":\"bottom\"}");
+
+        var parsed = Assert.IsType<TerminalAgentIntentResult.Parsed>(
+            TerminalAgentToolParser.Parse(proposal));
+        var intent = Assert.IsType<TerminalAgentIntent.ScrollViewport>(parsed.Intent);
+
+        Assert.Equal(TerminalViewportScrollDirection.Bottom, intent.Input.Direction);
+        Assert.Equal(TerminalViewportScrollUnit.Line, intent.Input.Unit);
+        Assert.Equal(1, intent.Input.Amount);
+    }
+
+    [Fact]
+    public async Task Rendered_history_anchor_round_trips_only_into_viewport_jump()
+    {
+        var anchor = new TerminalRenderedHistoryRowAnchor(17, 42);
+        var encoded = TerminalRenderedHistoryAnchorCodec.Encode(anchor);
+        var proposal = await ProposalAsync(
+            BuiltInAgentTools.TerminalJumpToRenderedHistory,
+            $"{{\"row_anchor\":\"{encoded}\"}}");
+
+        var parsed = Assert.IsType<TerminalAgentIntentResult.Parsed>(
+            TerminalAgentToolParser.Parse(proposal));
+        var intent = Assert.IsType<TerminalAgentIntent.JumpToRenderedHistory>(
+            parsed.Intent);
+
+        Assert.Equal(anchor, intent.Anchor);
+        Assert.False(TerminalScrollbackAnchorCodec.TryDecode(encoded, out _));
+    }
+
+    [Fact]
+    public void Rendered_history_tools_require_the_explicit_engine_capability()
+    {
+        var readOnly = ContextPanel(
+            SessionCapabilities.TerminalReadScreen,
+            SessionCapabilities.TerminalRenderedHistory);
+        var interactive = ContextPanel(
+            SessionCapabilities.TerminalReadScreen,
+            SessionCapabilities.TerminalRenderedHistory,
+            SessionCapabilities.TerminalAgentInputBarrier,
+            SessionCapabilities.TerminalScrollback);
+
+        Assert.Contains(
+            TerminalAgentToolSet.For(readOnly),
+            tool => tool.Name == BuiltInAgentTools.TerminalFindRenderedHistory);
+        Assert.DoesNotContain(
+            TerminalAgentToolSet.For(readOnly),
+            tool => tool.Name == BuiltInAgentTools.TerminalJumpToRenderedHistory);
+        Assert.Contains(
+            TerminalAgentToolSet.For(interactive),
+            tool => tool.Name == BuiltInAgentTools.TerminalJumpToRenderedHistory);
     }
 
     [Fact]

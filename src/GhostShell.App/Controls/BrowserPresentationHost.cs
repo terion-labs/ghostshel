@@ -33,6 +33,10 @@ public sealed class BrowserPresentationHost : ContentControl
         AvaloniaProperty.Register<BrowserPresentationHost, BrowserRendererView?>(
             nameof(RendererView));
 
+    public static readonly StyledProperty<bool> IsAgentActiveProperty =
+        AvaloniaProperty.Register<BrowserPresentationHost, bool>(
+            nameof(IsAgentActive));
+
     public static readonly DirectProperty<BrowserPresentationHost, string>
         AddressTextProperty =
             AvaloniaProperty.RegisterDirect<BrowserPresentationHost, string>(
@@ -144,6 +148,12 @@ public sealed class BrowserPresentationHost : ContentControl
     {
         get => GetValue(RendererViewProperty);
         set => SetValue(RendererViewProperty, value);
+    }
+
+    public bool IsAgentActive
+    {
+        get => GetValue(IsAgentActiveProperty);
+        set => SetValue(IsAgentActiveProperty, value);
     }
 
     public string AddressText
@@ -298,6 +308,7 @@ public sealed class BrowserPresentationHost : ContentControl
 
         if (_hostedRendererView is { } previous)
         {
+            previous.SetAgentActivity(isActive: false);
             ReleaseRendererVisual(previous);
         }
 
@@ -309,6 +320,7 @@ public sealed class BrowserPresentationHost : ContentControl
         rendererView.PresentationHost?.ReleaseRendererVisual(rendererView);
         _hostedRendererView = rendererView;
         rendererView.PresentationHost = this;
+        rendererView.SetAgentActivity(IsAgentActive);
         Content = rendererView.View;
     }
 
@@ -352,6 +364,11 @@ public sealed class BrowserPresentationHost : ContentControl
         if (change.Property == RendererViewProperty)
         {
             HostRendererVisual();
+        }
+
+        if (change.Property == IsAgentActiveProperty)
+        {
+            RendererView?.SetAgentActivity(IsAgentActive);
         }
 
         if (change.Property == SessionClientProperty

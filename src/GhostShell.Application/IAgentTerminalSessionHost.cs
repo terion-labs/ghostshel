@@ -38,6 +38,9 @@ public abstract record AgentTerminalActionResult
     public sealed record ScreenFind(TerminalScreenFindResult Result)
         : AgentTerminalActionResult;
 
+    public sealed record RenderedHistoryFind(TerminalRenderedHistoryFindResult Result)
+        : AgentTerminalActionResult;
+
     public sealed record Wait(TerminalWaitOutcome Outcome)
         : AgentTerminalActionResult;
 }

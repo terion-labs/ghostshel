@@ -31,6 +31,14 @@ public abstract record AgentTerminalRequest
         SessionId SessionId,
         TerminalScreenFindInput Input) : AgentTerminalRequest;
 
+    public sealed record FindRenderedHistory(
+        SessionId SessionId,
+        TerminalRenderedHistoryFindInput Input) : AgentTerminalRequest;
+
+    public sealed record JumpToRenderedHistory(
+        SessionId SessionId,
+        TerminalRenderedHistoryRowAnchor Anchor) : AgentTerminalRequest;
+
     public sealed record ScrollViewport(
         SessionId SessionId,
         TerminalViewportScrollInput Input) : AgentTerminalRequest;

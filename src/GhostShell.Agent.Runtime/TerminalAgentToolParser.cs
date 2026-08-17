@@ -160,6 +160,10 @@ internal static class TerminalAgentToolParser
                 ParseFind(properties, panelId),
             BuiltInAgentTools.TerminalFindOnScreen =>
                 ParseFindOnScreen(properties, panelId),
+            BuiltInAgentTools.TerminalFindRenderedHistory =>
+                ParseFindRenderedHistory(properties, panelId),
+            BuiltInAgentTools.TerminalJumpToRenderedHistory =>
+                ParseJumpToRenderedHistory(properties, panelId),
             BuiltInAgentTools.TerminalScrollViewport =>
                 ParseScrollViewport(properties, panelId),
             BuiltInAgentTools.TerminalSendText =>
@@ -481,29 +485,100 @@ internal static class TerminalAgentToolParser
             panelId);
     }
 
-    private static TerminalAgentIntentResult ParseScrollViewport(
+    private static TerminalAgentIntentResult ParseFindRenderedHistory(
         IReadOnlyDictionary<string, JsonElement> properties,
         PanelInstanceId? panelId)
     {
         if (properties.Count != 3
+            || !properties.TryGetValue("text", out var textElement)
+            || !TryReadBoundedText(
+                textElement,
+                TerminalRenderedHistoryFindInput.MaximumQueryLength,
+                out var text)
             || !properties.TryGetValue("direction", out var directionElement)
+            || directionElement.ValueKind != JsonValueKind.String
+            || !TryParseFindDirection(directionElement.GetString(), out var direction)
+            || !properties.TryGetValue("max_matches", out var maximumElement)
+            || maximumElement.ValueKind != JsonValueKind.Number
+            || !maximumElement.TryGetInt32(out var maximumMatches)
+            || maximumMatches is < 1
+                or > TerminalRenderedHistoryFindInput.MaximumMatches)
+        {
+            return Invalid(
+                "Rendered-history find requires bounded literal text, direction, and 1 to 64 matches.");
+        }
+
+        return new TerminalAgentIntentResult.Parsed(
+            new TerminalAgentIntent.FindRenderedHistory(
+                new TerminalRenderedHistoryFindInput(
+                    text,
+                    direction,
+                    maximumMatches)),
+            panelId);
+    }
+
+    private static TerminalAgentIntentResult ParseJumpToRenderedHistory(
+        IReadOnlyDictionary<string, JsonElement> properties,
+        PanelInstanceId? panelId)
+    {
+        if (properties.Count != 1
+            || !properties.TryGetValue("row_anchor", out var anchorElement)
+            || anchorElement.ValueKind != JsonValueKind.String
+            || !TerminalRenderedHistoryAnchorCodec.TryDecode(
+                anchorElement.GetString(),
+                out var anchor))
+        {
+            return Invalid(
+                "Rendered-history jump requires one opaque row_anchor returned by terminal.find_rendered_history.");
+        }
+
+        return new TerminalAgentIntentResult.Parsed(
+            new TerminalAgentIntent.JumpToRenderedHistory(anchor!),
+            panelId);
+    }
+
+    private static TerminalAgentIntentResult ParseScrollViewport(
+        IReadOnlyDictionary<string, JsonElement> properties,
+        PanelInstanceId? panelId)
+    {
+        if (!properties.TryGetValue("direction", out var directionElement)
             || directionElement.ValueKind != JsonValueKind.String
             || !TryParseScrollDirection(
                 directionElement.GetString(),
-                out var direction)
+                out var direction))
+        {
+            return Invalid(
+                "Viewport scroll requires up/down with bounded unit and amount, or an absolute top/bottom direction.");
+        }
+
+        if (direction is TerminalViewportScrollDirection.Top
+                or TerminalViewportScrollDirection.Bottom)
+        {
+            if (properties.Count != 1)
+            {
+                return Invalid("Absolute top and bottom viewport scrolling accepts only direction.");
+            }
+
+            return new TerminalAgentIntentResult.Parsed(
+                new TerminalAgentIntent.ScrollViewport(
+                    new TerminalViewportScrollInput(
+                        direction,
+                        TerminalViewportScrollUnit.Line,
+                        Amount: 1)),
+                panelId);
+        }
+
+        if (properties.Count != 3
             || !properties.TryGetValue("unit", out var unitElement)
             || unitElement.ValueKind != JsonValueKind.String
             || !TryParseScrollUnit(unitElement.GetString(), out var unit)
             || !properties.TryGetValue("amount", out var amountElement)
             || amountElement.ValueKind != JsonValueKind.Number
             || !amountElement.TryGetInt32(out var amount)
-            || amount is < 1 or > 1_000
-            || direction is TerminalViewportScrollDirection.Top
-                    or TerminalViewportScrollDirection.Bottom
-                && (unit != TerminalViewportScrollUnit.Line || amount != 1))
+            || amount is < 1 or > 1_000)
         {
             return Invalid(
-                "Viewport scroll requires bounded direction, unit, and amount; top and bottom use line amount 1.");
+                "Viewport scroll requires up/down with bounded unit and amount, or an absolute top/bottom direction.");
         }
 
         return new TerminalAgentIntentResult.Parsed(

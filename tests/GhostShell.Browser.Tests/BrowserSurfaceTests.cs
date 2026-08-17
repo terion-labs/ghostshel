@@ -49,6 +49,19 @@ public sealed class BrowserSurfaceTests
     }
 
     [Fact]
+    public void AgentActivityReachesTheNativeBrowserView()
+    {
+        var nativeView = new RecordingEmbeddedBrowserView();
+        var surface = Surface(nativeView);
+
+        surface.SetAgentActivity(isActive: true);
+        Assert.True(nativeView.IsAgentActive);
+
+        surface.SetAgentActivity(isActive: false);
+        Assert.False(nativeView.IsAgentActive);
+    }
+
+    [Fact]
     public async Task ProductionProfileDispatchesNativeSemanticSnapshots()
     {
         var nativeView = new RecordingEmbeddedBrowserView

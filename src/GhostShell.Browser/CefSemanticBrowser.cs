@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Exclr8Cef;
 using Exclr8Cef.Cdp;
+using GhostShell.Application;
 
 namespace GhostShell.Browser;
 
@@ -8,12 +9,22 @@ namespace GhostShell.Browser;
 /// Executes semantic browser operations through acknowledged CDP round trips.
 /// No page-realm selector, script, or DOM event shortcut is used for input.
 /// </summary>
-internal sealed class CefSemanticBrowser(CefBrowser browser)
-    : ICefSemanticBrowser
+internal sealed class CefSemanticBrowser : ICefSemanticBrowser
 {
-    private readonly CefBrowser _browser = browser
-        ?? throw new ArgumentNullException(nameof(browser));
+    private const int MaximumRevealAttempts = 6;
+    private const double ViewportMarginCss = 12;
+    private readonly CefBrowser _browser;
+    private readonly CefHumanizedInput _humanizedInput;
     private bool _domainsEnabled;
+
+    public CefSemanticBrowser(
+        CefBrowser browser,
+        CefHumanizedInput humanizedInput)
+    {
+        _browser = browser ?? throw new ArgumentNullException(nameof(browser));
+        _humanizedInput = humanizedInput
+            ?? throw new ArgumentNullException(nameof(humanizedInput));
+    }
 
     public async Task<IReadOnlyList<CefSemanticNode>>
         ReadAccessibilityTreeAsync()
@@ -41,26 +52,56 @@ internal sealed class CefSemanticBrowser(CefBrowser browser)
         int backendNodeId)
     {
         await EnsureDomainsEnabledAsync().ConfigureAwait(false);
-        await _browser.Dom
-            .ScrollIntoViewAsync(backendNodeId)
-            .ConfigureAwait(false);
-        var quads = await _browser.Dom
-            .GetContentQuadsAsync(backendNodeId)
-            .ConfigureAwait(false);
-        foreach (var quad in quads)
+        for (var attempt = 0; attempt < MaximumRevealAttempts; attempt++)
         {
-            var clip = quad.ToBoundingClip();
-            if (clip.Width > 1
-                && clip.Height > 1
-                && double.IsFinite(clip.X)
-                && double.IsFinite(clip.Y)
-                && double.IsFinite(clip.Width)
-                && double.IsFinite(clip.Height))
+            var quads = await _browser.Dom
+                .GetContentQuadsAsync(backendNodeId)
+                .ConfigureAwait(false);
+            ScreenshotClip? usableClip = null;
+            foreach (var quad in quads)
             {
-                return new CefSemanticPoint(
-                    clip.X + clip.Width / 2,
-                    clip.Y + clip.Height / 2);
+                var candidate = quad.ToBoundingClip();
+                if (IsUsableClip(candidate))
+                {
+                    usableClip = candidate;
+                    break;
+                }
             }
+
+            if (usableClip is not { } clip)
+            {
+                return null;
+            }
+
+            var viewport = await _humanizedInput.ReadViewportAsync()
+                .ConfigureAwait(false);
+            var point = new CefSemanticPoint(
+                clip.X + clip.Width / 2,
+                clip.Y + clip.Height / 2,
+                clip.Width,
+                clip.Height);
+            if (IsInsideViewport(point, viewport))
+            {
+                return point;
+            }
+
+            var deltaX = RevealDelta(
+                point.X,
+                viewport.WidthCss,
+                clip.Width);
+            var deltaY = RevealDelta(
+                point.Y,
+                viewport.HeightCss,
+                clip.Height);
+            await _humanizedInput.ScrollAsync(
+                    viewport.WidthCss / 2,
+                    viewport.HeightCss / 2,
+                    deltaX,
+                    deltaY,
+                    BrowserInputModifiers.None)
+                .ConfigureAwait(false);
+            await Task.Delay(TimeSpan.FromMilliseconds(35))
+                .ConfigureAwait(false);
         }
 
         return null;
@@ -93,41 +134,31 @@ internal sealed class CefSemanticBrowser(CefBrowser browser)
             node => node.BackendDomNodeId == backendNodeId);
     }
 
-    public async Task DispatchClickAsync(CefSemanticPoint point)
+    public async Task<bool> DispatchClickAsync(
+        CefSemanticPoint point,
+        int backendNodeId)
     {
-        await ExecuteAcknowledgedAsync(
-                "Input.dispatchMouseEvent",
-                new
-                {
-                    type = "mouseMoved",
-                    x = point.X,
-                    y = point.Y,
-                })
+        await _humanizedInput.MoveAsync(
+                point.X,
+                point.Y,
+                targetWidth: point.TargetWidth)
             .ConfigureAwait(false);
-        await ExecuteAcknowledgedAsync(
-                "Input.dispatchMouseEvent",
-                new
-                {
-                    type = "mousePressed",
-                    x = point.X,
-                    y = point.Y,
-                    button = "left",
-                    buttons = 1,
-                    clickCount = 1,
-                })
+        if (!await HitTestIncludesAsync(point, backendNodeId)
+                .ConfigureAwait(false))
+        {
+            return false;
+        }
+
+        await _humanizedInput.ClickAsync(
+                point.X,
+                point.Y,
+                BrowserMouseButton.Left,
+                BrowserMouseButtons.None,
+                BrowserInputModifiers.None,
+                clickCount: 1,
+                targetWidth: point.TargetWidth)
             .ConfigureAwait(false);
-        await ExecuteAcknowledgedAsync(
-                "Input.dispatchMouseEvent",
-                new
-                {
-                    type = "mouseReleased",
-                    x = point.X,
-                    y = point.Y,
-                    button = "left",
-                    buttons = 0,
-                    clickCount = 1,
-                })
-            .ConfigureAwait(false);
+        return true;
     }
 
     public async Task ReplaceFocusedTextAsync(
@@ -136,6 +167,7 @@ internal sealed class CefSemanticBrowser(CefBrowser browser)
     {
         ArgumentNullException.ThrowIfNull(text);
         await EnsureDomainsEnabledAsync().ConfigureAwait(false);
+        await _humanizedInput.EnsureCursorVisibleAsync().ConfigureAwait(false);
         await _browser.Dom.FocusAsync(backendNodeId).ConfigureAwait(false);
         await DispatchKeyAsync(
                 "rawKeyDown",
@@ -166,7 +198,7 @@ internal sealed class CefSemanticBrowser(CefBrowser browser)
         {
             // Input.insertText is Chromium's acknowledged, trusted input path;
             // it fires editing/input behavior without assigning page state.
-            await _browser.Input.InsertTextAsync(text).ConfigureAwait(false);
+            await _humanizedInput.TypeTextAsync(text).ConfigureAwait(false);
         }
     }
 
@@ -212,6 +244,40 @@ internal sealed class CefSemanticBrowser(CefBrowser browser)
         await _browser.Accessibility.EnableAsync().ConfigureAwait(false);
         await _browser.Dom.EnableAsync().ConfigureAwait(false);
         _domainsEnabled = true;
+    }
+
+    private static bool IsUsableClip(ScreenshotClip clip) =>
+        clip.Width > 1
+        && clip.Height > 1
+        && double.IsFinite(clip.X)
+        && double.IsFinite(clip.Y)
+        && double.IsFinite(clip.Width)
+        && double.IsFinite(clip.Height);
+
+    private static bool IsInsideViewport(
+        CefSemanticPoint point,
+        NativeBrowserViewport viewport) =>
+        point.X >= ViewportMarginCss
+        && point.Y >= ViewportMarginCss
+        && point.X <= viewport.WidthCss - ViewportMarginCss
+        && point.Y <= viewport.HeightCss - ViewportMarginCss;
+
+    private static double RevealDelta(
+        double coordinate,
+        double viewportExtent,
+        double targetExtent)
+    {
+        if (coordinate >= ViewportMarginCss
+            && coordinate <= viewportExtent - ViewportMarginCss)
+        {
+            return 0;
+        }
+
+        var desired = Math.Clamp(
+            viewportExtent / 2,
+            ViewportMarginCss + targetExtent / 2,
+            viewportExtent - ViewportMarginCss - targetExtent / 2);
+        return Math.Clamp(coordinate - desired, -800, 800);
     }
 
     private Task DispatchKeyAsync(

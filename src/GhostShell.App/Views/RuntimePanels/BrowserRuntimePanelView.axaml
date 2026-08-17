@@ -121,6 +121,7 @@
           Margin="{DynamicResource ShellHairline}"
           BrowserStateChanged="OnBrowserStateChanged"
           ClientId="{Binding ClientId}"
+          IsAgentActive="{Binding IsAgentActive}"
           RendererView="{Binding RendererView}"
           SessionClient="{Binding SessionClient}"
           SessionRequest="{Binding SessionRequest}" />

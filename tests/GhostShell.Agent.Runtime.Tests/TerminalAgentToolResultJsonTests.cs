@@ -97,6 +97,33 @@ public sealed class TerminalAgentToolResultJsonTests
         Assert.Single(document.RootElement.EnumerateObject());
     }
 
+    [Fact]
+    public void RenderedHistoryFindReturnsOpaqueJumpAnchorsAndBoundedText()
+    {
+        var result = new TerminalRenderedHistoryFindResult(
+            [
+                new TerminalRenderedHistoryRow(
+                    new TerminalRenderedHistoryRowAnchor(31, 7),
+                    "TUIHISTORY_START"),
+            ],
+            TotalRows: 20,
+            ContentRevision: 31,
+            IsTruncated: false);
+        var json = TerminalAgentToolResultJson.Success(
+            new AgentTerminalActionResult.RenderedHistoryFind(result));
+
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        var match = Assert.Single(root.GetProperty("matches").EnumerateArray());
+        var encoded = match.GetProperty("row_anchor").GetString();
+
+        Assert.Equal(20, root.GetProperty("total_rows").GetInt32());
+        Assert.Equal("TUIHISTORY_START", match.GetProperty("text").GetString());
+        Assert.True(TerminalRenderedHistoryAnchorCodec.TryDecode(encoded, out var anchor));
+        Assert.Equal(new TerminalRenderedHistoryRowAnchor(31, 7), anchor);
+        Assert.False(TerminalScrollbackAnchorCodec.TryDecode(encoded, out _));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

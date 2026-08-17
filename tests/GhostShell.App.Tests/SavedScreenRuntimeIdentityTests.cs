@@ -520,8 +520,23 @@ public sealed class SavedScreenRuntimeIdentityTests
         Assert.True(await viewModel.OpenWorkspaceAsync(accented.Id));
         Assert.Equal(["#5FA97A"], announced);
 
+        var editedAccent = new WorkspaceDefinition(
+            accented.Id,
+            accented.SchemaVersion,
+            accented.Name,
+            accented.Description,
+            "#35B779",
+            accented.Entries);
+        viewModel.RefreshCatalog(new DefinitionCatalogSnapshot(
+            [Store(connection)],
+            [],
+            [],
+            [Store(editedAccent), Store(plain)],
+            [], [], [], [], []));
+        Assert.Equal(["#5FA97A", "#35B779"], announced);
+
         Assert.True(await viewModel.OpenWorkspaceAsync(plain.Id));
-        Assert.Equal(["#5FA97A", null], announced);
+        Assert.Equal(["#5FA97A", "#35B779", null], announced);
     }
 
     [Fact]

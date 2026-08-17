@@ -17,6 +17,18 @@ public interface ITerminalState
         ValueTask.FromException<TerminalScrollbackFindResult>(new NotSupportedException(
             "Non-mutating terminal history search is not supported by this terminal engine."));
 
+    ValueTask<TerminalRenderedHistoryFindResult> FindRenderedHistoryAsync(
+        TerminalRenderedHistoryFindInput input,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromException<TerminalRenderedHistoryFindResult>(new NotSupportedException(
+            "Rendered terminal history search is not supported by this terminal engine."));
+
+    ValueTask JumpToRenderedHistoryAsync(
+        TerminalRenderedHistoryRowAnchor anchor,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromException(new NotSupportedException(
+            "Rendered terminal history viewport jumps are not supported by this terminal engine."));
+
     ValueTask ScrollViewportAsync(
         TerminalViewportScrollInput scrollInput,
         CancellationToken cancellationToken);

@@ -10528,6 +10528,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // revision — which is exactly what autosave does every time a tab is
         // added — and the rail forgot which workspace you were in.
         RefreshWorkspaceRuntimeFlags();
+        // The active runtime does not change when its backing definition is
+        // edited. Re-resolve its shell accent from this newly published
+        // snapshot so an accent save retints the open workspace immediately.
+        SetActiveWorkspaceAccent(ShellAccentOf(RuntimeWorkspace, snapshot));
         ReplaceIfChanged(
             Connections,
             snapshot.Connections
@@ -11880,7 +11884,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// definition behind it, or one whose definition is gone, leaves the shell
     /// wearing its own accent, which is what it would have done anyway.
     /// </summary>
-    private string? ShellAccentOf(RuntimeWorkspaceViewModel? runtime)
+    private string? ShellAccentOf(RuntimeWorkspaceViewModel? runtime) =>
+        ShellAccentOf(runtime, _catalog.Snapshot);
+
+    private string? ShellAccentOf(
+        RuntimeWorkspaceViewModel? runtime,
+        DefinitionCatalogSnapshot snapshot)
     {
         if (runtime is null
             || !_runtimeSources.TryGetValue(runtime.Id, out var source)
@@ -11889,7 +11898,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             return null;
         }
 
-        return _catalog.Snapshot.Workspaces
+        return snapshot.Workspaces
             .FirstOrDefault(item => item.Value.Id.Value == source.SourceDefinition.Value)
             ?.Value.Accent;
     }

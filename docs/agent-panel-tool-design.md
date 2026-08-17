@@ -119,7 +119,7 @@ retain the researched target surface and mark deferred tools explicitly.
 | Panel | Production tools |
 | --- | --- |
 | Common graph/layout | `workspace.inspect`, `tab.list`, `panel.list`, `panel.inspect`, `panel.focus`, `tab.create`, `tab.close`, `panel.add`, `panel.split`, `panel.close` |
-| Terminal | `terminal.read_screen`, `terminal.read_screen_diff`, `terminal.find_on_screen`, `terminal.read_scrollback`, `terminal.find`, `terminal.scroll_viewport`, `terminal.wait`, `terminal.send_text`, `terminal.paste`, `terminal.submit_text`, `terminal.send_keys`, `terminal.send_chord`, `terminal.send_mouse`, `terminal.interrupt`, `terminal.resize` |
+| Terminal | `terminal.read_screen`, `terminal.read_screen_diff`, `terminal.find_on_screen`, `terminal.find_rendered_history`, `terminal.jump_to_rendered_history`, `terminal.read_scrollback`, `terminal.find`, `terminal.scroll_viewport`, `terminal.wait`, `terminal.send_text`, `terminal.paste`, `terminal.submit_text`, `terminal.send_keys`, `terminal.send_chord`, `terminal.send_mouse`, `terminal.interrupt`, `terminal.resize` |
 | Browser | `browser.read_state`, `browser.snapshot`, `browser.wait`, `browser.click`, `browser.fill`, `browser.check`, `browser.mouse`, `browser.key`, `browser.scroll`, `browser.navigate`, `browser.back`, `browser.forward`, `browser.reload`, `browser.stop` |
 | File Viewer | `files.list`, `files.search`, `files.stat`, `files.read`, `files.access_read`, `files.transfers`, `files.mkdir`, `files.move`, `files.delete` |
 | Statistics | `statistics.read` |
@@ -262,6 +262,8 @@ scrollback or to the remote TUI.
 | `terminal.read_screen` | No required args. Returns bounded visible rows, cursor, dimensions, title, cwd, alternate-screen, paste/mouse modes, scrollback counts, content revision, and recent OSC 133 boundaries/events. | `TerminalRead` / Observation | Implemented |
 | `terminal.read_screen_diff` | Exact previously observed content revision plus a changed-row limit. Returns only changed rendered viewport rows. If that revision is not the latest observed screen, reports `baseline_available: false` and no invented diff. | `TerminalRead` / Observation | Implemented |
 | `terminal.find_on_screen` | Exact literal text and maximum matches against the current rendered viewport, including alternate-screen TUIs. This is deliberately distinct from scrollback/history search. | `TerminalRead` / Observation | Implemented |
+| `terminal.find_rendered_history` | Exact literal text, direction, and maximum matches across the engine-retained rendered row space: offscreen TUI rows plus the current screen. Returns revision-bound opaque row anchors without moving the viewport. | `TerminalRead` / Observation | Implemented |
+| `terminal.jump_to_rendered_history` | One opaque row anchor from `terminal.find_rendered_history`. Moves the hosted viewport directly to that rendered row and returns a fresh screen without sending input to the application. | `RunCommands` / Routine | Implemented |
 | `terminal.read_scrollback` | `anchor: top|bottom|before|after`, optional opaque row anchor, `max_lines` (16/64/200). Non-mutating bounded history read. | `TerminalRead` / Observation | Implemented |
 | `terminal.find` | Exact literal text, direction, maximum matches. Returns bounded excerpts and opaque match anchors without moving the user's viewport. | `TerminalRead` / Observation | Implemented |
 | `terminal.scroll_viewport` | `direction: up|down|top|bottom`, `unit: line|page`, bounded `amount`. Reject on alternate screen when there is no hosted scrollback. Returns the resulting viewport snapshot. | `RunCommands` / Routine | Implemented |
@@ -282,9 +284,10 @@ justifies their privacy and destructive semantics.
 ### Terminal-specific rules
 
 - `read_screen` never auto-scrolls.
-- `find_on_screen` searches the rendered viewport; `terminal.find` searches
-  hosted scrollback. Agents use the former for full-screen TUIs and the latter
-  for terminal history.
+- `find_on_screen` searches only the rendered viewport; `terminal.find` searches
+  hosted shell scrollback; `find_rendered_history` searches the separate
+  engine-retained rendered row space used by full-screen TUIs. Agents jump to
+  a rendered match only with its opaque revision-bound anchor.
 - `read_screen_diff` accepts only the engine's most recently observed screen as
   a baseline. Renderer, health, and context reads are not agent observations and
   do not replace it. A later agent-visible screen/find/wait/diff observation

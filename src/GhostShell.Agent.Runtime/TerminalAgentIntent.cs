@@ -23,6 +23,12 @@ internal abstract record TerminalAgentIntent
     public sealed record FindOnScreen(TerminalScreenFindInput Input)
         : TerminalAgentIntent;
 
+    public sealed record FindRenderedHistory(TerminalRenderedHistoryFindInput Input)
+        : TerminalAgentIntent;
+
+    public sealed record JumpToRenderedHistory(TerminalRenderedHistoryRowAnchor Anchor)
+        : TerminalAgentIntent;
+
     public sealed record ScrollViewport(TerminalViewportScrollInput Input)
         : TerminalAgentIntent;
 

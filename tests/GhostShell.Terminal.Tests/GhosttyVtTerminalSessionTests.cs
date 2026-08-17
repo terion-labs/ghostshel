@@ -249,6 +249,113 @@ public sealed class GhosttyVtTerminalSessionTests
     }
 
     [Fact]
+    public async Task ProjectedFindSearchesAcrossBlankScrollbackRows()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+        await session.AttachRendererAsync(
+            new NativeRendererHost(
+                "GhostShell.Managed",
+                Handle: 0,
+                new ViewportDescriptor(80, 64, 1, Columns: 40, Rows: 4)),
+            default);
+        await harness.Pty.WriteOutputAsync(
+            "LONG_START\r\n\r\nitem 2\r\n\r\nitem 3\r\n\r\n"
+            + "item 4\r\n\r\nLONG_END\r\nREADY");
+        _ = await WaitForScreenAsync(
+            session,
+            snapshot => snapshot.PlainText.Contains("READY", StringComparison.Ordinal));
+
+        var result = await session.FindScrollbackAsync(
+            new TerminalScrollbackFindInput(
+                "LONG_START",
+                TerminalScrollbackFindDirection.Backward,
+                MaximumMatchCount: 4),
+            default);
+
+        Assert.Single(result.Matches);
+        Assert.Contains("LONG_START", result.Matches[0].Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RenderedHistoryFindIncludesCurrentTuiRowsWithoutMutatingViewport()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+        await session.AttachRendererAsync(
+            new NativeRendererHost(
+                "GhostShell.Managed",
+                Handle: 0,
+                new ViewportDescriptor(80, 64, 1, Columns: 40, Rows: 4)),
+            default);
+        await harness.Pty.WriteOutputAsync("ACTIVE_TUI_ONLY_NEEDLE");
+        var before = await WaitForScreenAsync(
+            session,
+            snapshot => snapshot.PlainText.Contains(
+                "ACTIVE_TUI_ONLY_NEEDLE",
+                StringComparison.Ordinal));
+
+        var scrollback = await session.FindScrollbackAsync(
+            new TerminalScrollbackFindInput(
+                "ACTIVE_TUI_ONLY_NEEDLE",
+                TerminalScrollbackFindDirection.Backward,
+                MaximumMatchCount: 4),
+            default);
+        var rendered = await session.FindRenderedHistoryAsync(
+            new TerminalRenderedHistoryFindInput(
+                "ACTIVE_TUI_ONLY_NEEDLE",
+                TerminalScrollbackFindDirection.Backward,
+                MaximumMatchCount: 4),
+            default);
+        var after = await session.ReadScreenAsync(default);
+
+        Assert.Empty(scrollback.Matches);
+        Assert.Single(rendered.Matches);
+        Assert.Equal(before.ContentRevision, rendered.ContentRevision);
+        Assert.Equal(before.ContentRevision, after.ContentRevision);
+        Assert.Equal(before.PlainText, after.PlainText);
+    }
+
+    [Fact]
+    public async Task RenderedHistoryAnchorJumpsViewportToAnOffscreenTuiRow()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+        await session.AttachRendererAsync(
+            new NativeRendererHost(
+                "GhostShell.Managed",
+                Handle: 0,
+                new ViewportDescriptor(80, 64, 1, Columns: 40, Rows: 4)),
+            default);
+        var output = string.Concat(
+            Enumerable.Range(0, 20).Select(index => $"rendered-{index:D3}\r\n"))
+            + "RENDERED_READY";
+        await harness.Pty.WriteOutputAsync(output);
+        var before = await WaitForScreenAsync(
+            session,
+            snapshot => snapshot.PlainText.Contains(
+                "RENDERED_READY",
+                StringComparison.Ordinal));
+        Assert.DoesNotContain("rendered-005", before.PlainText, StringComparison.Ordinal);
+
+        var found = await session.FindRenderedHistoryAsync(
+            new TerminalRenderedHistoryFindInput(
+                "rendered-005",
+                TerminalScrollbackFindDirection.Forward,
+                MaximumMatchCount: 1),
+            default);
+        var match = Assert.Single(found.Matches);
+
+        await session.JumpToRenderedHistoryAsync(match.Anchor, default);
+        var after = await session.ReadScreenAsync(default);
+
+        Assert.Contains("rendered-005", after.PlainText, StringComparison.Ordinal);
+        Assert.True(after.ContentRevision > before.ContentRevision);
+        await Assert.ThrowsAsync<TerminalRenderedHistoryAnchorStaleException>(
+            () => session.JumpToRenderedHistoryAsync(match.Anchor, default).AsTask());
+    }
+
+    [Fact]
     public async Task Render_frame_preserves_terminal_cursor_underline_color_and_damage()
     {
         var harness = await CreateAsync();

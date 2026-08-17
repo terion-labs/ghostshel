@@ -99,12 +99,12 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
         _stopCommand = ActionCommand(
             DockerContainerAction.Stop,
             () => SelectedResource is
-                { IsContainer: true, IsRunning: true }
+            { IsContainer: true, IsRunning: true }
                 or { IsContainer: true, IsPaused: true });
         _restartCommand = ActionCommand(
             DockerContainerAction.Restart,
             () => SelectedResource is
-                { IsContainer: true, IsPaused: true }
+            { IsContainer: true, IsPaused: true }
                 or { IsContainer: true, IsRunning: true });
         _pauseCommand = ActionCommand(
             DockerContainerAction.Pause,
@@ -550,13 +550,13 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
     public bool CanStopSelectedContainer =>
         !IsRefreshing
         && SelectedResource is
-            { IsContainer: true, IsRunning: true }
+    { IsContainer: true, IsRunning: true }
             or { IsContainer: true, IsPaused: true };
 
     public bool CanRestartSelectedContainer =>
         !IsRefreshing
         && SelectedResource is
-            { IsContainer: true, IsPaused: true }
+    { IsContainer: true, IsPaused: true }
             or { IsContainer: true, IsRunning: true };
 
     public bool CanPauseSelectedContainer =>
@@ -572,7 +572,7 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
 
     public bool SelectedContainerIsActive =>
         SelectedResource is
-            { IsContainer: true, IsRunning: true }
+    { IsContainer: true, IsRunning: true }
             or { IsContainer: true, IsPaused: true };
 
     public bool CanBrowseFiles =>

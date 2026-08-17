@@ -88,8 +88,11 @@ internal static class BrowserNativeCheckboxProbe
                 return 4;
             }
 
+            var transport = new CefDevToolsTransport(browser);
             var adapter = new CefBrowserSemanticAdapter(
-                new CefSemanticBrowser(browser));
+                new CefSemanticBrowser(
+                    browser,
+                    new CefHumanizedInput(transport)));
             var snapshot = Complete(
                 adapter.CaptureSnapshotAsync(
                     new BrowserSnapshotQuery(

@@ -890,6 +890,7 @@ The initial tool families are:
 - `workspace.inspect`, `tab.list`, `panel.list`, `panel.inspect`, `panel.focus`,
   `tab.create`, `tab.close`, `panel.add`, `panel.split`, `panel.close`;
 - `terminal.read_screen`, `terminal.read_screen_diff`, `terminal.find_on_screen`,
+  `terminal.find_rendered_history`, `terminal.jump_to_rendered_history`,
   `terminal.read_scrollback`, `terminal.find`, `terminal.send_text`, `terminal.paste`, `terminal.submit_text`,
   `terminal.send_keys`, `terminal.send_chord`, `terminal.send_mouse`,
   `terminal.wait`, `terminal.interrupt`,

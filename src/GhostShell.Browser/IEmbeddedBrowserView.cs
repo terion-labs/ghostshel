@@ -15,6 +15,8 @@ internal interface IEmbeddedBrowserView : IDisposable
 
     bool CanGoForward { get; }
 
+    void SetAgentActivity(bool isActive);
+
     event EventHandler<NativeBrowserNavigationEventArgs>? NavigationStarted;
 
     event EventHandler<NativeBrowserNavigationCompletedEventArgs>? NavigationCompleted;
