@@ -65,7 +65,7 @@ internal static class WorkspaceIcons
     /// the rest stay one search away.
     /// </summary>
     public static IReadOnlyList<WorkspaceIconOption> Common { get; } =
-        new[]
+        [.. new[]
         {
             WorkspaceDefinition.DefaultIcon,
             "rocket",
@@ -78,8 +78,7 @@ internal static class WorkspaceIcons
             "server",
             "folder",
         }
-        .Select(id => All.Single(option => string.Equals(option.Id, id, StringComparison.Ordinal)))
-        .ToArray();
+        .Select(id => All.Single(option => string.Equals(option.Id, id, StringComparison.Ordinal)))];
 
     private static readonly Dictionary<string, WorkspaceIconOption> ById =
         All.ToDictionary(option => option.Id, StringComparer.Ordinal);
@@ -128,8 +127,6 @@ internal static class WorkspaceIcons
 
         // Every term has to match something, so a second word narrows the result
         // rather than widening it.
-        return All
-            .Where(option => terms.All(term => option.Matches(term)))
-            .ToArray();
+        return [.. All.Where(option => terms.All(term => option.Matches(term)))];
     }
 }

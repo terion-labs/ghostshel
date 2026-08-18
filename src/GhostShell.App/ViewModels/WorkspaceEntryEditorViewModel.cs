@@ -34,10 +34,7 @@ public sealed class WorkspaceEntryEditorViewModel : ObservableObject, IDisposabl
             WorkspaceEntry.ScreenReference screen => screen.Alias ?? string.Empty,
             _ => string.Empty,
         };
-        if (Tab is not null)
-        {
-            Tab.PropertyChanged += OnTabChanged;
-        }
+        Tab?.PropertyChanged += OnTabChanged;
     }
 
     public WorkspaceEntryId Id => _original.Id;

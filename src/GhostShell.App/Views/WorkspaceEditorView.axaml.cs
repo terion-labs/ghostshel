@@ -73,16 +73,10 @@ public sealed partial class WorkspaceEditorView : UserControl
 
     private void ObserveEditor()
     {
-        if (_observedEditor is not null)
-        {
-            _observedEditor.PropertyChanged -= OnEditorPropertyChanged;
-        }
+        _observedEditor?.PropertyChanged -= OnEditorPropertyChanged;
 
         _observedEditor = Editor;
-        if (_observedEditor is not null)
-        {
-            _observedEditor.PropertyChanged += OnEditorPropertyChanged;
-        }
+        _observedEditor?.PropertyChanged += OnEditorPropertyChanged;
 
         ConfigurePickers();
         SynchronizePeerSelection();
@@ -242,11 +236,11 @@ public sealed partial class WorkspaceEditorView : UserControl
     private void OnEditorPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         _ = sender;
-        if (e.PropertyName == nameof(WorkspaceEditorViewModel.Entries))
+        if (string.Equals(e.PropertyName, nameof(WorkspaceEditorViewModel.Entries), StringComparison.Ordinal))
         {
             EnsureEntrySelection();
         }
-        else if (e.PropertyName == nameof(WorkspaceEditorViewModel.Peers))
+        else if (string.Equals(e.PropertyName, nameof(WorkspaceEditorViewModel.Peers), StringComparison.Ordinal))
         {
             SynchronizePeerSelection();
         }

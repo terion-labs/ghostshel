@@ -10,7 +10,7 @@ public sealed class DockerLiveSmokeTests
     [Fact]
     public async Task RemoteSnapshotAndVolumeUsageCanBeReadThroughTheProductionCommandRuntime()
     {
-        if (Environment.GetEnvironmentVariable("GHOSTSHELL_RUN_DOCKER_SSH_SMOKE") != "1")
+        if (!string.Equals(Environment.GetEnvironmentVariable("GHOSTSHELL_RUN_DOCKER_SSH_SMOKE"), "1", StringComparison.Ordinal))
         {
             return;
         }
@@ -49,7 +49,7 @@ public sealed class DockerLiveSmokeTests
     [Fact]
     public async Task VolumeUsageCanBeReadFromTheProductionCommandRuntime()
     {
-        if (Environment.GetEnvironmentVariable("GHOSTSHELL_RUN_DOCKER_SMOKE") != "1")
+        if (!string.Equals(Environment.GetEnvironmentVariable("GHOSTSHELL_RUN_DOCKER_SMOKE"), "1", StringComparison.Ordinal))
         {
             return;
         }
@@ -71,7 +71,7 @@ public sealed class DockerLiveSmokeTests
     [Fact]
     public async Task SelectedContainerRootCanBeBrowsedThroughTheProductionCommandRuntime()
     {
-        if (Environment.GetEnvironmentVariable("GHOSTSHELL_RUN_DOCKER_SMOKE") != "1")
+        if (!string.Equals(Environment.GetEnvironmentVariable("GHOSTSHELL_RUN_DOCKER_SMOKE"), "1", StringComparison.Ordinal))
         {
             return;
         }
@@ -85,7 +85,7 @@ public sealed class DockerLiveSmokeTests
             CancellationToken.None);
         var snapshot = Assert.IsType<DockerResult<DockerEngineSnapshot>.Success>(
             snapshotResult).Value;
-        var container = Assert.Single(snapshot.Containers, item => item.Name == containerName);
+        var container = Assert.Single(snapshot.Containers, item => string.Equals(item.Name, containerName, StringComparison.Ordinal));
 
         var result = await client.ListFilesAsync(
             BuiltInConnections.Local,
@@ -98,10 +98,10 @@ public sealed class DockerLiveSmokeTests
 
         var listing = Assert.IsType<DockerResult<DockerFileListing>.Success>(result).Value;
         Assert.Equal("/", listing.Path);
-        Assert.Contains(listing.Entries, entry => entry.Name == ".dockerenv");
-        Assert.Contains(listing.Entries, entry => entry.Name == "etc" && entry.Kind == DockerFileKind.Directory);
-        Assert.Contains(listing.Entries, entry => entry.Name == "usr" && entry.Kind == DockerFileKind.Directory);
-        Assert.Contains(listing.Entries, entry => entry.Name == "var" && entry.Kind == DockerFileKind.Directory);
+        Assert.Contains(listing.Entries, entry => string.Equals(entry.Name, ".dockerenv", StringComparison.Ordinal));
+        Assert.Contains(listing.Entries, entry => string.Equals(entry.Name, "etc", StringComparison.Ordinal) && entry.Kind == DockerFileKind.Directory);
+        Assert.Contains(listing.Entries, entry => string.Equals(entry.Name, "usr", StringComparison.Ordinal) && entry.Kind == DockerFileKind.Directory);
+        Assert.Contains(listing.Entries, entry => string.Equals(entry.Name, "var", StringComparison.Ordinal) && entry.Kind == DockerFileKind.Directory);
 
         var etcResult = await client.ListFilesAsync(
             BuiltInConnections.Local,
@@ -109,7 +109,7 @@ public sealed class DockerLiveSmokeTests
             "/etc",
             CancellationToken.None);
         var etc = Assert.IsType<DockerResult<DockerFileListing>.Success>(etcResult).Value;
-        Assert.Contains(etc.Entries, entry => entry.Name == "passwd");
+        Assert.Contains(etc.Entries, entry => string.Equals(entry.Name, "passwd", StringComparison.Ordinal));
 
         var statResult = await client.StatFileAsync(
             BuiltInConnections.Local,
@@ -136,7 +136,7 @@ public sealed class DockerLiveSmokeTests
     [Fact]
     public async Task SelectedContainerLogsAcceptOneTimestampCursorThroughProductionRuntime()
     {
-        if (Environment.GetEnvironmentVariable("GHOSTSHELL_RUN_DOCKER_SMOKE") != "1")
+        if (!string.Equals(Environment.GetEnvironmentVariable("GHOSTSHELL_RUN_DOCKER_SMOKE"), "1", StringComparison.Ordinal))
         {
             return;
         }
@@ -150,8 +150,7 @@ public sealed class DockerLiveSmokeTests
             await client.ReadSnapshotAsync(
                 BuiltInConnections.Local,
                 CancellationToken.None)).Value;
-        var container = Assert.Single(snapshot.Containers, item =>
-            item.Name == containerName);
+        var container = Assert.Single(snapshot.Containers, item => string.Equals(item.Name, containerName, StringComparison.Ordinal));
 
         var result = await client.ReadContainerLogsAsync(
             BuiltInConnections.Local,

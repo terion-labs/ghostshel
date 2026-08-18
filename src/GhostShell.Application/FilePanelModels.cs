@@ -64,14 +64,14 @@ public sealed record FileProviderProfileDescriptor
             throw new ArgumentOutOfRangeException(nameof(Family), Family, null);
         }
 
-        if (Root.ProviderProfileId != Id)
+        if (!string.Equals(Root.ProviderProfileId, Id, StringComparison.Ordinal))
         {
             throw new ArgumentException(
                 "The profile descriptor and root location must use the same profile ID.",
                 nameof(Root));
         }
 
-        if ((Capabilities & ~AllCapabilities) != 0)
+        if ((Capabilities & ~AllCapabilities) != FilePanelCapability.None)
         {
             throw new ArgumentOutOfRangeException(nameof(Capabilities), Capabilities, null);
         }
@@ -91,7 +91,7 @@ public sealed record FileProviderProfileDescriptor
                 or FileProviderFamily.Ftp
                 or FileProviderFamily.Smb
                 or FileProviderFamily.WebDav;
-        if (StartLocation is not null && StartLocation.ProviderProfileId != Id)
+        if (StartLocation is not null && !string.Equals(StartLocation.ProviderProfileId, Id, StringComparison.Ordinal))
         {
             throw new ArgumentException(
                 "The profile descriptor and start location must use the same profile ID.",
@@ -214,7 +214,7 @@ public sealed record FilePanelPage
     public FilePanelPage(IEnumerable<FilePanelEntry> entries, string? continuationToken)
     {
         ArgumentNullException.ThrowIfNull(entries);
-        Entries = entries.ToImmutableArray();
+        Entries = [.. entries];
         ContinuationToken = continuationToken;
     }
 

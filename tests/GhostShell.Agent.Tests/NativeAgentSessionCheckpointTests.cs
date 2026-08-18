@@ -113,7 +113,7 @@ public sealed partial class NativeAgentSessionTests
             "\"containsSuppressedRawReasoning\":false",
             "\"containsSuppressedRawReasoning\":true",
             StringComparison.Ordinal);
-        Assert.NotEqual(safeCheckpoint.PayloadJson, tamperedPayload);
+        Assert.NotEqual(safeCheckpoint.PayloadJson, tamperedPayload, StringComparer.Ordinal);
         var tampered = new AgentSessionCheckpoint(
             safeCheckpoint.RunId,
             safeCheckpoint.SchemaVersion,
@@ -130,7 +130,7 @@ public sealed partial class NativeAgentSessionTests
             $"\"kind\":{(int)AgentProviderReplayItemKind.AnthropicSummarizedThinking}",
             $"\"kind\":{(int)AgentProviderReplayItemKind.AnthropicSuppressedThinking}",
             StringComparison.Ordinal);
-        Assert.NotEqual(safeCheckpoint.PayloadJson, smuggledPayload);
+        Assert.NotEqual(safeCheckpoint.PayloadJson, smuggledPayload, StringComparer.Ordinal);
         var smuggled = new AgentSessionCheckpoint(
             safeCheckpoint.RunId,
             safeCheckpoint.SchemaVersion,
@@ -148,7 +148,7 @@ public sealed partial class NativeAgentSessionTests
             encodedReplayPayload,
             "/w==",
             StringComparison.Ordinal);
-        Assert.NotEqual(safeCheckpoint.PayloadJson, invalidUtf8Payload);
+        Assert.NotEqual(safeCheckpoint.PayloadJson, invalidUtf8Payload, StringComparer.Ordinal);
         var invalidUtf8 = new AgentSessionCheckpoint(
             safeCheckpoint.RunId,
             safeCheckpoint.SchemaVersion,
@@ -170,7 +170,7 @@ public sealed partial class NativeAgentSessionTests
             encodedVisibleText,
             Convert.ToBase64String(Encoding.UTF8.GetBytes(divergentTextJson)),
             StringComparison.Ordinal);
-        Assert.NotEqual(safeCheckpoint.PayloadJson, divergentPayload);
+        Assert.NotEqual(safeCheckpoint.PayloadJson, divergentPayload, StringComparer.Ordinal);
         var divergent = new AgentSessionCheckpoint(
             safeCheckpoint.RunId,
             safeCheckpoint.SchemaVersion,
@@ -275,10 +275,10 @@ public sealed partial class NativeAgentSessionTests
             after.Conversation.Select(message => message.Role));
         Assert.Equal(
             before.Conversation.Select(message => message.Content),
-            after.Conversation.Select(message => message.Content));
+            after.Conversation.Select(message => message.Content), StringComparer.Ordinal);
         Assert.Equal(
             before.Transcript.Select(message => message.Content),
-            after.Transcript.Select(message => message.Content));
+            after.Transcript.Select(message => message.Content), StringComparer.Ordinal);
         var restoredProposal = Assert.Single(after.Conversation[1].ToolCalls);
         Assert.Equal(proposal.Id, restoredProposal.Id);
         Assert.Equal(proposal.ProviderName, restoredProposal.ProviderName);
@@ -330,10 +330,10 @@ public sealed partial class NativeAgentSessionTests
 
         Assert.Equal(
             ["system", "summary", "current user", "current assistant"],
-            restored.Snapshot().Conversation.Select(message => message.Content));
+            restored.Snapshot().Conversation.Select(message => message.Content), StringComparer.Ordinal);
         Assert.Equal(
             initial.Select(message => message.Content),
-            restored.Snapshot().Transcript.Select(message => message.Content));
+            restored.Snapshot().Transcript.Select(message => message.Content), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -359,7 +359,7 @@ public sealed partial class NativeAgentSessionTests
             "\"title\":\"Roman Aqueduct Engineering\",",
             string.Empty,
             StringComparison.Ordinal);
-        Assert.NotEqual(checkpoint.PayloadJson, legacyPayload);
+        Assert.NotEqual(checkpoint.PayloadJson, legacyPayload, StringComparer.Ordinal);
         var legacy = new AgentSessionCheckpoint(
             checkpoint.RunId,
             1,

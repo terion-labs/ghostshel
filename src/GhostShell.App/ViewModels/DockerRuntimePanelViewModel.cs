@@ -222,10 +222,7 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
         {
             if (!SetProperty(ref _selectedResource, value))
             {
-                if (value is not null)
-                {
-                    value.IsSelected = true;
-                }
+                value?.IsSelected = true;
 
                 return;
             }
@@ -747,7 +744,7 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
         }
 
         _inlineShells.Add(containerId, shell);
-        if (SelectedResource?.Container?.Id == containerId)
+        if (string.Equals(SelectedResource?.Container?.Id, containerId, StringComparison.Ordinal))
         {
             InlineShell = shell;
             ResetShellState();
@@ -756,7 +753,7 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
 
     public void BeginShellResolution(string containerId)
     {
-        if (SelectedResource?.Container?.Id != containerId)
+        if (!string.Equals(SelectedResource?.Container?.Id, containerId, StringComparison.Ordinal))
         {
             return;
         }
@@ -769,7 +766,7 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
     public void PresentShellResolutionFailure(string containerId, DockerError error)
     {
         ArgumentNullException.ThrowIfNull(error);
-        if (SelectedResource?.Container?.Id != containerId)
+        if (!string.Equals(SelectedResource?.Container?.Id, containerId, StringComparison.Ordinal))
         {
             return;
         }
@@ -784,7 +781,7 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
 
     public void CompleteShellResolution(string containerId)
     {
-        if (SelectedResource?.Container?.Id == containerId)
+        if (string.Equals(SelectedResource?.Container?.Id, containerId, StringComparison.Ordinal))
         {
             ResetShellState();
         }
@@ -1062,7 +1059,7 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
                 _connection,
                 CreateLogRequest(container.Id, beforeTimestamp: _oldestLogTimestamp),
                 _lifetime.Token);
-            if (_disposed || SelectedResource?.Container?.Id != expectedContainerId)
+            if (_disposed || !string.Equals(SelectedResource?.Container?.Id, expectedContainerId, StringComparison.Ordinal))
             {
                 return false;
             }
@@ -1133,7 +1130,7 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
     {
         if (SelectedResource?.Container is not { } container
             || _disposed
-            || (!force && _loadedLogContainerId == container.Id))
+            || (!force && string.Equals(_loadedLogContainerId, container.Id, StringComparison.Ordinal)))
         {
             return;
         }
@@ -1146,7 +1143,7 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
         {
             return;
         }
-        if (!force && _loadedLogContainerId == container.Id)
+        if (!force && string.Equals(_loadedLogContainerId, container.Id, StringComparison.Ordinal))
         {
             _logGate.Release();
             return;
@@ -1167,7 +1164,7 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
                 cancellation.Token);
             if (cancellation.IsCancellationRequested
                 || _disposed
-                || SelectedResource?.Container?.Id != expectedContainerId)
+                || !string.Equals(SelectedResource?.Container?.Id, expectedContainerId, StringComparison.Ordinal))
             {
                 return;
             }
@@ -1344,7 +1341,7 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
                 _connection,
                 CreateLogRequest(container.Id, sinceTimestamp: _newestLogTimestamp),
                 cancellationToken);
-            if (SelectedResource?.Container?.Id != expectedContainerId)
+            if (!string.Equals(SelectedResource?.Container?.Id, expectedContainerId, StringComparison.Ordinal))
             {
                 return;
             }
@@ -1430,7 +1427,7 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
         if (string.IsNullOrEmpty(searchText))
         {
             return Array.AsReadOnly(
-                new[] { new DockerLogTextSegmentViewModel(message, false) });
+                [new DockerLogTextSegmentViewModel(message, false)]);
         }
 
         var segments = new List<DockerLogTextSegmentViewModel>();
@@ -1472,7 +1469,7 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
     {
         var invalid = Path.GetInvalidFileNameChars();
         var characters = value.Select(character => invalid.Contains(character) ? '-' : character);
-        return new string(characters.ToArray());
+        return new string([.. characters]);
     }
 
     private CancellationTokenSource BeginDetailLoad()

@@ -14,7 +14,7 @@ public sealed class TerminalAgentWaitContractTests
     {
         var panel = ContextPanel("one", "panel-one");
         var wait = TerminalAgentToolSet.For(panel)
-            .Single(tool => tool.Name == BuiltInAgentTools.TerminalWait);
+            .Single(tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalWait, StringComparison.Ordinal));
         var schema = wait.InputSchema;
 
         Assert.Equal(
@@ -31,13 +31,13 @@ public sealed class TerminalAgentWaitContractTests
             schema
                 .GetProperty("properties")
                 .EnumerateObject()
-                .Select(property => property.Name));
+                .Select(property => property.Name), StringComparer.Ordinal);
         Assert.Equal(
             [],
             RequiredNames(schema));
         Assert.Equal(
             [
-                new[] { "delay_ms" },
+                ["delay_ms"],
                 ["text", "timeout_ms"],
                 ["after_content_revision", "timeout_ms"],
                 ["stable_for_ms", "timeout_ms"],
@@ -202,7 +202,7 @@ public sealed class TerminalAgentWaitContractTests
         var first = ContextPanel("first", "panel-first");
         var second = ContextPanel("second", "panel-second");
         var wait = TerminalAgentToolSet.For([first, second])
-            .Single(tool => tool.Name == BuiltInAgentTools.TerminalWait);
+            .Single(tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalWait, StringComparison.Ordinal));
         var schema = wait.InputSchema;
 
         Assert.Equal(
@@ -212,13 +212,13 @@ public sealed class TerminalAgentWaitContractTests
                 .GetProperty("panel_id")
                 .GetProperty("enum")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
         Assert.Equal(
             ["panel_id"],
             RequiredNames(schema));
         Assert.Equal(
             [
-                new[] { "delay_ms" },
+                ["delay_ms"],
                 ["text", "timeout_ms"],
                 ["after_content_revision", "timeout_ms"],
                 ["stable_for_ms", "timeout_ms"],
@@ -316,11 +316,10 @@ public sealed class TerminalAgentWaitContractTests
     }
 
     private static string[] RequiredNames(JsonElement schema) =>
-        schema
+        [.. schema
             .GetProperty("required")
             .EnumerateArray()
-            .Select(value => value.GetString()!)
-            .ToArray();
+            .Select(value => value.GetString()!)];
 
     private static async Task<AgentToolProposal> ProposalAsync(
         string arguments)

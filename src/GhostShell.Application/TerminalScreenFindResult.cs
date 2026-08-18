@@ -21,7 +21,7 @@ public sealed record TerminalScreenFindResult
         }
 
         this.ContentRevision = ContentRevision;
-        this.Matches = new ReadOnlyCollection<Match>(Matches.ToArray());
+        this.Matches = new ReadOnlyCollection<Match>([.. Matches]);
         this.IsTruncated = IsTruncated;
     }
 

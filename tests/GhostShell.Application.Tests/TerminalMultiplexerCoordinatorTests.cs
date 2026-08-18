@@ -127,7 +127,7 @@ public sealed class TerminalMultiplexerCoordinatorTests
             CancellationToken cancellationToken)
         {
             Leases.RemoveAll(item => item.ConnectionId == lease.ConnectionId
-                && item.Session.SessionName == lease.Session.SessionName);
+                && string.Equals(item.Session.SessionName, lease.Session.SessionName, StringComparison.Ordinal));
             Leases.Add(lease);
             return Success();
         }
@@ -138,7 +138,7 @@ public sealed class TerminalMultiplexerCoordinatorTests
             CancellationToken cancellationToken)
         {
             Leases.RemoveAll(item => item.ConnectionId == connectionId
-                && item.Session.SessionName == sessionName);
+                && string.Equals(item.Session.SessionName, sessionName, StringComparison.Ordinal));
             return Success();
         }
 
@@ -146,7 +146,7 @@ public sealed class TerminalMultiplexerCoordinatorTests
             CancellationToken cancellationToken) =>
             ValueTask.FromResult(
                 ApplicationRunResult<IReadOnlyList<TerminalMultiplexerLease>>.Success(
-                    Leases.ToArray()));
+                    [.. Leases]));
 
         private static ValueTask<ApplicationRunResult<Unit>> Success() =>
             ValueTask.FromResult(ApplicationRunResult<Unit>.Success(Unit.Value));

@@ -62,7 +62,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         Assert.Equal(ActorKind.Human, registration.Context.Actor.Kind);
         Assert.Equal(runtime.Id, graph.Id);
         Assert.Equal("Runtime graph", graph.Title);
-        Assert.Equal(["Alpha", "Beta", "Gamma"], graph.Tabs.Select(tab => tab.Title));
+        Assert.Equal(["Alpha", "Beta", "Gamma"], graph.Tabs.Select(tab => tab.Title), StringComparer.Ordinal);
         Assert.Equal(
             [PanelKind.Terminal, PanelKind.Browser, PanelKind.FileViewer],
             graph.Tabs[0].Panels.Select(panel => panel.Kind));
@@ -70,7 +70,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         Assert.Equal([PanelKind.ProcessMonitor], graph.Tabs[2].Panels.Select(panel => panel.Kind));
         Assert.Equal(
             ["Terminal", "Browser", "Files"],
-            graph.Tabs[0].Panels.Select(panel => panel.Title));
+            graph.Tabs[0].Panels.Select(panel => panel.Title), StringComparer.Ordinal);
         Assert.Equal(runtime.Tabs.Select(tab => tab.Id), graph.Tabs.Select(tab => tab.Id));
         Assert.Equal(runtime.ActiveTab!.Id, graph.ActiveTabId);
         Assert.All(
@@ -293,7 +293,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
         var close = Assert.Single(recorder.SessionCloses, call =>
             call.Request.Scope == CloseScopeKind.Session
-            && call.Request.TargetId == sessionId.Value);
+            && string.Equals(call.Request.TargetId, sessionId.Value, StringComparison.Ordinal));
         Assert.Equal(CloseDecision.Confirm, close.Request.Decision);
         Assert.Equal(ActorKind.Human, close.Context.Actor.Kind);
     }
@@ -328,7 +328,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         await WaitForAsync(() => !panel.HasHostedSession);
         Assert.Contains(recorder.SessionCloses, call =>
             call.Request.Scope == CloseScopeKind.Session
-            && call.Request.TargetId == staleSessionId.Value);
+            && string.Equals(call.Request.TargetId, staleSessionId.Value, StringComparison.Ordinal));
         Assert.DoesNotContain(
             recorder.CurrentWorkspace!.Workspace.Tabs.SelectMany(tab => tab.Panels),
             graphPanel => graphPanel.SessionId == staleSessionId);
@@ -372,9 +372,9 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         Assert.True(saved.AutoSave);
         Assert.Equal(stored.Revision, proxy.SavedWorkspaceRevision);
         var tabs = saved.Entries.Cast<WorkspaceEntry.Tab>().ToArray();
-        Assert.Equal(["Alpha", "Beta", "Gamma"], tabs.Select(tab => tab.Name));
+        Assert.Equal(["Alpha", "Beta", "Gamma"], tabs.Select(tab => tab.Name), StringComparer.Ordinal);
         // Stored tab entries are matched by name, so entry ids stay stable.
-        Assert.Equal(["alpha", "beta", "gamma"], tabs.Select(tab => tab.Id.Value));
+        Assert.Equal(["alpha", "beta", "gamma"], tabs.Select(tab => tab.Id.Value), StringComparer.Ordinal);
         Assert.Equal(
             [ScreenPanelKind.Terminal, ScreenPanelKind.Browser, ScreenPanelKind.FileViewer],
             tabs[0].Panels.Select(panel => panel.Kind));
@@ -393,8 +393,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             Assert.Equal(layout.Id, tab.LayoutId);
             // Every captured layout slot is mapped by exactly one tab panel.
             Assert.Equal(
-                layout.Slots.Select(slot => slot.Id.Value).Order(),
-                tab.Panels.Select(panel => panel.SlotId.Value).Order());
+                layout.Slots.Select(slot => slot.Id.Value).Order(StringComparer.Ordinal),
+                tab.Panels.Select(panel => panel.SlotId.Value).Order(StringComparer.Ordinal));
         }
     }
 
@@ -452,9 +452,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             agentPanelPinned: true);
         snapshot = snapshot with
         {
-            Workspaces = snapshot.Workspaces
-                .Select(item => item.Value.Id == WorkspaceId ? Store(pinnedWorkspace) : item)
-                .ToArray(),
+            Workspaces = [.. snapshot.Workspaces.Select(item => item.Value.Id == WorkspaceId ? Store(pinnedWorkspace) : item)],
         };
         var (client, _) = CreateSessionClient();
         using var viewModel = CreateViewModel(client, snapshot);
@@ -829,11 +827,10 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             workspaceOverride);
         snapshot = snapshot with
         {
-            Workspaces = snapshot.Workspaces
+            Workspaces = [.. snapshot.Workspaces
                 .Select(item => item.Value.Id == WorkspaceId
                     ? item with { Value = updated }
-                    : item)
-                .ToArray(),
+                    : item)],
         };
         var browserFactory = new RecordingBrowserRendererViewFactory();
         var (client, _) = CreateSessionClient();
@@ -878,10 +875,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         var snapshot = CreateCatalogSnapshot();
         snapshot = snapshot with
         {
-            Connections = snapshot.Connections
-                .Append(Store(ssh))
-                .Append(Store(docker))
-                .ToArray(),
+            Connections = [.. snapshot.Connections
+, Store(ssh), Store(docker)],
         };
         var browserFactory = new RecordingBrowserRendererViewFactory();
         var (client, _) = CreateSessionClient();
@@ -2552,7 +2547,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         var snapshot = CreateCatalogSnapshot();
         snapshot = snapshot with
         {
-            Connections = snapshot.Connections.Append(Store(ssh)).ToArray(),
+            Connections = [.. snapshot.Connections, Store(ssh)],
         };
         var dockerClient = new SingleContainerDockerClient();
         var (client, _) = CreateSessionClient();
@@ -2847,7 +2842,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         Assert.Equal(0, files.ListCallCount);
         Assert.Equal(0, recorder.FilePanelEnsureCount);
         Assert.Equal(0, recorder.StatisticsEnsureCount);
-        Assert.DoesNotContain(runtime.Tabs, tab => tab.Title == "Deferred panels");
+        Assert.DoesNotContain(runtime.Tabs, tab => string.Equals(tab.Title, "Deferred panels", StringComparison.Ordinal));
 
         recorder.AllowDelayedRegistration.TrySetResult();
         Assert.True(await append);
@@ -2987,7 +2982,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
         var appendedTab = Assert.Single(
             runtime.Tabs,
-            tab => tab.Title == "Secondary local");
+            tab => string.Equals(tab.Title, "Secondary local", StringComparison.Ordinal));
         Assert.Equal(initialTabCount, runtime.Tabs.Count);
         Assert.DoesNotContain(runtime.Tabs, tab => tab.Id == removedTab.Id);
         Assert.All(retainedTabs, tab => Assert.Contains(tab, runtime.Tabs));
@@ -3071,8 +3066,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             ]);
         var snapshot = baseline with
         {
-            Connections = baseline.Connections.Append(Store(remote)).ToArray(),
-            Workspaces = baseline.Workspaces.Append(Store(monitored)).ToArray(),
+            Connections = [.. baseline.Connections, Store(remote)],
+            Workspaces = [.. baseline.Workspaces, Store(monitored)],
         };
         var (client, _) = CreateSessionClient();
         using var viewModel = CreateViewModel(client, snapshot);
@@ -3107,7 +3102,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             new FileProviderConfiguration.S3("production-objects"));
         var snapshot = CreateCatalogSnapshot() with
         {
-            Connections = CreateCatalogSnapshot().Connections.Append(Store(ssh)).ToArray(),
+            Connections = [.. CreateCatalogSnapshot().Connections, Store(ssh)],
             FileProviderProfiles = [Store(s3)],
         };
         var files = new EmptyFileClients(
@@ -5455,7 +5450,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
         return snapshot with
         {
-            Connections = snapshot.Connections.Append(Store(connection)).ToArray(),
+            Connections = [.. snapshot.Connections, Store(connection)],
             Screens = [Store(screen)],
         };
     }
@@ -6212,7 +6207,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             {
                 lock (_gate)
                 {
-                    return _registrations.ToArray();
+                    return [.. _registrations];
                 }
             }
         }
@@ -6223,7 +6218,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             {
                 lock (_gate)
                 {
-                    return _tabActivations.ToArray();
+                    return [.. _tabActivations];
                 }
             }
         }
@@ -6234,7 +6229,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             {
                 lock (_gate)
                 {
-                    return _unregistrations.ToArray();
+                    return [.. _unregistrations];
                 }
             }
         }
@@ -6245,7 +6240,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             {
                 lock (_gate)
                 {
-                    return _databaseSessionEnsures.ToArray();
+                    return [.. _databaseSessionEnsures];
                 }
             }
         }
@@ -6256,7 +6251,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             {
                 lock (_gate)
                 {
-                    return _terminalSessionEnsures.ToArray();
+                    return [.. _terminalSessionEnsures];
                 }
             }
         }
@@ -6267,7 +6262,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             {
                 lock (_gate)
                 {
-                    return _dockerSessionEnsures.ToArray();
+                    return [.. _dockerSessionEnsures];
                 }
             }
         }
@@ -6278,7 +6273,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             {
                 lock (_gate)
                 {
-                    return _sessionCloses.ToArray();
+                    return [.. _sessionCloses];
                 }
             }
         }
@@ -6916,6 +6911,13 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                     HasActiveWork: false,
                     StatusDetail: "Ready",
                     FileMetadata: fileMetadata);
+                if (panel.SessionId == sessionId && _liveSessions.Contains(sessionId))
+                {
+                    return ValueTask.FromResult(HostResult<SessionSnapshot>.Succeed(
+                        new SessionSnapshot(descriptor, 1, [], null),
+                        resultingRevision: 1));
+                }
+
                 _liveSessions.Add(sessionId);
                 var linked = current.Workspace.ReplacePanelSession(
                     owner.TabId,

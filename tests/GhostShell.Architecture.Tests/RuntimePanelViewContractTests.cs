@@ -15,7 +15,7 @@ public sealed class RuntimePanelViewContractTests
             XDocument.Load(RuntimePanelPath("DockerRuntimePanelView", ".axaml")).Root);
         var sharedViewer = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "FileRuntimePanelView");
+            element => string.Equals(element.Name.LocalName, "FileRuntimePanelView", StringComparison.Ordinal));
 
         Assert.Equal("True", AttributeValue(sharedViewer, "IsEmbedded"));
         Assert.DoesNotContain(
@@ -37,15 +37,15 @@ public sealed class RuntimePanelViewContractTests
             XDocument.Load(RuntimePanelPath("DockerRuntimePanelView", ".axaml")).Root);
         var preview = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "CodePreviewView"
-                && AttributeValue(element, "Text") == "{Binding Inspection.Json}");
+            element => string.Equals(element.Name.LocalName, "CodePreviewView"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Text"), "{Binding Inspection.Json}", StringComparison.Ordinal));
 
         Assert.Equal("inspection.json", AttributeValue(preview, "FileName"));
         Assert.Equal("False", AttributeValue(preview, "WordWrap"));
         Assert.DoesNotContain(
             root.Descendants(),
-            element => element.Name.LocalName == "TextBox"
-                && AttributeValue(element, "Text") == "{Binding Inspection.Json}");
+            element => string.Equals(element.Name.LocalName, "TextBox"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Text"), "{Binding Inspection.Json}", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -54,12 +54,11 @@ public sealed class RuntimePanelViewContractTests
         var root = Assert.IsType<XElement>(
             XDocument.Load(RuntimePanelPath("DockerRuntimePanelView", ".axaml")).Root);
         var imageButtons = root.Descendants()
-            .Where(element => element.Name.LocalName == "Button")
+            .Where(element => string.Equals(element.Name.LocalName, "Button", StringComparison.Ordinal))
             .Where(element =>
-                element.Descendants().Any(descendant =>
-                    descendant.Name.LocalName == "TextBlock"
-                    && AttributeValue(descendant, "Text") == "Images")
-                || AttributeValue(element, "ToolTip.Tip") == "Images")
+                element.Descendants().Any(descendant => string.Equals(descendant.Name.LocalName, "TextBlock"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(descendant, "Text"), "Images", StringComparison.Ordinal))
+                || string.Equals(AttributeValue(element, "ToolTip.Tip"), "Images", StringComparison.Ordinal))
             .ToArray();
 
         Assert.NotEmpty(imageButtons);
@@ -67,8 +66,8 @@ public sealed class RuntimePanelViewContractTests
             imageButtons,
             button => Assert.Contains(
                 button.Descendants(),
-                element => element.Name.LocalName == "SymbolIcon"
-                    && AttributeValue(element, "Symbol") == "Archive"));
+                element => string.Equals(element.Name.LocalName, "SymbolIcon"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Symbol"), "Archive", StringComparison.Ordinal)));
     }
 
     [Fact]
@@ -78,25 +77,25 @@ public sealed class RuntimePanelViewContractTests
             XDocument.Load(RuntimePanelPath("DockerRuntimePanelView", ".axaml")).Root);
         var logList = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "ListBox"
-                && AttributeValue(element, "Name") == "LogList");
+            element => string.Equals(element.Name.LocalName, "ListBox"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Name"), "LogList", StringComparison.Ordinal));
 
         Assert.Contains(
             logList.Descendants(),
-            element => element.Name.LocalName == "VirtualizingStackPanel");
+            element => string.Equals(element.Name.LocalName, "VirtualizingStackPanel", StringComparison.Ordinal));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "TextBox"
-                && AttributeValue(element, "PlaceholderText") == "Search all container logs");
+            element => string.Equals(element.Name.LocalName, "TextBox"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "PlaceholderText"), "Search all container logs", StringComparison.Ordinal));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "ToggleSwitch"
-                && AttributeValue(element, "AutomationProperties.Name") == "Follow container logs");
+            element => string.Equals(element.Name.LocalName, "ToggleSwitch"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "AutomationProperties.Name"), "Follow container logs", StringComparison.Ordinal));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "Button"
-                && AttributeValue(element, "AutomationProperties.Name")
-                    == "Download complete container logs");
+            element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "AutomationProperties.Name")
+, "Download complete container logs", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -106,8 +105,8 @@ public sealed class RuntimePanelViewContractTests
             XDocument.Load(RuntimePanelPath("DockerRuntimePanelView", ".axaml")).Root);
         var actions = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "StackPanel"
-                && HasClass(element, "DockerContainerActions"));
+            element => string.Equals(element.Name.LocalName, "StackPanel"
+, StringComparison.Ordinal) && HasClass(element, "DockerContainerActions"));
         var expectedActions = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["{Binding StartCommand}"] = "Play",
@@ -129,8 +128,8 @@ public sealed class RuntimePanelViewContractTests
         {
             var button = Assert.Single(
                 actions.Descendants(),
-                element => element.Name.LocalName == "Button"
-                    && AttributeValue(element, "Command") == command);
+                element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Command"), command, StringComparison.Ordinal));
             Assert.True(HasClass(button, "IconButton"));
             Assert.NotNull(AttributeValue(button, "ToolTip.Tip"));
             Assert.NotNull(AttributeValue(button, "AutomationProperties.Name"));
@@ -139,89 +138,85 @@ public sealed class RuntimePanelViewContractTests
                 AttributeValue(button, "IsEnabled"));
             Assert.Contains(
                 button.Descendants(),
-                element => element.Name.LocalName == "SymbolIcon"
-                    && AttributeValue(element, "Symbol") == symbol);
+                element => string.Equals(element.Name.LocalName, "SymbolIcon"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Symbol"), symbol, StringComparison.Ordinal));
         }
 
         var actionToggles = actions.Elements()
-            .Where(element => element.Name.LocalName == "Grid"
-                && AttributeValue(element, "Width") == "32"
-                && AttributeValue(element, "Height") == "32")
+            .Where(element => string.Equals(element.Name.LocalName, "Grid"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Width"), "32"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Height"), "32", StringComparison.Ordinal))
             .ToArray();
         Assert.Equal(2, actionToggles.Length);
         var startStopToggle = Assert.Single(
             actionToggles,
-            element => element.Descendants().Any(button =>
-                AttributeValue(button, "Command") == "{Binding StartCommand}"));
-        Assert.Equal(2, startStopToggle.Elements().Count(element =>
-            element.Name.LocalName == "Button"));
+            element => element.Descendants().Any(button => string.Equals(AttributeValue(button, "Command"), "{Binding StartCommand}", StringComparison.Ordinal)));
+        Assert.Equal(2, startStopToggle.Elements().Count(element => string.Equals(element.Name.LocalName, "Button", StringComparison.Ordinal)));
         Assert.Contains(
             startStopToggle.Elements(),
-            element => AttributeValue(element, "Command") == "{Binding StartCommand}"
-                && AttributeValue(element, "IsVisible")
-                    == "{Binding SelectedContainerIsStopped}");
+            element => string.Equals(AttributeValue(element, "Command"), "{Binding StartCommand}"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "IsVisible")
+, "{Binding SelectedContainerIsStopped}", StringComparison.Ordinal));
         Assert.Contains(
             startStopToggle.Elements(),
-            element => AttributeValue(element, "Command") == "{Binding StopCommand}"
-                && AttributeValue(element, "IsVisible")
-                    == "{Binding SelectedContainerIsActive}");
+            element => string.Equals(AttributeValue(element, "Command"), "{Binding StopCommand}"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "IsVisible")
+, "{Binding SelectedContainerIsActive}", StringComparison.Ordinal));
 
         var pauseToggle = Assert.Single(
             actionToggles,
-            element => element.Descendants().Any(button =>
-                AttributeValue(button, "Command") == "{Binding PauseCommand}"));
-        Assert.Equal(2, pauseToggle.Elements().Count(element =>
-            element.Name.LocalName == "Button"));
+            element => element.Descendants().Any(button => string.Equals(AttributeValue(button, "Command"), "{Binding PauseCommand}", StringComparison.Ordinal)));
+        Assert.Equal(2, pauseToggle.Elements().Count(element => string.Equals(element.Name.LocalName, "Button", StringComparison.Ordinal)));
         Assert.Contains(
             pauseToggle.Elements(),
-            element => AttributeValue(element, "Command") == "{Binding PauseCommand}"
-                && AttributeValue(element, "IsVisible")
-                    == "{Binding !SelectedResource.IsPaused}");
+            element => string.Equals(AttributeValue(element, "Command"), "{Binding PauseCommand}"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "IsVisible")
+, "{Binding !SelectedResource.IsPaused}", StringComparison.Ordinal));
         Assert.Contains(
             pauseToggle.Elements(),
-            element => AttributeValue(element, "Command") == "{Binding ResumeCommand}"
-                && AttributeValue(element, "IsVisible")
-                    == "{Binding SelectedResource.IsPaused}");
+            element => string.Equals(AttributeValue(element, "Command"), "{Binding ResumeCommand}"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "IsVisible")
+, "{Binding SelectedResource.IsPaused}", StringComparison.Ordinal));
 
         var lifecycleSurface = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "Style"
-                && AttributeValue(element, "Selector")
-                    == "Button.IconButton.DockerToolbarAction /template/ ContentPresenter");
+            element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Selector")
+, "Button.IconButton.DockerToolbarAction /template/ ContentPresenter", StringComparison.Ordinal));
         Assert.Contains(
             lifecycleSurface.Elements(),
-            element => element.Name.LocalName == "Setter"
-                && AttributeValue(element, "Property") == "Background"
-                && AttributeValue(element, "Value")
-                    == "{DynamicResource ShellControlSurfaceBrush}");
+            element => string.Equals(element.Name.LocalName, "Setter"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Property"), "Background"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Value")
+, "{DynamicResource ShellControlSurfaceBrush}", StringComparison.Ordinal));
 
         var disabledLifecycleSurface = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "Style"
-                && AttributeValue(element, "Selector")
-                    == "Button.IconButton.DockerToolbarAction:disabled /template/ ContentPresenter");
+            element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Selector")
+, "Button.IconButton.DockerToolbarAction:disabled /template/ ContentPresenter", StringComparison.Ordinal));
         Assert.Contains(
             disabledLifecycleSurface.Elements(),
-            element => element.Name.LocalName == "Setter"
-                && AttributeValue(element, "Property") == "Background"
-                && AttributeValue(element, "Value")
-                    == "{DynamicResource ShellControlSurfaceBrush}");
+            element => string.Equals(element.Name.LocalName, "Setter"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Property"), "Background"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Value")
+, "{DynamicResource ShellControlSurfaceBrush}", StringComparison.Ordinal));
 
         var shell = Assert.Single(
             actions.Elements(),
-            element => element.Name.LocalName == "Button"
-                && AttributeValue(element, "Click") == "OnOpenShellClick");
+            element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Click"), "OnOpenShellClick", StringComparison.Ordinal));
         Assert.Contains(
             shell.Descendants(),
-            element => element.Name.LocalName == "SymbolIcon"
-                && AttributeValue(element, "Symbol") == "Open");
+            element => string.Equals(element.Name.LocalName, "SymbolIcon"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Symbol"), "Open", StringComparison.Ordinal));
         Assert.Contains(
             shell.Descendants(),
-            element => element.Name.LocalName == "TextBlock"
-                && AttributeValue(element, "Text") == "Shell");
+            element => string.Equals(element.Name.LocalName, "TextBlock"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Text"), "Shell", StringComparison.Ordinal));
         Assert.DoesNotContain(
             shell.Descendants(),
-            element => AttributeValue(element, "Text") == "New tab");
+            element => string.Equals(AttributeValue(element, "Text"), "New tab", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -231,9 +226,9 @@ public sealed class RuntimePanelViewContractTests
             XDocument.Load(RuntimePanelPath("DockerRuntimePanelView", ".axaml")).Root);
         var indicator = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "ProgressBar"
-                && AttributeValue(element, "IsVisible")
-                    == "{Binding ShowResourceProgress}");
+            element => string.Equals(element.Name.LocalName, "ProgressBar"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "IsVisible")
+, "{Binding ShowResourceProgress}", StringComparison.Ordinal));
 
         Assert.True(HasClass(indicator, "WorkingStripe"));
         Assert.Equal("Bottom", AttributeValue(indicator, "VerticalAlignment"));
@@ -242,8 +237,8 @@ public sealed class RuntimePanelViewContractTests
             AttributeValue(indicator, "AutomationProperties.Name"));
         Assert.DoesNotContain(
             root.Descendants(),
-            element => element.Name.LocalName == "ProgressBar"
-                && AttributeValue(element, "IsVisible") == "{Binding ShowLoading}");
+            element => string.Equals(element.Name.LocalName, "ProgressBar"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "IsVisible"), "{Binding ShowLoading}", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -252,8 +247,8 @@ public sealed class RuntimePanelViewContractTests
         var root = Assert.IsType<XElement>(
             XDocument.Load(RuntimePanelPath("DockerRuntimePanelView", ".axaml")).Root);
         var tabs = root.Descendants()
-            .Where(element => element.Name.LocalName == "Button"
-                && HasClass(element, "DockerTab"))
+            .Where(element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && HasClass(element, "DockerTab"))
             .ToArray();
 
         Assert.Equal(6, tabs.Length);
@@ -264,36 +259,35 @@ public sealed class RuntimePanelViewContractTests
                 Assert.NotNull(AttributeValue(tab, "AutomationProperties.Name"));
                 Assert.Contains(
                     tab.Descendants(),
-                    element => element.Name.LocalName == "SymbolIcon");
+                    element => string.Equals(element.Name.LocalName, "SymbolIcon", StringComparison.Ordinal));
                 Assert.Contains(
                     tab.Descendants(),
-                    element => element.Name.LocalName == "TextBlock"
-                        && HasClass(element, "DockerTabLabel"));
+                    element => string.Equals(element.Name.LocalName, "TextBlock"
+, StringComparison.Ordinal) && HasClass(element, "DockerTabLabel"));
             });
 
         var tabHost = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "StackPanel"
-                && HasClass(element, "DockerDetailTabs"));
-        Assert.Equal(6, tabHost.Elements().Count(element =>
-            element.Name.LocalName == "Button" && HasClass(element, "DockerTab")));
+            element => string.Equals(element.Name.LocalName, "StackPanel"
+, StringComparison.Ordinal) && HasClass(element, "DockerDetailTabs"));
+        Assert.Equal(6, tabHost.Elements().Count(element => string.Equals(element.Name.LocalName, "Button", StringComparison.Ordinal) && HasClass(element, "DockerTab")));
 
         var menuButton = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "Button"
-                && HasClass(element, "DockerDetailMenuButton"));
+            element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && HasClass(element, "DockerDetailMenuButton"));
         Assert.Equal(
             "Open container view menu",
             AttributeValue(menuButton, "AutomationProperties.Name"));
         Assert.Contains(
             menuButton.Descendants(),
-            element => element.Name.LocalName == "SymbolIcon"
-                && AttributeValue(element, "Symbol") == "Navigation");
+            element => string.Equals(element.Name.LocalName, "SymbolIcon"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Symbol"), "Navigation", StringComparison.Ordinal));
         var menu = Assert.Single(
             menuButton.Descendants(),
-            element => element.Name.LocalName == "MenuFlyout");
+            element => string.Equals(element.Name.LocalName, "MenuFlyout", StringComparison.Ordinal));
         var menuItems = menu.Elements()
-            .Where(element => element.Name.LocalName == "MenuItem")
+            .Where(element => string.Equals(element.Name.LocalName, "MenuItem", StringComparison.Ordinal))
             .ToArray();
         Assert.Equal(6, menuItems.Length);
         Assert.All(menuItems, item =>
@@ -305,24 +299,24 @@ public sealed class RuntimePanelViewContractTests
 
         var hideTabsStyle = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "Style"
-                && AttributeValue(element, "Selector")
-                    == "Grid.compactDetails StackPanel.DockerDetailTabs");
+            element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Selector")
+, "Grid.compactDetails StackPanel.DockerDetailTabs", StringComparison.Ordinal));
         Assert.Contains(
             hideTabsStyle.Elements(),
-            element => element.Name.LocalName == "Setter"
-                && AttributeValue(element, "Property") == "IsVisible"
-                && AttributeValue(element, "Value") == "False");
+            element => string.Equals(element.Name.LocalName, "Setter"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Property"), "IsVisible"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Value"), "False", StringComparison.Ordinal));
         var showMenuStyle = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "Style"
-                && AttributeValue(element, "Selector")
-                    == "Grid.compactDetails Button.DockerDetailMenuButton.hasSelection");
+            element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Selector")
+, "Grid.compactDetails Button.DockerDetailMenuButton.hasSelection", StringComparison.Ordinal));
         Assert.Contains(
             showMenuStyle.Elements(),
-            element => element.Name.LocalName == "Setter"
-                && AttributeValue(element, "Property") == "IsVisible"
-                && AttributeValue(element, "Value") == "True");
+            element => string.Equals(element.Name.LocalName, "Setter"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Property"), "IsVisible"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Value"), "True", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -332,27 +326,27 @@ public sealed class RuntimePanelViewContractTests
             XDocument.Load(RuntimePanelPath("DockerRuntimePanelView", ".axaml")).Root);
         var railStyle = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "Style"
-                && AttributeValue(element, "Selector") == "Border.DockerFamilyRail");
+            element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Selector"), "Border.DockerFamilyRail", StringComparison.Ordinal));
         var width = Assert.Single(
             railStyle.Elements(),
-            element => element.Name.LocalName == "Setter"
-                && AttributeValue(element, "Property") == "Width");
+            element => string.Equals(element.Name.LocalName, "Setter"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Property"), "Width", StringComparison.Ordinal));
         Assert.Equal("180", AttributeValue(width, "Value"));
 
         var navigationStyle = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "Style"
-                && AttributeValue(element, "Selector") == "Button.DockerNav");
+            element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Selector"), "Button.DockerNav", StringComparison.Ordinal));
         var horizontalAlignment = Assert.Single(
             navigationStyle.Elements(),
-            element => element.Name.LocalName == "Setter"
-                && AttributeValue(element, "Property") == "HorizontalAlignment");
+            element => string.Equals(element.Name.LocalName, "Setter"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Property"), "HorizontalAlignment", StringComparison.Ordinal));
         Assert.Equal("Stretch", AttributeValue(horizontalAlignment, "Value"));
 
         var navigationButtons = root.Descendants()
-            .Where(element => element.Name.LocalName == "Button"
-                && HasClass(element, "DockerNav"))
+            .Where(element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && HasClass(element, "DockerNav"))
             .ToArray();
         Assert.Equal(4, navigationButtons.Length);
         Assert.All(
@@ -361,7 +355,7 @@ public sealed class RuntimePanelViewContractTests
             {
                 var count = Assert.Single(
                     button.Descendants(),
-                    element => element.Name.LocalName == "StatusChip");
+                    element => string.Equals(element.Name.LocalName, "StatusChip", StringComparison.Ordinal));
                 Assert.Null(AttributeValue(count, "Width"));
                 Assert.Equal("28", AttributeValue(count, "MinWidth"));
                 Assert.Equal("Right", AttributeValue(count, "HorizontalAlignment"));
@@ -381,7 +375,7 @@ public sealed class RuntimePanelViewContractTests
             XDocument.Load(RuntimePanelPath("DockerRuntimePanelView", ".axaml")).Root);
 
         var explicitlySizedText = root.Descendants()
-            .Where(element => element.Name.LocalName == "TextBlock")
+            .Where(element => string.Equals(element.Name.LocalName, "TextBlock", StringComparison.Ordinal))
             .Select(element => new
             {
                 Element = element,
@@ -400,8 +394,8 @@ public sealed class RuntimePanelViewContractTests
 
         var propertyValue = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "TextBlock"
-                && HasClass(element, "DockerPropertyValue"));
+            element => string.Equals(element.Name.LocalName, "TextBlock"
+, StringComparison.Ordinal) && HasClass(element, "DockerPropertyValue"));
         Assert.Equal("Wrap", AttributeValue(propertyValue, "TextWrapping"));
         Assert.Equal(
             "{DynamicResource ShellLineHeight12}",
@@ -415,7 +409,7 @@ public sealed class RuntimePanelViewContractTests
         var docker = Assert.IsType<XElement>(
             XDocument.Load(RuntimePanelPath("DockerRuntimePanelView", ".axaml")).Root);
         var verticalCollections = docker.Descendants()
-            .Where(element => element.Name.LocalName == "ItemsControl")
+            .Where(element => string.Equals(element.Name.LocalName, "ItemsControl", StringComparison.Ordinal))
             .Where(element => AttributeValue(element, "ItemsSource") is
                 "{Binding ContainerStacks}"
                 or "{Binding Containers}"
@@ -428,51 +422,51 @@ public sealed class RuntimePanelViewContractTests
 
         var stackHeaderBackground = Assert.Single(
             docker.Descendants(),
-            element => element.Name.LocalName == "Style"
-                && AttributeValue(element, "Selector") == "Border.DockerStackHeaderSurface");
+            element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Selector"), "Border.DockerStackHeaderSurface", StringComparison.Ordinal));
         Assert.Contains(
             stackHeaderBackground.Elements(),
-            element => element.Name.LocalName == "Setter"
-                && AttributeValue(element, "Property") == "Background"
-                && AttributeValue(element, "Value")
-                    == "{DynamicResource ShellSurfaceHoverBrush}");
+            element => string.Equals(element.Name.LocalName, "Setter"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Property"), "Background"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Value")
+, "{DynamicResource ShellSurfaceHoverBrush}", StringComparison.Ordinal));
         Assert.Contains(
             stackHeaderBackground.Elements(),
-            element => element.Name.LocalName == "Setter"
-                && AttributeValue(element, "Property") == "BorderBrush"
-                && AttributeValue(element, "Value")
-                    == "{DynamicResource ShellAccentBrush}");
+            element => string.Equals(element.Name.LocalName, "Setter"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Property"), "BorderBrush"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Value")
+, "{DynamicResource ShellAccentBrush}", StringComparison.Ordinal));
 
         var stackHeader = Assert.Single(
             docker.Descendants(),
-            element => element.Name.LocalName == "Grid"
-                && HasClass(element, "DockerStackHeader"));
+            element => string.Equals(element.Name.LocalName, "Grid"
+, StringComparison.Ordinal) && HasClass(element, "DockerStackHeader"));
         Assert.Equal(
             "{controls:Inset Horizontal=Sm, Vertical=Xs}",
             AttributeValue(stackHeader, "Margin"));
         Assert.Equal("Auto,*,Auto", AttributeValue(stackHeader, "ColumnDefinitions"));
         var stackToggle = Assert.Single(
             stackHeader.Elements(),
-            element => element.Name.LocalName == "Button"
-                && HasClass(element, "DockerStackToggle"));
+            element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && HasClass(element, "DockerStackToggle"));
         Assert.Equal("0", AttributeValue(stackToggle, "Grid.Column"));
         var stackActionsHost = Assert.Single(
             stackHeader.Elements(),
-            element => element.Name.LocalName == "StackPanel"
-                && AttributeValue(element, "Grid.Column") == "2");
+            element => string.Equals(element.Name.LocalName, "StackPanel"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Grid.Column"), "2", StringComparison.Ordinal));
         Assert.Equal("Right", AttributeValue(stackActionsHost, "HorizontalAlignment"));
         Assert.DoesNotContain(
             stackHeader.Elements(),
-            element => element.Name.LocalName == "Border"
-                && AttributeValue(element, "Width") == "2");
+            element => string.Equals(element.Name.LocalName, "Border"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Width"), "2", StringComparison.Ordinal));
         var resourceRowTemplate = Assert.Single(
             docker.Descendants(),
-            element => element.Name.LocalName == "DataTemplate"
-                && AttributeValue(element, "Key") == "DockerResourceItemTemplate");
+            element => string.Equals(element.Name.LocalName, "DataTemplate"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Key"), "DockerResourceItemTemplate", StringComparison.Ordinal));
         var resourceRow = Assert.Single(
             resourceRowTemplate.Descendants(),
-            element => element.Name.LocalName == "ListItem"
-                && HasClass(element, "DockerResourceListItem"));
+            element => string.Equals(element.Name.LocalName, "ListItem"
+, StringComparison.Ordinal) && HasClass(element, "DockerResourceListItem"));
         Assert.Equal("{DynamicResource ShellListRowPadding}", AttributeValue(resourceRow, "ContentPadding"));
         Assert.Equal("{Binding Title}", AttributeValue(resourceRow, "Title"));
         Assert.Equal("{Binding Subtitle}", AttributeValue(resourceRow, "Detail"));
@@ -480,15 +474,15 @@ public sealed class RuntimePanelViewContractTests
 
         var containerResourceRow = Assert.Single(
             docker.Descendants(),
-            element => element.Name.LocalName == "Button"
-                && HasClass(element, "DockerResourceRow"));
+            element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && HasClass(element, "DockerResourceRow"));
         Assert.Equal(
             "{StaticResource DockerResourceItemTemplate}",
             AttributeValue(containerResourceRow, "ContentTemplate"));
         var flatResourceList = Assert.Single(
             docker.Descendants(),
-            element => element.Name.LocalName == "ListBox"
-                && HasClass(element, "DockerResources"));
+            element => string.Equals(element.Name.LocalName, "ListBox"
+, StringComparison.Ordinal) && HasClass(element, "DockerResources"));
         Assert.Equal(
             "{StaticResource DockerResourceItemTemplate}",
             AttributeValue(flatResourceList, "ItemTemplate"));
@@ -497,70 +491,68 @@ public sealed class RuntimePanelViewContractTests
             element => HasClass(element, "DockerStackRowContent"));
 
         var stackActions = stackActionsHost.Descendants()
-            .Where(element => element.Name.LocalName == "Button")
+            .Where(element => string.Equals(element.Name.LocalName, "Button", StringComparison.Ordinal))
             .Where(element => AttributeValue(element, "AutomationProperties.Name")
                 ?.EndsWith(" stack", StringComparison.Ordinal) == true)
             .ToArray();
         Assert.Equal(5, stackActions.Length);
         Assert.Equal(
             ["Start stack", "Stop stack", "Restart stack", "Pause stack", "Resume stack"],
-            stackActions.Select(button => AttributeValue(button, "AutomationProperties.Name")));
+            stackActions.Select(button => AttributeValue(button, "AutomationProperties.Name")), StringComparer.Ordinal);
         var stackActionToggles = stackActionsHost.Elements()
-            .Where(element => element.Name.LocalName == "Grid"
-                && AttributeValue(element, "Width") == "24"
-                && AttributeValue(element, "Height") == "24")
+            .Where(element => string.Equals(element.Name.LocalName, "Grid"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Width"), "24"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Height"), "24", StringComparison.Ordinal))
             .ToArray();
         Assert.Equal(2, stackActionToggles.Length);
         var stackStartStopToggle = Assert.Single(
             stackActionToggles,
-            element => element.Descendants().Any(button =>
-                AttributeValue(button, "Click") == "OnStartStackClick"));
+            element => element.Descendants().Any(button => string.Equals(AttributeValue(button, "Click"), "OnStartStackClick", StringComparison.Ordinal)));
         Assert.Contains(
             stackStartStopToggle.Elements(),
-            element => AttributeValue(element, "Click") == "OnStartStackClick"
-                && AttributeValue(element, "IsVisible") == "{Binding !CanStop}");
+            element => string.Equals(AttributeValue(element, "Click"), "OnStartStackClick"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "IsVisible"), "{Binding !CanStop}", StringComparison.Ordinal));
         Assert.Contains(
             stackStartStopToggle.Elements(),
-            element => AttributeValue(element, "Click") == "OnStopStackClick"
-                && AttributeValue(element, "IsVisible") == "{Binding CanStop}");
+            element => string.Equals(AttributeValue(element, "Click"), "OnStopStackClick"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "IsVisible"), "{Binding CanStop}", StringComparison.Ordinal));
         var stackPauseResumeToggle = Assert.Single(
             stackActionToggles,
-            element => element.Descendants().Any(button =>
-                AttributeValue(button, "Click") == "OnPauseStackClick"));
+            element => element.Descendants().Any(button => string.Equals(AttributeValue(button, "Click"), "OnPauseStackClick", StringComparison.Ordinal)));
         Assert.Contains(
             stackPauseResumeToggle.Elements(),
-            element => AttributeValue(element, "Click") == "OnPauseStackClick"
-                && AttributeValue(element, "IsVisible") == "{Binding CanPause}");
+            element => string.Equals(AttributeValue(element, "Click"), "OnPauseStackClick"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "IsVisible"), "{Binding CanPause}", StringComparison.Ordinal));
         Assert.Contains(
             stackPauseResumeToggle.Elements(),
-            element => AttributeValue(element, "Click") == "OnResumeStackClick"
-                && AttributeValue(element, "IsVisible") == "{Binding !CanPause}");
+            element => string.Equals(AttributeValue(element, "Click"), "OnResumeStackClick"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "IsVisible"), "{Binding !CanPause}", StringComparison.Ordinal));
 
         var statusTiles = docker.Descendants()
-            .Where(element => element.Name.LocalName == "IdentityTile"
-                && AttributeValue(element, "Tint") == "{Binding StatusColor}")
+            .Where(element => string.Equals(element.Name.LocalName, "IdentityTile"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Tint"), "{Binding StatusColor}", StringComparison.Ordinal))
             .ToArray();
         Assert.Single(statusTiles);
         Assert.DoesNotContain(
             docker.Descendants(),
-            element => element.Name.LocalName == "Ellipse"
-                && AttributeValue(element, "Fill") == "{Binding StatusColor}");
+            element => string.Equals(element.Name.LocalName, "Ellipse"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Fill"), "{Binding StatusColor}", StringComparison.Ordinal));
 
         var resourceRowStyle = Assert.Single(
             docker.Descendants(),
-            element => element.Name.LocalName == "Style"
-                && AttributeValue(element, "Selector") == "Button.DockerResourceRow");
+            element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Selector"), "Button.DockerResourceRow", StringComparison.Ordinal));
         Assert.Contains(
             resourceRowStyle.Elements(),
-            element => element.Name.LocalName == "Setter"
-                && AttributeValue(element, "Property") == "Margin"
-                && AttributeValue(element, "Value")
-                    == "{controls:Inset Horizontal=Sm}");
+            element => string.Equals(element.Name.LocalName, "Setter"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Property"), "Margin"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Value")
+, "{controls:Inset Horizontal=Sm}", StringComparison.Ordinal));
         Assert.Contains(
             resourceRowStyle.Elements(),
-            element => element.Name.LocalName == "Setter"
-                && AttributeValue(element, "Property") == "HorizontalAlignment"
-                && AttributeValue(element, "Value") == "Stretch");
+            element => string.Equals(element.Name.LocalName, "Setter"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Property"), "HorizontalAlignment"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Value"), "Stretch", StringComparison.Ordinal));
 
         var designSystem = Assert.IsType<XElement>(
             XDocument.Load(Path.Combine(
@@ -571,14 +563,14 @@ public sealed class RuntimePanelViewContractTests
                 "DesignSystem.axaml")).Root);
         var generatedItemStyle = Assert.Single(
             designSystem.Descendants(),
-            element => element.Name.LocalName == "Style"
-                && AttributeValue(element, "Selector")
-                    == "ItemsControl.StretchItems > ContentPresenter");
+            element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Selector")
+, "ItemsControl.StretchItems > ContentPresenter", StringComparison.Ordinal));
         Assert.Contains(
             generatedItemStyle.Elements(),
-            element => element.Name.LocalName == "Setter"
-                && AttributeValue(element, "Property") == "HorizontalAlignment"
-                && AttributeValue(element, "Value") == "Stretch");
+            element => string.Equals(element.Name.LocalName, "Setter"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Property"), "HorizontalAlignment"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Value"), "Stretch", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -596,23 +588,23 @@ public sealed class RuntimePanelViewContractTests
         {
             var style = Assert.Single(
                 theme.Descendants(),
-                element => element.Name.LocalName == "Style"
-                    && AttributeValue(element, "Selector") == selector);
+                element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Selector"), selector, StringComparison.Ordinal));
             Assert.Contains(
                 style.Elements(),
-                element => element.Name.LocalName == "Setter"
-                    && AttributeValue(element, "Property") == "Margin"
-                    && AttributeValue(element, "Value")
-                        == "{controls:Inset Horizontal=Xs}");
+                element => string.Equals(element.Name.LocalName, "Setter"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Property"), "Margin"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Value")
+, "{controls:Inset Horizontal=Xs}", StringComparison.Ordinal));
         }
 
         var processMonitor = Assert.IsType<XElement>(
             XDocument.Load(RuntimePanelPath("ProcessMonitorRuntimePanelView", ".axaml")).Root);
         var processList = Assert.Single(
             processMonitor.Descendants(),
-            element => element.Name.LocalName == "ListBox"
-                && AttributeValue(element, "AutomationProperties.Name")
-                    == "Process list");
+            element => string.Equals(element.Name.LocalName, "ListBox"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "AutomationProperties.Name")
+, "Process list", StringComparison.Ordinal));
         Assert.Equal("{controls:Inset Xs}", AttributeValue(processList, "Margin"));
     }
 
@@ -646,7 +638,7 @@ public sealed class RuntimePanelViewContractTests
             XDocument.Load(RuntimePanelPath(viewName, ".axaml")).Root);
         var chrome = Assert.Single(
             root.Elements(),
-            element => element.Name.LocalName == "PanelChrome");
+            element => string.Equals(element.Name.LocalName, "PanelChrome", StringComparison.Ordinal));
 
         Assert.Equal("OnCloseClick", AttributeValue(chrome, "CloseRequested"));
         Assert.Equal("OnSplitRequested", AttributeValue(chrome, "SplitRequested"));
@@ -661,13 +653,13 @@ public sealed class RuntimePanelViewContractTests
         {
             Assert.DoesNotContain(
                 root.Elements(),
-                element => element.Name.LocalName == owned);
+                element => string.Equals(element.Name.LocalName, owned, StringComparison.Ordinal));
         }
 
         Assert.DoesNotContain(
             root.Descendants(),
-            element => element.Name.LocalName == "Border"
-                && HasClass(element, "PanelHeader"));
+            element => string.Equals(element.Name.LocalName, "Border"
+, StringComparison.Ordinal) && HasClass(element, "PanelHeader"));
 
         // Nor the other end of it. Two panels drew the same footer by hand —
         // surface fill, a hairline along the top, muted nine-point text — which
@@ -680,10 +672,10 @@ public sealed class RuntimePanelViewContractTests
         // and are nobody's footer.
         Assert.DoesNotContain(
             chrome.Elements().SelectMany(content => content.Elements()),
-            element => element.Name.LocalName == "Border"
-                && AttributeValue(element, "BorderThickness") == "0,1,0,0"
-                && AttributeValue(element, "Background")
-                    == "{DynamicResource ShellSurfaceBrush}");
+            element => string.Equals(element.Name.LocalName, "Border"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "BorderThickness"), "0,1,0,0"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Background")
+, "{DynamicResource ShellSurfaceBrush}", StringComparison.Ordinal));
         Assert.DoesNotContain(
             root.Descendants(),
             element => AttributeValue(element, "AutomationProperties.Name")
@@ -700,15 +692,15 @@ public sealed class RuntimePanelViewContractTests
     {
         var theme = Assert.Single(
             DesignSystem().Descendants(),
-            element => element.Name.LocalName == "ControlTheme"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "ControlTheme"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "TargetType"),
                     "controls:PanelChrome",
                     StringComparison.Ordinal));
 
         var card = Assert.Single(
             theme.Descendants(),
-            element => element.Name.LocalName == "SurfaceCard");
+            element => string.Equals(element.Name.LocalName, "SurfaceCard", StringComparison.Ordinal));
         Assert.Equal("Panel", AttributeValue(card, "Tone"));
         Assert.Equal("True", AttributeValue(card, "ClipsContent"));
         Assert.Equal(
@@ -721,7 +713,7 @@ public sealed class RuntimePanelViewContractTests
         // that holds one.
         var handle = Assert.Single(
             theme.Descendants(),
-            element => element.Name.LocalName == "PanelDockHandle");
+            element => string.Equals(element.Name.LocalName, "PanelDockHandle", StringComparison.Ordinal));
         Assert.Null(AttributeValue(handle, "DataContext"));
 
         var handleSource = File.ReadAllText(Path.Combine(
@@ -742,7 +734,7 @@ public sealed class RuntimePanelViewContractTests
 
         var actions = theme
             .Descendants()
-            .Where(element => element.Name.LocalName == "Button")
+            .Where(element => string.Equals(element.Name.LocalName, "Button", StringComparison.Ordinal))
             .Select(element => AttributeValue(element, "Name") ?? string.Empty)
             .ToArray();
         Assert.Equal(
@@ -758,10 +750,8 @@ public sealed class RuntimePanelViewContractTests
         // Float and dock are one control in two states, so exactly one of them is
         // ever offered. Floating used to be a double-click on the title — nothing
         // announced it, and nothing undid it.
-        var floatOut = theme.Descendants().Single(element =>
-            AttributeValue(element, "Name") == "PART_Float");
-        var dockBack = theme.Descendants().Single(element =>
-            AttributeValue(element, "Name") == "PART_Dock");
+        var floatOut = theme.Descendants().Single(element => string.Equals(AttributeValue(element, "Name"), "PART_Float", StringComparison.Ordinal));
+        var dockBack = theme.Descendants().Single(element => string.Equals(AttributeValue(element, "Name"), "PART_Dock", StringComparison.Ordinal));
         Assert.Equal("{TemplateBinding CanFloat}", AttributeValue(floatOut, "IsVisible"));
         Assert.Equal("{TemplateBinding IsFloating}", AttributeValue(dockBack, "IsVisible"));
 
@@ -773,20 +763,20 @@ public sealed class RuntimePanelViewContractTests
         // is load-bearing rather than decorative.
         var footer = Assert.Single(
             theme.Descendants(),
-            element => element.Name.LocalName == "Border"
-                && HasClass(element, "PanelFooter"));
+            element => string.Equals(element.Name.LocalName, "Border"
+, StringComparison.Ordinal) && HasClass(element, "PanelFooter"));
         Assert.Equal("{TemplateBinding IsFooterVisible}", AttributeValue(footer, "IsVisible"));
 
         var browser = XDocument.Load(RuntimePanelPath("BrowserRuntimePanelView", ".axaml"));
         Assert.Contains(
             browser.Descendants(),
-            element => element.Name.LocalName == "PanelChrome.Footer");
+            element => string.Equals(element.Name.LocalName, "PanelChrome.Footer", StringComparison.Ordinal));
 
         // The browser drew the two splits the other way round for as long as it
         // drew them itself.
         var splits = theme
             .Descendants()
-            .Where(element => element.Name.LocalName == "SymbolIcon")
+            .Where(element => string.Equals(element.Name.LocalName, "SymbolIcon", StringComparison.Ordinal))
             .Select(element => AttributeValue(element, "Symbol") ?? string.Empty)
             .ToArray();
         Assert.Equal(
@@ -801,13 +791,13 @@ public sealed class RuntimePanelViewContractTests
 
         Assert.DoesNotContain(
             theme.Descendants(),
-            element => element.Name.LocalName == "SymbolIcon"
-                && AttributeValue(element, "Symbol") == "Bot");
+            element => string.Equals(element.Name.LocalName, "SymbolIcon"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Symbol"), "Bot", StringComparison.Ordinal));
 
         var agentGlow = Assert.Single(
             theme.Descendants(),
-            element => element.Name.LocalName == "Border"
-                && HasClass(element, "PanelAgentGlow"));
+            element => string.Equals(element.Name.LocalName, "Border"
+, StringComparison.Ordinal) && HasClass(element, "PanelAgentGlow"));
         Assert.Equal(
             "{TemplateBinding IsAgentActive}",
             AttributeValue(agentGlow, "IsVisible"));
@@ -889,8 +879,8 @@ public sealed class RuntimePanelViewContractTests
         var mainWindow = LoadView("MainWindow");
         var template = Assert.Single(
             mainWindow.Descendants(),
-            element => element.Name.LocalName == "DataTemplate"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "DataTemplate"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "DataType"),
                     $"vm:{viewModel}",
                     StringComparison.Ordinal));
@@ -908,7 +898,7 @@ public sealed class RuntimePanelViewContractTests
             AttributeValue(component, "CloseRequested"));
         Assert.DoesNotContain(
             template.Descendants(),
-            element => element.Name.LocalName == "SurfaceCard");
+            element => string.Equals(element.Name.LocalName, "SurfaceCard", StringComparison.Ordinal));
     }
 
     [Theory]
@@ -969,7 +959,7 @@ public sealed class RuntimePanelViewContractTests
         // this particular panel is called is the one part of it the panel says.
         var chrome = Assert.Single(
             root.Elements(),
-            element => element.Name.LocalName == "PanelChrome");
+            element => string.Equals(element.Name.LocalName, "PanelChrome", StringComparison.Ordinal));
         Assert.Equal(closeName, AttributeValue(chrome, "CloseLabel") ?? "Close panel");
         Assert.Equal("OnCloseClick", AttributeValue(chrome, "CloseRequested"));
 
@@ -1004,10 +994,10 @@ public sealed class RuntimePanelViewContractTests
         var root = Assert.IsType<XElement>(LoadRuntimePanelView("RedisRuntimePanelView").Root);
         var connect = Assert.Single(
             root.Descendants(),
-            element => AttributeValue(element, "AutomationProperties.Name") == "Connect to Redis");
+            element => string.Equals(AttributeValue(element, "AutomationProperties.Name"), "Connect to Redis", StringComparison.Ordinal));
         var disconnect = Assert.Single(
             root.Descendants(),
-            element => AttributeValue(element, "AutomationProperties.Name") == "Disconnect from Redis");
+            element => string.Equals(AttributeValue(element, "AutomationProperties.Name"), "Disconnect from Redis", StringComparison.Ordinal));
 
         foreach (var button in new[] { connect, disconnect })
         {
@@ -1020,24 +1010,24 @@ public sealed class RuntimePanelViewContractTests
 
         var error = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "Callout"
-                && AttributeValue(element, "Text") == "{Binding ErrorMessage}");
+            element => string.Equals(element.Name.LocalName, "Callout"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Text"), "{Binding ErrorMessage}", StringComparison.Ordinal));
         Assert.Equal("Danger", AttributeValue(error, "Tone"));
 
         var browser = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "Grid"
-                && AttributeValue(element, "IsVisible") == "{Binding ShowBrowser}");
+            element => string.Equals(element.Name.LocalName, "Grid"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "IsVisible"), "{Binding ShowBrowser}", StringComparison.Ordinal));
         Assert.Equal("320,5,*", AttributeValue(browser, "ColumnDefinitions"));
         Assert.Contains(
             browser.Elements(),
-            element => element.Name.LocalName == "GridSplitter"
-                && AttributeValue(element, "AutomationProperties.Name")
-                    == "Resize the Redis keys list");
+            element => string.Equals(element.Name.LocalName, "GridSplitter"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "AutomationProperties.Name")
+, "Resize the Redis keys list", StringComparison.Ordinal));
         Assert.DoesNotContain(
             browser.Elements(),
-            element => element.Name.LocalName == "SurfaceCard"
-                && AttributeValue(element, "Tone") == "Panel");
+            element => string.Equals(element.Name.LocalName, "SurfaceCard"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Tone"), "Panel", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -1052,11 +1042,11 @@ public sealed class RuntimePanelViewContractTests
 
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "PanelChrome.Footer");
+            element => string.Equals(element.Name.LocalName, "PanelChrome.Footer", StringComparison.Ordinal));
 
         var grids = root
             .Descendants()
-            .Where(element => element.Name.LocalName == "DataGrid")
+            .Where(element => string.Equals(element.Name.LocalName, "DataGrid", StringComparison.Ordinal))
             .ToArray();
         Assert.NotEmpty(grids);
         foreach (var grid in grids)
@@ -1068,14 +1058,14 @@ public sealed class RuntimePanelViewContractTests
 
         // A row of a list is the kit's row. Hand-rolled grids are how two
         // lists in the same product stopped agreeing on their own geometry.
-        foreach (var list in root.Descendants().Where(element => element.Name.LocalName == "ListBox"))
+        foreach (var list in root.Descendants().Where(element => string.Equals(element.Name.LocalName, "ListBox", StringComparison.Ordinal)))
         {
             Assert.True(
                 HasClass(list, "Rows"),
                 "A Redis list is a list of rows and takes its chrome from the theme.");
             var template = Assert.Single(
                 list.Descendants(),
-                element => element.Name.LocalName == "DataTemplate");
+                element => string.Equals(element.Name.LocalName, "DataTemplate", StringComparison.Ordinal));
             Assert.Equal("ListItem", Assert.Single(template.Elements()).Name.LocalName);
         }
 
@@ -1089,12 +1079,11 @@ public sealed class RuntimePanelViewContractTests
         // of its own and can be drawn outside the frame it belongs to.
         Assert.DoesNotContain(
             root.Descendants(),
-            element => element.Name.LocalName == "Flyout");
+            element => string.Equals(element.Name.LocalName, "Flyout", StringComparison.Ordinal));
         var sheet = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "SurfaceCard"
-                && element.Descendants().Any(child =>
-                    AttributeValue(child, "AutomationProperties.Name") == "Create Redis key"));
+            element => string.Equals(element.Name.LocalName, "SurfaceCard"
+, StringComparison.Ordinal) && element.Descendants().Any(child => string.Equals(AttributeValue(child, "AutomationProperties.Name"), "Create Redis key", StringComparison.Ordinal)));
 
         foreach (var input in sheet
                      .Descendants()
@@ -1102,7 +1091,7 @@ public sealed class RuntimePanelViewContractTests
                      .Where(element => AttributeValue(element, "PlaceholderText") is null))
         {
             Assert.True(
-                input.Ancestors().Any(parent => parent.Name.LocalName == "LabeledField"),
+                input.Ancestors().Any(parent => string.Equals(parent.Name.LocalName, "LabeledField", StringComparison.Ordinal)),
                 $"A {input.Name.LocalName} in the create-key form carries no field label.");
         }
 
@@ -1117,7 +1106,7 @@ public sealed class RuntimePanelViewContractTests
         {
             Assert.Contains(
                 root.Descendants(),
-                element => element.Attributes().Any(attribute => attribute.Value == binding));
+                element => element.Attributes().Any(attribute => string.Equals(attribute.Value, binding, StringComparison.Ordinal)));
         }
     }
 
@@ -1149,7 +1138,7 @@ public sealed class RuntimePanelViewContractTests
 
         var chooser = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "LauncherView");
+            element => string.Equals(element.Name.LocalName, "LauncherView", StringComparison.Ordinal));
         // The cell has its own close button in its header, so the catalog does
         // not offer a second one.
         Assert.Equal("False", AttributeValue(chooser, "ShowCloseAction"));
@@ -1189,8 +1178,8 @@ public sealed class RuntimePanelViewContractTests
         var mainWindow = LoadView("MainWindow");
         var template = Assert.Single(
             mainWindow.Descendants(),
-            element => element.Name.LocalName == "DataTemplate"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "DataTemplate"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "DataType"),
                     "vm:TerminalRuntimePanelViewModel",
                     StringComparison.Ordinal));
@@ -1222,7 +1211,7 @@ public sealed class RuntimePanelViewContractTests
         var root = Assert.IsType<XElement>(document.Root);
         var connectionSelector = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "PanelConnectionSelectorView");
+            element => string.Equals(element.Name.LocalName, "PanelConnectionSelectorView", StringComparison.Ordinal));
         Assert.Equal(
             "{Binding $parent[Window].DataContext.PanelConnectionOptions}",
             AttributeValue(connectionSelector, "Options"));
@@ -1240,11 +1229,11 @@ public sealed class RuntimePanelViewContractTests
             AttributeValue(
                 Assert.Single(
                     root.Elements(),
-                    element => element.Name.LocalName == "PanelChrome"),
+                    element => string.Equals(element.Name.LocalName, "PanelChrome", StringComparison.Ordinal)),
                 "Title"));
         var terminal = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "TerminalPresentationHost");
+            element => string.Equals(element.Name.LocalName, "TerminalPresentationHost", StringComparison.Ordinal));
 
         Assert.Equal("RuntimeTerminal", AttributeValue(terminal, "Name"));
         Assert.Equal("{DynamicResource ShellHairline}", AttributeValue(terminal, "Margin"));
@@ -1301,8 +1290,8 @@ public sealed class RuntimePanelViewContractTests
         Assert.Equal("Filter connections", AttributeValue(filter, "PlaceholderText"));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "ItemsControl"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "ItemsControl"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "ItemsSource"),
                     "{Binding FilteredOptions, ElementName=Root}",
                     StringComparison.Ordinal));
@@ -1325,8 +1314,8 @@ public sealed class RuntimePanelViewContractTests
         var mainWindow = LoadView("MainWindow");
         var template = Assert.Single(
             mainWindow.Descendants(),
-            element => element.Name.LocalName == "DataTemplate"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "DataTemplate"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "DataType"),
                     "vm:BrowserRuntimePanelViewModel",
                     StringComparison.Ordinal));
@@ -1355,7 +1344,7 @@ public sealed class RuntimePanelViewContractTests
         var root = Assert.IsType<XElement>(document.Root);
         var browser = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "BrowserPresentationHost");
+            element => string.Equals(element.Name.LocalName, "BrowserPresentationHost", StringComparison.Ordinal));
 
         Assert.Equal("RuntimeBrowser", AttributeValue(browser, "Name"));
         Assert.Equal("{DynamicResource ShellHairline}", AttributeValue(browser, "Margin"));
@@ -1430,8 +1419,8 @@ public sealed class RuntimePanelViewContractTests
         var mainWindow = LoadView("MainWindow");
         var template = Assert.Single(
             mainWindow.Descendants(),
-            element => element.Name.LocalName == "DataTemplate"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "DataTemplate"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "DataType"),
                     "vm:FileRuntimePanelViewModel",
                     StringComparison.Ordinal));
@@ -1464,15 +1453,15 @@ public sealed class RuntimePanelViewContractTests
         var root = Assert.IsType<XElement>(document.Root);
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "Grid"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Grid"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "RowDefinitions"),
                     "Auto,*",
                     StringComparison.Ordinal));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "Border"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Border"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Grid.Row"),
                     "0",
                     StringComparison.Ordinal)
@@ -1486,7 +1475,7 @@ public sealed class RuntimePanelViewContractTests
                     StringComparison.Ordinal));
         var connectionSelector = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "PanelConnectionSelectorView");
+            element => string.Equals(element.Name.LocalName, "PanelConnectionSelectorView", StringComparison.Ordinal));
         Assert.Equal(
             "{Binding $parent[Window].DataContext.FileConnectionOptions}",
             AttributeValue(connectionSelector, "Options"));
@@ -1495,8 +1484,8 @@ public sealed class RuntimePanelViewContractTests
             AttributeValue(connectionSelector, "SelectedLabel"));
         Assert.DoesNotContain(
             root.Descendants(),
-            element => element.Name.LocalName == "ComboBox"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "ComboBox"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "AutomationProperties.Name"),
                     "File provider profile",
                     StringComparison.Ordinal));
@@ -1513,8 +1502,8 @@ public sealed class RuntimePanelViewContractTests
         {
             var button = Assert.Single(
                 root.Descendants(),
-                element => element.Name.LocalName == "Button"
-                    && string.Equals(
+                element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && string.Equals(
                         AttributeValue(element, "AutomationProperties.Name"),
                         accessibleName,
                         StringComparison.Ordinal));
@@ -1528,46 +1517,45 @@ public sealed class RuntimePanelViewContractTests
                 AttributeValue(button, "Classes.descending"));
             Assert.Contains(
                 button.Descendants(),
-                element => element.Name.LocalName == "SymbolIcon"
-                    && AttributeValue(element, "Symbol") == "ArrowUp");
+                element => string.Equals(element.Name.LocalName, "SymbolIcon"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Symbol"), "ArrowUp", StringComparison.Ordinal));
             Assert.Contains(
                 button.Descendants(),
-                element => element.Name.LocalName == "SymbolIcon"
-                    && AttributeValue(element, "Symbol") == "ArrowDown");
+                element => string.Equals(element.Name.LocalName, "SymbolIcon"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Symbol"), "ArrowDown", StringComparison.Ordinal));
         }
         var headerStyle = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "Style"
-                && AttributeValue(element, "Selector") == "Button.FileColumnHeader");
+            element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Selector"), "Button.FileColumnHeader", StringComparison.Ordinal));
         Assert.Contains(
             headerStyle.Elements(),
-            setter => AttributeValue(setter, "Property") == "HorizontalAlignment"
-                && AttributeValue(setter, "Value") == "Stretch");
+            setter => string.Equals(AttributeValue(setter, "Property"), "HorizontalAlignment"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(setter, "Value"), "Stretch", StringComparison.Ordinal));
         Assert.Contains(
             headerStyle.Elements(),
-            setter => AttributeValue(setter, "Property") == "CornerRadius"
-                && AttributeValue(setter, "Value") == "0");
+            setter => string.Equals(AttributeValue(setter, "Property"), "CornerRadius"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(setter, "Value"), "0", StringComparison.Ordinal));
         var headerHoverStyle = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "Style"
-                && AttributeValue(element, "Selector")
-                    == "Button.FileColumnHeader:pointerover /template/ ContentPresenter");
+            element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Selector")
+, "Button.FileColumnHeader:pointerover /template/ ContentPresenter", StringComparison.Ordinal));
         Assert.Contains(
             headerHoverStyle.Elements(),
-            setter => AttributeValue(setter, "Property") == "Background"
-                && AttributeValue(setter, "Value")
-                    == "{DynamicResource ShellSurfaceHoverBrush}");
+            setter => string.Equals(AttributeValue(setter, "Property"), "Background"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(setter, "Value")
+, "{DynamicResource ShellSurfaceHoverBrush}", StringComparison.Ordinal));
         Assert.Equal(
             3,
-            root.Descendants().Count(element =>
-                element.Name.LocalName == "ListBox"
-                && string.Equals(
+            root.Descendants().Count(element => string.Equals(element.Name.LocalName, "ListBox"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "ItemsSource"),
                     "{Binding Entries}",
                     StringComparison.Ordinal)));
         var fileNameLabels = root.Descendants()
-            .Where(element => element.Name.LocalName == "TextBlock"
-                && string.Equals(
+            .Where(element => string.Equals(element.Name.LocalName, "TextBlock"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Text"),
                     "{Binding Name}",
                     StringComparison.Ordinal))
@@ -1580,8 +1568,8 @@ public sealed class RuntimePanelViewContractTests
         });
         Assert.Contains(
             fileNameLabels,
-            label => label.Parent?.Name.LocalName == "Grid"
-                && string.Equals(
+            label => string.Equals(label.Parent?.Name.LocalName, "Grid"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(label, "Grid.Column"),
                     "1",
                     StringComparison.Ordinal));
@@ -1590,29 +1578,28 @@ public sealed class RuntimePanelViewContractTests
             "Open file sort and view options");
         var viewOptionsFlyout = Assert.Single(
             viewOptionsButton.Descendants(),
-            element => element.Name.LocalName == "Flyout");
+            element => string.Equals(element.Name.LocalName, "Flyout", StringComparison.Ordinal));
         Assert.Equal(
             3,
-            viewOptionsFlyout.Descendants().Count(element =>
-                element.Name.LocalName == "ComboBox"));
+            viewOptionsFlyout.Descendants().Count(element => string.Equals(element.Name.LocalName, "ComboBox", StringComparison.Ordinal)));
         Assert.DoesNotContain(
-            root.Descendants().Where(element => element.Name.LocalName == "ComboBox"),
+            root.Descendants().Where(element => string.Equals(element.Name.LocalName, "ComboBox", StringComparison.Ordinal)),
             element => !element.Ancestors().Contains(viewOptionsFlyout));
         Assert.DoesNotContain(
             root.Descendants(),
-            element => element.Name.LocalName == "TextBlock"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "TextBlock"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Text"),
                     "{Binding KindLabel}",
                     StringComparison.Ordinal));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "Border"
-                && HasClass(element, "FileToolbarGroup"));
+            element => string.Equals(element.Name.LocalName, "Border"
+, StringComparison.Ordinal) && HasClass(element, "FileToolbarGroup"));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "Button"
-                && HasClass(element, "FileToolbarAction"));
+            element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && HasClass(element, "FileToolbarAction"));
         var previewToggle = FindUniqueAccessibleElement(root, "Toggle file preview");
         Assert.Equal("OnTogglePreviewClick", AttributeValue(previewToggle, "Click"));
         Assert.True(HasClass(previewToggle, "InsetToggle"));
@@ -1645,15 +1632,15 @@ public sealed class RuntimePanelViewContractTests
         // cannot perform leaves both at once and neither can be left behind.
         var actionStrip = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "ItemsControl"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "ItemsControl"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "ItemsSource"),
                     "{Binding ToolbarActions}",
                     StringComparison.Ordinal));
         Assert.Contains(
             actionStrip.Descendants(),
-            element => element.Name.LocalName == "Button"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Command"),
                     "{Binding Command}",
                     StringComparison.Ordinal));
@@ -1664,21 +1651,21 @@ public sealed class RuntimePanelViewContractTests
         // action to, which is the shape this replaced.
         var contextMenu = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "ContextMenu");
+            element => string.Equals(element.Name.LocalName, "ContextMenu", StringComparison.Ordinal));
         Assert.Equal("OnFileContextMenuOpening", AttributeValue(contextMenu, "Opening"));
         foreach (var menu in new[] { contextMenu, OverflowMenu(root) })
         {
             Assert.Contains(
                 menu.Descendants(),
-                element => element.Name.LocalName == "Setter"
-                    && string.Equals(
+                element => string.Equals(element.Name.LocalName, "Setter"
+, StringComparison.Ordinal) && string.Equals(
                         AttributeValue(element, "Property"),
                         "Command",
                         StringComparison.Ordinal));
             Assert.Contains(
                 menu.Descendants(),
-                element => element.Name.LocalName == "Setter"
-                    && string.Equals(
+                element => string.Equals(element.Name.LocalName, "Setter"
+, StringComparison.Ordinal) && string.Equals(
                         AttributeValue(element, "Property"),
                         "IsEnabled",
                         StringComparison.Ordinal));
@@ -1688,7 +1675,7 @@ public sealed class RuntimePanelViewContractTests
         // two of these can share one window at different widths.
         var containerQuery = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "ContainerQuery");
+            element => string.Equals(element.Name.LocalName, "ContainerQuery", StringComparison.Ordinal));
         Assert.Equal("filePanel", AttributeValue(containerQuery, "Name"));
         Assert.Equal("Width", AttributeValue(root, "Container.Sizing"));
 
@@ -1711,13 +1698,12 @@ public sealed class RuntimePanelViewContractTests
                 "Load more files",
                 StringComparison.Ordinal));
         Assert.True(
-            root.Descendants().Count(element =>
-                element.Name.LocalName == "VirtualizingStackPanel") >= 2,
+            root.Descendants().Count(element => string.Equals(element.Name.LocalName, "VirtualizingStackPanel", StringComparison.Ordinal)) >= 2,
             "The complete details and list views must virtualize their rows.");
         Assert.DoesNotContain(
             root.Descendants(),
-            element => element.Name.LocalName == "TextBlock"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "TextBlock"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Text"),
                     "BOUNDED PREVIEW",
                     StringComparison.Ordinal));
@@ -1741,22 +1727,22 @@ public sealed class RuntimePanelViewContractTests
             AttributeValue(transferDropTarget, "RadiusY"));
         var folderDropStyle = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "Style"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Selector"),
                     "ListBoxItem.transferDropTarget /template/ ContentPresenter",
                     StringComparison.Ordinal));
         Assert.Contains(
             folderDropStyle.Elements(),
-            element => element.Name.LocalName == "Setter"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Setter"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Property"),
                     "Background",
                     StringComparison.Ordinal));
         Assert.DoesNotContain(
             folderDropStyle.Elements(),
-            element => element.Name.LocalName == "Setter"
-                && AttributeValue(element, "Property") is
+            element => string.Equals(element.Name.LocalName, "Setter"
+, StringComparison.Ordinal) && AttributeValue(element, "Property") is
                     "BorderBrush" or "BorderThickness");
 
         var application = XDocument.Load(Path.Combine(
@@ -1931,23 +1917,23 @@ public sealed class RuntimePanelViewContractTests
         var root = Assert.IsType<XElement>(document.Root);
         var charts = root
             .Descendants()
-            .Where(element => element.Name.LocalName == "TimeSeriesChart")
+            .Where(element => string.Equals(element.Name.LocalName, "TimeSeriesChart", StringComparison.Ordinal))
             .ToArray();
 
         Assert.Equal(4, charts.Length);
         Assert.Contains(
             charts,
-            chart => AttributeValue(chart, "Values") == "{Binding CpuHistory}"
-                && AttributeValue(chart, "Maximum") == "100");
+            chart => string.Equals(AttributeValue(chart, "Values"), "{Binding CpuHistory}"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(chart, "Maximum"), "100", StringComparison.Ordinal));
         Assert.Contains(
             charts,
-            chart => AttributeValue(chart, "Values") == "{Binding MemoryHistory}");
+            chart => string.Equals(AttributeValue(chart, "Values"), "{Binding MemoryHistory}", StringComparison.Ordinal));
         Assert.Contains(
             charts,
-            chart => AttributeValue(chart, "Values") == "{Binding NetworkReceivedHistory}");
+            chart => string.Equals(AttributeValue(chart, "Values"), "{Binding NetworkReceivedHistory}", StringComparison.Ordinal));
         Assert.Contains(
             charts,
-            chart => AttributeValue(chart, "Values") == "{Binding NetworkSentHistory}");
+            chart => string.Equals(AttributeValue(chart, "Values"), "{Binding NetworkSentHistory}", StringComparison.Ordinal));
 
         var visibleCopy = string.Join(
             " ",
@@ -1966,7 +1952,7 @@ public sealed class RuntimePanelViewContractTests
 
     private static XElement OverflowMenu(XElement root) => Assert.Single(
         root.Descendants(),
-        element => element.Name.LocalName == "MenuFlyout");
+        element => string.Equals(element.Name.LocalName, "MenuFlyout", StringComparison.Ordinal));
 
     private static XElement FindUniqueAccessibleElement(
         XElement root,
@@ -2008,7 +1994,7 @@ public sealed class RuntimePanelViewContractTests
 
     private static string? AttributeValue(XElement element, string name) =>
         element.Attributes()
-            .FirstOrDefault(attribute => attribute.Name.LocalName == name)
+            .FirstOrDefault(attribute => string.Equals(attribute.Name.LocalName, name, StringComparison.Ordinal))
             ?.Value;
 
     private static bool HasClass(XElement element, string className) =>

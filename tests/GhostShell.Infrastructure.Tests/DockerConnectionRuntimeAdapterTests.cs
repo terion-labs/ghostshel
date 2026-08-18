@@ -48,11 +48,11 @@ public sealed class DockerConnectionRuntimeAdapterTests
             plan.Launch.ConnectionMetadata?.InitialWorkingDirectory);
         Assert.Equal("value; still one argument", Assert.Single(plan.Launch.Environment).Value);
         Assert.Equal(ConnectionReconnectMode.BoundedBackoff, plan.ReconnectMode);
-        Assert.Contains("context with spaces", plan.Launch.Arguments);
-        Assert.Contains("container; touch /tmp/not-run", plan.Launch.Arguments);
-        Assert.Contains("/workspace with spaces", plan.Launch.Arguments);
-        Assert.Contains("PLAIN", plan.Launch.Arguments);
-        Assert.DoesNotContain("PLAIN=value; still one argument", plan.Launch.Arguments);
+        Assert.Contains("context with spaces", plan.Launch.Arguments, StringComparer.Ordinal);
+        Assert.Contains("container; touch /tmp/not-run", plan.Launch.Arguments, StringComparer.Ordinal);
+        Assert.Contains("/workspace with spaces", plan.Launch.Arguments, StringComparer.Ordinal);
+        Assert.Contains("PLAIN", plan.Launch.Arguments, StringComparer.Ordinal);
+        Assert.DoesNotContain("PLAIN=value; still one argument", plan.Launch.Arguments, StringComparer.Ordinal);
         Assert.DoesNotContain(
             plan.Launch.Arguments,
             argument => argument.Contains("do-not-leak", StringComparison.Ordinal));

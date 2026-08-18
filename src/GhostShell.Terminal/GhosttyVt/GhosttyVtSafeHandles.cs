@@ -4,7 +4,7 @@ namespace GhostShell.Terminal.GhosttyVt;
 
 internal sealed class GhosttyVtTerminalHandle : SafeHandleZeroOrMinusOneIsInvalid
 {
-    private GhosttyVtTerminalHandle()
+    internal GhosttyVtTerminalHandle()
         : base(ownsHandle: true)
     {
     }
@@ -21,7 +21,7 @@ internal sealed class GhosttyVtTerminalHandle : SafeHandleZeroOrMinusOneIsInvali
 
 internal sealed class GhosttyVtRenderStateHandle : SafeHandleZeroOrMinusOneIsInvalid
 {
-    private GhosttyVtRenderStateHandle()
+    internal GhosttyVtRenderStateHandle()
         : base(ownsHandle: true)
     {
     }
@@ -38,7 +38,7 @@ internal sealed class GhosttyVtRenderStateHandle : SafeHandleZeroOrMinusOneIsInv
 
 internal sealed class GhosttyVtRenderRowIteratorHandle : SafeHandleZeroOrMinusOneIsInvalid
 {
-    private GhosttyVtRenderRowIteratorHandle()
+    internal GhosttyVtRenderRowIteratorHandle()
         : base(ownsHandle: true)
     {
     }
@@ -55,7 +55,7 @@ internal sealed class GhosttyVtRenderRowIteratorHandle : SafeHandleZeroOrMinusOn
 
 internal sealed class GhosttyVtRenderRowCellsHandle : SafeHandleZeroOrMinusOneIsInvalid
 {
-    private GhosttyVtRenderRowCellsHandle()
+    internal GhosttyVtRenderRowCellsHandle()
         : base(ownsHandle: true)
     {
     }
@@ -72,7 +72,7 @@ internal sealed class GhosttyVtRenderRowCellsHandle : SafeHandleZeroOrMinusOneIs
 
 internal sealed class GhosttyVtKeyEventHandle : SafeHandleZeroOrMinusOneIsInvalid
 {
-    private GhosttyVtKeyEventHandle()
+    internal GhosttyVtKeyEventHandle()
         : base(ownsHandle: true)
     {
     }
@@ -89,7 +89,7 @@ internal sealed class GhosttyVtKeyEventHandle : SafeHandleZeroOrMinusOneIsInvali
 
 internal sealed class GhosttyVtKeyEncoderHandle : SafeHandleZeroOrMinusOneIsInvalid
 {
-    private GhosttyVtKeyEncoderHandle()
+    internal GhosttyVtKeyEncoderHandle()
         : base(ownsHandle: true)
     {
     }
@@ -106,7 +106,7 @@ internal sealed class GhosttyVtKeyEncoderHandle : SafeHandleZeroOrMinusOneIsInva
 
 internal sealed class GhosttyVtMouseEventHandle : SafeHandleZeroOrMinusOneIsInvalid
 {
-    private GhosttyVtMouseEventHandle()
+    internal GhosttyVtMouseEventHandle()
         : base(ownsHandle: true)
     {
     }
@@ -123,7 +123,7 @@ internal sealed class GhosttyVtMouseEventHandle : SafeHandleZeroOrMinusOneIsInva
 
 internal sealed class GhosttyVtMouseEncoderHandle : SafeHandleZeroOrMinusOneIsInvalid
 {
-    private GhosttyVtMouseEncoderHandle()
+    internal GhosttyVtMouseEncoderHandle()
         : base(ownsHandle: true)
     {
     }
@@ -140,7 +140,7 @@ internal sealed class GhosttyVtMouseEncoderHandle : SafeHandleZeroOrMinusOneIsIn
 
 internal sealed class GhosttyVtKittyPlacementIteratorHandle : SafeHandleZeroOrMinusOneIsInvalid
 {
-    private GhosttyVtKittyPlacementIteratorHandle()
+    internal GhosttyVtKittyPlacementIteratorHandle()
         : base(ownsHandle: true)
     {
     }
@@ -158,7 +158,7 @@ internal sealed class GhosttyVtKittyPlacementIteratorHandle : SafeHandleZeroOrMi
 internal sealed class GhosttyVtKittyVirtualPlacementIteratorHandle
     : SafeHandleZeroOrMinusOneIsInvalid
 {
-    private GhosttyVtKittyVirtualPlacementIteratorHandle()
+    internal GhosttyVtKittyVirtualPlacementIteratorHandle()
         : base(ownsHandle: true)
     {
     }
@@ -175,7 +175,7 @@ internal sealed class GhosttyVtKittyVirtualPlacementIteratorHandle
 
 internal sealed class GhosttyVtTrackedGridRefHandle : SafeHandleZeroOrMinusOneIsInvalid
 {
-    private GhosttyVtTrackedGridRefHandle()
+    internal GhosttyVtTrackedGridRefHandle()
         : base(ownsHandle: true)
     {
     }

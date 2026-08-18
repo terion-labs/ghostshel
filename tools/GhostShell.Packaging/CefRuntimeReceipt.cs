@@ -71,8 +71,8 @@ internal static class CefRuntimeReceipt
         var expectedOutput = Path.Combine(root, FileName);
         var outputFullPath = Path.GetFullPath(outputPath);
         var outputParent = Path.GetDirectoryName(outputFullPath);
-        if (Path.GetFileName(outputFullPath) != FileName
-            || outputParent is null
+        if (!string.Equals(Path.GetFileName(outputFullPath), FileName
+, StringComparison.Ordinal) || outputParent is null
             || !MacOsPackagePaths.AreSameDirectory(
                 root,
                 MacOsPackagePaths.RequireExistingDirectory(
@@ -219,20 +219,20 @@ internal static class CefRuntimeReceipt
     {
         if (!receipt.BuildSucceeded
             || receipt.SchemaVersion != 1
-            || receipt.Rid != distribution.Rid
-            || receipt.Platform != distribution.Platform
-            || receipt.CefVersion != catalog.CefVersion
-            || receipt.BindingRepository != catalog.BindingRepository
-            || receipt.BindingCommit != catalog.BindingCommit
-            || receipt.BindingVersion != catalog.BindingVersion
-            || receipt.ArchiveSha1 != distribution.ArchiveSha1)
+            || !string.Equals(receipt.Rid, distribution.Rid
+, StringComparison.Ordinal) || !string.Equals(receipt.Platform, distribution.Platform
+, StringComparison.Ordinal) || !string.Equals(receipt.CefVersion, catalog.CefVersion
+, StringComparison.Ordinal) || !string.Equals(receipt.BindingRepository, catalog.BindingRepository
+, StringComparison.Ordinal) || !string.Equals(receipt.BindingCommit, catalog.BindingCommit
+, StringComparison.Ordinal) || !string.Equals(receipt.BindingVersion, catalog.BindingVersion
+, StringComparison.Ordinal) || !string.Equals(receipt.ArchiveSha1, distribution.ArchiveSha1, StringComparison.Ordinal))
         {
             throw new InvalidDataException(
                 "The CEF runtime receipt identity does not match the reviewed catalog.");
         }
 
         var catalogSha256 = Sha256(catalog.Content);
-        if (receipt.CatalogSha256 != catalogSha256)
+        if (!string.Equals(receipt.CatalogSha256, catalogSha256, StringComparison.Ordinal))
         {
             throw new InvalidDataException(
                 "The CEF runtime receipt does not bind the reviewed catalog bytes.");
@@ -244,20 +244,20 @@ internal static class CefRuntimeReceipt
             receipt.BindingSourceSnapshotSha256,
             64,
             "sourceSnapshotSha256");
-        if (receipt.PatchSetSha256 != catalog.BindingPatchSetSha256)
+        if (!string.Equals(receipt.PatchSetSha256, catalog.BindingPatchSetSha256, StringComparison.Ordinal))
         {
             throw new InvalidDataException(
                 "The CEF runtime receipt patch set does not match the reviewed catalog.");
         }
 
-        if (receipt.ArchiveSha256 != distribution.ArchiveSha256)
+        if (!string.Equals(receipt.ArchiveSha256, distribution.ArchiveSha256, StringComparison.Ordinal))
         {
             throw new InvalidDataException(
                 "The CEF runtime receipt archive does not match the reviewed catalog.");
         }
 
-        if (receipt.BindingSourceSnapshotSha256
-            != catalog.BindingSourceSnapshotSha256)
+        if (!string.Equals(receipt.BindingSourceSnapshotSha256
+, catalog.BindingSourceSnapshotSha256, StringComparison.Ordinal))
         {
             throw new InvalidDataException(
                 "The CEF runtime receipt source snapshot does not match the reviewed catalog.");
@@ -281,7 +281,7 @@ internal static class CefRuntimeReceipt
                          "*",
                          new EnumerationOptions
                          {
-                             AttributesToSkip = 0,
+                             AttributesToSkip = FileAttributes.None,
                              IgnoreInaccessible = false,
                              RecurseSubdirectories = false,
                              ReturnSpecialDirectories = false,
@@ -366,9 +366,7 @@ internal static class CefRuntimeReceipt
             }
         }
 
-        return files
-            .OrderBy(file => file.RelativePath, StringComparer.Ordinal)
-            .ToArray();
+        return [.. files.OrderBy(file => file.RelativePath, StringComparer.Ordinal)];
     }
 
     private static void ValidatePayload(
@@ -396,7 +394,7 @@ internal static class CefRuntimeReceipt
             return;
         }
 
-        if (rid == "win-x64")
+        if (string.Equals(rid, "win-x64", StringComparison.Ordinal))
         {
             RequireFiles(
                 paths,
@@ -446,7 +444,7 @@ internal static class CefRuntimeReceipt
         foreach (var path in paths.Keys.Where(path =>
                      path.EndsWith(".so", StringComparison.Ordinal)
                      || path.EndsWith(".so.1", StringComparison.Ordinal)
-                     || path == "chrome-sandbox"))
+                     || string.Equals(path, "chrome-sandbox", StringComparison.Ordinal)))
         {
             ValidateElf(paths[path], rid);
         }
@@ -557,9 +555,9 @@ internal static class CefRuntimeReceipt
         }
 
         var rootValues = document.Root?.Elements().ToArray();
-        if (document.Root?.Name.LocalName != "plist"
-            || rootValues is not { Length: 1 }
-            || rootValues[0].Name.LocalName != "dict")
+        if (!string.Equals(document.Root?.Name.LocalName, "plist"
+, StringComparison.Ordinal) || rootValues is not { Length: 1 }
+            || !string.Equals(rootValues[0].Name.LocalName, "dict", StringComparison.Ordinal))
         {
             throw new InvalidDataException(
                 $"CEF helper {helperName} has no single Info.plist dictionary.");
@@ -576,7 +574,7 @@ internal static class CefRuntimeReceipt
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
         for (var index = 0; index + 1 < elements.Length; index += 2)
         {
-            if (elements[index].Name.LocalName != "key")
+            if (!string.Equals(elements[index].Name.LocalName, "key", StringComparison.Ordinal))
             {
                 throw new InvalidDataException(
                     $"CEF helper {helperName} has an invalid Info.plist shape.");
@@ -600,12 +598,12 @@ internal static class CefRuntimeReceipt
             " (Renderer)" => ".renderer",
             _ => throw new InvalidOperationException("Unexpected helper suffix."),
         };
-        if (values.GetValueOrDefault("CFBundleDisplayName") != helperName
-            || values.GetValueOrDefault("CFBundleExecutable") != helperName
-            || values.GetValueOrDefault("CFBundleName") != helperName
-            || values.GetValueOrDefault("CFBundleIdentifier")
-                != $"app.ghostshell.helper{identifierSuffix}"
-            || values.GetValueOrDefault("CFBundlePackageType") != "APPL")
+        if (!string.Equals(values.GetValueOrDefault("CFBundleDisplayName"), helperName
+, StringComparison.Ordinal) || !string.Equals(values.GetValueOrDefault("CFBundleExecutable"), helperName
+, StringComparison.Ordinal) || !string.Equals(values.GetValueOrDefault("CFBundleName"), helperName
+, StringComparison.Ordinal) || !string.Equals(values.GetValueOrDefault("CFBundleIdentifier")
+, $"app.ghostshell.helper{identifierSuffix}"
+, StringComparison.Ordinal) || !string.Equals(values.GetValueOrDefault("CFBundlePackageType"), "APPL", StringComparison.Ordinal))
         {
             throw new InvalidDataException(
                 $"CEF helper {helperName} has mismatched bundle identity.");
@@ -632,10 +630,10 @@ internal static class CefRuntimeReceipt
                     "The CEF runtime receipt contains a null file entry.");
             }
 
-            if (expected.Path != actual.RelativePath
-                || expected.Length != actual.Length
-                || expected.Sha256 != actual.Sha256
-                || expected.UnixMode != (int?)actual.UnixMode)
+            if (!string.Equals(expected.Path, actual.RelativePath
+, StringComparison.Ordinal) || expected.Length != actual.Length
+                || !string.Equals(expected.Sha256, actual.Sha256
+, StringComparison.Ordinal) || expected.UnixMode != (int?)actual.UnixMode)
             {
                 throw new InvalidDataException(
                     $"CEF runtime file {actual.RelativePath} does not match its receipt.");
@@ -732,7 +730,7 @@ internal static class CefRuntimeReceipt
         string expectedHash)
     {
         var file = RequireFile(paths, path);
-        if (file.Sha256 != expectedHash)
+        if (!string.Equals(file.Sha256, expectedHash, StringComparison.Ordinal))
         {
             throw new InvalidDataException(
                 $"CEF runtime file {path} does not match the reviewed digest.");

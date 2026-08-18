@@ -82,7 +82,7 @@ public sealed class TerminalAgentMouseContractTests
             SessionCapabilities.TerminalRevisionBoundMouse);
         var tool = Assert.Single(
             TerminalAgentToolSet.For(panel),
-            candidate => candidate.Name == BuiltInAgentTools.TerminalSendMouse);
+            candidate => string.Equals(candidate.Name, BuiltInAgentTools.TerminalSendMouse, StringComparison.Ordinal));
         var schema = tool.InputSchema;
         var properties = schema.GetProperty("properties");
 
@@ -95,7 +95,7 @@ public sealed class TerminalAgentMouseContractTests
                 "expected_content_revision",
                 "modifiers",
             ],
-            properties.EnumerateObject().Select(property => property.Name));
+            properties.EnumerateObject().Select(property => property.Name), StringComparer.Ordinal);
         Assert.Equal(
             0,
             properties.GetProperty("column").GetProperty("minimum").GetInt32());
@@ -106,7 +106,7 @@ public sealed class TerminalAgentMouseContractTests
             ["event", "column", "row", "expected_content_revision"],
             schema.GetProperty("required")
                 .EnumerateArray()
-                .Select(item => item.GetString()));
+                .Select(item => item.GetString()), StringComparer.Ordinal);
         Assert.DoesNotContain(
             "session",
             schema.GetRawText(),
@@ -144,13 +144,13 @@ public sealed class TerminalAgentMouseContractTests
         Assert.True(TerminalAgentToolSet.SupportsMutations(eligible));
         Assert.DoesNotContain(
             TerminalAgentToolSet.For(noBarrier),
-            tool => tool.Name == BuiltInAgentTools.TerminalSendMouse);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalSendMouse, StringComparison.Ordinal));
         Assert.DoesNotContain(
             TerminalAgentToolSet.For(noMouse),
-            tool => tool.Name == BuiltInAgentTools.TerminalSendMouse);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalSendMouse, StringComparison.Ordinal));
         Assert.DoesNotContain(
             TerminalAgentToolSet.For(noRevisionBinding),
-            tool => tool.Name == BuiltInAgentTools.TerminalSendMouse);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalSendMouse, StringComparison.Ordinal));
         Assert.False(TerminalAgentToolSet.SupportsMutations(noBarrier));
         Assert.False(TerminalAgentToolSet.SupportsMutations(noMouse));
         Assert.False(TerminalAgentToolSet.SupportsMutations(noRevisionBinding));
@@ -171,7 +171,7 @@ public sealed class TerminalAgentMouseContractTests
         var tools = TerminalAgentToolSet.For([eligible, noBarrier]);
         var mouseTool = Assert.Single(
             tools,
-            tool => tool.Name == BuiltInAgentTools.TerminalSendMouse);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalSendMouse, StringComparison.Ordinal));
 
         Assert.Equal(
             [eligible.PanelId.Value],
@@ -180,7 +180,7 @@ public sealed class TerminalAgentMouseContractTests
                 .GetProperty("panel_id")
                 .GetProperty("enum")
                 .EnumerateArray()
-                .Select(item => item.GetString()));
+                .Select(item => item.GetString()), StringComparer.Ordinal);
 
         var acceptedProposal = await ProposalAsync(
             JsonSerializer.Serialize(new

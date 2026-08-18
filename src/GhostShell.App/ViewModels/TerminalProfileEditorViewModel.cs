@@ -110,9 +110,7 @@ public sealed class TerminalProfileEditorViewModel : ObservableObject
         _paletteName = profile.Palette.Name;
         _ansiColors = profile.Palette.AnsiColors;
         FontFamilies = BuildFontFamilies(profile.FontFamily);
-        PalettePresets = TerminalPalette.Presets
-            .Select(preset => new TerminalPaletteOption(preset))
-            .ToArray();
+        PalettePresets = [.. TerminalPalette.Presets.Select(preset => new TerminalPaletteOption(preset))];
         RefreshPaletteSelection();
     }
 
@@ -137,10 +135,9 @@ public sealed class TerminalProfileEditorViewModel : ObservableObject
             installed.Add(current);
         }
 
-        return installed
+        return [.. installed
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(name => name, StringComparer.CurrentCultureIgnoreCase)
-            .ToList();
+            .OrderBy(name => name, StringComparer.CurrentCultureIgnoreCase)];
     }
 
     /// <summary>
@@ -153,7 +150,7 @@ public sealed class TerminalProfileEditorViewModel : ObservableObject
         try
         {
             var fontManager = FontManager.Current;
-            return fontManager.SystemFonts
+            return [.. fontManager.SystemFonts
                 .Where(family =>
                 {
                     try
@@ -169,8 +166,7 @@ public sealed class TerminalProfileEditorViewModel : ObservableObject
                     }
                 })
                 .Select(family => family.Name)
-                .Where(name => !string.IsNullOrWhiteSpace(name))
-                .ToList();
+                .Where(name => !string.IsNullOrWhiteSpace(name))];
         }
         catch (InvalidOperationException)
         {
@@ -294,10 +290,9 @@ public sealed class TerminalProfileEditorViewModel : ObservableObject
         }
     }
 
-    public IReadOnlyList<AnsiSwatchViewModel> NormalAnsiColors => _ansiColors
+    public IReadOnlyList<AnsiSwatchViewModel> NormalAnsiColors => [.. _ansiColors
         .Take(NormalAnsiColorCount)
-        .Select((color, index) => new AnsiSwatchViewModel(AnsiNames[index], color.ToString()))
-        .ToArray();
+        .Select((color, index) => new AnsiSwatchViewModel(AnsiNames[index], color.ToString()))];
 
     /// <summary>
     /// The revision this editor was opened against, and the one it will save

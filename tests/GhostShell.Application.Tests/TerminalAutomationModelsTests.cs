@@ -18,7 +18,7 @@ public sealed class TerminalAutomationModelsTests
             SessionCapabilities.TerminalSendChord);
         Assert.NotEqual(
             SessionCapabilities.TerminalSendKeys,
-            SessionCapabilities.TerminalSendChord);
+            SessionCapabilities.TerminalSendChord, StringComparer.Ordinal);
     }
 
     [Fact]

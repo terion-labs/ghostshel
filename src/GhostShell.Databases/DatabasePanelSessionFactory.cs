@@ -88,12 +88,8 @@ public sealed class DatabasePanelSessionFactory : IDatabasePanelSessionFactory
         }
 
         var driver = _relational.Drivers.SingleOrDefault(candidate =>
-            string.Equals(candidate.Id, target.DriverId, StringComparison.Ordinal));
-        if (driver is null)
-        {
-            throw new NotSupportedException(
+            string.Equals(candidate.Id, target.DriverId, StringComparison.Ordinal)) ?? throw new NotSupportedException(
                 "The requested database driver is unavailable.");
-        }
 
         // Connectivity is proven before the engine is admitted to SessionHost.
         // The result is discarded and refreshed through the bounded tool path.

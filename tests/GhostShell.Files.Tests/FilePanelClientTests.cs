@@ -87,11 +87,11 @@ public sealed class FilePanelClientTests
             CancellationToken.None);
 
         Assert.True(hiddenExcluded.IsSuccess, hiddenExcluded.Error?.Message);
-        Assert.Single(hiddenExcluded.Value!.Entries, item => item.Name == "visible.txt");
+        Assert.Single(hiddenExcluded.Value!.Entries, item => string.Equals(item.Name, "visible.txt", StringComparison.Ordinal));
         Assert.DoesNotContain(hiddenExcluded.Value.Entries, item => item.IsHidden);
         Assert.True(hiddenIncluded.IsSuccess, hiddenIncluded.Error?.Message);
         Assert.Contains(hiddenIncluded.Value!.Entries, item => item.IsHidden);
-        var visible = Assert.Single(hiddenIncluded.Value.Entries, item => item.Name == "visible.txt");
+        var visible = Assert.Single(hiddenIncluded.Value.Entries, item => string.Equals(item.Name, "visible.txt", StringComparison.Ordinal));
         var address = Assert.IsType<FilePanelAddress.Hierarchical>(visible.Location.Address);
         Assert.Equal("visible.txt", address.Path.Name?.Value);
     }

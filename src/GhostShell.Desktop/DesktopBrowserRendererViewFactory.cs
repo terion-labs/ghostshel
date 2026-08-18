@@ -87,7 +87,7 @@ internal sealed class DesktopBrowserRendererViewFactory(
             }
 
             _disposed = true;
-            routes = _remoteRoutes.Values.ToArray();
+            routes = [.. _remoteRoutes.Values];
             _remoteRoutes.Clear();
         }
 

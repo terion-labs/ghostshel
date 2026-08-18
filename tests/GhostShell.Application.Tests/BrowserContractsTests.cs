@@ -632,7 +632,7 @@ public sealed class BrowserContractsTests
         Assert.Throws<ArgumentException>(() =>
             new BrowserDocumentSnapshot(
                 document,
-                Enumerable
+                [.. Enumerable
                     .Range(
                         0,
                         BrowserDocumentSnapshot.MaximumNodeCount + 1)
@@ -640,8 +640,7 @@ public sealed class BrowserContractsTests
                         new BrowserSnapshotNode(
                             0,
                             "generic",
-                            index.ToString()))
-                    .ToArray(),
+                            index.ToString(System.Globalization.CultureInfo.InvariantCulture)))],
                 DateTimeOffset.UnixEpoch));
         Assert.Throws<ArgumentException>(() =>
             new BrowserDocumentSnapshot(
@@ -1007,12 +1006,11 @@ public sealed class BrowserContractsTests
                 TimeSpan.FromSeconds(1)));
     }
 
-    private static string[] OperationNames(Type port) => port
+    private static string[] OperationNames(Type port) => [.. port
         .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
         .Where(method => !method.IsSpecialName)
         .Select(method => method.Name)
-        .Order(StringComparer.Ordinal)
-        .ToArray();
+        .Order(StringComparer.Ordinal)];
 
     private sealed class StubRenderer(BrowserAddress address) : IBrowserRenderer
     {

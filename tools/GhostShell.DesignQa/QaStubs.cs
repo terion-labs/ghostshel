@@ -260,12 +260,12 @@ internal sealed class QaDockerEngineClient : IDockerEngineClient
             }
 
             var previous = -2;
-            lines = indexes.Select(index =>
+            lines = [.. indexes.Select(index =>
             {
                 var line = allLines[index] with { StartsContextBlock = index != previous + 1 };
                 previous = index;
                 return line;
-            }).ToArray();
+            })];
         }
 
         return ValueTask.FromResult<DockerResult<DockerContainerLogPage>>(
@@ -296,8 +296,8 @@ internal sealed class QaDockerEngineClient : IDockerEngineClient
         string path,
         CancellationToken cancellationToken)
     {
-        IReadOnlyList<DockerFileEntry> entries = path == "/"
-            ?
+        IReadOnlyList<DockerFileEntry> entries = string.Equals(path, "/"
+, StringComparison.Ordinal) ?
             [
                 Directory("bin"),
                 Directory("etc"),
@@ -394,7 +394,7 @@ internal sealed class QaDockerEngineClient : IDockerEngineClient
             image,
             state,
             status,
-            name == "api" ? "0.0.0.0:8080→8080/tcp" : string.Empty,
+string.Equals(name, "api", StringComparison.Ordinal) ? "0.0.0.0:8080→8080/tcp" : string.Empty,
             "2 hours ago",
             cpu,
             memory,
@@ -619,7 +619,7 @@ internal sealed class QaRecentSessionStore : IRecentSessionStore
         RecentSessionQuery query,
         CancellationToken cancellationToken) =>
         ValueTask.FromResult(RecentSessionStoreResult<IReadOnlyList<RecentSessionRecord>>.Success(
-            Records.Take(query.Limit).ToArray()));
+            [.. Records.Take(query.Limit)]));
 
     public ValueTask<RecentSessionStoreResult<int>> MarkActiveSessionsInterruptedAsync(
         CancellationToken cancellationToken) =>
@@ -923,12 +923,12 @@ internal sealed class QaDatabasePanelClient : IDatabasePanelClient
                     BaseObject: baseObject),
             ],
             [
-                new string?[] { "184", "billing-api", "eu-central-1", "healthy", "2026-08-02T21:14:09Z" },
-                new string?[] { "183", "billing-api", "us-east-1", "healthy", "2026-08-02T21:12:44Z" },
-                new string?[] { "182", "checkout-web", "eu-central-1", "rolled-back", "2026-08-02T19:03:18Z" },
-                new string?[] { "181", "ledger-worker", "eu-central-1", "healthy", "2026-08-02T17:40:51Z" },
-                new string?[] { "180", "ledger-worker", "us-east-1", null, "2026-08-02T17:39:12Z" },
-                new string?[] { "179", "checkout-web", "ap-south-1", "healthy", "2026-08-02T15:22:30Z" },
+                ["184", "billing-api", "eu-central-1", "healthy", "2026-08-02T21:14:09Z"],
+                ["183", "billing-api", "us-east-1", "healthy", "2026-08-02T21:12:44Z"],
+                ["182", "checkout-web", "eu-central-1", "rolled-back", "2026-08-02T19:03:18Z"],
+                ["181", "ledger-worker", "eu-central-1", "healthy", "2026-08-02T17:40:51Z"],
+                ["180", "ledger-worker", "us-east-1", null, "2026-08-02T17:39:12Z"],
+                ["179", "checkout-web", "ap-south-1", "healthy", "2026-08-02T15:22:30Z"],
             ],
             Truncated: false,
             RowsAffected: 0,
@@ -964,8 +964,8 @@ internal sealed class QaDatabasePanelClient : IDatabasePanelClient
         ArgumentOutOfRangeException.ThrowIfNegative(query.Offset);
         ArgumentOutOfRangeException.ThrowIfLessThan(query.Limit, 1);
 
-        IEnumerable<QaDeployment> rows = table.Name == "recent_failures"
-            ? Deployments.Where(row => row.Status == "rolled-back")
+        IEnumerable<QaDeployment> rows = string.Equals(table.Name, "recent_failures"
+, StringComparison.Ordinal) ? Deployments.Where(row => string.Equals(row.Status, "rolled-back", StringComparison.Ordinal))
             : Deployments;
         var filteredRows = rows
             .Where(row => query.Filters.All(filter => Matches(row, filter)))
@@ -993,9 +993,7 @@ internal sealed class QaDatabasePanelClient : IDatabasePanelClient
             .Select(row => (IReadOnlyList<DatabaseValue>)ToValues(row))
             .ToArray();
         var displayRows = values
-            .Select(row => (IReadOnlyList<string?>)row
-                .Select(value => value.IsNull ? null : value.DisplayText)
-                .ToArray())
+            .Select(row => (IReadOnlyList<string?>)[.. row.Select(value => value.IsNull ? null : value.DisplayText)])
             .ToArray();
         var result = new DatabaseQueryPage(
             columns,
@@ -1388,9 +1386,9 @@ internal sealed class QaRedisPanelSession : IRedisPanelSession
         int maximumEntries,
         CancellationToken cancellationToken)
     {
-        var summary = Catalog.FirstOrDefault(candidate => candidate.Key.DisplayName == key.DisplayName)
+        var summary = Catalog.FirstOrDefault(candidate => string.Equals(candidate.Key.DisplayName, key.DisplayName, StringComparison.Ordinal))
             ?? Catalog[0];
-        if (summary.Type == "json")
+        if (string.Equals(summary.Type, "json", StringComparison.Ordinal))
         {
             return Task.FromResult(new RedisKeySnapshot(
                 summary,
@@ -1399,7 +1397,7 @@ internal sealed class QaRedisPanelSession : IRedisPanelSession
                 Truncated: false));
         }
 
-        if (summary.Type == "list")
+        if (string.Equals(summary.Type, "list", StringComparison.Ordinal))
         {
             return Task.FromResult(new RedisKeySnapshot(
                 summary,

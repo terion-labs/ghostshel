@@ -80,7 +80,7 @@ public sealed class DatabaseColumnMaterializerTests
         using var reader = command.ExecuteReader();
         var columns = DatabaseValueMaterializer.DescribeColumns(reader);
 
-        Assert.Equal(["id", "name", "payload"], columns.Select(column => column.Name));
+        Assert.Equal(["id", "name", "payload"], columns.Select(column => column.Name), StringComparer.Ordinal);
         Assert.Equal(
             [
                 DatabaseValueKind.SignedInteger,

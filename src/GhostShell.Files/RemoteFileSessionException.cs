@@ -43,4 +43,5 @@ internal sealed class RemoteFileSessionException : Exception
     public RemoteFileSessionErrorCode Code { get; }
 
     public bool Retryable { get; }
+
 }

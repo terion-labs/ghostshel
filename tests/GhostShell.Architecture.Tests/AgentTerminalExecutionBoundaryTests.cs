@@ -125,16 +125,14 @@ public sealed class AgentTerminalExecutionBoundaryTests
     }
 
     private static Type[] PublicPropertyTypes(Type type) =>
-        type.GetProperties()
+        [.. type.GetProperties()
             .Where(property => property.DeclaringType == type)
             .OrderBy(property => property.MetadataToken)
-            .Select(property => property.PropertyType)
-            .ToArray();
+            .Select(property => property.PropertyType)];
 
     private static string[] PublicPropertyNames(Type type) =>
-        type.GetProperties()
+        [.. type.GetProperties()
             .Where(property => property.DeclaringType == type)
             .OrderBy(property => property.MetadataToken)
-            .Select(property => property.Name)
-            .ToArray();
+            .Select(property => property.Name)];
 }

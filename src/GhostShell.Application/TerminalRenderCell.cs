@@ -96,7 +96,7 @@ public sealed record TerminalRenderCell
                 nameof(Text));
         }
 
-        if ((Style & ~AllStyles) != 0)
+        if ((Style & ~AllStyles) != TerminalRenderCellStyle.None)
         {
             throw new ArgumentOutOfRangeException(nameof(Style));
         }

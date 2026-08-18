@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Media;
 using GhostShell.Application;
@@ -7,6 +8,7 @@ using GhostShell.Core;
 
 namespace GhostShell.App.Controls;
 
+[StructLayout(LayoutKind.Auto)]
 internal readonly record struct TerminalCellMetrics(
     double CellWidth,
     double CellHeight,
@@ -312,6 +314,7 @@ internal static class TerminalRenderLayout
     }
 }
 
+[StructLayout(LayoutKind.Auto)]
 internal readonly record struct TerminalResolvedColors(Color Foreground, Color Background);
 
 internal static class TerminalCellColors

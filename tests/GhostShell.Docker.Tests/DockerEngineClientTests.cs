@@ -145,8 +145,7 @@ public sealed class DockerEngineClientTests
             CancellationToken.None);
 
         var inspection = Assert.IsType<DockerResult<DockerResourceInspection>.Success>(result).Value;
-        Assert.Contains(inspection.Properties, property =>
-            property.Name == "State.Status" && property.Value == "running");
+        Assert.Contains(inspection.Properties, property => string.Equals(property.Name, "State.Status", StringComparison.Ordinal) && string.Equals(property.Value, "running", StringComparison.Ordinal));
         Assert.Contains("\n  \"Id\": \"abc\"", inspection.Json, StringComparison.Ordinal);
     }
 
@@ -182,12 +181,10 @@ public sealed class DockerEngineClientTests
             CancellationToken.None);
 
         var inspection = Assert.IsType<DockerResult<DockerResourceInspection>.Success>(result).Value;
-        Assert.Contains(inspection.Properties, property =>
-            property.Name == "Config.Entrypoint"
-            && property.Value == "[\"/usr/local/bin/docker-entrypoint.sh\"]");
-        Assert.Contains(inspection.Properties, property =>
-            property.Name == "Config.Cmd"
-            && property.Value == "[\"bun\",\"server/index.mjs\"]");
+        Assert.Contains(inspection.Properties, property => string.Equals(property.Name, "Config.Entrypoint"
+, StringComparison.Ordinal) && string.Equals(property.Value, "[\"/usr/local/bin/docker-entrypoint.sh\"]", StringComparison.Ordinal));
+        Assert.Contains(inspection.Properties, property => string.Equals(property.Name, "Config.Cmd"
+, StringComparison.Ordinal) && string.Equals(property.Value, "[\"bun\",\"server/index.mjs\"]", StringComparison.Ordinal));
         Assert.Contains(
             "\n    \"Entrypoint\": [\n      \"/usr/local/bin/docker-entrypoint.sh\"\n    ]",
             inspection.Json,
@@ -283,7 +280,7 @@ public sealed class DockerEngineClientTests
             ["/bin/sh", "/bin/bash", "/bin/ash"],
             executor.Requests
                 .Where(request => request.Arguments is ["exec", ..])
-                .Select(request => request.Arguments[2]));
+                .Select(request => request.Arguments[2]), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -326,10 +323,10 @@ public sealed class DockerEngineClientTests
 
         var page = Assert.IsType<DockerResult<DockerContainerLogPage>.Success>(result).Value;
         Assert.True(page.HasOlder);
-        Assert.Equal(["second", "third"], page.Lines.Select(line => line.Message));
+        Assert.Equal(["second", "third"], page.Lines.Select(line => line.Message), StringComparer.Ordinal);
         Assert.Equal("2026-08-10T10:00:01.000000001Z", page.OldestTimestamp);
         Assert.Equal("2026-08-10T10:00:02.000000001Z", page.NewestTimestamp);
-        var request = Assert.Single(executor.Requests, item => item.Executable == "/bin/sh");
+        var request = Assert.Single(executor.Requests, item => string.Equals(item.Executable, "/bin/sh", StringComparison.Ordinal));
         Assert.Contains("--tail", request.Arguments[1], StringComparison.Ordinal);
         Assert.Equal("3", request.Arguments[^1]);
     }
@@ -367,7 +364,7 @@ public sealed class DockerEngineClientTests
         Assert.Equal(3, page.Lines.Count);
         Assert.False(page.Lines[0].StartsContextBlock);
         Assert.True(page.Lines[2].StartsContextBlock);
-        var request = Assert.Single(executor.Requests, item => item.Executable == "/bin/sh");
+        var request = Assert.Single(executor.Requests, item => string.Equals(item.Executable, "/bin/sh", StringComparison.Ordinal));
         Assert.Same(remote, request.Connection);
         Assert.Contains("grep -F -i -C", request.Arguments[1], StringComparison.Ordinal);
         Assert.Equal("needle", request.Arguments[^1]);
@@ -417,11 +414,11 @@ public sealed class DockerEngineClientTests
 
         var listing = Assert.IsType<DockerResult<DockerFileListing>.Success>(result).Value;
         Assert.Equal("/", listing.Path);
-        Assert.Equal(["etc", "read me\nnow.txt"], listing.Entries.Select(entry => entry.Name));
+        Assert.Equal(["etc", "read me\nnow.txt"], listing.Entries.Select(entry => entry.Name), StringComparer.Ordinal);
         Assert.Equal(DockerFileKind.Directory, listing.Entries[0].Kind);
         Assert.Equal(5, listing.Entries[1].Size);
         var request = Assert.Single(executor.Requests, request =>
-            request.Arguments.Contains("ghostshell-file-protocol"));
+            request.Arguments.Contains("ghostshell-file-protocol", StringComparer.Ordinal));
         Assert.Equal("exec", request.Arguments[0]);
         Assert.Equal("container-api", request.Arguments[1]);
         Assert.Equal("/bin/sh", request.Arguments[2]);
@@ -509,7 +506,7 @@ public sealed class DockerEngineClientTests
             request.Arguments is ["container", "create", ..]);
         Assert.Contains(
             "type=volume,source=app-data,target=/ghostshell-volume,readonly",
-            create.Arguments);
+            create.Arguments, StringComparer.Ordinal);
         Assert.Equal(
             ["container", "cp", "abcdef123456:/ghostshell-volume/nested/data.db", "-"],
             Assert.Single(executor.BinaryRequests).Arguments);
@@ -532,9 +529,9 @@ public sealed class DockerEngineClientTests
         Assert.IsType<DockerResult<DockerFileListing>.Success>(result);
         var run = Assert.Single(executor.Requests);
         Assert.Equal("run", run.Arguments[0]);
-        Assert.Contains("--rm", run.Arguments);
-        Assert.Contains("--read-only", run.Arguments);
-        Assert.Contains("sha256:image", run.Arguments);
+        Assert.Contains("--rm", run.Arguments, StringComparer.Ordinal);
+        Assert.Contains("--read-only", run.Arguments, StringComparer.Ordinal);
+        Assert.Contains("sha256:image", run.Arguments, StringComparer.Ordinal);
         Assert.Empty(executor.BinaryRequests);
     }
 
@@ -558,7 +555,7 @@ public sealed class DockerEngineClientTests
             request.Arguments is ["run", ..]);
         Assert.Contains(
             "type=volume,source=app-data,target=/ghostshell-volume,readonly",
-            run.Arguments);
+            run.Arguments, StringComparer.Ordinal);
         Assert.Equal("/ghostshell-volume", run.Arguments[^1]);
         Assert.Empty(executor.BinaryRequests);
     }
@@ -755,10 +752,10 @@ public sealed class DockerEngineClientTests
 
             var key = request.Arguments switch
             {
-                _ when request.Executable == "/bin/sh"
-                    && request.Arguments[1].Contains("grep -F -i -C", StringComparison.Ordinal) =>
+                _ when string.Equals(request.Executable, "/bin/sh"
+, StringComparison.Ordinal) && request.Arguments[1].Contains("grep -F -i -C", StringComparison.Ordinal) =>
                     "logs search",
-                _ when request.Executable == "/bin/sh" => "logs page",
+                _ when string.Equals(request.Executable, "/bin/sh", StringComparison.Ordinal) => "logs page",
                 ["version", ..] => "version",
                 ["container", "ls", ..] => "container ls",
                 ["container", "inspect", ..] => "container inspect",
@@ -770,9 +767,9 @@ public sealed class DockerEngineClientTests
                 ["network", "ls", ..] => "network ls",
                 ["stats", ..] => "stats",
                 ["exec", _, var shellPath, "-c", "exit 0"] => $"exec {shellPath}",
-                ["exec", _, ..] when request.Arguments.Contains("ghostshell-file-protocol") =>
+                ["exec", _, ..] when request.Arguments.Contains("ghostshell-file-protocol", StringComparer.Ordinal) =>
                     FileProtocolKey(request.Arguments),
-                ["run", ..] when request.Arguments.Contains("ghostshell-file-protocol") =>
+                ["run", ..] when request.Arguments.Contains("ghostshell-file-protocol", StringComparer.Ordinal) =>
                     FileProtocolKey(request.Arguments),
                 ["container", "create", ..] => "container create",
                 ["container", "rm", ..] => "container rm",
@@ -785,9 +782,9 @@ public sealed class DockerEngineClientTests
 
         private static string FileProtocolKey(IReadOnlyList<string> arguments)
         {
-            var shellIndex = arguments[0] == "exec"
-                ? 2
-                : Array.IndexOf(arguments.ToArray(), "--entrypoint") + 1;
+            var shellIndex = string.Equals(arguments[0], "exec"
+, StringComparison.Ordinal) ? 2
+                : Array.IndexOf([.. arguments], "--entrypoint") + 1;
             var script = arguments.First(argument =>
                 argument.Contains("emit_entry()", StringComparison.Ordinal));
             var operation = script.Contains("for entry in", StringComparison.Ordinal)
@@ -804,7 +801,7 @@ public sealed class DockerEngineClientTests
             BinaryRequests.Add(request);
             var key = request.Arguments switch
             {
-                _ when request.Executable == "/bin/sh" => "logs download",
+                _ when string.Equals(request.Executable, "/bin/sh", StringComparison.Ordinal) => "logs download",
                 ["container", "cp", ..] => "container cp",
                 _ => throw new InvalidOperationException(
                     $"Unexpected binary Docker request: {string.Join(' ', request.Arguments)}"),
@@ -821,7 +818,7 @@ public sealed class DockerEngineClientTests
             BinaryRequests.Add(request);
             var key = request.Arguments switch
             {
-                _ when request.Executable == "/bin/sh" => "logs download",
+                _ when string.Equals(request.Executable, "/bin/sh", StringComparison.Ordinal) => "logs download",
                 ["container", "cp", ..] => "container cp",
                 _ => throw new InvalidOperationException(
                     $"Unexpected streaming Docker request: {string.Join(' ', request.Arguments)}"),

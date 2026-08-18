@@ -35,7 +35,7 @@ public sealed class PackageFingerprintTests : IDisposable
             TargetPlatform.LinuxX11,
             "rc-20260723-1");
 
-        Assert.NotEqual(first.Build.PackageManifestSha256, second.Build.PackageManifestSha256);
+        Assert.NotEqual(first.Build.PackageManifestSha256, second.Build.PackageManifestSha256, StringComparer.Ordinal);
         Assert.Equal(first.Build.ExecutableSha256, second.Build.ExecutableSha256);
     }
 
@@ -93,7 +93,7 @@ public sealed class PackageFingerprintTests : IDisposable
     {
         var manifest = new
         {
-            libraries = new Dictionary<string, object>
+            libraries = new Dictionary<string, object>(StringComparer.Ordinal)
             {
                 ["GhostShell/1.0.0"] = new { },
                 ["Porta.Pty/1.0.7"] = new { },

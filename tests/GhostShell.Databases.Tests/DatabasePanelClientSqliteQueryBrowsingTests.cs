@@ -159,7 +159,7 @@ public sealed class DatabasePanelClientSqliteQueryBrowsingTests : IDisposable
             filtered.Result.Columns.Select(column => column.BaseObject));
         Assert.Equal(
             source.Columns.Select(column => column.BaseColumnName),
-            filtered.Result.Columns.Select(column => column.BaseColumnName));
+            filtered.Result.Columns.Select(column => column.BaseColumnName), StringComparer.Ordinal);
 
         var count = await client.QueryAsync(
             "sqlite",

@@ -184,10 +184,9 @@ internal static class TerminalTypefaceResolver
             return [];
         }
 
-        return family
+        return [.. family
             .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
     }
 
     private static IEnumerable<string> EnumerateRequestedFamilies(string requestedFamilyKey) =>

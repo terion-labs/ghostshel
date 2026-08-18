@@ -187,8 +187,7 @@ internal sealed class ApplicationKeySequenceResolver
             && binding.Sequence[0] == prefix.Stroke);
 
     private static bool IsApplicable(CommandBinding binding, CommandContext activeContexts) =>
-        (binding.Contexts & CommandContext.Global) != 0
-        || (binding.Contexts & activeContexts) != 0;
+        (binding.Contexts & CommandContext.Global) != CommandContext.None || (binding.Contexts & activeContexts) != CommandContext.None;
 
     private void ArmRepeat(DateTimeOffset timestamp) =>
         _repeatStartedAt = _prefix?.Repeatable == true ? timestamp : null;
@@ -213,22 +212,22 @@ internal static class ApplicationKeyStrokeMapper
     private static CoreKeyModifiers MapModifiers(AvaloniaKeyModifiers modifiers)
     {
         var mapped = CoreKeyModifiers.None;
-        if ((modifiers & AvaloniaKeyModifiers.Control) != 0)
+        if ((modifiers & AvaloniaKeyModifiers.Control) != AvaloniaKeyModifiers.None)
         {
             mapped |= CoreKeyModifiers.Control;
         }
 
-        if ((modifiers & AvaloniaKeyModifiers.Alt) != 0)
+        if ((modifiers & AvaloniaKeyModifiers.Alt) != AvaloniaKeyModifiers.None)
         {
             mapped |= CoreKeyModifiers.Alt;
         }
 
-        if ((modifiers & AvaloniaKeyModifiers.Shift) != 0)
+        if ((modifiers & AvaloniaKeyModifiers.Shift) != AvaloniaKeyModifiers.None)
         {
             mapped |= CoreKeyModifiers.Shift;
         }
 
-        if ((modifiers & AvaloniaKeyModifiers.Meta) != 0)
+        if ((modifiers & AvaloniaKeyModifiers.Meta) != AvaloniaKeyModifiers.None)
         {
             mapped |= CoreKeyModifiers.Meta;
         }
@@ -248,7 +247,7 @@ internal static class ApplicationKeyStrokeMapper
             return true;
         }
 
-        var shifted = (modifiers & AvaloniaKeyModifiers.Shift) != 0;
+        var shifted = (modifiers & AvaloniaKeyModifiers.Shift) != AvaloniaKeyModifiers.None;
         character = (key.ToString(), shifted) switch
         {
             ("D5", true) => "%",

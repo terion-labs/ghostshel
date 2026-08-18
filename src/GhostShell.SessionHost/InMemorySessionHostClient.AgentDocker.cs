@@ -249,7 +249,7 @@ public sealed partial class InMemorySessionHostClient
 
         if (result is null)
         {
-            await _sessionGraphGate.WaitAsync().ConfigureAwait(false);
+            await _sessionGraphGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
             try
             {
                 var driftFailure = RevalidateAgentDockerDispatch(
@@ -721,6 +721,7 @@ public sealed partial class InMemorySessionHostClient
         : Exception(error.Message)
     {
         public HostError Error { get; } = error;
+
     }
 
     private sealed class DockerReferenceExpiredException : Exception;

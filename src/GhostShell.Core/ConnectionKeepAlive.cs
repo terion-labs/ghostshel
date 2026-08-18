@@ -17,9 +17,18 @@ public sealed record ConnectionKeepAlive
                 "An enabled keepalive must allow at least one failure.");
         }
 
-        if (!enabled && (interval != TimeSpan.Zero || maximumFailures != 0))
+        if (!enabled && interval != TimeSpan.Zero)
         {
-            throw new ArgumentException("A disabled keepalive cannot retain active timing settings.");
+            throw new ArgumentException(
+                "A disabled keepalive cannot retain an active interval.",
+                nameof(interval));
+        }
+
+        if (!enabled && maximumFailures != 0)
+        {
+            throw new ArgumentException(
+                "A disabled keepalive cannot retain a failure allowance.",
+                nameof(maximumFailures));
         }
 
         Enabled = enabled;

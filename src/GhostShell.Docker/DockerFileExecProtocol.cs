@@ -149,8 +149,7 @@ internal static class DockerFileExecProtocol
         && !name.Contains('/', StringComparison.Ordinal)
         && !name.Contains('\0', StringComparison.Ordinal);
 
-    private static string ChildPath(string parentPath, string name) =>
-        parentPath == "/" ? $"/{name}" : $"{parentPath}/{name}";
+    private static string ChildPath(string parentPath, string name) => string.Equals(parentPath, "/", StringComparison.Ordinal) ? $"/{name}" : $"{parentPath}/{name}";
 
     private static string ParentPath(string path)
     {

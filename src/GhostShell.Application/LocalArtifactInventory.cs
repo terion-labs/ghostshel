@@ -21,7 +21,7 @@ public sealed record LocalArtifactInventory
                 nameof(artifacts));
         }
 
-        Artifacts = artifacts.ToArray();
+        Artifacts = [.. artifacts];
     }
 
     public IReadOnlyList<LocalArtifactSummary> Artifacts { get; }

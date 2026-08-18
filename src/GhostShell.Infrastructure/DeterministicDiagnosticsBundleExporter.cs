@@ -328,13 +328,13 @@ public sealed class DeterministicDiagnosticsBundleExporter : IDiagnosticsBundleE
         var segments = new List<string>();
         foreach (var segment in canonical.Split('/'))
         {
-            if (segment.Length == 0 || segment == ".")
+            if (segment.Length == 0 || string.Equals(segment, ".", StringComparison.Ordinal))
             {
                 continue;
             }
 
-            if (segment == ".."
-                || segment.Length > MaximumPathSegmentLength
+            if (string.Equals(segment, ".."
+, StringComparison.Ordinal) || segment.Length > MaximumPathSegmentLength
                 || !segment.All(IsPortablePathCharacter))
             {
                 return false;

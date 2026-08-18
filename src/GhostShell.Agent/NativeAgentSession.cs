@@ -8,7 +8,7 @@ namespace GhostShell.Agent;
 
 public sealed partial class NativeAgentSession
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly Queue<AgentRunEvent> _events = [];
     private readonly AgentKernelLimits _limits;
     private readonly Dictionary<string, string> _providerToolBindings =
@@ -616,7 +616,7 @@ public sealed partial class NativeAgentSession
             var historyEnd = capture.TurnStartIndex ?? capture.CutIndex;
             var turnPrefix = capture.TurnStartIndex is { } turnStartIndex
                 ? capture.Conversation[turnStartIndex..capture.CutIndex]
-                : ImmutableArray<AgentMessage>.Empty;
+                : [];
             var compactionRequest = new AgentCompactionRequest(
                 RunId,
                 capture.Generation,
@@ -638,13 +638,13 @@ public sealed partial class NativeAgentSession
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            lease.DisposeCancellation();
+            lease.Dispose();
             ReleaseCompaction(lease);
             return AgentCompactionResult.Failure(AgentCompactionErrorCode.Cancelled);
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            lease.DisposeCancellation();
+            lease.Dispose();
             ReleaseCompaction(lease);
             return AgentCompactionResult.Failure(AgentCompactionErrorCode.CompactorFailure);
         }
@@ -971,10 +971,9 @@ public sealed partial class NativeAgentSession
                 }
                 else
                 {
-                    pending = _events
+                    pending = [.. _events
                         .Where(agentEvent => agentEvent.Sequence > afterSequence)
-                        .Take(request.MaximumBatchSize)
-                        .ToImmutableArray();
+                        .Take(request.MaximumBatchSize)];
                     waitTask = _changed.Task;
                 }
             }
@@ -1072,7 +1071,7 @@ public sealed partial class NativeAgentSession
         }
         finally
         {
-            activeTurn.DisposeCancellation();
+            activeTurn.Dispose();
             lock (_gate)
             {
                 _providerOperationsInFlight--;
@@ -1107,7 +1106,7 @@ public sealed partial class NativeAgentSession
         }
         finally
         {
-            lease.DisposeCancellation();
+            lease.Dispose();
             ReleaseCompaction(lease);
         }
     }
@@ -1217,14 +1216,13 @@ public sealed partial class NativeAgentSession
     private ImmutableArray<AgentToolProposal> CreateProposals(
         long generation,
         ImmutableArray<ReducedToolCall> toolCalls) =>
-        toolCalls
+        [.. toolCalls
             .Select(toolCall => new AgentToolProposal(
                 $"{RunId.Value}:{generation}:{toolCall.Index}",
                 generation,
                 toolCall.ProviderCallId,
                 toolCall.Name,
-                toolCall.Arguments))
-            .ToImmutableArray();
+                toolCall.Arguments))];
 
     private bool IsActive(ActiveTurn activeTurn)
     {
@@ -1858,7 +1856,7 @@ public sealed partial class NativeAgentSession
     private static TaskCompletionSource NewSignal() =>
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    private sealed class ActiveTurn
+    private sealed class ActiveTurn : IDisposable
     {
         private readonly CancellationLifetime _cancellation = new();
         private readonly TaskCompletionSource _cancelled = new(
@@ -1905,7 +1903,7 @@ public sealed partial class NativeAgentSession
 
         public bool TryCancel() => _cancellation.TryCancel();
 
-        public void DisposeCancellation() => _cancellation.Dispose();
+        public void Dispose() => _cancellation.Dispose();
 
         public void SignalCancellation() => _cancelled.TrySetResult();
 
@@ -1976,9 +1974,9 @@ public sealed partial class NativeAgentSession
         QueuedSteering,
     }
 
-    private sealed class CompactionLease
+    private sealed class CompactionLease : IDisposable
     {
-        private readonly object _gate = new();
+        private readonly Lock _gate = new();
         private readonly CancellationLifetime _cancellation = new();
         private bool _cancellationRequested;
         private bool _invocationStarted;
@@ -2009,12 +2007,12 @@ public sealed partial class NativeAgentSession
             return _cancellation.TryCancel();
         }
 
-        public void DisposeCancellation() => _cancellation.Dispose();
+        public void Dispose() => _cancellation.Dispose();
     }
 
-    private sealed class CancellationLifetime
+    private sealed class CancellationLifetime : IDisposable
     {
-        private readonly object _gate = new();
+        private readonly Lock _gate = new();
         private Task? _cancellationTask;
         private CancellationTokenSource? _source = new();
         private bool _disposeRequested;

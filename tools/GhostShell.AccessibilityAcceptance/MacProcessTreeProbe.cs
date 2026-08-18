@@ -227,6 +227,7 @@ internal sealed class MacProcessTreeProbe : IProcessTreeProbe
         public ulong StartMicroseconds;
     }
 
+    [StructLayout(LayoutKind.Auto)]
     private readonly record struct MacProcess(
         ProcessIdentity Identity,
         int ParentProcessId);

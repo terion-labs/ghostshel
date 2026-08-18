@@ -208,7 +208,7 @@ internal sealed partial class RedisDatabasePanelSession : IRedisDatabasePanelSes
             Convert.ToBase64String(summary.Key.Bytes),
             new RedisKeyReference(
                 summary.Key.DisplayName,
-                summary.Key.Bytes.ToArray()));
+                [.. summary.Key.Bytes]));
         var reference = new RedisKeyReferenceId(_keys.Lease(lease));
         return new RedisKeyItem(
             reference,

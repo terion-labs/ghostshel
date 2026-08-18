@@ -1,5 +1,5 @@
-using GhostShell.Application;
 using GhostShell.App.ViewModels;
+using GhostShell.Application;
 using GhostShell.Core;
 
 namespace GhostShell.App.Tests;

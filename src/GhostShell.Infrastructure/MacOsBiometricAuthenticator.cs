@@ -140,9 +140,7 @@ public sealed class MacOsBiometricAuthenticator : IBiometricAuthenticator
                 Selectors.Init);
 
     private static bool LoadFramework() =>
-        !OperatingSystem.IsMacOS()
-            ? false
-            : ObjC.LoadLibrary(
+        OperatingSystem.IsMacOS() && ObjC.LoadLibrary(
                 "/System/Library/Frameworks/LocalAuthentication.framework/LocalAuthentication")
                 != IntPtr.Zero;
 

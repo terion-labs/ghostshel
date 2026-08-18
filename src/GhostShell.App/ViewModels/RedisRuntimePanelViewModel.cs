@@ -587,7 +587,7 @@ public sealed class RedisRuntimePanelViewModel : RuntimePanelViewModel
     public IReadOnlyList<string> NewKeyTypeOptions { get; } =
         ["string", "hash", "list", "set", "zset", "stream", "json", "timeseries"];
 
-    public string NewKeyName { get => _newKeyName; set { if (SetProperty(ref _newKeyName, value ?? string.Empty)) CreateKeyCommand.RaiseCanExecuteChanged(); } }
+    public string NewKeyName { get => _newKeyName; set { if (SetProperty(ref _newKeyName, value ?? string.Empty)) { CreateKeyCommand.RaiseCanExecuteChanged(); } } }
     public string NewKeyType
     {
         get => _newKeyType;
@@ -726,8 +726,8 @@ public sealed class RedisRuntimePanelViewModel : RuntimePanelViewModel
             // A string's length is its bytes; everything else counts members.
             _selectedSnapshot.Length is not { } length
                 ? "size unknown"
-                : _selectedSnapshot.Summary.Type == "string"
-                    ? $"{length.ToString(CultureInfo.InvariantCulture)} bytes"
+                : string.Equals(_selectedSnapshot.Summary.Type, "string"
+, StringComparison.Ordinal) ? $"{length.ToString(CultureInfo.InvariantCulture)} bytes"
                     : $"{length.ToString(CultureInfo.InvariantCulture)} items",
             SelectedKey?.IsExpiring == true ? $"TTL {SelectedKey.Ttl}" : "persistent",
             SelectedKey?.Memory ?? "-");
@@ -775,13 +775,13 @@ public sealed class RedisRuntimePanelViewModel : RuntimePanelViewModel
     public bool IsDeleteArmed => _deleteArmed;
 
     public IReadOnlyList<RedisSubscriptionKind> SubscriptionKinds { get; } = Enum.GetValues<RedisSubscriptionKind>();
-    public string SubscriptionName { get => _subscriptionName; set { if (SetProperty(ref _subscriptionName, value ?? string.Empty)) SubscribeCommand.RaiseCanExecuteChanged(); } }
+    public string SubscriptionName { get => _subscriptionName; set { if (SetProperty(ref _subscriptionName, value ?? string.Empty)) { SubscribeCommand.RaiseCanExecuteChanged(); } } }
     public RedisSubscriptionKind SubscriptionKind { get => _subscriptionKind; set => SetProperty(ref _subscriptionKind, value); }
-    public RedisSubscription? SelectedSubscription { get => _selectedSubscription; set { if (SetProperty(ref _selectedSubscription, value)) UnsubscribeCommand.RaiseCanExecuteChanged(); } }
-    public string PublishChannel { get => _publishChannel; set { if (SetProperty(ref _publishChannel, value ?? string.Empty)) PublishCommand.RaiseCanExecuteChanged(); } }
+    public RedisSubscription? SelectedSubscription { get => _selectedSubscription; set { if (SetProperty(ref _selectedSubscription, value)) { UnsubscribeCommand.RaiseCanExecuteChanged(); } } }
+    public string PublishChannel { get => _publishChannel; set { if (SetProperty(ref _publishChannel, value ?? string.Empty)) { PublishCommand.RaiseCanExecuteChanged(); } } }
     public string PublishPayload { get => _publishPayload; set => SetProperty(ref _publishPayload, value ?? string.Empty); }
     public bool PublishSharded { get => _publishSharded; set => SetProperty(ref _publishSharded, value); }
-    public string SearchIndex { get => _searchIndex; set { if (SetProperty(ref _searchIndex, value ?? string.Empty)) SearchCommand.RaiseCanExecuteChanged(); } }
+    public string SearchIndex { get => _searchIndex; set { if (SetProperty(ref _searchIndex, value ?? string.Empty)) { SearchCommand.RaiseCanExecuteChanged(); } } }
     public string SearchQuery { get => _searchQuery; set => SetProperty(ref _searchQuery, value ?? string.Empty); }
 
     public AsyncActionCommand ConnectCommand { get; }
@@ -1089,9 +1089,7 @@ public sealed class RedisRuntimePanelViewModel : RuntimePanelViewModel
         var count = Facts?.LogicalDatabases == RedisLogicalDatabaseMode.DatabaseZeroOnly
             ? 1
             : Math.Clamp(Facts?.ConfiguredDatabaseCount ?? 16, 1, 256);
-        Databases = Enumerable.Range(0, count)
-            .Select(index => new RedisDatabaseOption(index, $"DB {index}"))
-            .ToArray();
+        Databases = [.. Enumerable.Range(0, count).Select(index => new RedisDatabaseOption(index, $"DB {index}"))];
         _selectedDatabase = Databases.First(option => option.Index == (Facts?.SelectedDatabase ?? 0));
         OnPropertyChanged(nameof(Databases));
         OnPropertyChanged(nameof(SelectedDatabase));

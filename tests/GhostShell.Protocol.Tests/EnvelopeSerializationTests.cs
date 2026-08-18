@@ -57,7 +57,7 @@ public sealed class EnvelopeSerializationTests
         var detach = CreateRequest("session.detach");
         var close = CreateRequest("session.close");
 
-        Assert.NotEqual(detach.Operation, close.Operation);
+        Assert.NotEqual(detach.Operation, close.Operation, StringComparer.Ordinal);
         Assert.Equal(detach.Targets, close.Targets);
         Assert.Equal(detach.Actor, close.Actor);
     }

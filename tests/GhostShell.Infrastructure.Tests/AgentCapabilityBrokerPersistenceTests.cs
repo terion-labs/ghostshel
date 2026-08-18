@@ -102,7 +102,7 @@ public sealed class AgentCapabilityBrokerPersistenceTests
                 item.Details is AuditDetails.AgentRunPolicyTransitionDetails)
             .ToArray();
         Assert.Equal(2, transitions.Length);
-        Assert.Equal(2, transitions.Select(item => item.EventId).Distinct().Count());
+        Assert.Equal(2, transitions.Select(item => item.EventId).Distinct(StringComparer.Ordinal).Count());
     }
 
     private static AgentRunRegistration Registration() =>

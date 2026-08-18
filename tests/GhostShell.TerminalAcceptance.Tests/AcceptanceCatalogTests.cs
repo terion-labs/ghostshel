@@ -20,7 +20,7 @@ public sealed class AcceptanceCatalogTests
                 "sleep-wake",
                 "pty-lifecycle",
             ],
-            AcceptanceCatalog.All.Select(check => check.Id));
+            AcceptanceCatalog.All.Select(check => check.Id), StringComparer.Ordinal);
         Assert.Equal(
             AcceptanceCatalog.All.Count,
             AcceptanceCatalog.All.Select(check => check.Title).Distinct(StringComparer.Ordinal).Count());
@@ -38,7 +38,7 @@ public sealed class AcceptanceCatalogTests
             Assert.NotEmpty(check.InstructionsFor(TargetPlatform.LinuxX11));
             Assert.NotEqual(
                 check.InstructionsFor(TargetPlatform.Windows),
-                check.InstructionsFor(TargetPlatform.LinuxX11));
+                check.InstructionsFor(TargetPlatform.LinuxX11), StringComparer.Ordinal);
         }
     }
 
@@ -55,7 +55,7 @@ public sealed class AcceptanceCatalogTests
         string checkId,
         string expectedText)
     {
-        var check = Assert.Single(AcceptanceCatalog.All, check => check.Id == checkId);
+        var check = Assert.Single(AcceptanceCatalog.All, check => string.Equals(check.Id, checkId, StringComparison.Ordinal));
 
         Assert.Contains(expectedText, check.CommonInstructions, StringComparison.OrdinalIgnoreCase);
     }

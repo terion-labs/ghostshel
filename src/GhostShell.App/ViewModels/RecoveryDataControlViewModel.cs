@@ -380,14 +380,13 @@ public sealed class RecoveryDataControlViewModel : ObservableObject, IDisposable
         _listedSnapshotCount = inventory.ListedSnapshotCount;
         _listedPayloadBytes = inventory.ListedPayloadBytes;
         _hasAdditionalRuns = inventory.HasAdditionalRuns;
-        Runs = inventory.Runs
+        Runs = [.. inventory.Runs
             .Select((item, index) => new RecoveryRunItemViewModel(
                 item.RunId,
                 index + 1,
                 item.SnapshotCount,
                 item.PayloadBytes,
-                item.LastUpdatedAt))
-            .ToArray();
+                item.LastUpdatedAt))];
         OnPropertyChanged(nameof(ListedRunCount));
         OnPropertyChanged(nameof(ListedSnapshotCount));
         OnPropertyChanged(nameof(ListedPayloadBytes));

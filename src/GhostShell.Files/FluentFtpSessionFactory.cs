@@ -101,7 +101,7 @@ internal sealed class FluentFtpSessionFactory(
             _ => throw new ArgumentOutOfRangeException(nameof(providerOptions.TransportSecurity)),
         },
         DataConnectionEncryption = providerOptions.TransportSecurity != FtpTransportSecurity.Plaintext,
-        SslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+        SslProtocols = SslProtocols.None,
         ValidateAnyCertificate = false,
         // FluentFTP requires at least one verification attempt. GhostSHELL uses streaming
         // OpenRead/OpenWrite rather than the SDK's verifying upload/download helpers, so this
@@ -199,11 +199,31 @@ internal sealed class FluentFtpSessionFactory(
     private static FtpServerFeature MapFeatures(IReadOnlyCollection<FtpCapability> capabilities)
     {
         var features = FtpServerFeature.None;
-        if (capabilities.Contains(FtpCapability.MLST)) features |= FtpServerFeature.MachineListing;
-        if (capabilities.Contains(FtpCapability.SIZE)) features |= FtpServerFeature.Size;
-        if (capabilities.Contains(FtpCapability.MDTM)) features |= FtpServerFeature.ModifiedTime;
-        if (capabilities.Contains(FtpCapability.REST)) features |= FtpServerFeature.RestartDownload;
-        if (capabilities.Contains(FtpCapability.UTF8)) features |= FtpServerFeature.Utf8;
+        if (capabilities.Contains(FtpCapability.MLST))
+        {
+            features |= FtpServerFeature.MachineListing;
+        }
+
+        if (capabilities.Contains(FtpCapability.SIZE))
+        {
+            features |= FtpServerFeature.Size;
+        }
+
+        if (capabilities.Contains(FtpCapability.MDTM))
+        {
+            features |= FtpServerFeature.ModifiedTime;
+        }
+
+        if (capabilities.Contains(FtpCapability.REST))
+        {
+            features |= FtpServerFeature.RestartDownload;
+        }
+
+        if (capabilities.Contains(FtpCapability.UTF8))
+        {
+            features |= FtpServerFeature.Utf8;
+        }
+
         if (capabilities.Any(capability => capability is FtpCapability.HASH
             or FtpCapability.MD5
             or FtpCapability.XMD5
@@ -280,8 +300,8 @@ internal sealed class FluentFtpSessionFactory(
                     return MapStatEntry(entry, knownSize);
                 }
 
-                if (path == "/"
-                    && await client.DirectoryExists(path, cancellationToken).ConfigureAwait(false))
+                if (string.Equals(path, "/"
+, StringComparison.Ordinal) && await client.DirectoryExists(path, cancellationToken).ConfigureAwait(false))
                 {
                     return SyntheticDirectory(path);
                 }
@@ -441,7 +461,7 @@ internal sealed class FluentFtpSessionFactory(
                 Error(RemoteFileSessionErrorCode.AuthenticationFailed, "The FTP server rejected authentication."),
             FtpCommandException command when command.CompletionCode.StartsWith("550", StringComparison.Ordinal) =>
                 Error(RemoteFileSessionErrorCode.IoFailure, "The FTP server ambiguously rejected the file operation."),
-            FtpCommandException command when command.CompletionCode.StartsWith("4", StringComparison.Ordinal) =>
+            FtpCommandException command when command.CompletionCode.StartsWith('4') =>
                 Error(RemoteFileSessionErrorCode.Transient, "The FTP server temporarily rejected the operation.", true),
             TimeoutException => Error(RemoteFileSessionErrorCode.Transient, "The FTP operation timed out.", true),
             SocketException => Error(RemoteFileSessionErrorCode.Transient, "The FTP network connection failed.", true),
@@ -453,8 +473,8 @@ internal sealed class FluentFtpSessionFactory(
 
         private static RemoteFileEntry SyntheticDirectory(string path)
         {
-            var name = path == "/"
-                ? string.Empty
+            var name = string.Equals(path, "/"
+, StringComparison.Ordinal) ? string.Empty
                 : path.TrimEnd('/').Split('/')[^1];
             return new RemoteFileEntry(name, FileEntryKind.Directory, null, null, $"ftp-directory:{path}");
         }
@@ -463,7 +483,7 @@ internal sealed class FluentFtpSessionFactory(
             string path,
             CancellationToken cancellationToken)
         {
-            if (path == "/")
+            if (string.Equals(path, "/", StringComparison.Ordinal))
             {
                 return null;
             }
@@ -483,7 +503,7 @@ internal sealed class FluentFtpSessionFactory(
                         "The FTP directory exceeds the bounded metadata-scan limit.");
                 }
 
-                if (entry.Name == name)
+                if (string.Equals(entry.Name, name, StringComparison.Ordinal))
                 {
                     return entry;
                 }

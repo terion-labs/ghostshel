@@ -19,16 +19,16 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia.Desktop" Version="12.0.5" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.0.5" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.7" />
-    <PackageReference Include="Tmds.DBus.Protocol" Version="0.92.0" />
-    <PackageReference Include="Tmds.DBus.SourceGenerator" Version="0.0.22" PrivateAssets="all" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Fonts.Inter" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Tmds.DBus.Protocol" />
+    <PackageReference Include="Tmds.DBus.SourceGenerator" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(GhostShellWindowsBuild)' == 'true'">
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260804001" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" />
   </ItemGroup>
 
   <ItemGroup>
@@ -57,6 +57,7 @@
     <OutputType>Exe</OutputType>
     <GhostShellWindowsBuild Condition="'$(RuntimeIdentifier)' != '' and $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win-'))">true</GhostShellWindowsBuild>
     <GhostShellWindowsBuild Condition="'$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">true</GhostShellWindowsBuild>
+    <NuGetLockFilePath Condition="'$(GhostShellWindowsBuild)' == 'true' and '$(RuntimeIdentifier)' == ''">packages.windows.lock.json</NuGetLockFilePath>
     <TargetFramework Condition="'$(GhostShellWindowsBuild)' == 'true'">net10.0-windows10.0.19041.0</TargetFramework>
     <TargetFramework Condition="'$(GhostShellWindowsBuild)' != 'true'">net10.0</TargetFramework>
     <SupportedOSPlatformVersion Condition="'$(GhostShellWindowsBuild)' == 'true'">10.0.19041.0</SupportedOSPlatformVersion>

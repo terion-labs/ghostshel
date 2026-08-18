@@ -88,9 +88,7 @@ public sealed class AgentTargetTests
                 ("tab-a", "panel-c"),
                 ("tab-b", "panel-b"),
             ],
-            target.Panels
-                .Select(panel => (panel.TabId.Value, panel.PanelId.Value))
-                .ToArray());
+            [.. target.Panels.Select(panel => (panel.TabId.Value, panel.PanelId.Value))]);
         var exposed = Assert.IsAssignableFrom<IList<AgentTarget.Panel>>(target.Panels);
         Assert.Throws<NotSupportedException>(() => exposed.Clear());
     }

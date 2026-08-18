@@ -77,8 +77,8 @@ public sealed record AgentApprovalDecision
         ArgumentNullException.ThrowIfNull(actor);
         if (actor.Kind != ActorKind.Human
             || actor.ClientId is not { } clientId
-            || actor.Id.Value != clientId.Value
-            || string.IsNullOrWhiteSpace(actor.Id.Value)
+            || !string.Equals(actor.Id.Value, clientId.Value
+, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(actor.Id.Value)
             || string.IsNullOrWhiteSpace(actor.DisplayName))
         {
             throw new ArgumentException(

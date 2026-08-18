@@ -62,6 +62,7 @@ public interface IDefinitionCatalog
         IReadOnlyList<(LayoutDefinition Definition, long? ExpectedRevision)> layouts,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(layouts);
         foreach (var (layout, expectedRevision) in layouts)
         {
             var layoutResult = await SaveLayoutAsync(layout, expectedRevision, cancellationToken)

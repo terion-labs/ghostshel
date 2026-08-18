@@ -227,8 +227,7 @@ public sealed class AgentRuntimeBoundaryTests
                 typeName => typeName.StartsWith("GhostShell.Core.", StringComparison.Ordinal)),
             typeName => Assert.Contains(
                 typeName,
-                new[]
-                {
+                [
                     "GhostShell.Core.AgentImageAttachment",
                     "GhostShell.Core.AgentReasoningEffort",
                     "GhostShell.Core.AgentRunId",
@@ -238,7 +237,7 @@ public sealed class AgentRuntimeBoundaryTests
                     "GhostShell.Core.AiProviderProfileId",
                     "GhostShell.Core.AiProviderProtocol",
                     "GhostShell.Core.LiteralSecretValidator",
-                }));
+                ], StringComparer.Ordinal));
         var environmentMembers = metadata.MemberReferences
             .Select(handle => metadata.GetMemberReference(handle))
             .Where(reference => reference.Parent.Kind == HandleKind.TypeReference)
@@ -246,8 +245,8 @@ public sealed class AgentRuntimeBoundaryTests
             {
                 var declaringType = metadata.GetTypeReference(
                     (TypeReferenceHandle)reference.Parent);
-                return metadata.GetString(declaringType.Namespace) == "System"
-                    && metadata.GetString(declaringType.Name) == "Environment";
+                return string.Equals(metadata.GetString(declaringType.Namespace), "System"
+, StringComparison.Ordinal) && string.Equals(metadata.GetString(declaringType.Name), "Environment", StringComparison.Ordinal);
             })
             .Select(reference => metadata.GetString(reference.Name));
         Assert.All(
@@ -265,11 +264,10 @@ public sealed class AgentRuntimeBoundaryTests
     {
         var assembly = typeof(NativeAgentSession).Assembly;
         Assert.Equal(
-            new[]
-            {
+            [
                 typeof(IAgentConversationCompactor),
                 typeof(IAgentProvider),
-            },
+            ],
             assembly.GetExportedTypes()
                 .Where(type => type.IsInterface)
                 .OrderBy(type => type.FullName, StringComparer.Ordinal));
@@ -284,8 +282,7 @@ public sealed class AgentRuntimeBoundaryTests
             sessionConstructor.GetParameters(),
             parameter => parameter.ParameterType == typeof(TimeProvider));
         Assert.Equal(
-            new[]
-            {
+            [
                 nameof(NativeAgentSession.Cancel),
                 nameof(NativeAgentSession.CaptureCheckpoint),
                 nameof(NativeAgentSession.CaptureInterruptedCheckpoint),
@@ -305,12 +302,12 @@ public sealed class AgentRuntimeBoundaryTests
                 nameof(NativeAgentSession.TrySetConversationRoute),
                 nameof(NativeAgentSession.TrySetConversationTitle),
                 nameof(NativeAgentSession.WatchAsync),
-            },
+            ],
             typeof(NativeAgentSession)
                 .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
                 .Where(method => !method.IsSpecialName)
                 .Select(method => method.Name)
-                .Order(StringComparer.Ordinal));
+                .Order(StringComparer.Ordinal), StringComparer.Ordinal);
         Assert.DoesNotContain(
             typeof(NativeAgentSession).GetFields(
                 BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance),
@@ -329,17 +326,16 @@ public sealed class AgentRuntimeBoundaryTests
         Assert.Equal("Microsoft.NET.Sdk", (string?)project.Root?.Attribute("Sdk"));
         Assert.Equal("net10.0", project.Descendants("TargetFramework").Single().Value);
         Assert.Equal(
-            new[]
-            {
+            [
                 "GhostShell.Agent.csproj",
                 "GhostShell.Application.csproj",
                 "GhostShell.Core.csproj",
-            },
+            ],
             project.Descendants("ProjectReference")
                 .Select(reference => ((string?)reference.Attribute("Include"))!
                     .Replace('\\', '/'))
                 .Select(Path.GetFileName)
-                .Order(StringComparer.Ordinal));
+                .Order(StringComparer.Ordinal), StringComparer.Ordinal);
         Assert.Empty(project.Descendants("PackageReference"));
 
         var assemblyReferences = typeof(GovernedAgentRuntime).Assembly
@@ -350,13 +346,12 @@ public sealed class AgentRuntimeBoundaryTests
                 StringComparison.Ordinal) == true)
             .Order(StringComparer.Ordinal);
         Assert.Equal(
-            new[]
-            {
+            [
                 "GhostShell.Agent",
                 "GhostShell.Application",
                 "GhostShell.Core",
-            },
-            assemblyReferences);
+            ],
+            assemblyReferences, StringComparer.Ordinal);
 
         var sourceRoot = Path.Combine(
             RepositoryRoot,
@@ -399,11 +394,10 @@ public sealed class AgentRuntimeBoundaryTests
         }
 
         Assert.Equal(
-            new[]
-            {
+            [
                 typeof(IAgentProviderBinding),
                 typeof(IAgentProviderResolver),
-            },
+            ],
             typeof(GovernedAgentRuntime).Assembly
                 .GetExportedTypes()
                 .Where(type => type.IsInterface)
@@ -426,8 +420,7 @@ public sealed class AgentRuntimeBoundaryTests
             .OrderBy(property => property.Name, StringComparer.Ordinal)
             .ToArray();
         Assert.Equal(
-            new[]
-            {
+            [
                 nameof(AgentToolProposal.Arguments),
                 nameof(AgentToolProposal.ContainsUntrustedContent),
                 nameof(AgentToolProposal.Generation),
@@ -435,8 +428,8 @@ public sealed class AgentRuntimeBoundaryTests
                 nameof(AgentToolProposal.ProviderCallId),
                 nameof(AgentToolProposal.ProviderName),
                 nameof(AgentToolProposal.ToolName),
-            },
-            properties.Select(property => property.Name));
+            ],
+            properties.Select(property => property.Name), StringComparer.Ordinal);
         Assert.All(properties, property => Assert.Null(property.SetMethod));
         Assert.All(
             properties,

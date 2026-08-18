@@ -48,7 +48,7 @@ public sealed class CefBrowserSemanticAdapterTests
                 Assert.Equal("button", button.Role);
                 Assert.NotNull(button.Handle);
                 Assert.StartsWith("el_", button.Handle!.ElementToken);
-                Assert.NotEqual("2", button.Handle.ElementToken);
+                Assert.NotEqual("2", button.Handle.ElementToken, StringComparer.Ordinal);
             },
             textbox =>
             {
@@ -351,7 +351,7 @@ public sealed class CefBrowserSemanticAdapterTests
                 "textbox",
                 "Name",
                 parentId: "1",
-                properties: new Dictionary<string, string>
+                properties: new Dictionary<string, string>(StringComparer.Ordinal)
                 {
                     ["required"] = "true",
                 }),
@@ -360,7 +360,7 @@ public sealed class CefBrowserSemanticAdapterTests
                 "checkbox",
                 "Remember",
                 parentId: "1",
-                properties: new Dictionary<string, string>
+                properties: new Dictionary<string, string>(StringComparer.Ordinal)
                 {
                     ["checked"] = "false",
                 }),
@@ -413,7 +413,7 @@ public sealed class CefBrowserSemanticAdapterTests
         public Task<IReadOnlyList<CefSemanticNode>>
             ReadAccessibilityTreeAsync() =>
             Task.FromResult<IReadOnlyList<CefSemanticNode>>(
-                _nodes.Values.OrderBy(node => node.BackendNodeId).ToArray());
+                [.. _nodes.Values.OrderBy(node => node.BackendNodeId)]);
 
         public Task<CefSemanticNode?> ReadAccessibilityNodeAsync(
             int backendNodeId) =>

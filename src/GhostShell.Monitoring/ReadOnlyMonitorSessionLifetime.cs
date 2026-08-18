@@ -4,7 +4,7 @@ using GhostShell.Core;
 
 namespace GhostShell.Monitoring;
 
-internal sealed class ReadOnlyMonitorSessionLifetime
+internal sealed class ReadOnlyMonitorSessionLifetime : IAsyncDisposable
 {
     private readonly object _gate = new();
     private readonly CancellationTokenSource _closeCancellation = new();
@@ -100,9 +100,7 @@ internal sealed class ReadOnlyMonitorSessionLifetime
             bool completed;
             lock (_gate)
             {
-                pending = _events
-                    .Where(sessionEvent => sessionEvent.Sequence > afterSequence)
-                    .ToArray();
+                pending = [.. _events.Where(sessionEvent => sessionEvent.Sequence > afterSequence)];
                 completed = _closed;
                 waitForChange = _eventsChanged.Task;
             }

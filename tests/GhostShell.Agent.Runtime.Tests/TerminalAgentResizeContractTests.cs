@@ -19,18 +19,18 @@ public sealed class TerminalAgentResizeContractTests
 
         Assert.DoesNotContain(
             TerminalAgentToolSet.For(panel),
-            tool => tool.Name == BuiltInAgentTools.TerminalResize);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalResize, StringComparison.Ordinal));
 
         var resize = Assert.Single(
             TerminalAgentToolSet.For(panel, eligiblePanelIds),
-            tool => tool.Name == BuiltInAgentTools.TerminalResize);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalResize, StringComparison.Ordinal));
         var schema = resize.InputSchema;
         var properties = schema.GetProperty("properties");
 
         Assert.False(schema.GetProperty("additionalProperties").GetBoolean());
         Assert.Equal(
             ["columns", "rows"],
-            properties.EnumerateObject().Select(property => property.Name));
+            properties.EnumerateObject().Select(property => property.Name), StringComparer.Ordinal);
         Assert.Equal(
             2,
             properties
@@ -52,7 +52,7 @@ public sealed class TerminalAgentResizeContractTests
             ["columns", "rows"],
             schema.GetProperty("required")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
         Assert.DoesNotContain(
             "attachment",
             schema.GetRawText(),
@@ -191,7 +191,7 @@ public sealed class TerminalAgentResizeContractTests
 
         var tool = Assert.Single(
             TerminalAgentToolSet.For(scope, eligiblePanelIds),
-            candidate => candidate.Name == BuiltInAgentTools.TerminalResize);
+            candidate => string.Equals(candidate.Name, BuiltInAgentTools.TerminalResize, StringComparison.Ordinal));
         var schema = tool.InputSchema;
 
         Assert.Equal(
@@ -201,12 +201,12 @@ public sealed class TerminalAgentResizeContractTests
                 .GetProperty("panel_id")
                 .GetProperty("enum")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
         Assert.Equal(
             ["columns", "rows", "panel_id"],
             schema.GetProperty("required")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
 
         var acceptedProposal = await ProposalAsync(
             JsonSerializer.Serialize(new

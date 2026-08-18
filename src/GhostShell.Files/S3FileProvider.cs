@@ -122,7 +122,7 @@ public sealed partial class S3FileProvider : IFileProvider
                     new S3ObjectAcl(
                         current.OwnerId,
                         current.OwnerDisplayName,
-                        grants.SelectMany(ToStoreGrants).ToArray()),
+                        [.. grants.SelectMany(ToStoreGrants)]),
                     token).ConfigureAwait(false);
                 return FileProviderResult<FileAccessControl>.Success(ToAccessControl(written));
             },
@@ -149,9 +149,7 @@ public sealed partial class S3FileProvider : IFileProvider
 
         return new FileAccessControl(
             owner: acl.OwnerDisplayName ?? acl.OwnerId,
-            grants: folded.Values
-                .Select(entry => new FilePanelAccessGrant(entry.Grantee, entry.Rights))
-                .ToArray());
+            grants: [.. folded.Values.Select(entry => new FilePanelAccessGrant(entry.Grantee, entry.Rights))]);
     }
 
     private static FilePanelGrantee ToGrantee(S3ObjectGrant grant, string? ownerId) =>
@@ -163,7 +161,7 @@ public sealed partial class S3FileProvider : IFileProvider
                 new FilePanelGrantee(FilePanelGranteeKind.AuthenticatedUsers),
             "http://acs.amazonaws.com/groups/s3/LogDelivery" =>
                 new FilePanelGrantee(FilePanelGranteeKind.LogDelivery),
-            _ when grant.GranteeId is { } id && id == ownerId =>
+            _ when grant.GranteeId is { } id && string.Equals(id, ownerId, StringComparison.Ordinal) =>
                 new FilePanelGrantee(FilePanelGranteeKind.Owner, id, grant.GranteeDisplayName),
             _ => new FilePanelGrantee(
                 FilePanelGranteeKind.User,
@@ -412,7 +410,7 @@ public sealed partial class S3FileProvider : IFileProvider
     private static bool IsHiddenObject(FileLocation location) => location.Address switch
     {
         FileLocationAddress.Hierarchical value =>
-            value.Path.Name is { } name && name.Value.StartsWith(".", StringComparison.Ordinal),
+            value.Path.Name is { } name && name.Value.StartsWith('.'),
         FileLocationAddress.Object value => IsHiddenKey(value.Key.Value),
         _ => false,
     };
@@ -421,7 +419,7 @@ public sealed partial class S3FileProvider : IFileProvider
     {
         var separator = key.LastIndexOf('/');
         var name = separator >= 0 ? key[(separator + 1)..] : key;
-        return name.StartsWith(".", StringComparison.Ordinal);
+        return name.StartsWith('.');
     }
 
     private static FileProviderResult<T> Failure<T>(

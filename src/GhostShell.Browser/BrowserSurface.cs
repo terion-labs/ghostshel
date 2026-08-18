@@ -1,10 +1,10 @@
+using System.Security.Cryptography;
+using System.Text;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using GhostShell.Application;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace GhostShell.Browser;
 

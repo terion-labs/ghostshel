@@ -58,7 +58,7 @@ public sealed class AgentBrowserSessionHostTests
 
         Assert.Equal(fixture.InitialAddress, state.Value.Address);
         var events = audit.Events
-            .Where(item => item.CorrelationId == action.Proposal.Id.Value)
+            .Where(item => string.Equals(item.CorrelationId, action.Proposal.Id.Value, StringComparison.Ordinal))
             .ToArray();
         Assert.Equal(
             [
@@ -133,12 +133,12 @@ public sealed class AgentBrowserSessionHostTests
         Assert.Equal(destination, wait.State.Address);
         Assert.Contains(
             audit.Events,
-            item => item.CorrelationId == action.Proposal.Id.Value
-                && item.Outcome == AuditOutcome.Succeeded);
+            item => string.Equals(item.CorrelationId, action.Proposal.Id.Value
+, StringComparison.Ordinal) && item.Outcome == AuditOutcome.Succeeded);
         Assert.DoesNotContain(
             audit.Events,
-            item => item.CorrelationId == action.Proposal.Id.Value
-                && item.Outcome == AuditOutcome.Denied);
+            item => string.Equals(item.CorrelationId, action.Proposal.Id.Value
+, StringComparison.Ordinal) && item.Outcome == AuditOutcome.Denied);
     }
 
     [Fact]
@@ -192,7 +192,7 @@ public sealed class AgentBrowserSessionHostTests
         Assert.IsType<AgentBrowserActionResult.Completed>(result.Value());
         Assert.Equal(1, fixture.Renderer.NavigateCount);
         var events = audit.Events
-            .Where(item => item.CorrelationId == action.Proposal.Id.Value)
+            .Where(item => string.Equals(item.CorrelationId, action.Proposal.Id.Value, StringComparison.Ordinal))
             .ToArray();
         Assert.Equal(
             [
@@ -264,7 +264,7 @@ public sealed class AgentBrowserSessionHostTests
                 .CanonicalValue,
             Assert.Single(
                 action.Proposal.Presentation.Arguments,
-                argument => argument.Name == "origin").DisplayValue);
+                argument => string.Equals(argument.Name, "origin", StringComparison.Ordinal)).DisplayValue);
 
         var result = await fixture.Client.RunAgentBrowserActionAsync(
             fixture.Authorization.Arm(action),
@@ -2410,7 +2410,7 @@ public sealed class AgentBrowserSessionHostTests
             {
                 lock (_gate)
                 {
-                    return _events.ToArray();
+                    return [.. _events];
                 }
             }
         }
@@ -2441,10 +2441,8 @@ public sealed class AgentBrowserSessionHostTests
             {
                 return ValueTask.FromResult(
                     AuditStoreResult<IReadOnlyList<AuditEventRecord>>.Success(
-                        _events
-                            .Where(item =>
-                                item.CorrelationId == correlationId)
-                            .ToArray()));
+                        [.. _events
+                            .Where(item => string.Equals(item.CorrelationId, correlationId, StringComparison.Ordinal))]));
             }
         }
     }
@@ -2479,7 +2477,7 @@ public sealed class AgentBrowserSessionHostTests
         public bool LastCompletionTokenWasCancelled { get; private set; }
 
         public IReadOnlyList<AgentActionCompletion> Completions =>
-            _completions.ToArray();
+            [.. _completions];
 
         public AgentAuthorizationId Arm(
             AgentBrowserAction action,

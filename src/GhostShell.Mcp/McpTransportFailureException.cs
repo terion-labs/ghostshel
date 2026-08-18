@@ -6,4 +6,5 @@ internal sealed class McpTransportFailureException(
     Exception? innerException = null) : IOException(message, innerException)
 {
     public McpErrorCode Code { get; } = code;
+
 }

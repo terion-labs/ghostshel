@@ -107,4 +107,6 @@ internal sealed record RunOptions(
     }
 }
 
-internal sealed class UsageException(string message) : Exception(message);
+internal sealed class UsageException(string message) : Exception(message)
+{
+}

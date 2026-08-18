@@ -71,8 +71,8 @@ public sealed partial class GovernedAgentRuntimeTests
         var continuation = fixture.Provider.Requests.ToArray()[2];
         var pasteResult = Assert.Single(
             continuation.Messages,
-            message => message.ToolResult?.ProviderCallId
-                == "provider-injection-valid-paste").ToolResult;
+            message => string.Equals(message.ToolResult?.ProviderCallId
+, "provider-injection-valid-paste", StringComparison.Ordinal)).ToolResult;
         Assert.NotNull(pasteResult);
         Assert.Equal(AgentToolResultStatus.Succeeded, pasteResult.Status);
         Assert.Equal("tool_succeeded", pasteResult.StableCode);
@@ -92,7 +92,7 @@ public sealed partial class GovernedAgentRuntimeTests
                 AuditOutcome.Succeeded,
             ],
             fixture.Audit.Events
-                .Where(item => item.Action == BuiltInAgentTools.TerminalPaste)
+                .Where(item => string.Equals(item.Action, BuiltInAgentTools.TerminalPaste, StringComparison.Ordinal))
                 .Select(item => item.Outcome));
     }
 
@@ -128,7 +128,7 @@ public sealed partial class GovernedAgentRuntimeTests
         var screenResult = Assert.Single(
             requests[1].Messages,
             message => message.Role == AgentMessageRole.Tool
-                && message.ToolResult?.StableCode == "tool_succeeded");
+                && string.Equals(message.ToolResult?.StableCode, "tool_succeeded", StringComparison.Ordinal));
         Assert.Contains(
             "\"content_origin\":\"untrusted_terminal\"",
             screenResult.Content,
@@ -152,7 +152,7 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.IsType<AgentTerminalRequest.ReadScreen>(action.Request);
         Assert.DoesNotContain(
             fixture.Audit.Events,
-            item => item.Action == BuiltInAgentTools.TerminalSendText);
+            item => string.Equals(item.Action, BuiltInAgentTools.TerminalSendText, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -182,8 +182,8 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Equal(AgentActionRisk.Mutation, approval.Risk);
         Assert.Contains(
             approval.Presentation.Arguments,
-            argument => argument.Name == "text"
-                && argument.DisplayValue == injectedText);
+            argument => string.Equals(argument.Name, "text"
+, StringComparison.Ordinal) && string.Equals(argument.DisplayValue, injectedText, StringComparison.Ordinal));
         Assert.Single(fixture.Terminal.Actions);
         Assert.IsType<AgentTerminalRequest.ReadScreen>(
             fixture.Terminal.Actions.Single().Request);
@@ -216,14 +216,14 @@ public sealed partial class GovernedAgentRuntimeTests
         var deniedResult = Assert.Single(
             fixture.Provider.Requests.ToArray()[2].Messages,
             message => message.Role == AgentMessageRole.Tool
-                && message.ToolResult?.StableCode == "approval_denied").ToolResult;
+                && string.Equals(message.ToolResult?.StableCode, "approval_denied", StringComparison.Ordinal)).ToolResult;
         Assert.NotNull(deniedResult);
         Assert.Equal(AgentToolResultStatus.Failed, deniedResult.Status);
         Assert.Equal("approval_denied", deniedResult.StableCode);
         Assert.Contains(
             fixture.Audit.Events,
-            item => item.Action == BuiltInAgentTools.TerminalSendText
-                && item.Outcome == AuditOutcome.Denied);
+            item => string.Equals(item.Action, BuiltInAgentTools.TerminalSendText
+, StringComparison.Ordinal) && item.Outcome == AuditOutcome.Denied);
     }
 
     [Fact]
@@ -251,21 +251,21 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Null(fixture.Runtime.Snapshot.PendingApproval);
         Assert.Contains(
             fixture.Provider.Requests.First().Tools,
-            tool => tool.Name == BuiltInAgentTools.TerminalPaste);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalPaste, StringComparison.Ordinal));
 
         var requests = fixture.Provider.Requests.ToArray();
         Assert.Equal(4, requests.Length);
         var invalidSelfAuthorization = Assert.Single(
             requests[2].Messages,
             message => message.Role == AgentMessageRole.Tool
-                && message.ToolResult?.StableCode
-                    == "invalid_tool_arguments").ToolResult;
+                && string.Equals(message.ToolResult?.StableCode
+, "invalid_tool_arguments", StringComparison.Ordinal)).ToolResult;
         Assert.NotNull(invalidSelfAuthorization);
         var rejectedSecret = Assert.Single(
             requests[3].Messages,
             message => message.Role == AgentMessageRole.Tool
-                && message.ToolResult?.StableCode
-                    == "tool_request_rejected").ToolResult;
+                && string.Equals(message.ToolResult?.StableCode
+, "tool_request_rejected", StringComparison.Ordinal)).ToolResult;
         Assert.NotNull(rejectedSecret);
         Assert.DoesNotContain(
             secret,

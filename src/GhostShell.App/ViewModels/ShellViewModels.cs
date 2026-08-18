@@ -1,10 +1,10 @@
-using System.Collections.ObjectModel;
 using System.Collections.Immutable;
+using System.Collections.ObjectModel;
+using FluentIcons.Common;
 using GhostShell.App;
 using GhostShell.Application;
 using GhostShell.Core;
 using GhostShell.Docker;
-using FluentIcons.Common;
 
 namespace GhostShell.App.ViewModels;
 
@@ -378,7 +378,7 @@ public abstract record LauncherSearchTarget
         {
             Id = id;
             Arguments = arguments?.ToImmutableDictionary(StringComparer.Ordinal)
-                ?? ImmutableDictionary<string, string>.Empty;
+                ?? [];
             InvocationKey = Arguments
                 .OrderBy(argument => argument.Key, StringComparer.Ordinal)
                 .Aggregate(
@@ -918,7 +918,7 @@ public sealed class RuntimeWorkspaceViewModel : ObservableObject
         Tabs.CollectionChanged += (_, changed) =>
         {
             foreach (var tab in changed.NewItems?.OfType<RuntimeTabViewModel>()
-                ?? Enumerable.Empty<RuntimeTabViewModel>())
+                ?? [])
             {
                 tab.AdoptPolicyLineage(AgentPolicy);
             }
@@ -1257,7 +1257,7 @@ public sealed class RuntimeTabViewModel : ObservableObject
                     slot.Bounds.ColumnSpan,
                     slot.Bounds.RowSpan),
                 new LayoutMinimumSize(slot.MinimumSize.Width, slot.MinimumSize.Height)))
-            ?? new Dictionary<LayoutSlotId, LayoutSlotDefinition>();
+            ?? [];
         _dockLayout = new RuntimeDockLayoutController(layout);
         _dockLayout.LayoutChanged += (_, _) =>
             OnPropertyChanged(nameof(DockLayoutRevision));
@@ -3506,7 +3506,7 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
                     _ = _multiplexerCoordinator.RegisterAsync(
                         _connection,
                         MultiplexerSession,
-                        CancellationToken.None);
+                        CancellationToken.None).AsTask();
                 }
             }
             else

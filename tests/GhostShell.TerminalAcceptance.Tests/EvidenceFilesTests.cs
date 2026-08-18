@@ -82,7 +82,7 @@ public sealed class EvidenceFilesTests : IDisposable
         var valid = CreateEvidence(AcceptanceStatus.Pass);
         var incomplete = valid with
         {
-            Checks = valid.Checks.Skip(1).ToArray(),
+            Checks = [.. valid.Checks.Skip(1)],
             OverallResult = AcceptanceStatus.Blocked,
         };
 
@@ -141,7 +141,7 @@ public sealed class EvidenceFilesTests : IDisposable
 
     private static AcceptanceEvidence CreateEvidence(AcceptanceStatus status)
     {
-        var started = DateTimeOffset.Parse("2026-07-23T01:00:00Z");
+        var started = DateTimeOffset.Parse("2026-07-23T01:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
         var completed = started.AddMinutes(20);
         var checks = AcceptanceCatalog.All
             .Select((check, index) => new CheckObservation(
@@ -196,7 +196,7 @@ public sealed class EvidenceFilesTests : IDisposable
     private static CheckObservation[] CreateChecks(
         AcceptanceStatus first,
         AcceptanceStatus second) =>
-        AcceptanceCatalog.All
+        [.. AcceptanceCatalog.All
             .Select((check, index) => new CheckObservation(
                 check.Id,
                 check.Title,
@@ -204,6 +204,5 @@ public sealed class EvidenceFilesTests : IDisposable
                 "operator-observed",
                 "Concrete synthetic acceptance note.",
                 0,
-                DateTimeOffset.UtcNow))
-            .ToArray();
+                DateTimeOffset.UtcNow))];
 }

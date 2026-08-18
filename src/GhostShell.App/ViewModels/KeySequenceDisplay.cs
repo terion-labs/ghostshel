@@ -56,22 +56,22 @@ public static class KeySequenceDisplay
     public static string Format(KeyStroke stroke)
     {
         var parts = new List<string>(5);
-        if ((stroke.Modifiers & KeyModifiers.Control) != 0)
+        if ((stroke.Modifiers & KeyModifiers.Control) != KeyModifiers.None)
         {
             parts.Add("Ctrl");
         }
 
-        if ((stroke.Modifiers & KeyModifiers.Alt) != 0)
+        if ((stroke.Modifiers & KeyModifiers.Alt) != KeyModifiers.None)
         {
             parts.Add(OperatingSystem.IsMacOS() ? "Option" : "Alt");
         }
 
-        if ((stroke.Modifiers & KeyModifiers.Shift) != 0)
+        if ((stroke.Modifiers & KeyModifiers.Shift) != KeyModifiers.None)
         {
             parts.Add("Shift");
         }
 
-        if ((stroke.Modifiers & KeyModifiers.Meta) != 0)
+        if ((stroke.Modifiers & KeyModifiers.Meta) != KeyModifiers.None)
         {
             parts.Add(OperatingSystem.IsMacOS()
                 ? "Cmd"

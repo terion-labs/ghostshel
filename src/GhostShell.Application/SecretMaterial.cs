@@ -10,7 +10,7 @@ public sealed class SecretMaterial : IDisposable
 {
     public const int MaximumLength = 1024 * 1024;
 
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private byte[]? _buffer;
 
     private SecretMaterial(byte[] buffer) => _buffer = buffer;
@@ -75,7 +75,7 @@ public sealed class SecretMaterial : IDisposable
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_buffer is null, this);
-            return new SecretMaterial(_buffer.ToArray());
+            return new SecretMaterial([.. _buffer]);
         }
     }
 

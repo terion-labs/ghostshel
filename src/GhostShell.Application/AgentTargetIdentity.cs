@@ -34,13 +34,13 @@ public static class AgentTargetIdentity
                 workspace.WorkspaceId.Value),
             AgentTarget.SelectedPanels selected => Join(
                 "selected-panels",
-                selected.Panels.SelectMany(panel => new[]
+                [.. selected.Panels.SelectMany(panel => new[]
                 {
                     panel.WindowId.Value,
                     panel.WorkspaceId.Value,
                     panel.TabId.Value,
                     panel.PanelId.Value,
-                }).ToArray()),
+                })]),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(target),
                 target.GetType(),

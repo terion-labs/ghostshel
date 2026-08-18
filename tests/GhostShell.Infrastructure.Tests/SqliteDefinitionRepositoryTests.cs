@@ -369,7 +369,7 @@ public sealed class SqliteDefinitionRepositoryTests
             Assert.Equal(policy.Model, restoredPolicy.Model);
             Assert.Equal(
                 policy.Permissions.OrderBy(item => item.Key).ToArray(),
-                restoredPolicy.Permissions.OrderBy(item => item.Key).ToArray());
+                [.. restoredPolicy.Permissions.OrderBy(item => item.Key)]);
         }
     }
 
@@ -905,7 +905,7 @@ public sealed class SqliteDefinitionRepositoryTests
         Assert.True(stored.IsSuccess, stored.Error?.Message);
         Assert.Equal(
             [0, 1],
-            stored.Value!.Select(item => item.Value.Order).Order().ToArray());
+            [.. stored.Value!.Select(item => item.Value.Order).Order()]);
     }
 
     [Fact]

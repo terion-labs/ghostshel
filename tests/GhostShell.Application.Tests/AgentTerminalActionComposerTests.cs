@@ -85,7 +85,7 @@ public sealed class AgentTerminalActionComposerTests
                 "WaitForStable",
                 "WaitForText",
             ],
-            requestKinds.Select(type => type.Name));
+            requestKinds.Select(type => type.Name), StringComparer.Ordinal);
         Assert.All(requestKinds, type => Assert.True(type.IsSealed));
         Assert.Empty(typeof(AgentTerminalAction).GetConstructors());
         Assert.Empty(typeof(AgentActionExecutionBinding).GetConstructors());
@@ -166,7 +166,7 @@ public sealed class AgentTerminalActionComposerTests
                 second.Proposal.ArgumentDigest);
             Assert.NotEqual(
                 ApprovalMaterial(first),
-                ApprovalMaterial(second));
+                ApprovalMaterial(second), StringComparer.Ordinal);
         }
     }
 
@@ -193,7 +193,7 @@ public sealed class AgentTerminalActionComposerTests
                 StringComparison.OrdinalIgnoreCase));
         Assert.Contains(
             action.Proposal.Presentation.Arguments,
-            argument => argument.Name == "session_id");
+            argument => string.Equals(argument.Name, "session_id", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -303,13 +303,13 @@ public sealed class AgentTerminalActionComposerTests
             @"first\\r\\nsecond\\tcolumn",
             Assert.Single(
                 literalEscapeAction.Proposal.Presentation.Arguments,
-                argument => argument.Name == "text").DisplayValue);
+                argument => string.Equals(argument.Name, "text", StringComparison.Ordinal)).DisplayValue);
         Assert.NotEqual(
             action.Proposal.ArgumentDigest,
             literalEscapeAction.Proposal.ArgumentDigest);
         Assert.NotEqual(
             ApprovalMaterial(action),
-            ApprovalMaterial(literalEscapeAction));
+            ApprovalMaterial(literalEscapeAction), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -446,7 +446,7 @@ public sealed class AgentTerminalActionComposerTests
                     variant.Action.Proposal.ArgumentDigest);
                 Assert.NotEqual(
                     ApprovalMaterial(baseline),
-                    ApprovalMaterial(variant.Action));
+                    ApprovalMaterial(variant.Action), StringComparer.Ordinal);
 
                 var mismatchedAction = new AgentTerminalAction(
                     variant.Action.Request,
@@ -469,8 +469,7 @@ public sealed class AgentTerminalActionComposerTests
             7,
             TerminalKeyModifiers.None);
         var capabilitiesWithoutMouse = AllTerminalCapabilities()
-            .Where(capability =>
-                capability != SessionCapabilities.TerminalMouse)
+            .Where(capability => !string.Equals(capability, SessionCapabilities.TerminalMouse, StringComparison.Ordinal))
             .ToArray();
 
         Assert.Throws<ArgumentException>(() =>
@@ -661,7 +660,7 @@ public sealed class AgentTerminalActionComposerTests
                 "1234.5",
                 Assert.Single(
                     french.Proposal.Presentation.Arguments,
-                    argument => argument.Name == "logical_width").DisplayValue);
+                    argument => string.Equals(argument.Name, "logical_width", StringComparison.Ordinal)).DisplayValue);
             Assert.Equal(
                 french.Proposal.Presentation.Arguments,
                 arabic.Proposal.Presentation.Arguments);
@@ -737,7 +736,7 @@ public sealed class AgentTerminalActionComposerTests
 
         var argument = Assert.Single(
             action.Proposal.Presentation.Arguments,
-            candidate => candidate.Name == "text");
+            candidate => string.Equals(candidate.Name, "text", StringComparison.Ordinal));
         Assert.Equal(@"a\tb\nc\\d\u001B\u202E\U000E0001", argument.DisplayValue);
         Assert.Contains("panel-1", action.Proposal.Presentation.TargetTitle);
         Assert.Contains("session-1", action.Proposal.Presentation.TargetTitle);
@@ -804,12 +803,12 @@ public sealed class AgentTerminalActionComposerTests
             text,
             Assert.Single(
                 sendText.Proposal.Presentation.Arguments,
-                argument => argument.Name == "text").DisplayValue);
+                argument => string.Equals(argument.Name, "text", StringComparison.Ordinal)).DisplayValue);
         Assert.Equal(
             text,
             Assert.Single(
                 paste.Proposal.Presentation.Arguments,
-                argument => argument.Name == "text").DisplayValue);
+                argument => string.Equals(argument.Name, "text", StringComparison.Ordinal)).DisplayValue);
     }
 
     [Fact]
@@ -827,7 +826,7 @@ public sealed class AgentTerminalActionComposerTests
             new string('\u00e9', 1_024),
             Assert.Single(
                 maximum.Proposal.Presentation.Arguments,
-                argument => argument.Name == "text").DisplayValue);
+                argument => string.Equals(argument.Name, "text", StringComparison.Ordinal)).DisplayValue);
         Assert.Throws<ArgumentException>(() =>
             composer.Prepare(
                 Envelope(),

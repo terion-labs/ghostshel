@@ -1,6 +1,6 @@
+using System.Security.Cryptography;
 using GhostShell.Application;
 using GhostShell.Core;
-using System.Security.Cryptography;
 
 namespace GhostShell.Infrastructure.Tests;
 

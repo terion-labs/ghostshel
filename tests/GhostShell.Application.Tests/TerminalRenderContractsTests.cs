@@ -265,13 +265,12 @@ public sealed class TerminalRenderContractsTests
 
     private static TerminalRenderRow Row(int index, int columns) => new(
         index,
-        Enumerable.Range(0, columns)
+        [.. Enumerable.Range(0, columns)
             .Select(_ => new TerminalRenderCell(
                 string.Empty,
                 TerminalRenderCellWidth.Narrow,
                 TerminalCellColor.Default,
-                TerminalCellColor.Default))
-            .ToArray());
+                TerminalCellColor.Default))]);
 
     private static TerminalKittyImageContent Image(TerminalKittyImageKey key) => new(
         key,

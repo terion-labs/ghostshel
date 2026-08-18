@@ -444,14 +444,9 @@ internal sealed class SshNetSftpSessionFactory(
         {
             try
             {
-                var entry = await FindExactEntryAsync(path, cancellationToken).ConfigureAwait(false);
-                if (entry is null)
-                {
-                    throw new RemoteFileSessionException(
+                var entry = await FindExactEntryAsync(path, cancellationToken).ConfigureAwait(false) ?? throw new RemoteFileSessionException(
                         RemoteFileSessionErrorCode.NotFound,
                         "The SFTP path was not found.");
-                }
-
                 if (entry.IsDirectory)
                 {
                     throw new RemoteFileSessionException(
@@ -474,14 +469,9 @@ internal sealed class SshNetSftpSessionFactory(
         {
             try
             {
-                var entry = await FindExactEntryAsync(path, cancellationToken).ConfigureAwait(false);
-                if (entry is null)
-                {
-                    throw new RemoteFileSessionException(
+                var entry = await FindExactEntryAsync(path, cancellationToken).ConfigureAwait(false) ?? throw new RemoteFileSessionException(
                         RemoteFileSessionErrorCode.NotFound,
                         "The SFTP path was not found.");
-                }
-
                 if (!entry.IsDirectory)
                 {
                     throw new RemoteFileSessionException(
@@ -578,7 +568,7 @@ internal sealed class SshNetSftpSessionFactory(
         private static string RemoteName(string path)
         {
             var normalized = NormalizeRemotePath(path);
-            if (normalized == "/")
+            if (string.Equals(normalized, "/", StringComparison.Ordinal))
             {
                 return "/";
             }
@@ -591,7 +581,7 @@ internal sealed class SshNetSftpSessionFactory(
             string path,
             CancellationToken cancellationToken)
         {
-            if (path == "/")
+            if (string.Equals(path, "/", StringComparison.Ordinal))
             {
                 return await client.GetAsync(path, cancellationToken).ConfigureAwait(false);
             }
@@ -611,7 +601,7 @@ internal sealed class SshNetSftpSessionFactory(
                         "The SFTP directory exceeds the bounded metadata-scan limit.");
                 }
 
-                if (entry.Name == name)
+                if (string.Equals(entry.Name, name, StringComparison.Ordinal))
                 {
                     return entry;
                 }
@@ -623,15 +613,51 @@ internal sealed class SshNetSftpSessionFactory(
         private static int PosixMode(Renci.SshNet.Sftp.SftpFileAttributes attributes)
         {
             var mode = 0;
-            if (attributes.OwnerCanRead) mode |= 0x100;
-            if (attributes.OwnerCanWrite) mode |= 0x80;
-            if (attributes.OwnerCanExecute) mode |= 0x40;
-            if (attributes.GroupCanRead) mode |= 0x20;
-            if (attributes.GroupCanWrite) mode |= 0x10;
-            if (attributes.GroupCanExecute) mode |= 0x8;
-            if (attributes.OthersCanRead) mode |= 0x4;
-            if (attributes.OthersCanWrite) mode |= 0x2;
-            if (attributes.OthersCanExecute) mode |= 0x1;
+            if (attributes.OwnerCanRead)
+            {
+                mode |= 0x100;
+            }
+
+            if (attributes.OwnerCanWrite)
+            {
+                mode |= 0x80;
+            }
+
+            if (attributes.OwnerCanExecute)
+            {
+                mode |= 0x40;
+            }
+
+            if (attributes.GroupCanRead)
+            {
+                mode |= 0x20;
+            }
+
+            if (attributes.GroupCanWrite)
+            {
+                mode |= 0x10;
+            }
+
+            if (attributes.GroupCanExecute)
+            {
+                mode |= 0x8;
+            }
+
+            if (attributes.OthersCanRead)
+            {
+                mode |= 0x4;
+            }
+
+            if (attributes.OthersCanWrite)
+            {
+                mode |= 0x2;
+            }
+
+            if (attributes.OthersCanExecute)
+            {
+                mode |= 0x1;
+            }
+
             return mode;
         }
 

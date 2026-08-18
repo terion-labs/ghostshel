@@ -50,7 +50,7 @@ public sealed class PosixNetworkSnapshotSourceTests
         var second = await source.CaptureAsync(CancellationToken.None);
 
         Assert.Equal(["cat", "netstat", "netstat"],
-            transport.Commands.Select(command => command.Executable));
+            transport.Commands.Select(command => command.Executable), StringComparer.Ordinal);
         Assert.Equal(2_000, Assert.Single(second).ReceivedBytes);
     }
 

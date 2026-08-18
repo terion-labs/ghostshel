@@ -123,7 +123,7 @@ public sealed class FileAccessControlTests
             grants.Single(grant => grant.Grantee.Kind == FilePanelGranteeKind.Everyone).Rights);
         Assert.Equal(
             FilePanelAccessRight.Read | FilePanelAccessRight.Write,
-            grants.Single(grant => grant.Grantee.Id == "p3179430").Rights);
+            grants.Single(grant => string.Equals(grant.Grantee.Id, "p3179430", StringComparison.Ordinal)).Rights);
     }
 
     /// <summary>
@@ -157,14 +157,15 @@ public sealed class FileAccessControlTests
         Assert.Equal(3, stored.Grants.Count);
         Assert.Contains(
             stored.Grants,
-            grant => grant.GranteeUri == "http://acs.amazonaws.com/groups/global/AllUsers"
-                && grant.Permission == "READ");
+            grant => string.Equals(grant.GranteeUri, "http://acs.amazonaws.com/groups/global/AllUsers"
+, StringComparison.Ordinal) && string.Equals(grant.Permission, "READ", StringComparison.Ordinal));
         Assert.Equal(
             ["READ", "WRITE"],
             stored.Grants
-                .Where(grant => grant.GranteeId == "p3179430")
+                .Where(grant => string.Equals(grant.GranteeId, "p3179430", StringComparison.Ordinal))
                 .Select(grant => grant.Permission)
-                .Order());
+                .Order(StringComparer.Ordinal),
+            StringComparer.Ordinal);
     }
 
     [Fact]

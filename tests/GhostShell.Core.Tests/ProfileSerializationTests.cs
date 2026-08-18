@@ -38,7 +38,7 @@ public sealed class ProfileSerializationTests
             new CommandId("future.command"),
             KeySequence.Of(new KeyStroke("K", KeyModifiers.Control)),
             CommandContext.Terminal,
-            new Dictionary<string, string> { ["future"] = "value" });
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["future"] = "value" });
         var keymap = new KeymapProfile(
             new KeymapProfileId("custom-map"),
             "Custom map",

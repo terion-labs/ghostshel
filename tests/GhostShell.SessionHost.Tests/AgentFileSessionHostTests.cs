@@ -758,9 +758,8 @@ public sealed class AgentFileSessionHostTests
             new AgentFileRequest.Stat(fixture.SessionId, Path("audit.txt")));
         var authorized = Assert.IsType<AgentAuthorizationResult.Authorized>(
             await broker.RequestAsync(action.Proposal, default));
-        audit.FailurePredicate = item =>
-            item.CorrelationId == action.Proposal.Id.Value
-            && item.Outcome == AuditOutcome.Succeeded;
+        audit.FailurePredicate = item => string.Equals(item.CorrelationId, action.Proposal.Id.Value
+, StringComparison.Ordinal) && item.Outcome == AuditOutcome.Succeeded;
 
         var result = await fixture.Client.RunAgentFileActionAsync(
             authorized.Authorization.Id,
@@ -783,9 +782,8 @@ public sealed class AgentFileSessionHostTests
                 nextAuthorization).Error.Code);
         Assert.DoesNotContain(
             audit.Events,
-            item =>
-                item.CorrelationId == action.Proposal.Id.Value
-                && item.Outcome == AuditOutcome.Succeeded);
+            item => string.Equals(item.CorrelationId, action.Proposal.Id.Value
+, StringComparison.Ordinal) && item.Outcome == AuditOutcome.Succeeded);
     }
 
     [Fact]
@@ -1230,8 +1228,7 @@ public sealed class AgentFileSessionHostTests
 
     private static ImmutableArray<FilePanelPathSegment> Path(
         params string[] segments) =>
-        segments.Select(item => new FilePanelPathSegment(item))
-            .ToImmutableArray();
+        [.. segments.Select(item => new FilePanelPathSegment(item))];
 
     private static FilePanelLocation Location(params string[] segments) =>
         new(
@@ -1243,10 +1240,9 @@ public sealed class AgentFileSessionHostTests
                         new FilePanelPathSegment(item)))));
 
     private static string[] Segments(FilePanelLocation location) =>
-        Assert.IsType<FilePanelAddress.Hierarchical>(location.Address)
+        [.. Assert.IsType<FilePanelAddress.Hierarchical>(location.Address)
             .Path.Segments
-            .Select(item => item.Value)
-            .ToArray();
+            .Select(item => item.Value)];
 
     private static FilePanelEntry ListedEntry(
         FilePanelLocation parent,
@@ -1452,7 +1448,7 @@ public sealed class AgentFileSessionHostTests
             TaskCreationOptions.RunContinuationsAsynchronously);
 
         public IReadOnlyList<AgentActionCompletion> Completions =>
-            _completions.ToArray();
+            [.. _completions];
 
         public AgentAuthorizationId Arm(
             AgentFileAction action,
@@ -1574,7 +1570,7 @@ public sealed class AgentFileSessionHostTests
             {
                 lock (_gate)
                 {
-                    return _events.ToArray();
+                    return [.. _events];
                 }
             }
         }
@@ -1616,10 +1612,8 @@ public sealed class AgentFileSessionHostTests
             {
                 return ValueTask.FromResult(
                     AuditStoreResult<IReadOnlyList<AuditEventRecord>>.Success(
-                        _events
-                            .Where(item =>
-                                item.CorrelationId == correlationId)
-                            .ToArray()));
+                        [.. _events
+                            .Where(item => string.Equals(item.CorrelationId, correlationId, StringComparison.Ordinal))]));
             }
         }
     }

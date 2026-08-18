@@ -149,6 +149,8 @@
     <controls:PanelChrome.Status>
       <Border
           Classes="StatusDot"
+          AutomationProperties.LiveSetting="Polite"
+          AutomationProperties.Name="Terminal session status"
           Background="{Binding StatusBrush, ElementName=RuntimeTerminal}" />
     </controls:PanelChrome.Status>
 

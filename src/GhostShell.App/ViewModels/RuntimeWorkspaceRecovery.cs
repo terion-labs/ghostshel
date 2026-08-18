@@ -82,12 +82,11 @@ internal static class RuntimeWorkspaceRecoveryCodec
             workspace.Name,
             workspace.Accent,
             workspace.ActiveTab?.Id.Value,
-            workspace.Connections
+            [.. workspace.Connections
                 .Select(connection => connection.Id.Value)
-                .Distinct(StringComparer.Ordinal)
-                .ToArray(),
+                .Distinct(StringComparer.Ordinal)],
             RuntimeAgentPolicyRecoveryPayload.Capture(workspace.AgentPolicy),
-            workspace.Tabs.Select(CaptureTab).ToArray(),
+            [.. workspace.Tabs.Select(CaptureTab)],
             historySource is null
                 ? null
                 : RuntimeHistorySourceRecoveryPayload.Capture(historySource),
@@ -108,7 +107,7 @@ internal static class RuntimeWorkspaceRecoveryCodec
                 ? RuntimeHistorySourceRecoveryPayload.Capture(historySource)
                 : null,
             RuntimeAgentPolicyRecoveryPayload.Capture(tab.AgentPolicy),
-            tab.Panels.Select(CapturePanel).ToArray(),
+            [.. tab.Panels.Select(CapturePanel)],
             tab.Icon,
             tab.HasChosenTitle,
             tab.HasChosenIcon);
@@ -194,8 +193,7 @@ internal static class RuntimeWorkspaceRecoveryCodec
                 && !Enum.IsDefined(terminalMultiplexingMode)
             || workspace.AgentPolicy is { } workspacePolicy
                 && (!workspacePolicy.TryValidate()
-                    || workspacePolicy.Sources.Any(source =>
-                        source.Kind == ScreenDefinition.Kind.Value))
+                    || workspacePolicy.Sources.Any(source => string.Equals(source.Kind, ScreenDefinition.Kind.Value, StringComparison.Ordinal)))
             || workspace.Tabs is null
             || workspace.Tabs.Length is 0 or > MaximumTabs)
         {
@@ -263,11 +261,11 @@ internal static class RuntimeWorkspaceRecoveryCodec
         }
 
         var screenPolicySource = tab.AgentPolicy?.Sources
-            .SingleOrDefault(source => source.Kind == ScreenDefinition.Kind.Value);
+            .SingleOrDefault(source => string.Equals(source.Kind, ScreenDefinition.Kind.Value, StringComparison.Ordinal));
         var workspacePolicySource = workspacePolicy?.Sources
-            .SingleOrDefault(source => source.Kind == WorkspaceDefinition.Kind.Value);
+            .SingleOrDefault(source => string.Equals(source.Kind, WorkspaceDefinition.Kind.Value, StringComparison.Ordinal));
         var tabWorkspacePolicySource = tab.AgentPolicy?.Sources
-            .SingleOrDefault(source => source.Kind == WorkspaceDefinition.Kind.Value);
+            .SingleOrDefault(source => string.Equals(source.Kind, WorkspaceDefinition.Kind.Value, StringComparison.Ordinal));
         if (workspacePolicy is not null && tab.AgentPolicy is null)
         {
             error = "Recovered tab policy is missing its workspace policy lineage.";
@@ -276,15 +274,15 @@ internal static class RuntimeWorkspaceRecoveryCodec
 
         if (screenPolicySource is not null
             && (tab.HistorySource is null
-                || tab.HistorySource.SourceKind != screenPolicySource.Kind
-                || tab.HistorySource.SourceValue != screenPolicySource.Value))
+                || !string.Equals(tab.HistorySource.SourceKind, screenPolicySource.Kind
+, StringComparison.Ordinal) || !string.Equals(tab.HistorySource.SourceValue, screenPolicySource.Value, StringComparison.Ordinal)))
         {
             error = "Recovered screen policy provenance does not match its history source.";
             return false;
         }
 
-        if (tab.HistorySource?.SourceKind == ScreenDefinition.Kind.Value
-            && screenPolicySource is null
+        if (string.Equals(tab.HistorySource?.SourceKind, ScreenDefinition.Kind.Value
+, StringComparison.Ordinal) && screenPolicySource is null
             && tab.AgentPolicy is not null)
         {
             error = "Recovered saved-screen tab is missing its policy provenance.";
@@ -324,7 +322,7 @@ internal static class RuntimeWorkspaceRecoveryCodec
 
         if (tab.ZoomedPanelKey is not null
             && (!panelKeys.Contains(tab.ZoomedPanelKey)
-                || tab.ZoomedPanelKey != tab.ActivePanelKey))
+                || !string.Equals(tab.ZoomedPanelKey, tab.ActivePanelKey, StringComparison.Ordinal)))
         {
             error = "The recovered zoomed panel does not match the active panel.";
             return false;
@@ -517,9 +515,7 @@ internal sealed record RuntimeAgentPolicyRecoveryPayload(
             policy.Permissions.ToDictionary(
                 item => item.Key,
                 item => item.Value),
-            provenance.Sources
-                .Select(RuntimeAgentPolicySourceRecoveryPayload.Capture)
-                .ToArray(),
+            [.. provenance.Sources.Select(RuntimeAgentPolicySourceRecoveryPayload.Capture)],
             provenance.HasPolicyOverride,
             policy.CompactionModel,
             policy.TitleModel,
@@ -699,7 +695,7 @@ internal sealed record RuntimeFileLocationRecoveryPayload(
                 location.ProviderProfileId,
                 location.Authority,
                 RuntimeFileAddressRecoveryKind.Hierarchical,
-                hierarchical.Path.Segments.Select(segment => segment.Value).ToArray(),
+                [.. hierarchical.Path.Segments.Select(segment => segment.Value)],
                 null),
             FilePanelAddress.ObjectKey objectKey => new(
                 location.ProviderProfileId,
@@ -733,8 +729,8 @@ internal sealed record RuntimeFileLocationRecoveryPayload(
     public bool TryValidate(string? expectedProfileId, out string? error)
     {
         if (!IsBounded(ProviderProfileId, 128)
-            || expectedProfileId is not null && ProviderProfileId != expectedProfileId
-            || Authority is { } authority
+            || expectedProfileId is not null && !string.Equals(ProviderProfileId, expectedProfileId
+, StringComparison.Ordinal) || Authority is { } authority
                 && (!IsBounded(authority, 255)
                     || authority.Any(character => character is '/' or '\\')))
         {

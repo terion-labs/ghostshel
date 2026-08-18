@@ -43,7 +43,7 @@ public sealed class DatabaseBrowsingContractsTests
                     DatabaseValueKind.SignedInteger),
                 new DatabaseColumnDescriptor("nickname", "TEXT", DatabaseValueKind.Text),
             ],
-            [new string?[] { "42", null }],
+            [["42", null]],
             Truncated: false,
             RowsAffected: 0,
             TimeSpan.Zero);
@@ -74,7 +74,7 @@ public sealed class DatabaseBrowsingContractsTests
                 new DatabaseColumnDescriptor("id", "INTEGER"),
                 new DatabaseColumnDescriptor("nickname", "TEXT"),
             ],
-            [new string?[] { "legacy", "legacy" }],
+            [["legacy", "legacy"]],
             Truncated: false,
             RowsAffected: 0,
             TimeSpan.Zero,
@@ -177,7 +177,7 @@ public sealed class DatabaseBrowsingContractsTests
     {
         var result = new DatabaseQueryPage(
             [new DatabaseColumnDescriptor("id", "INTEGER")],
-            [new string?[] { "1" }, new string?[] { "2" }],
+            [["1"], ["2"]],
             Truncated: true,
             RowsAffected: 0,
             TimeSpan.Zero);

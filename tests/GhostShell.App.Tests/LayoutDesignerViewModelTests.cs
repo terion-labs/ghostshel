@@ -44,8 +44,8 @@ public sealed class LayoutDesignerViewModelTests
         var editor = new LayoutDesignerViewModel(definition, expectedRevision: 1);
 
         Assert.Equal(
-            definition.Slots.Select(slot => slot.Id.Value).Order(),
-            editor.Slots.Select(slot => slot.Id).Order());
+            definition.Slots.Select(slot => slot.Id.Value).Order(StringComparer.Ordinal),
+            editor.Slots.Select(slot => slot.Id).Order(StringComparer.Ordinal));
     }
 
     [Fact]
@@ -78,7 +78,7 @@ public sealed class LayoutDesignerViewModelTests
         Assert.True(editor.IsDirty);
         Assert.True(editor.CanSave);
         Assert.NotNull(editor.SelectedSlot);
-        Assert.NotEqual(target.Id, editor.SelectedSlotId);
+        Assert.NotEqual(target.Id, editor.SelectedSlotId, StringComparer.Ordinal);
         Assert.Equal([1, 2, 3, 4], editor.Slots.Select(slot => slot.Order));
     }
 
@@ -128,8 +128,10 @@ public sealed class LayoutDesignerViewModelTests
     public void Reset_restores_the_saved_geometry_name_and_clean_state()
     {
         var definition = ThreePanelLayout();
-        var editor = new LayoutDesignerViewModel(definition, expectedRevision: 1);
-        editor.Name = "Renamed";
+        var editor = new LayoutDesignerViewModel(definition, expectedRevision: 1)
+        {
+            Name = "Renamed"
+        };
         Assert.True(editor.AddSlot().IsSuccess);
         Assert.True(editor.IsDirty);
 
@@ -185,16 +187,18 @@ public sealed class LayoutDesignerViewModelTests
 
         Assert.False(reopened.IsDirty);
         Assert.Equal(
-            saved.Slots.Select(slot => slot.Id.Value).Order(),
-            reopened.Slots.Select(slot => slot.Id).Order());
+            saved.Slots.Select(slot => slot.Id.Value).Order(StringComparer.Ordinal),
+            reopened.Slots.Select(slot => slot.Id).Order(StringComparer.Ordinal));
     }
 
     [Fact]
     public void Save_preserves_each_slots_stored_minimum_size()
     {
         var definition = ThreePanelLayout();
-        var editor = new LayoutDesignerViewModel(definition, expectedRevision: 1);
-        editor.Name = "Adjusted";
+        var editor = new LayoutDesignerViewModel(definition, expectedRevision: 1)
+        {
+            Name = "Adjusted"
+        };
 
         var saved = editor.CreateSaveRequest().Definition;
 

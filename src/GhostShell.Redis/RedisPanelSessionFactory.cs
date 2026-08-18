@@ -206,14 +206,13 @@ internal sealed class RedisPanelSession : IRedisPanelSession
         var result = await server.ExecuteAsync(
                 _databaseIndex,
                 "SCAN",
-                new object[]
-                {
+                [
                     serverCursor.Cursor,
                     "MATCH",
                     string.IsNullOrWhiteSpace(pattern) ? "*" : pattern,
                     "COUNT",
                     pageSize,
-                },
+                ],
                 CommandFlags.None)
             .WaitAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -243,12 +242,11 @@ internal sealed class RedisPanelSession : IRedisPanelSession
     }
 
     private static IServer[] ConnectedPrimaries(IEnumerable<IServer> servers) =>
-        servers
+        [.. servers
             .Where(server =>
                 server.IsConnected
                 && !server.IsReplica
-                && server.ServerType != ServerType.Sentinel)
-            .ToArray();
+                && server.ServerType != ServerType.Sentinel)];
 
     public async Task<RedisKeySnapshot> ReadKeyAsync(
         RedisKeyReference key,
@@ -622,7 +620,7 @@ internal sealed class RedisPanelSession : IRedisPanelSession
         return new RedisKeySnapshot(
             summary,
             length,
-            entries.Select(entry => new RedisValueEntry(Display(entry.Name), Display(entry.Name), Display(entry.Value))).ToArray(),
+            [.. entries.Select(entry => new RedisValueEntry(Display(entry.Name), Display(entry.Name), Display(entry.Value)))],
             length > limit);
     }
 
@@ -633,7 +631,7 @@ internal sealed class RedisPanelSession : IRedisPanelSession
         return new RedisKeySnapshot(
             summary,
             length,
-            values.Select((value, index) => new RedisValueEntry(index.ToString(CultureInfo.InvariantCulture), null, Display(value))).ToArray(),
+            [.. values.Select((value, index) => new RedisValueEntry(index.ToString(CultureInfo.InvariantCulture), null, Display(value)))],
             length > limit);
     }
 
@@ -645,7 +643,7 @@ internal sealed class RedisPanelSession : IRedisPanelSession
         return new RedisKeySnapshot(
             summary,
             length,
-            values.Select(value => new RedisValueEntry(Display(value), null, Display(value))).ToArray(),
+            [.. values.Select(value => new RedisValueEntry(Display(value), null, Display(value)))],
             length > limit);
     }
 
@@ -656,7 +654,7 @@ internal sealed class RedisPanelSession : IRedisPanelSession
         return new RedisKeySnapshot(
             summary,
             length,
-            values.Select(value => new RedisValueEntry(Display(value.Element), null, Display(value.Element), value.Score)).ToArray(),
+            [.. values.Select(value => new RedisValueEntry(Display(value.Element), null, Display(value.Element), value.Score))],
             length > limit);
     }
 
@@ -667,10 +665,10 @@ internal sealed class RedisPanelSession : IRedisPanelSession
         return new RedisKeySnapshot(
             summary,
             length,
-            values.SelectMany(entry => entry.Values.Select(value => new RedisValueEntry(
+            [.. values.SelectMany(entry => entry.Values.Select(value => new RedisValueEntry(
                 $"{entry.Id}:{Display(value.Name)}",
                 Display(value.Name),
-                Display(value.Value)))).ToArray(),
+                Display(value.Value))))],
             length > limit);
     }
 

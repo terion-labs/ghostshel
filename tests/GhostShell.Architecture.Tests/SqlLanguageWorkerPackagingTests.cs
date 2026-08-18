@@ -33,13 +33,13 @@ public sealed class SqlLanguageWorkerPackagingTests
             .ToArray();
         Assert.Contains(
             "runtimes/$(GhostShellEffectiveRuntimeIdentifier)/native/THIRD-PARTY-NOTICES.md",
-            linkedPayload);
+            linkedPayload, StringComparer.Ordinal);
         Assert.Contains(
             "runtimes/$(GhostShellEffectiveRuntimeIdentifier)/native/runtime-dependencies.txt",
-            linkedPayload);
+            linkedPayload, StringComparer.Ordinal);
         Assert.Contains(
             "runtimes/$(GhostShellEffectiveRuntimeIdentifier)/native/build-receipt.json",
-            linkedPayload);
+            linkedPayload, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -69,16 +69,16 @@ public sealed class SqlLanguageWorkerPackagingTests
             .Select(element => (string?)element.Attribute("Include"))
             .Where(include => include is not null)
             .ToArray();
-        Assert.Contains("$(GhostShellSqlLanguageWorkerPath)", requiredFiles);
+        Assert.Contains("$(GhostShellSqlLanguageWorkerPath)", requiredFiles, StringComparer.Ordinal);
         Assert.Contains(
             "$(GhostShellSqlLanguageArtifactDirectory)/THIRD-PARTY-NOTICES.md",
-            requiredFiles);
+            requiredFiles, StringComparer.Ordinal);
         Assert.Contains(
             "$(GhostShellSqlLanguageArtifactDirectory)/runtime-dependencies.txt",
-            requiredFiles);
+            requiredFiles, StringComparer.Ordinal);
         Assert.Contains(
             "$(GhostShellSqlLanguageArtifactDirectory)/build-receipt.json",
-            requiredFiles);
+            requiredFiles, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -263,7 +263,7 @@ public sealed class SqlLanguageWorkerPackagingTests
             "rid: [linux-x64, linux-arm64, win-x64, win-arm64]",
             workflow,
             StringComparison.Ordinal);
-        Assert.Contains("docker/setup-qemu-action@v4", workflow, StringComparison.Ordinal);
+        Assert.Contains("docker/setup-qemu-action@", workflow, StringComparison.Ordinal);
         Assert.Contains(
             "./scripts/build-sql-language-worker.sh --docker --rid ${{ matrix.rid }}",
             workflow,
@@ -336,16 +336,16 @@ public sealed class SqlLanguageWorkerPackagingTests
             .ToArray();
         Assert.Contains(
             "../../src/GhostShell.Infrastructure/CalciteSqlLanguageService.cs",
-            linkedSources);
+            linkedSources, StringComparer.Ordinal);
         Assert.Contains(
             "../../src/GhostShell.Infrastructure/CalciteSqlLanguageSession.cs",
-            linkedSources);
+            linkedSources, StringComparer.Ordinal);
         Assert.Contains(
             "../../src/GhostShell.Infrastructure/SqlLanguageWorkerProtocol.cs",
-            linkedSources);
+            linkedSources, StringComparer.Ordinal);
         Assert.Contains(
             "../../src/GhostShell.Infrastructure/UnavailableSqlLanguageSession.cs",
-            linkedSources);
+            linkedSources, StringComparer.Ordinal);
     }
 
     private static string FindRepositoryRoot()

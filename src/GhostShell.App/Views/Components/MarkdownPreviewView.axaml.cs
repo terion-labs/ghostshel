@@ -259,9 +259,9 @@ public sealed partial class MarkdownPreviewView : UserControl
             Margin = new Thickness(0, 4),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             Child = diagram,
+            Background = Brush("ShellBackgroundBrush") ?? Brushes.Transparent,
+            BorderBrush = Brush("ShellBorderBrush") ?? Brushes.Gray
         };
-        frame.Background = Brush("ShellBackgroundBrush") ?? Brushes.Transparent;
-        frame.BorderBrush = Brush("ShellBorderBrush") ?? Brushes.Gray;
         return frame;
     }
 
@@ -388,8 +388,8 @@ public sealed partial class MarkdownPreviewView : UserControl
         {
             Height = 1,
             Margin = new Thickness(0, 6, 0, 6),
+            Background = Brush("ShellBorderBrush") ?? Brushes.Gray
         };
-        rule.Background = Brush("ShellBorderBrush") ?? Brushes.Gray;
         return rule;
     }
 

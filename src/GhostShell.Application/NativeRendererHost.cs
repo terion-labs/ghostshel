@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using GhostShell.Core;
 
 namespace GhostShell.Application;
@@ -21,6 +22,7 @@ public sealed record NativeRendererHost(
 /// <summary>
 /// Which of a native view's corners are at its host panel's edge, and how round.
 /// </summary>
+[StructLayout(LayoutKind.Auto)]
 public readonly record struct NativeRendererCorners(
     double TopLeft,
     double TopRight,

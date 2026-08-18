@@ -1,0 +1,7 @@
+# High-level domain projects must cross audited infrastructure boundaries instead
+# of directly creating operating-system, network, database, or native resources.
+T:System.Diagnostics.Process; Use the repository process-execution abstraction.
+T:System.Net.Http.HttpClient; Inject the repository HTTP transport abstraction.
+T:System.Data.Common.DbConnection; Use a database provider boundary.
+T:System.Runtime.InteropServices.DllImportAttribute; Keep native interop in an audited infrastructure project.
+T:System.Runtime.InteropServices.LibraryImportAttribute; Keep native interop in an audited infrastructure project.

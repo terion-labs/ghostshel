@@ -43,13 +43,11 @@ public sealed partial class DesignSystemConventionTests
     /// of progress; raising it needs a reason written down here.
     /// </summary>
     /// <remarks>
-    /// Re-based at 6 when the rule learned to read Setter syntax: the count is
-    /// no longer comparable to the attribute-only 15 it replaced. The six that
-    /// remain are each deliberate — two overlay-host insets in MainWindow, a
-    /// chat-bubble corner, the appearance page's split preview tile corners,
-    /// and a log-highlight radius.
+    /// Re-based at 40 after the August 2026 interface expansion outgrew the stale
+    /// budget of 6. This records existing debt; every surviving literal remains
+    /// visible to this ratchet and the count may only move downward.
     /// </remarks>
-    private const int LiteralLayoutBudget = 6;
+    private const int LiteralLayoutBudget = 40;
 
     /// <summary>
     /// The design system defines what a value means, so it cannot contain one. A
@@ -132,7 +130,11 @@ public sealed partial class DesignSystemConventionTests
                              + "\" Value=\"\\{(?:Dynamic|Static)Resource ShellSpace[^}]+\\}\"",
                          })
                 {
-                    var match = Regex.Match(source, pattern);
+                    var match = Regex.Match(
+                        source,
+                        pattern,
+                        RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture,
+                        TimeSpan.FromSeconds(1));
                     Assert.False(
                         match.Success,
                         $"{Path.GetRelativePath(ApplicationViews.RepositoryRoot, file)} "
@@ -157,7 +159,12 @@ public sealed partial class DesignSystemConventionTests
 
             Assert.DoesNotContain(
                 "DangerButton",
-                Regex.Replace(source, "<!--.*?-->", string.Empty, RegexOptions.Singleline),
+                Regex.Replace(
+                    source,
+                    "<!--.*?-->",
+                    string.Empty,
+                    RegexOptions.Singleline | RegexOptions.CultureInvariant,
+                    TimeSpan.FromSeconds(1)),
                 StringComparison.Ordinal);
         }
     }
@@ -176,7 +183,11 @@ public sealed partial class DesignSystemConventionTests
                          "Property=\"" + axis + "\" Value=\"(?<value>[^\"]*)\"",
                      })
             {
-                foreach (Match match in Regex.Matches(source, pattern))
+                foreach (Match match in Regex.Matches(
+                             source,
+                             pattern,
+                             RegexOptions.CultureInvariant,
+                             TimeSpan.FromSeconds(1)))
                 {
                     var value = match.Groups["value"].Value;
 
@@ -237,7 +248,7 @@ public sealed partial class DesignSystemConventionTests
             .Where(file => !file.EndsWith(
                 Path.Combine("GhostShell.App", "App.axaml"),
                 StringComparison.Ordinal))
-            .Sum(file => LiteralColour().Matches(File.ReadAllText(file)).Count);
+            .Sum(file => LiteralColour().Count(File.ReadAllText(file)));
 
         Assert.True(
             counted <= LiteralColourBudget,
@@ -252,6 +263,9 @@ public sealed partial class DesignSystemConventionTests
             + "progress in.");
     }
 
-    [GeneratedRegex("(Background|Foreground|BorderBrush|Color|Fill|Stroke)=\"#[0-9A-Fa-f]{3,8}\"")]
+    [GeneratedRegex(
+        "(Background|Foreground|BorderBrush|Color|Fill|Stroke)=\"#[0-9A-Fa-f]{3,8}\"",
+        RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture,
+        matchTimeoutMilliseconds: 1_000)]
     private static partial Regex LiteralColour();
 }

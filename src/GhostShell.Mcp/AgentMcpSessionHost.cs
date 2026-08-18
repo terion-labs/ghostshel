@@ -523,10 +523,9 @@ public sealed class AgentMcpSessionHost :
         {
             if (!_disposed)
             {
-                affectedRuns = _runs
+                affectedRuns = [.. _runs
                     .Where(pair => pair.Value.ReferencesSecret(reference))
-                    .Select(pair => pair.Value)
-                    .ToArray();
+                    .Select(pair => pair.Value)];
                 foreach (var run in affectedRuns)
                 {
                     _runs.TryRemove(
@@ -728,8 +727,8 @@ public sealed class AgentMcpSessionHost :
         }
         catch (McpHostFailureException exception)
         {
-            if (exception.StableCode == "mcp_cancelled"
-                && catalogGenerationToken.IsCancellationRequested
+            if (string.Equals(exception.StableCode, "mcp_cancelled"
+, StringComparison.Ordinal) && catalogGenerationToken.IsCancellationRequested
                 && !cancellationToken.IsCancellationRequested
                 && !_testShutdown.IsCancellationRequested)
             {
@@ -739,8 +738,8 @@ public sealed class AgentMcpSessionHost :
                     retryable: false);
             }
 
-            if (exception.StableCode == "mcp_cancelled"
-                && timeout.IsCancellationRequested)
+            if (string.Equals(exception.StableCode, "mcp_cancelled"
+, StringComparison.Ordinal) && timeout.IsCancellationRequested)
             {
                 return CreateTestCancellationFailure(
                     cancellationToken,
@@ -785,7 +784,7 @@ public sealed class AgentMcpSessionHost :
             _catalogEventsStopped = true;
             catalogGeneration = _catalogGenerationSource;
             testProfileGenerations =
-                _testProfileGenerationSources.Values.ToArray();
+                [.. _testProfileGenerationSources.Values];
             _testProfileGenerationSources.Clear();
         }
 
@@ -816,7 +815,7 @@ public sealed class AgentMcpSessionHost :
             }
 
             _disposed = true;
-            runs = _runs.Values.ToArray();
+            runs = [.. _runs.Values];
             _runs.Clear();
             foreach (var run in runs)
             {
@@ -1069,7 +1068,7 @@ public sealed class AgentMcpSessionHost :
                 }
             }
 
-            staleRuns = removedRuns.ToArray();
+            staleRuns = [.. removedRuns];
         }
         finally
         {
@@ -1695,12 +1694,11 @@ public sealed class AgentMcpSessionHost :
                     variable.Reference,
                     SecretBindingKind.ProcessEnvironment))
                 .ToArray(),
-            McpServerTransport.StreamableHttp http => http.Headers
+            McpServerTransport.StreamableHttp http => [.. http.Headers
                 .Select(header => new SecretBinding(
                     header.Name,
                     header.Reference,
-                    SecretBindingKind.HttpHeader))
-                .ToArray(),
+                    SecretBindingKind.HttpHeader))],
             _ => throw new McpHostFailureException(
                 "mcp_transport_unsupported",
                 "The MCP profile transport is unsupported."),
@@ -2123,7 +2121,7 @@ public sealed class AgentMcpSessionHost :
             PolicyGeneration = policyGeneration;
             AuthorityRevocationToken = authorityRevocationToken;
             _profiles = new ReadOnlyCollection<ProfileSession>(
-                profiles.ToArray());
+                [.. profiles]);
             _tools = profiles
                 .SelectMany(profile => profile.Manifests.Select(
                     tool => new ProfileToolBinding(
@@ -2264,7 +2262,7 @@ public sealed class AgentMcpSessionHost :
 
         public IReadOnlyList<AgentMcpToolManifest> Manifests { get; } =
             new ReadOnlyCollection<AgentMcpToolManifest>(
-                manifests.ToArray());
+                [.. manifests]);
 
         public IReadOnlyDictionary<string, string> ProtocolToolNames { get; } =
             new ReadOnlyDictionary<string, string>(
@@ -2336,5 +2334,6 @@ public sealed class AgentMcpSessionHost :
         Exception? innerException = null) : Exception(message, innerException)
     {
         public string StableCode { get; } = stableCode;
+
     }
 }

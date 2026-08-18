@@ -74,10 +74,7 @@ internal sealed partial class ShellNotificationCenter
         _nativeNotifications = nativeNotifications;
         _notificationActivated = notificationActivated;
         _timeProvider = timeProvider ?? TimeProvider.System;
-        if (_nativeNotifications is not null)
-        {
-            _nativeNotifications.Activated += OnNativeNotificationActivated;
-        }
+        _nativeNotifications?.Activated += OnNativeNotificationActivated;
     }
 
     public IReadOnlyList<ShellNotificationRecord> History => _history;
@@ -217,10 +214,7 @@ internal sealed partial class ShellNotificationCenter
         _workspaceNotifications.Clear();
         _workspaceSourceNotifications.Clear();
         _history.Clear();
-        if (_nativeNotifications is not null)
-        {
-            _nativeNotifications.Activated -= OnNativeNotificationActivated;
-        }
+        _nativeNotifications?.Activated -= OnNativeNotificationActivated;
 
         _lifetime.Cancel();
     }

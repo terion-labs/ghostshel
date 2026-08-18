@@ -16,7 +16,7 @@ public sealed class RuntimeRecoveryDataControlContractsTests
         var inventory = new RuntimeRecoveryInventory(source, hasAdditionalRuns: false);
         source[0] = Summary("mutated", snapshotCount: 1, payloadBytes: 1);
 
-        Assert.Equal(["run-one", "run-two"], inventory.Runs.Select(item => item.RunId));
+        Assert.Equal(["run-one", "run-two"], inventory.Runs.Select(item => item.RunId), StringComparer.Ordinal);
         Assert.Equal(2, inventory.ListedRunCount);
         Assert.Equal(3, inventory.ListedSnapshotCount);
         Assert.Equal(17, inventory.ListedPayloadBytes);

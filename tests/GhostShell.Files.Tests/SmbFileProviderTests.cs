@@ -23,7 +23,7 @@ public sealed class SmbFileProviderTests
         Assert.False(provider.Capabilities.Supports(FileProviderCapability.AccessControlLists));
         Assert.Contains(
             provider.Diagnostics,
-            diagnostic => diagnostic.StableCode == "smb_transport_security_unverified");
+            diagnostic => string.Equals(diagnostic.StableCode, "smb_transport_security_unverified", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -35,7 +35,7 @@ public sealed class SmbFileProviderTests
 
         Assert.Contains(
             provider.Diagnostics,
-            diagnostic => diagnostic.StableCode == "smb_guest_authentication");
+            diagnostic => string.Equals(diagnostic.StableCode, "smb_guest_authentication", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -144,7 +144,10 @@ public sealed class SmbFileProviderTests
 
         Assert.Equal(expected, error.Code.ToString());
         Assert.Equal(retryable, error.Retryable);
-        Assert.DoesNotContain(status.ToString("X8"), error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            status.ToString("X8", System.Globalization.CultureInfo.InvariantCulture),
+            error.Message,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -220,7 +223,7 @@ public sealed class SmbFileProviderTests
             .Select(parameter => parameter.ParameterType.Assembly.GetName().Name)
             .ToArray();
 
-        Assert.DoesNotContain("SMBLibrary", parameterAssemblies);
+        Assert.DoesNotContain("SMBLibrary", parameterAssemblies, StringComparer.Ordinal);
     }
 
     private sealed class ThrowingSecretVault : ISecretVault

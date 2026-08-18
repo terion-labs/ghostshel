@@ -161,10 +161,10 @@ public abstract record AgentDatabaseReadRequest
         public DatabaseTableReadRequest ToSessionRequest() => new(
             Reference,
             new DatabaseTableQuery(
-                Filters.Select(filter => filter.ToSessionFilter()).ToArray(),
-                Sorts.Select(sort => new DatabaseSort(
+                [.. Filters.Select(filter => filter.ToSessionFilter())],
+                [.. Sorts.Select(sort => new DatabaseSort(
                     sort.ColumnName,
-                    sort.Descending)).ToArray(),
+                    sort.Descending))],
                 Offset,
                 Limit,
                 Columns,
@@ -176,7 +176,7 @@ public abstract record AgentDatabaseReadRequest
         {
             if (values is null || values.Count == 0)
             {
-                return Array.Empty<string>();
+                return [];
             }
 
             if (values.Count > 64)
@@ -440,7 +440,8 @@ public abstract record AgentDatabaseFilterValue
         public Text(string value)
         {
             ArgumentNullException.ThrowIfNull(value);
-            if (value.Length > 4_096 || value.Contains('\0'))
+            if (value.Length > 4_096
+                || value.Contains('\0', StringComparison.Ordinal))
             {
                 throw new ArgumentException(
                     "A database text filter value is invalid.",
@@ -504,7 +505,7 @@ public abstract record AgentDatabaseFilterValue
                 throw new ArgumentOutOfRangeException(nameof(values));
             }
 
-            Values = new ReadOnlyCollection<AgentDatabaseFilterValue>(values
+            Values = new ReadOnlyCollection<AgentDatabaseFilterValue>([.. values
                 .Select(value => value switch
                 {
                     null => throw new ArgumentException(
@@ -514,8 +515,7 @@ public abstract record AgentDatabaseFilterValue
                         "A database filter list cannot be nested.",
                         nameof(values)),
                     _ => value,
-                })
-                .ToArray());
+                })]);
         }
 
         public IReadOnlyList<AgentDatabaseFilterValue> Values { get; }

@@ -1,6 +1,6 @@
+using System.Collections.Immutable;
 using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
-using System.Collections.Immutable;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -764,13 +764,13 @@ internal sealed class AnthropicAgentProvider(
                             toolIndex,
                             id,
                             name,
-                            initialInput == "{}" ? null : initialInput);
+string.Equals(initialInput, "{}", StringComparison.Ordinal) ? null : initialInput);
                         _blocks.Add(state);
                         events.Add(new AgentProviderEvent.ToolCallStarted(
                             toolIndex,
                             id,
                             name));
-                        if (initialInput != "{}")
+                        if (!string.Equals(initialInput, "{}", StringComparison.Ordinal))
                         {
                             state.HasArguments = true;
                             events.Add(new AgentProviderEvent.ToolCallArgumentsDelta(
@@ -818,7 +818,7 @@ internal sealed class AnthropicAgentProvider(
             var block = OpenBlock(root);
             var delta = AiProviderJson.RequiredObject(root, "delta");
             var deltaType = AiProviderJson.RequiredBoundedString(delta, "type", 64);
-            if (block.Kind == ContentBlockKind.Text && deltaType == "text_delta")
+            if (block.Kind == ContentBlockKind.Text && string.Equals(deltaType, "text_delta", StringComparison.Ordinal))
             {
                 var text = RequiredFragment(delta, "text");
                 block.AppendContent(text);
@@ -826,7 +826,7 @@ internal sealed class AnthropicAgentProvider(
                 return;
             }
 
-            if (block.Kind == ContentBlockKind.Tool && deltaType == "input_json_delta")
+            if (block.Kind == ContentBlockKind.Tool && string.Equals(deltaType, "input_json_delta", StringComparison.Ordinal))
             {
                 var partialJson = RequiredFragment(delta, "partial_json");
                 block.AppendContent(partialJson);
@@ -838,7 +838,7 @@ internal sealed class AnthropicAgentProvider(
             }
 
             if (block.Kind == ContentBlockKind.Reasoning
-                && deltaType == "thinking_delta")
+                && string.Equals(deltaType, "thinking_delta", StringComparison.Ordinal))
             {
                 var summary = RequiredFragment(delta, "thinking");
                 block.AppendContent(summary);
@@ -847,7 +847,7 @@ internal sealed class AnthropicAgentProvider(
             }
 
             if (block.Kind == ContentBlockKind.SuppressedReasoning
-                && deltaType == "thinking_delta")
+                && string.Equals(deltaType, "thinking_delta", StringComparison.Ordinal))
             {
                 block.AppendContent(RequiredFragment(delta, "thinking"));
                 return;
@@ -855,7 +855,7 @@ internal sealed class AnthropicAgentProvider(
 
             if ((block.Kind is ContentBlockKind.Reasoning
                     or ContentBlockKind.SuppressedReasoning)
-                && deltaType == "signature_delta")
+                && string.Equals(deltaType, "signature_delta", StringComparison.Ordinal))
             {
                 block.AppendSignature(RequiredReplayFragment(delta, "signature"));
                 return;

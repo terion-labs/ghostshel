@@ -368,9 +368,7 @@ public sealed partial class DatabaseViewerConformanceTests
     private static IReadOnlyList<DatabaseColumnEdit> BuildKeys(
         DatabaseObjectDetails details,
         LoadedRow row) =>
-        details.PrimaryKey
-            .Select(column => FromValue(column.Name, Value(row, column.Name)))
-            .ToArray();
+        [.. details.PrimaryKey.Select(column => FromValue(column.Name, Value(row, column.Name)))];
 
     private static DatabaseColumnEdit Original(LoadedRow row, string columnName) =>
         FromValue(columnName, Value(row, columnName));

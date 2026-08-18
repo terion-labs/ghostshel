@@ -98,7 +98,7 @@ public sealed class DatabaseConnectionEditorViewModel : ObservableObject
         _existingId = existing.Id;
         _existingInlineTunnel = existing.InlineTunnel;
         _name = existing.Name;
-        _selectedDriver = Drivers.FirstOrDefault(item => item.Id == existing.DriverId)
+        _selectedDriver = Drivers.FirstOrDefault(item => string.Equals(item.Id, existing.DriverId, StringComparison.Ordinal))
             ?? Drivers[0];
         _selectedTunnel = existing.InlineTunnel is not null
             ? TunnelOptions.First(item => item.IsInline)
@@ -316,8 +316,7 @@ public sealed class DatabaseConnectionEditorViewModel : ObservableObject
         }
     }
 
-    public bool TunnelUsesPassword =>
-        TunnelAuthentication == PasswordAuthentication;
+    public bool TunnelUsesPassword => string.Equals(TunnelAuthentication, PasswordAuthentication, StringComparison.Ordinal);
 
     public string TestStatus
     {

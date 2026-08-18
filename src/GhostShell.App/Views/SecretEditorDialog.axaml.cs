@@ -1,8 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
-using GhostShell.App.ViewModels;
-
 using GhostShell.App.Controls;
+using GhostShell.App.ViewModels;
 
 namespace GhostShell.App.Views;
 

@@ -210,7 +210,8 @@ public sealed class DatabaseValueMaterializerTests
         public string ToString(string? format, IFormatProvider? formatProvider) =>
             value.ToString(format, formatProvider);
 
-        public override string ToString() => value.ToString();
+        public override string ToString() =>
+            value.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private sealed class ConvertibleDecimal(decimal value) : IConvertible

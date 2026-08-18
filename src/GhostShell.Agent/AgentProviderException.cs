@@ -41,6 +41,7 @@ public abstract class AgentProviderException : Exception
     public string StableCode { get; }
 
     public string PublicMessage { get; }
+
 }
 
 public sealed class AgentProviderFailure

@@ -222,7 +222,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
         await panel.ConnectAsync();
 
         Assert.True(panel.IsConnected);
-        Assert.Equal(["people", "names"], panel.Tables.Select(table => table.Name));
+        Assert.Equal(["people", "names"], panel.Tables.Select(table => table.Name), StringComparer.Ordinal);
         Assert.Equal("sqlite:Data Source=demo.db", panel.RecoveryTarget);
 
         // Editing the target drops the connected state until re-probed.
@@ -264,7 +264,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
         await panel.RunQueryAsync();
 
         Assert.True(panel.HasResults);
-        Assert.Equal(["id", "name"], panel.ResultColumns.Select(column => column.Name));
+        Assert.Equal(["id", "name"], panel.ResultColumns.Select(column => column.Name), StringComparer.Ordinal);
         var lastRow = panel.ResultRows[^1];
         Assert.True(lastRow.Cells[1].IsNull);
         Assert.Equal("NULL", lastRow.Cells[1].Text);
@@ -1092,10 +1092,10 @@ public sealed class DatabaseRuntimePanelViewModelTests
         Assert.Equal(1L, panel.ResultRows[0].Cells[0].RawValue);
         Assert.True(panel.CanEditRows);
         Assert.Null(panel.ReadOnlyReason);
-        Assert.Equal(["id", "name"], panel.StructureColumns.Select(column => column.Name));
+        Assert.Equal(["id", "name"], panel.StructureColumns.Select(column => column.Name), StringComparer.Ordinal);
         Assert.Equal(
             ["pk_people", "ix_people_name"],
-            panel.Indexes.Select(index => index.Name));
+            panel.Indexes.Select(index => index.Name), StringComparer.Ordinal);
 
         panel.SetMode(DatabaseWorkspaceMode.Structure);
         Assert.True(panel.ShowStructure);
@@ -1142,7 +1142,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
         await panel.Initialization;
         await panel.PreviewTableAsync(panel.Tables[0]);
 
-        panel.FilterColumn = panel.FilterColumns.Single(column => column.Name == "id");
+        panel.FilterColumn = panel.FilterColumns.Single(column => string.Equals(column.Name, "id", StringComparison.Ordinal));
         panel.FilterOperator = panel.FilterOperators.Single(option =>
             option.Operator == DatabaseFilterOperator.GreaterThan);
         panel.FilterValue = "40";
@@ -1171,19 +1171,19 @@ public sealed class DatabaseRuntimePanelViewModelTests
         await panel.PreviewTableAsync(panel.Tables[0]);
 
         var first = panel.FilterRows[0];
-        first.Column = first.Columns.Single(column => column.Name == "id");
+        first.Column = first.Columns.Single(column => string.Equals(column.Name, "id", StringComparison.Ordinal));
         first.Operator = first.Operators.Single(option =>
             option.Operator == DatabaseFilterOperator.GreaterThan);
         first.Value = "40";
         panel.AddFilterRow(first);
         var second = panel.FilterRows[1];
-        second.Column = second.Columns.Single(column => column.Name == "name");
+        second.Column = second.Columns.Single(column => string.Equals(column.Name, "name", StringComparison.Ordinal));
         second.Operator = second.Operators.Single(option =>
             option.Operator == DatabaseFilterOperator.Contains);
         second.Value = "Ada";
         panel.AddFilterRow(second);
         var third = panel.FilterRows[2];
-        third.Column = third.Columns.Single(column => column.Name == "name");
+        third.Column = third.Columns.Single(column => string.Equals(column.Name, "name", StringComparison.Ordinal));
         third.Operator = third.Operators.Single(option =>
             option.Operator == DatabaseFilterOperator.Contains);
         third.Value = "ignored";
@@ -1224,7 +1224,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
         await panel.PreviewTableAsync(panel.Tables[0]);
         panel.SelectRow(panel.ResultRows[0]);
 
-        var field = panel.SelectedRowFields.Single(candidate => candidate.Name == "name");
+        var field = panel.SelectedRowFields.Single(candidate => string.Equals(candidate.Name, "name", StringComparison.Ordinal));
         Assert.True(field.CanEdit);
         Assert.False(panel.HasPendingChanges);
 
@@ -1290,7 +1290,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
         // The view binds the derived surface flag; if the mode change does not
         // raise it, the data grid stays visible under the structure view.
         Assert.False(panel.ShowDataSurface);
-        Assert.Contains(nameof(DatabaseRuntimePanelViewModel.ShowDataSurface), raised);
+        Assert.Contains(nameof(DatabaseRuntimePanelViewModel.ShowDataSurface), raised, StringComparer.Ordinal);
         Assert.True(panel.ShowStructure);
     }
 
@@ -1312,7 +1312,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
         Assert.Null(panel.SelectedObject);
         Assert.Equal(
             ["Schema", "Name", "Kind"],
-            panel.ResultColumns.Select(column => column.Name).ToArray());
+            [.. panel.ResultColumns.Select(column => column.Name)]);
         Assert.Equal(panel.Tables.Count, panel.ResultRows.Count);
         Assert.Contains("objects", panel.ResultSummary, StringComparison.Ordinal);
         // A catalog is a fact sheet: no editing, no paging, no filtering.
@@ -1337,7 +1337,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
         Assert.True(panel.IsDatabaseObjectsOverview);
         Assert.Null(panel.SelectedObject);
         Assert.Equal(panel.Tables.Count, panel.ResultRows.Count);
-        Assert.Equal(["Schema", "Name", "Kind"], panel.ResultColumns.Select(column => column.Name));
+        Assert.Equal(["Schema", "Name", "Kind"], panel.ResultColumns.Select(column => column.Name), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -1400,7 +1400,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
             connectionString: "Data Source=demo.db");
         await panel.Initialization;
         await panel.PreviewTableAsync(panel.Tables[0]);
-        panel.FilterColumn = panel.FilterColumns.Single(column => column.Name == "name");
+        panel.FilterColumn = panel.FilterColumns.Single(column => string.Equals(column.Name, "name", StringComparison.Ordinal));
         panel.FilterOperator = panel.FilterOperators.Single(option =>
             option.Operator == DatabaseFilterOperator.NotContains);
         panel.FilterValue = "other";
@@ -1417,7 +1417,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
         var ascendingSort = Assert.Single(ascending.Sorts);
         Assert.Equal("id", ascendingSort.ColumnName);
         Assert.False(ascendingSort.Descending);
-        Assert.Equal(false, panel.ResultColumns.Single(column => column.Name == "id").SortDescending);
+        Assert.Equal(false, panel.ResultColumns.Single(column => string.Equals(column.Name, "id", StringComparison.Ordinal)).SortDescending);
 
         await panel.ToggleTableSortAsync("id");
 
@@ -1428,7 +1428,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
         var descendingSort = Assert.Single(descending.Sorts);
         Assert.Equal("id", descendingSort.ColumnName);
         Assert.True(descendingSort.Descending);
-        Assert.Equal(true, panel.ResultColumns.Single(column => column.Name == "id").SortDescending);
+        Assert.Equal(true, panel.ResultColumns.Single(column => string.Equals(column.Name, "id", StringComparison.Ordinal)).SortDescending);
     }
 
     [Fact]
@@ -1451,7 +1451,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
         Assert.Equal(987, panel.TotalRows);
         Assert.Equal("987", panel.TotalRowsText);
 
-        panel.FilterColumn = panel.FilterColumns.Single(column => column.Name == "name");
+        panel.FilterColumn = panel.FilterColumns.Single(column => string.Equals(column.Name, "name", StringComparison.Ordinal));
         panel.FilterOperator = panel.FilterOperators.Single(option =>
             option.Operator == DatabaseFilterOperator.Contains);
         panel.FilterValue = "Ada";
@@ -1507,7 +1507,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
         Assert.Equal(successfulQuery, client.LastTableQuery);
         Assert.Same(successfulRows, panel.ResultRows);
         Assert.Same(successfulColumns, panel.ResultColumns);
-        Assert.Equal(false, panel.ResultColumns.Single(column => column.Name == "id").SortDescending);
+        Assert.Equal(false, panel.ResultColumns.Single(column => string.Equals(column.Name, "id", StringComparison.Ordinal)).SortDescending);
     }
 
     [Fact]
@@ -1603,7 +1603,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
         Assert.True(panel.CanSortTable);
         Assert.True(panel.CanRefreshTable);
 
-        panel.FilterColumn = panel.FilterColumns.Single(column => column.Name == "name");
+        panel.FilterColumn = panel.FilterColumns.Single(column => string.Equals(column.Name, "name", StringComparison.Ordinal));
         panel.FilterOperator = panel.FilterOperators.Single(option =>
             option.Operator == DatabaseFilterOperator.Contains);
         panel.FilterValue = "Ada";
@@ -1611,7 +1611,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
 
         var filtered = Assert.IsType<DatabaseTableQuery>(client.LastReadQuery);
         Assert.Equal(sql, client.LastReadQuerySql);
-        Assert.Equal(["id", "name"], client.LastReadQueryColumns!.Select(column => column.Name));
+        Assert.Equal(["id", "name"], client.LastReadQueryColumns!.Select(column => column.Name), StringComparer.Ordinal);
         var condition = Assert.Single(filtered.Filters);
         Assert.Equal("name", condition.ColumnName);
         Assert.Equal(DatabaseFilterOperator.Contains, condition.Operator);
@@ -1625,7 +1625,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
         var sort = Assert.Single(sorted.Sorts);
         Assert.Equal("id", sort.ColumnName);
         Assert.False(sort.Descending);
-        Assert.Equal(false, panel.ResultColumns.Single(column => column.Name == "id").SortDescending);
+        Assert.Equal(false, panel.ResultColumns.Single(column => string.Equals(column.Name, "id", StringComparison.Ordinal)).SortDescending);
         Assert.True(panel.HasNextPage);
         Assert.False(panel.CanGoToNextPage);
 
@@ -1697,15 +1697,15 @@ public sealed class DatabaseRuntimePanelViewModelTests
         const string sql = "SELECT * FROM changing_shape";
         panel.QueryText = sql;
         await panel.RunQueryAsync();
-        Assert.Equal(["id", "name"], panel.ResultColumns.Select(column => column.Name));
+        Assert.Equal(["id", "name"], panel.ResultColumns.Select(column => column.Name), StringComparer.Ordinal);
 
         client.IncludeQueryExtraColumn = true;
         await panel.RunQueryAsync();
 
         Assert.Equal(
             ["id", "name", "extra"],
-            panel.ResultColumns.Select(column => column.Name));
-        panel.FilterColumn = panel.FilterColumns.Single(column => column.Name == "extra");
+            panel.ResultColumns.Select(column => column.Name), StringComparer.Ordinal);
+        panel.FilterColumn = panel.FilterColumns.Single(column => string.Equals(column.Name, "extra", StringComparison.Ordinal));
         panel.FilterOperator = panel.FilterOperators.Single(option =>
             option.Operator == DatabaseFilterOperator.Equal);
         panel.FilterValue = "Ada";
@@ -1713,7 +1713,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
 
         Assert.Equal(
             ["id", "name", "extra"],
-            client.LastReadQueryColumns!.Select(column => column.Name));
+            client.LastReadQueryColumns!.Select(column => column.Name), StringComparer.Ordinal);
         Assert.Equal("extra", Assert.Single(client.LastReadQuery!.Filters).ColumnName);
     }
 
@@ -1836,7 +1836,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
             connectionString: "Data Source=demo.db");
         await panel.Initialization;
         await panel.PreviewTableAsync(panel.Tables[0]);
-        panel.FilterColumn = panel.FilterColumns.Single(column => column.Name == "name");
+        panel.FilterColumn = panel.FilterColumns.Single(column => string.Equals(column.Name, "name", StringComparison.Ordinal));
         panel.FilterOperator = panel.FilterOperators.Single(option =>
             option.Operator == DatabaseFilterOperator.NotContains);
         panel.FilterValue = "other";
@@ -2059,10 +2059,10 @@ public sealed class DatabaseRuntimePanelViewModelTests
         var filter = Assert.Single(query.Filters);
         Assert.Equal("id", filter.ColumnName);
         Assert.Equal(DatabaseFilterOperator.In, filter.Operator);
-        Assert.Equal(new object?[] { 1L }, Assert.IsType<object?[]>(filter.Value));
+        Assert.Equal([1L], Assert.IsType<object?[]>(filter.Value));
         Assert.Equal(DatabaseFilterOperator.In, panel.FilterOperator?.Operator);
 
-        panel.FilterColumn = panel.FilterColumns.Single(column => column.Name == "id");
+        panel.FilterColumn = panel.FilterColumns.Single(column => string.Equals(column.Name, "id", StringComparison.Ordinal));
         panel.FilterOperator = panel.FilterOperators.Single(option =>
             option.Operator == DatabaseFilterOperator.NotIn);
         panel.FilterValue = "1, 2,\"3\"";
@@ -2071,7 +2071,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
         filter = Assert.Single(Assert.IsType<DatabaseTableQuery>(client.LastTableQuery).Filters);
         Assert.Equal(DatabaseFilterOperator.NotIn, filter.Operator);
         Assert.Equal(
-            new object?[] { 1L, 2L, 3L },
+            [1L, 2L, 3L],
             Assert.IsType<object?[]>(filter.Value));
     }
 
@@ -2119,21 +2119,21 @@ public sealed class DatabaseRuntimePanelViewModelTests
         Assert.Equal("\" a,b \"", panel.FilterValue);
         var filter = Assert.Single(Assert.IsType<DatabaseTableQuery>(client.LastTableQuery).Filters);
         Assert.Equal(
-            new object?[] { " a,b " },
+            [" a,b "],
             Assert.IsType<object?[]>(filter.Value));
 
         await panel.ApplyFilterAsync();
 
         filter = Assert.Single(Assert.IsType<DatabaseTableQuery>(client.LastTableQuery).Filters);
         Assert.Equal(
-            new object?[] { " a,b " },
+            [" a,b "],
             Assert.IsType<object?[]>(filter.Value));
 
         panel.FilterValue = " left , right ";
         await panel.ApplyFilterAsync();
         filter = Assert.Single(Assert.IsType<DatabaseTableQuery>(client.LastTableQuery).Filters);
         Assert.Equal(
-            new object?[] { " left ", " right " },
+            [" left ", " right "],
             Assert.IsType<object?[]>(filter.Value));
     }
 
@@ -2264,7 +2264,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
         panel.AddRow();
 
         var row = Assert.IsType<DatabaseResultRowViewModel>(panel.SelectedRow);
-        var payload = Assert.Single(row.Cells, cell => cell.Column.Name == "payload");
+        var payload = Assert.Single(row.Cells, cell => string.Equals(cell.Column.Name, "payload", StringComparison.Ordinal));
         Assert.False(payload.IsEditable);
         Assert.False(payload.IsValid);
         Assert.Contains("requires a value this viewer cannot edit safely", payload.ValidationError);
@@ -2745,7 +2745,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
             LastTunnel = tunnel;
             LastConnectionString = connectionString;
             LastReadQuerySql = sourceSql;
-            LastReadQueryColumns = sourceColumns.ToArray();
+            LastReadQueryColumns = [.. sourceColumns];
             LastReadQuery = query;
             return Task.FromResult(new DatabaseTablePage(
                 BuildQueryPage(sourceColumns),
@@ -2768,7 +2768,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
             LastTunnel = tunnel;
             LastConnectionString = connectionString;
             LastReadQuerySql = sourceSql;
-            LastReadQueryColumns = sourceColumns.ToArray();
+            LastReadQueryColumns = [.. sourceColumns];
             return Task.FromResult(TableTotalRows);
         }
 
@@ -3186,9 +3186,7 @@ public sealed class DatabaseRuntimePanelViewModelTests
             var second = columns.Select(column => ValueFor(column, 2)).ToArray();
             IReadOnlyList<IReadOnlyList<DatabaseValue>> typedRows = [first, second];
             var displayRows = typedRows
-                .Select(row => (IReadOnlyList<string?>)row
-                    .Select(value => value.IsNull ? null : value.DisplayText)
-                    .ToArray())
+                .Select(row => (IReadOnlyList<string?>)[.. row.Select(value => value.IsNull ? null : value.DisplayText)])
                 .ToArray();
             return new DatabaseQueryPage(
                 columns,

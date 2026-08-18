@@ -19,7 +19,7 @@ namespace GhostShell.Databases.Tests;
 public sealed class DatabaseConnectionUrlTests
 {
     private static IDatabaseDriver Driver(string id) =>
-        BuiltInDatabaseDrivers.All.Single(driver => driver.Descriptor.Id == id);
+        BuiltInDatabaseDrivers.All.Single(driver => string.Equals(driver.Descriptor.Id, id, StringComparison.Ordinal));
 
     private static DatabaseConnectionDetails Read(string id, string url)
     {
@@ -213,7 +213,7 @@ public sealed class DatabaseConnectionUrlTests
 
         var normalized = driver.NormalizeConnectionString(url);
 
-        Assert.NotEqual(url, normalized);
+        Assert.NotEqual(url, normalized, StringComparer.Ordinal);
         Assert.DoesNotContain("://", normalized, StringComparison.Ordinal);
     }
 

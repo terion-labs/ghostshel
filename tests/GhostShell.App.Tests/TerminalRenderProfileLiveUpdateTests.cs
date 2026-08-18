@@ -34,7 +34,7 @@ public sealed class TerminalRenderProfileLiveUpdateTests
 
         panel.RenderProfile = snapshot;
 
-        Assert.Contains(nameof(ProbePanel.RenderProfile), changed);
+        Assert.Contains(nameof(ProbePanel.RenderProfile), changed, StringComparer.Ordinal);
         Assert.Equal(snapshot, panel.RenderProfile);
     }
 
@@ -92,7 +92,7 @@ public sealed class TerminalRenderProfileLiveUpdateTests
 
         var host = Assert.Single(
             view.Descendants(),
-            element => element.Name.LocalName == "TerminalPresentationHost");
+            element => string.Equals(element.Name.LocalName, "TerminalPresentationHost", StringComparison.Ordinal));
 
         Assert.Equal(
             "{Binding RenderProfile}",

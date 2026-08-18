@@ -275,7 +275,7 @@ public sealed partial class GovernedAgentRuntimeTests
             ],
             3 when request.Messages.Any(message =>
                 message.Role == AgentMessageRole.Summary)
-                && request.Messages[^1].Content == "Second question" =>
+                && string.Equals(request.Messages[^1].Content, "Second question", StringComparison.Ordinal) =>
                 ProviderRound.Answer("Second answer"),
             _ => throw new InvalidOperationException("Unexpected provider call."),
         });
@@ -332,11 +332,10 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Equal(2, provider.Requests.Count);
         Assert.DoesNotContain(
             provider.Requests,
-            request => request.Messages.Any(message =>
-                message.Content == "Second question"));
+            request => request.Messages.Any(message => string.Equals(message.Content, "Second question", StringComparison.Ordinal)));
         Assert.DoesNotContain(
             fixture.Runtime.Snapshot.Messages,
-            message => message.Content == "Second question");
+            message => string.Equals(message.Content, "Second question", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -448,13 +447,12 @@ public sealed partial class GovernedAgentRuntimeTests
                 new AgentProviderEvent.ResponseCompleted(AgentProviderStopReason.EndTurn),
             ],
             4 when request.Messages.Select(message => message.Role).SequenceEqual(
-                new[]
-                {
+                [
                     AgentMessageRole.System,
                     AgentMessageRole.Summary,
                     AgentMessageRole.Assistant,
                     AgentMessageRole.Tool,
-                }) => ProviderRound.Answer("Continued after split-turn maintenance."),
+                ]) => ProviderRound.Answer("Continued after split-turn maintenance."),
             _ => throw new InvalidOperationException("Unexpected provider call."),
         });
         await using var fixture = new RuntimeFixture(provider);
@@ -506,7 +504,7 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Equal(GovernedAgentState.Ready, fixture.Runtime.Snapshot.State);
         Assert.Equal(
             ["Inspect the terminal.", "The terminal is ready."],
-            fixture.Runtime.Snapshot.Messages.Select(message => message.Content));
+            fixture.Runtime.Snapshot.Messages.Select(message => message.Content), StringComparer.Ordinal);
         var providerRequests = fixture.Provider.Requests.ToArray();
         Assert.Equal(2, providerRequests.Length);
         Assert.All(
@@ -566,8 +564,8 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.True(pending.TemporarilyYieldsTerminalInput);
         Assert.Contains(
             pending.Presentation.Arguments,
-            argument => argument.Name == "text"
-                && argument.DisplayValue == "date");
+            argument => string.Equals(argument.Name, "text"
+, StringComparison.Ordinal) && string.Equals(argument.DisplayValue, "date", StringComparison.Ordinal));
         Assert.Empty(fixture.Terminal.Actions);
 
         var decision = await fixture.Runtime.DecideAsync(
@@ -617,8 +615,8 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.True(pending.TemporarilyYieldsTerminalInput);
         Assert.Contains(
             pending.Presentation.Arguments,
-            argument => argument.Name == "text"
-                && argument.DisplayValue == @"first\n\tsecond");
+            argument => string.Equals(argument.Name, "text"
+, StringComparison.Ordinal) && string.Equals(argument.DisplayValue, @"first\n\tsecond", StringComparison.Ordinal));
         Assert.Empty(fixture.Terminal.Actions);
 
         Assert.True((await fixture.Runtime.DecideAsync(
@@ -709,12 +707,12 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.True(pending.TemporarilyYieldsTerminalInput);
         Assert.Contains(
             pending.Presentation.Arguments,
-            argument => argument.Name == "column"
-                && argument.DisplayValue == "12");
+            argument => string.Equals(argument.Name, "column"
+, StringComparison.Ordinal) && string.Equals(argument.DisplayValue, "12", StringComparison.Ordinal));
         Assert.Contains(
             pending.Presentation.Arguments,
-            argument => argument.Name == "row"
-                && argument.DisplayValue == "8");
+            argument => string.Equals(argument.Name, "row"
+, StringComparison.Ordinal) && string.Equals(argument.DisplayValue, "8", StringComparison.Ordinal));
         Assert.Empty(fixture.Terminal.Actions);
 
         Assert.True((await fixture.Runtime.DecideAsync(
@@ -775,8 +773,8 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.True(pending.TemporarilyYieldsTerminalInput);
         Assert.Contains(
             pending.Presentation.Arguments,
-            argument => argument.Name == "chord"
-                && argument.DisplayValue == "Ctrl+D");
+            argument => string.Equals(argument.Name, "chord"
+, StringComparison.Ordinal) && string.Equals(argument.DisplayValue, "Ctrl+D", StringComparison.Ordinal));
         Assert.Empty(fixture.Terminal.Actions);
 
         Assert.True((await fixture.Runtime.DecideAsync(
@@ -995,11 +993,11 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Contains(
             requests[1].Messages,
             message => message.Role == AgentMessageRole.User
-                && message.Content == "Hello.");
+                && string.Equals(message.Content, "Hello.", StringComparison.Ordinal));
         Assert.Contains(
             requests[1].Messages,
             message => message.Role == AgentMessageRole.Assistant
-                && message.Content == "Completed.");
+                && string.Equals(message.Content, "Completed.", StringComparison.Ordinal));
         var currentSystemPrompt = Assert.Single(
             requests[1].Messages,
             message => message.Role == AgentMessageRole.System);
@@ -1133,8 +1131,7 @@ public sealed partial class GovernedAgentRuntimeTests
                 "read-after-context-refresh",
                 BuiltInAgentTools.TerminalReadScreen,
                 "{}"),
-            2 when request.Messages.Any(message =>
-                message.ToolResult?.StableCode == "tool_context_unavailable") =>
+            2 when request.Messages.Any(message => string.Equals(message.ToolResult?.StableCode, "tool_context_unavailable", StringComparison.Ordinal)) =>
                 ProviderRound.Answer("The panel context could not be refreshed."),
             _ => throw new InvalidOperationException(
                 "The context-failure provider received an unexpected round."),
@@ -1196,7 +1193,7 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Equal(GovernedAgentState.Ready, fixture.Runtime.Snapshot.State);
         Assert.Equal(
             ["Inspect the terminal.", "Completed."],
-            fixture.Runtime.Snapshot.Messages.Select(message => message.Content));
+            fixture.Runtime.Snapshot.Messages.Select(message => message.Content), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -1258,7 +1255,7 @@ public sealed partial class GovernedAgentRuntimeTests
 
         Assert.Equal(
             ["first", "Completed."],
-            restored.Runtime.Snapshot.Messages.Select(message => message.Content));
+            restored.Runtime.Snapshot.Messages.Select(message => message.Content), StringComparer.Ordinal);
         Assert.Equal(
             new AiProviderProfileId("provider-1"),
             Assert.Single(restored.Runtime.Snapshot.Conversations).ProviderId);
@@ -1277,7 +1274,7 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.True(continued.IsSuccess);
         Assert.Equal(
             ["first", "Completed.", "second", "Completed."],
-            restored.Runtime.Snapshot.Messages.Select(message => message.Content));
+            restored.Runtime.Snapshot.Messages.Select(message => message.Content), StringComparer.Ordinal);
         var continuedRequest = restored.Provider.Requests.ToArray()[0];
         Assert.Contains(
             "Recovered operations terminal",
@@ -1289,7 +1286,7 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.True(continuedCheckpoint.Revision > originalRevision);
         Assert.NotEqual(
             "This conversation could not be saved locally.",
-            restored.Runtime.Snapshot.Status);
+            restored.Runtime.Snapshot.Status, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -1346,7 +1343,7 @@ public sealed partial class GovernedAgentRuntimeTests
                 .Conversation
                 .Where(message => message.Role is
                     AgentMessageRole.User or AgentMessageRole.Assistant)
-                .Select(message => message.Content));
+                .Select(message => message.Content), StringComparer.Ordinal);
 
         provider.ReleaseBlockedCall.TrySetResult();
         Assert.True((await sending.WaitAsync(TimeSpan.FromSeconds(5))).IsSuccess);
@@ -1381,7 +1378,7 @@ public sealed partial class GovernedAgentRuntimeTests
                 "unfinished request",
                 "The previous agent turn was interrupted. No pending tool action was resumed.",
             ],
-            restored.Runtime.Snapshot.Messages.Select(message => message.Content));
+            restored.Runtime.Snapshot.Messages.Select(message => message.Content), StringComparer.Ordinal);
 
         var continued = await restored.Runtime.SendAsync(
             restored.Prompt("continue from the recovered transcript"),
@@ -1403,7 +1400,7 @@ public sealed partial class GovernedAgentRuntimeTests
             fixture.Prompt("first conversation"),
             CancellationToken.None)).IsSuccess);
         var firstRun = fixture.Runtime.Snapshot.Conversations
-            .Single(item => item.Title == "first conversation")
+            .Single(item => string.Equals(item.Title, "first conversation", StringComparison.Ordinal))
             .RunId;
 
         Assert.True(await fixture.Runtime.StartNewConversationAsync(
@@ -1419,10 +1416,10 @@ public sealed partial class GovernedAgentRuntimeTests
             CancellationToken.None));
         Assert.Equal(
             ["first conversation", "Completed."],
-            fixture.Runtime.Snapshot.Messages.Select(message => message.Content));
+            fixture.Runtime.Snapshot.Messages.Select(message => message.Content), StringComparer.Ordinal);
 
         var secondRun = fixture.Runtime.Snapshot.Conversations
-            .Single(item => item.Title == "second conversation")
+            .Single(item => string.Equals(item.Title, "second conversation", StringComparison.Ordinal))
             .RunId;
         Assert.True(await fixture.Runtime.DeleteConversationAsync(
             secondRun,
@@ -1461,7 +1458,7 @@ public sealed partial class GovernedAgentRuntimeTests
             CancellationToken.None));
         Assert.Equal(
             ["first", "Completed."],
-            fixture.Runtime.Snapshot.Messages.Select(message => message.Content));
+            fixture.Runtime.Snapshot.Messages.Select(message => message.Content), StringComparer.Ordinal);
         Assert.Equal(2, checkpoints.Values.Count);
         Assert.Contains(checkpoints.Values, checkpoint => checkpoint.RunId == original.RunId);
 
@@ -1474,7 +1471,7 @@ public sealed partial class GovernedAgentRuntimeTests
             CancellationToken.None)).IsSuccess);
         Assert.Equal(
             ["first", "Completed.", "branched", "Completed."],
-            fixture.Runtime.Snapshot.Messages.Select(message => message.Content));
+            fixture.Runtime.Snapshot.Messages.Select(message => message.Content), StringComparer.Ordinal);
         Assert.Equal(2, checkpoints.Values.Count);
     }
 
@@ -1946,8 +1943,8 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Null(fixture.Runtime.Snapshot.PendingApproval);
         Assert.Contains(
             fixture.Audit.Events,
-            item => item.Action == BuiltInAgentTools.TerminalSendText
-                && item.Outcome == AuditOutcome.Succeeded
+            item => string.Equals(item.Action, BuiltInAgentTools.TerminalSendText
+, StringComparison.Ordinal) && item.Outcome == AuditOutcome.Succeeded
                 && item.Details is AuditDetails.AgentActionDetails
                 {
                     AuthorizationSource: AgentAuthorizationSource.YoloPolicy,
@@ -2079,11 +2076,11 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Contains(
             fixture.Provider.Requests.SelectMany(request => request.Messages),
             message => message.Role == AgentMessageRole.Tool
-                && message.ToolResult?.StableCode == "authority_revoked");
+                && string.Equals(message.ToolResult?.StableCode, "authority_revoked", StringComparison.Ordinal));
         Assert.Contains(
             fixture.Audit.Events,
-            item => item.Action == BuiltInAgentTools.TerminalSendText
-                && item.Outcome == AuditOutcome.Cancelled
+            item => string.Equals(item.Action, BuiltInAgentTools.TerminalSendText
+, StringComparison.Ordinal) && item.Outcome == AuditOutcome.Cancelled
                 && item.Details is AuditDetails.AgentActionDetails
                 {
                     AuthorizationSource: AgentAuthorizationSource.YoloPolicy,
@@ -2112,9 +2109,8 @@ public sealed partial class GovernedAgentRuntimeTests
                 AgentAuthorizationSource.HumanApproval,
             ],
             fixture.Terminal.Permits
-                .Where(permit =>
-                    permit.Authorization.ToolName
-                        == BuiltInAgentTools.TerminalSendText)
+                .Where(permit => string.Equals(permit.Authorization.ToolName
+, BuiltInAgentTools.TerminalSendText, StringComparison.Ordinal))
                 .Select(permit => permit.Authorization.Source));
     }
 
@@ -2436,9 +2432,8 @@ public sealed partial class GovernedAgentRuntimeTests
                     StringComparison.Ordinal));
         Assert.Equal(
             1,
-            fixture.Audit.Events.Count(item =>
-                item.Action == BuiltInAgentTools.TerminalResize
-                && item.Outcome == AuditOutcome.Succeeded));
+            fixture.Audit.Events.Count(item => string.Equals(item.Action, BuiltInAgentTools.TerminalResize
+, StringComparison.Ordinal) && item.Outcome == AuditOutcome.Succeeded));
     }
 
     [Fact]
@@ -2473,11 +2468,11 @@ public sealed partial class GovernedAgentRuntimeTests
         var request = Assert.Single(provider.Requests);
         Assert.DoesNotContain(
             request.Tools,
-            tool => tool.Name == BuiltInAgentTools.TerminalResize);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalResize, StringComparison.Ordinal));
         var context = Assert.Single(fixture.Runtime.Snapshot.ContextItems);
         Assert.DoesNotContain(
             BuiltInAgentTools.TerminalResize,
-            context.SupportedOperations);
+            context.SupportedOperations, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -2518,11 +2513,11 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Contains(
             provider.Requests.SelectMany(request => request.Messages),
             message => message.Role == AgentMessageRole.Tool
-                && message.ToolResult?.StableCode == "input_lease_revoked");
+                && string.Equals(message.ToolResult?.StableCode, "input_lease_revoked", StringComparison.Ordinal));
         Assert.Contains(
             fixture.Audit.Events,
-            item => item.Action == BuiltInAgentTools.TerminalSendKeys
-                && item.Outcome == AuditOutcome.Cancelled);
+            item => string.Equals(item.Action, BuiltInAgentTools.TerminalSendKeys
+, StringComparison.Ordinal) && item.Outcome == AuditOutcome.Cancelled);
     }
 
     private static async Task WaitUntilAsync(Func<bool> predicate)
@@ -2925,7 +2920,7 @@ public sealed partial class GovernedAgentRuntimeTests
             {
                 lock (_gate)
                 {
-                    return _receivedKeys.ToArray();
+                    return [.. _receivedKeys];
                 }
             }
         }
@@ -3414,7 +3409,7 @@ public sealed partial class GovernedAgentRuntimeTests
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            IReadOnlyList<AgentSessionCheckpointSummary> summaries = _values.Values
+            IReadOnlyList<AgentSessionCheckpointSummary> summaries = [.. _values.Values
                 .OrderByDescending(checkpoint => checkpoint.UpdatedAt)
                 .Take(maximumCount)
                 .Select(checkpoint => new AgentSessionCheckpointSummary(
@@ -3422,8 +3417,7 @@ public sealed partial class GovernedAgentRuntimeTests
                     checkpoint.SchemaVersion,
                     checkpoint.Generation,
                     checkpoint.Revision,
-                    checkpoint.UpdatedAt))
-                .ToArray();
+                    checkpoint.UpdatedAt))];
             return ValueTask.FromResult(
                 AgentSessionCheckpointStoreResult<
                     IReadOnlyList<AgentSessionCheckpointSummary>>.Success(summaries));
@@ -3806,7 +3800,7 @@ public sealed partial class GovernedAgentRuntimeTests
                         $"{{\"text\":\"{injectedText}\"}}"),
                 3 when request.Messages.Any(
                     message => message.Role == AgentMessageRole.Tool
-                        && message.ToolResult?.StableCode == "approval_denied") =>
+                        && string.Equals(message.ToolResult?.StableCode, "approval_denied", StringComparison.Ordinal)) =>
                     Answer("The terminal instruction was not authorized."),
                 _ => throw new InvalidOperationException(
                     "The prompt-injection provider received an unexpected round."),
@@ -3822,7 +3816,7 @@ public sealed partial class GovernedAgentRuntimeTests
                     "{}"),
                 2 when request.Messages.Any(
                     message => message.Role == AgentMessageRole.Tool
-                        && message.ToolResult?.StableCode == "tool_succeeded") =>
+                        && string.Equals(message.ToolResult?.StableCode, "tool_succeeded", StringComparison.Ordinal)) =>
                     ToolCall(
                         "provider-injection-self-authorized-paste",
                         BuiltInAgentTools.TerminalPaste,
@@ -3836,16 +3830,16 @@ public sealed partial class GovernedAgentRuntimeTests
                         """),
                 3 when request.Messages.Any(
                     message => message.Role == AgentMessageRole.Tool
-                        && message.ToolResult?.StableCode
-                            == "invalid_tool_arguments") =>
+                        && string.Equals(message.ToolResult?.StableCode
+, "invalid_tool_arguments", StringComparison.Ordinal)) =>
                     ToolCall(
                         "provider-injection-secret-paste",
                         BuiltInAgentTools.TerminalPaste,
                         $$"""{"text":"{{secret}}"}"""),
                 4 when request.Messages.Any(
                     message => message.Role == AgentMessageRole.Tool
-                        && message.ToolResult?.StableCode
-                            == "tool_request_rejected") =>
+                        && string.Equals(message.ToolResult?.StableCode
+, "tool_request_rejected", StringComparison.Ordinal)) =>
                     Answer("The injected paste requests were rejected."),
                 _ => throw new InvalidOperationException(
                     "The paste-injection provider received an unexpected round."),
@@ -3860,15 +3854,15 @@ public sealed partial class GovernedAgentRuntimeTests
                     BuiltInAgentTools.TerminalReadScreen,
                     "{}"),
                 2 when request.Messages.Any(
-                    message => message.ToolResult?.ProviderCallId
-                        == "provider-injection-read") =>
+                    message => string.Equals(message.ToolResult?.ProviderCallId
+, "provider-injection-read", StringComparison.Ordinal)) =>
                     ToolCall(
                         "provider-injection-valid-paste",
                         BuiltInAgentTools.TerminalPaste,
                         JsonSerializer.Serialize(new { text })),
                 3 when request.Messages.Any(
-                    message => message.ToolResult?.ProviderCallId
-                        == "provider-injection-valid-paste") =>
+                    message => string.Equals(message.ToolResult?.ProviderCallId
+, "provider-injection-valid-paste", StringComparison.Ordinal)) =>
                     Answer("The approved paste was sent."),
                 _ => throw new InvalidOperationException(
                     "The valid paste-injection provider received an unexpected round."),
@@ -3884,7 +3878,7 @@ public sealed partial class GovernedAgentRuntimeTests
                     $"{{\"panel_id\":\"{panelId.Value}\"}}"),
                 2 when request.Messages.Any(
                     message => message.Role == AgentMessageRole.Tool
-                        && message.ToolResult?.StableCode == "tool_succeeded") =>
+                        && string.Equals(message.ToolResult?.StableCode, "tool_succeeded", StringComparison.Ordinal)) =>
                     ToolCall(
                         "provider-injection-scope",
                         BuiltInAgentTools.TerminalSendText,
@@ -3893,7 +3887,7 @@ public sealed partial class GovernedAgentRuntimeTests
                         """),
                 3 when request.Messages.Any(
                     message => message.Role == AgentMessageRole.Tool
-                        && message.ToolResult?.StableCode == "invalid_tool_arguments") =>
+                        && string.Equals(message.ToolResult?.StableCode, "invalid_tool_arguments", StringComparison.Ordinal)) =>
                     ToolCall(
                         "provider-injection-secret",
                         BuiltInAgentTools.TerminalSendText,
@@ -3902,7 +3896,7 @@ public sealed partial class GovernedAgentRuntimeTests
                         """),
                 4 when request.Messages.Any(
                     message => message.Role == AgentMessageRole.Tool
-                        && message.ToolResult?.StableCode == "tool_request_rejected") =>
+                        && string.Equals(message.ToolResult?.StableCode, "tool_request_rejected", StringComparison.Ordinal)) =>
                     Answer("The injected requests were rejected."),
                 _ => throw new InvalidOperationException(
                     "The prompt-injection provider received an unexpected round."),
@@ -4024,7 +4018,9 @@ public sealed partial class GovernedAgentRuntimeTests
     }
 
     private sealed class TestProviderException(string stableCode, string publicMessage)
-        : AgentProviderException(stableCode, publicMessage);
+        : AgentProviderException(stableCode, publicMessage)
+    {
+    }
 
     private sealed class ConsumingTerminalHost(
         IAgentCapabilityBroker broker,
@@ -4580,7 +4576,7 @@ public sealed partial class GovernedAgentRuntimeTests
     {
         private readonly ConcurrentQueue<AuditEventRecord> _events = [];
 
-        public IReadOnlyList<AuditEventRecord> Events => _events.ToArray();
+        public IReadOnlyList<AuditEventRecord> Events => [.. _events];
 
         public Func<AuditEventRecord, bool>? FailurePredicate { get; set; }
 
@@ -4609,9 +4605,7 @@ public sealed partial class GovernedAgentRuntimeTests
                 CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            IReadOnlyList<AuditEventRecord> values = Events
-                .Where(item => item.CorrelationId == correlationId)
-                .ToArray();
+            IReadOnlyList<AuditEventRecord> values = [.. Events.Where(item => string.Equals(item.CorrelationId, correlationId, StringComparison.Ordinal))];
             return ValueTask.FromResult(
                 AuditStoreResult<IReadOnlyList<AuditEventRecord>>.Success(values));
         }

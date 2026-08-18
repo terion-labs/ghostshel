@@ -14,7 +14,7 @@ public sealed class ProgramBoundaryTests
         Program.ApplyPackageExitBoundary(process, processTree, observations);
 
         var packageExited = observations[^1].Assertions.Single(
-            assertion => assertion.Id == "package-exited");
+            assertion => string.Equals(assertion.Id, "package-exited", StringComparison.Ordinal));
         Assert.True(process.HasExited);
         Assert.Equal(0, process.ExitCode);
         Assert.Equal(AcceptanceStatus.Pass, packageExited.Result);

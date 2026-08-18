@@ -31,7 +31,7 @@ public sealed class AgentChatRuntimeTests
         {
             var snapshot = runtime.Snapshot;
             snapshots.Enqueue(snapshot);
-            if (snapshot.ProvisionalAssistantText == "Hel")
+            if (string.Equals(snapshot.ProvisionalAssistantText, "Hel", StringComparison.Ordinal))
             {
                 provisionalSeen.TrySetResult(snapshot);
             }
@@ -72,7 +72,7 @@ public sealed class AgentChatRuntimeTests
         Assert.Contains(
             snapshots,
             snapshot => snapshot.State == AgentChatState.Streaming
-                && snapshot.ProvisionalAssistantText == "Hel");
+                && string.Equals(snapshot.ProvisionalAssistantText, "Hel", StringComparison.Ordinal));
         Assert.Equal(1, handler.CallCount);
     }
 
@@ -254,7 +254,7 @@ public sealed class AgentChatRuntimeTests
         runtime.Changed += (_, _) =>
         {
             observedStates.Enqueue(runtime.Snapshot.State);
-            if (runtime.Snapshot.ProvisionalAssistantText == "partial")
+            if (string.Equals(runtime.Snapshot.ProvisionalAssistantText, "partial", StringComparison.Ordinal))
             {
                 provisionalSeen.TrySetResult();
             }
@@ -405,13 +405,12 @@ public sealed class AgentChatRuntimeTests
         params AiProviderProfile[] profiles) =>
         DefinitionCatalogSnapshot.Empty with
         {
-            AiProviderProfiles = profiles
+            AiProviderProfiles = [.. profiles
                 .Select(profile => new StoredDefinition<AiProviderProfile>(
                     profile,
                     1,
                     StoredAt,
-                    StoredAt))
-                .ToArray(),
+                    StoredAt))],
         };
 
     private static HttpResponseMessage SseResponse(string value) =>
@@ -487,7 +486,7 @@ public sealed class AgentChatRuntimeTests
             {
                 lock (_gate)
                 {
-                    return _requests.ToArray();
+                    return [.. _requests];
                 }
             }
         }

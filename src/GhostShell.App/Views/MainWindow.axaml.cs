@@ -1,12 +1,12 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Media;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
+using Avalonia.Media;
 using GhostShell.App;
-using GhostShell.App.ViewModels;
 using GhostShell.App.Controls;
+using GhostShell.App.ViewModels;
 using GhostShell.App.Views.Overlays;
 using GhostShell.Application;
 using GhostShell.Core;
@@ -34,8 +34,8 @@ public sealed partial class MainWindow : Window
     private long _activeApplicationKeymapRevision;
     private CancellationTokenSource? _applicationHintLifetime;
     private CancellationTokenSource? _historyExportLifetime;
-    private DefinitionBundleController? _definitionBundles;
-    private RecentSessionHistoryExportController? _historyExport;
+    private readonly DefinitionBundleController? _definitionBundles;
+    private readonly RecentSessionHistoryExportController? _historyExport;
     private bool _closeApproved;
     private bool _closeInProgress;
     private bool _restoreRouteFocusWhenActivated;
@@ -2055,10 +2055,8 @@ public sealed partial class MainWindow : Window
     }
 
     private static bool IsTerminalCopyGesture(KeyEventArgs e) => OperatingSystem.IsMacOS()
-        ? e.Key == Key.C && (e.KeyModifiers & AvaloniaKeyModifiers.Meta) != 0
-        : e.Key == Key.C
-            && (e.KeyModifiers & AvaloniaKeyModifiers.Control) != 0
-            && (e.KeyModifiers & AvaloniaKeyModifiers.Shift) != 0;
+        ? e.Key == Key.C && (e.KeyModifiers & AvaloniaKeyModifiers.Meta) != AvaloniaKeyModifiers.None : e.Key == Key.C
+            && (e.KeyModifiers & AvaloniaKeyModifiers.Control) != AvaloniaKeyModifiers.None && (e.KeyModifiers & AvaloniaKeyModifiers.Shift) != AvaloniaKeyModifiers.None;
 
     private void FocusCurrentRoute()
     {

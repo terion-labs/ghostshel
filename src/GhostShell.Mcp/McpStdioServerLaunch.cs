@@ -53,7 +53,7 @@ internal sealed class McpStdioServerLaunch
                 nameof(executable));
         _environment = new Dictionary<string, string>(
             StringComparer.Ordinal);
-        foreach (var pair in environment ?? new Dictionary<string, string>())
+        foreach (var pair in environment ?? new Dictionary<string, string>(StringComparer.Ordinal))
         {
             if (string.IsNullOrWhiteSpace(pair.Key)
                 || pair.Key.Contains('=', StringComparison.Ordinal)

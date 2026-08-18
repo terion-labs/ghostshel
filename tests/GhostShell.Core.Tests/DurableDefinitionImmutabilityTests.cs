@@ -84,7 +84,7 @@ public sealed class DurableDefinitionImmutabilityTests
             new CommandId("terminal.clear"),
             sequence,
             CommandContext.Terminal,
-            new Dictionary<string, string> { ["scope"] = "screen" });
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["scope"] = "screen" });
         var keymap = new KeymapProfile(
             new KeymapProfileId("custom"),
             "Custom",

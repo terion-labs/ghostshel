@@ -144,16 +144,10 @@ internal sealed class DialogShell : ContentControl
     protected override void OnApplyTemplate(TemplateAppliedEventArgs e)
     {
         base.OnApplyTemplate(e);
-        if (_close is not null)
-        {
-            _close.Click -= OnCloseClick;
-        }
+        _close?.Click -= OnCloseClick;
 
         _close = e.NameScope.Find<Button>("PART_Close");
-        if (_close is not null)
-        {
-            _close.Click += OnCloseClick;
-        }
+        _close?.Click += OnCloseClick;
     }
 
     private void OnCloseClick(object? sender, RoutedEventArgs e)

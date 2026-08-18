@@ -41,16 +41,15 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Contains(
             requests[1].Messages,
             message => message.Role == AgentMessageRole.User
-                && message.Content == "Second question.");
+                && string.Equals(message.Content, "Second question.", StringComparison.Ordinal));
         Assert.Equal(
-            new[]
-            {
+            [
                 "First question.",
                 "Completed.",
                 "Second question.",
                 "Completed.",
-            },
-            fixture.Runtime.Snapshot.Messages.Select(message => message.Content));
+            ],
+            fixture.Runtime.Snapshot.Messages.Select(message => message.Content), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -108,7 +107,7 @@ public sealed partial class GovernedAgentRuntimeTests
                 "Preserve this follow-up.",
                 "The previous agent turn was interrupted. No pending tool action was resumed.",
             ],
-            restored.Runtime.Snapshot.Messages.Select(message => message.Content));
+            restored.Runtime.Snapshot.Messages.Select(message => message.Content), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -165,7 +164,7 @@ public sealed partial class GovernedAgentRuntimeTests
         var secondId = Assert.IsType<AgentQueuedFollowUpId>(second.ItemId);
         Assert.Equal(
             ["First.", "Second."],
-            fixture.Runtime.Snapshot.QueuedFollowUps.Select(item => item.Message));
+            fixture.Runtime.Snapshot.QueuedFollowUps.Select(item => item.Message), StringComparer.Ordinal);
 
         Assert.True((await fixture.Runtime.UpdateQueuedFollowUpAsync(
             firstId,
@@ -226,7 +225,7 @@ public sealed partial class GovernedAgentRuntimeTests
 
         Assert.Equal(
             ["Steer first.", "Steer second.", "Ordinary."],
-            fixture.Runtime.Snapshot.QueuedFollowUps.Select(item => item.Message));
+            fixture.Runtime.Snapshot.QueuedFollowUps.Select(item => item.Message), StringComparer.Ordinal);
 
         Assert.True((await fixture.Runtime.StopAsync(CancellationToken.None)).WasRunning);
         Assert.False((await sending.WaitAsync(TimeSpan.FromSeconds(5))).IsSuccess);
@@ -306,6 +305,6 @@ public sealed partial class GovernedAgentRuntimeTests
                 "Ordinary follow-up.",
                 "Answered the follow-up.",
             ],
-            fixture.Runtime.Snapshot.Messages.Select(message => message.Content));
+            fixture.Runtime.Snapshot.Messages.Select(message => message.Content), StringComparer.Ordinal);
     }
 }

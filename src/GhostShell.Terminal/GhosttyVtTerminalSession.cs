@@ -1067,13 +1067,14 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
             }
             else
             {
-                _completion.TrySetCanceled();
+                _completion.TrySetCanceled(CancellationToken.None);
             }
         }
 
         internal void Fail(Exception exception) => _completion.TrySetException(exception);
     }
 
+    [StructLayout(LayoutKind.Auto)]
     private readonly record struct SelectionAnchor(int Column, int Row);
 
     private sealed record SemanticMarker(

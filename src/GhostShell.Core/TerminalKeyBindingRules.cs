@@ -57,8 +57,7 @@ public static class TerminalKeyBindingRules
 
         if (key.Length is >= 2 and <= 3
             && key[0] == 'F'
-            && int.TryParse(key.AsSpan(1), out var functionKey)
-            && functionKey is >= 1 and <= 20)
+            && int.TryParse(key.AsSpan(1), System.Globalization.CultureInfo.InvariantCulture, out var functionKey) && functionKey is >= 1 and <= 20)
         {
             return true;
         }

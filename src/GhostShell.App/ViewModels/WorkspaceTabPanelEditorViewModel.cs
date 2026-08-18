@@ -81,10 +81,9 @@ public sealed class WorkspaceTabPanelEditorViewModel : ObservableObject
 
     public IReadOnlyList<ScreenConnectionOption> ApplicableConnectionOptions =>
         Kind is ScreenPanelKind.Browser or ScreenPanelKind.Docker
-            ? ConnectionOptions
+            ? [.. ConnectionOptions
                 .Where(option => option.ConnectionKind is ConnectionKind.Local or ConnectionKind.Ssh
-                    || !option.IsAvailable && option.Id == _original.ConnectionId)
-                .ToArray()
+                    || !option.IsAvailable && option.Id == _original.ConnectionId)]
             : ConnectionOptions;
 
     public IReadOnlyList<ScreenFileProviderOption> FileProviderOptions { get; }

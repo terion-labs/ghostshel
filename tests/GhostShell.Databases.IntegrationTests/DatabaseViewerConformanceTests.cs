@@ -76,13 +76,12 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
         Assert.Equal(
             objects.Rows.Name,
             rows.Object.Name);
-        Assert.Contains(rows.Columns, column => column.Name == "id");
-        Assert.Contains(rows.Columns, column => column.Name == "title");
+        Assert.Contains(rows.Columns, column => string.Equals(column.Name, "id", StringComparison.Ordinal));
+        Assert.Contains(rows.Columns, column => string.Equals(column.Name, "title", StringComparison.Ordinal));
 
         if (DiagramRelationshipSeed(environment.Provider.Id).Count > 0)
         {
-            var child = Assert.Single(graph.Tables, table =>
-                table.Object.Name == "viewer_er_child");
+            var child = Assert.Single(graph.Tables, table => string.Equals(table.Object.Name, "viewer_er_child", StringComparison.Ordinal));
             var relationship = Assert.Single(child.ForeignKeys);
             Assert.False(string.IsNullOrWhiteSpace(relationship.Name));
             Assert.Equal("viewer_er_parent", relationship.ReferencedObject.Name);
@@ -110,7 +109,7 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
     {
         var driver = Assert.Single(
             BuiltInDatabaseDrivers.All,
-            candidate => candidate.Descriptor.Id == environment.Provider.Id);
+            candidate => string.Equals(candidate.Descriptor.Id, environment.Provider.Id, StringComparison.Ordinal));
         if (driver.ListRoutinesSql is { } routinesSql)
         {
             // Product metadata is deliberately fail-soft. Execute the provider
@@ -147,20 +146,17 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
             cancellationToken);
 
         Assert.Equal(environment.Provider.Id, catalog.DriverId);
-        var rows = Assert.Single(catalog.Objects, item =>
-            item.Id.Name == objects.Rows.Name && item.Kind == DatabaseTableKind.Table);
+        var rows = Assert.Single(catalog.Objects, item => string.Equals(item.Id.Name, objects.Rows.Name, StringComparison.Ordinal) && item.Kind == DatabaseTableKind.Table);
         Assert.Equal(DatabaseTableKind.Table, rows.Kind);
-        Assert.Contains(rows.Columns, column =>
-            column.Name == "id"
-            && column.ValueKind is DatabaseValueKind.SignedInteger
+        Assert.Contains(rows.Columns, column => string.Equals(column.Name, "id"
+, StringComparison.Ordinal) && column.ValueKind is DatabaseValueKind.SignedInteger
                 or DatabaseValueKind.UnsignedInteger
                 or DatabaseValueKind.Decimal);
-        Assert.Contains(rows.Columns, column => column.Name == "title");
+        Assert.Contains(rows.Columns, column => string.Equals(column.Name, "title", StringComparison.Ordinal));
 
-        var view = Assert.Single(catalog.Objects, item =>
-            item.Id.Name == objects.View.Name && item.Kind == DatabaseTableKind.View);
+        var view = Assert.Single(catalog.Objects, item => string.Equals(item.Id.Name, objects.View.Name, StringComparison.Ordinal) && item.Kind == DatabaseTableKind.View);
         Assert.Equal(DatabaseTableKind.View, view.Kind);
-        Assert.Contains(view.Columns, column => column.Name == "title");
+        Assert.Contains(view.Columns, column => string.Equals(column.Name, "title", StringComparison.Ordinal));
         Assert.All(catalog.Objects, item =>
         {
             Assert.False(string.IsNullOrWhiteSpace(item.Id.Name));
@@ -229,19 +225,17 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
                     "current_timestamp",
                     StringComparison.OrdinalIgnoreCase));
         }
-        else if (providerId == "firebird")
+        else if (string.Equals(providerId, "firebird", StringComparison.Ordinal))
         {
-            Assert.Contains(catalog.IntrinsicSymbols, symbol =>
-                symbol.Name == "CURRENT_TIMESTAMP");
-            Assert.Contains(catalog.IntrinsicSymbols, symbol =>
-                symbol.Name == "DATEADD");
+            Assert.Contains(catalog.IntrinsicSymbols, symbol => string.Equals(symbol.Name, "CURRENT_TIMESTAMP", StringComparison.Ordinal));
+            Assert.Contains(catalog.IntrinsicSymbols, symbol => string.Equals(symbol.Name, "DATEADD", StringComparison.Ordinal));
         }
         else if (providerId is "mysql" or "mariadb")
         {
             Assert.Contains(catalog.IntrinsicSymbols, symbol =>
                 symbol.Name.Equals("ABS", StringComparison.OrdinalIgnoreCase));
         }
-        else if (providerId == "oracle")
+        else if (string.Equals(providerId, "oracle", StringComparison.Ordinal))
         {
             Assert.Contains(catalog.IntrinsicSymbols, symbol =>
                 symbol.Name.Equals(
@@ -254,12 +248,11 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
         string providerId,
         SqlCatalogSnapshot catalog)
     {
-        if (providerId == "postgres")
+        if (string.Equals(providerId, "postgres", StringComparison.Ordinal))
         {
             Assert.False(catalog.IsPartial, catalog.Limitation);
-            var dateAddOverloads = catalog.Routines.Where(routine =>
-                    routine.Id.Schema == "pg_catalog"
-                    && routine.Id.Name == "date_add")
+            var dateAddOverloads = catalog.Routines.Where(routine => string.Equals(routine.Id.Schema, "pg_catalog"
+, StringComparison.Ordinal) && string.Equals(routine.Id.Name, "date_add", StringComparison.Ordinal))
                 .ToArray();
             Assert.Equal(2, dateAddOverloads.Length);
             Assert.All(dateAddOverloads, dateAdd =>
@@ -278,34 +271,28 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
                 dateAdd.MinimumArgumentCount == 3
                 && dateAdd.MaximumArgumentCount == 3
                 && dateAdd.Parameters.Count == 3);
-            Assert.Contains(catalog.Routines, routine =>
-                routine.Id.Schema == "pg_catalog"
-                && routine.Id.Name == "to_timestamp");
-            var logicalSlotChanges = Assert.Single(catalog.Routines, routine =>
-                routine.Id.Schema == "pg_catalog"
-                && routine.Id.Name == "pg_logical_slot_get_binary_changes");
+            Assert.Contains(catalog.Routines, routine => string.Equals(routine.Id.Schema, "pg_catalog"
+, StringComparison.Ordinal) && string.Equals(routine.Id.Name, "to_timestamp", StringComparison.Ordinal));
+            var logicalSlotChanges = Assert.Single(catalog.Routines, routine => string.Equals(routine.Id.Schema, "pg_catalog"
+, StringComparison.Ordinal) && string.Equals(routine.Id.Name, "pg_logical_slot_get_binary_changes", StringComparison.Ordinal));
             Assert.Equal(2, logicalSlotChanges.MinimumArgumentCount);
             Assert.Null(logicalSlotChanges.MaximumArgumentCount);
-            Assert.True(Assert.Single(logicalSlotChanges.Parameters, parameter =>
-                parameter.Name == "upto_nchanges").IsOptional);
-            Assert.True(Assert.Single(logicalSlotChanges.Parameters, parameter =>
-                parameter.Name == "options").IsVariadic);
-            var extraSchemaIdentity = Assert.Single(catalog.Routines, routine =>
-                routine.Id.Schema == "ghostshell_extra"
-                && routine.Id.Name == "viewer_identity");
+            Assert.True(Assert.Single(logicalSlotChanges.Parameters, parameter => string.Equals(parameter.Name, "upto_nchanges", StringComparison.Ordinal)).IsOptional);
+            Assert.True(Assert.Single(logicalSlotChanges.Parameters, parameter => string.Equals(parameter.Name, "options", StringComparison.Ordinal)).IsVariadic);
+            var extraSchemaIdentity = Assert.Single(catalog.Routines, routine => string.Equals(routine.Id.Schema, "ghostshell_extra"
+, StringComparison.Ordinal) && string.Equals(routine.Id.Name, "viewer_identity", StringComparison.Ordinal));
             Assert.Equal((1, 1),
                 (extraSchemaIdentity.MinimumArgumentCount,
                     extraSchemaIdentity.MaximumArgumentCount));
             return;
         }
 
-        if (providerId == "cockroach")
+        if (string.Equals(providerId, "cockroach", StringComparison.Ordinal))
         {
             Assert.False(catalog.IsPartial, catalog.Limitation);
-            Assert.Contains(catalog.Routines, routine =>
-                routine.Id.Schema == "pg_catalog"
-                && routine.Id.Name == "unique_rowid"
-                && routine.MinimumArgumentCount == 0
+            Assert.Contains(catalog.Routines, routine => string.Equals(routine.Id.Schema, "pg_catalog"
+, StringComparison.Ordinal) && string.Equals(routine.Id.Name, "unique_rowid"
+, StringComparison.Ordinal) && routine.MinimumArgumentCount == 0
                 && routine.MaximumArgumentCount == 0);
             return;
         }
@@ -351,11 +338,10 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
             $"The native SQL language worker did not initialize for '{catalog.DriverId}': "
                 + session.UnavailableReason);
 
-        var table = Assert.Single(catalog.Objects, item =>
-            item.Id.Name == objects.Rows.Name && item.Kind == DatabaseTableKind.Table);
+        var table = Assert.Single(catalog.Objects, item => string.Equals(item.Id.Name, objects.Rows.Name, StringComparison.Ordinal) && item.Kind == DatabaseTableKind.Table);
         var objectName = QuoteSqlLanguageObject(catalog.DriverId, table.Id);
         var quote = BuiltInDatabaseDrivers.All
-            .Single(driver => driver.Descriptor.Id == catalog.DriverId)
+            .Single(driver => string.Equals(driver.Descriptor.Id, catalog.DriverId, StringComparison.Ordinal))
             .QuoteIdentifier;
         await AssertSqlAliasIntelligenceAsync(
             session,
@@ -420,11 +406,10 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
         Func<string, string> quote,
         CancellationToken cancellationToken)
     {
-        if (catalog.DriverId == "sqlite")
+        if (string.Equals(catalog.DriverId, "sqlite", StringComparison.Ordinal))
         {
-            Assert.Contains(catalog.Routines, routine =>
-                routine.Id.Schema == "main"
-                && routine.Id.Name == "json_array_length");
+            Assert.Contains(catalog.Routines, routine => string.Equals(routine.Id.Schema, "main"
+, StringComparison.Ordinal) && string.Equals(routine.Id.Name, "json_array_length", StringComparison.Ordinal));
             await AssertRoutineCompletionAsync(
                 session,
                 $"SELECT json_array_l FROM {objectName}",
@@ -443,7 +428,7 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
             return;
         }
 
-        if (catalog.DriverId == "sqlserver")
+        if (string.Equals(catalog.DriverId, "sqlserver", StringComparison.Ordinal))
         {
             await AssertRoutineCompletionAsync(
                 session,
@@ -455,7 +440,7 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
             return;
         }
 
-        if (catalog.DriverId == "cockroach")
+        if (string.Equals(catalog.DriverId, "cockroach", StringComparison.Ordinal))
         {
             await AssertRoutineCompletionAsync(
                 session,
@@ -467,7 +452,7 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
             return;
         }
 
-        if (catalog.DriverId != "postgres")
+        if (!string.Equals(catalog.DriverId, "postgres", StringComparison.Ordinal))
         {
             return;
         }
@@ -480,8 +465,7 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
             "ghostshell_extra.viewer_identity(",
             cancellationToken);
 
-        var timestamp = Assert.Single(table.Columns, column =>
-            column.Name == "created_at");
+        var timestamp = Assert.Single(table.Columns, column => string.Equals(column.Name, "created_at", StringComparison.Ordinal));
         var expressionPrefix = $"SELECT * FROM {objectName} WHERE "
             + $"{quote(timestamp.Name)} < ";
         await AssertRoutineCompletionAsync(
@@ -535,10 +519,9 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
             cancellationToken);
         Assert.Equal(cursorOffset - typedPrefix.Length, completion.ReplacementStart);
         Assert.Equal(typedPrefix.Length, completion.ReplacementLength);
-        _ = Assert.Single(completion.Items, candidate =>
-            candidate.Label == expectedLabel
-            && candidate.Kind == expectedKind
-            && candidate.InsertText == expectedInsertText);
+        _ = Assert.Single(completion.Items, candidate => string.Equals(candidate.Label, expectedLabel
+, StringComparison.Ordinal) && candidate.Kind == expectedKind
+            && string.Equals(candidate.InsertText, expectedInsertText, StringComparison.Ordinal));
     }
 
     private static async Task AssertSqlAliasIntelligenceAsync(
@@ -558,11 +541,11 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
             cancellationToken);
         Assert.True(
             completion.Items.Any(item =>
-                item.Kind == SqlCompletionItemKind.Column && item.Label == "id"),
+                item.Kind == SqlCompletionItemKind.Column && string.Equals(item.Label, "id", StringComparison.Ordinal)),
             $"{driverId} did not complete 'id' through {objectName}.");
         Assert.True(
             completion.Items.Any(item =>
-                item.Kind == SqlCompletionItemKind.Column && item.Label == "title"),
+                item.Kind == SqlCompletionItemKind.Column && string.Equals(item.Label, "title", StringComparison.Ordinal)),
             $"{driverId} did not complete 'title' through {objectName}.");
 
         var validSql = $"SELECT {SqlLanguageAlias}.{quote("id")}, "
@@ -600,11 +583,11 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
             cancellationToken);
         Assert.True(
             completion.Items.Any(item =>
-                item.Kind == SqlCompletionItemKind.Column && item.Label == "id"),
+                item.Kind == SqlCompletionItemKind.Column && string.Equals(item.Label, "id", StringComparison.Ordinal)),
             $"{driverId} provider extension discarded alias completion for 'id'.");
         Assert.True(
             completion.Items.Any(item =>
-                item.Kind == SqlCompletionItemKind.Column && item.Label == "title"),
+                item.Kind == SqlCompletionItemKind.Column && string.Equals(item.Label, "title", StringComparison.Ordinal)),
             $"{driverId} provider extension discarded alias completion for 'title'.");
 
         var validSql = ProviderExtensionQuery(
@@ -643,7 +626,7 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
     private static string QuoteSqlLanguageObject(string driverId, DatabaseObjectId objectId)
     {
         var quote = BuiltInDatabaseDrivers.All
-            .Single(driver => driver.Descriptor.Id == driverId)
+            .Single(driver => string.Equals(driver.Descriptor.Id, driverId, StringComparison.Ordinal))
             .QuoteIdentifier;
         var components = driverId switch
         {
@@ -657,10 +640,9 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
         return string.Join('.', components.Select(quote));
     }
 
-    private static IReadOnlyList<string> Present(params string?[] values) => values
+    private static IReadOnlyList<string> Present(params string?[] values) => [.. values
         .Where(value => !string.IsNullOrWhiteSpace(value))
-        .Select(value => value!)
-        .ToArray();
+        .Select(value => value!)];
 
     private static async Task WaitUntilReadyAsync(
         DatabasePanelClient client,
@@ -764,7 +746,7 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
         CancellationToken cancellationToken)
     {
         var provider = environment.Provider;
-        var driver = Assert.Single(client.Drivers, candidate => candidate.Id == provider.Id);
+        var driver = Assert.Single(client.Drivers, candidate => string.Equals(candidate.Id, provider.Id, StringComparison.Ordinal));
         Assert.Equal(provider.Id is "sqlite" or "duckdb", driver.IsFileBased);
 
         var connectionDetails = client.ParseConnectionDetails(
@@ -788,14 +770,14 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
             tunnel: null,
             rows,
             cancellationToken);
-        var id = Assert.Single(rowsDetails.Columns, column => column.Name == "id");
+        var id = Assert.Single(rowsDetails.Columns, column => string.Equals(column.Name, "id", StringComparison.Ordinal));
         Assert.True(id.IsPrimaryKey);
         Assert.Equal(1, id.PrimaryKeyOrdinal);
         Assert.Equal(provider.Expectations.HasIdentity, id.IsIdentity);
-        var code = Assert.Single(rowsDetails.Columns, column => column.Name == "code");
-        var score = Assert.Single(rowsDetails.Columns, column => column.Name == "score");
-        var noteColumn = Assert.Single(rowsDetails.Columns, column => column.Name == "note");
-        var status = Assert.Single(rowsDetails.Columns, column => column.Name == "status");
+        var code = Assert.Single(rowsDetails.Columns, column => string.Equals(column.Name, "code", StringComparison.Ordinal));
+        var score = Assert.Single(rowsDetails.Columns, column => string.Equals(column.Name, "score", StringComparison.Ordinal));
+        var noteColumn = Assert.Single(rowsDetails.Columns, column => string.Equals(column.Name, "note", StringComparison.Ordinal));
+        var status = Assert.Single(rowsDetails.Columns, column => string.Equals(column.Name, "status", StringComparison.Ordinal));
         Assert.True(noteColumn.IsNullable);
         Assert.False(status.IsNullable);
         Assert.NotNull(status.DefaultExpression);
@@ -820,7 +802,7 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
 
         var generated = Assert.Single(
             rowsDetails.Columns,
-            column => column.Name == "computed_label");
+            column => string.Equals(column.Name, "computed_label", StringComparison.Ordinal));
         Assert.Equal(provider.Expectations.HasGeneratedColumn, generated.IsGenerated);
         Assert.Equal(provider.Expectations.HasGeneratedColumn, generated.IsReadOnly);
         if (provider.Expectations.HasGeneratedColumn)
@@ -833,7 +815,7 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
         {
             var scoreIndex = Assert.Single(
                 rowsDetails.Indexes,
-                index => index.Name == "idx_viewer_rows_score");
+                index => string.Equals(index.Name, "idx_viewer_rows_score", StringComparison.Ordinal));
             Assert.NotNull(provider.Expectations.ScoreIndex);
             AssertScoreIndex(scoreIndex, provider.Expectations.ScoreIndex);
         }
@@ -995,7 +977,7 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
         Assert.Equal("ghostshell_tenant", catalog.DefaultSchema);
         Assert.Equal(
             2,
-            catalog.Objects.Count(item => item.Id.Name == "ghostshell_namespace_probe"));
+            catalog.Objects.Count(item => string.Equals(item.Id.Name, "ghostshell_namespace_probe", StringComparison.Ordinal)));
 
         ISqlLanguageService service = new CalciteSqlLanguageService();
         if (!service.IsAvailable)
@@ -1011,8 +993,8 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
             completionSql,
             completionSql.IndexOf('.', StringComparison.Ordinal) + 1,
             cancellationToken);
-        Assert.Contains(completion.Items, item => item.Label == "tenant_value");
-        Assert.DoesNotContain(completion.Items, item => item.Label == "public_value");
+        Assert.Contains(completion.Items, item => string.Equals(item.Label, "tenant_value", StringComparison.Ordinal));
+        Assert.DoesNotContain(completion.Items, item => string.Equals(item.Label, "public_value", StringComparison.Ordinal));
 
         var valid = await session.DiagnoseAsync(
             "SELECT p.tenant_value FROM ghostshell_namespace_probe p",
@@ -1030,8 +1012,7 @@ public sealed partial class DatabaseViewerConformanceTests(ITestOutputHelper out
         IReadOnlyList<DatabaseTableDescriptor> objects,
         string name,
         DatabaseTableKind kind) =>
-        Assert.Single(objects, databaseObject =>
-            databaseObject.Name == name && databaseObject.Kind == kind);
+        Assert.Single(objects, databaseObject => string.Equals(databaseObject.Name, name, StringComparison.Ordinal) && databaseObject.Kind == kind);
 
     private sealed record DatabaseObjects(
         DatabaseTableDescriptor Rows,

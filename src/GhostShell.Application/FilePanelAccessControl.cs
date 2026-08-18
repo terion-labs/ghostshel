@@ -95,7 +95,7 @@ public sealed record FilePanelGrantee
             FilePanelGranteeKind.Everyone => "Everyone",
             FilePanelGranteeKind.AuthenticatedUsers => "Authenticated users",
             FilePanelGranteeKind.LogDelivery => "Log delivery",
-            _ => Id,
+            _ => null,
         })
         ?? Id
         ?? Kind.ToString();

@@ -65,7 +65,7 @@ public sealed class StreamingProviderConformanceTests
         var root = body.RootElement;
         Assert.Equal(
             ["model", "stream", "messages", "tools", "tool_choice"],
-            root.EnumerateObject().Select(property => property.Name).ToArray());
+            [.. root.EnumerateObject().Select(property => property.Name)]);
         Assert.Equal(Model, root.GetProperty("model").GetString());
         Assert.True(root.GetProperty("stream").GetBoolean());
         Assert.Equal("auto", root.GetProperty("tool_choice").GetString());
@@ -135,7 +135,7 @@ public sealed class StreamingProviderConformanceTests
         var root = body.RootElement;
         Assert.Equal(
             ["model", "max_tokens", "stream", "system", "messages", "tools"],
-            root.EnumerateObject().Select(property => property.Name).ToArray());
+            [.. root.EnumerateObject().Select(property => property.Name)]);
         Assert.Equal(Model, root.GetProperty("model").GetString());
         Assert.Equal(777, root.GetProperty("max_tokens").GetInt32());
         Assert.True(root.GetProperty("stream").GetBoolean());
@@ -317,7 +317,7 @@ public sealed class StreamingProviderConformanceTests
         var proposal = Assert.Single(first.ToolProposals);
         Assert.Equal(tool.Name, proposal.ToolName);
         Assert.Equal(tool.ProviderName, proposal.ProviderName);
-        Assert.NotEqual(tool.Name, tool.ProviderName);
+        Assert.NotEqual(tool.Name, tool.ProviderName, StringComparer.Ordinal);
         Assert.Matches("^[A-Za-z0-9_-]{1,64}$", tool.ProviderName);
         using (var firstBody = JsonDocument.Parse(handler.Requests[0].Body))
         {
@@ -350,8 +350,7 @@ public sealed class StreamingProviderConformanceTests
         var assistant = secondBody.RootElement
             .GetProperty("messages")
             .EnumerateArray()
-            .Single(message =>
-                message.GetProperty("role").GetString() == "assistant");
+            .Single(message => string.Equals(message.GetProperty("role").GetString(), "assistant", StringComparison.Ordinal));
         var historicalName = providerKind == AiProviderKind.Anthropic
             ? Assert.Single(assistant.GetProperty("content").EnumerateArray())
                 .GetProperty("name")
@@ -402,7 +401,7 @@ public sealed class StreamingProviderConformanceTests
                     "replacement response",
                 ],
                 session.Snapshot().Conversation.Select(message =>
-                    message.Content));
+                    message.Content), StringComparer.Ordinal);
         }
         finally
         {
@@ -679,7 +678,7 @@ public sealed class StreamingProviderConformanceTests
         var assistant = body.RootElement
             .GetProperty("messages")
             .EnumerateArray()
-            .Single(message => message.GetProperty("role").GetString() == "assistant");
+            .Single(message => string.Equals(message.GetProperty("role").GetString(), "assistant", StringComparison.Ordinal));
         Assert.Collection(
             assistant.GetProperty("content").EnumerateArray(),
             block =>
@@ -739,7 +738,7 @@ public sealed class StreamingProviderConformanceTests
         var assistant = body.RootElement
             .GetProperty("messages")
             .EnumerateArray()
-            .Single(message => message.GetProperty("role").GetString() == "assistant");
+            .Single(message => string.Equals(message.GetProperty("role").GetString(), "assistant", StringComparison.Ordinal));
         var toolUse = Assert.Single(assistant.GetProperty("content").EnumerateArray());
         Assert.Equal("tool_use", toolUse.GetProperty("type").GetString());
         Assert.DoesNotContain(
@@ -1562,7 +1561,7 @@ public sealed class StreamingProviderConformanceTests
         new(
             "capture.png",
             "image/png",
-            new byte[] { 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a });
+            [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
     private static AiProviderProfile CreateLoopbackProfile(AiProviderKind providerKind) =>
         new(

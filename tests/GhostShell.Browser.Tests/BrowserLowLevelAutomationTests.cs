@@ -150,7 +150,7 @@ public sealed class BrowserLowLevelAutomationTests
         Assert.Equal(NativeBrowserAutomationStatus.Acknowledged, result.Status);
         Assert.Equal("Page.getLayoutMetrics", transport.Calls[0].Method);
         var mouseCalls = transport.Calls
-            .Where(call => call.Method == "Input.dispatchMouseEvent")
+            .Where(call => string.Equals(call.Method, "Input.dispatchMouseEvent", StringComparison.Ordinal))
             .ToArray();
         Assert.True(mouseCalls.Length >= 6);
         Assert.All(
@@ -273,14 +273,14 @@ public sealed class BrowserLowLevelAutomationTests
 
         Assert.Equal(NativeBrowserAutomationStatus.Acknowledged, result.Status);
         var wheelCalls = transport.Calls
-            .Where(call => call.Method == "Input.dispatchMouseEvent")
-            .Where(call => EventType(call) == "mouseWheel")
+            .Where(call => string.Equals(call.Method, "Input.dispatchMouseEvent", StringComparison.Ordinal))
+            .Where(call => string.Equals(EventType(call), "mouseWheel", StringComparison.Ordinal))
             .ToArray();
         Assert.InRange(wheelCalls.Length, 3, 18);
         Assert.Contains(
             transport.Calls.Where(
-                call => call.Method == "Input.dispatchMouseEvent"),
-            call => EventType(call) == "mouseMoved");
+                call => string.Equals(call.Method, "Input.dispatchMouseEvent", StringComparison.Ordinal)),
+            call => string.Equals(EventType(call), "mouseMoved", StringComparison.Ordinal));
         Assert.Equal(
             35,
             wheelCalls.Sum(call => EventDelta(call, "deltaX")),
@@ -316,7 +316,7 @@ public sealed class BrowserLowLevelAutomationTests
         await input.TypeTextAsync(text);
 
         var insertCalls = transport.Calls
-            .Where(call => call.Method == "Input.insertText")
+            .Where(call => string.Equals(call.Method, "Input.insertText", StringComparison.Ordinal))
             .ToArray();
         Assert.InRange(insertCalls.Length, 2, 96);
         Assert.All(
@@ -350,7 +350,7 @@ public sealed class BrowserLowLevelAutomationTests
         Assert.Equal("2", result.ResultJson);
         Assert.Equal(
             ["Page.getFrameTree", "Page.createIsolatedWorld", "Runtime.evaluate"],
-            transport.Calls.Select(call => call.Method));
+            transport.Calls.Select(call => call.Method), StringComparer.Ordinal);
         using var parameters = JsonDocument.Parse(transport.Calls[2].Parameters!);
         Assert.True(parameters.RootElement.GetProperty("throwOnSideEffect").GetBoolean());
         Assert.Equal(42, parameters.RootElement.GetProperty("contextId").GetInt32());
@@ -479,8 +479,8 @@ public sealed class BrowserLowLevelAutomationTests
             return Task.FromResult(
                 _replies.TryDequeue(out var reply)
                     ? reply
-                    : method == "Page.getLayoutMetrics"
-                        ? "{\"result\":{\"cssVisualViewport\":{\"clientWidth\":800,\"clientHeight\":600}}}"
+                    : string.Equals(method, "Page.getLayoutMetrics"
+, StringComparison.Ordinal) ? "{\"result\":{\"cssVisualViewport\":{\"clientWidth\":800,\"clientHeight\":600}}}"
                     : "{\"result\":{}}");
         }
     }

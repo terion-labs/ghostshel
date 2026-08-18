@@ -282,7 +282,7 @@ internal static class NativeArtifactPublisher
                 "*",
                 new EnumerationOptions
                 {
-                    AttributesToSkip = 0,
+                    AttributesToSkip = FileAttributes.None,
                     IgnoreInaccessible = false,
                     RecurseSubdirectories = false,
                     ReturnSpecialDirectories = false,

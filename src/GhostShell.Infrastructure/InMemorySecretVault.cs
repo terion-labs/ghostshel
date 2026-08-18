@@ -113,7 +113,7 @@ public sealed class InMemorySecretVault : ISecretVault
 
             var metadata = entry.Metadata with { LastUsedAt = _timeProvider.GetUtcNow() };
             _entries[request.Reference] = entry with { Metadata = metadata };
-            var material = SecretMaterial.TakeOwnership(entry.Value.ToArray());
+            var material = SecretMaterial.TakeOwnership([.. entry.Value]);
             return ValueTask.FromResult(SecretVaultResult<SecretMaterial>.Succeed(material));
         }
     }

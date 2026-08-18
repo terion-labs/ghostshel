@@ -11,7 +11,7 @@ public sealed class SystemSshAuthenticationBridgeTests
     {
         var connection = RemoteProviderTestProfiles.SftpOptions().Connection;
         var identitySource = new QueueIdentitySource(
-            Array.Empty<IPrivateKeySource>(),
+            [],
             IdentityBatch());
         var runtime = new RecordingConnectionRuntime(
             ConnectionRuntimeResult<ConnectionTestReport>.Succeed(

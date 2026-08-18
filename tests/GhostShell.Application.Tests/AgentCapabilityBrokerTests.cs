@@ -125,8 +125,7 @@ public sealed class AgentCapabilityBrokerTests
     {
         var audit = new RecordingAuditStore
         {
-            BlockPredicate = item =>
-                item.Action == "agent.run.policy",
+            BlockPredicate = item => string.Equals(item.Action, "agent.run.policy", StringComparison.Ordinal),
         };
         var askPolicy = AgentPolicy.Default with
         {
@@ -260,8 +259,8 @@ public sealed class AgentCapabilityBrokerTests
         Assert.Null(completed);
         var terminalEvent = Assert.Single(
             audit.Events,
-            item => item.CorrelationId == proposal.Id.Value
-                && item.Outcome == AuditOutcome.Succeeded);
+            item => string.Equals(item.CorrelationId, proposal.Id.Value
+, StringComparison.Ordinal) && item.Outcome == AuditOutcome.Succeeded);
         var details = Assert.IsType<AuditDetails.AgentActionDetails>(
             terminalEvent.Details);
         Assert.Equal(17, details.Binding.ResultCount);
@@ -366,9 +365,8 @@ public sealed class AgentCapabilityBrokerTests
                 peerAuthorization.Authorization.Id,
                 peerProposal,
                 CancellationToken.None));
-        audit.FailurePredicate = item =>
-            item.CorrelationId == activeProposal.Id.Value
-            && item.Outcome == AuditOutcome.Succeeded;
+        audit.FailurePredicate = item => string.Equals(item.CorrelationId, activeProposal.Id.Value
+, StringComparison.Ordinal) && item.Outcome == AuditOutcome.Succeeded;
 
         var completionError = await broker.CompleteAsync(
             active.Permit,
@@ -397,9 +395,8 @@ public sealed class AgentCapabilityBrokerTests
             Assert.IsType<AgentPermitResult.Denied>(heldConsume).Error.Code);
         Assert.DoesNotContain(
             audit.Events,
-            item =>
-                item.CorrelationId == activeProposal.Id.Value
-                && item.Outcome == AuditOutcome.Succeeded);
+            item => string.Equals(item.CorrelationId, activeProposal.Id.Value
+, StringComparison.Ordinal) && item.Outcome == AuditOutcome.Succeeded);
     }
 
     [Theory]
@@ -424,16 +421,14 @@ public sealed class AgentCapabilityBrokerTests
             Now.AddSeconds(1));
         if (commitBeforeFailure)
         {
-            audit.CommitThenFailurePredicate = item =>
-                item.CorrelationId == proposal.Id.Value
-                && item.Outcome == AuditOutcome.Succeeded;
+            audit.CommitThenFailurePredicate = item => string.Equals(item.CorrelationId, proposal.Id.Value
+, StringComparison.Ordinal) && item.Outcome == AuditOutcome.Succeeded;
             audit.ListFailureCount = 1;
         }
         else
         {
-            audit.FailurePredicate = item =>
-                item.CorrelationId == proposal.Id.Value
-                && item.Outcome == AuditOutcome.Succeeded;
+            audit.FailurePredicate = item => string.Equals(item.CorrelationId, proposal.Id.Value
+, StringComparison.Ordinal) && item.Outcome == AuditOutcome.Succeeded;
         }
 
         var firstAttempt = await broker.CompleteAsync(
@@ -470,9 +465,8 @@ public sealed class AgentCapabilityBrokerTests
             replay!.Code);
         Assert.Single(
             audit.Events,
-            item =>
-                item.CorrelationId == proposal.Id.Value
-                && item.Outcome == AuditOutcome.Succeeded);
+            item => string.Equals(item.CorrelationId, proposal.Id.Value
+, StringComparison.Ordinal) && item.Outcome == AuditOutcome.Succeeded);
     }
 
     [Fact]
@@ -492,9 +486,8 @@ public sealed class AgentCapabilityBrokerTests
             AgentActionOutcome.Succeeded,
             "ok",
             Now.AddSeconds(1));
-        audit.FailurePredicate = item =>
-            item.CorrelationId == proposal.Id.Value
-            && item.Outcome == AuditOutcome.Succeeded;
+        audit.FailurePredicate = item => string.Equals(item.CorrelationId, proposal.Id.Value
+, StringComparison.Ordinal) && item.Outcome == AuditOutcome.Succeeded;
         Assert.Equal(
             AgentAuthorizationErrorCode.AuditUnavailable,
             (await broker.CompleteAsync(
@@ -527,9 +520,8 @@ public sealed class AgentCapabilityBrokerTests
         Assert.Null(exact);
         var terminal = Assert.Single(
             audit.Events,
-            item =>
-                item.CorrelationId == proposal.Id.Value
-                && item.Outcome is AuditOutcome.Succeeded
+            item => string.Equals(item.CorrelationId, proposal.Id.Value
+, StringComparison.Ordinal) && item.Outcome is AuditOutcome.Succeeded
                     or AuditOutcome.Failed
                     or AuditOutcome.Cancelled);
         Assert.Equal(AuditOutcome.Succeeded, terminal.Outcome);
@@ -681,7 +673,7 @@ public sealed class AgentCapabilityBrokerTests
         var blockedProposal = Proposal(BuiltInAgentTools.TerminalReadScreen);
         audit.BlockPredicate = item =>
             item.Outcome == AuditOutcome.Requested
-            && item.CorrelationId == blockedProposal.Id.Value;
+            && string.Equals(item.CorrelationId, blockedProposal.Id.Value, StringComparison.Ordinal);
         var blockedRequest = broker.RequestAsync(
             blockedProposal,
             CancellationToken.None).AsTask();
@@ -719,7 +711,7 @@ public sealed class AgentCapabilityBrokerTests
             await broker.RequestAsync(oldProposal, CancellationToken.None));
         audit.BlockPredicate = item =>
             item.Outcome == AuditOutcome.Denied
-            && item.CorrelationId == oldProposal.Id.Value;
+            && string.Equals(item.CorrelationId, oldProposal.Id.Value, StringComparison.Ordinal);
 
         var update = new AgentRunPolicyUpdate(
             RunId(),
@@ -783,7 +775,7 @@ public sealed class AgentCapabilityBrokerTests
             await broker.RequestAsync(proposal, CancellationToken.None));
         audit.BlockPredicate = item =>
             item.Outcome == AuditOutcome.Started
-            && item.CorrelationId == proposal.Id.Value;
+            && string.Equals(item.CorrelationId, proposal.Id.Value, StringComparison.Ordinal);
         var consume = broker.ConsumeAsync(
             authorization.Authorization.Id,
             proposal,
@@ -806,7 +798,7 @@ public sealed class AgentCapabilityBrokerTests
                 AuditOutcome.Cancelled,
             ],
             audit.Events
-                .Where(item => item.CorrelationId == proposal.Id.Value)
+                .Where(item => string.Equals(item.CorrelationId, proposal.Id.Value, StringComparison.Ordinal))
                 .Select(item => item.Outcome));
     }
 
@@ -1212,7 +1204,7 @@ public sealed class AgentCapabilityBrokerTests
                 item.Details is AuditDetails.AgentRunPolicyTransitionDetails)
             .ToArray();
         Assert.Equal(2, transitions.Length);
-        Assert.Equal(2, transitions.Select(item => item.EventId).Distinct().Count());
+        Assert.Equal(2, transitions.Select(item => item.EventId).Distinct(StringComparer.Ordinal).Count());
     }
 
     [Fact]
@@ -1407,7 +1399,7 @@ public sealed class AgentCapabilityBrokerTests
         var blockedProposal = Proposal(BuiltInAgentTools.TerminalReadScreen);
         audit.BlockPredicate = item =>
             item.Outcome == AuditOutcome.Requested
-            && item.CorrelationId == blockedProposal.Id.Value;
+            && string.Equals(item.CorrelationId, blockedProposal.Id.Value, StringComparison.Ordinal);
         var blockedRequest = broker.RequestAsync(
             blockedProposal,
             CancellationToken.None).AsTask();
@@ -1743,9 +1735,7 @@ public sealed class AgentCapabilityBrokerTests
 
             return ValueTask.FromResult(
                 AuditStoreResult<IReadOnlyList<AuditEventRecord>>.Success(
-                    Events
-                        .Where(item => item.CorrelationId == correlationId)
-                        .ToArray()));
+                    [.. Events.Where(item => string.Equals(item.CorrelationId, correlationId, StringComparison.Ordinal))]));
         }
     }
 }

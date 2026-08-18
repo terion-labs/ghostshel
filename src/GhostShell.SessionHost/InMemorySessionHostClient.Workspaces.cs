@@ -53,7 +53,7 @@ public sealed partial class InMemorySessionHostClient
             HostedSession[] sessions;
             lock (_gate)
             {
-                sessions = _sessions.Values.ToArray();
+                sessions = [.. _sessions.Values];
             }
 
             var liveSessions = sessions

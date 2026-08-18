@@ -43,7 +43,7 @@ public sealed record ConnectionProfile : IDurableDefinition
             throw new ArgumentOutOfRangeException(nameof(hostKeyPolicy), hostKeyPolicy, "The host-key policy is not recognized.");
         }
 
-        ValidateEndpointPolicy();
+        ValidateEndpointPolicy(nameof(authentication), nameof(hostKeyPolicy));
     }
 
     public static DefinitionKind Kind => DefinitionKind.Connection;
@@ -86,13 +86,17 @@ public sealed record ConnectionProfile : IDurableDefinition
         return Array.AsReadOnly(normalized);
     }
 
-    private void ValidateEndpointPolicy()
+    private void ValidateEndpointPolicy(
+        string authenticationParameterName,
+        string hostKeyPolicyParameterName)
     {
         if (Endpoint.Kind == ConnectionKind.Ssh)
         {
             if (HostKeyPolicy == SshHostKeyPolicy.NotApplicable)
             {
-                throw new ArgumentException("SSH connections require an explicit host-key policy.", nameof(HostKeyPolicy));
+                throw new ArgumentException(
+                    "SSH connections require an explicit host-key policy.",
+                    hostKeyPolicyParameterName);
             }
 
             return;
@@ -100,12 +104,16 @@ public sealed record ConnectionProfile : IDurableDefinition
 
         if (Authentication is not ConnectionAuthentication.None)
         {
-            throw new ArgumentException("Only SSH endpoints accept connection authentication.", nameof(Authentication));
+            throw new ArgumentException(
+                "Only SSH endpoints accept connection authentication.",
+                authenticationParameterName);
         }
 
         if (HostKeyPolicy != SshHostKeyPolicy.NotApplicable)
         {
-            throw new ArgumentException("Host-key policy only applies to SSH endpoints.", nameof(HostKeyPolicy));
+            throw new ArgumentException(
+                "Host-key policy only applies to SSH endpoints.",
+                hostKeyPolicyParameterName);
         }
     }
 }

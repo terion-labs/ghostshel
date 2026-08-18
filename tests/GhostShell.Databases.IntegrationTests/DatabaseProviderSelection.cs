@@ -39,7 +39,7 @@ internal static class DatabaseProviderSelection
         {
             throw new InvalidOperationException(
                 $"Unknown database integration provider(s): {string.Join(", ", unknown)}. "
-                + $"Known providers: {string.Join(", ", known.Order())}.");
+                + $"Known providers: {string.Join(", ", known.Order(StringComparer.Ordinal))}.");
         }
 
         return selected;

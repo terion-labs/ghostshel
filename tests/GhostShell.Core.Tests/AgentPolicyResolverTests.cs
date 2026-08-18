@@ -315,7 +315,7 @@ public sealed class AgentPolicyResolverTests
     {
         var malformed = AgentPolicy.Default with
         {
-            Permissions = ImmutableDictionary<AgentCapability, AgentPermission>.Empty,
+            Permissions = [],
         };
 
         Assert.Throws<ArgumentException>(() =>

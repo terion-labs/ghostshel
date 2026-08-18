@@ -85,7 +85,7 @@ public sealed class DockerFilePanelClient : IFilePanelClient
 
         var listing = ((DockerResult<DockerFileListing>.Success)result).Value;
         var entries = listing.Entries
-            .Where(entry => request.ShowHidden || !entry.Name.StartsWith(".", StringComparison.Ordinal))
+            .Where(entry => request.ShowHidden || !entry.Name.StartsWith('.'))
             .Select(MapEntry)
             .ToArray();
         if (!TryOffset(request.ContinuationToken, entries.Length, out var offset))
@@ -112,7 +112,7 @@ public sealed class DockerFilePanelClient : IFilePanelClient
             return FilePanelResult<FilePanelEntry>.Failure(locationError!);
         }
 
-        if (path == "/")
+        if (string.Equals(path, "/", StringComparison.Ordinal))
         {
             return FilePanelResult<FilePanelEntry>.Success(new FilePanelEntry(
                 location,
@@ -203,7 +203,7 @@ public sealed class DockerFilePanelClient : IFilePanelClient
         },
         entry.Size,
         entry.ModifiedAt,
-        entry.Name.StartsWith(".", StringComparison.Ordinal));
+        entry.Name.StartsWith('.'));
 
     private static bool TryOffset(string? token, int count, out int offset)
     {
@@ -223,8 +223,8 @@ public sealed class DockerFilePanelClient : IFilePanelClient
         out string? path,
         out FilePanelError? error)
     {
-        if (location.ProviderProfileId != ProfileId
-            || location.Authority is not null
+        if (!string.Equals(location.ProviderProfileId, ProfileId
+, StringComparison.Ordinal) || location.Authority is not null
             || location.Address is not FilePanelAddress.Hierarchical)
         {
             path = null;

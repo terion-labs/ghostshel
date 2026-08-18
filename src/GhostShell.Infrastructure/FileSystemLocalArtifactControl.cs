@@ -12,7 +12,7 @@ public sealed class FileSystemLocalArtifactControl : ILocalArtifactControl
 {
     private static readonly EnumerationOptions EnumerationOptions = new()
     {
-        AttributesToSkip = 0,
+        AttributesToSkip = FileAttributes.None,
         IgnoreInaccessible = false,
         RecurseSubdirectories = false,
         ReturnSpecialDirectories = false,
@@ -187,7 +187,7 @@ public sealed class FileSystemLocalArtifactControl : ILocalArtifactControl
                     throw UnsafeEntry();
                 }
 
-                if ((attributes & FileAttributes.Directory) != 0)
+                if ((attributes & FileAttributes.Directory) != FileAttributes.None)
                 {
                     if (entry is not DirectoryInfo)
                     {
@@ -328,7 +328,7 @@ public sealed class FileSystemLocalArtifactControl : ILocalArtifactControl
         }
 
         if (HasUnsafeAttributes(attributes)
-            || (attributes & FileAttributes.Directory) != 0)
+            || (attributes & FileAttributes.Directory) != FileAttributes.None)
         {
             throw UnsafeEntry();
         }
@@ -370,7 +370,7 @@ public sealed class FileSystemLocalArtifactControl : ILocalArtifactControl
         }
 
         if (HasUnsafeAttributes(attributes)
-            || (attributes & FileAttributes.Directory) == 0)
+            || (attributes & FileAttributes.Directory) == FileAttributes.None)
         {
             throw UnsafeEntry();
         }
@@ -389,8 +389,7 @@ public sealed class FileSystemLocalArtifactControl : ILocalArtifactControl
                 return ArtifactRootState.Unsafe;
             }
 
-            return (attributes & FileAttributes.Directory) != 0
-                ? ArtifactRootState.Directory
+            return (attributes & FileAttributes.Directory) != FileAttributes.None ? ArtifactRootState.Directory
                 : ArtifactRootState.Unsafe;
         }
         catch (FileNotFoundException)
@@ -449,7 +448,7 @@ public sealed class FileSystemLocalArtifactControl : ILocalArtifactControl
         }
 
         if (HasUnsafeAttributes(attributes)
-            || (attributes & FileAttributes.Directory) == 0)
+            || (attributes & FileAttributes.Directory) == FileAttributes.None)
         {
             throw UnsafeEntry();
         }
@@ -493,8 +492,7 @@ public sealed class FileSystemLocalArtifactControl : ILocalArtifactControl
         }
 
         if (HasUnsafeAttributes(attributes)
-            || (attributes & FileAttributes.Directory) != 0
-            || !NativeFileKind.IsRegularFile(path))
+            || (attributes & FileAttributes.Directory) != FileAttributes.None || !NativeFileKind.IsRegularFile(path))
         {
             throw UnsafeEntry();
         }
@@ -507,7 +505,7 @@ public sealed class FileSystemLocalArtifactControl : ILocalArtifactControl
     }
 
     private static bool HasUnsafeAttributes(FileAttributes attributes) =>
-        (attributes & (FileAttributes.ReparsePoint | FileAttributes.Device)) != 0;
+        (attributes & (FileAttributes.ReparsePoint | FileAttributes.Device)) != FileAttributes.None;
 
     private static ArtifactScanException UnsafeEntry() => new(
         LocalArtifactControlErrorCode.UnsafeLayout,
@@ -602,5 +600,6 @@ public sealed class FileSystemLocalArtifactControl : ILocalArtifactControl
         : Exception(message)
     {
         internal LocalArtifactControlErrorCode Code { get; } = code;
+
     }
 }

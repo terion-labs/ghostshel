@@ -200,7 +200,7 @@ public sealed class SqliteAgentSessionCheckpointStoreTests
             CancellationToken.None));
         Assert.Contains(
             loaded.PayloadJson,
-            new[] { first.PayloadJson, second.PayloadJson });
+            [first.PayloadJson, second.PayloadJson], StringComparer.Ordinal);
     }
 
     [Fact]

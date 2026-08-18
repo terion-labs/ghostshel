@@ -599,7 +599,7 @@ public sealed class FileProviderProfileEditorViewModel : ObservableObject
         };
         options.AddRange(secrets
             .Where(item => item.SecretScope.Kind == SecretScopeKind.FileProvider
-                && item.SecretScope.OwnerId == _id.Value)
+                && string.Equals(item.SecretScope.OwnerId, _id.Value, StringComparison.Ordinal))
             .OrderBy(item => item.Label, StringComparer.OrdinalIgnoreCase)
             .Select(item => new FileProviderSecretOption(
                 item.Reference,

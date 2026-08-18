@@ -35,7 +35,7 @@ public sealed class AgentCapabilityProtocolTests
             .Select(AgentCapabilityProtocol.GetToken)
             .ToArray();
 
-        Assert.Equal(capabilities.Length, tokens.Distinct().Count());
+        Assert.Equal(capabilities.Length, tokens.Distinct(StringComparer.Ordinal).Count());
         foreach (var (capability, token) in capabilities.Zip(tokens))
         {
             Assert.Matches("^[a-z]+(?:_[a-z]+)*$", token);

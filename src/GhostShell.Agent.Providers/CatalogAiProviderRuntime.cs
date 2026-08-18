@@ -191,12 +191,13 @@ public sealed class CatalogAiProviderRuntime :
                     profile.DefaultModel,
                     StringComparison.Ordinal)))
             {
-                models = new[]
-                {
+                models =
+                [
                     new AiProviderModelDescriptor(
                         profile.DefaultModel,
                         profile.DefaultModel),
-                }.Concat(models).ToArray();
+                    .. models,
+                ];
             }
 
             lock (_gate)
@@ -378,7 +379,7 @@ public sealed class CatalogAiProviderRuntime :
         {
             result = await session.RunTurnAsync(
                 prompt,
-                ImmutableArray<AgentToolDefinition>.Empty,
+                [],
                 _factory.Create(profile),
                 turnCancellation.Token).ConfigureAwait(false);
         }

@@ -16,16 +16,20 @@ public sealed partial class GovernedAgentRuntimeProcessTests
                 IntrinsicAgentTools.RequestCapability,
                 """{"capability":"process_data"}"""),
             2 when request.Messages.Any(message =>
-                message.ToolResult?.ProviderCallId == "process-capability"
-                && message.ToolResult.Status
-                    == AgentToolResultStatus.Succeeded) =>
+                message.ToolResult is { } toolResult
+                && string.Equals(
+                    toolResult.ProviderCallId,
+                    "process-capability",
+                    StringComparison.Ordinal)
+                && toolResult.Status == AgentToolResultStatus.Succeeded) =>
                 CapabilityToolCall(
                     "process-list-after-grant",
                     BuiltInAgentTools.ProcessesList,
                     """{"sort":"pid_asc","limit":16}"""),
-            3 when request.Messages.Any(message =>
-                message.ToolResult?.ProviderCallId
-                    == "process-list-after-grant") =>
+            3 when request.Messages.Any(message => string.Equals(
+                message.ToolResult?.ProviderCallId,
+                "process-list-after-grant",
+                StringComparison.Ordinal)) =>
                 CapabilityAnswer("The local process list was returned."),
             _ => throw new InvalidOperationException(
                 "The process capability provider received an unexpected round."),
@@ -61,7 +65,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         var initialRequest = provider.Requests.ToArray()[0];
         var intrinsic = Assert.Single(
             initialRequest.Tools,
-            tool => tool.Name == IntrinsicAgentTools.RequestCapability);
+            tool => string.Equals(tool.Name, IntrinsicAgentTools.RequestCapability, StringComparison.Ordinal));
         Assert.Equal(
             [AgentCapabilityProtocol.ProcessData],
             intrinsic.InputSchema
@@ -69,7 +73,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
                 .GetProperty("capability")
                 .GetProperty("enum")
                 .EnumerateArray()
-                .Select(item => item.GetString()));
+                .Select(item => item.GetString()), StringComparer.Ordinal);
 
         var capabilityDecision =
             await fixture.Runtime.DecideCapabilityRequestAsync(
@@ -89,17 +93,19 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         Assert.Empty(fixture.Processes.Actions);
         var receipt = Assert.Single(
             provider.Requests.ToArray()[1].Messages,
-            message => message.ToolResult?.ProviderCallId
-                == "process-capability").ToolResult!;
+            message => string.Equals(
+                message.ToolResult?.ProviderCallId,
+                "process-capability",
+                StringComparison.Ordinal)).ToolResult!;
         Assert.Equal(
             """{"ok":true,"capability":"process_data","permission":"ask","scope":"run","action_approval_required":true}""",
             receipt.Value.Content);
         Assert.DoesNotContain(
             provider.Requests.ToArray()[1].Tools,
-            tool => tool.Name == IntrinsicAgentTools.RequestCapability);
+            tool => string.Equals(tool.Name, IntrinsicAgentTools.RequestCapability, StringComparison.Ordinal));
         Assert.Single(
             fixture.Audit.Events,
-            auditEvent => auditEvent.Action == "agent.run.policy");
+            auditEvent => string.Equals(auditEvent.Action, "agent.run.policy", StringComparison.Ordinal));
 
         Assert.True((await fixture.Runtime.DecideAsync(
             approval.Id,
@@ -109,13 +115,17 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         Assert.Single(fixture.Processes.Actions);
         Assert.Contains(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.ProcessesList
+            auditEvent => string.Equals(
+                auditEvent.Action,
+                BuiltInAgentTools.ProcessesList,
+                StringComparison.Ordinal)
                 && auditEvent.Outcome == AuditOutcome.Approved);
         var processResult = Assert.Single(
             provider.Requests.ToArray()[^1].Messages,
-            message => message.ToolResult?.ProviderCallId
-                == "process-list-after-grant").ToolResult!;
+            message => string.Equals(
+                message.ToolResult?.ProviderCallId,
+                "process-list-after-grant",
+                StringComparison.Ordinal)).ToolResult!;
         Assert.Equal(
             "processes_listed",
             processResult.StableCode);

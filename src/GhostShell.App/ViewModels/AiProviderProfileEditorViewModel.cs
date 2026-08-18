@@ -96,13 +96,12 @@ public sealed class AiProviderProfileEditorViewModel : ObservableObject
         _id = existing?.Id ?? AiProviderProfileId.New();
         _schemaVersion = existing?.SchemaVersion ?? AiProviderProfile.CurrentSchemaVersion;
         ProviderKinds = Enum.GetValues<AiProviderKind>();
-        ProviderOptions = AiProviderCatalog.Definitions
+        ProviderOptions = [.. AiProviderCatalog.Definitions
             .Select(definition => new AiProviderIdentityOption(
                 definition.Identity,
                 definition.DisplayName,
                 definition.Category.ToString(),
-                definition.IsRuntimeSupported))
-            .ToArray();
+                definition.IsRuntimeSupported))];
         SecretOptions = BuildSecretOptions(secrets, existing);
         _selectedCredential = SecretOptions[0];
         _order = suggestedOrder;
@@ -537,8 +536,8 @@ public sealed class AiProviderProfileEditorViewModel : ObservableObject
             Models = result.Models;
             TestStatus = !result.IsSuccess
                 ? "Test failed"
-                : result.Code == "ai_provider_test_configuration_valid"
-                    ? "Configuration valid"
+                : string.Equals(result.Code, "ai_provider_test_configuration_valid"
+, StringComparison.Ordinal) ? "Configuration valid"
                     : "Provider connected";
             TestDetail = result.Message;
         }
@@ -849,7 +848,7 @@ public sealed class AiProviderProfileEditorViewModel : ObservableObject
         };
         options.AddRange(secrets
             .Where(item => item.SecretScope.Kind == SecretScopeKind.AiProvider
-                && item.SecretScope.OwnerId == _id.Value)
+                && string.Equals(item.SecretScope.OwnerId, _id.Value, StringComparison.Ordinal))
             .OrderBy(item => item.Label, StringComparer.OrdinalIgnoreCase)
             .Select(item => new AiProviderSecretOption(
                 item.Reference,

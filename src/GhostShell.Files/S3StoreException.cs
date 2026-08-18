@@ -11,4 +11,5 @@ internal sealed class S3StoreException(
     public HttpStatusCode StatusCode { get; } = statusCode;
 
     public string? ServiceCode { get; } = serviceCode;
+
 }

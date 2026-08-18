@@ -8,6 +8,7 @@ internal sealed record SanitizedText(string Value, int RedactionsApplied);
 internal static partial class EvidenceSanitizer
 {
     public const int MaximumNoteLength = 2_000;
+    private const int RegexTimeoutMilliseconds = 1_000;
 
     public static SanitizedText SanitizeNote(string value) =>
         Sanitize(value, MaximumNoteLength);
@@ -165,64 +166,75 @@ internal static partial class EvidenceSanitizer
         return value;
     }
 
-    [GeneratedRegex("[^A-Za-z0-9._-]+", RegexOptions.CultureInvariant)]
+    [GeneratedRegex("[^A-Za-z0-9._-]+", RegexOptions.CultureInvariant, RegexTimeoutMilliseconds)]
     private static partial Regex UnsafeIdentifierCharacter();
 
-    [GeneratedRegex("^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex("^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$", RegexOptions.CultureInvariant, RegexTimeoutMilliseconds)]
     private static partial Regex SafeIdentifier();
 
     [GeneratedRegex(
         "\\b(?<name>authorization)\\s*[:=]\\s*(?:(?:basic|bearer)\\s+)?(?:\\\"[^\\\"]*\\\"|'[^']*'|[^\\s,;]+)",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        RegexTimeoutMilliseconds)]
     private static partial Regex AuthorizationCredential();
 
     [GeneratedRegex(
         "(?<name>password|passwd|pwd|token|api[-_ ]?key|secret|authorization|cookie|private[-_ ]?key)\\s*[:=]\\s*(?:\\\"[^\\\"]*\\\"|'[^']*'|[^\\s,;]+)",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        RegexTimeoutMilliseconds)]
     private static partial Regex SecretAssignment();
 
     [GeneratedRegex(
         "\\bBearer\\s+[A-Za-z0-9._~+/=-]+",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        RegexTimeoutMilliseconds)]
     private static partial Regex BearerCredential();
 
     [GeneratedRegex(
         "\\b(?:https?|ssh|ftp)://[^\\s]+",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        RegexTimeoutMilliseconds)]
     private static partial Regex NetworkUrl();
 
     [GeneratedRegex(
         "-----BEGIN[^-]*PRIVATE KEY-----.*?-----END[^-]*PRIVATE KEY-----",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        RegexTimeoutMilliseconds)]
     private static partial Regex PrivateKeyMaterial();
 
     [GeneratedRegex(
         "\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        RegexTimeoutMilliseconds)]
     private static partial Regex EmailAddress();
 
     [GeneratedRegex(
         "(?<![0-9A-F:])(?=[0-9A-F:.]*:[0-9A-F:.]*:)[0-9A-F:.]+(?![0-9A-F:])",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        RegexTimeoutMilliseconds)]
     private static partial Regex Ipv6Address();
 
     [GeneratedRegex(
         "(?<![0-9.])(?:[0-9]{1,3}\\.){3}[0-9]{1,3}(?![0-9.])",
-        RegexOptions.CultureInvariant)]
+        RegexOptions.CultureInvariant,
+        RegexTimeoutMilliseconds)]
     private static partial Regex Ipv4Address();
 
     [GeneratedRegex(
         "(?:[A-Za-z]:\\\\Users\\\\[^\\s\\\\/]+|/(?:Users|home)/[^\\s/]+)(?:[/\\\\][^\\s|;,]*)?",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        RegexTimeoutMilliseconds)]
     private static partial Regex UserHomePath();
 
     [GeneratedRegex(
         "(?<![A-Za-z0-9])(?:[A-Za-z]:[\\\\/]|\\\\\\\\)[^\\s|;,]+",
-        RegexOptions.CultureInvariant)]
+        RegexOptions.CultureInvariant,
+        RegexTimeoutMilliseconds)]
     private static partial Regex WindowsAbsolutePath();
 
     [GeneratedRegex(
         "(?<![A-Za-z0-9:/])/(?!/)[^\\s|;,]+",
-        RegexOptions.CultureInvariant)]
+        RegexOptions.CultureInvariant,
+        RegexTimeoutMilliseconds)]
     private static partial Regex UnixAbsolutePath();
 }

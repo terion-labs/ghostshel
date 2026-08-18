@@ -10,7 +10,7 @@ internal enum ProcessResourceConsumer
     ProcessMonitor,
 }
 
-internal sealed class ProcessResourceSampler
+internal sealed class ProcessResourceSampler : IDisposable
 {
     private static readonly TimeSpan CaptureReuseWindow = TimeSpan.FromMilliseconds(500);
     private readonly SemaphoreSlim _captureGate = new(1, 1);
@@ -36,6 +36,8 @@ internal sealed class ProcessResourceSampler
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         _networkSource = networkSource;
     }
+
+    public void Dispose() => _captureGate.Dispose();
 
     public async ValueTask<MonitorPanelResult<ProcessResourceSample>> CaptureAsync(
         CancellationToken cancellationToken) =>

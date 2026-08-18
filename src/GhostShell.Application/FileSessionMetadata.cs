@@ -49,7 +49,7 @@ public sealed record FileSessionMetadata
         long maximumPreviewBytes)
     {
         TrustedRoot = trustedRoot ?? throw new ArgumentNullException(nameof(trustedRoot));
-        if ((capabilities & ~AllCapabilities) != 0)
+        if ((capabilities & ~AllCapabilities) != FilePanelCapability.None)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(capabilities),

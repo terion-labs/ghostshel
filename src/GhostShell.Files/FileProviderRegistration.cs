@@ -45,7 +45,7 @@ public sealed record FileProviderRegistration
             FilePanelCapability.GovernedCreateDirectory
             | FilePanelCapability.GovernedDelete
             | FilePanelCapability.GovernedRename;
-        if ((governedMutationCapabilities & ~knownGovernedMutationCapabilities) != 0)
+        if ((governedMutationCapabilities & ~knownGovernedMutationCapabilities) != FilePanelCapability.None)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(governedMutationCapabilities),

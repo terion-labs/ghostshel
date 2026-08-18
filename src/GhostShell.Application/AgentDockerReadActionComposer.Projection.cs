@@ -387,7 +387,9 @@ public sealed partial class AgentDockerReadActionComposer
         }
 
         var name = CopyText(entry.Name, 1_024, ref budget);
-        if (string.IsNullOrEmpty(name) || name.Contains('/') || name.Contains('\0'))
+        if (string.IsNullOrEmpty(name)
+            || name.Contains('/', StringComparison.Ordinal)
+            || name.Contains('\0', StringComparison.Ordinal))
         {
             throw InvalidResult("Docker file name is invalid.");
         }
@@ -395,8 +397,8 @@ public sealed partial class AgentDockerReadActionComposer
         var path = CopyText(entry.Path, 4_096, ref budget);
         var exact = requireExactPath
             ? expectedPath
-            : expectedPath == "/"
-                ? $"/{name}"
+            : string.Equals(expectedPath, "/"
+, StringComparison.Ordinal) ? $"/{name}"
                 : $"{expectedPath.TrimEnd('/')}/{name}";
         if (!string.Equals(path, exact, StringComparison.Ordinal))
         {
@@ -537,8 +539,8 @@ public sealed partial class AgentDockerReadActionComposer
         {
             for (var index = typeInfo.Properties.Count - 1; index >= 0; index--)
             {
-                if (typeInfo.Properties[index].Name
-                    == nameof(DockerContainerLogLine.RawText))
+                if (string.Equals(typeInfo.Properties[index].Name
+, nameof(DockerContainerLogLine.RawText), StringComparison.Ordinal))
                 {
                     typeInfo.Properties.RemoveAt(index);
                 }

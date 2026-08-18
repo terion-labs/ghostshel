@@ -110,7 +110,7 @@ public sealed class WorkspaceTabEditorViewModel : ObservableObject, IDisposable
             : null;
         var fileProviderId = kind == ScreenPanelKind.FileViewer
             ? _fileProviderOptions.FirstOrDefault(option =>
-                option.IsAvailable && option.Id.Value == "builtin.files.home")?.Id
+                option.IsAvailable && string.Equals(option.Id.Value, "builtin.files.home", StringComparison.Ordinal))?.Id
             : null;
         var panel = new ScreenPanelDefinition(
             ScreenPanelId.New(),
@@ -164,7 +164,7 @@ public sealed class WorkspaceTabEditorViewModel : ObservableObject, IDisposable
         Id,
         (Name ?? string.Empty).Trim(),
         SelectedLayout.Id,
-        _panels.Select(panel => panel.Build()).ToArray());
+        [.. _panels.Select(panel => panel.Build())]);
 
     public void Dispose()
     {

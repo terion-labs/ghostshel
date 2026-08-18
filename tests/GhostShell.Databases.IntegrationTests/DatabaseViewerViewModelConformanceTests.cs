@@ -31,7 +31,7 @@ public sealed partial class DatabaseViewerConformanceTests
         panel.TableFilter = "viewer_rows";
         Assert.Contains(
             panel.Tables,
-            table => table.Descriptor.Name == environment.Provider.Seed.RowsTable);
+            table => string.Equals(table.Descriptor.Name, environment.Provider.Seed.RowsTable, StringComparison.Ordinal));
         panel.TableFilter = string.Empty;
 
         var rowsTable = FindTable(panel, environment.Provider.Seed.RowsTable);
@@ -43,7 +43,7 @@ public sealed partial class DatabaseViewerConformanceTests
         Assert.True(panel.HasNextPage);
         Assert.Equal(205, panel.TotalRows);
         Assert.Equal("200", panel.PageLimitText);
-        if (environment.Provider.Id == "postgres")
+        if (string.Equals(environment.Provider.Id, "postgres", StringComparison.Ordinal))
         {
             Assert.IsType<int>(Cell(panel.ResultRows[0], "id").RawValue);
         }
@@ -82,7 +82,7 @@ public sealed partial class DatabaseViewerConformanceTests
         Assert.False(panel.HasPreviousPage);
         Assert.Equal(200, panel.ResultRows.Count);
 
-        panel.FilterColumn = Assert.Single(panel.FilterColumns, column => column.Name == "code");
+        panel.FilterColumn = Assert.Single(panel.FilterColumns, column => string.Equals(column.Name, "code", StringComparison.Ordinal));
         panel.FilterOperator = Assert.Single(
             panel.FilterOperators,
             item => item.Operator == DatabaseFilterOperator.Equal);
@@ -214,7 +214,7 @@ public sealed partial class DatabaseViewerConformanceTests
         Assert.True(Value(inserted, "note").IsNull);
         Assert.Equal("draft", Value(inserted, "status").DisplayText);
 
-        panel.FilterColumn = Assert.Single(panel.FilterColumns, column => column.Name == "code");
+        panel.FilterColumn = Assert.Single(panel.FilterColumns, column => string.Equals(column.Name, "code", StringComparison.Ordinal));
         panel.FilterOperator = Assert.Single(
             panel.FilterOperators,
             item => item.Operator == DatabaseFilterOperator.Equal);
@@ -327,35 +327,35 @@ public sealed partial class DatabaseViewerConformanceTests
     private static DatabaseTableItemViewModel FindTable(
         DatabaseRuntimePanelViewModel panel,
         string name) =>
-        Assert.Single(panel.Tables, table => table.Descriptor.Name == name);
+        Assert.Single(panel.Tables, table => string.Equals(table.Descriptor.Name, name, StringComparison.Ordinal));
 
     private static DatabaseResultRowViewModel FindRow(
         DatabaseRuntimePanelViewModel panel,
         string code) =>
-        Assert.Single(panel.ResultRows, row => Cell(row, "code").Text == code);
+        Assert.Single(panel.ResultRows, row => string.Equals(Cell(row, "code").Text, code, StringComparison.Ordinal));
 
     private static DatabaseResultCellViewModel Cell(
         DatabaseResultRowViewModel row,
         string columnName) =>
-        Assert.Single(row.Cells, cell => cell.Column.Name == columnName);
+        Assert.Single(row.Cells, cell => string.Equals(cell.Column.Name, columnName, StringComparison.Ordinal));
 
     private static int ColumnOrdinal(
         DatabaseRuntimePanelViewModel panel,
         string columnName) =>
         panel.ResultColumns
             .Select((column, ordinal) => (column, ordinal))
-            .Single(pair => pair.column.Descriptor.Name == columnName)
+            .Single(pair => string.Equals(pair.column.Descriptor.Name, columnName, StringComparison.Ordinal))
             .ordinal;
 
     private static void AssertRenderedMetadata(
         DatabaseRuntimePanelViewModel panel,
         DatabaseProviderExpectations expectations)
     {
-        var note = Assert.Single(panel.StructureColumns, column => column.Name == "note");
-        var status = Assert.Single(panel.StructureColumns, column => column.Name == "status");
+        var note = Assert.Single(panel.StructureColumns, column => string.Equals(column.Name, "note", StringComparison.Ordinal));
+        var status = Assert.Single(panel.StructureColumns, column => string.Equals(column.Name, "status", StringComparison.Ordinal));
         var generated = Assert.Single(
             panel.StructureColumns,
-            column => column.Name == "computed_label");
+            column => string.Equals(column.Name, "computed_label", StringComparison.Ordinal));
         Assert.Equal("Yes", note.Nullable);
         Assert.Equal("No", status.Nullable);
         Assert.Contains("draft", status.Default, StringComparison.OrdinalIgnoreCase);
@@ -368,14 +368,14 @@ public sealed partial class DatabaseViewerConformanceTests
 
         if (expectations.ExpectedCodeLength is { } codeLength)
         {
-            var code = Assert.Single(panel.StructureColumns, column => column.Name == "code");
-            Assert.Contains(codeLength.ToString(), code.Type, StringComparison.Ordinal);
+            var code = Assert.Single(panel.StructureColumns, column => string.Equals(column.Name, "code", StringComparison.Ordinal));
+            Assert.Contains(codeLength.ToString(System.Globalization.CultureInfo.InvariantCulture), code.Type, StringComparison.Ordinal);
         }
 
         if (expectations.ExpectedScorePrecision is { } precision
             && expectations.ExpectedScoreScale is { } scale)
         {
-            var score = Assert.Single(panel.StructureColumns, column => column.Name == "score");
+            var score = Assert.Single(panel.StructureColumns, column => string.Equals(column.Name, "score", StringComparison.Ordinal));
             var compactType = score.Type.Replace(" ", string.Empty, StringComparison.Ordinal);
             Assert.Contains($"({precision},{scale})", compactType, StringComparison.Ordinal);
         }
@@ -390,7 +390,7 @@ public sealed partial class DatabaseViewerConformanceTests
         var indexExpectations = expectations.ScoreIndex;
         var index = Assert.Single(
             panel.Indexes,
-            item => item.Name == "idx_viewer_rows_score");
+            item => string.Equals(item.Name, "idx_viewer_rows_score", StringComparison.Ordinal));
         Assert.Equal("No", index.Unique);
         Assert.Equal("Valid", index.Status);
         Assert.Contains("score", index.Columns, StringComparison.OrdinalIgnoreCase);
@@ -431,7 +431,9 @@ public sealed partial class DatabaseViewerConformanceTests
             try
             {
                 panel.Dispose();
-                await operation.WaitAsync(PanelCancellationGracePeriod);
+                await operation.WaitAsync(
+                    PanelCancellationGracePeriod,
+                    CancellationToken.None);
             }
             catch (Exception shutdownFailure)
             {

@@ -250,8 +250,8 @@ public abstract partial class LocalFileProvider : IFileProvider, ILocalFilePathS
     private protected bool IsWithinPath(string candidate, string ancestor)
     {
         var relative = Path.GetRelativePath(ancestor, candidate);
-        return relative != "."
-            && !relative.Equals("..", StringComparison.Ordinal)
+        return !string.Equals(relative, "."
+, StringComparison.Ordinal) && !relative.Equals("..", StringComparison.Ordinal)
             && !relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
             && !Path.IsPathRooted(relative);
     }

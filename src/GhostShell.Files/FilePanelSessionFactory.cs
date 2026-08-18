@@ -62,14 +62,9 @@ public sealed class FilePanelSessionFactory : IFilePanelSessionFactory
                 string.Equals(
                     candidate.Id,
                     initialLocation.ProviderProfileId,
-                    StringComparison.Ordinal));
-            if (profile is null)
-            {
-                throw new ArgumentException(
+                    StringComparison.Ordinal)) ?? throw new ArgumentException(
                     "The initial file location references an unavailable provider profile.",
                     nameof(initialLocation));
-            }
-
             if (!string.Equals(
                     profile.Root.Authority,
                     initialLocation.Authority,

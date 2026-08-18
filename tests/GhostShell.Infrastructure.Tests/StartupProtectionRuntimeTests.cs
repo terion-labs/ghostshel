@@ -13,7 +13,7 @@ public sealed class StartupProtectionRuntimeTests : IDisposable
         Directory.CreateTempSubdirectory("ghostshell-startup-protection").FullName;
 
     private readonly PersistentVault _vault = new();
-    private readonly ManualClock _clock = new(DateTimeOffset.Parse("2026-08-04T10:00:00Z"));
+    private readonly ManualClock _clock = new(DateTimeOffset.Parse("2026-08-04T10:00:00Z", System.Globalization.CultureInfo.InvariantCulture));
 
     public void Dispose()
     {
@@ -308,7 +308,9 @@ public sealed class StartupProtectionRuntimeTests : IDisposable
         await using var connection = await database.OpenConnectionAsync(CancellationToken.None);
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT name FROM definitions WHERE id = 'wrapped';";
-        return Convert.ToString(await command.ExecuteScalarAsync());
+        return Convert.ToString(
+            await command.ExecuteScalarAsync(),
+            System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private sealed class ManualClock(DateTimeOffset start) : TimeProvider

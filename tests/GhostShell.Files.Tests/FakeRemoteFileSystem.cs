@@ -93,7 +93,7 @@ internal sealed class FakeRemoteSession(
         var entries = fileSystem.List(path, cancellationToken);
         return ValueTask.FromResult<IReadOnlyList<RemoteFileEntry>>(
             reportUnknownFileSizes()
-                ? entries.Select(WithoutKnownSize).ToArray()
+                ? [.. entries.Select(WithoutKnownSize)]
                 : entries);
     }
 
@@ -187,11 +187,10 @@ internal sealed class FakeRemoteFileSystem
                 throw Error(RemoteFileSessionErrorCode.NotDirectory, "The fake path is not a directory.");
             }
 
-            return _nodes
-                .Where(pair => pair.Key != path && Parent(pair.Key) == path)
+            return [.. _nodes
+                .Where(pair => !string.Equals(pair.Key, path, StringComparison.Ordinal) && string.Equals(Parent(pair.Key), path, StringComparison.Ordinal))
                 .OrderBy(pair => pair.Key, StringComparer.Ordinal)
-                .Select(pair => Entry(Name(pair.Key), pair.Value))
-                .ToArray();
+                .Select(pair => Entry(Name(pair.Key), pair.Value))];
         }
     }
 
@@ -233,8 +232,10 @@ internal sealed class FakeRemoteFileSystem
                 throw Error(RemoteFileSessionErrorCode.IsDirectory, "The fake path is a directory.");
             }
 
-            var stream = new MemoryStream(node.Content, writable: false);
-            stream.Position = offset;
+            var stream = new MemoryStream(node.Content, writable: false)
+            {
+                Position = offset
+            };
             return stream;
         }
     }
@@ -298,7 +299,7 @@ internal sealed class FakeRemoteFileSystem
 
             RequireDirectory(Parent(destinationPath));
             var moving = _nodes
-                .Where(pair => pair.Key == sourcePath || IsDescendant(pair.Key, sourcePath))
+                .Where(pair => string.Equals(pair.Key, sourcePath, StringComparison.Ordinal) || IsDescendant(pair.Key, sourcePath))
                 .ToArray();
             foreach (var pair in moving)
             {
@@ -406,11 +407,11 @@ internal sealed class FakeRemoteFileSystem
         return separator <= 0 ? "/" : path[..separator];
     }
 
-    private static string Name(string path) => path == "/" ? string.Empty : path[(path.LastIndexOf('/') + 1)..];
+    private static string Name(string path) => string.Equals(path, "/", StringComparison.Ordinal) ? string.Empty : path[(path.LastIndexOf('/') + 1)..];
 
     private static bool IsDescendant(string candidate, string ancestor) =>
         candidate.Length > ancestor.Length
-        && candidate.StartsWith(ancestor == "/" ? "/" : $"{ancestor}/", StringComparison.Ordinal);
+        && candidate.StartsWith(string.Equals(ancestor, "/", StringComparison.Ordinal) ? "/" : $"{ancestor}/", StringComparison.Ordinal);
 
     private static RemoteFileSessionException Error(RemoteFileSessionErrorCode code, string message) =>
         new(code, message);

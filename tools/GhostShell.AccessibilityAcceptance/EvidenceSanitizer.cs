@@ -155,7 +155,7 @@ internal static partial class EvidenceSanitizer
         string replacement,
         ref int redactions)
     {
-        var matches = pattern.Matches(value).Count;
+        var matches = pattern.Count(value);
         if (matches == 0)
         {
             return value;
@@ -165,15 +165,22 @@ internal static partial class EvidenceSanitizer
         return pattern.Replace(value, replacement);
     }
 
-    [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9._-]*$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(
+        @"^[A-Za-z0-9][A-Za-z0-9._-]*$",
+        RegexOptions.CultureInvariant,
+        matchTimeoutMilliseconds: 100)]
     private static partial Regex Identifier();
 
-    [GeneratedRegex(@"^host-[0-9a-f]{16}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(
+        @"^host-[0-9a-f]{16}$",
+        RegexOptions.CultureInvariant,
+        matchTimeoutMilliseconds: 100)]
     private static partial Regex HostFingerprint();
 
     [GeneratedRegex(
         @"^[A-Za-z0-9][A-Za-z0-9 ._+()~-]*$",
-        RegexOptions.CultureInvariant)]
+        RegexOptions.CultureInvariant,
+        matchTimeoutMilliseconds: 100)]
     private static partial Regex VersionText();
 
     [GeneratedRegex(
@@ -184,13 +191,13 @@ internal static partial class EvidenceSanitizer
 
     [GeneratedRegex(
         @"\b(?:https?|ftp)://[^\s]+",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture,
         matchTimeoutMilliseconds: 100)]
     private static partial Regex Url();
 
     [GeneratedRegex(
         "\\b(token|secret|password|passwd|api[_-]?key|authorization)\\s*[:=]\\s*(?:\"[^\"\\r\\n]*\"|'[^'\\r\\n]*'|[^\\s,;]+)",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture,
         matchTimeoutMilliseconds: 100)]
     private static partial Regex Authorization();
 

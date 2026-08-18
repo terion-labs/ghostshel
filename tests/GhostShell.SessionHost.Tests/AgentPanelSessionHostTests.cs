@@ -276,7 +276,7 @@ public sealed class AgentPanelSessionHostTests
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public IReadOnlyList<AgentActionCompletion> Completions =>
-            _completions.ToArray();
+            [.. _completions];
 
         public AgentAuthorizationId Arm(AgentPanelAction action)
         {

@@ -21,6 +21,7 @@ internal sealed class ProviderStreamException(
     string message) : Exception(message)
 {
     public ProviderStreamErrorCode Code { get; } = code;
+
 }
 
 internal sealed record ReducedToolCall(
@@ -161,9 +162,7 @@ internal sealed class ProviderTurnReducer
                 ? null
                 : _reasoningSummary.ToString(),
             _usage,
-            _toolCalls.Values
-                .Select(toolCall => toolCall.Build())
-                .ToImmutableArray(),
+            [.. _toolCalls.Values.Select(toolCall => toolCall.Build())],
             _stopReason.Value,
             _providerReplayState);
     }

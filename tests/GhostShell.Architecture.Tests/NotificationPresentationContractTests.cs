@@ -22,7 +22,7 @@ public sealed class NotificationPresentationContractTests
             .Select(XDocument.Load)
             .Select(document => Assert.IsType<XElement>(document.Root))
             .Select(root => root.DescendantsAndSelf()
-                .FirstOrDefault(element => element.Name.LocalName == "PanelChrome"))
+                .FirstOrDefault(element => string.Equals(element.Name.LocalName, "PanelChrome", StringComparison.Ordinal)))
             .OfType<XElement>()
             .ToArray();
 
@@ -52,14 +52,14 @@ public sealed class NotificationPresentationContractTests
 
         Assert.Contains(
             designSystem.Descendants(),
-            element => element.Name.LocalName == "SignalDot"
-                && AttributeValue(element, "IsVisible")
-                    == "{TemplateBinding HasAttention}");
+            element => string.Equals(element.Name.LocalName, "SignalDot"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "IsVisible")
+, "{TemplateBinding HasAttention}", StringComparison.Ordinal));
         Assert.Contains(
             designSystem.Descendants(),
-            element => AttributeValue(element, "Name")
-                    == "PART_NotificationPulse"
-                && AttributeValue(element, "IsVisible") == "False");
+            element => string.Equals(AttributeValue(element, "Name")
+, "PART_NotificationPulse"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "IsVisible"), "False", StringComparison.Ordinal));
         Assert.Contains(
             designSystem.Descendants(),
             element => element.Name.LocalName == "Style"
@@ -84,6 +84,6 @@ public sealed class NotificationPresentationContractTests
 
     private static string? AttributeValue(XElement element, string name) =>
         element.Attributes()
-            .FirstOrDefault(attribute => attribute.Name.LocalName == name)
+            .FirstOrDefault(attribute => string.Equals(attribute.Name.LocalName, name, StringComparison.Ordinal))
             ?.Value;
 }

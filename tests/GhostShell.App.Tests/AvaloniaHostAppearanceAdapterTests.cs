@@ -344,13 +344,13 @@ public sealed class AvaloniaHostAppearanceAdapterTests
     {
         Assert.Contains(
             MainWindow.AppearanceTextScaleOptions,
-            option => option.Scale is null && option.DisplayName == "Follow host");
+            option => option.Scale is null && string.Equals(option.DisplayName, "Follow host", StringComparison.Ordinal));
         Assert.Contains(
             MainWindow.AppearanceTextScaleOptions,
-            option => option.Scale == 2 && option.DisplayName == "200%");
+            option => option.Scale == 2 && string.Equals(option.DisplayName, "200%", StringComparison.Ordinal));
         Assert.Contains(
             MainWindow.AppearanceTextScaleOptions,
-            option => option.Scale == 2.5 && option.DisplayName == "250%");
+            option => option.Scale == 2.5 && string.Equals(option.DisplayName, "250%", StringComparison.Ordinal));
 
         var imported = MainWindow.ResolveApplicationTextScaleOption(1.3);
 

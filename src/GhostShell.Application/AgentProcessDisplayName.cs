@@ -67,8 +67,8 @@ public sealed record AgentProcessDisplayName
     }
 
     private static bool LooksPathLike(string value) =>
-        value.Contains('/')
-        || value.Contains('\\');
+        value.Contains('/', StringComparison.Ordinal)
+        || value.Contains('\\', StringComparison.Ordinal);
 
     private static bool ContainsUnsafeText(string value) =>
         value.EnumerateRunes().Any(rune =>

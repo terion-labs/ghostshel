@@ -95,8 +95,8 @@ public abstract record McpServerTransport
                     nameof(endpoint));
             }
 
-            if (endpoint.Scheme == Uri.UriSchemeHttp
-                && (!allowInsecureTransport || !IsExactLoopback(endpoint)))
+            if (string.Equals(endpoint.Scheme, Uri.UriSchemeHttp
+, StringComparison.Ordinal) && (!allowInsecureTransport || !IsExactLoopback(endpoint)))
             {
                 throw new ArgumentException(
                     "Plaintext Streamable HTTP is allowed only for an exact loopback endpoint with explicit insecure-transport acknowledgement.",

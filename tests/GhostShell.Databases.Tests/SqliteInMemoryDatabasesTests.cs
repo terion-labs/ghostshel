@@ -44,7 +44,7 @@ public sealed class SqliteInMemoryDatabasesTests
     }
 
     private static IDatabaseDriver SqliteDriver() =>
-        BuiltInDatabaseDrivers.All.Single(driver => driver.Descriptor.Id == "sqlite");
+        BuiltInDatabaseDrivers.All.Single(driver => string.Equals(driver.Descriptor.Id, "sqlite", StringComparison.Ordinal));
 
     [Fact]
     public void A_registered_image_answers_queries_through_the_ordinary_driver()

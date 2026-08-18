@@ -60,7 +60,8 @@ public sealed record TerminalWaitOutcome
 
         if (Kind == TerminalWaitOutcomeKind.Changed
             && (InitialContentRevision is null
-                || Snapshot!.ContentRevision <= InitialContentRevision))
+                || Snapshot is null
+                || Snapshot.ContentRevision <= InitialContentRevision))
         {
             throw new ArgumentException(
                 "A changed terminal wait outcome requires a newer content revision.",

@@ -22,7 +22,7 @@ public sealed class RecentSessionHistoryProjectionTests
 
         Assert.Equal(
             ["exact", "prefix", "contains", "secondary"],
-            results.Select(item => item.SessionId.Value));
+            results.Select(item => item.SessionId.Value), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -62,7 +62,7 @@ public sealed class RecentSessionHistoryProjectionTests
         var forward = RecentSessionHistoryProjection.Search(string.Empty, [older, newest]);
         var reverse = RecentSessionHistoryProjection.Search(string.Empty, [newest, older]);
 
-        Assert.Equal(["newest", "older"], forward.Select(item => item.SessionId.Value));
+        Assert.Equal(["newest", "older"], forward.Select(item => item.SessionId.Value), StringComparer.Ordinal);
         Assert.Equal(forward.Select(item => item.SessionId), reverse.Select(item => item.SessionId));
     }
 

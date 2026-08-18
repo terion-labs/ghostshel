@@ -412,8 +412,8 @@ internal static class Program
         var sameIdentity = before.Verified
             && after.Verified
             && before.Kind == after.Kind
-            && before.Product == after.Product
-            && before.Version == after.Version;
+            && string.Equals(before.Product, after.Product, StringComparison.Ordinal)
+            && string.Equals(before.Version, after.Version, StringComparison.Ordinal);
         var current = AssertionResult(
             observations,
             "terminal-quick-terminal-cleanup",
@@ -517,7 +517,8 @@ internal static class Program
         AcceptanceStatus status,
         string note)
     {
-        var index = observations.FindIndex(check => check.Id == checkId);
+        var index = observations.FindIndex(check =>
+            string.Equals(check.Id, checkId, StringComparison.Ordinal));
         if (index < 0)
         {
             return;
@@ -526,11 +527,15 @@ internal static class Program
         var check = observations[index];
         var assertionIndex = check.Assertions
             .Select((assertion, position) => (assertion, position))
-            .FirstOrDefault(item => item.assertion.Id == assertionId)
+            .FirstOrDefault(item =>
+                string.Equals(item.assertion.Id, assertionId, StringComparison.Ordinal))
             .position;
         if (assertionIndex < 0
             || assertionIndex >= check.Assertions.Count
-            || check.Assertions[assertionIndex].Id != assertionId)
+            || !string.Equals(
+                check.Assertions[assertionIndex].Id,
+                assertionId,
+                StringComparison.Ordinal))
         {
             return;
         }
@@ -554,8 +559,10 @@ internal static class Program
         string checkId,
         string assertionId)
     {
-        var check = observations.First(item => item.Id == checkId);
-        return check.Assertions.First(item => item.Id == assertionId).Result;
+        var check = observations.First(item =>
+            string.Equals(item.Id, checkId, StringComparison.Ordinal));
+        return check.Assertions.First(item =>
+            string.Equals(item.Id, assertionId, StringComparison.Ordinal)).Result;
     }
 
     private static string? HostBoundaryBlocker(HostIdentity host)
@@ -572,8 +579,14 @@ internal static class Program
 
     private static string RestorationDisposition(IReadOnlyList<CheckObservation> observations)
     {
-        var final = observations.First(check => check.Id == "terminal-quick-terminal-cleanup");
-        return final.Assertions.Single(assertion => assertion.Id == "preferences-restored").Result switch
+        var final = observations.First(check => string.Equals(
+            check.Id,
+            "terminal-quick-terminal-cleanup",
+            StringComparison.Ordinal));
+        return final.Assertions.Single(assertion => string.Equals(
+            assertion.Id,
+            "preferences-restored",
+            StringComparison.Ordinal)).Result switch
         {
             AcceptanceStatus.Pass => AcceptanceEvidence.PreferencesRestoredDisposition,
             AcceptanceStatus.Fail => AcceptanceEvidence.PreferencesNotRestoredDisposition,

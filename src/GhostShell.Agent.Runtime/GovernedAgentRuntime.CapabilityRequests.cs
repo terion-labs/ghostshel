@@ -560,8 +560,7 @@ public sealed partial class GovernedAgentRuntime
             ? productionAndOtherIntrinsics
             : productionAndOtherIntrinsics.Add(
                 AgentRequestCapabilityIntrinsic.CreateDefinition(
-                    candidates.Select(candidate => candidate.Capability)
-                        .ToImmutableArray()));
+                    [.. candidates.Select(candidate => candidate.Capability)]));
     }
 
     private ImmutableArray<CapabilityCandidate> GetCapabilityCandidates(
@@ -580,7 +579,7 @@ public sealed partial class GovernedAgentRuntime
             effectivePolicy = _effectivePolicy;
         }
 
-        return tools
+        return [.. tools
             .Select(tool => _toolCatalog.TryGet(
                     tool.Name,
                     out var descriptor)
@@ -596,18 +595,14 @@ public sealed partial class GovernedAgentRuntime
             .GroupBy(descriptor => descriptor.Capability)
             .Select(group => new CapabilityCandidate(
                 group.Key,
-                group.OrderBy(descriptor => descriptor.Name, StringComparer.Ordinal)
-                    .Select(descriptor => descriptor.Name)
-                    .ToImmutableArray(),
-                group.OrderBy(descriptor => descriptor.Name, StringComparer.Ordinal)
+                [.. group.OrderBy(descriptor => descriptor.Name, StringComparer.Ordinal).Select(descriptor => descriptor.Name)],
+                [.. group.OrderBy(descriptor => descriptor.Name, StringComparer.Ordinal)
                     .Select(descriptor => descriptor.Title)
-                    .Distinct(StringComparer.Ordinal)
-                    .ToImmutableArray()))
+                    .Distinct(StringComparer.Ordinal)]))
             .OrderBy(
                 candidate => AgentCapabilityProtocol.GetToken(
                     candidate.Capability),
-                StringComparer.Ordinal)
-            .ToImmutableArray();
+                StringComparer.Ordinal)];
     }
 
     private async ValueTask<GovernedAgentCapabilityDecision?>

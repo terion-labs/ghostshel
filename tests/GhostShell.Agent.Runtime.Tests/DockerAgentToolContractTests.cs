@@ -1,6 +1,6 @@
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
-using System.Runtime.CompilerServices;
 using GhostShell.Agent;
 using GhostShell.Application;
 using GhostShell.Core;
@@ -28,7 +28,7 @@ public sealed class DockerAgentToolContractTests
                 BuiltInAgentTools.DockerLogs,
                 BuiltInAgentTools.DockerFileRead,
             ],
-            tools.Select(tool => tool.Name));
+            tools.Select(tool => tool.Name), StringComparer.Ordinal);
         Assert.All(tools, tool =>
         {
             Assert.False(tool.InputSchema
@@ -42,7 +42,7 @@ public sealed class DockerAgentToolContractTests
         var broad = Assert.Single(DockerAgentToolSet.For([
             ContextPanel("docker-a", SessionCapabilities.DockerInspect),
             ContextPanel("docker-b", SessionCapabilities.DockerReadState),
-        ]), tool => tool.Name == BuiltInAgentTools.DockerInspect);
+        ]), tool => string.Equals(tool.Name, BuiltInAgentTools.DockerInspect, StringComparison.Ordinal));
         Assert.Equal(
             ["panel-docker-a"],
             broad.InputSchema
@@ -50,10 +50,9 @@ public sealed class DockerAgentToolContractTests
                 .GetProperty("panel_id")
                 .GetProperty("enum")
                 .EnumerateArray()
-                .Select(item => item.GetString()));
+                .Select(item => item.GetString()), StringComparer.Ordinal);
 
-        var logs = Assert.Single(tools, tool =>
-            tool.Name == BuiltInAgentTools.DockerLogs);
+        var logs = Assert.Single(tools, tool => string.Equals(tool.Name, BuiltInAgentTools.DockerLogs, StringComparison.Ordinal));
         Assert.True(logs.InputSchema
             .GetProperty("properties")
             .TryGetProperty("before_timestamp", out _));
@@ -63,7 +62,7 @@ public sealed class DockerAgentToolContractTests
 
         var workspaceLogs = Assert.Single(
             DockerAgentToolSet.ForWorkspace(),
-            tool => tool.Name == BuiltInAgentTools.DockerLogs);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.DockerLogs, StringComparison.Ordinal));
         Assert.True(workspaceLogs.InputSchema
             .GetProperty("properties")
             .TryGetProperty("before_timestamp", out _));

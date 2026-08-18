@@ -126,7 +126,7 @@ public sealed class WebDavMutationNoReplayTests
 
         public Uri BaseUri { get; }
 
-        public CapturedRequest[] MutationRequests => _mutationRequests.ToArray();
+        public CapturedRequest[] MutationRequests => [.. _mutationRequests];
 
         public async ValueTask DisposeAsync()
         {
@@ -185,7 +185,7 @@ public sealed class WebDavMutationNoReplayTests
                     return;
                 }
 
-                if (request.Method == _mutationMethod)
+                if (string.Equals(request.Method, _mutationMethod, StringComparison.Ordinal))
                 {
                     _mutationRequests.Enqueue(request);
                     // Closing the connection after fully consuming the mutation emulates the
@@ -193,8 +193,8 @@ public sealed class WebDavMutationNoReplayTests
                     return;
                 }
 
-                var response = request.Method == "PROPFIND"
-                    ? FilePropertyResponse
+                var response = string.Equals(request.Method, "PROPFIND"
+, StringComparison.Ordinal) ? FilePropertyResponse
                     : MethodNotAllowedResponse;
                 await stream.WriteAsync(response, cancellationToken);
                 await stream.FlushAsync(cancellationToken);

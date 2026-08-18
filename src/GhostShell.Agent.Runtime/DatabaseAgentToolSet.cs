@@ -66,10 +66,9 @@ internal static class DatabaseAgentToolSet
             return [];
         }
 
-        return Specifications
+        return [.. Specifications
             .Where(specification => Supports(panel, specification.Capability))
-            .Select(specification => Tool(specification, panelIds: null))
-            .ToImmutableArray();
+            .Select(specification => Tool(specification, panelIds: null))];
     }
 
     public static ImmutableArray<AgentToolDefinition> For(
@@ -98,10 +97,9 @@ internal static class DatabaseAgentToolSet
     }
 
     public static ImmutableArray<AgentToolDefinition> ForWorkspace() =>
-        Specifications
+        [.. Specifications
             .Select(specification => AgentToolScopeSchema.WithRequiredPanelId(
-                Tool(specification, panelIds: null)))
-            .ToImmutableArray();
+                Tool(specification, panelIds: null)))];
 
     internal static ImmutableArray<AgentContextPanel> ActiveDatabasePanels(
         IReadOnlyList<AgentContextPanel> panels)
@@ -121,7 +119,7 @@ internal static class DatabaseAgentToolSet
                 nameof(panels));
         }
 
-        return panels.Where(SupportsDatabasePanel).ToImmutableArray();
+        return [.. panels.Where(SupportsDatabasePanel)];
     }
 
     internal static bool Supports(AgentContextPanel panel, string capability) =>

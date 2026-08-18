@@ -348,11 +348,13 @@ public sealed partial class AgentChatViewModelTests
         runtime.Snapshot = runtime.Snapshot with
         {
             State = GovernedAgentState.Ready,
-            Messages = committedMessages.Append(
+            Messages =
+            [
+                .. committedMessages,
                 new AgentChatMessage(
                     AgentChatMessageRole.Assistant,
-                    "The full test passed."))
-                .ToArray(),
+                    "The full test passed."),
+            ],
             ProvisionalAssistantText = string.Empty,
         };
         runtime.RaiseChanged();
@@ -570,7 +572,7 @@ public sealed partial class AgentChatViewModelTests
         // live in no longer decides what a card looks like.
         Assert.Contains(
             DesignSystem().Descendants()
-                .Where(element => element.Name.LocalName == "Style"),
+                .Where(element => string.Equals(element.Name.LocalName, "Style", StringComparison.Ordinal)),
             style => string.Equals(
                 style.Attribute("Selector")?.Value,
                 "^:focus-visible",
@@ -798,7 +800,7 @@ public sealed partial class AgentChatViewModelTests
         Assert.Null(card.Attribute("AutomationProperties.HelpText"));
         Assert.DoesNotContain(
             card.Descendants(),
-            element => element.Name.LocalName == "Callout");
+            element => string.Equals(element.Name.LocalName, "Callout", StringComparison.Ordinal));
         Assert.Contains(
             card.Descendants(viewNamespace + "TextBlock"),
             element => string.Equals(
@@ -867,7 +869,7 @@ public sealed partial class AgentChatViewModelTests
         // live in no longer decides what a card looks like.
         Assert.Contains(
             DesignSystem().Descendants()
-                .Where(element => element.Name.LocalName == "Style"),
+                .Where(element => string.Equals(element.Name.LocalName, "Style", StringComparison.Ordinal)),
             style => string.Equals(
                 style.Attribute("Selector")?.Value,
                 "^:focus-visible",
@@ -1421,8 +1423,8 @@ public sealed partial class AgentChatViewModelTests
                 StringComparison.Ordinal));
         Assert.Contains(
             composer.Elements(viewNamespace + "Border"),
-            border => border.Attribute("IsVisible")?.Value
-                == "{Binding AgentChat.HasProvider, FallbackValue=False}");
+            border => string.Equals(border.Attribute("IsVisible")?.Value
+, "{Binding AgentChat.HasProvider, FallbackValue=False}", StringComparison.Ordinal));
 
         var action = Assert.Single(
             document.Descendants(viewNamespace + "Button"),
@@ -1432,8 +1434,7 @@ public sealed partial class AgentChatViewModelTests
                 StringComparison.Ordinal));
         Assert.Equal(
             "ArrowUp",
-            Assert.Single(action.Elements(), element =>
-                    element.Name.LocalName == "SymbolIcon")
+            Assert.Single(action.Elements(), element => string.Equals(element.Name.LocalName, "SymbolIcon", StringComparison.Ordinal))
                 .Attribute("Symbol")?.Value);
         Assert.Equal(
             "{Binding AgentChat.CanSubmitPrompt}",
@@ -1456,7 +1457,7 @@ public sealed partial class AgentChatViewModelTests
             stop.Attribute("IsVisible")?.Value);
         Assert.DoesNotContain(
             stop.Descendants(),
-            element => element.Name.LocalName == "SymbolIcon");
+            element => string.Equals(element.Name.LocalName, "SymbolIcon", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -1654,7 +1655,7 @@ public sealed partial class AgentChatViewModelTests
             Prompt = "Inspect the workspace.",
         };
         await viewModel.SelectModelAsync(
-            viewModel.Models.Single(model => model.Id == "model-fast"),
+            viewModel.Models.Single(model => string.Equals(model.Id, "model-fast", StringComparison.Ordinal)),
             CancellationToken.None);
 
         await viewModel.SendAsync(Target(), Policy(provider), CancellationToken.None);
@@ -1714,7 +1715,7 @@ public sealed partial class AgentChatViewModelTests
             profiles,
             ImmediateUiThreadDispatcher.Instance);
 
-        var fastModel = viewModel.FilteredModels.Single(item => item.Id == "model-fast");
+        var fastModel = viewModel.FilteredModels.Single(item => string.Equals(item.Id, "model-fast", StringComparison.Ordinal));
         await viewModel.ToggleFavoriteModelAsync(fastModel, CancellationToken.None);
 
         Assert.Equal("model-fast", viewModel.FilteredModels[0].Id);
@@ -1729,7 +1730,7 @@ public sealed partial class AgentChatViewModelTests
 
         Assert.Equal(
             ["model", "model-fast", "reasoning-pro"],
-            viewModel.FilteredModels.Select(item => item.Id));
+            viewModel.FilteredModels.Select(item => item.Id), StringComparer.Ordinal);
         Assert.DoesNotContain(viewModel.FilteredModels, item => item.IsFavorite);
     }
 
@@ -1820,12 +1821,12 @@ public sealed partial class AgentChatViewModelTests
             runtime,
             profiles,
             ImmediateUiThreadDispatcher.Instance);
-        var selected = viewModel.Models.Single(model => model.Id == "model-fast");
+        var selected = viewModel.Models.Single(model => string.Equals(model.Id, "model-fast", StringComparison.Ordinal));
 
         await viewModel.SelectModelAsync(selected, CancellationToken.None);
 
         Assert.Equal(0, runtime.ClearCount);
-        Assert.Equal(["Hello", "Hi"], viewModel.Messages.Select(message => message.Content));
+        Assert.Equal(["Hello", "Hi"], viewModel.Messages.Select(message => message.Content), StringComparer.Ordinal);
         Assert.Equal("model-fast", viewModel.SelectedModel?.Id);
 
         viewModel.Prompt = "Continue with the faster model.";
@@ -2258,12 +2259,12 @@ public sealed partial class AgentChatViewModelTests
             viewModel.EffectivePolicyCapabilities.Count);
         Assert.Contains(
             viewModel.EffectivePolicyCapabilities,
-            item => item.Capability == "Run commands"
-                && item.Permission == "Off");
+            item => string.Equals(item.Capability, "Run commands"
+, StringComparison.Ordinal) && string.Equals(item.Permission, "Off", StringComparison.Ordinal));
         Assert.Contains(
             viewModel.EffectivePolicyCapabilities,
-            item => item.Capability == "Read files"
-                && item.Permission == "Auto");
+            item => string.Equals(item.Capability, "Read files"
+, StringComparison.Ordinal) && string.Equals(item.Permission, "Auto", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -3387,8 +3388,8 @@ public sealed partial class AgentChatViewModelTests
 
         Assert.True(viewModel.HasProvider);
         Assert.False(viewModel.HasNoProvider);
-        Assert.Contains(nameof(AgentChatViewModel.HasProvider), notifications);
-        Assert.Contains(nameof(AgentChatViewModel.HasNoProvider), notifications);
+        Assert.Contains(nameof(AgentChatViewModel.HasProvider), notifications, StringComparer.Ordinal);
+        Assert.Contains(nameof(AgentChatViewModel.HasNoProvider), notifications, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -3790,9 +3791,9 @@ public sealed partial class AgentChatViewModelTests
         Assert.True(condition(), "The asynchronous condition was not observed.");
     }
 
+#pragma warning disable CA1825 // xUnit's TheoryData collection builder is misidentified as an empty array.
     public static TheoryData<AgentTarget> BroaderRunTargets =>
-        new()
-        {
+        [
             new AgentTarget.OpenTab(
                 new WindowInstanceId("window-1"),
                 new WorkspaceInstanceId("workspace-1"),
@@ -3800,7 +3801,8 @@ public sealed partial class AgentChatViewModelTests
             new AgentTarget.Workspace(
                 new WindowInstanceId("window-1"),
                 new WorkspaceInstanceId("workspace-1")),
-        };
+        ];
+#pragma warning restore CA1825
 
     private static GovernedAgentApproval Approval(AgentApprovalId approvalId) =>
         new(

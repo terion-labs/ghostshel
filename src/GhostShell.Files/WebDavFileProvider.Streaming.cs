@@ -134,7 +134,8 @@ public sealed partial class WebDavFileProvider
         {
             var expectedEnd = request.Offset + bytesToRead - 1;
             var contentRange = response.Content.Headers.ContentRange;
-            if (contentRange?.Unit != "bytes"
+            if (contentRange is null
+                || !string.Equals(contentRange.Unit, "bytes", StringComparison.Ordinal)
                 || contentRange.From != request.Offset
                 || contentRange.To != expectedEnd
                 || contentRange.Length is { } completeLength && completeLength != size
@@ -148,7 +149,7 @@ public sealed partial class WebDavFileProvider
         }
 
         if (response.Headers.ETag is { } responseEtag
-            && responseEtag.ToString() != entry.Version.Value)
+            && !string.Equals(responseEtag.ToString(), entry.Version.Value, StringComparison.Ordinal))
         {
             return Failure<FileReadReceipt>(
                 FileProviderErrorCode.PreconditionFailed,
@@ -264,7 +265,7 @@ public sealed partial class WebDavFileProvider
                 LastModifiedAt: null,
                 responseVersion.Value,
                 resolved.Value.Path.Name is { } name
-                    && name.Value.StartsWith(".", StringComparison.Ordinal));
+                    && name.Value.StartsWith('.'));
         }
         else
         {

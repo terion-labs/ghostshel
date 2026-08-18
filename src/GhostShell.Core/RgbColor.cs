@@ -1,7 +1,9 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 
 namespace GhostShell.Core;
 
+[StructLayout(LayoutKind.Auto)]
 public readonly record struct RgbColor(byte Red, byte Green, byte Blue)
 {
     public static RgbColor Parse(string value)

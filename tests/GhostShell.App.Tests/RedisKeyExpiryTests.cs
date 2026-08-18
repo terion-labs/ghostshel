@@ -79,7 +79,7 @@ public sealed class RedisKeyExpiryTests
         var changed = 0;
         panel.Keys[0].PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(RedisKeyItemViewModel.Ttl))
+            if (string.Equals(e.PropertyName, nameof(RedisKeyItemViewModel.Ttl), StringComparison.Ordinal))
             {
                 changed++;
             }

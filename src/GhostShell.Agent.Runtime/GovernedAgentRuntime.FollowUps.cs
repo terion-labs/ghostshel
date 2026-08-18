@@ -417,7 +417,7 @@ public sealed partial class GovernedAgentRuntime
         _snapshot = _snapshot with
         {
             QueuedFollowUpCount = _queuedFollowUps.Count,
-            QueuedFollowUps = _queuedFollowUps.ToImmutableArray(),
+            QueuedFollowUps = [.. _queuedFollowUps],
         };
 
     private GovernedAgentFollowUpResult AcceptedQueueMutation(

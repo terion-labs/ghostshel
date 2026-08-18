@@ -112,21 +112,18 @@ public sealed class DatabasePanelClientSqliteBrowsingTests : IDisposable
             tunnel: null,
             CancellationToken.None);
 
-        Assert.DoesNotContain(graph.Tables, table =>
-            table.Object.Name == "odd.view");
-        var child = Assert.Single(graph.Tables, table =>
-            table.Object.Name == "article_links");
+        Assert.DoesNotContain(graph.Tables, table => string.Equals(table.Object.Name, "odd.view", StringComparison.Ordinal));
+        var child = Assert.Single(graph.Tables, table => string.Equals(table.Object.Name, "article_links", StringComparison.Ordinal));
         Assert.Equal(
             ["id", "tenant_id", "author_id", "backup_author_id"],
-            child.Columns.Select(column => column.Name));
-        var required = Assert.Single(child.ForeignKeys, key =>
-            key.Name == "fk_0");
+            child.Columns.Select(column => column.Name), StringComparer.Ordinal);
+        var required = Assert.Single(child.ForeignKeys, key => string.Equals(key.Name, "fk_0", StringComparison.Ordinal));
         Assert.Equal("authors", required.ReferencedObject.Name);
         Assert.Equal(
             [("tenant_id", "tenant_id"), ("backup_author_id", "id")],
             required.Columns.Select(column =>
                 (column.ColumnName, column.ReferencedColumnName)));
-        var second = Assert.Single(child.ForeignKeys, key => key.Name == "fk_1");
+        var second = Assert.Single(child.ForeignKeys, key => string.Equals(key.Name, "fk_1", StringComparison.Ordinal));
         Assert.Equal(
             [("tenant_id", "tenant_id"), ("author_id", "id")],
             second.Columns.Select(column =>
@@ -153,20 +150,18 @@ public sealed class DatabasePanelClientSqliteBrowsingTests : IDisposable
         Assert.Equal("sqlite", catalog.DriverId);
         Assert.Null(catalog.DefaultCatalog);
         Assert.Equal("main", catalog.DefaultSchema);
-        var table = Assert.Single(catalog.Objects, item =>
-            item.Id.Name == TableName);
+        var table = Assert.Single(catalog.Objects, item => string.Equals(item.Id.Name, TableName, StringComparison.Ordinal));
         Assert.Equal(DatabaseTableKind.Table, table.Kind);
         Assert.Equal(
             ["id", "name", "note", "name_upper"],
-            table.Columns.Select(column => column.Name));
+            table.Columns.Select(column => column.Name), StringComparer.Ordinal);
         Assert.Equal(DatabaseValueKind.SignedInteger, table.Columns[0].ValueKind);
         Assert.Equal(DatabaseValueKind.Text, table.Columns[1].ValueKind);
         Assert.False(table.Columns[1].IsNullable);
 
-        var view = Assert.Single(catalog.Objects, item =>
-            item.Id.Name == "odd.view");
+        var view = Assert.Single(catalog.Objects, item => string.Equals(item.Id.Name, "odd.view", StringComparison.Ordinal));
         Assert.Equal(DatabaseTableKind.View, view.Kind);
-        Assert.Equal(["id", "name"], view.Columns.Select(column => column.Name));
+        Assert.Equal(["id", "name"], view.Columns.Select(column => column.Name), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -206,13 +201,12 @@ public sealed class DatabasePanelClientSqliteBrowsingTests : IDisposable
             ConnectionString,
             tunnel: null,
             CancellationToken.None);
-        var table = Assert.Single(objects, candidate => candidate.Name == TableName);
+        var table = Assert.Single(objects, candidate => string.Equals(candidate.Name, TableName, StringComparison.Ordinal));
 
         Assert.Equal(DatabaseTableKind.Table, table.Kind);
         Assert.Equal(new DatabaseObjectId(null, null, TableName), table.Id);
         Assert.Equal(TableName, table.DisplayName);
-        Assert.Contains(objects, candidate =>
-            candidate.Name == "odd.view" && candidate.Kind == DatabaseTableKind.View);
+        Assert.Contains(objects, candidate => string.Equals(candidate.Name, "odd.view", StringComparison.Ordinal) && candidate.Kind == DatabaseTableKind.View);
 
         var details = await client.GetObjectDetailsAsync(
             "sqlite",
@@ -222,7 +216,7 @@ public sealed class DatabasePanelClientSqliteBrowsingTests : IDisposable
             CancellationToken.None);
 
         Assert.True(details.CanEdit, details.ReadOnlyReason);
-        Assert.Equal(["id", "name", "note", "name_upper"], details.Columns.Select(column => column.Name));
+        Assert.Equal(["id", "name", "note", "name_upper"], details.Columns.Select(column => column.Name), StringComparer.Ordinal);
         var id = details.Columns[0];
         Assert.True(id.IsPrimaryKey);
         Assert.Equal(1, id.PrimaryKeyOrdinal);
@@ -240,16 +234,16 @@ public sealed class DatabasePanelClientSqliteBrowsingTests : IDisposable
         Assert.True(generated.IsReadOnly);
         Assert.False(generated.CanEdit);
 
-        var unique = Assert.Single(details.Indexes, index => index.Name == "ix_odd_name");
+        var unique = Assert.Single(details.Indexes, index => string.Equals(index.Name, "ix_odd_name", StringComparison.Ordinal));
         Assert.True(unique.IsUnique);
-        var uniqueColumn = Assert.Single(unique.Columns, column => column.Name == "name");
+        var uniqueColumn = Assert.Single(unique.Columns, column => string.Equals(column.Name, "name", StringComparison.Ordinal));
         Assert.True(uniqueColumn.IsDescending);
         Assert.Contains(
             "CREATE UNIQUE INDEX",
             unique.Details!["Definition"],
             StringComparison.OrdinalIgnoreCase);
 
-        var partial = Assert.Single(details.Indexes, index => index.Name == "ix_odd_note_partial");
+        var partial = Assert.Single(details.Indexes, index => string.Equals(index.Name, "ix_odd_note_partial", StringComparison.Ordinal));
         Assert.False(partial.IsUnique);
         Assert.Contains(
             "WHERE note IS NOT NULL",
@@ -270,7 +264,7 @@ public sealed class DatabasePanelClientSqliteBrowsingTests : IDisposable
             ConnectionString,
             tunnel: null,
             CancellationToken.None);
-        var table = Assert.Single(objects, candidate => candidate.Name == tableName);
+        var table = Assert.Single(objects, candidate => string.Equals(candidate.Name, tableName, StringComparison.Ordinal));
 
         var details = await client.GetObjectDetailsAsync(
             "sqlite",
@@ -296,7 +290,7 @@ public sealed class DatabasePanelClientSqliteBrowsingTests : IDisposable
             ConnectionString,
             tunnel: null,
             CancellationToken.None);
-        var view = Assert.Single(objects, candidate => candidate.Name == "odd.view");
+        var view = Assert.Single(objects, candidate => string.Equals(candidate.Name, "odd.view", StringComparison.Ordinal));
 
         var firstPage = await client.ReadTableAsync(
             "sqlite",
@@ -323,8 +317,7 @@ public sealed class DatabasePanelClientSqliteBrowsingTests : IDisposable
             ConnectionString,
             tunnel: null,
             CancellationToken.None);
-        var table = Assert.Single(objects, candidate =>
-            candidate.Name == "spaced_identifier_rows");
+        var table = Assert.Single(objects, candidate => string.Equals(candidate.Name, "spaced_identifier_rows", StringComparison.Ordinal));
 
         var details = await client.GetObjectDetailsAsync(
             "sqlite",
@@ -347,8 +340,8 @@ public sealed class DatabasePanelClientSqliteBrowsingTests : IDisposable
                 Limit: 10),
             CancellationToken.None);
 
-        Assert.Equal([" key ", " value "], details.Columns.Select(column => column.Name));
-        Assert.Equal([" key ", " value "], page.Result.Columns.Select(column => column.Name));
+        Assert.Equal([" key ", " value "], details.Columns.Select(column => column.Name), StringComparer.Ordinal);
+        Assert.Equal([" key ", " value "], page.Result.Columns.Select(column => column.Name), StringComparer.Ordinal);
         var row = Assert.Single(page.Result.ValueRows);
         Assert.Equal(11L, Assert.IsType<long>(row[0].RawValue));
         Assert.Equal("preserved", Assert.IsType<string>(row[1].RawValue));
@@ -374,7 +367,7 @@ public sealed class DatabasePanelClientSqliteBrowsingTests : IDisposable
         Assert.False(filtered.HasMore);
         Assert.Equal(1, filtered.TotalRows);
         Assert.Equal(4, filtered.TableRows);
-        Assert.Equal(["id", "name", "note", "name_upper"], filtered.Result.Columns.Select(column => column.Name));
+        Assert.Equal(["id", "name", "note", "name_upper"], filtered.Result.Columns.Select(column => column.Name), StringComparer.Ordinal);
         var hostileRow = Assert.Single(filtered.Result.ValueRows);
         Assert.Equal(2L, Assert.IsType<long>(hostileRow[0].RawValue));
         Assert.Equal(DatabaseValueKind.SignedInteger, hostileRow[0].Kind);
@@ -393,7 +386,7 @@ public sealed class DatabasePanelClientSqliteBrowsingTests : IDisposable
                 Limit: 2,
                 Columns: ["id", "name"]),
             CancellationToken.None);
-        Assert.Equal(["id", "name"], projected.Result.Columns.Select(column => column.Name));
+        Assert.Equal(["id", "name"], projected.Result.Columns.Select(column => column.Name), StringComparer.Ordinal);
         Assert.All(projected.Result.ValueRows, row => Assert.Equal(2, row.Count));
 
         // The payload contains a complete DROP statement. A second catalog read
@@ -515,7 +508,7 @@ public sealed class DatabasePanelClientSqliteBrowsingTests : IDisposable
             ConnectionString,
             tunnel: null,
             CancellationToken.None);
-        return Assert.Single(objects, candidate => candidate.Name == TableName);
+        return Assert.Single(objects, candidate => string.Equals(candidate.Name, TableName, StringComparison.Ordinal));
     }
 
     private async Task<IReadOnlyList<IReadOnlyList<DatabaseValue>>> ReadAllAsync(

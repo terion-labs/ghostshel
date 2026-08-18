@@ -43,9 +43,8 @@ public sealed class GovernedAgentRuntimeBrowserTests
             Assert.Single(fixture.Browser.Actions).Request);
         var requested = Assert.Single(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.BrowserReadState
-                && auditEvent.Outcome == AuditOutcome.Requested);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.BrowserReadState
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Requested);
         var details = Assert.IsType<AuditDetails.AgentActionDetails>(
             requested.Details);
         Assert.Equal(AgentCapability.BrowserData, details.Capability);
@@ -55,9 +54,8 @@ public sealed class GovernedAgentRuntimeBrowserTests
             details.Decision);
         var authorized = Assert.Single(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.BrowserReadState
-                && auditEvent.Outcome == AuditOutcome.Approved);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.BrowserReadState
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Approved);
         Assert.Equal(
             AgentAuthorizationSource.AutoPolicy,
             Assert.IsType<AuditDetails.AgentActionDetails>(
@@ -98,18 +96,16 @@ public sealed class GovernedAgentRuntimeBrowserTests
             Assert.Single(fixture.Browser.Actions).Request);
         var requested = Assert.Single(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.BrowserReadState
-                && auditEvent.Outcome == AuditOutcome.Requested);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.BrowserReadState
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Requested);
         Assert.Equal(
             AgentPolicyDecision.RequiresApproval,
             Assert.IsType<AuditDetails.AgentActionDetails>(
                 requested.Details).Decision);
         Assert.Contains(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.BrowserReadState
-                && auditEvent.Outcome == AuditOutcome.Approved);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.BrowserReadState
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Approved);
     }
 
     [Fact]
@@ -133,9 +129,8 @@ public sealed class GovernedAgentRuntimeBrowserTests
         Assert.False(approval.TemporarilyYieldsTerminalInput);
         Assert.Contains(
             approval.Presentation.Arguments,
-            argument =>
-                argument.Name == "address"
-                && argument.DisplayValue == address);
+            argument => string.Equals(argument.Name, "address"
+, StringComparison.Ordinal) && string.Equals(argument.DisplayValue, address, StringComparison.Ordinal));
         Assert.Empty(fixture.Browser.Actions);
 
         Assert.True((await fixture.Runtime.DecideAsync(
@@ -188,7 +183,8 @@ public sealed class GovernedAgentRuntimeBrowserTests
                 ("reference", Reference),
                 (argument.Name, argument.DisplayValue)),
             argument => Assert.Equal(
-                ("document_revision", DocumentRevision.ToString()),
+                ("document_revision", DocumentRevision.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture)),
                 (argument.Name, argument.DisplayValue)));
         Assert.Empty(fixture.Browser.Actions);
 
@@ -206,9 +202,8 @@ public sealed class GovernedAgentRuntimeBrowserTests
         Assert.Equal(DocumentRevision, click.Value.DocumentRevision);
         var completed = Assert.Single(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.BrowserClick
-                && auditEvent.Outcome == AuditOutcome.Succeeded);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.BrowserClick
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Succeeded);
         Assert.Equal(
             "click_completed",
             Assert.IsType<AuditDetails.AgentActionDetails>(
@@ -255,7 +250,8 @@ public sealed class GovernedAgentRuntimeBrowserTests
                 ("reference", Reference),
                 (argument.Name, argument.DisplayValue)),
             argument => Assert.Equal(
-                ("document_revision", DocumentRevision.ToString()),
+                ("document_revision", DocumentRevision.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture)),
                 (argument.Name, argument.DisplayValue)));
         Assert.Empty(fixture.Browser.Actions);
 
@@ -273,9 +269,8 @@ public sealed class GovernedAgentRuntimeBrowserTests
         Assert.Equal(DocumentRevision, check.Value.DocumentRevision);
         var completed = Assert.Single(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.BrowserCheck
-                && auditEvent.Outcome == AuditOutcome.Succeeded);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.BrowserCheck
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Succeeded);
         Assert.Equal(
             "check_completed",
             Assert.IsType<AuditDetails.AgentActionDetails>(
@@ -323,7 +318,8 @@ public sealed class GovernedAgentRuntimeBrowserTests
                 ("reference", Reference),
                 (argument.Name, argument.DisplayValue)),
             argument => Assert.Equal(
-                ("document_revision", DocumentRevision.ToString()),
+                ("document_revision", DocumentRevision.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture)),
                 (argument.Name, argument.DisplayValue)),
             argument => Assert.Equal(
                 ("text", string.Concat('"', Text, '"')),
@@ -357,18 +353,16 @@ public sealed class GovernedAgentRuntimeBrowserTests
             StringComparison.Ordinal);
         var requested = Assert.Single(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.BrowserFill
-                && auditEvent.Outcome == AuditOutcome.Requested);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.BrowserFill
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Requested);
         Assert.Equal(
             AgentPolicyDecision.RequiresApproval,
             Assert.IsType<AuditDetails.AgentActionDetails>(
                 requested.Details).Decision);
         var completed = Assert.Single(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.BrowserFill
-                && auditEvent.Outcome == AuditOutcome.Succeeded);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.BrowserFill
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Succeeded);
         Assert.Equal(
             "fill_completed",
             Assert.IsType<AuditDetails.AgentActionDetails>(
@@ -401,7 +395,7 @@ public sealed class GovernedAgentRuntimeBrowserTests
 
         var textArgument = Assert.Single(
             approval.Presentation.Arguments,
-            argument => argument.Name == "text");
+            argument => string.Equals(argument.Name, "text", StringComparison.Ordinal));
         Assert.Equal(expectedDisplay, textArgument.DisplayValue);
         Assert.True((await fixture.Runtime.DecideAsync(
             approval.Id,
@@ -571,7 +565,7 @@ public sealed class GovernedAgentRuntimeBrowserTests
         var firstRequest = fixture.Provider.Requests.ToArray()[0];
         Assert.Contains(
             firstRequest.Tools,
-            tool => tool.Name == BuiltInAgentTools.TerminalReadScreen);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalReadScreen, StringComparison.Ordinal));
         var browserTools = firstRequest.Tools
             .Where(tool => tool.Name.StartsWith("browser.", StringComparison.Ordinal))
             .ToArray();
@@ -583,7 +577,7 @@ public sealed class GovernedAgentRuntimeBrowserTests
                 tool.InputSchema
                     .GetProperty("required")
                     .EnumerateArray()
-                    .Select(item => item.GetString()));
+                    .Select(item => item.GetString()), StringComparer.Ordinal);
             var panelSchema = tool.InputSchema
                 .GetProperty("properties")
                 .GetProperty("panel_id");
@@ -773,12 +767,11 @@ public sealed class GovernedAgentRuntimeBrowserTests
             nodes[1]
                 .GetProperty("states")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
         var requested = Assert.Single(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.BrowserSnapshot
-                && auditEvent.Outcome == AuditOutcome.Requested);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.BrowserSnapshot
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Requested);
         var details = Assert.IsType<AuditDetails.AgentActionDetails>(
             requested.Details);
         Assert.Equal(AgentCapability.BrowserData, details.Capability);
@@ -810,8 +803,7 @@ public sealed class GovernedAgentRuntimeBrowserTests
         Assert.Equal(0, fixture.Browser.CallCount);
         Assert.DoesNotContain(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.BrowserReadState);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.BrowserReadState, StringComparison.Ordinal));
         Assert.Equal(
             "target_changed",
             ToolResultFromLastRequest(fixture.Provider).StableCode);
@@ -2220,7 +2212,7 @@ public sealed class GovernedAgentRuntimeBrowserTests
 
             events.Add(new AgentProviderEvent.ResponseCompleted(
                 AgentProviderStopReason.ToolUse));
-            return events.ToArray();
+            return [.. events];
         }
 
         private static AgentProviderEvent[] Answer(string text) =>
@@ -2236,7 +2228,7 @@ public sealed class GovernedAgentRuntimeBrowserTests
     {
         private readonly ConcurrentQueue<AuditEventRecord> _events = [];
 
-        public IReadOnlyList<AuditEventRecord> Events => _events.ToArray();
+        public IReadOnlyList<AuditEventRecord> Events => [.. _events];
 
         public Func<AuditEventRecord, bool>? FailurePredicate { get; set; }
 
@@ -2265,9 +2257,7 @@ public sealed class GovernedAgentRuntimeBrowserTests
                 CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            IReadOnlyList<AuditEventRecord> values = Events
-                .Where(item => item.CorrelationId == correlationId)
-                .ToArray();
+            IReadOnlyList<AuditEventRecord> values = [.. Events.Where(item => string.Equals(item.CorrelationId, correlationId, StringComparison.Ordinal))];
             return ValueTask.FromResult(
                 AuditStoreResult<IReadOnlyList<AuditEventRecord>>.Success(
                     values));

@@ -12,7 +12,7 @@ public sealed class ApplicationKeySequenceResolverTests
     public void EveryDeclaredApplicationBindingResolvesWithItsArgumentsIntact()
     {
         var resolver = new ApplicationKeySequenceResolver(BuiltInKeymaps.TmuxApplication);
-        var timestamp = DateTimeOffset.Parse("2026-07-22T12:00:00Z");
+        var timestamp = DateTimeOffset.Parse("2026-07-22T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
 
         foreach (var binding in BuiltInKeymaps.TmuxApplication.Bindings)
         {
@@ -43,7 +43,7 @@ public sealed class ApplicationKeySequenceResolverTests
     public void TimedOutPrefixDoesNotConsumeTheFollowingTerminalKey()
     {
         var resolver = new ApplicationKeySequenceResolver(BuiltInKeymaps.TmuxApplication);
-        var timestamp = DateTimeOffset.Parse("2026-07-22T12:00:00Z");
+        var timestamp = DateTimeOffset.Parse("2026-07-22T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
 
         _ = resolver.Resolve(
             new KeyStroke("B", CoreKeyModifiers.Control),
@@ -62,7 +62,7 @@ public sealed class ApplicationKeySequenceResolverTests
     public void UnknownSuffixUsesTheProfilesDiscardAndHintPolicy()
     {
         var resolver = new ApplicationKeySequenceResolver(BuiltInKeymaps.TmuxApplication);
-        var timestamp = DateTimeOffset.Parse("2026-07-22T12:00:00Z");
+        var timestamp = DateTimeOffset.Parse("2026-07-22T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
 
         _ = resolver.Resolve(
             new KeyStroke("B", CoreKeyModifiers.Control),
@@ -82,7 +82,7 @@ public sealed class ApplicationKeySequenceResolverTests
     {
         var prefix = new KeyStroke("B", CoreKeyModifiers.Control);
         var resolver = new ApplicationKeySequenceResolver(PassThroughProfile(prefix));
-        var timestamp = DateTimeOffset.Parse("2026-07-22T12:00:00Z");
+        var timestamp = DateTimeOffset.Parse("2026-07-22T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
 
         _ = resolver.Resolve(prefix, CommandContext.Workspace, timestamp);
         var result = resolver.Resolve(
@@ -100,7 +100,7 @@ public sealed class ApplicationKeySequenceResolverTests
     {
         var prefix = new KeyStroke("B", CoreKeyModifiers.Control);
         var resolver = new ApplicationKeySequenceResolver(PassThroughProfile(prefix));
-        var timestamp = DateTimeOffset.Parse("2026-07-22T12:00:00Z");
+        var timestamp = DateTimeOffset.Parse("2026-07-22T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
 
         _ = resolver.Resolve(prefix, CommandContext.Workspace, timestamp);
         var beforeDeadline = resolver.Expire(timestamp.AddMilliseconds(750));
@@ -119,7 +119,7 @@ public sealed class ApplicationKeySequenceResolverTests
         var prefix = new KeyStroke("B", CoreKeyModifiers.Control);
         var suffix = new KeyStroke("Q");
         var resolver = new ApplicationKeySequenceResolver(PassThroughProfile(prefix));
-        var timestamp = DateTimeOffset.Parse("2026-07-22T12:00:00Z");
+        var timestamp = DateTimeOffset.Parse("2026-07-22T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
 
         _ = resolver.Resolve(prefix, CommandContext.Workspace, timestamp);
         var result = resolver.Resolve(
@@ -136,7 +136,7 @@ public sealed class ApplicationKeySequenceResolverTests
     public void RepeatableProfileAcceptsAnotherBoundSuffixWithinTheTimeout()
     {
         var resolver = new ApplicationKeySequenceResolver(BuiltInKeymaps.TmuxApplication);
-        var timestamp = DateTimeOffset.Parse("2026-07-22T12:00:00Z");
+        var timestamp = DateTimeOffset.Parse("2026-07-22T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
 
         _ = resolver.Resolve(
             new KeyStroke("B", CoreKeyModifiers.Control),
@@ -163,7 +163,7 @@ public sealed class ApplicationKeySequenceResolverTests
         var result = resolver.Resolve(
             new KeyStroke("B", CoreKeyModifiers.Control),
             CommandContext.Browser,
-            DateTimeOffset.Parse("2026-07-22T12:00:00Z"));
+            DateTimeOffset.Parse("2026-07-22T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture));
 
         Assert.Equal(ApplicationKeyResolutionKind.NotHandled, result.Kind);
     }
@@ -189,7 +189,7 @@ public sealed class ApplicationKeySequenceResolverTests
         var result = resolver.Resolve(
             direct.Sequence[0],
             CommandContext.Workspace,
-            DateTimeOffset.Parse("2026-07-22T12:00:00Z"));
+            DateTimeOffset.Parse("2026-07-22T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture));
 
         Assert.Equal(ApplicationKeyResolutionKind.Matched, result.Kind);
         Assert.Same(direct, result.Binding);
@@ -215,7 +215,7 @@ public sealed class ApplicationKeySequenceResolverTests
         var result = resolver.Resolve(
             direct.Sequence[0],
             CommandContext.Workspace,
-            DateTimeOffset.Parse("2026-07-22T12:00:00Z"));
+            DateTimeOffset.Parse("2026-07-22T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture));
 
         Assert.Equal(ApplicationKeyResolutionKind.Matched, result.Kind);
         Assert.Same(direct, result.Binding);
@@ -293,19 +293,19 @@ public sealed class ApplicationCommandRouterTests
 
         var horizontal = Route(bindings.Single(binding =>
             binding.CommandId == BuiltInCommands.SplitPanel
-            && binding.Arguments["orientation"] == "left-right"));
+            && string.Equals(binding.Arguments["orientation"], "left-right", StringComparison.Ordinal)));
         var vertical = Route(bindings.Single(binding =>
             binding.CommandId == BuiltInCommands.SplitPanel
-            && binding.Arguments["orientation"] == "top-bottom"));
+            && string.Equals(binding.Arguments["orientation"], "top-bottom", StringComparison.Ordinal)));
         var focus = Route(bindings.Single(binding =>
             binding.CommandId == BuiltInCommands.FocusPanel
-            && binding.Arguments["direction"] == "down"));
+            && string.Equals(binding.Arguments["direction"], "down", StringComparison.Ordinal)));
         var position = Route(bindings.Single(binding =>
             binding.CommandId == BuiltInCommands.SelectTab
-            && binding.Arguments["position"] == "9"));
+            && string.Equals(binding.Arguments["position"], "9", StringComparison.Ordinal)));
         var workspace = Route(bindings.Single(binding =>
             binding.CommandId == BuiltInCommands.SelectWorkspace
-            && binding.Arguments["position"] == "8"));
+            && string.Equals(binding.Arguments["position"], "8", StringComparison.Ordinal)));
 
         Assert.Equal(PanelSplitOrientation.LeftRight, horizontal.SplitOrientation);
         Assert.Equal(PanelSplitOrientation.TopBottom, vertical.SplitOrientation);
@@ -319,7 +319,7 @@ public sealed class ApplicationCommandRouterTests
     {
         var result = ApplicationCommandRouter.Route(
             BuiltInCommands.SplitPanel,
-            new Dictionary<string, string>(),
+            new Dictionary<string, string>(StringComparer.Ordinal),
             CommandContext.Panel);
 
         Assert.False(result.IsSuccess);
@@ -335,7 +335,7 @@ public sealed class ApplicationCommandRouterTests
     {
         var result = ApplicationCommandRouter.Route(
             new CommandId(commandId),
-            new Dictionary<string, string>(),
+            new Dictionary<string, string>(StringComparer.Ordinal),
             CommandContext.Tab);
 
         var action = Assert.IsType<ApplicationCommandAction>(result.Action);
@@ -348,7 +348,7 @@ public sealed class ApplicationCommandRouterTests
     {
         var result = ApplicationCommandRouter.Route(
             BuiltInCommands.MoveTabLeft,
-            new Dictionary<string, string>(),
+            new Dictionary<string, string>(StringComparer.Ordinal),
             CommandContext.Workspace);
 
         Assert.False(result.IsSuccess);

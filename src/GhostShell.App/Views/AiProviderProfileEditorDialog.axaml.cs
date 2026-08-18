@@ -96,10 +96,7 @@ public sealed partial class AiProviderProfileEditorDialog : Window
     private void HideValidationError()
     {
         var error = this.FindControl<TextBlock>("ValidationError");
-        if (error is not null)
-        {
-            error.IsVisible = false;
-        }
+        error?.IsVisible = false;
     }
 
     private void ShowValidationError(string message)

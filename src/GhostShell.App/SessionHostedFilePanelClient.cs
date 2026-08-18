@@ -46,15 +46,9 @@ public sealed class SessionHostedFilePanelClient :
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _transferProjection = transferProjection;
         _timeProvider = timeProvider ?? TimeProvider.System;
-        if (_transferProjection is not null)
-        {
-            _transferProjection.TransfersChanged += OnProjectedTransfersChanged;
-        }
+        _transferProjection?.TransfersChanged += OnProjectedTransfersChanged;
 
-        if (_profileRuntime is not null)
-        {
-            _profileRuntime.ProfilesChanged += OnSourceProfilesChanged;
-        }
+        _profileRuntime?.ProfilesChanged += OnSourceProfilesChanged;
     }
 
     public event EventHandler? ProfilesChanged;
@@ -200,7 +194,7 @@ public sealed class SessionHostedFilePanelClient :
             }
 
             if (_options.RequiredProfileId is { } requiredProfileId
-                && initialLocation.ProviderProfileId != requiredProfileId.Value)
+                && !string.Equals(initialLocation.ProviderProfileId, requiredProfileId.Value, StringComparison.Ordinal))
             {
                 return HostResult<SessionSnapshot>.Fail(
                     HostError.Create(
@@ -209,8 +203,7 @@ public sealed class SessionHostedFilePanelClient :
                     Revision ?? 0);
             }
 
-            if (!_profileSource.Profiles.Any(profile =>
-                    profile.Id == initialLocation.ProviderProfileId))
+            if (!_profileSource.Profiles.Any(profile => string.Equals(profile.Id, initialLocation.ProviderProfileId, StringComparison.Ordinal)))
             {
                 return HostResult<SessionSnapshot>.Fail(
                     HostError.Create(
@@ -480,15 +473,9 @@ public sealed class SessionHostedFilePanelClient :
         }
 
         _disposed = true;
-        if (_transferProjection is not null)
-        {
-            _transferProjection.TransfersChanged -= OnProjectedTransfersChanged;
-        }
+        _transferProjection?.TransfersChanged -= OnProjectedTransfersChanged;
 
-        if (_profileRuntime is not null)
-        {
-            _profileRuntime.ProfilesChanged -= OnSourceProfilesChanged;
-        }
+        _profileRuntime?.ProfilesChanged -= OnSourceProfilesChanged;
     }
 
     private async ValueTask<FilePanelResult<T>> ExecuteAsync<T>(
@@ -568,13 +555,13 @@ public sealed class SessionHostedFilePanelClient :
             return request.Source;
         }
 
-        if (request.Source.ProviderProfileId == requiredProfileId.Value)
+        if (string.Equals(request.Source.ProviderProfileId, requiredProfileId.Value, StringComparison.Ordinal))
         {
             return request.Source;
         }
 
-        return request.Destination.ProviderProfileId == requiredProfileId.Value
-            ? request.Destination
+        return string.Equals(request.Destination.ProviderProfileId, requiredProfileId.Value
+, StringComparison.Ordinal) ? request.Destination
             : request.Source;
     }
 
@@ -692,10 +679,7 @@ public sealed class SessionHostedFilePanelClient :
             _boundProfiles = boundProfiles;
         }
 
-        if (_profileRuntime is not null)
-        {
-            _profileRuntime.ProfilesChanged -= OnSourceProfilesChanged;
-        }
+        _profileRuntime?.ProfilesChanged -= OnSourceProfilesChanged;
 
         ProfilesChanged?.Invoke(this, EventArgs.Empty);
     }

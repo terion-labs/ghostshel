@@ -436,9 +436,7 @@ public sealed class SavedScreenAgentPolicyEditorViewModel : ObservableObject, ID
     private static IReadOnlyList<ModelOption> BuildProviderModels(
         AiProviderProfileDescriptor profile)
     {
-        List<ModelOption> models = profile.Models
-            .Select(model => new ModelOption(model.Id, model.DisplayName))
-            .ToList();
+        List<ModelOption> models = [.. profile.Models.Select(model => new ModelOption(model.Id, model.DisplayName))];
         if (AgentPolicy.IsValidModel(profile.DefaultModel)
             && models.All(model => !string.Equals(
                 model.Id,

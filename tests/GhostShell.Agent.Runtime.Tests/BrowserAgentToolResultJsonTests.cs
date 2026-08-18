@@ -194,7 +194,7 @@ public sealed class BrowserAgentToolResultJsonTests
             nodes[1]
                 .GetProperty("states")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
     }
 
     [Fact]

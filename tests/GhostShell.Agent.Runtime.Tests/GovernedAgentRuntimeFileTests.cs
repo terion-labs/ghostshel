@@ -77,7 +77,7 @@ public sealed class GovernedAgentRuntimeFileTests
         Assert.Equal(FileRuntimeContextProxy.FileSessionId, read.SessionId);
         Assert.Equal(
             ["config.json"],
-            read.RelativePath.Select(segment => segment.Value));
+            read.RelativePath.Select(segment => segment.Value), StringComparer.Ordinal);
 
         var continuation = fixture.Provider.Requests.ToArray()[^1];
         var toolMessage = Assert.Single(
@@ -128,12 +128,11 @@ public sealed class GovernedAgentRuntimeFileTests
             contextItem.FileRootDisplay);
         Assert.Contains(
             BuiltInAgentTools.FilesRead,
-            contextItem.SupportedOperations);
+            contextItem.SupportedOperations, StringComparer.Ordinal);
         Assert.Contains(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.FilesRead
-                && auditEvent.Outcome == AuditOutcome.Succeeded);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.FilesRead
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Succeeded);
         Assert.Equal(0, fixture.Terminal.CallCount);
     }
 
@@ -250,7 +249,7 @@ public sealed class GovernedAgentRuntimeFileTests
             Assert.Single(fixture.Files.Actions).Request);
         Assert.Equal(
             ["deploy", "current"],
-            request.RelativePath.Select(segment => segment.Value));
+            request.RelativePath.Select(segment => segment.Value), StringComparer.Ordinal);
         var toolResult = ToolResultFromLastRequest(fixture.Provider);
         Assert.Equal(AgentToolResultStatus.Succeeded, toolResult.Status);
         Assert.Equal("tool_succeeded", toolResult.StableCode);
@@ -432,14 +431,14 @@ public sealed class GovernedAgentRuntimeFileTests
         var firstRequest = selected.Provider.Requests.ToArray()[0];
         var listTool = Assert.Single(
             firstRequest.Tools,
-            tool => tool.Name == BuiltInAgentTools.FilesList);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.FilesList, StringComparison.Ordinal));
         Assert.Equal(
             [FileRuntimeContextProxy.FilePanelId.Value],
             listTool.InputSchema.GetProperty("properties")
                 .GetProperty("panel_id")
                 .GetProperty("enum")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
     }
 
     [Theory]
@@ -515,9 +514,8 @@ public sealed class GovernedAgentRuntimeFileTests
         Assert.Null(fixture.Runtime.Snapshot.ActiveTool);
         Assert.Contains(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.FilesRead
-                && auditEvent.Outcome == AuditOutcome.Failed);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.FilesRead
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Failed);
     }
 
     private static AgentPolicy PolicyWith(
@@ -1298,7 +1296,7 @@ public sealed class GovernedAgentRuntimeFileTests
     {
         private readonly ConcurrentQueue<AuditEventRecord> _events = [];
 
-        public IReadOnlyList<AuditEventRecord> Events => _events.ToArray();
+        public IReadOnlyList<AuditEventRecord> Events => [.. _events];
 
         public ValueTask<AuditStoreResult<Unit>> AppendAsync(
             AuditEventRecord auditEvent,
@@ -1316,9 +1314,7 @@ public sealed class GovernedAgentRuntimeFileTests
                 CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            IReadOnlyList<AuditEventRecord> values = Events
-                .Where(item => item.CorrelationId == correlationId)
-                .ToArray();
+            IReadOnlyList<AuditEventRecord> values = [.. Events.Where(item => string.Equals(item.CorrelationId, correlationId, StringComparison.Ordinal))];
             return ValueTask.FromResult(
                 AuditStoreResult<IReadOnlyList<AuditEventRecord>>.Success(
                     values));

@@ -106,7 +106,7 @@ public sealed partial class S3FileProvider
             request.Offset + bytesToRead - 1,
             entry.Version.Value,
             cancellationToken).ConfigureAwait(false);
-        if (response.ContentLength != bytesToRead || response.ETag != entry.Version.Value)
+        if (response.ContentLength != bytesToRead || !string.Equals(response.ETag, entry.Version.Value, StringComparison.Ordinal))
         {
             return Failure<FileReadReceipt>(
                 FileProviderErrorCode.PreconditionFailed,

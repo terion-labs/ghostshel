@@ -119,7 +119,7 @@ internal sealed record ConnectionCredentialSessionInvocation(
             return null;
         }
 
-        return Parse(launch.Arguments.Skip(selfReentry.PrefixArguments.Count).ToArray());
+        return Parse([.. launch.Arguments.Skip(selfReentry.PrefixArguments.Count)]);
     }
 
     public override string ToString() =>

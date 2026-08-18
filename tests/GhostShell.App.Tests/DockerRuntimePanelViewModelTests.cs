@@ -1,8 +1,8 @@
+using FluentIcons.Common;
 using GhostShell.App.ViewModels;
 using GhostShell.Core;
 using GhostShell.Docker;
 using GhostShell.Testing;
-using FluentIcons.Common;
 
 namespace GhostShell.App.Tests;
 
@@ -55,7 +55,7 @@ public sealed class DockerRuntimePanelViewModelTests
         Assert.True(panel.CanPauseSelectedContainer);
         Assert.False(panel.CanResumeSelectedContainer);
 
-        panel.SelectResource(Assert.Single(panel.Resources, item => item.Title == "worker"));
+        panel.SelectResource(Assert.Single(panel.Resources, item => string.Equals(item.Title, "worker", StringComparison.Ordinal)));
 
         Assert.True(panel.StartCommand.CanExecute(null));
         Assert.False(panel.StopCommand.CanExecute(null));
@@ -131,8 +131,8 @@ public sealed class DockerRuntimePanelViewModelTests
 
         await panel.Initialization;
 
-        Assert.Equal(["zeta", "alpha"], panel.ContainerStacks.Select(stack => stack.Name));
-        Assert.Equal(["api", "web"], panel.ContainerStacks[0].Containers.Select(item => item.Title));
+        Assert.Equal(["zeta", "alpha"], panel.ContainerStacks.Select(stack => stack.Name), StringComparer.Ordinal);
+        Assert.Equal(["api", "web"], panel.ContainerStacks[0].Containers.Select(item => item.Title), StringComparer.Ordinal);
         Assert.Equal("1/2 running", panel.ContainerStacks[0].Summary);
         Assert.Equal("1 stopped", panel.ContainerStacks[1].Summary);
         Assert.Equal("api", panel.Resources[0].Title);
@@ -162,11 +162,11 @@ public sealed class DockerRuntimePanelViewModelTests
 
         Assert.Equal(
             ["zeta", "alpha", "Standalone containers"],
-            panel.ContainerStacks.Select(stack => stack.Name));
+            panel.ContainerStacks.Select(stack => stack.Name), StringComparer.Ordinal);
         var standalone = panel.ContainerStacks[^1];
         Assert.True(standalone.IsStandalone);
         Assert.Equal("Standalone containers", standalone.Name);
-        Assert.Equal(["toolbox", "old-toolbox"], standalone.Containers.Select(item => item.Title));
+        Assert.Equal(["toolbox", "old-toolbox"], standalone.Containers.Select(item => item.Title), StringComparer.Ordinal);
         Assert.Equal("1/2 running", standalone.Summary);
         Assert.Equal(5, panel.Resources.Count);
     }
@@ -210,13 +210,13 @@ public sealed class DockerRuntimePanelViewModelTests
             BuiltInConnections.Local);
         await panel.Initialization;
 
-        var stack = Assert.Single(panel.ContainerStacks, item => item.Name == "zeta");
+        var stack = Assert.Single(panel.ContainerStacks, item => string.Equals(item.Name, "zeta", StringComparison.Ordinal));
         await panel.RunStackActionAsync(stack, action);
 
-        var namesById = snapshot.Containers.ToDictionary(item => item.Id, item => item.Name);
+        var namesById = snapshot.Containers.ToDictionary(item => item.Id, item => item.Name, StringComparer.Ordinal);
         Assert.Equal(
             expectedContainerNames.Split(','),
-            client.ContainerActions.Select(call => namesById[call.ContainerId]));
+            client.ContainerActions.Select(call => namesById[call.ContainerId]), StringComparer.Ordinal);
         Assert.All(client.ContainerActions, call => Assert.Equal(action, call.Action));
         Assert.Equal(2, client.SnapshotReadCount);
     }
@@ -235,7 +235,7 @@ public sealed class DockerRuntimePanelViewModelTests
         panel.SelectDetail(DockerPanelDetail.Shell);
         Assert.True(panel.IsShellDetail);
 
-        panel.SelectResource(Assert.Single(panel.Resources, item => item.Title == "worker"));
+        panel.SelectResource(Assert.Single(panel.Resources, item => string.Equals(item.Title, "worker", StringComparison.Ordinal)));
 
         Assert.True(panel.IsInfoDetail);
         Assert.False(panel.CanOpenShell);
@@ -359,7 +359,7 @@ public sealed class DockerRuntimePanelViewModelTests
         Assert.Equal("Completed cleanup; completed archive", row.Message);
         Assert.Equal(
             ["Completed", " cleanup; ", "completed", " archive"],
-            row.MessageSegments.Select(segment => segment.Text));
+            row.MessageSegments.Select(segment => segment.Text), StringComparer.Ordinal);
         Assert.Equal(
             [true, false, true, false],
             row.MessageSegments.Select(segment => segment.IsMatch));
@@ -452,7 +452,7 @@ public sealed class DockerRuntimePanelViewModelTests
 
         Assert.True(await panel.LoadOlderLogsAsync());
 
-        Assert.Equal(["oldest", "middle", "newest"], panel.LogRows.Select(row => row.Message));
+        Assert.Equal(["oldest", "middle", "newest"], panel.LogRows.Select(row => row.Message), StringComparer.Ordinal);
         Assert.False(panel.HasOlderLogs);
         Assert.NotNull(client.LogRequests[1].BeforeTimestamp);
     }
@@ -492,8 +492,8 @@ public sealed class DockerRuntimePanelViewModelTests
 
         Assert.Equal(
             ["also-large", "large", "small", "unknown"],
-            panel.Resources.Select(item => item.Title));
-        Assert.Equal(["2 GB", "2 GB", "10 MB", "—"], panel.Resources.Select(item => item.Subtitle));
+            panel.Resources.Select(item => item.Title), StringComparer.Ordinal);
+        Assert.Equal(["2 GB", "2 GB", "10 MB", "—"], panel.Resources.Select(item => item.Subtitle), StringComparer.Ordinal);
         Assert.Equal(1, client.VolumeUsageReadCount);
         Assert.Equal("4 resources", panel.ResourceSummary);
     }
@@ -614,7 +614,7 @@ public sealed class DockerRuntimePanelViewModelTests
         name,
         "demo/toolbox:latest",
         state,
-        state == "running" ? "Up 2 hours" : "Exited (0)",
+string.Equals(state, "running", StringComparison.Ordinal) ? "Up 2 hours" : "Exited (0)",
         string.Empty,
         "2 hours ago",
         "—",

@@ -278,20 +278,19 @@ internal sealed class AwsS3ObjectStore(IAmazonS3 client) : IS3ObjectStore
                     Id = acl.OwnerId,
                     DisplayName = acl.OwnerDisplayName,
                 },
-                Grants = acl.Grants
+                Grants = [.. acl.Grants
                     .Select(grant => new S3Grant
                     {
                         Grantee = new S3Grantee
                         {
-                            CanonicalUser = grant.GranteeType == "CanonicalUser"
-                                ? grant.GranteeId
+                            CanonicalUser = string.Equals(grant.GranteeType, "CanonicalUser"
+, StringComparison.Ordinal) ? grant.GranteeId
                                 : null,
                             DisplayName = grant.GranteeDisplayName,
                             URI = grant.GranteeUri,
                         },
                         Permission = S3Permission.FindValue(grant.Permission),
-                    })
-                    .ToList(),
+                    })],
             };
             await client.PutObjectAclAsync(
                 new PutObjectAclRequest
@@ -312,15 +311,14 @@ internal sealed class AwsS3ObjectStore(IAmazonS3 client) : IS3ObjectStore
     private static S3ObjectAcl ToAcl(Owner? owner, List<S3Grant>? grants) => new(
         owner?.Id,
         owner?.DisplayName,
-        (grants ?? [])
+        [.. (grants ?? [])
             .Where(grant => grant.Grantee is not null && grant.Permission is not null)
             .Select(grant => new S3ObjectGrant(
                 grant.Grantee!.CanonicalUser is not null ? "CanonicalUser" : "Group",
                 grant.Grantee.CanonicalUser,
                 grant.Grantee.DisplayName,
                 grant.Grantee.URI,
-                grant.Permission!.Value))
-            .ToArray());
+                grant.Permission!.Value))]);
 
     private static S3StoreException Wrap(AmazonS3Exception exception) =>
         new(

@@ -90,7 +90,7 @@ internal struct GhosttyVtStyleColorValue
 {
     [FieldOffset(0)] internal byte Palette;
     [FieldOffset(0)] internal GhosttyVtColorRgb Rgb;
-    [FieldOffset(0)] private ulong _padding;
+    [FieldOffset(0)] private readonly ulong _padding;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -277,8 +277,8 @@ internal struct GhosttyVtScrollViewportValue
 {
     [FieldOffset(0)] internal nint Delta;
     [FieldOffset(0)] internal nuint Row;
-    [FieldOffset(0)] private ulong _padding0;
-    [FieldOffset(8)] private ulong _padding1;
+    [FieldOffset(0)] private readonly ulong _padding0;
+    [FieldOffset(8)] private readonly ulong _padding1;
 }
 
 [StructLayout(LayoutKind.Explicit, Size = 24)]
@@ -473,8 +473,8 @@ internal enum GhosttyVtPointTag : int
 internal struct GhosttyVtPointValue
 {
     [FieldOffset(0)] internal GhosttyVtPointCoordinate Coordinate;
-    [FieldOffset(0)] private ulong _padding0;
-    [FieldOffset(8)] private ulong _padding1;
+    [FieldOffset(0)] private readonly ulong _padding0;
+    [FieldOffset(8)] private readonly ulong _padding1;
 }
 
 [StructLayout(LayoutKind.Explicit, Size = 24)]

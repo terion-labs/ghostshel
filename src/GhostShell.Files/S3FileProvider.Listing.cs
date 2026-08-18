@@ -42,7 +42,7 @@ public sealed partial class S3FileProvider
         string? remoteToken = null;
         if (request.ContinuationToken is { } continuation)
         {
-            if (!_pageCursors.TryGet(continuation, out var cursor) || cursor!.Scope != scope)
+            if (!_pageCursors.TryGet(continuation, out var cursor) || !string.Equals(cursor!.Scope, scope, StringComparison.Ordinal))
             {
                 return Failure<FilePage>(
                     FileProviderErrorCode.InvalidLocation,
@@ -68,7 +68,7 @@ public sealed partial class S3FileProvider
         var entries = new List<FileEntry>(page.Objects.Count + page.CommonPrefixes.Count);
         foreach (var item in page.Objects)
         {
-            if (item.Key == prefix.Prefix)
+            if (string.Equals(item.Key, prefix.Prefix, StringComparison.Ordinal))
             {
                 continue;
             }
@@ -199,7 +199,7 @@ public sealed partial class S3FileProvider
         var relative = key.StartsWith(parent.Prefix, StringComparison.Ordinal)
             ? key[parent.Prefix.Length..]
             : key;
-        if (isDirectory && relative.EndsWith("/", StringComparison.Ordinal))
+        if (isDirectory && relative.EndsWith('/'))
         {
             relative = relative[..^1];
         }

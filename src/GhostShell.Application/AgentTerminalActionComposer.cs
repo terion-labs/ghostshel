@@ -196,7 +196,7 @@ public sealed class AgentTerminalActionComposer
             BuiltInAgentTools.TerminalReadScrollback,
             SessionCapabilities.TerminalScrollbackRead,
             request.SessionId,
-            arguments.ToArray());
+            [.. arguments]);
     }
 
     private static PreparedRequest PrepareFindScrollback(

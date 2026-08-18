@@ -43,13 +43,13 @@ public sealed partial class GovernedAgentRuntimeTests
             StringComparison.Ordinal);
         var sendText = Assert.Single(
             firstRequest.Tools,
-            tool => tool.Name == BuiltInAgentTools.TerminalSendText);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalSendText, StringComparison.Ordinal));
         Assert.Contains(
             sendText.InputSchema
                 .GetProperty("required")
                 .EnumerateArray()
                 .Select(item => item.GetString()),
-            name => name == "panel_id");
+            name => string.Equals(name, "panel_id", StringComparison.Ordinal));
         Assert.Contains(
             sendText.InputSchema
                 .GetProperty("properties")
@@ -57,7 +57,7 @@ public sealed partial class GovernedAgentRuntimeTests
                 .GetProperty("enum")
                 .EnumerateArray()
                 .Select(item => item.GetString()),
-            panelId => panelId == BroadScopeContextProxy.SecondPanelId.Value);
+            panelId => string.Equals(panelId, BroadScopeContextProxy.SecondPanelId.Value, StringComparison.Ordinal));
 
         var approval = Assert.IsType<GovernedAgentApproval>(
             fixture.Runtime.Snapshot.PendingApproval);
@@ -131,7 +131,7 @@ public sealed partial class GovernedAgentRuntimeTests
 
         var sendText = Assert.Single(
             firstRequest.Tools,
-            tool => tool.Name == BuiltInAgentTools.TerminalSendText);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalSendText, StringComparison.Ordinal));
         var advertisedPanelIds = sendText.InputSchema
             .GetProperty("properties")
             .GetProperty("panel_id")
@@ -147,7 +147,7 @@ public sealed partial class GovernedAgentRuntimeTests
             advertisedPanelIds);
         Assert.DoesNotContain(
             BroadScopeContextProxy.ThirdPanelId.Value,
-            advertisedPanelIds);
+            advertisedPanelIds, StringComparer.Ordinal);
 
         var approval = Assert.IsType<GovernedAgentApproval>(
             fixture.Runtime.Snapshot.PendingApproval);
@@ -189,8 +189,7 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Empty(fixture.Terminal.Actions);
         Assert.DoesNotContain(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.TerminalReadScreen);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.TerminalReadScreen, StringComparison.Ordinal));
         var continuation = fixture.Provider.Requests.ToArray()[1];
         var toolResult = Assert.Single(
             continuation.Messages,

@@ -407,7 +407,7 @@ public sealed class AgentMcpSessionHostTests
                 Assert.Single(reopened.Tools).ProviderAlias);
             Assert.NotEqual(
                 firstAlias,
-                Assert.Single(second.Tools).ProviderAlias);
+                Assert.Single(second.Tools).ProviderAlias, StringComparer.Ordinal);
         }
     }
 
@@ -1039,9 +1039,8 @@ public sealed class AgentMcpSessionHostTests
                         .ValueKind);
                 Assert.Contains(
                     fixture.Audit.Events,
-                    auditEvent =>
-                        auditEvent.Action == BuiltInAgentTools.McpCall
-                        && auditEvent.Outcome
+                    auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.McpCall
+, StringComparison.Ordinal) && auditEvent.Outcome
                             == AuditOutcome.Succeeded);
                 Assert.Equal(
                     [
@@ -1085,9 +1084,8 @@ public sealed class AgentMcpSessionHostTests
             Assert.True(failure.Error.OutcomeUnknown);
             Assert.Contains(
                 fixture.Audit.Events,
-                auditEvent =>
-                    auditEvent.Action == BuiltInAgentTools.McpCall
-                    && auditEvent.Outcome == AuditOutcome.Failed
+                auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.McpCall
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Failed
                     && auditEvent.Details
                         is AuditDetails.AgentActionDetails
                     {
@@ -1187,7 +1185,7 @@ public sealed class AgentMcpSessionHostTests
             ["safe", "[REDACTED MCP CONTENT]"],
             argument.GetProperty("enum")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -1250,7 +1248,7 @@ public sealed class AgentMcpSessionHostTests
         Assert.Equal(7, enumValues[3].GetInt32());
         Assert.DoesNotContain(
             schema.EnumerateObject(),
-            property => property.Name == "12345");
+            property => string.Equals(property.Name, "12345", StringComparison.Ordinal));
 
         using var structuredDocument = JsonDocument.Parse(
             """{"number":12345,"boolean":true,"nothing":null,"safe":7}""");
@@ -1309,10 +1307,10 @@ public sealed class AgentMcpSessionHostTests
                 .Count());
         Assert.DoesNotContain(
             properties,
-            property => property.Name == "secret_name");
+            property => string.Equals(property.Name, "secret_name", StringComparison.Ordinal));
         Assert.Contains(
             properties,
-            property => property.Name == "redacted_property_0");
+            property => string.Equals(property.Name, "redacted_property_0", StringComparison.Ordinal));
     }
 
     private static void PublishProfileChange(
@@ -1540,13 +1538,13 @@ public sealed class AgentMcpSessionHostTests
                     "GHOSTSHELL_ALLOWED",
                     new SecretRef("mcp-secret-canary")),
             };
-            if (mode == "secret-tool-name")
+            if (string.Equals(mode, "secret-tool-name", StringComparison.Ordinal))
             {
                 environment.Add(new(
                     "GHOSTSHELL_REFLECTED_TOOL",
                     new SecretRef("mcp-reflected-tool")));
             }
-            else if (mode == "secret-aggregate-limit")
+            else if (string.Equals(mode, "secret-aggregate-limit", StringComparison.Ordinal))
             {
                 for (var index = 0; index < 5; index++)
                 {
@@ -1555,7 +1553,7 @@ public sealed class AgentMcpSessionHostTests
                         new SecretRef($"mcp-limit-{index}")));
                 }
             }
-            else if (mode == "windows-environment-limit")
+            else if (string.Equals(mode, "windows-environment-limit", StringComparison.Ordinal))
             {
                 for (var index = 0; index < 2; index++)
                 {
@@ -1624,27 +1622,25 @@ public sealed class AgentMcpSessionHostTests
                 ["mcp-secret-canary"] =
                     Encoding.UTF8.GetBytes(SecretCanary),
             };
-            if (mode == "secret-tool-name")
+            if (string.Equals(mode, "secret-tool-name", StringComparison.Ordinal))
             {
                 vaultProxy.Values["mcp-reflected-tool"] =
                     Encoding.UTF8.GetBytes(ReflectedToolCanary);
             }
-            else if (mode == "secret-aggregate-limit")
+            else if (string.Equals(mode, "secret-aggregate-limit", StringComparison.Ordinal))
             {
                 for (var index = 0; index < 5; index++)
                 {
                     vaultProxy.Values[$"mcp-limit-{index}"] =
-                        Enumerable.Repeat((byte)'s', 30 * 1024)
-                            .ToArray();
+                        [.. Enumerable.Repeat((byte)'s', 30 * 1024)];
                 }
             }
-            else if (mode == "windows-environment-limit")
+            else if (string.Equals(mode, "windows-environment-limit", StringComparison.Ordinal))
             {
                 for (var index = 0; index < 2; index++)
                 {
                     vaultProxy.Values[$"mcp-windows-limit-{index}"] =
-                        Enumerable.Repeat((byte)'w', 16_380)
-                            .ToArray();
+                        [.. Enumerable.Repeat((byte)'w', 16_380)];
                 }
             }
             var sessionHost = DispatchProxy.Create<
@@ -2019,7 +2015,7 @@ public sealed class AgentMcpSessionHostTests
         private readonly ConcurrentQueue<AuditEventRecord> _events = [];
 
         public IReadOnlyList<AuditEventRecord> Events =>
-            _events.ToArray();
+            [.. _events];
 
         public ValueTask<AuditStoreResult<Unit>> AppendAsync(
             AuditEventRecord auditEvent,
@@ -2038,9 +2034,7 @@ public sealed class AgentMcpSessionHostTests
                 CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            IReadOnlyList<AuditEventRecord> values = Events
-                .Where(item => item.CorrelationId == correlationId)
-                .ToArray();
+            IReadOnlyList<AuditEventRecord> values = [.. Events.Where(item => string.Equals(item.CorrelationId, correlationId, StringComparison.Ordinal))];
             return ValueTask.FromResult(
                 AuditStoreResult<
                     IReadOnlyList<AuditEventRecord>>.Success(values));

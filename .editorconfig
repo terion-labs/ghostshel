@@ -6,14 +6,388 @@ end_of_line = lf
 insert_final_newline = true
 indent_style = space
 indent_size = 4
-
-[*.{cs,axaml}]
 trim_trailing_whitespace = true
 
+[*.{csproj,props,targets,config,slnx,json,yml,yaml,xml,axaml}]
+indent_size = 2
+
 [*.cs]
-dotnet_style_qualification_for_field = false:suggestion
-dotnet_style_qualification_for_property = false:suggestion
-dotnet_style_qualification_for_method = false:suggestion
+tab_width = 4
+
+# Imports and framework type names
+dotnet_separate_import_directive_groups = false
+dotnet_sort_system_directives_first = true
+dotnet_style_predefined_type_for_locals_parameters_members = true:warning
+dotnet_style_predefined_type_for_member_access = true:warning
+dotnet_style_qualification_for_event = false:warning
+dotnet_style_qualification_for_field = false:warning
+dotnet_style_qualification_for_property = false:warning
+dotnet_style_qualification_for_method = false:warning
+
+# Readability and correctness
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
+dotnet_style_readonly_field = true:warning
+dotnet_code_quality_unused_parameters = all:warning
+dotnet_style_coalesce_expression = true:warning
+dotnet_style_collection_initializer = true:warning
+dotnet_style_explicit_tuple_names = true:warning
+dotnet_style_null_propagation = true:warning
+dotnet_style_object_initializer = true:warning
+dotnet_style_prefer_collection_expression = when_types_loosely_match:warning
+dotnet_style_prefer_compound_assignment = true:warning
+dotnet_style_prefer_is_null_check_over_reference_equality_method = true:warning
+dotnet_style_prefer_simplified_boolean_expressions = true:warning
+dotnet_style_prefer_simplified_interpolation = true:warning
+
+# Modern C# without forcing subjective expression-body or var rewrites
+csharp_style_var_for_built_in_types = false:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_elsewhere = false:suggestion
+csharp_style_pattern_matching_over_as_with_null_check = true:warning
+csharp_style_pattern_matching_over_is_with_cast_check = true:warning
+csharp_style_prefer_extended_property_pattern = true:warning
+csharp_style_prefer_not_pattern = true:warning
+csharp_style_prefer_switch_expression = true:suggestion
+csharp_style_conditional_delegate_call = true:warning
+csharp_prefer_static_anonymous_function = true:warning
+csharp_prefer_static_local_function = true:warning
+csharp_preferred_modifier_order = public,private,protected,internal,file,const,static,extern,new,virtual,abstract,sealed,override,readonly,unsafe,required,volatile,async:warning
+csharp_prefer_braces = true:warning
+csharp_prefer_simple_using_statement = true:warning
 csharp_style_namespace_declarations = file_scoped:warning
+csharp_style_implicit_object_creation_when_type_is_apparent = true:warning
+csharp_style_inlined_variable_declaration = true:warning
+csharp_style_prefer_index_operator = true:warning
+csharp_style_prefer_null_check_over_type_check = true:warning
+csharp_style_prefer_range_operator = true:warning
+csharp_style_prefer_tuple_swap = true:warning
+csharp_style_throw_expression = true:warning
+csharp_using_directive_placement = outside_namespace:warning
 csharp_style_prefer_primary_constructors = false:silent
 
+# Formatting
+csharp_new_line_before_catch = true
+csharp_new_line_before_else = true
+csharp_new_line_before_finally = true
+csharp_new_line_before_members_in_anonymous_types = true
+csharp_new_line_before_members_in_object_initializers = true
+csharp_new_line_before_open_brace = all
+csharp_new_line_between_query_expression_clauses = true
+csharp_indent_block_contents = true
+csharp_indent_braces = false
+csharp_indent_case_contents = true
+csharp_indent_case_contents_when_block = true
+csharp_indent_labels = one_less_than_current
+csharp_indent_switch_labels = true
+csharp_space_after_cast = false
+csharp_space_after_colon_in_inheritance_clause = true
+csharp_space_after_comma = true
+csharp_space_after_dot = false
+csharp_space_after_keywords_in_control_flow_statements = true
+csharp_space_after_semicolon_in_for_statement = true
+csharp_space_around_binary_operators = before_and_after
+csharp_space_around_declaration_statements = false
+csharp_space_before_colon_in_inheritance_clause = true
+csharp_space_before_comma = false
+csharp_space_before_dot = false
+csharp_space_before_open_square_brackets = false
+csharp_space_before_semicolon_in_for_statement = false
+csharp_space_between_empty_square_brackets = false
+csharp_space_between_method_call_empty_parameter_list_parentheses = false
+csharp_space_between_method_call_name_and_opening_parenthesis = false
+csharp_space_between_method_call_parameter_list_parentheses = false
+csharp_space_between_method_declaration_empty_parameter_list_parentheses = false
+csharp_space_between_method_declaration_name_and_open_parenthesis = false
+csharp_space_between_method_declaration_parameter_list_parentheses = false
+csharp_space_between_parentheses = false
+csharp_space_between_square_brackets = false
+csharp_preserve_single_line_blocks = true
+csharp_preserve_single_line_statements = true
+
+# Reviewed analyzer policy. These rules conflict with deliberate repository
+# architecture or product requirements; all other enabled diagnostics fail builds.
+dotnet_diagnostic.CA1034.severity = none # Nested records model closed domain alternatives.
+dotnet_diagnostic.CA1000.severity = none # Generic application utilities intentionally expose static operations.
+dotnet_diagnostic.CA1003.severity = none # Internal event contracts carry domain values directly, not EventArgs wrappers.
+dotnet_diagnostic.CA1028.severity = none # Protocol flag enums deliberately preserve their specified unsigned width.
+dotnet_diagnostic.CA1032.severity = none # Private and application exception types are not reusable framework surface.
+dotnet_diagnostic.CA1064.severity = none # Internal exceptions deliberately communicate only inside one boundary.
+dotnet_diagnostic.CA1303.severity = suggestion # Localization is tracked as product work, not a correctness failure.
+dotnet_diagnostic.CA1031.severity = suggestion # Product/process boundaries deliberately translate unknown failures.
+dotnet_diagnostic.CA1054.severity = suggestion # URI strings are validated at transport boundaries without API churn.
+dotnet_diagnostic.CA1056.severity = suggestion # Same URI-boundary policy for return values.
+dotnet_diagnostic.CA1062.severity = suggestion # Nullable reference types are the canonical non-null contract.
+dotnet_diagnostic.CA1065.severity = suggestion # Exhaustive enum properties fail explicitly on corrupted state.
+dotnet_diagnostic.CA1068.severity = suggestion # Existing cancellation-aware APIs remain source-compatible.
+dotnet_diagnostic.CA1307.severity = suggestion # Explicit comparisons remain visible without test/API migration churn.
+dotnet_diagnostic.CA1308.severity = none # Protocol, MIME, and identifier normalization requires lowercase.
+dotnet_diagnostic.CA1515.severity = suggestion # Executable entry-point types do not need internal visibility churn.
+dotnet_diagnostic.CA1512.severity = suggestion # Throw-helper adoption is style, not a correctness boundary.
+dotnet_diagnostic.CA1510.severity = suggestion # Throw-helper adoption is style, not a correctness boundary.
+dotnet_diagnostic.CA1711.severity = none # Permission is the precise domain term, not a collection suffix.
+dotnet_diagnostic.CA1716.severity = none # Protocol and domain names can legitimately match language keywords.
+dotnet_diagnostic.CA1720.severity = none # Domain schema names can legitimately match primitive type names.
+dotnet_diagnostic.CA1724.severity = none # Text, Schema, and AccessControl are precise domain concepts here.
+dotnet_diagnostic.CA1819.severity = suggestion # Array-backed DTO contracts remain visible without forcing API churn.
+dotnet_diagnostic.CA1822.severity = suggestion # Instance seams are preserved for dependency and acceptance boundaries.
+dotnet_diagnostic.CA1826.severity = suggestion # Indexable-collection micro-optimizations are non-blocking.
+dotnet_diagnostic.CA1829.severity = suggestion # Length-versus-Count micro-optimizations are non-blocking.
+dotnet_diagnostic.CA1847.severity = suggestion # Character-search micro-optimizations are non-blocking.
+dotnet_diagnostic.CA1849.severity = suggestion # Async migration remains visible; dedicated gates catch blocking deadlocks.
+dotnet_diagnostic.CA1869.severity = suggestion # Serializer option caching is performance tuning, not correctness.
+dotnet_diagnostic.CA1861.severity = suggestion # Repeated constant arrays are a micro-allocation concern.
+dotnet_diagnostic.CA1870.severity = suggestion # SearchValues caching is a micro-optimization.
+dotnet_diagnostic.CA2000.severity = suggestion # Application factories deliberately transfer resource ownership.
+dotnet_diagnostic.CA2208.severity = suggestion # Exhaustive internal switches may not map to caller parameter names.
+dotnet_diagnostic.CA2213.severity = suggestion # Async/framework lifetimes own and release synchronization primitives.
+dotnet_diagnostic.CA2249.severity = suggestion # Contains-versus-IndexOf is a readability preference.
+dotnet_diagnostic.CA2263.severity = suggestion # Generic serialization overload adoption is non-breaking cleanup.
+dotnet_diagnostic.CA5392.severity = suggestion # Bundled native libraries require application-local resolution.
+dotnet_diagnostic.CA1859.severity = none # Preserve abstraction-oriented collection and provider boundaries.
+dotnet_diagnostic.CA2007.severity = none # UI continuations must retain their synchronization context.
+dotnet_diagnostic.MA0004.severity = none # Same policy as CA2007; VS threading analyzers cover unsafe blocking.
+dotnet_diagnostic.MA0048.severity = none # Cohesive domain IDs and small alternatives intentionally share files.
+dotnet_diagnostic.MA0051.severity = suggestion # Complexity remains visible without forcing risky mechanical splits.
+dotnet_diagnostic.MA0015.severity = suggestion # Aggregate validation failures often have no single responsible parameter.
+dotnet_diagnostic.MA0074.severity = suggestion # Same comparison policy as CA1307.
+dotnet_diagnostic.MA0091.severity = suggestion # Static and adapter events may intentionally have no sender instance.
+dotnet_diagnostic.MA0099.severity = suggestion # Enum backing choices are durable protocol decisions.
+dotnet_diagnostic.MA0132.severity = suggestion # UTC DateTime values are explicit at filesystem API boundaries.
+dotnet_diagnostic.MA0158.severity = suggestion # Lock modernization is non-blocking outside touched concurrency paths.
+dotnet_diagnostic.MA0046.severity = none # Same event-contract policy as CA1003.
+dotnet_diagnostic.VSTHRD003.severity = none # This application does not use Visual Studio's JoinableTaskFactory model.
+dotnet_diagnostic.VSTHRD103.severity = none # CA1849 is the canonical async-await diagnostic for this repository.
+dotnet_diagnostic.VSTHRD002.severity = suggestion # Existing sync boundaries remain visible for deliberate migration.
+dotnet_diagnostic.VSTHRD100.severity = suggestion # UI event handlers require async-void framework signatures.
+dotnet_diagnostic.VSTHRD101.severity = suggestion # UI delegates are framework-defined void event boundaries.
+dotnet_diagnostic.VSTHRD200.severity = suggestion # Existing asynchronous API names remain source-compatible.
+dotnet_diagnostic.CA1508.severity = suggestion # Flow-analysis limitations are reviewed without blocking valid state machines.
+dotnet_diagnostic.CA1513.severity = suggestion # Lock-object modernization is a non-blocking runtime optimization.
+dotnet_diagnostic.CA1710.severity = suggestion # Domain collections keep their existing vocabulary.
+dotnet_diagnostic.CA1713.severity = suggestion # Domain event names need not use Before/After prefixes.
+dotnet_diagnostic.CA1721.severity = suggestion # Domain property/type name overlap is intentional.
+dotnet_diagnostic.CA1802.severity = suggestion # Static-readonly-to-const is a micro-optimization.
+dotnet_diagnostic.CA1805.severity = suggestion # Explicit defaults can document state-machine initialization.
+dotnet_diagnostic.CA1834.severity = suggestion # StringBuilder character micro-optimizations are non-blocking.
+dotnet_diagnostic.IDE0060.severity = suggestion # Adapter and callback signatures may reserve unused parameters.
+dotnet_diagnostic.MA0049.severity = suggestion # Domain type names may match their namespace.
+dotnet_diagnostic.CA1030.severity = suggestion # Presentation notification methods use domain terminology.
+
+# Naming
+dotnet_naming_rule.interfaces.severity = warning
+dotnet_naming_rule.interfaces.symbols = interfaces
+dotnet_naming_rule.interfaces.style = interface_name
+dotnet_naming_symbols.interfaces.applicable_kinds = interface
+dotnet_naming_style.interface_name.required_prefix = I
+dotnet_naming_style.interface_name.capitalization = pascal_case
+
+dotnet_naming_rule.types.severity = warning
+dotnet_naming_rule.types.symbols = types
+dotnet_naming_rule.types.style = pascal_case
+dotnet_naming_symbols.types.applicable_kinds = class, struct, enum, delegate
+dotnet_naming_style.pascal_case.capitalization = pascal_case
+
+dotnet_naming_rule.non_field_members.severity = warning
+dotnet_naming_rule.non_field_members.symbols = non_field_members
+dotnet_naming_rule.non_field_members.style = pascal_case
+dotnet_naming_symbols.non_field_members.applicable_kinds = property, event, method
+
+dotnet_naming_rule.parameters.severity = suggestion
+dotnet_naming_rule.parameters.symbols = parameters
+dotnet_naming_rule.parameters.style = camel_case
+dotnet_naming_symbols.parameters.applicable_kinds = parameter
+dotnet_naming_style.camel_case.capitalization = camel_case
+
+dotnet_naming_rule.constants.severity = warning
+dotnet_naming_rule.constants.symbols = constants
+dotnet_naming_rule.constants.style = pascal_case
+dotnet_naming_symbols.constants.applicable_kinds = field
+dotnet_naming_symbols.constants.required_modifiers = const
+
+dotnet_naming_rule.static_fields.severity = suggestion
+dotnet_naming_rule.static_fields.symbols = static_fields
+dotnet_naming_rule.static_fields.style = pascal_case
+dotnet_naming_symbols.static_fields.applicable_kinds = field
+dotnet_naming_symbols.static_fields.required_modifiers = static
+
+dotnet_naming_rule.private_fields.severity = warning
+dotnet_naming_rule.private_fields.symbols = private_fields
+dotnet_naming_rule.private_fields.style = private_field
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+dotnet_naming_style.private_field.required_prefix = _
+dotnet_naming_style.private_field.capitalization = camel_case
+
+# xUnit's behavior-oriented test names intentionally use underscores.
+[tests/**/*.cs]
+dotnet_diagnostic.CA1707.severity = none
+dotnet_diagnostic.CA1725.severity = suggestion # DispatchProxy test doubles retain local argument vocabulary.
+dotnet_diagnostic.CA1861.severity = none
+dotnet_diagnostic.CA1001.severity = suggestion # Test fixtures own synchronization helpers for fixture lifetime.
+dotnet_diagnostic.CA1002.severity = suggestion # Test recorders intentionally expose mutable List collections.
+dotnet_diagnostic.CA2012.severity = suggestion # DispatchProxy tests must box ValueTask results as object.
+dotnet_diagnostic.CA2025.severity = suggestion # Concurrency tests intentionally race disposal and completion.
+dotnet_diagnostic.CA2100.severity = suggestion # SQL fixtures deliberately execute test-owned schema and corruption text.
+dotnet_diagnostic.CA2215.severity = suggestion # Test stream/vault doubles use minimal disposal implementations.
+dotnet_diagnostic.CA2219.severity = suggestion # Integration-test cleanup assertions must fail the test from finally.
+dotnet_diagnostic.CA2227.severity = suggestion # Mutable DTOs are confined to serializer test fixtures.
+dotnet_diagnostic.CA1812.severity = none # DispatchProxy creates test doubles through reflection.
+dotnet_diagnostic.CA1852.severity = none # DispatchProxy test doubles must remain inheritable.
+dotnet_diagnostic.CA5394.severity = suggestion # Random test payloads are not security material.
+dotnet_diagnostic.MA0016.severity = suggestion # Concrete collections are intentional serializer test fixtures.
+dotnet_diagnostic.MA0005.severity = suggestion # Test argument arrays prioritize fixture readability.
+dotnet_diagnostic.MA0006.severity = suggestion # xUnit equality assertions provide the comparison contract.
+dotnet_diagnostic.MA0072.severity = suggestion # Same cleanup-assertion policy as CA2219.
+dotnet_diagnostic.MA0143.severity = suggestion # Mutable primary-constructor state is confined to test fakes.
+
+# A zero value is deliberately invalid so default-constructed durable values
+# fail closed instead of silently becoming a real connection or panel kind.
+[src/GhostShell.Core/{ConnectionKind,DefinitionValidationCode,ScreenPanelKind}.cs]
+dotnet_diagnostic.CA1008.severity = none
+
+# Zero is deliberately not a valid durable value; default instances fail closed.
+[src/GhostShell.Application/{DiagnosticsArtifactKind,RecentSessionOutcome}.cs]
+dotnet_diagnostic.CA1008.severity = none
+
+# JsonConverterAttribute constructs this converter through reflection.
+[src/GhostShell.Core/AgentImageAttachment.cs]
+dotnet_diagnostic.CA1812.severity = none
+
+# Provider/compaction tasks may outlive the caller by design. Dedicated
+# observer tasks retain and release their cancellation lifetimes.
+[src/GhostShell.Agent/NativeAgentSession.cs]
+dotnet_diagnostic.CA2025.severity = none
+
+# Dispose(bool) and the finalizer are intentionally retained so sensitive
+# buffers are zeroed both deterministically and as a last-resort safeguard.
+[src/GhostShell.Application/SecretMaterial.cs]
+dotnet_diagnostic.IDE0060.severity = none
+dotnet_diagnostic.MA0055.severity = none
+
+# These executables own their standard streams for the process lifetime.
+[tools/GhostShell.SqlLanguageTestWorker/Program.cs]
+dotnet_diagnostic.CA2000.severity = none
+
+# These are deliberate process boundaries: failures are converted to stable
+# exit codes/evidence and cleanup is best-effort by contract.
+[tools/GhostShell.TerminalAcceptance/Program.cs]
+dotnet_diagnostic.CA1031.severity = none
+
+# These process-boundary tools convert unexpected platform failures into
+# bounded evidence and stable exit codes; sampling failures are retained.
+[tools/GhostShell.AccessibilityAcceptance/{Program,ProcessTreeTracker}.cs]
+dotnet_diagnostic.CA1031.severity = none
+
+[tools/GhostShell.Packaging/Program.cs]
+dotnet_diagnostic.CA1031.severity = none
+
+# The reader is already protected by a using declaration; the out parameter
+# prevents CA2000 from recognizing the lifetime. Build remains an instance API
+# because it is the packaging seam exercised by acceptance tests.
+[tools/GhostShell.Packaging/MacOsAppBundleBuilder.cs]
+dotnet_diagnostic.CA2000.severity = none
+dotnet_diagnostic.CA1822.severity = none
+
+# Unix path APIs consume UTF-8. Each string is explicitly marshalled with
+# LPUTF8Str; CA2101 only accepts the Windows-oriented Unicode recommendation.
+[tools/GhostShell.Packaging/{ExclusiveDirectoryMover,MacOsPackagePaths,RegularPackageFile}.cs]
+dotnet_diagnostic.CA2101.severity = none
+
+[tools/GhostShell.AccessibilityAcceptance/PackageFingerprint.cs]
+dotnet_diagnostic.CA2101.severity = none
+dotnet_diagnostic.VSTHRD002.severity = none # Pipe drains complete before their bounded process is inspected.
+
+# The dispatcher is an error-translation boundary. Unknown transport and
+# audit-store failures become explicit retry/audit results rather than escapes.
+[src/GhostShell.Application/TerminalStartupCommandDispatcher.cs]
+dotnet_diagnostic.CA1031.severity = none
+
+# Linked cancellation ownership transfers immediately to ActiveAction and is
+# released by completion, cancellation, or broker disposal paths.
+[src/GhostShell.Application/AgentCapabilityBroker.cs]
+dotnet_diagnostic.CA2000.severity = none
+
+# Avalonia controls and windows release these lifetimes from framework close,
+# detach, and unload callbacks rather than through IDisposable contracts.
+[src/GhostShell.App/**/*.cs]
+dotnet_diagnostic.CA1001.severity = suggestion
+
+[src/GhostShell.App/*.cs]
+dotnet_diagnostic.CA1001.severity = suggestion
+
+# Runtime panel view-model disposal is an existing framework hierarchy with
+# idempotent virtual cleanup; migrating its public shape is tracked separately.
+[src/GhostShell.App/ViewModels/*.cs]
+dotnet_diagnostic.CA1063.severity = suggestion
+dotnet_diagnostic.CA1816.severity = suggestion
+dotnet_diagnostic.CA2215.severity = suggestion
+
+# All SQL text in these reviewed boundaries is either a bundled migration,
+# trusted driver metadata, an explicitly user-authored query, or paired with
+# provider parameters/identifier quoting. CA2100 cannot distinguish those.
+[src/GhostShell.Databases/{DatabaseMetadataReader,DatabasePanelClient,DatabaseSessionProbes}.cs]
+dotnet_diagnostic.CA2100.severity = none
+
+[src/GhostShell.Infrastructure/{ApplicationEncryptionRuntime,GhostShellDatabase,SqliteAgentModelFavoriteStore,SqliteAgentSessionCheckpointStore,SqliteDefinitionBundleStore,SqliteRuntimeRecoveryStore}.cs]
+dotnet_diagnostic.CA2100.severity = none
+
+# These ABIs explicitly consume UTF-8 C strings or Objective-C selector/class
+# names; Windows-oriented Unicode marshaling would be incorrect.
+[src/GhostShell.App/Views/MacOs*.cs]
+dotnet_diagnostic.CA2101.severity = none
+
+[src/GhostShell.Files/PosixLocalFileProvider.Mutations.cs]
+dotnet_diagnostic.CA2101.severity = none
+
+[src/GhostShell.Infrastructure/{Fido2SecurityKeyAuthenticator,MacOsBiometricAuthenticator,MacOsKeychainSecretVault,NativeFileKind}.cs]
+dotnet_diagnostic.CA2101.severity = none
+
+[src/GhostShell.Desktop/{LinuxX11*,X11*,MacOs*}.cs]
+dotnet_diagnostic.CA2101.severity = none
+
+# These framework services release thread-affine native registrations during
+# deterministic host shutdown; finalizers cannot safely invoke those APIs.
+[src/GhostShell.Desktop/{X11HotkeyMessageLoop,MacOsHostAccessibilityPreferencesSource,MacOsUserNotificationCenter.Content}.cs]
+dotnet_diagnostic.CA2216.severity = none
+
+# OpenSSH hashed known-host entries are specified as HMAC-SHA1. The digest is
+# a keyed hostname lookup token, compared in constant time, not a signature.
+[src/GhostShell.Infrastructure/OpenSshKnownHostEntry.cs]
+dotnet_diagnostic.CA5350.severity = none
+
+[tests/GhostShell.Infrastructure.Tests/OpenSshKnownHostTrustSourceTests.cs]
+dotnet_diagnostic.CA5350.severity = none
+
+# Randomness humanizes non-security cursor and typing timing; it never creates
+# identifiers, secrets, authorization, or policy decisions.
+[src/GhostShell.Browser/CefHumanizedInput.cs]
+dotnet_diagnostic.CA5394.severity = none
+
+# libfido cleanup/cancel return codes cannot change the already-final cleanup
+# outcome and are intentionally best effort after primary errors are captured.
+[src/GhostShell.Infrastructure/Fido2SecurityKeyAuthenticator.cs]
+dotnet_diagnostic.CA1806.severity = none
+
+# Detached operations are retained by explicit observer/lifetime objects that
+# dispose cancellation state only after completion.
+[src/GhostShell.Agent.Providers/AiProviderAuthenticationRuntime.cs]
+dotnet_diagnostic.CA2025.severity = none
+
+[src/GhostShell.Files/FilePanelClient.Transfers.cs]
+dotnet_diagnostic.CA2025.severity = none
+
+# Hosted-session authority tokens and gates deliberately remain valid for
+# operations already queued when shutdown begins; the host revokes them.
+[src/GhostShell.SessionHost/HostedSession.cs]
+dotnet_diagnostic.CA1001.severity = suggestion
+
+# Zero is deliberately not a redaction choice; default values fail closed.
+[src/GhostShell.App/DiagnosticsExportContracts.cs]
+dotnet_diagnostic.CA1008.severity = none
+
+# Compiler- and source-generated files are reviewed at their generator boundary.
+[**/*.g.cs]
+generated_code = true
+
+[**/Generated/**/*.cs]
+generated_code = true

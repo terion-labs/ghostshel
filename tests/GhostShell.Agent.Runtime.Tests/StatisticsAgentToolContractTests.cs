@@ -51,14 +51,14 @@ public sealed class StatisticsAgentToolContractTests
             ["panel_id"],
             tool.InputSchema.GetProperty("required")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
         Assert.Equal(
             [first.PanelId.Value, second.PanelId.Value],
             tool.InputSchema.GetProperty("properties")
                 .GetProperty("panel_id")
                 .GetProperty("enum")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -121,7 +121,7 @@ public sealed class StatisticsAgentToolContractTests
 
         Assert.Equal(panel.PanelId, selected.PanelId);
         Assert.All(
-            new[] { omitted, outside },
+            [omitted, outside],
             result => Assert.Equal(
                 "invalid_tool_arguments",
                 Assert.IsType<StatisticsAgentIntentResult.Rejected>(

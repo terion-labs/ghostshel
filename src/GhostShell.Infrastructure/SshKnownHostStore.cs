@@ -315,7 +315,7 @@ public sealed class SshKnownHostStore : ISshHostKeyTrustStore
         }
 
         var fields = line.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (fields.Length != 3 || fields[0] != $"ghostshell-{identity}")
+        if (fields.Length != 3 || !string.Equals(fields[0], $"ghostshell-{identity}", StringComparison.Ordinal))
         {
             throw new InvalidDataException("The trusted SSH host-key file is malformed.");
         }

@@ -161,7 +161,7 @@ internal sealed record CefRuntimeCatalog(
             "osx-x64",
             "win-x64",
         ];
-        if (!distributions.Keys.Order(StringComparer.Ordinal).SequenceEqual(expectedRids))
+        if (!distributions.Keys.Order(StringComparer.Ordinal).SequenceEqual(expectedRids, StringComparer.Ordinal))
         {
             throw new InvalidDataException(
                 "The CEF runtime catalog has an unexpected RID set.");
@@ -177,7 +177,7 @@ internal sealed record CefRuntimeCatalog(
         };
         foreach (var (rid, expectedPlatform) in expectedPlatforms)
         {
-            if (distributions[rid].Platform != expectedPlatform)
+            if (!string.Equals(distributions[rid].Platform, expectedPlatform, StringComparison.Ordinal))
             {
                 throw new InvalidDataException(
                     $"The CEF runtime catalog has an unexpected platform for {rid}.");
@@ -249,8 +249,8 @@ internal sealed record CefRuntimeCatalog(
         string description)
     {
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)
-            || uri.Scheme != Uri.UriSchemeHttps
-            || uri.UserInfo.Length != 0)
+            || !string.Equals(uri.Scheme, Uri.UriSchemeHttps
+, StringComparison.Ordinal) || uri.UserInfo.Length != 0)
         {
             throw new InvalidDataException(
                 $"The CEF runtime catalog {description} is invalid.");

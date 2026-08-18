@@ -1,5 +1,8 @@
+using System.Runtime.InteropServices;
+
 namespace GhostShell.AccessibilityAcceptance;
 
+[StructLayout(LayoutKind.Auto)]
 internal readonly record struct ProcessParent(int ProcessId, int ParentProcessId);
 
 internal static class ProcessTreeProbe

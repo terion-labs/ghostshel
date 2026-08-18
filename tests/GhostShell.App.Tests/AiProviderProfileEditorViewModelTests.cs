@@ -184,7 +184,7 @@ public sealed class AiProviderProfileEditorViewModelTests
         Assert.Equal(AiProviderCatalog.Definitions.Count, editor.ProviderOptions.Count);
         Assert.Contains(editor.ProviderOptions, option =>
             option.Kind == AiProviderKind.MoonshotAi
-            && option.DisplayName == "Moonshot AI");
+            && string.Equals(option.DisplayName, "Moonshot AI", StringComparison.Ordinal));
 
         editor.Kind = AiProviderKind.GitHubCopilot;
 

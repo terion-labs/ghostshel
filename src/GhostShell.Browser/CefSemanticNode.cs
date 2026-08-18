@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace GhostShell.Browser;
 
 internal sealed record CefSemanticNode(
@@ -11,6 +13,7 @@ internal sealed record CefSemanticNode(
     IReadOnlyDictionary<string, string> Properties,
     string Value);
 
+[StructLayout(LayoutKind.Auto)]
 internal readonly record struct CefSemanticPoint(
     double X,
     double Y,

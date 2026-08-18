@@ -28,7 +28,7 @@ public sealed record WebDavFileProviderOptions
 
         ProfileId = profileId;
         Authority = authority;
-        BaseUri = baseUri.AbsoluteUri.EndsWith("/", StringComparison.Ordinal)
+        BaseUri = baseUri.AbsoluteUri.EndsWith('/')
             ? baseUri
             : new Uri($"{baseUri.AbsoluteUri}/", UriKind.Absolute);
     }

@@ -66,7 +66,7 @@ public sealed class BoundaryProbeTests : IDisposable
     {
         var arguments = secondArgument is null
             ? new[] { firstArgument }
-            : new[] { firstArgument, secondArgument, "--replace" };
+            : [firstArgument, secondArgument, "--replace"];
 
         Assert.Equal(
             "/usr/bin/orca",
@@ -85,7 +85,7 @@ public sealed class BoundaryProbeTests : IDisposable
     {
         var arguments = secondArgument is null
             ? new[] { firstArgument }
-            : new[] { firstArgument, secondArgument };
+            : [firstArgument, secondArgument];
 
         Assert.Null(ScreenReaderProbe.ResolveExpectedOrcaLauncher(liveExecutable, arguments));
     }
@@ -162,7 +162,7 @@ public sealed class BoundaryProbeTests : IDisposable
 
         Assert.Equal("linux-x11-package", first.Build.PackageKind);
         Assert.Equal("GhostShell", first.Build.PackageExecutable);
-        Assert.NotEqual(first.Build.PackageManifestSha256, second.Build.PackageManifestSha256);
+        Assert.NotEqual(first.Build.PackageManifestSha256, second.Build.PackageManifestSha256, StringComparer.Ordinal);
         Assert.Equal(first.Build.ExecutableSha256, second.Build.ExecutableSha256);
     }
 
@@ -203,7 +203,7 @@ public sealed class BoundaryProbeTests : IDisposable
             TargetPlatform.LinuxX11,
             "rc-1");
 
-        Assert.NotEqual(first.Build.PackageManifestSha256, second.Build.PackageManifestSha256);
+        Assert.NotEqual(first.Build.PackageManifestSha256, second.Build.PackageManifestSha256, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -234,7 +234,7 @@ public sealed class BoundaryProbeTests : IDisposable
             TargetPlatform.LinuxX11,
             "rc-1");
 
-        Assert.NotEqual(first.Build.PackageManifestSha256, second.Build.PackageManifestSha256);
+        Assert.NotEqual(first.Build.PackageManifestSha256, second.Build.PackageManifestSha256, StringComparer.Ordinal);
     }
 
     [Fact]

@@ -550,7 +550,7 @@ internal sealed partial class GhosttyVtTerminalSession
             : new TerminalKittyGraphicsFrame(
                 storageGeneration,
                 placements,
-                referencedImages.Values.ToArray());
+                [.. referencedImages.Values]);
     }
 
     private unsafe void ReadKittyVirtualPlacementsUnsafe(
@@ -832,7 +832,7 @@ internal sealed partial class GhosttyVtTerminalSession
             above,
             below,
             BuildVisibleCommandBoundaries(frame, activeScreen),
-            _semanticMarkers.Select(marker => marker.Event).ToArray(),
+            [.. _semanticMarkers.Select(marker => marker.Event)],
             _interactiveState);
     }
 
@@ -907,30 +907,102 @@ internal sealed partial class GhosttyVtTerminalSession
     private static unsafe TerminalRenderCellStyle MapStyle(GhosttyVtStyle style, bool isProtected)
     {
         var result = TerminalRenderCellStyle.None;
-        if (style.Bold != 0) result |= TerminalRenderCellStyle.Bold;
-        if (style.Faint != 0) result |= TerminalRenderCellStyle.Faint;
-        if (style.Italic != 0) result |= TerminalRenderCellStyle.Italic;
-        if (style.Blink != 0) result |= TerminalRenderCellStyle.Blink;
-        if (style.Inverse != 0) result |= TerminalRenderCellStyle.Inverse;
-        if (style.Invisible != 0) result |= TerminalRenderCellStyle.Invisible;
-        if (style.Strikethrough != 0) result |= TerminalRenderCellStyle.Strikethrough;
-        if (style.Overline != 0) result |= TerminalRenderCellStyle.Overline;
-        if (isProtected) result |= TerminalRenderCellStyle.Protected;
+        if (style.Bold != 0)
+        {
+            result |= TerminalRenderCellStyle.Bold;
+        }
+
+        if (style.Faint != 0)
+        {
+            result |= TerminalRenderCellStyle.Faint;
+        }
+
+        if (style.Italic != 0)
+        {
+            result |= TerminalRenderCellStyle.Italic;
+        }
+
+        if (style.Blink != 0)
+        {
+            result |= TerminalRenderCellStyle.Blink;
+        }
+
+        if (style.Inverse != 0)
+        {
+            result |= TerminalRenderCellStyle.Inverse;
+        }
+
+        if (style.Invisible != 0)
+        {
+            result |= TerminalRenderCellStyle.Invisible;
+        }
+
+        if (style.Strikethrough != 0)
+        {
+            result |= TerminalRenderCellStyle.Strikethrough;
+        }
+
+        if (style.Overline != 0)
+        {
+            result |= TerminalRenderCellStyle.Overline;
+        }
+
+        if (isProtected)
+        {
+            result |= TerminalRenderCellStyle.Protected;
+        }
+
         return result;
     }
 
     private static unsafe TerminalCellStyle MapScreenStyle(TerminalRenderCell cell)
     {
         var result = TerminalCellStyle.None;
-        if (cell.Style.HasFlag(TerminalRenderCellStyle.Bold)) result |= TerminalCellStyle.Bold;
-        if (cell.Style.HasFlag(TerminalRenderCellStyle.Faint)) result |= TerminalCellStyle.Dim;
-        if (cell.Style.HasFlag(TerminalRenderCellStyle.Italic)) result |= TerminalCellStyle.Italic;
-        if (cell.Underline != TerminalUnderlineKind.None) result |= TerminalCellStyle.Underline;
-        if (cell.Style.HasFlag(TerminalRenderCellStyle.Blink)) result |= TerminalCellStyle.Blink;
-        if (cell.Style.HasFlag(TerminalRenderCellStyle.Inverse)) result |= TerminalCellStyle.Inverse;
-        if (cell.Style.HasFlag(TerminalRenderCellStyle.Invisible)) result |= TerminalCellStyle.Invisible;
-        if (cell.Style.HasFlag(TerminalRenderCellStyle.Strikethrough)) result |= TerminalCellStyle.Strikethrough;
-        if (cell.Style.HasFlag(TerminalRenderCellStyle.Overline)) result |= TerminalCellStyle.Overline;
+        if (cell.Style.HasFlag(TerminalRenderCellStyle.Bold))
+        {
+            result |= TerminalCellStyle.Bold;
+        }
+
+        if (cell.Style.HasFlag(TerminalRenderCellStyle.Faint))
+        {
+            result |= TerminalCellStyle.Dim;
+        }
+
+        if (cell.Style.HasFlag(TerminalRenderCellStyle.Italic))
+        {
+            result |= TerminalCellStyle.Italic;
+        }
+
+        if (cell.Underline != TerminalUnderlineKind.None)
+        {
+            result |= TerminalCellStyle.Underline;
+        }
+
+        if (cell.Style.HasFlag(TerminalRenderCellStyle.Blink))
+        {
+            result |= TerminalCellStyle.Blink;
+        }
+
+        if (cell.Style.HasFlag(TerminalRenderCellStyle.Inverse))
+        {
+            result |= TerminalCellStyle.Inverse;
+        }
+
+        if (cell.Style.HasFlag(TerminalRenderCellStyle.Invisible))
+        {
+            result |= TerminalCellStyle.Invisible;
+        }
+
+        if (cell.Style.HasFlag(TerminalRenderCellStyle.Strikethrough))
+        {
+            result |= TerminalCellStyle.Strikethrough;
+        }
+
+        if (cell.Style.HasFlag(TerminalRenderCellStyle.Overline))
+        {
+            result |= TerminalCellStyle.Overline;
+        }
+
         return result;
     }
 

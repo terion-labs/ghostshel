@@ -169,8 +169,8 @@ internal static class DatabaseValueClassifier
         }
 
         if (ContainsAny(type, "blob", "binary", "bytea", "varbyte", "long raw", "image")
-            || type == "raw"
-            || type.StartsWith("raw(", StringComparison.Ordinal))
+            || string.Equals(type, "raw"
+, StringComparison.Ordinal) || type.StartsWith("raw(", StringComparison.Ordinal))
         {
             return DatabaseValueKind.Binary;
         }
@@ -192,13 +192,13 @@ internal static class DatabaseValueClassifier
             return DatabaseValueKind.Duration;
         }
 
-        if (type == "date" || type.StartsWith("date(", StringComparison.Ordinal))
+        if (string.Equals(type, "date", StringComparison.Ordinal) || type.StartsWith("date(", StringComparison.Ordinal))
         {
             return DatabaseValueKind.Date;
         }
 
-        if (type == "time"
-            || type.StartsWith("time(", StringComparison.Ordinal)
+        if (string.Equals(type, "time"
+, StringComparison.Ordinal) || type.StartsWith("time(", StringComparison.Ordinal)
             || type.StartsWith("time ", StringComparison.Ordinal))
         {
             return DatabaseValueKind.Time;

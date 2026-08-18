@@ -382,7 +382,7 @@ internal static class EvidenceValidator
 
         if (evidence.OverallResult == AcceptanceStatus.Pass
             && (evidence.Checks.Count == 0
-                || evidence.Checks[^1].ObservationMode != "operator-observed+runner-verified"))
+                || !string.Equals(evidence.Checks[^1].ObservationMode, "operator-observed+runner-verified", StringComparison.Ordinal)))
         {
             errors.Add("Overall PASS requires runner verification of the lifecycle observation.");
         }

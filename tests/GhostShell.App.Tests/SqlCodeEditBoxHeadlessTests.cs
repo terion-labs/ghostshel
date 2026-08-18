@@ -930,9 +930,9 @@ public sealed class SqlCodeEditBoxHeadlessTests
         Assert.Equal(replacementStart + replacementLength, completionWindow.EndOffset);
         var item = Assert.Single(
             completionWindow.CompletionList.CompletionData.Cast<SqlCompletionData>(),
-            candidate => candidate.Label == label
-                && candidate.Kind == kind
-                && candidate.InsertText == insertText);
+            candidate => string.Equals(candidate.Label, label
+, StringComparison.Ordinal) && candidate.Kind == kind
+                && string.Equals(candidate.InsertText, insertText, StringComparison.Ordinal));
         completionWindow.CompletionList.SelectedItem = item;
         fixture.Window.KeyPress(
             Key.Enter,

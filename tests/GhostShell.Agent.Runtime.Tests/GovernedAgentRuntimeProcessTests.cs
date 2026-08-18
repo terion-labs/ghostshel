@@ -58,7 +58,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         var initialRequest = fixture.Provider.Requests.ToArray()[0];
         var tool = Assert.Single(
             initialRequest.Tools,
-            candidate => candidate.Name == BuiltInAgentTools.ProcessesList);
+            candidate => string.Equals(candidate.Name, BuiltInAgentTools.ProcessesList, StringComparison.Ordinal));
         Assert.DoesNotContain(
             "panel_id",
             tool.InputSchema.GetRawText(),
@@ -84,7 +84,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         Assert.Equal(PanelKind.ProcessMonitor, contextItem.Kind);
         Assert.Contains(
             BuiltInAgentTools.ProcessesList,
-            contextItem.SupportedOperations);
+            contextItem.SupportedOperations, StringComparer.Ordinal);
 
         var toolResult = ToolResultFromLastRequest(fixture.Provider);
         Assert.Equal(
@@ -120,14 +120,12 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             StringComparison.OrdinalIgnoreCase);
         Assert.Contains(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.ProcessesList
-                && auditEvent.Outcome == AuditOutcome.Requested);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.ProcessesList
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Requested);
         var completedAudit = Assert.Single(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.ProcessesList
-                && auditEvent.Outcome == AuditOutcome.Succeeded);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.ProcessesList
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Succeeded);
         var completedDetails =
             Assert.IsType<AuditDetails.AgentActionDetails>(
                 completedAudit.Details);
@@ -201,9 +199,8 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             Assert.Single(fixture.Processes.Actions).Request.Sort);
         Assert.Contains(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.ProcessesList
-                && auditEvent.Outcome == AuditOutcome.Approved);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.ProcessesList
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Approved);
     }
 
     [Fact]
@@ -236,9 +233,8 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         Assert.Equal("approval_denied", toolResult.StableCode);
         Assert.Contains(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.ProcessesList
-                && auditEvent.Outcome == AuditOutcome.Denied);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.ProcessesList
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Denied);
     }
 
     [Fact]
@@ -264,9 +260,8 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             toolResult.StableCode);
         Assert.Contains(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.ProcessesList
-                && auditEvent.Outcome == AuditOutcome.Denied);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.ProcessesList
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Denied);
     }
 
     [Fact]
@@ -289,7 +284,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             "invalid_tool_arguments",
             ToolResultFromLastRequest(omitted.Provider).StableCode);
         var schema = omitted.Provider.Requests.ToArray()[0].Tools
-            .Single(tool => tool.Name == BuiltInAgentTools.ProcessesList)
+            .Single(tool => string.Equals(tool.Name, BuiltInAgentTools.ProcessesList, StringComparison.Ordinal))
             .InputSchema;
         Assert.Equal(
             [ProcessRuntimeContextProxy.ProcessPanelId.Value],
@@ -297,12 +292,12 @@ public sealed partial class GovernedAgentRuntimeProcessTests
                 .GetProperty("panel_id")
                 .GetProperty("enum")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
         Assert.Contains(
             "panel_id",
             schema.GetProperty("required")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
 
         await using var selected = ProcessRuntimeFixture.Create(
             ProcessScope.MixedOpenTab,
@@ -390,8 +385,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
 
         Assert.DoesNotContain(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.ProcessesList);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.ProcessesList, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -416,8 +410,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             ToolResultFromLastRequest(fixture.Provider).StableCode);
         Assert.DoesNotContain(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.ProcessesList);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.ProcessesList, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -442,8 +435,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             ToolResultFromLastRequest(fixture.Provider).StableCode);
         Assert.DoesNotContain(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.ProcessesList);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.ProcessesList, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -487,9 +479,8 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         Assert.Null(fixture.Runtime.Snapshot.PanelActivity);
         Assert.Contains(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.ProcessesList
-                && auditEvent.Outcome == AuditOutcome.Cancelled);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.ProcessesList
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Cancelled);
     }
 
     [Fact]
@@ -523,9 +514,8 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             fixture.Runtime.Snapshot.State);
         Assert.Contains(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.ProcessesList
-                && auditEvent.Outcome == AuditOutcome.Cancelled
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.ProcessesList
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Cancelled
                 && auditEvent.Details
                     is AuditDetails.AgentActionDetails
                 {
@@ -618,9 +608,8 @@ public sealed partial class GovernedAgentRuntimeProcessTests
                 StringComparison.Ordinal));
         Assert.Contains(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.ProcessesList
-                && auditEvent.Outcome == AuditOutcome.Failed
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.ProcessesList
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Failed
                 && auditEvent.Details
                     is AuditDetails.AgentActionDetails
                 {
@@ -1738,7 +1727,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         private readonly ConcurrentQueue<AuditEventRecord> _events = [];
 
         public IReadOnlyList<AuditEventRecord> Events =>
-            _events.ToArray();
+            [.. _events];
 
         public ValueTask<AuditStoreResult<Unit>> AppendAsync(
             AuditEventRecord auditEvent,
@@ -1757,9 +1746,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
                 CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            IReadOnlyList<AuditEventRecord> values = Events
-                .Where(item => item.CorrelationId == correlationId)
-                .ToArray();
+            IReadOnlyList<AuditEventRecord> values = [.. Events.Where(item => string.Equals(item.CorrelationId, correlationId, StringComparison.Ordinal))];
             return ValueTask.FromResult(
                 AuditStoreResult<
                     IReadOnlyList<AuditEventRecord>>.Success(values));

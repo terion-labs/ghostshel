@@ -27,7 +27,7 @@ public sealed class TerminalSessionPortConformanceTests
         var launch = new TerminalLaunchRequest(
             "/tmp",
             "/bin/sh",
-            environment: new Dictionary<string, string> { ["LANG"] = "C" },
+            environment: new Dictionary<string, string>(StringComparer.Ordinal) { ["LANG"] = "C" },
             connectionId: connectionId);
         _ = GhosttyVtTestRuntime.RequireStagedRuntime();
         var factory = new GhosttyVtTerminalSessionFactory(new FakePortablePtyFactory());

@@ -114,7 +114,7 @@ public sealed class MacOsAppBundleBuilder
     public MacOsAppBundleResult Build(MacOsAppBundleRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (request.CefRuntimeIdentifier != "osx-arm64")
+        if (!string.Equals(request.CefRuntimeIdentifier, "osx-arm64", StringComparison.Ordinal))
         {
             throw new ArgumentException(
                 "Full macOS application packaging currently supports only "
@@ -276,7 +276,7 @@ public sealed class MacOsAppBundleBuilder
                          "*",
                          new EnumerationOptions
                          {
-                             AttributesToSkip = 0,
+                             AttributesToSkip = FileAttributes.None,
                              IgnoreInaccessible = false,
                              RecurseSubdirectories = false,
                              ReturnSpecialDirectories = false,

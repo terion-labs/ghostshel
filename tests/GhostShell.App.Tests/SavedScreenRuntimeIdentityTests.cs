@@ -599,14 +599,14 @@ public sealed class SavedScreenRuntimeIdentityTests
         Assert.False(viewModel.IsDefinitionOpen(screen.Key));
         Assert.Equal(
             ["Pinned connection", "Pinned screen", "Owned tab"],
-            runtime.Tabs.Select(tab => tab.Title));
+            runtime.Tabs.Select(tab => tab.Title), StringComparer.Ordinal);
         Assert.Equal(
             [secondConnection.Id, firstConnection.Id, firstConnection.Id],
             runtime.Tabs.Select(tab =>
                 Assert.IsType<TerminalRuntimePanelViewModel>(tab.ActivePanel).ConnectionId));
         Assert.Equal(
             [firstConnection.Id, secondConnection.Id],
-            runtime.Connections.Select(connection => connection.Id).OrderBy(id => id.Value));
+            runtime.Connections.Select(connection => connection.Id).OrderBy(id => id.Value, StringComparer.Ordinal));
     }
 
     [Fact]
@@ -912,9 +912,8 @@ public sealed class SavedScreenRuntimeIdentityTests
             StringComparison.Ordinal);
 
         files.ReplaceProfiles(
-            files.Profiles.Select(profile =>
-                profile.Id == profileId.Value
-                    ? new FileProviderProfileDescriptor(
+            [.. files.Profiles.Select(profile => string.Equals(profile.Id, profileId.Value
+, StringComparison.Ordinal) ? new FileProviderProfileDescriptor(
                         profile.Id,
                         "Refreshed saved provider",
                         profile.Family,
@@ -922,7 +921,7 @@ public sealed class SavedScreenRuntimeIdentityTests
                         profile.Capabilities,
                         profile.MaximumPageSize,
                         profile.MaximumPreviewBytes)
-                    : profile).ToArray());
+                    : profile)]);
         var delayedEnsure = host.FileEnsureCompletion!;
         host.FileEnsureCompletion = null;
         delayedEnsure.SetResult(HostResult<SessionSnapshot>.Fail(
@@ -1875,13 +1874,12 @@ public sealed class SavedScreenRuntimeIdentityTests
             currentWorkspace with
             {
                 AgentPolicy = null,
-                Tabs = currentWorkspace.Tabs
+                Tabs = [.. currentWorkspace.Tabs
                     .Select(currentTab => currentTab with
                     {
                         HistorySource = null,
                         AgentPolicy = null,
-                    })
-                    .ToArray(),
+                    })],
             });
         var versionOneJson = JsonSerializer.Serialize(
             versionOnePayload,
@@ -1901,7 +1899,7 @@ public sealed class SavedScreenRuntimeIdentityTests
             "\"sourceValue\":\"recovery-screen\",",
             string.Empty,
             StringComparison.Ordinal);
-        Assert.NotEqual(json, partialJson);
+        Assert.NotEqual(json, partialJson, StringComparer.Ordinal);
         var partialSnapshot = snapshot with { PayloadJson = partialJson };
         Assert.False(RuntimeWorkspaceRecoveryCodec.TryDeserialize(
             partialSnapshot,
@@ -1947,7 +1945,8 @@ public sealed class SavedScreenRuntimeIdentityTests
             RuntimeWorkspaceRecoveryCodec.Serialize(workspace));
 
         Assert.Contains(
-            WorkspaceInstance.MaximumPanelCount.ToString(),
+            WorkspaceInstance.MaximumPanelCount.ToString(
+                System.Globalization.CultureInfo.InvariantCulture),
             exception.Message,
             StringComparison.Ordinal);
     }
@@ -2213,9 +2212,7 @@ public sealed class SavedScreenRuntimeIdentityTests
             currentWorkspace with
             {
                 AgentPolicy = null,
-                Tabs = currentWorkspace.Tabs
-                    .Select(currentTab => currentTab with { AgentPolicy = null })
-                    .ToArray(),
+                Tabs = [.. currentWorkspace.Tabs.Select(currentTab => currentTab with { AgentPolicy = null })],
             });
         var unsupportedSnapshot = currentSnapshot with
         {
@@ -2601,8 +2598,8 @@ public sealed class SavedScreenRuntimeIdentityTests
 
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
         {
-            if (targetMethod?.Name == nameof(ISessionHostClient.RegisterWorkspaceGraphAsync)
-                && args is [RegisterWorkspaceGraphRequest request, ..])
+            if (string.Equals(targetMethod?.Name, nameof(ISessionHostClient.RegisterWorkspaceGraphAsync)
+, StringComparison.Ordinal) && args is [RegisterWorkspaceGraphRequest request, ..])
             {
                 var revision = _workspace?.Workspace.Id == request.Workspace.Id
                     ? _workspace.Revision + 1
@@ -2616,8 +2613,8 @@ public sealed class SavedScreenRuntimeIdentityTests
                     HostResult<WorkspaceGraphSnapshot>.Succeed(_workspace, revision));
             }
 
-            if (targetMethod?.Name == nameof(ISessionHostClient.UnregisterWorkspaceGraphAsync)
-                && args is [UnregisterWorkspaceGraphRequest unregisterRequest, ..]
+            if (string.Equals(targetMethod?.Name, nameof(ISessionHostClient.UnregisterWorkspaceGraphAsync)
+, StringComparison.Ordinal) && args is [UnregisterWorkspaceGraphRequest unregisterRequest, ..]
                 && _workspace is { } workspace
                 && workspace.WindowId == unregisterRequest.WindowId
                 && workspace.Workspace.Id == unregisterRequest.WorkspaceId)
@@ -2628,16 +2625,16 @@ public sealed class SavedScreenRuntimeIdentityTests
                     HostResult<Unit>.Succeed(Unit.Value, revision));
             }
 
-            if (targetMethod?.Name == nameof(ISessionHostClient.WatchWorkspaceGraphAsync)
-                && args is [WatchWorkspaceGraphRequest, .., CancellationToken cancellationToken])
+            if (string.Equals(targetMethod?.Name, nameof(ISessionHostClient.WatchWorkspaceGraphAsync)
+, StringComparison.Ordinal) && args is [WatchWorkspaceGraphRequest, .., CancellationToken cancellationToken])
             {
                 Interlocked.Increment(ref _watchStartCount);
                 WatchStarted.TrySetResult();
                 return WatchUntilCancelledAsync(cancellationToken);
             }
 
-            if (targetMethod?.Name == nameof(ISessionHostClient.EnsureFilePanelSessionAsync)
-                && args is [EnsureFilePanelSessionRequest fileRequest, ..])
+            if (string.Equals(targetMethod?.Name, nameof(ISessionHostClient.EnsureFilePanelSessionAsync)
+, StringComparison.Ordinal) && args is [EnsureFilePanelSessionRequest fileRequest, ..])
             {
                 EnsureFilePanelRequests.Add(fileRequest);
                 if (FileEnsureCompletion is { } ensureCompletion)
@@ -2650,8 +2647,8 @@ public sealed class SavedScreenRuntimeIdentityTests
                     SuccessfulFileEnsure(fileRequest));
             }
 
-            if (targetMethod?.Name == nameof(ISessionHostClient.ListFilesAsync)
-                && args is [FilePanelListHostRequest listRequest, ..])
+            if (string.Equals(targetMethod?.Name, nameof(ISessionHostClient.ListFilesAsync)
+, StringComparison.Ordinal) && args is [FilePanelListHostRequest listRequest, ..])
             {
                 FileListRequests.Add(listRequest);
                 return FileListCompletion is { } completion
@@ -2891,7 +2888,7 @@ public sealed class SavedScreenRuntimeIdentityTests
             IReadOnlyList<FileProviderProfileDescriptor> profiles)
         {
             ArgumentNullException.ThrowIfNull(profiles);
-            Profiles = profiles.ToArray();
+            Profiles = [.. profiles];
             ProfilesChanged?.Invoke(this, EventArgs.Empty);
         }
 
@@ -3022,7 +3019,7 @@ public sealed class SavedScreenRuntimeIdentityTests
             {
                 lock (_snapshots)
                 {
-                    return _snapshots.ToArray();
+                    return [.. _snapshots];
                 }
             }
         }
@@ -3073,9 +3070,7 @@ public sealed class SavedScreenRuntimeIdentityTests
             {
                 lock (_gate)
                 {
-                    return _records.Values
-                        .OrderBy(record => record.StartedAt)
-                        .ToArray();
+                    return [.. _records.Values.OrderBy(record => record.StartedAt)];
                 }
             }
         }
@@ -3163,12 +3158,11 @@ public sealed class SavedScreenRuntimeIdentityTests
             IReadOnlyList<RecentSessionRecord> records;
             lock (_gate)
             {
-                records = _records.Values
+                records = [.. _records.Values
                     .Where(record => query.SourceKind is null
                         || record.SourceDefinition.Kind == query.SourceKind)
                     .OrderByDescending(record => record.LastUsedAt)
-                    .Take(query.Limit)
-                    .ToArray();
+                    .Take(query.Limit)];
             }
 
             return ValueTask.FromResult(

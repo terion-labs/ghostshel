@@ -44,7 +44,7 @@ public sealed class AiProviderRuntimeBoundaryTests
         Assert.Equal("Bearer openai-test-key", handler.LastRequest.Authorization);
         Assert.Null(handler.LastRequest.ApiKey);
         Assert.Null(handler.LastRequest.AnthropicVersion);
-        Assert.Equal(["a-model", "z-model"], models.Select(model => model.Id));
+        Assert.Equal(["a-model", "z-model"], models.Select(model => model.Id), StringComparer.Ordinal);
 
         var resolve = Assert.IsType<ResolveSecretRequest>(vault.LastResolveRequest);
         Assert.Equal(reference, resolve.Reference);
@@ -419,7 +419,7 @@ public sealed class AiProviderRuntimeBoundaryTests
 
         Assert.Equal(
             ["claude-sonnet-4.6", "gpt-5.3-codex", "gpt-5.6-terra"],
-            models.Select(model => model.Id));
+            models.Select(model => model.Id), StringComparer.Ordinal);
         Assert.Equal(
             new Uri("https://api.githubcopilot.com/models"),
             handler.LastRequest!.Uri);
@@ -799,10 +799,10 @@ public sealed class AiProviderRuntimeBoundaryTests
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(["gpt-default", "gpt-fast"], result.Models.Select(model => model.Id));
+        Assert.Equal(["gpt-default", "gpt-fast"], result.Models.Select(model => model.Id), StringComparer.Ordinal);
         Assert.Equal(
             ["gpt-default", "gpt-fast"],
-            Assert.Single(runtime.Profiles).Models.Select(model => model.Id));
+            Assert.Single(runtime.Profiles).Models.Select(model => model.Id), StringComparer.Ordinal);
         Assert.Equal(1, handler.CallCount);
         Assert.EndsWith("/v1/models", handler.LastRequest!.Uri.AbsoluteUri);
     }
@@ -932,11 +932,11 @@ public sealed class AiProviderRuntimeBoundaryTests
 
         Assert.Equal(
             272_000,
-            descriptor.Models.Single(model => model.Id == "gpt-5.6-terra")
+            descriptor.Models.Single(model => string.Equals(model.Id, "gpt-5.6-terra", StringComparison.Ordinal))
                 .ContextWindowTokens);
         Assert.Equal(
             128_000,
-            descriptor.Models.Single(model => model.Id == "gpt-5.3-codex-spark")
+            descriptor.Models.Single(model => string.Equals(model.Id, "gpt-5.3-codex-spark", StringComparison.Ordinal))
                 .ContextWindowTokens);
     }
 
@@ -1101,13 +1101,12 @@ public sealed class AiProviderRuntimeBoundaryTests
         params AiProviderProfile[] profiles) =>
         DefinitionCatalogSnapshot.Empty with
         {
-            AiProviderProfiles = profiles
+            AiProviderProfiles = [.. profiles
                 .Select(profile => new StoredDefinition<AiProviderProfile>(
                     profile,
                     revision,
                     StoredAt,
-                    StoredAt))
-                .ToArray(),
+                    StoredAt))],
         };
 
     private static Task<HttpResponseMessage> JsonResponseAsync(string payload) =>

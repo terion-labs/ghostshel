@@ -64,6 +64,6 @@ public sealed class SourcePreviewGrammarTests
         // ".dump" is not aliased, so it reaches the registry as itself and is
         // simply unknown there; the null cases never get that far.
         var resolved = SourcePreviewGrammar.ResolveExtension(fileName);
-        Assert.True(resolved is null || resolved == ".dump");
+        Assert.True(resolved is null || string.Equals(resolved, ".dump", StringComparison.Ordinal));
     }
 }

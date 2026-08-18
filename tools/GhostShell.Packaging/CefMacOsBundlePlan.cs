@@ -92,14 +92,12 @@ internal sealed class CefMacOsBundlePlan
         }
 
         return new CefMacOsBundlePlan(
-            files.OrderBy(
+            [.. files.OrderBy(
                     file => file.DestinationRelativePath,
-                    StringComparer.Ordinal)
-                .ToArray(),
-            generatedFiles.OrderBy(
+                    StringComparer.Ordinal)],
+            [.. generatedFiles.OrderBy(
                     file => file.DestinationRelativePath,
-                    StringComparer.Ordinal)
-                .ToArray());
+                    StringComparer.Ordinal)]);
     }
 
     public void CopyTo(string contentsDirectory)
@@ -124,7 +122,7 @@ internal sealed class CefMacOsBundlePlan
 
     private static IReadOnlyList<string> MapDestination(string sourcePath)
     {
-        if (sourcePath == "libexclr8cef.dylib")
+        if (string.Equals(sourcePath, "libexclr8cef.dylib", StringComparison.Ordinal))
         {
             return
             [
@@ -133,17 +131,17 @@ internal sealed class CefMacOsBundlePlan
             ];
         }
 
-        if (sourcePath == "CEF-LICENSE.txt")
+        if (string.Equals(sourcePath, "CEF-LICENSE.txt", StringComparison.Ordinal))
         {
             return ["Resources/Licenses/CEF-LICENSE.txt"];
         }
 
-        if (sourcePath == "CEF-CREDITS.html")
+        if (string.Equals(sourcePath, "CEF-CREDITS.html", StringComparison.Ordinal))
         {
             return ["Resources/Licenses/Chromium-CREDITS.html"];
         }
 
-        if (sourcePath == "EXCLR8CEF-LICENSE.txt")
+        if (string.Equals(sourcePath, "EXCLR8CEF-LICENSE.txt", StringComparison.Ordinal))
         {
             return ["Resources/Licenses/Exclr8CEF-MIT.txt"];
         }
@@ -160,7 +158,7 @@ internal sealed class CefMacOsBundlePlan
 
     private static bool IsHelperPath(string path)
     {
-        var separator = path.IndexOf('/');
+        var separator = path.IndexOf('/', StringComparison.Ordinal);
         if (separator <= 0)
         {
             return false;
@@ -200,7 +198,7 @@ internal sealed class CefMacOsBundlePlan
 
         using var copied = RegularPackageFileReader.Open(destination, out var result);
         var digest = Convert.ToHexString(SHA256.HashData(copied)).ToLowerInvariant();
-        if (result.Length != file.Length || digest != file.Sha256)
+        if (result.Length != file.Length || !string.Equals(digest, file.Sha256, StringComparison.Ordinal))
         {
             throw new InvalidDataException(
                 $"Packaged CEF runtime file {file.DestinationRelativePath} was corrupted.");

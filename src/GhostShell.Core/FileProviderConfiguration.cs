@@ -140,7 +140,8 @@ public abstract record FileProviderConfiguration : IPanelLaunchCapabilitySource
             if ((Username is null) != (PasswordSecret is null))
             {
                 throw new ArgumentException(
-                    "FTP username and password secret must either both be present or both be absent.");
+                    "FTP username and password secret must either both be present or both be absent.",
+                    nameof(username));
             }
 
             Port = port;
@@ -194,14 +195,17 @@ public abstract record FileProviderConfiguration : IPanelLaunchCapabilitySource
             if (credentialMode == SmbCredentialMode.Guest
                 && (Domain is not null || Username is not null || PasswordSecret is not null))
             {
-                throw new ArgumentException("Guest SMB authentication cannot include credentials.");
+                throw new ArgumentException(
+                    "Guest SMB authentication cannot include credentials.",
+                    nameof(credentialMode));
             }
 
             if (credentialMode == SmbCredentialMode.UsernamePassword
                 && (Username is null || PasswordSecret is null))
             {
                 throw new ArgumentException(
-                    "SMB username/password authentication requires a username and password secret.");
+                    "SMB username/password authentication requires a username and password secret.",
+                    nameof(username));
             }
 
             CredentialMode = credentialMode;
@@ -244,7 +248,8 @@ public abstract record FileProviderConfiguration : IPanelLaunchCapabilitySource
             if ((Username is null) != (PasswordSecret is null))
             {
                 throw new ArgumentException(
-                    "WebDAV username and password secret must either both be present or both be absent.");
+                    "WebDAV username and password secret must either both be present or both be absent.",
+                    nameof(username));
             }
 
             AllowInsecureTransport = allowInsecureTransport;
@@ -357,7 +362,7 @@ public abstract record FileProviderConfiguration : IPanelLaunchCapabilitySource
                 parameterName);
         }
 
-        if (value.Scheme == "http" && !allowInsecureTransport)
+        if (string.Equals(value.Scheme, "http", StringComparison.Ordinal) && !allowInsecureTransport)
         {
             throw new ArgumentException(
                 "HTTP transport requires an explicit insecure-transport acknowledgement.",

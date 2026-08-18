@@ -209,7 +209,7 @@ internal sealed class BoundedStreamableHttpClientTransport :
 
         private static int EffectivePort(Uri uri) =>
             uri.IsDefaultPort
-                ? uri.Scheme == Uri.UriSchemeHttps ? 443 : 80
+                ? string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.Ordinal) ? 443 : 80
                 : uri.Port;
 
         private static bool IsRedirect(HttpStatusCode statusCode) =>

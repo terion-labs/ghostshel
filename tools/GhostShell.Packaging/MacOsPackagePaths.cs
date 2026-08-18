@@ -70,24 +70,24 @@ internal static class MacOsPackagePaths
             || IsSameOrDescendant(second, first))
         {
             throw new ArgumentException(
-                "The publish directory and macOS bundle destination cannot contain one another.");
+                "The publish directory and macOS bundle destination cannot contain one another.",
+                nameof(second));
         }
     }
 
-    public static bool AreSameDirectory(string first, string second) =>
-        Path.GetRelativePath(first, second) == ".";
+    public static bool AreSameDirectory(string first, string second) => string.Equals(Path.GetRelativePath(first, second), ".", StringComparison.Ordinal);
 
     private static bool IsSameOrDescendant(string candidate, string root)
     {
         var relative = Path.GetRelativePath(root, candidate);
-        if (relative == ".")
+        if (string.Equals(relative, ".", StringComparison.Ordinal))
         {
             return true;
         }
 
         return !Path.IsPathRooted(relative)
-            && relative != ".."
-            && !relative.StartsWith(
+            && !string.Equals(relative, ".."
+, StringComparison.Ordinal) && !relative.StartsWith(
                 $"..{Path.DirectorySeparatorChar}",
                 StringComparison.Ordinal)
             && !relative.StartsWith(
@@ -144,9 +144,13 @@ internal static class MacOsPackagePaths
         }
     }
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
     [DllImport("libc", EntryPoint = "realpath", SetLastError = true)]
-    private static extern nint RealPath(string path, nint resolvedPath);
+    private static extern nint RealPath(
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string path,
+        nint resolvedPath);
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
     [DllImport("libc", EntryPoint = "free")]
     private static extern void Free(nint pointer);
 }

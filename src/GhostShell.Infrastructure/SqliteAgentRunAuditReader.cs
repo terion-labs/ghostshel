@@ -64,7 +64,7 @@ public sealed class SqliteAgentRunAuditReader : IAgentRunAuditReader
             var hasMore = storedEntries.Count > query.PageSize;
             var selected = hasMore
                 ? storedEntries.Take(query.PageSize).ToArray()
-                : storedEntries.ToArray();
+                : [.. storedEntries];
             var entries = new List<AgentRunAuditEntry>(selected.Length);
             foreach (var stored in selected)
             {

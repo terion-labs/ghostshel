@@ -61,8 +61,8 @@ internal sealed partial class GhosttyVtTerminalSession
         {
             var previous = ReadRow(baseline, rowIndex);
             var next = ReadRow(current, rowIndex);
-            if (previous.FullText == next.FullText
-                && previous.IsWrapped == next.IsWrapped)
+            if (string.Equals(previous.FullText, next.FullText
+, StringComparison.Ordinal) && previous.IsWrapped == next.IsWrapped)
             {
                 continue;
             }

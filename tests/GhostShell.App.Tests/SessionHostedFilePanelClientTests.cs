@@ -103,9 +103,7 @@ public sealed class SessionHostedFilePanelClientTests
         var mutationCalls = fixture.Host.Calls
             .Where(call => call.Name is not nameof(ISessionHostClient.EnsureFilePanelSessionAsync))
             .ToArray();
-        Assert.Equal([4L, 5L, 6L, 7L, 8L, 9L], mutationCalls
-            .Select(call => call.Context.ExpectedRevision!.Value)
-            .ToArray());
+        Assert.Equal([4L, 5L, 6L, 7L, 8L, 9L], [.. mutationCalls.Select(call => call.Context.ExpectedRevision!.Value)]);
         var keys = mutationCalls.Select(call => call.Context.IdempotencyKey).ToArray();
         Assert.All(keys, key => Assert.NotNull(key));
         Assert.Equal(keys.Length, keys.Distinct().Count());

@@ -1,20 +1,20 @@
 using System.Reflection;
 using Avalonia;
-using Avalonia.Headless;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Headless;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Styling;
-using Avalonia.Input;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using GhostShell.App.Controls;
 using GhostShell.App.ViewModels;
 using GhostShell.App.Views;
-using GhostShell.App.Controls;
 using GhostShell.Application;
 using GhostShell.Application.Previews;
 using GhostShell.Core;
@@ -78,7 +78,7 @@ internal static class Program
         TiffProbePath = Path.Combine(OutputDirectory, "probe.tiff");
         PdfProbePath = Path.Combine(OutputDirectory, "probe.pdf");
         JpegProbePath = Path.Combine(OutputDirectory, "probe.jpg");
-        RequestedRoutes = args.Skip(1).ToArray();
+        RequestedRoutes = [.. args.Skip(1)];
 
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, ShutdownMode.OnExplicitShutdown);
     }
@@ -158,8 +158,8 @@ internal static class Program
                 face.Style,
                 face.Weight);
             if (!FontManager.Current.TryGetGlyphTypeface(typeface, out var glyphTypeface)
-                || glyphTypeface.FamilyName != GhostShellTerminalFontCollection.FamilyName
-                || glyphTypeface.Style != face.Style
+                || !string.Equals(glyphTypeface.FamilyName, GhostShellTerminalFontCollection.FamilyName
+, StringComparison.Ordinal) || glyphTypeface.Style != face.Style
                 || glyphTypeface.Weight != face.Weight
                 || glyphTypeface.Stretch != FontStretch.Normal
                 || glyphTypeface.FontSimulations != FontSimulations.None
@@ -541,7 +541,7 @@ internal sealed class QaApplication : Avalonia.Application
     {
         var transcript = window.GetVisualDescendants()
             .OfType<ScrollViewer>()
-            .SingleOrDefault(candidate => candidate.Name == "AgentChatTranscript")
+            .SingleOrDefault(candidate => string.Equals(candidate.Name, "AgentChatTranscript", StringComparison.Ordinal))
             ?? throw new InvalidOperationException(
                 "The reasoning capture requires the agent transcript.");
         transcript.Offset = new Vector(0, 0);
@@ -605,7 +605,7 @@ internal sealed class QaApplication : Avalonia.Application
     {
         var rail = window.GetVisualDescendants()
             .OfType<ListBox>()
-            .FirstOrDefault(list => list.Name == "PeerList")
+            .FirstOrDefault(list => string.Equals(list.Name, "PeerList", StringComparison.Ordinal))
             ?? throw new InvalidOperationException("The workspace editor has no rail.");
         rail.SelectedItem = rail.Items
             .OfType<WorkspaceRailItemViewModel>()
@@ -683,7 +683,7 @@ internal sealed class QaApplication : Avalonia.Application
         window.ApplyTemplate();
         tile.ApplyTemplate();
         if (tile.GetVisualDescendants().OfType<Button>()
-                .FirstOrDefault(button => button.Name == "PART_Close") is { } close)
+                .FirstOrDefault(button => string.Equals(button.Name, "PART_Close", StringComparison.Ordinal)) is { } close)
         {
             ForcePointerOver(close);
         }
@@ -1228,23 +1228,17 @@ internal sealed class QaApplication : Avalonia.Application
         // screen. This is the difference a headless timing never showed.
         ("preview-timing-hex-shapes", () =>
         {
-            var size = int.TryParse(
-                Environment.GetEnvironmentVariable("QA_HEX_BYTES"),
-                out var requested)
-                ? requested
+            var size = int.TryParse(Environment.GetEnvironmentVariable("QA_HEX_BYTES"),
+System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requested
                 : 64 * 1024;
             var bytes = Enumerable.Range(0, size).Select(value => (byte)value).ToArray();
-            var window = new Window
-            {
-                Width = 700,
+            var window = new Window { Width = 700,
                 Height = 500,
                 CanResize = false,
                 ShowInTaskbar = false,
-            };
-
             // The window is up and warm before either is timed, so the numbers
             // are the cost of showing the dump and nothing else.
-            window.Content = new Border();
+            Content = new Border() };
             window.Show();
             window.UpdateLayout();
             using (var warm = new RenderTargetBitmap(new PixelSize(700, 500), new Vector(96, 96)))
@@ -1709,9 +1703,9 @@ internal sealed class QaApplication : Avalonia.Application
             new SavedScreenEditorViewModel(
                 QaData.Screens[0].Value,
                 QaData.Screens[0].Revision,
-                QaData.Connections.Select(item => item.Value).ToArray(),
+                [.. QaData.Connections.Select(item => item.Value)],
                 [],
-                QaData.Layouts.Select(item => item.Value).ToArray()),
+                [.. QaData.Layouts.Select(item => item.Value)]),
             // The harness never persists; capture is presentation only.
             static (_, _) => throw new NotSupportedException(
                 "The design QA harness does not save definitions.")), null),
@@ -1893,7 +1887,7 @@ internal sealed class QaApplication : Avalonia.Application
             new WorkspaceInstanceId("qa-workspace"),
             "Operations",
             "Bronze",
-            viewModel.Connections.Take(2).ToArray());
+            [.. viewModel.Connections.Take(2)]);
         // Real tabs so the tab strip is reviewable at every placement.
         foreach (var (id, title, source) in new[]
                  {
@@ -2002,7 +1996,7 @@ internal sealed class QaApplication : Avalonia.Application
             case RedisWorkspacePerspective.Browser:
                 panel.SelectedKey = selectedKeyType is null
                     ? panel.Keys.FirstOrDefault()
-                    : panel.Keys.FirstOrDefault(key => key.Type == selectedKeyType);
+                    : panel.Keys.FirstOrDefault(key => string.Equals(key.Type, selectedKeyType, StringComparison.Ordinal));
                 // Pointing at an entry is what the entry-level action acts on,
                 // so the capture shows it live rather than disabled.
                 panel.SelectedValueEntry = panel.ValueEntries.FirstOrDefault();
@@ -2146,7 +2140,7 @@ internal sealed class QaApplication : Avalonia.Application
             .OfType<GhostShell.App.Views.RuntimePanels.FileRuntimePanelView>()
             .FirstOrDefault(view => view.IsEmbedded)
             ?.DataContext as FileRuntimePanelViewModel;
-        if (files?.Entries.FirstOrDefault(entry => entry.Name == "README.md") is { } readme)
+        if (files?.Entries.FirstOrDefault(entry => string.Equals(entry.Name, "README.md", StringComparison.Ordinal)) is { } readme)
         {
             files.SelectedEntry = readme;
             _ = files.PreviewSelectedAsync();
@@ -2327,18 +2321,13 @@ internal sealed class QaApplication : Avalonia.Application
                 // editor is the CodeEditBox ancestor wearing the name.
                 var focused = TopLevel.GetTopLevel(grid)?.FocusManager?.GetFocusedElement()
                     as Visual;
-                var editor = focused?.GetVisualAncestors()
+                var editor = (focused?.GetVisualAncestors()
                     .OfType<GhostShell.App.Views.Components.CodeEditBox>()
                     .FirstOrDefault(candidate => string.Equals(
                         AutomationProperties.GetName(candidate),
                         "Expanded cell editor",
-                        StringComparison.Ordinal));
-                if (editor is null)
-                {
-                    throw new InvalidOperationException(
+                        StringComparison.Ordinal))) ?? throw new InvalidOperationException(
                         "Editing a text cell did not open and focus the expanded editor.");
-                }
-
                 editor.Text = "How automakers are responding to the 25% car tariffs "
                     + "so far — a deliberately long value that wraps across the "
                     + "expanded editor's five-or-so lines.";
@@ -2375,9 +2364,7 @@ internal sealed class QaApplication : Avalonia.Application
                 await Task.Delay(80);
                 Dispatcher.UIThread.RunJobs();
 
-                var editor = TopLevel.GetTopLevel(grid)?.FocusManager?.GetFocusedElement()
-                    as TextBox;
-                if (editor is null
+                if (TopLevel.GetTopLevel(grid)?.FocusManager?.GetFocusedElement() is not TextBox editor
                     || !string.Equals(
                         AutomationProperties.GetName(editor),
                         "Quick Look value for service",
@@ -2438,7 +2425,7 @@ internal sealed class QaApplication : Avalonia.Application
                         "Sort database column service, descending",
                         StringComparison.Ordinal));
                 if (descendingHeader is null
-                    || viewer.ResultColumns.Single(column => column.Name == "service")
+                    || viewer.ResultColumns.Single(column => string.Equals(column.Name, "service", StringComparison.Ordinal))
                         .SortDescending is not true)
                 {
                     throw new InvalidOperationException(
@@ -2536,9 +2523,9 @@ internal sealed class QaApplication : Avalonia.Application
                         "Total matching database rows",
                         StringComparison.Ordinal));
                 var expectedTotal = viewer.TotalRowsText;
-                if (pageLimit.Text != "200"
-                    || total.Text != expectedTotal
-                    || viewer.TotalRows <= 0)
+                if (!string.Equals(pageLimit.Text, "200"
+, StringComparison.Ordinal) || !string.Equals(total.Text, expectedTotal
+, StringComparison.Ordinal) || viewer.TotalRows <= 0)
                 {
                     throw new InvalidOperationException(
                         $"The pager rendered '{pageLimit.Text} / {total.Text}' "
@@ -2774,8 +2761,8 @@ internal sealed class QaApplication : Avalonia.Application
             "AGENTS.md");
         File.WriteAllText(
             Path.Combine(root, "notes.md"),
-            File.Exists(realNotes) && Environment.GetEnvironmentVariable("QA_REAL_MARKDOWN") == "1"
-                ? File.ReadAllText(realNotes)
+            File.Exists(realNotes) && string.Equals(Environment.GetEnvironmentVariable("QA_REAL_MARKDOWN"), "1"
+, StringComparison.Ordinal) ? File.ReadAllText(realNotes)
                 : QaData.MarkdownWithLongFence);
         File.WriteAllText(Path.Combine(root, "deployments.csv"), QaData.SampleCsv);
         File.WriteAllBytes(
@@ -2852,11 +2839,11 @@ internal sealed class QaApplication : Avalonia.Application
             }
 
             selected = true;
-            panel.SelectedEntry = panel.Entries.First(entry => entry.Name == fileName);
+            panel.SelectedEntry = panel.Entries.First(entry => string.Equals(entry.Name, fileName, StringComparison.Ordinal));
             Settle(panel.PreviewSelectedAsync());
             if (toggleId is not null)
             {
-                panel.PreviewToggles.Single(toggle => toggle.Id == toggleId).IsOn = true;
+                panel.PreviewToggles.Single(toggle => string.Equals(toggle.Id, toggleId, StringComparison.Ordinal)).IsOn = true;
             }
         };
 
@@ -3019,25 +3006,23 @@ internal sealed class QaApplication : Avalonia.Application
         for (var index = 0; index < objects.Count; index++)
         {
             offsets.Add(builder.Length);
-            builder.Append($"{index + 1} 0 obj\n{objects[index]}\nendobj\n");
+            builder.Append(System.Globalization.CultureInfo.InvariantCulture, $"{index + 1} 0 obj\n{objects[index]}\nendobj\n");
         }
 
         foreach (var (number, content) in new[] { (6, firstPage), (7, secondPage) })
         {
             offsets.Add(builder.Length);
-            builder.Append(
-                $"{number} 0 obj\n<< /Length {content.Length} >>\nstream\n{content}\nendstream\nendobj\n");
+            builder.Append(System.Globalization.CultureInfo.InvariantCulture, $"{number} 0 obj\n<< /Length {content.Length} >>\nstream\n{content}\nendstream\nendobj\n");
         }
 
         var startXref = builder.Length;
-        builder.Append($"xref\n0 {offsets.Count + 1}\n0000000000 65535 f \n");
+        builder.Append(System.Globalization.CultureInfo.InvariantCulture, $"xref\n0 {offsets.Count + 1}\n0000000000 65535 f \n");
         foreach (var offset in offsets)
         {
-            builder.Append($"{offset:D10} 00000 n \n");
+            builder.Append(System.Globalization.CultureInfo.InvariantCulture, $"{offset:D10} 00000 n \n");
         }
 
-        builder.Append(
-            $"trailer\n<< /Size {offsets.Count + 1} /Root 1 0 R >>\nstartxref\n{startXref}\n%%EOF\n");
+        builder.Append(System.Globalization.CultureInfo.InvariantCulture, $"trailer\n<< /Size {offsets.Count + 1} /Root 1 0 R >>\nstartxref\n{startXref}\n%%EOF\n");
         File.WriteAllText(Program.PdfProbePath, builder.ToString());
     }
 
@@ -3196,10 +3181,10 @@ internal sealed class QaApplication : Avalonia.Application
             var requested = Program.RequestedRoutes;
             var selected = requested.Length == 0
                 ? Routes
-                : Routes.Where(route => requested.Contains(route.Name)).ToArray();
+                : [.. Routes.Where(route => requested.Contains(route.Name))];
             var selectedDialogs = requested.Length == 0
                 ? Dialogs
-                : Dialogs.Where(dialog => requested.Contains(dialog.Name)).ToArray();
+                : [.. Dialogs.Where(dialog => requested.Contains(dialog.Name))];
 
             if (selected.Length == 0 && selectedDialogs.Length == 0)
             {
@@ -3258,7 +3243,7 @@ internal sealed class QaApplication : Avalonia.Application
                 {
                     var control = window.GetVisualDescendants()
                         .OfType<Control>()
-                        .FirstOrDefault(candidate => candidate.Name == focusTarget)
+                        .FirstOrDefault(candidate => string.Equals(candidate.Name, focusTarget, StringComparison.Ordinal))
                         ?? throw new InvalidOperationException(
                             $"The route wanted to focus '{focusTarget}', which is not in the tree.");
                     control.Focus(NavigationMethod.Tab);
@@ -3344,7 +3329,7 @@ internal sealed class QaApplication : Avalonia.Application
                 // The workspace route again at Retina density: the rail and panel
                 // chrome are the surfaces users judge at 2x, so pixel snapping
                 // there must be reviewable at the density they actually see.
-                if (route.Name == "workspace")
+                if (string.Equals(route.Name, "workspace", StringComparison.Ordinal))
                 {
                     var retinaPath = Path.Combine(Program.OutputDirectory, "workspace-2x.png");
                     using var retina = new RenderTargetBitmap(

@@ -106,7 +106,7 @@ public sealed partial class PanelConnectionSelectorView : UserControl
     {
         var normalized = query?.Trim() ?? string.Empty;
         var matches = (Options?.OfType<PanelConnectionOptionViewModel>()
-                ?? Enumerable.Empty<PanelConnectionOptionViewModel>())
+                ?? [])
             .Where(connection =>
                 normalized.Length == 0
                 || connection.Name.Contains(normalized, StringComparison.OrdinalIgnoreCase)

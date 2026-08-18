@@ -27,7 +27,8 @@ public sealed class PanelLayoutOwnershipContractTests
     /// </summary>
     private static readonly Regex TrackAccess = new(
         @"(ColumnDefinitions|RowDefinitions)\s*\[",
-        RegexOptions.Compiled);
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture,
+        TimeSpan.FromSeconds(1));
 
     [Fact]
     public void No_panel_view_reaches_into_a_grid_track_it_will_not_be_around_to_restore()

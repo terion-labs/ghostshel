@@ -796,7 +796,7 @@ public sealed partial class AgentDatabaseReadActionComposer
     {
         ArgumentNullException.ThrowIfNull(value);
         if (GetStrictUtf8ByteCount(value, nameof(value)) > maximumLength
-            || value.Contains('\0'))
+            || value.Contains('\0', StringComparison.Ordinal))
         {
             throw new ArgumentException("Database text exceeds its fixed bound.", nameof(value));
         }

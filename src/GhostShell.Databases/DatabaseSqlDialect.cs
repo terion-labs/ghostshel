@@ -271,12 +271,11 @@ internal sealed class DatabaseSqlDialect
         var known = columns.ToDictionary(getName, StringComparer.Ordinal);
         if (included.Count > 0)
         {
-            return included.Select(name => known.TryGetValue(name, out var column)
+            return [.. included.Select(name => known.TryGetValue(name, out var column)
                     ? column
                     : throw new ArgumentException(
                         $"Unknown database column '{name}'.",
-                        nameof(query)))
-                .ToArray();
+                        nameof(query)))];
         }
 
         if (excluded.Count == 0)
@@ -369,12 +368,12 @@ internal sealed class DatabaseSqlDialect
         var tokens = ReadTopLevelSqlTokens(source);
         var hasOrderBy = tokens
             .Zip(tokens.Skip(1), (left, right) => (left, right))
-            .Any(pair => pair.left == "ORDER" && pair.right == "BY");
+            .Any(pair => string.Equals(pair.left, "ORDER", StringComparison.Ordinal) && string.Equals(pair.right, "BY", StringComparison.Ordinal));
         var orderIsAlreadyLegal = tokens.Contains("OFFSET", StringComparer.Ordinal)
             || tokens.Contains("TOP", StringComparer.Ordinal)
             || tokens
                 .Zip(tokens.Skip(1), (left, right) => (left, right))
-                .Any(pair => pair.left == "FOR" && pair.right is "XML" or "JSON");
+                .Any(pair => string.Equals(pair.left, "FOR", StringComparison.Ordinal) && pair.right is "XML" or "JSON");
         return hasOrderBy && !orderIsAlreadyLegal
             ? source + "\nOFFSET 0 ROWS"
             : source;
@@ -585,10 +584,9 @@ internal sealed class DatabaseSqlDialect
             parameters);
     }
 
-    private static string[] Present(params string?[] components) => components
+    private static string[] Present(params string?[] components) => [.. components
         .Where(component => !string.IsNullOrWhiteSpace(component))
-        .Select(component => component!)
-        .ToArray();
+        .Select(component => component!)];
 
     private static void ValidatePage(DatabaseTableQuery query)
     {

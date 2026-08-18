@@ -1,9 +1,12 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace GhostShell.AccessibilityAcceptance;
 
+[StructLayout(LayoutKind.Auto)]
 internal readonly record struct ProcessIdentity(int ProcessId, ulong StartToken);
 
+[StructLayout(LayoutKind.Auto)]
 internal readonly record struct TrackedProcess(ProcessIdentity Identity, int Depth);
 
 internal sealed record ProcessTreeInspection(
@@ -32,12 +35,12 @@ internal interface IProcessTreeProbe
 /// that parent is live. PID-only cleanup is deliberately forbidden because a recycled PID can
 /// belong to an unrelated process by the time the acceptance run ends.
 /// </summary>
-internal sealed class ProcessTreeTracker
+internal sealed class ProcessTreeTracker : IDisposable
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(50);
     private static readonly TimeSpan SamplerJoinTimeout = TimeSpan.FromSeconds(5);
 
-    private readonly object _sync = new();
+    private readonly Lock _sync = new();
     private readonly IProcessTreeProbe _probe;
     private readonly Dictionary<ProcessIdentity, int> _captured = [];
     private CancellationTokenSource? _samplingCancellation;
@@ -167,6 +170,7 @@ internal sealed class ProcessTreeTracker
     public void StopSampling()
     {
         Thread? thread;
+        CancellationTokenSource? cancellation = null;
         lock (_sync)
         {
             thread = _samplingThread;
@@ -181,16 +185,28 @@ internal sealed class ProcessTreeTracker
                 "The background package process-tree sampler did not stop in time.");
         }
 
-        lock (_sync)
+        try
         {
-            if (_samplingThread == thread)
+            lock (_sync)
             {
-                _samplingThread = null;
-            }
+                if (_samplingThread == thread)
+                {
+                    _samplingThread = null;
+                }
 
-            ThrowIfSamplingFailed();
+                cancellation = _samplingCancellation;
+                _samplingCancellation = null;
+
+                ThrowIfSamplingFailed();
+            }
+        }
+        finally
+        {
+            cancellation?.Dispose();
         }
     }
+
+    public void Dispose() => StopSampling();
 
     private void StartSampling(TimeSpan interval)
     {
@@ -289,4 +305,5 @@ internal sealed class ProcessTreeProbeException : Exception
         : base(message, innerException)
     {
     }
+
 }

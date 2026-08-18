@@ -1396,5 +1396,6 @@ public sealed partial class InMemorySessionHostClient
         : Exception(error.Message)
     {
         public HostError Error { get; } = error;
+
     }
 }

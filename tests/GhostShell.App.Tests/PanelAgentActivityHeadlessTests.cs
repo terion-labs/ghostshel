@@ -61,10 +61,10 @@ public sealed class PanelAgentActivityHeadlessTests
             Assert.Equal(17.6, leasedGlow.BoxShadow[3].Blur);
             Assert.DoesNotContain(
                 leasedPanel.GetVisualDescendants().OfType<SymbolIcon>(),
-                icon => icon.Symbol.ToString() == "Bot");
+                icon => string.Equals(icon.Symbol.ToString(), "Bot", StringComparison.Ordinal));
             Assert.DoesNotContain(
                 idlePanel.GetVisualDescendants().OfType<SymbolIcon>(),
-                icon => icon.Symbol.ToString() == "Bot");
+                icon => string.Equals(icon.Symbol.ToString(), "Bot", StringComparison.Ordinal));
 
             window.Close();
             return Task.CompletedTask;

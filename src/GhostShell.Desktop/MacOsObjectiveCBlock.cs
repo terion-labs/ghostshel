@@ -84,7 +84,7 @@ internal sealed class MacOsObjectiveCBlock : IDisposable
             var pointer = BlockCopy(stackPointer);
             return pointer != 0
                 ? pointer
-                : throw new ExternalException(
+                : throw new InvalidOperationException(
                     "The Objective-C block runtime could not copy a completion block.");
         }
         finally

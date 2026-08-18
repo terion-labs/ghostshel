@@ -1,0 +1,7 @@
+<Project>
+  <!--
+    This subtree is a vendored upstream snapshot. First-party analyzer and
+    warning policy stops here; vendor updates are verified by their lock file,
+    repository provenance checks, and the first-party adapter boundary.
+  -->
+</Project>

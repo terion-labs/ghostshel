@@ -94,7 +94,7 @@ public sealed class NativeTerminalPackageProvenanceTests : IDisposable
     {
         var fixture = CreateFixture();
         var receipt = JsonNode.Parse(File.ReadAllText(fixture.ReceiptPath))!.AsObject();
-        if (property == "testsPassed")
+        if (string.Equals(property, "testsPassed", StringComparison.Ordinal))
         {
             receipt["build"]![property] = (bool)value;
         }

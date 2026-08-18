@@ -30,7 +30,7 @@ internal sealed record ConnectionDetailKeys(
         var port = Take(builder, Port);
         return new DatabaseConnectionDetails(
             host,
-            int.TryParse(port, out var parsedPort) ? parsedPort : null,
+            int.TryParse(port, System.Globalization.CultureInfo.InvariantCulture, out var parsedPort) ? parsedPort : null,
             Take(builder, Database),
             Take(builder, Username),
             Take(builder, Password),
@@ -41,7 +41,7 @@ internal sealed record ConnectionDetailKeys(
     public string Build(DatabaseConnectionDetails details)
     {
         var builder = TryCreateBuilder(details.Options ?? string.Empty)
-            ?? new DbConnectionStringBuilder();
+            ?? [];
         Set(builder, Host, details.Host);
         Set(builder, Port, details.Port?.ToString(CultureInfo.InvariantCulture));
         Set(builder, Database, details.Database);

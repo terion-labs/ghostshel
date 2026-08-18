@@ -29,7 +29,7 @@ public sealed class MultiPanelTerminalAgentToolContractTests
 
         Assert.Equal(
             exactTools.Select(tool => tool.Name),
-            scopedTools.Select(tool => tool.Name));
+            scopedTools.Select(tool => tool.Name), StringComparer.Ordinal);
         Assert.All(
             exactTools,
             exactTool =>
@@ -40,7 +40,7 @@ public sealed class MultiPanelTerminalAgentToolContractTests
                     StringComparison.Ordinal);
                 var scopedTool = Assert.Single(
                     scopedTools,
-                    candidate => candidate.Name == exactTool.Name);
+                    candidate => string.Equals(candidate.Name, exactTool.Name, StringComparison.Ordinal));
                 Assert.Equal(
                     [panel.PanelId.Value],
                     PanelIds(scopedTools, scopedTool.Name));
@@ -48,7 +48,7 @@ public sealed class MultiPanelTerminalAgentToolContractTests
                     scopedTool.InputSchema
                         .GetProperty("required")
                         .EnumerateArray(),
-                    requirement => requirement.GetString() == "panel_id");
+                    requirement => string.Equals(requirement.GetString(), "panel_id", StringComparison.Ordinal));
             });
     }
 
@@ -131,12 +131,12 @@ public sealed class MultiPanelTerminalAgentToolContractTests
             PanelIds(tools, BuiltInAgentTools.TerminalInterrupt));
         Assert.DoesNotContain(
             tools,
-            tool => tool.Name == BuiltInAgentTools.TerminalSendKeys);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalSendKeys, StringComparison.Ordinal));
         Assert.All(
             tools,
             tool => Assert.Contains(
                 tool.InputSchema.GetProperty("required").EnumerateArray(),
-                requirement => requirement.GetString() == "panel_id"));
+                requirement => string.Equals(requirement.GetString(), "panel_id", StringComparison.Ordinal)));
     }
 
     [Fact]
@@ -280,7 +280,7 @@ public sealed class MultiPanelTerminalAgentToolContractTests
         var tools = TerminalAgentToolSet.For([special, maximum]);
         var readTool = Assert.Single(
             tools,
-            tool => tool.Name == BuiltInAgentTools.TerminalReadScreen);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalReadScreen, StringComparison.Ordinal));
 
         Assert.False(
             readTool.InputSchema
@@ -291,7 +291,7 @@ public sealed class MultiPanelTerminalAgentToolContractTests
             PanelIds(tools, BuiltInAgentTools.TerminalReadScreen));
         Assert.Throws<ArgumentException>(
             () => TerminalAgentToolSet.For(
-                Enumerable.Repeat(special, 257).ToArray()));
+                [.. Enumerable.Repeat(special, 257)]));
     }
 
     [Fact]
@@ -328,15 +328,14 @@ public sealed class MultiPanelTerminalAgentToolContractTests
     private static string[] PanelIds(
         ImmutableArray<AgentToolDefinition> tools,
         string toolName) =>
-        tools
-            .Single(tool => tool.Name == toolName)
+        [.. tools
+            .Single(tool => string.Equals(tool.Name, toolName, StringComparison.Ordinal))
             .InputSchema
             .GetProperty("properties")
             .GetProperty("panel_id")
             .GetProperty("enum")
             .EnumerateArray()
-            .Select(value => value.GetString()!)
-            .ToArray();
+            .Select(value => value.GetString()!)];
 
     private static void AssertInvalidSelection(
         TerminalAgentIntentResult result)

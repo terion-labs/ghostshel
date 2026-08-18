@@ -21,7 +21,7 @@ public sealed class AgentContextOperationTests
                 new CapabilitySet([SessionCapabilities.AgentContextInspect])),
             harness.HumanContext(),
             default)).Value();
-        Assert.Contains(SessionCapabilities.AgentContextInspect, hello.Capabilities.Values);
+        Assert.Contains(SessionCapabilities.AgentContextInspect, hello.Capabilities.Values, StringComparer.Ordinal);
 
         var exact = await InspectAsync(
             harness,

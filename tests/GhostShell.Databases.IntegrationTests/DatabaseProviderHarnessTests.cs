@@ -11,7 +11,7 @@ public sealed class DatabaseProviderHarnessTests
         {
             HostConfig = new HostConfig
             {
-                PortBindings = new Dictionary<string, IList<PortBinding>>
+                PortBindings = new Dictionary<string, IList<PortBinding>>(StringComparer.Ordinal)
                 {
                     ["5432/tcp"] = [new PortBinding()],
                     ["8123/tcp"] = [new PortBinding(), new PortBinding()],

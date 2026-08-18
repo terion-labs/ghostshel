@@ -30,7 +30,7 @@ internal static class AgentContextTestSupport
             default);
 
     public static PanelInstanceId[] PanelIds(AgentContextSnapshot context) =>
-        context.Panels.Select(panel => panel.PanelId).ToArray();
+        [.. context.Panels.Select(panel => panel.PanelId)];
 
     public static WorkspaceInstance PrimaryWorkspace(SessionHostTestHarness harness)
     {

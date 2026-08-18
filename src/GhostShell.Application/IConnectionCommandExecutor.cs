@@ -55,8 +55,9 @@ public sealed record ConnectionCommand
             throw new ArgumentOutOfRangeException(nameof(maximumOutputCharacters));
         }
 
-        if (executable.Contains('\0')
-            || arguments.Any(argument => argument is null || argument.Contains('\0')))
+        if (executable.Contains('\0', StringComparison.Ordinal)
+            || arguments.Any(argument => argument is null
+                || argument.Contains('\0', StringComparison.Ordinal)))
         {
             throw new ArgumentException("Command argv cannot contain NUL characters.");
         }
@@ -116,8 +117,9 @@ public sealed record ConnectionBinaryCommand
             throw new ArgumentOutOfRangeException(nameof(maximumOutputBytes));
         }
 
-        if (executable.Contains('\0')
-            || arguments.Any(argument => argument is null || argument.Contains('\0')))
+        if (executable.Contains('\0', StringComparison.Ordinal)
+            || arguments.Any(argument => argument is null
+                || argument.Contains('\0', StringComparison.Ordinal)))
         {
             throw new ArgumentException("Command argv cannot contain NUL characters.");
         }

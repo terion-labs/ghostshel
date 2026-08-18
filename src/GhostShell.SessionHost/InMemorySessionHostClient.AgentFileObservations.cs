@@ -104,8 +104,7 @@ public sealed partial class InMemorySessionHostClient
         {
             if (grant?.Grantee is null
                 || !Enum.IsDefined(grant.Grantee.Kind)
-                || (grant.Rights & ~FilePanelAccessRight.FullControl) != 0
-                || !IsBoundedAgentFileObservationText(grant.Grantee.Id)
+                || (grant.Rights & ~FilePanelAccessRight.FullControl) != FilePanelAccessRight.None || !IsBoundedAgentFileObservationText(grant.Grantee.Id)
                 || !IsBoundedAgentFileObservationText(
                     grant.Grantee.DisplayName)
                 || (grant.Grantee.Kind == FilePanelGranteeKind.User

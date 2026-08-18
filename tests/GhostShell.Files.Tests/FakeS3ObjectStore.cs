@@ -45,15 +45,14 @@ internal sealed class FakeS3ObjectStore : IS3ObjectStore
         var nextOffset = offset + pageRows.Length;
         var truncated = nextOffset < rows.Count;
         return ValueTask.FromResult(new S3ObjectPage(
-            pageRows
+            [.. pageRows
                 .Where(row => row.Object is not null)
                 .Select(row => new S3ObjectItem(
                     row.Key,
                     row.Object!.Content.LongLength,
                     row.Object.LastModifiedAt,
-                    row.Object.ETag))
-                .ToArray(),
-            pageRows.Where(row => row.Object is null).Select(row => row.Key).ToArray(),
+                    row.Object.ETag))],
+            [.. pageRows.Where(row => row.Object is null).Select(row => row.Key)],
             truncated,
             truncated ? EncodeOffset(nextOffset) : null));
     }
@@ -197,17 +196,17 @@ internal sealed class FakeS3ObjectStore : IS3ObjectStore
     private void CheckDestination(string key, string? ifMatch, string? ifNoneMatch)
     {
         _objects.TryGetValue(key, out var existing);
-        if (ifNoneMatch == "*" && existing is not null)
+        if (string.Equals(ifNoneMatch, "*", StringComparison.Ordinal) && existing is not null)
         {
             throw Error(HttpStatusCode.PreconditionFailed, "PreconditionFailed");
         }
 
-        if (ifMatch == "*" && existing is null)
+        if (string.Equals(ifMatch, "*", StringComparison.Ordinal) && existing is null)
         {
             throw Error(HttpStatusCode.PreconditionFailed, "PreconditionFailed");
         }
 
-        if (ifMatch is not null and not "*" && existing?.ETag != ifMatch)
+        if (ifMatch is not null and not "*" && !string.Equals(existing?.ETag, ifMatch, StringComparison.Ordinal))
         {
             throw Error(HttpStatusCode.PreconditionFailed, "PreconditionFailed");
         }
@@ -215,7 +214,7 @@ internal sealed class FakeS3ObjectStore : IS3ObjectStore
 
     private static void MatchEtag(StoredObject value, string? etag)
     {
-        if (etag is not null and not "*" && value.ETag != etag)
+        if (etag is not null and not "*" && !string.Equals(value.ETag, etag, StringComparison.Ordinal))
         {
             throw Error(HttpStatusCode.PreconditionFailed, "PreconditionFailed");
         }

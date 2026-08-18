@@ -179,7 +179,7 @@ internal sealed class DatabaseMetadataReader(DatabaseSqlDialect dialect)
                 ReadString(reader, 11)));
         }
 
-        return rows
+        return [.. rows
             .GroupBy(row => row.Name, StringComparer.Ordinal)
             .Select(group =>
             {
@@ -187,26 +187,24 @@ internal sealed class DatabaseMetadataReader(DatabaseSqlDialect dialect)
                 var definition = group.Select(row => row.Definition).FirstOrDefault(value => value is not null);
                 IReadOnlyDictionary<string, string>? details = definition is null
                     ? null
-                    : new Dictionary<string, string> { ["Definition"] = definition };
+                    : new Dictionary<string, string>(StringComparer.Ordinal) { ["Definition"] = definition };
                 return new DatabaseIndexSchema(
                     first.Name,
                     first.Kind,
                     first.IsUnique,
                     first.IsPrimary,
                     first.IsValid,
-                    group
+                    [.. group
                         .OrderBy(row => row.Ordinal)
                         .Select(row => new DatabaseIndexColumn(
                             row.ColumnName,
                             row.Ordinal,
                             row.IsDescending,
                             row.IsIncluded,
-                            row.Expression))
-                        .ToArray(),
+                            row.Expression))],
                     first.Predicate,
                     details);
-            })
-            .ToArray();
+            })];
     }
 
     private async Task<IReadOnlyList<DatabaseForeignKeySchema>> ReadForeignKeysAsync(
@@ -241,7 +239,7 @@ internal sealed class DatabaseMetadataReader(DatabaseSqlDialect dialect)
                 ReadInt32(reader, 6) ?? rows.Count + 1));
         }
 
-        return rows
+        return [.. rows
             .GroupBy(row => row.Name, StringComparer.Ordinal)
             .Select(group =>
             {
@@ -252,15 +250,13 @@ internal sealed class DatabaseMetadataReader(DatabaseSqlDialect dialect)
                         first.ReferencedCatalog,
                         first.ReferencedSchema,
                         first.ReferencedTable),
-                    group
+                    [.. group
                         .OrderBy(row => row.Ordinal)
                         .Select(row => new DatabaseForeignKeyColumn(
                             row.ColumnName,
                             row.ReferencedColumnName,
-                            row.Ordinal))
-                        .ToArray());
-            })
-            .ToArray();
+                            row.Ordinal))]);
+            })];
     }
 
     private DbCommand CreateCommand(
@@ -854,7 +850,7 @@ internal sealed class DatabaseMetadataReader(DatabaseSqlDialect dialect)
             string value => value.Equals("YES", StringComparison.OrdinalIgnoreCase)
                 || value.Equals("Y", StringComparison.OrdinalIgnoreCase)
                 || value.Equals("TRUE", StringComparison.OrdinalIgnoreCase)
-                || value == "1",
+                || string.Equals(value, "1", StringComparison.Ordinal),
             var value => Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture) != 0,
         };
     }

@@ -141,10 +141,7 @@ public sealed partial class ConnectionEditorDialog : Window
     private void HideValidationError()
     {
         var error = this.FindControl<Callout>("ValidationError");
-        if (error is not null)
-        {
-            error.IsVisible = false;
-        }
+        error?.IsVisible = false;
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);

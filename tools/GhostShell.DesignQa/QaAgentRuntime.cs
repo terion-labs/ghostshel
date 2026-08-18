@@ -25,7 +25,7 @@ internal sealed class QaOfflineAgentRuntime : IGovernedAgentRuntime
         ProviderId: null,
         Target: null,
         TargetTitle: string.Empty,
-        ImmutableArray<GovernedAgentContextItem>.Empty,
+        [],
         Messages: [],
         EffectivePolicy: AgentPolicy.Default,
         ProvisionalAssistantText: string.Empty,

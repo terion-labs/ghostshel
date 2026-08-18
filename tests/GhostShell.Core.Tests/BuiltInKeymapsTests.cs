@@ -49,9 +49,9 @@ public sealed class BuiltInKeymapsTests
         {
             var binding = workspaceBindings[position];
             Assert.Equal(
-                new KeyStroke((position + 1).ToString(), KeyModifiers.Meta),
+                new KeyStroke((position + 1).ToString(System.Globalization.CultureInfo.InvariantCulture), KeyModifiers.Meta),
                 binding.Sequence[0]);
-            Assert.Equal(position.ToString(), binding.Arguments["position"]);
+            Assert.Equal(position.ToString(System.Globalization.CultureInfo.InvariantCulture), binding.Arguments["position"]);
         }
     }
 

@@ -23,7 +23,7 @@ public sealed class FileTransferEditorViewModel : ObservableObject
 
         Profiles = Array.AsReadOnly(profiles.ToArray());
         _selectedDestinationProfile = Profiles
-            .FirstOrDefault(profile => profile.Id == preferredProfileId)
+            .FirstOrDefault(profile => string.Equals(profile.Id, preferredProfileId, StringComparison.Ordinal))
             ?? Profiles[0];
         _destination = FileLocationPresentation.ChildDisplay(
             _selectedDestinationProfile,
@@ -48,7 +48,7 @@ public sealed class FileTransferEditorViewModel : ObservableObject
         set
         {
             ArgumentNullException.ThrowIfNull(value);
-            if (!Profiles.Any(profile => profile.Id == value.Id))
+            if (!Profiles.Any(profile => string.Equals(profile.Id, value.Id, StringComparison.Ordinal)))
             {
                 throw new ArgumentException("The destination profile is not available.", nameof(value));
             }

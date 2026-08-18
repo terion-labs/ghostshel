@@ -135,8 +135,8 @@ public sealed record AgentRunPolicyUpdate
         ArgumentNullException.ThrowIfNull(actor, parameterName);
         if (actor.Kind != ActorKind.Human
             || actor.ClientId is not { } clientId
-            || actor.Id.Value != clientId.Value
-            || string.IsNullOrWhiteSpace(actor.Id.Value)
+            || !string.Equals(actor.Id.Value, clientId.Value
+, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(actor.Id.Value)
             || string.IsNullOrWhiteSpace(actor.DisplayName)
             || actor.Id.Value.Any(char.IsControl)
             || actor.DisplayName.Any(char.IsControl))
@@ -163,7 +163,7 @@ public sealed record AgentRunCancellation
         if (actor.Kind is not (ActorKind.Human or ActorKind.Agent)
             || actor.Kind == ActorKind.Human
                 && (actor.ClientId is not { } clientId
-                    || actor.Id.Value != clientId.Value)
+                    || !string.Equals(actor.Id.Value, clientId.Value, StringComparison.Ordinal))
             || string.IsNullOrWhiteSpace(actor.Id.Value)
             || string.IsNullOrWhiteSpace(actor.DisplayName))
         {
@@ -287,8 +287,8 @@ public sealed record AgentYoloConfirmation
         ArgumentNullException.ThrowIfNull(actor);
         if (actor.Kind != ActorKind.Human
             || actor.ClientId is not { } clientId
-            || actor.Id.Value != clientId.Value
-            || string.IsNullOrWhiteSpace(actor.Id.Value)
+            || !string.Equals(actor.Id.Value, clientId.Value
+, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(actor.Id.Value)
             || string.IsNullOrWhiteSpace(actor.DisplayName))
         {
             throw new ArgumentException(

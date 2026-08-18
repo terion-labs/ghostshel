@@ -100,7 +100,7 @@ public sealed class DatabaseWorkspaceFileExportTests : IDisposable
             .FindUniqueNamedElement("CopyRowAsMenuItem")
             .Element;
         var contextMenuFormats = copyRowAs.Elements()
-            .Where(element => element.Name.LocalName == "MenuItem")
+            .Where(element => string.Equals(element.Name.LocalName, "MenuItem", StringComparison.Ordinal))
             .Select(element => (string?)element.Attribute("Header") ?? string.Empty)
             .ToArray();
         var inspector = ApplicationViews
@@ -109,12 +109,12 @@ public sealed class DatabaseWorkspaceFileExportTests : IDisposable
         // The copy buttons carry their label as a CopyLabel TextBlock so a
         // success check can fade in over it after copying.
         var inspectorFormats = inspector.Descendants()
-            .Where(element => element.Name.LocalName == "Button")
+            .Where(element => string.Equals(element.Name.LocalName, "Button", StringComparison.Ordinal))
             .Where(element => (string?)element.Attribute("Click") is
                 "OnCopyRowJsonClick" or "OnCopyRowCsvClick" or "OnCopyRowInsertClick")
             .Select(element => element.Descendants()
-                .Where(child => child.Name.LocalName == "TextBlock"
-                    && ((string?)child.Attribute("Classes") ?? string.Empty)
+                .Where(child => string.Equals(child.Name.LocalName, "TextBlock"
+, StringComparison.Ordinal) && ((string?)child.Attribute("Classes") ?? string.Empty)
                         .Contains("CopyLabel", StringComparison.Ordinal))
                 .Select(child => (string?)child.Attribute("Text") ?? string.Empty)
                 .FirstOrDefault() ?? string.Empty)

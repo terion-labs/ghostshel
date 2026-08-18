@@ -52,7 +52,7 @@ internal sealed class PortaPtyFactory : IPortablePtyFactory
                 {
                     Name = "GhostSHELL",
                     App = executable,
-                    CommandLine = launch.Arguments.ToArray(),
+                    CommandLine = [.. launch.Arguments],
                     Cwd = workingDirectory,
                     Cols = columns,
                     Rows = rows,
@@ -66,15 +66,17 @@ internal sealed class PortaPtyFactory : IPortablePtyFactory
     internal static Dictionary<string, string> CreateProcessEnvironment(
         IReadOnlyDictionary<string, string> configured)
     {
-        var environment = new Dictionary<string, string>(configured, StringComparer.Ordinal);
-        // These describe the emulator, not the app that happened to launch
-        // GhostSHELL. Inheriting (for example) Warp's TERM_PROGRAM makes
-        // terminal-aware tools choose escape sequences for the wrong host.
-        // We intentionally advertise Ghostty compatibility because the parser,
-        // shell integration, and notification protocols come from Ghostty.
-        environment["TERM"] = "xterm-256color";
-        environment["COLORTERM"] = "truecolor";
-        environment["TERM_PROGRAM"] = "ghostty";
+        var environment = new Dictionary<string, string>(configured, StringComparer.Ordinal)
+        {
+            // These describe the emulator, not the app that happened to launch
+            // GhostSHELL. Inheriting (for example) Warp's TERM_PROGRAM makes
+            // terminal-aware tools choose escape sequences for the wrong host.
+            // We intentionally advertise Ghostty compatibility because the parser,
+            // shell integration, and notification protocols come from Ghostty.
+            ["TERM"] = "xterm-256color",
+            ["COLORTERM"] = "truecolor",
+            ["TERM_PROGRAM"] = "ghostty"
+        };
         // Do not pair the managed program name with a stale version inherited
         // from a different terminal (for example WarpTerminal).
         environment.Remove("TERM_PROGRAM_VERSION");

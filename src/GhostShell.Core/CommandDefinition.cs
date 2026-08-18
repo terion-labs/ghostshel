@@ -43,8 +43,7 @@ public sealed class CommandDefinition
     {
         ArgumentNullException.ThrowIfNull(invocation);
 
-        var contextMatches = (Contexts & CommandContext.Global) != 0
-            || (Contexts & invocation.ActiveContexts) != 0;
+        var contextMatches = (Contexts & CommandContext.Global) != CommandContext.None || (Contexts & invocation.ActiveContexts) != CommandContext.None;
 
         return contextMatches
             && Parameters.Validate(invocation.Arguments).IsEmpty

@@ -334,7 +334,7 @@ public sealed class AgentWorkspaceGraphSessionHostTests
             NewCompletionSource();
 
         public IReadOnlyList<AgentActionCompletion> Completions =>
-            _completions.ToArray();
+            [.. _completions];
 
         public AgentAuthorizationId Arm(AgentWorkspaceGraphAction action)
         {

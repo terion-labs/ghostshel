@@ -26,10 +26,10 @@ public sealed class MainWindowSavedScreenDeleteUndoTests
         Assert.True(surface.CanUndo);
         Assert.False(surface.IsRestoring);
         Assert.Contains("Running instances were not changed", surface.Status);
-        Assert.Contains(nameof(surface.Pending), changed);
-        Assert.Contains(nameof(surface.HasPending), changed);
-        Assert.Contains(nameof(surface.CanUndo), changed);
-        Assert.Contains(nameof(surface.Status), changed);
+        Assert.Contains(nameof(surface.Pending), changed, StringComparer.Ordinal);
+        Assert.Contains(nameof(surface.HasPending), changed, StringComparer.Ordinal);
+        Assert.Contains(nameof(surface.CanUndo), changed, StringComparer.Ordinal);
+        Assert.Contains(nameof(surface.Status), changed, StringComparer.Ordinal);
 
         changed.Clear();
         surface.Dismiss();
@@ -38,10 +38,10 @@ public sealed class MainWindowSavedScreenDeleteUndoTests
         Assert.False(surface.HasPending);
         Assert.False(surface.CanUndo);
         Assert.Equal("Saved-screen delete undo dismissed.", surface.Status);
-        Assert.Contains(nameof(surface.Pending), changed);
-        Assert.Contains(nameof(surface.HasPending), changed);
-        Assert.Contains(nameof(surface.CanUndo), changed);
-        Assert.Contains(nameof(surface.Status), changed);
+        Assert.Contains(nameof(surface.Pending), changed, StringComparer.Ordinal);
+        Assert.Contains(nameof(surface.HasPending), changed, StringComparer.Ordinal);
+        Assert.Contains(nameof(surface.CanUndo), changed, StringComparer.Ordinal);
+        Assert.Contains(nameof(surface.Status), changed, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -448,10 +448,13 @@ public sealed class MainWindowSavedScreenDeleteUndoTests
         {
             Snapshot = Snapshot with
             {
-                Screens = Snapshot.Screens
-                    .Where(item => item.Value.Id != screen.Id)
-                    .Append(Store(screen, revision))
-                    .ToArray(),
+                Screens =
+                [
+                    .. Snapshot.Screens
+                                        .Where(item => item.Value.Id != screen.Id)
+,
+                    Store(screen, revision),
+                ],
             };
             Changed?.Invoke(this, EventArgs.Empty);
         }
@@ -514,10 +517,13 @@ public sealed class MainWindowSavedScreenDeleteUndoTests
             var stored = Store(definition, current?.Revision + 1 ?? 1);
             Snapshot = Snapshot with
             {
-                Screens = Snapshot.Screens
-                    .Where(item => item.Value.Id != definition.Id)
-                    .Append(stored)
-                    .ToArray(),
+                Screens =
+                [
+                    .. Snapshot.Screens
+                                        .Where(item => item.Value.Id != definition.Id)
+,
+                    stored,
+                ],
             };
             Changed?.Invoke(this, EventArgs.Empty);
             return DefinitionStoreResult<StoredDefinition<ScreenDefinition>>.Success(stored);
@@ -602,9 +608,7 @@ public sealed class MainWindowSavedScreenDeleteUndoTests
 
             Snapshot = Snapshot with
             {
-                Screens = Snapshot.Screens
-                    .Where(item => item.Value.Key != key)
-                    .ToArray(),
+                Screens = [.. Snapshot.Screens.Where(item => item.Value.Key != key)],
             };
             Changed?.Invoke(this, EventArgs.Empty);
             return ValueTask.FromResult(DefinitionStoreResult<Unit>.Success(Unit.Value));

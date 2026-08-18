@@ -25,7 +25,7 @@ public sealed partial class GovernedAgentRuntimeTests
         var request = Assert.Single(provider.Requests);
         var intrinsic = Assert.Single(
             request.Tools,
-            tool => tool.Name == IntrinsicAgentTools.RequestCapability);
+            tool => string.Equals(tool.Name, IntrinsicAgentTools.RequestCapability, StringComparison.Ordinal));
         var schema = intrinsic.InputSchema;
         Assert.Equal("object", schema.GetProperty("type").GetString());
         Assert.False(schema.GetProperty("additionalProperties").GetBoolean());
@@ -33,20 +33,20 @@ public sealed partial class GovernedAgentRuntimeTests
             ["capability"],
             schema.GetProperty("required")
                 .EnumerateArray()
-                .Select(item => item.GetString()));
+                .Select(item => item.GetString()), StringComparer.Ordinal);
         var properties = schema.GetProperty("properties");
         Assert.Equal(
             ["capability"],
-            properties.EnumerateObject().Select(property => property.Name));
+            properties.EnumerateObject().Select(property => property.Name), StringComparer.Ordinal);
         Assert.Equal(
             [AgentCapabilityProtocol.RunCommands],
             properties.GetProperty("capability")
                 .GetProperty("enum")
                 .EnumerateArray()
-                .Select(item => item.GetString()));
+                .Select(item => item.GetString()), StringComparer.Ordinal);
         Assert.Contains(
             request.Tools,
-            tool => tool.Name == BuiltInAgentTools.TerminalSendText);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalSendText, StringComparison.Ordinal));
         Assert.DoesNotContain(
             AgentCapabilityProtocol.ProcessControl,
             schema.GetRawText(),
@@ -65,7 +65,7 @@ public sealed partial class GovernedAgentRuntimeTests
 
         Assert.DoesNotContain(
             Assert.Single(provider.Requests).Tools,
-            tool => tool.Name == IntrinsicAgentTools.RequestCapability);
+            tool => string.Equals(tool.Name, IntrinsicAgentTools.RequestCapability, StringComparison.Ordinal));
     }
 
     [Theory]
@@ -141,7 +141,7 @@ public sealed partial class GovernedAgentRuntimeTests
             "secret-canary",
             JsonSerializer.Serialize(pending),
             StringComparison.Ordinal);
-        Assert.Contains("Send terminal text", pending.AffectedToolTitles);
+        Assert.Contains("Send terminal text", pending.AffectedToolTitles, StringComparer.Ordinal);
         Assert.Equal(1, pending.PolicyGeneration);
         Assert.Equal(
             pending.ExpiresAtUtc,
@@ -170,25 +170,25 @@ public sealed partial class GovernedAgentRuntimeTests
                 grantedPolicy.GetPermission(capability)));
         var policyAudit = Assert.Single(
             fixture.Audit.Events,
-            auditEvent => auditEvent.Action == "agent.run.policy");
+            auditEvent => string.Equals(auditEvent.Action, "agent.run.policy", StringComparison.Ordinal));
         Assert.Equal(AuditOutcome.Succeeded, policyAudit.Outcome);
         Assert.DoesNotContain(
             fixture.Audit.Events,
-            auditEvent => auditEvent.Action
-                == BuiltInAgentTools.TerminalSendText);
+            auditEvent => string.Equals(auditEvent.Action
+, BuiltInAgentTools.TerminalSendText, StringComparison.Ordinal));
         Assert.Empty(fixture.Terminal.Actions);
 
         var receipt = Assert.Single(
             provider.Requests.ToArray()[1].Messages,
-            message => message.ToolResult?.ProviderCallId
-                == "request-run-commands").ToolResult!;
+            message => string.Equals(message.ToolResult?.ProviderCallId
+, "request-run-commands", StringComparison.Ordinal)).ToolResult!;
         Assert.Equal(AgentToolResultStatus.Succeeded, receipt.Status);
         Assert.Equal(
             """{"ok":true,"capability":"run_commands","permission":"ask","scope":"run","action_approval_required":true}""",
             receipt.Value.Content);
         Assert.DoesNotContain(
             provider.Requests.ToArray()[1].Tools,
-            tool => tool.Name == IntrinsicAgentTools.RequestCapability);
+            tool => string.Equals(tool.Name, IntrinsicAgentTools.RequestCapability, StringComparison.Ordinal));
 
         provider.ReleaseBlockedCall.TrySetResult();
         await WaitUntilAsync(() =>
@@ -425,8 +425,7 @@ public sealed partial class GovernedAgentRuntimeTests
             provider,
             CapabilityPolicy(
                 (AgentCapability.RunCommands, AgentPermission.Off)));
-        fixture.Audit.FailurePredicate = auditEvent =>
-            auditEvent.Action == "agent.run.policy";
+        fixture.Audit.FailurePredicate = auditEvent => string.Equals(auditEvent.Action, "agent.run.policy", StringComparison.Ordinal);
 
         var sending = fixture.Runtime.SendAsync(
             fixture.Prompt("Run status."),
@@ -487,7 +486,7 @@ public sealed partial class GovernedAgentRuntimeTests
             CancellationToken.None)).IsSuccess);
         Assert.Contains(
             provider.Requests.ToArray()[2].Tools,
-            tool => tool.Name == IntrinsicAgentTools.RequestCapability);
+            tool => string.Equals(tool.Name, IntrinsicAgentTools.RequestCapability, StringComparison.Ordinal));
         Assert.Equal(
             AgentPermission.Ask,
             fixture.Runtime.Snapshot.EffectivePolicy!
@@ -526,7 +525,7 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.True((await afterClear.WaitAsync(TimeSpan.FromSeconds(5))).IsSuccess);
         Assert.Contains(
             provider.Requests.ToArray()[3].Tools,
-            tool => tool.Name == IntrinsicAgentTools.RequestCapability);
+            tool => string.Equals(tool.Name, IntrinsicAgentTools.RequestCapability, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -542,7 +541,7 @@ public sealed partial class GovernedAgentRuntimeTests
             CancellationToken.None)).IsSuccess);
         Assert.Contains(
             provider.Requests.ToArray()[0].Tools,
-            tool => tool.Name == IntrinsicAgentTools.RequestCapability);
+            tool => string.Equals(tool.Name, IntrinsicAgentTools.RequestCapability, StringComparison.Ordinal));
         Assert.True((await fixture.Runtime.EnableYoloAsync(
             TimeSpan.FromMinutes(1),
             CancellationToken.None)).IsAccepted);
@@ -551,12 +550,12 @@ public sealed partial class GovernedAgentRuntimeTests
             fixture.Prompt("YOLO turn."),
             CancellationToken.None)).IsSuccess);
         var initialSchema = provider.Requests.ToArray()[0].Tools
-            .Single(tool => tool.Name == IntrinsicAgentTools.RequestCapability)
+            .Single(tool => string.Equals(tool.Name, IntrinsicAgentTools.RequestCapability, StringComparison.Ordinal))
             .InputSchema.GetRawText();
         Assert.Equal(
             initialSchema,
             provider.Requests.ToArray()[1].Tools
-                .Single(tool => tool.Name == IntrinsicAgentTools.RequestCapability)
+                .Single(tool => string.Equals(tool.Name, IntrinsicAgentTools.RequestCapability, StringComparison.Ordinal))
                 .InputSchema.GetRawText());
         Assert.True((await fixture.Runtime.DisableYoloAsync(
             CancellationToken.None)).IsAccepted);
@@ -566,11 +565,11 @@ public sealed partial class GovernedAgentRuntimeTests
             CancellationToken.None)).IsSuccess);
         Assert.Contains(
             provider.Requests.ToArray()[2].Tools,
-            tool => tool.Name == IntrinsicAgentTools.RequestCapability);
+            tool => string.Equals(tool.Name, IntrinsicAgentTools.RequestCapability, StringComparison.Ordinal));
         Assert.Equal(
             initialSchema,
             provider.Requests.ToArray()[2].Tools
-                .Single(tool => tool.Name == IntrinsicAgentTools.RequestCapability)
+                .Single(tool => string.Equals(tool.Name, IntrinsicAgentTools.RequestCapability, StringComparison.Ordinal))
                 .InputSchema.GetRawText());
     }
 
@@ -669,7 +668,7 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Single(provider.Requests);
         Assert.DoesNotContain(
             fixture.Audit.Events,
-            auditEvent => auditEvent.Action == "agent.run.policy");
+            auditEvent => string.Equals(auditEvent.Action, "agent.run.policy", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -832,7 +831,7 @@ public sealed partial class GovernedAgentRuntimeTests
             .Where(message => message.Role == AgentMessageRole.Tool)
             .Select(message => message.ToolResult)
             .OfType<AgentToolResult>()
-            .Last(result => result.ProviderCallId == providerCallId);
+            .Last(result => string.Equals(result.ProviderCallId, providerCallId, StringComparison.Ordinal));
 
     private sealed class CapabilityRaceFixture : IAsyncDisposable
     {

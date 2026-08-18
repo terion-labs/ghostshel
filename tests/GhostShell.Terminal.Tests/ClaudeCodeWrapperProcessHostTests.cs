@@ -50,7 +50,7 @@ public sealed class ClaudeCodeWrapperProcessHostTests : IDisposable
             observed.ArgumentList);
         Assert.DoesNotContain(
             fixture.ShimDirectory,
-            observed.Environment["PATH"]!.Split(Path.PathSeparator));
+            observed.Environment["PATH"]!.Split(Path.PathSeparator), StringComparer.Ordinal);
         Assert.Equal("1", observed.Environment[ClaudeCodeWrapperProcessHost.DepthEnvironment]);
     }
 
@@ -73,7 +73,7 @@ public sealed class ClaudeCodeWrapperProcessHostTests : IDisposable
                 return 0;
             });
 
-        Assert.Equal(arguments, Assert.IsType<ProcessStartInfo>(observed).ArgumentList);
+        Assert.Equal(arguments, Assert.IsType<ProcessStartInfo>(observed).ArgumentList, StringComparer.Ordinal);
     }
 
     [Fact]

@@ -12,8 +12,8 @@ internal static class NativeArtifactPath
         if (string.IsNullOrEmpty(path)
             || path.Length > MaximumPathCharacters
             || path[0] == '/'
-            || path.Contains('\\')
-            || path.Contains(':')
+            || path.Contains('\\', StringComparison.Ordinal)
+            || path.Contains(':', StringComparison.Ordinal)
             || path.Any(char.IsControl))
         {
             throw new InvalidDataException(

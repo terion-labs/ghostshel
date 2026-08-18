@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using GhostShell.Application;
 
 namespace GhostShell.SessionHost;
@@ -447,6 +448,7 @@ public sealed partial class InMemorySessionHostClient
         int changeToken) =>
         new(BrowserWaitConditionStatus.SessionEnded, changeToken);
 
+    [StructLayout(LayoutKind.Auto)]
     private readonly record struct BrowserWaitConditionObservation(
         BrowserWaitConditionStatus Status,
         int ChangeToken);

@@ -38,8 +38,8 @@ public sealed class GhosttyVtTerminalSessionTests
             .ToArray();
 
         Assert.Equal(importedEntryPoints, GhosttyVtRuntimeProbe.RequiredExportsForTesting);
-        Assert.Contains("ghostty_ghostshell_extension_abi", importedEntryPoints);
-        Assert.Contains("ghostty_terminal_search", importedEntryPoints);
+        Assert.Contains("ghostty_ghostshell_extension_abi", importedEntryPoints, StringComparer.Ordinal);
+        Assert.Contains("ghostty_terminal_search", importedEntryPoints, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -67,10 +67,10 @@ public sealed class GhosttyVtTerminalSessionTests
         var frame = await WaitForFrameAsync(
             session,
             current => current.ViewportRows.SelectMany(row => row.Cells)
-                .Any(cell => cell.Text == "界"));
+                .Any(cell => string.Equals(cell.Text, "界", StringComparison.Ordinal)));
         var cell = Assert.Single(
             frame.ViewportRows.SelectMany(row => row.Cells),
-            candidate => candidate.Text == "界");
+            candidate => string.Equals(candidate.Text, "界", StringComparison.Ordinal));
         Assert.Equal(TerminalRenderCellWidth.Wide, cell.Width);
         Assert.DoesNotContain(
             "�",
@@ -373,7 +373,7 @@ public sealed class GhosttyVtTerminalSessionTests
         var changed = await WaitForFrameAsync(
             session,
             frame => frame.Revision > initial.Revision
-                && frame.ViewportRows[0].Cells[0].Text == "U");
+                && string.Equals(frame.ViewportRows[0].Cells[0].Text, "U", StringComparison.Ordinal));
         var underlined = changed.ViewportRows[0].Cells[0];
 
         Assert.Equal(TerminalCursorVisualStyle.Bar, changed.Cursor.VisualStyle);
@@ -400,8 +400,8 @@ public sealed class GhosttyVtTerminalSessionTests
 
         var frame = await WaitForFrameAsync(
             session,
-            current => current.ViewportRows[0].Cells[0].Text == "X"
-                && current.ViewportRows[0].Cells[1].Text == "Y");
+            current => string.Equals(current.ViewportRows[0].Cells[0].Text, "X"
+, StringComparison.Ordinal) && string.Equals(current.ViewportRows[0].Cells[1].Text, "Y", StringComparison.Ordinal));
         var explicitBackground = frame.ViewportRows[0].Cells[0];
         var defaultBackground = frame.ViewportRows[0].Cells[1];
         var blankBackground = frame.ViewportRows[0].Cells[2];
@@ -705,32 +705,30 @@ public sealed class GhosttyVtTerminalSessionTests
         }
 
         var runningHarness = await CreateAsync();
-        await using (var running = runningHarness.Session)
-        {
-            await runningHarness.Pty.WriteOutputAsync(
-                "\u001b]133;A\u0007$ \u001b]133;B\u0007sleep 10\u001b]133;C\u0007");
-            _ = await WaitForScreenAsync(
-                running,
-                current => current.ShellIntegrationEvents.Count == 3);
+        await using var running = runningHarness.Session;
+        await runningHarness.Pty.WriteOutputAsync(
+            "\u001b]133;A\u0007$ \u001b]133;B\u0007sleep 10\u001b]133;C\u0007");
+        _ = await WaitForScreenAsync(
+            running,
+            current => current.ShellIntegrationEvents.Count == 3);
 
-            var runningSnapshot = await running.SnapshotAsync(default);
-            Assert.True(runningSnapshot.HasActiveWork);
-            Assert.Equal(
-                PanelCloseOutcome.ConfirmationRequired,
-                await running.CloseAsync(PanelCloseMode.Graceful, default));
+        var runningSnapshot = await running.SnapshotAsync(default);
+        Assert.True(runningSnapshot.HasActiveWork);
+        Assert.Equal(
+            PanelCloseOutcome.ConfirmationRequired,
+            await running.CloseAsync(PanelCloseMode.Graceful, default));
 
-            await runningHarness.Pty.WriteOutputAsync(
-                "\u001b]133;D;0\u0007\u001b]133;A\u0007$ \u001b]133;B\u0007");
-            _ = await WaitForScreenAsync(
-                running,
-                current => current.ShellIntegrationEvents.Count == 6);
+        await runningHarness.Pty.WriteOutputAsync(
+            "\u001b]133;D;0\u0007\u001b]133;A\u0007$ \u001b]133;B\u0007");
+        _ = await WaitForScreenAsync(
+            running,
+            current => current.ShellIntegrationEvents.Count == 6);
 
-            var returnedToPrompt = await running.SnapshotAsync(default);
-            Assert.False(returnedToPrompt.HasActiveWork);
-            Assert.Equal(
-                PanelCloseOutcome.GracefullyClosed,
-                await running.CloseAsync(PanelCloseMode.Graceful, default));
-        }
+        var returnedToPrompt = await running.SnapshotAsync(default);
+        Assert.False(returnedToPrompt.HasActiveWork);
+        Assert.Equal(
+            PanelCloseOutcome.GracefullyClosed,
+            await running.CloseAsync(PanelCloseMode.Graceful, default));
     }
 
     [Fact]
@@ -1094,7 +1092,7 @@ public sealed class GhosttyVtTerminalSessionTests
             : "/bin/sh";
         var arguments = isWindows
             ? new[] { "/d", "/c", "echo GHOSTTY_VT_SMOKE" }
-            : new[] { "-c", "printf 'GHOSTTY_VT_SMOKE\\n'" };
+            : ["-c", "printf 'GHOSTTY_VT_SMOKE\\n'"];
         var factory = new GhosttyVtTerminalSessionFactory();
         await using var session = await factory.CreateAsync(
             SessionId.New(),

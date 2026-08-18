@@ -716,11 +716,11 @@ public sealed class DatabaseResultRowViewModel : ObservableObject
         IReadOnlyList<double> columnWidths)
         : this(
             number,
-            cells.Select(value => DatabaseValue.FromDisplay(value)).ToArray(),
-            cells.Select((_, index) => new DatabaseColumnDescriptor(
+            [.. cells.Select(value => DatabaseValue.FromDisplay(value))],
+            [.. cells.Select((_, index) => new DatabaseColumnDescriptor(
                 $"Column{index + 1}",
                 "TEXT",
-                DatabaseValueKind.Text)).ToArray(),
+                DatabaseValueKind.Text))],
             columnWidths,
             canEdit: false)
     {
@@ -736,7 +736,7 @@ public sealed class DatabaseResultRowViewModel : ObservableObject
     {
         Number = number;
         _isNew = isNew;
-        Cells = values
+        Cells = [.. values
             .Select((value, index) =>
             {
                 var column = columns[index];
@@ -749,8 +749,7 @@ public sealed class DatabaseResultRowViewModel : ObservableObject
                     index < columnWidths.Count ? columnWidths[index] : 164,
                     canEdit,
                     initialState);
-            })
-            .ToArray();
+            })];
         foreach (var cell in Cells)
         {
             cell.PropertyChanged += OnCellPropertyChanged;
@@ -797,23 +796,19 @@ public sealed class DatabaseResultRowViewModel : ObservableObject
     /// </summary>
     public DatabaseResultRowViewModel DuplicateAsNew(int number) => new(
         number,
-        Cells.Select(cell => cell.CopyForNewRow()).ToArray());
+        [.. Cells.Select(cell => cell.CopyForNewRow())]);
 
     public DatabaseInsertedRow BuildInsert() => new(BuildEdits(
         Cells.Where(cell => !cell.Column.IsReadOnly)));
 
     public DatabaseUpdatedRow BuildUpdate() => new(
-        Cells.Where(cell => cell.Column.IsKey).Select(cell => cell.BuildOriginalEdit()).ToArray(),
+        [.. Cells.Where(cell => cell.Column.IsKey).Select(cell => cell.BuildOriginalEdit())],
         BuildEdits(Cells.Where(cell => cell.IsDirty && !cell.Column.IsReadOnly)),
-        Cells.Where(cell => !cell.Column.IsKey && IsSafeConcurrencyValue(cell.Column.ValueKind))
-            .Select(cell => cell.BuildOriginalEdit())
-            .ToArray());
+        [.. Cells.Where(cell => !cell.Column.IsKey && IsSafeConcurrencyValue(cell.Column.ValueKind)).Select(cell => cell.BuildOriginalEdit())]);
 
     public DatabaseDeletedRow BuildDelete() => new(
-        Cells.Where(cell => cell.Column.IsKey).Select(cell => cell.BuildOriginalEdit()).ToArray(),
-        Cells.Where(cell => !cell.Column.IsKey && IsSafeConcurrencyValue(cell.Column.ValueKind))
-            .Select(cell => cell.BuildOriginalEdit())
-            .ToArray());
+        [.. Cells.Where(cell => cell.Column.IsKey).Select(cell => cell.BuildOriginalEdit())],
+        [.. Cells.Where(cell => !cell.Column.IsKey && IsSafeConcurrencyValue(cell.Column.ValueKind)).Select(cell => cell.BuildOriginalEdit())]);
 
     public void Reset()
     {

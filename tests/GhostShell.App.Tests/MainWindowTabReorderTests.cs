@@ -32,17 +32,17 @@ public sealed class MainWindowTabReorderTests
             anchor.Id,
             RuntimeTabPlacement.After));
 
-        Assert.Equal(["Beta", "Gamma", "Alpha"], runtime.Tabs.Select(tab => tab.Title));
+        Assert.Equal(["Beta", "Gamma", "Alpha"], runtime.Tabs.Select(tab => tab.Title), StringComparer.Ordinal);
         Assert.Equal(2, runtime.HostRevision);
         var call = Assert.Single(fixture.Session.Registrations);
         Assert.Equal(1, call.Context.ExpectedRevision);
         Assert.Equal(
             ["Beta", "Gamma", "Alpha"],
-            call.Request.Workspace.Tabs.Select(tab => tab.Title));
+            call.Request.Workspace.Tabs.Select(tab => tab.Title), StringComparer.Ordinal);
         Assert.Equal(runtime.ActiveTab!.Id, call.Request.Workspace.ActiveTabId);
         Assert.Equal(
             ["Beta", "Gamma", "Alpha"],
-            fixture.Session.Current!.Workspace.Tabs.Select(tab => tab.Title));
+            fixture.Session.Current!.Workspace.Tabs.Select(tab => tab.Title), StringComparer.Ordinal);
         Assert.All(runtime.Tabs, tab => Assert.Same(originalTabs[tab.Id], tab));
         Assert.All(
             runtime.Tabs.SelectMany(tab => tab.Panels),
@@ -71,14 +71,14 @@ public sealed class MainWindowTabReorderTests
             RuntimeTabPlacement.Before);
         await fixture.Session.RegistrationEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.Equal(["Alpha", "Beta", "Gamma"], fixture.Runtime.Tabs.Select(tab => tab.Title));
+        Assert.Equal(["Alpha", "Beta", "Gamma"], fixture.Runtime.Tabs.Select(tab => tab.Title), StringComparer.Ordinal);
         Assert.Equal(1, fixture.Runtime.HostRevision);
         Assert.Equal(string.Empty, viewModel.TabReorderStatus);
 
         fixture.Session.AllowRegistration.TrySetResult();
 
         Assert.True(await move);
-        Assert.Equal(["Gamma", "Alpha", "Beta"], fixture.Runtime.Tabs.Select(tab => tab.Title));
+        Assert.Equal(["Gamma", "Alpha", "Beta"], fixture.Runtime.Tabs.Select(tab => tab.Title), StringComparer.Ordinal);
         Assert.Equal(2, fixture.Runtime.HostRevision);
     }
 
@@ -96,7 +96,7 @@ public sealed class MainWindowTabReorderTests
 
         Assert.Equal(
             ["Alpha", "Beta", "Gamma"],
-            rejectedFixture.Runtime.Tabs.Select(tab => tab.Title));
+            rejectedFixture.Runtime.Tabs.Select(tab => tab.Title), StringComparer.Ordinal);
         Assert.Equal(1, rejectedFixture.Runtime.HostRevision);
         Assert.Equal(string.Empty, rejectedViewModel.TabReorderStatus);
         Assert.Contains(
@@ -115,7 +115,7 @@ public sealed class MainWindowTabReorderTests
 
         Assert.Equal(
             ["Alpha", "Beta", "Gamma"],
-            invalidFixture.Runtime.Tabs.Select(tab => tab.Title));
+            invalidFixture.Runtime.Tabs.Select(tab => tab.Title), StringComparer.Ordinal);
         Assert.Equal(1, invalidFixture.Runtime.HostRevision);
         Assert.Equal(string.Empty, invalidViewModel.TabReorderStatus);
         Assert.Contains(
@@ -141,7 +141,7 @@ public sealed class MainWindowTabReorderTests
         cancellation.Cancel();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => move);
-        Assert.Equal(["Alpha", "Beta", "Gamma"], fixture.Runtime.Tabs.Select(tab => tab.Title));
+        Assert.Equal(["Alpha", "Beta", "Gamma"], fixture.Runtime.Tabs.Select(tab => tab.Title), StringComparer.Ordinal);
         Assert.Equal(1, fixture.Runtime.HostRevision);
         Assert.Equal(string.Empty, viewModel.TabReorderStatus);
     }
@@ -158,7 +158,7 @@ public sealed class MainWindowTabReorderTests
             fixture.Runtime.Tabs[0].Id,
             RuntimeTabPlacement.Before));
 
-        Assert.Equal(["Alpha", "Beta", "Gamma"], fixture.Runtime.Tabs.Select(tab => tab.Title));
+        Assert.Equal(["Alpha", "Beta", "Gamma"], fixture.Runtime.Tabs.Select(tab => tab.Title), StringComparer.Ordinal);
         Assert.Equal(1, fixture.Runtime.HostRevision);
         Assert.Single(fixture.Session.Registrations);
         Assert.Equal(string.Empty, viewModel.TabReorderStatus);
@@ -178,7 +178,7 @@ public sealed class MainWindowTabReorderTests
             fixture.Runtime.Tabs[0].Id,
             RuntimeTabPlacement.Before));
 
-        Assert.Equal(["Alpha", "Beta", "Gamma"], fixture.Runtime.Tabs.Select(tab => tab.Title));
+        Assert.Equal(["Alpha", "Beta", "Gamma"], fixture.Runtime.Tabs.Select(tab => tab.Title), StringComparer.Ordinal);
         Assert.Equal(1, fixture.Runtime.HostRevision);
         Assert.Equal(1, fixture.Runtime.HostSequence);
         Assert.Equal(string.Empty, viewModel.TabReorderStatus);
@@ -200,7 +200,7 @@ public sealed class MainWindowTabReorderTests
             fixture.Runtime.Tabs[0].Id,
             RuntimeTabPlacement.Before));
 
-        Assert.Equal(["Alpha", "Beta", "Gamma"], fixture.Runtime.Tabs.Select(tab => tab.Title));
+        Assert.Equal(["Alpha", "Beta", "Gamma"], fixture.Runtime.Tabs.Select(tab => tab.Title), StringComparer.Ordinal);
         Assert.Equal(1, fixture.Runtime.HostRevision);
         Assert.Equal(1, fixture.Runtime.HostSequence);
         Assert.Equal(string.Empty, viewModel.TabReorderStatus);
@@ -233,7 +233,7 @@ public sealed class MainWindowTabReorderTests
         Assert.False(await viewModel.MoveActiveTabAsync(-1));
 
         Assert.Empty(fixture.Session.Registrations);
-        Assert.Equal(["Alpha", "Beta", "Gamma"], fixture.Runtime.Tabs.Select(tab => tab.Title));
+        Assert.Equal(["Alpha", "Beta", "Gamma"], fixture.Runtime.Tabs.Select(tab => tab.Title), StringComparer.Ordinal);
         Assert.Equal(1, fixture.Runtime.HostRevision);
         Assert.Equal(string.Empty, viewModel.TabReorderStatus);
     }
@@ -247,7 +247,7 @@ public sealed class MainWindowTabReorderTests
 
         Assert.True(await viewModel.MoveActiveTabAsync(-1));
 
-        Assert.Equal(["Beta", "Alpha", "Gamma"], fixture.Runtime.Tabs.Select(tab => tab.Title));
+        Assert.Equal(["Beta", "Alpha", "Gamma"], fixture.Runtime.Tabs.Select(tab => tab.Title), StringComparer.Ordinal);
         Assert.Same(activeTab, fixture.Runtime.ActiveTab);
         Assert.False(await viewModel.MoveActiveTabAsync(-1));
         Assert.Single(fixture.Session.Registrations);
@@ -269,17 +269,17 @@ public sealed class MainWindowTabReorderTests
 
         var queuedKeyboardMove = viewModel.MoveActiveTabAsync(1);
 
-        Assert.Equal(["Alpha", "Beta", "Gamma"], fixture.Runtime.Tabs.Select(tab => tab.Title));
+        Assert.Equal(["Alpha", "Beta", "Gamma"], fixture.Runtime.Tabs.Select(tab => tab.Title), StringComparer.Ordinal);
         Assert.Single(fixture.Session.Registrations);
         fixture.Session.AllowRegistration.TrySetResult();
 
         Assert.True(await delayedDrag);
         Assert.True(await queuedKeyboardMove);
-        Assert.Equal(["Gamma", "Alpha", "Beta"], fixture.Runtime.Tabs.Select(tab => tab.Title));
+        Assert.Equal(["Gamma", "Alpha", "Beta"], fixture.Runtime.Tabs.Select(tab => tab.Title), StringComparer.Ordinal);
         Assert.Equal(
             [
-                new[] { "Alpha", "Gamma", "Beta" },
-                new[] { "Gamma", "Alpha", "Beta" },
+                ["Alpha", "Gamma", "Beta"],
+                ["Gamma", "Alpha", "Beta"],
             ],
             fixture.Session.Registrations.Select(call =>
                 call.Request.Workspace.Tabs.Select(tab => tab.Title).ToArray()));

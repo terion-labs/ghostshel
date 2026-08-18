@@ -192,6 +192,9 @@ public static class PreviewText
     public static bool IsOn(
         IReadOnlyDictionary<string, bool> toggles,
         string id,
-        bool byDefault) =>
-        toggles.TryGetValue(id, out var value) ? value : byDefault;
+        bool byDefault)
+    {
+        ArgumentNullException.ThrowIfNull(toggles);
+        return toggles.TryGetValue(id, out var value) ? value : byDefault;
+    }
 }

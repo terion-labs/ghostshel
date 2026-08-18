@@ -397,7 +397,7 @@ public sealed class AgentStatisticsSessionHostTests
         public int ConsumeAttempts => Volatile.Read(ref _consumeAttempts);
 
         public IReadOnlyList<AgentActionCompletion> Completions =>
-            _completions.ToArray();
+            [.. _completions];
 
         public AgentAuthorizationId Arm(AgentStatisticsReadAction action)
         {

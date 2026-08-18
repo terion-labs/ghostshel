@@ -85,7 +85,7 @@ public sealed class RedisRuntimePanelViewHeadlessTests
                 Assert.NotEmpty(grids);
                 foreach (var grid in grids)
                 {
-                    Assert.Contains("DatabaseGrid", grid.Classes);
+                    Assert.Contains("DatabaseGrid", grid.Classes, StringComparer.Ordinal);
                     Assert.Equal(28, grid.ColumnHeaderHeight);
                     Assert.Equal(30, grid.RowHeight);
                     Assert.Equal(DataGridGridLinesVisibility.All, grid.GridLinesVisibility);
@@ -128,8 +128,8 @@ public sealed class RedisRuntimePanelViewHeadlessTests
                     .Where(state => state.IsVisible)
                     .Select(state => state.Heading)
                     .ToArray();
-                Assert.Contains("No keys yet", states);
-                Assert.Contains("Select a Redis key", states);
+                Assert.Contains("No keys yet", states, StringComparer.Ordinal);
+                Assert.Contains("Select a Redis key", states, StringComparer.Ordinal);
             }
             finally
             {
@@ -174,7 +174,7 @@ public sealed class RedisRuntimePanelViewHeadlessTests
                 // a deadline as it is created.
                 Assert.Equal(
                     ["Key", "Type", "Value", "TTL seconds"],
-                    fields.Select(field => field.Label));
+                    fields.Select(field => field.Label), StringComparer.Ordinal);
                 foreach (var field in fields)
                 {
                     Assert.True(
@@ -295,7 +295,7 @@ public sealed class RedisRuntimePanelViewHeadlessTests
                     .Where(card => card.IsVisible && card.Bounds.Width > 0)
                     .ToArray();
                 // The panel is a card too, so the table's own card is the
-                    // smallest one holding it.
+                // smallest one holding it.
                 var table = cards
                     .Where(card => card.GetVisualDescendants().OfType<DataGrid>().Any())
                     .OrderBy(card => card.Bounds.Width)

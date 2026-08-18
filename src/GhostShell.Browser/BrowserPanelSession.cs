@@ -500,9 +500,7 @@ public sealed partial class BrowserPanelSession : IBrowserPanelSession
             bool completed;
             lock (_gate)
             {
-                pending = _events
-                    .Where(sessionEvent => sessionEvent.Sequence > afterSequence)
-                    .ToArray();
+                pending = [.. _events.Where(sessionEvent => sessionEvent.Sequence > afterSequence)];
                 completed = _closed;
                 waitForChange = _eventsChanged.Task;
             }

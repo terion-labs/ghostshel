@@ -14,10 +14,10 @@ public sealed class AgentSafetyCardViewContractTests
         var workspace = LoadView("AgentWorkspaceView");
         var question = Assert.Single(
             workspace.Descendants(),
-            element => element.Name.LocalName == "AgentQuestionCardView");
+            element => string.Equals(element.Name.LocalName, "AgentQuestionCardView", StringComparison.Ordinal));
         var capability = Assert.Single(
             workspace.Descendants(),
-            element => element.Name.LocalName == "AgentCapabilityRequestCardView");
+            element => string.Equals(element.Name.LocalName, "AgentCapabilityRequestCardView", StringComparison.Ordinal));
 
         Assert.Equal(
             "OnAgentQuestionResponseKeyDown",
@@ -132,8 +132,8 @@ public sealed class AgentSafetyCardViewContractTests
     private static XElement FindButton(XDocument document, string content) =>
         Assert.Single(
             document.Descendants(),
-            element => element.Name.LocalName == "Button"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Content"),
                     content,
                     StringComparison.Ordinal));
@@ -165,6 +165,6 @@ public sealed class AgentSafetyCardViewContractTests
 
     private static string? AttributeValue(XElement element, string name) =>
         element.Attributes()
-            .FirstOrDefault(attribute => attribute.Name.LocalName == name)
+            .FirstOrDefault(attribute => string.Equals(attribute.Name.LocalName, name, StringComparison.Ordinal))
             ?.Value;
 }

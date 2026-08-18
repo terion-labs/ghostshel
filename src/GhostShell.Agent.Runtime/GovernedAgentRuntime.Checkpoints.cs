@@ -76,9 +76,7 @@ public sealed partial class GovernedAgentRuntime
                 Model = descriptor.Model,
                 EffectivePolicy = policy,
                 Status = string.Empty,
-                Conversations = catalog
-                    .Select(item => item.Summary)
-                    .ToImmutableArray(),
+                Conversations = [.. catalog.Select(item => item.Summary)],
             };
         }
 
@@ -428,7 +426,7 @@ public sealed partial class GovernedAgentRuntime
 
             _snapshot = _snapshot with
             {
-                Conversations = catalog.Select(item => item.Summary).ToImmutableArray(),
+                Conversations = [.. catalog.Select(item => item.Summary)],
             };
         }
 
@@ -468,13 +466,12 @@ public sealed partial class GovernedAgentRuntime
 
             _snapshot = _snapshot with
             {
-                Conversations = (_snapshot.Conversations.IsDefault
-                        ? ImmutableArray<GovernedAgentConversationSummary>.Empty
+                Conversations = [.. (_snapshot.Conversations.IsDefault
+                        ? []
                         : _snapshot.Conversations)
                     .Where(item => item.RunId != runId)
                     .Prepend(pending)
-                    .Take(MaximumConversationCatalogEntries)
-                    .ToImmutableArray(),
+                    .Take(MaximumConversationCatalogEntries)],
             };
         }
 

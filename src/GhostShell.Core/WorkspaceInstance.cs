@@ -20,7 +20,7 @@ public sealed class WorkspaceInstance
         : this(
             id,
             title,
-            (tabs ?? throw new ArgumentNullException(nameof(tabs))).ToArray(),
+            [.. (tabs ?? throw new ArgumentNullException(nameof(tabs)))],
             activeTabId)
     {
     }

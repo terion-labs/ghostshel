@@ -1,7 +1,7 @@
-using Dock.Serializer.SystemTextJson;
+using System.Text.Json.Serialization.Metadata;
 using Dock.Model.Controls;
 using Dock.Model.Core;
-using System.Text.Json.Serialization.Metadata;
+using Dock.Serializer.SystemTextJson;
 
 [assembly: DockJsonSourceGeneration]
 [assembly: DockJsonSerializable(typeof(Dock.Model.Inpc.Controls.RootDock))]

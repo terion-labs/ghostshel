@@ -116,7 +116,7 @@ public sealed class ConnectionEditorViewModelTests
         Assert.Equal("Unknown host key", editor.TestStatus);
         Assert.Equal(SshHostKeyDisposition.Unknown, editor.HostKeyReview!.Disposition);
         Assert.True(editor.CanTrustHostKey);
-        Assert.Contains(editor.Diagnostics, item => item.Stage == "HostKey" && item.Status == "Failed");
+        Assert.Contains(editor.Diagnostics, item => string.Equals(item.Stage, "HostKey", StringComparison.Ordinal) && string.Equals(item.Status, "Failed", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -146,10 +146,8 @@ public sealed class ConnectionEditorViewModelTests
 
         Assert.Equal("Authentication failed", editor.TestStatus);
         Assert.Equal(SshHostKeyDisposition.Trusted, editor.HostKeyReview!.Disposition);
-        Assert.Contains(editor.Diagnostics, item =>
-            item.Stage == "HostKey" && item.Status == "Passed");
-        Assert.Contains(editor.Diagnostics, item =>
-            item.Stage == "Authentication" && item.Status == "Failed");
+        Assert.Contains(editor.Diagnostics, item => string.Equals(item.Stage, "HostKey", StringComparison.Ordinal) && string.Equals(item.Status, "Passed", StringComparison.Ordinal));
+        Assert.Contains(editor.Diagnostics, item => string.Equals(item.Stage, "Authentication", StringComparison.Ordinal) && string.Equals(item.Status, "Failed", StringComparison.Ordinal));
     }
 
     private static ConnectionEditorViewModel SshEditor(IConnectionSecurityRuntime security) => new(

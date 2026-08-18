@@ -107,9 +107,7 @@ public sealed partial class FilePanelClient : IFileContentSource
         // Without a cache there is nowhere for a large file to stream to, so
         // everything is held in memory — the fallback for tests and hosts
         // that never constructed one, all of which stay within small bounds.
-        using var pending = _contentCache is not null
-            ? _contentCache.BeginPut(key, sizeHint)
-            : null;
+        using var pending = _contentCache?.BeginPut(key, sizeHint);
         Stream destination;
         MemoryStream? buffered = null;
         try

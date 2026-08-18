@@ -297,9 +297,7 @@ internal sealed class HostedWorkspaceGraph
                     }
                     else
                     {
-                        pending = _events
-                            .Where(item => item.Sequence > afterSequence)
-                            .ToArray();
+                        pending = [.. _events.Where(item => item.Sequence > afterSequence)];
                         waitTask = _changed.Task;
                     }
                 }

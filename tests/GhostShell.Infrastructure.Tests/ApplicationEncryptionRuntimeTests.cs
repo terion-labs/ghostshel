@@ -207,7 +207,9 @@ public sealed class ApplicationEncryptionRuntimeTests : IAsyncDisposable
         await using var connection = await database.OpenConnectionAsync(CancellationToken.None);
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT name FROM definitions WHERE id = 'sentinel';";
-        return Convert.ToString(await command.ExecuteScalarAsync());
+        return Convert.ToString(
+            await command.ExecuteScalarAsync(),
+            System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private bool LooksLikePlainSqlite()
@@ -215,6 +217,6 @@ public sealed class ApplicationEncryptionRuntimeTests : IAsyncDisposable
         using var file = File.OpenRead(DatabasePath);
         var header = new byte[15];
         file.ReadExactly(header);
-        return Encoding.ASCII.GetString(header) == "SQLite format 3";
+        return string.Equals(Encoding.ASCII.GetString(header), "SQLite format 3", StringComparison.Ordinal);
     }
 }

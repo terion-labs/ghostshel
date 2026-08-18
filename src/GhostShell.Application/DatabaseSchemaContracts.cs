@@ -77,8 +77,7 @@ public sealed record DatabaseObjectDetails(
     bool CanEdit,
     string? ReadOnlyReason = null)
 {
-    public IReadOnlyList<DatabaseColumnSchema> PrimaryKey => Columns
+    public IReadOnlyList<DatabaseColumnSchema> PrimaryKey => [.. Columns
         .Where(column => column.IsPrimaryKey)
-        .OrderBy(column => column.PrimaryKeyOrdinal ?? int.MaxValue)
-        .ToArray();
+        .OrderBy(column => column.PrimaryKeyOrdinal ?? int.MaxValue)];
 }

@@ -213,10 +213,9 @@ internal sealed class PosixProcessSnapshotSource : IProcessSnapshotSource
     {
         var slash = value.LastIndexOf('/');
         var basename = slash >= 0 ? value[(slash + 1)..] : value;
-        var sanitized = new string(basename
+        var sanitized = new string([.. basename
             .Where(character => !char.IsControl(character))
-            .Take(MaximumProcessNameLength)
-            .ToArray());
+            .Take(MaximumProcessNameLength)]);
         return string.IsNullOrWhiteSpace(sanitized)
             ? $"Process {processId}"
             : sanitized;

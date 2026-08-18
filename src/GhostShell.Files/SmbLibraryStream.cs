@@ -143,6 +143,7 @@ internal sealed class SmbLibraryStream : Stream
             await _session.CloseAsync(_handle).ConfigureAwait(false);
         }
 
+        await base.DisposeAsync().ConfigureAwait(false);
         GC.SuppressFinalize(this);
     }
 

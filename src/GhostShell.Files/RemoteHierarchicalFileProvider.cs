@@ -54,8 +54,8 @@ public abstract partial class RemoteHierarchicalFileProvider : IFileProvider
             remoteRoot,
             allowBackslashSegments,
             additionalNameValidator);
-        _remoteRootSegments = _remoteRoot == "/"
-            ? []
+        _remoteRootSegments = string.Equals(_remoteRoot, "/"
+, StringComparison.Ordinal) ? []
             : _remoteRoot.Split('/', StringSplitOptions.RemoveEmptyEntries);
         _protocolName = protocolName;
         _allowBackslashSegments = allowBackslashSegments;
@@ -359,7 +359,7 @@ public abstract partial class RemoteHierarchicalFileProvider : IFileProvider
         Func<string, bool>? additionalNameValidator)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(remoteRoot);
-        if (!remoteRoot.StartsWith("/", StringComparison.Ordinal)
+        if (!remoteRoot.StartsWith('/')
             || remoteRoot.Any(char.IsControl))
         {
             throw new ArgumentException(
@@ -425,15 +425,14 @@ public abstract partial class RemoteHierarchicalFileProvider : IFileProvider
         var relative = hierarchical.Path.Segments.Select(segment => segment.Value).ToArray();
         var remotePath = relative.Length == 0
             ? _remoteRoot
-            : _remoteRoot == "/"
-                ? $"/{string.Join('/', relative)}"
+            : string.Equals(_remoteRoot, "/"
+, StringComparison.Ordinal) ? $"/{string.Join('/', relative)}"
                 : $"{_remoteRoot}/{string.Join('/', relative)}";
         return FileProviderResult<ResolvedRemotePath>.Success(
             new ResolvedRemotePath(location, hierarchical.Path, remotePath, relative));
     }
 
-    private string ChildRemotePath(string parent, string name) =>
-        parent == "/" ? $"/{name}" : $"{parent}/{name}";
+    private string ChildRemotePath(string parent, string name) => string.Equals(parent, "/", StringComparison.Ordinal) ? $"/{name}" : $"{parent}/{name}";
 
     private string TemporarySibling(ResolvedRemotePath destination) =>
         ChildRemotePath(

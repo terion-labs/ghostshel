@@ -382,6 +382,9 @@ public sealed class ConnectionCredentialBroker : IConnectionCredentialBroker
 
     private sealed class Ticket : IDisposable
     {
+        private readonly object _lifetimeLock = new();
+        private bool _disposed;
+
         public Ticket(
             ConnectionCredentialBrokerAccess access,
             IReadOnlyList<ConnectionSecretRequirement> requirements,
@@ -402,8 +405,29 @@ public sealed class ConnectionCredentialBroker : IConnectionCredentialBroker
 
         public Task? Completion { get; set; }
 
-        public void Cancel() => Cancellation.Cancel();
+        public void Cancel()
+        {
+            lock (_lifetimeLock)
+            {
+                if (!_disposed)
+                {
+                    Cancellation.Cancel();
+                }
+            }
+        }
 
-        public void Dispose() => Cancellation.Dispose();
+        public void Dispose()
+        {
+            lock (_lifetimeLock)
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                _disposed = true;
+                Cancellation.Dispose();
+            }
+        }
     }
 }

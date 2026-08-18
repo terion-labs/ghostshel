@@ -547,7 +547,7 @@ public abstract partial class RemoteHierarchicalFileProvider
             var currentSource = await sourceSession
                 .StatAsync(source.RemotePath, cancellationToken)
                 .ConfigureAwait(false);
-            if (currentSource is null || currentSource.Revision != sourceEntry.Revision)
+            if (currentSource is null || !string.Equals(currentSource.Revision, sourceEntry.Revision, StringComparison.Ordinal))
             {
                 return Failure<FileTransferReceipt>(
                     FileProviderErrorCode.PreconditionFailed,
@@ -645,9 +645,8 @@ public abstract partial class RemoteHierarchicalFileProvider
         }
     }
 
-    private bool PathsMayAlias(string sourcePath, string destinationPath) =>
-        sourcePath == destinationPath
-        || (Capabilities.NameComparison != FileNameComparison.CaseSensitive
+    private bool PathsMayAlias(string sourcePath, string destinationPath) => string.Equals(sourcePath, destinationPath
+, StringComparison.Ordinal) || (Capabilities.NameComparison != FileNameComparison.CaseSensitive
             && string.Equals(sourcePath, destinationPath, StringComparison.OrdinalIgnoreCase));
 
     private bool DestinationMayBeDescendant(

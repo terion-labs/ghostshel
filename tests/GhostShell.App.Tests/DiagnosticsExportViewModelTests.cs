@@ -74,7 +74,7 @@ public sealed class DiagnosticsExportViewModelTests
         var busyStates = new List<bool>();
         viewModel.PropertyChanged += (_, eventArgs) =>
         {
-            if (eventArgs.PropertyName == nameof(DiagnosticsExportViewModel.IsExporting))
+            if (string.Equals(eventArgs.PropertyName, nameof(DiagnosticsExportViewModel.IsExporting), StringComparison.Ordinal))
             {
                 busyStates.Add(viewModel.IsExporting);
             }

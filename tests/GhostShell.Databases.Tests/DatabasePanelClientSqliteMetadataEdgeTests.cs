@@ -143,6 +143,6 @@ public sealed class DatabasePanelClientSqliteMetadataEdgeTests : IDisposable
             ConnectionString,
             tunnel: null,
             CancellationToken.None);
-        return Assert.Single(objects, candidate => candidate.Name == objectName);
+        return Assert.Single(objects, candidate => string.Equals(candidate.Name, objectName, StringComparison.Ordinal));
     }
 }

@@ -113,7 +113,7 @@ public sealed class WorkspaceEditorViewModelTests
         Assert.Equal("#112233", request.Definition.Accent);
         Assert.Equal(
             ["tab-entry", "connection-entry", "screen-entry"],
-            request.Definition.Entries.Select(entry => entry.Id.Value));
+            request.Definition.Entries.Select(entry => entry.Id.Value), StringComparer.Ordinal);
         var savedPanel = Assert.IsType<WorkspaceEntry.Tab>(request.Definition.Entries[0]).Panels[0];
         Assert.Equal(tabPanel.Id, savedPanel.Id);
         Assert.Equal(tabPanel.Startup.Location, savedPanel.Startup.Location);
@@ -238,7 +238,7 @@ public sealed class WorkspaceEditorViewModelTests
             Assert.Single(editor.CreateSaveRequest().Definition.Entries));
         Assert.Equal("Diagnostics", saved.Name);
         Assert.Equal(split.Id, saved.LayoutId);
-        Assert.Equal(["secondary", "main"], saved.Panels.Select(panel => panel.SlotId.Value));
+        Assert.Equal(["secondary", "main"], saved.Panels.Select(panel => panel.SlotId.Value), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -478,8 +478,8 @@ public sealed class WorkspaceEditorViewModelTests
             [],
             []);
 
-        Assert.Contains(editor.IconChoices, choice => choice.Id == "wrench");
-        Assert.True(editor.IconChoices.Single(choice => choice.Id == "wrench").IsSelected);
+        Assert.Contains(editor.IconChoices, choice => string.Equals(choice.Id, "wrench", StringComparison.Ordinal));
+        Assert.True(editor.IconChoices.Single(choice => string.Equals(choice.Id, "wrench", StringComparison.Ordinal)).IsSelected);
         Assert.True(editor.IconChoices.Count < editor.IconCount);
 
         editor.ShowAllIcons = true;
@@ -625,10 +625,10 @@ public sealed class WorkspaceEditorViewModelTests
         LayoutDefinition.CurrentSchemaVersion,
         id,
         new LayoutGrid(slots.Length, 1),
-        slots.Select((slot, index) => new LayoutSlotDefinition(
+        [.. slots.Select((slot, index) => new LayoutSlotDefinition(
             new LayoutSlotId(slot),
             new LayoutGridBounds(index, 0, 1, 1),
-            new LayoutMinimumSize(120, 80))).ToArray());
+            new LayoutMinimumSize(120, 80)))]);
 
     private static ScreenDefinition Screen(
         string id,

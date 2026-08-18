@@ -125,7 +125,7 @@ public sealed class DockerRuntimePanelViewHeadlessTests
                     row.GetVisualDescendants().OfType<IdentityTile>());
                 var title = Assert.Single(
                     rowContent.GetVisualDescendants().OfType<TextBlock>(),
-                    text => text.Name == "PART_Title");
+                    text => string.Equals(text.Name, "PART_Title", StringComparison.Ordinal));
                 var titleOrigin = title.TranslatePoint(default, rowContent);
                 var iconOrigin = iconTile.TranslatePoint(default, rowContent);
                 Assert.NotNull(titleOrigin);
@@ -137,8 +137,8 @@ public sealed class DockerRuntimePanelViewHeadlessTests
 
                 var stackToggle = Assert.Single(
                     stack.GetVisualDescendants().OfType<Button>(),
-                    button => AutomationProperties.GetName(button)
-                        == "Expand or collapse stack");
+                    button => string.Equals(AutomationProperties.GetName(button)
+, "Expand or collapse stack", StringComparison.Ordinal));
                 var stackViewModel = Assert.IsType<DockerContainerStackViewModel>(
                     stackToggle.DataContext);
                 stackToggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -152,7 +152,7 @@ public sealed class DockerRuntimePanelViewHeadlessTests
 
                 var stopStack = Assert.Single(
                     stack.GetVisualDescendants().OfType<Button>(),
-                    button => AutomationProperties.GetName(button) == "Stop stack");
+                    button => string.Equals(AutomationProperties.GetName(button), "Stop stack", StringComparison.Ordinal));
                 var stopStackCenter = stopStack.TranslatePoint(
                     new Point(stopStack.Bounds.Width / 2, stopStack.Bounds.Height / 2),
                     window);
@@ -421,8 +421,8 @@ public sealed class DockerRuntimePanelViewHeadlessTests
                     panel => panel.Classes.Contains("DockerDetailTabs"));
                 var menuButton = Assert.Single(
                     detailHeader.GetVisualDescendants().OfType<Button>(),
-                    button => AutomationProperties.GetName(button)
-                        == "Open container view menu");
+                    button => string.Equals(AutomationProperties.GetName(button)
+, "Open container view menu", StringComparison.Ordinal));
                 Assert.False(tabHost.IsEffectivelyVisible);
                 Assert.True(menuButton.IsEffectivelyVisible);
                 var menuButtonCenter = menuButton.TranslatePoint(
@@ -804,9 +804,7 @@ public sealed class DockerRuntimePanelViewHeadlessTests
         }
 
         private static IReadOnlyList<DockerContainerLogLine> CreateLines(int start, int count) =>
-            Enumerable.Range(start, count)
-                .Select(index => new DockerContainerLogLine(Timestamp(index), $"row {index}"))
-                .ToArray();
+            [.. Enumerable.Range(start, count).Select(index => new DockerContainerLogLine(Timestamp(index), $"row {index}"))];
 
         private static string Timestamp(int index) =>
             $"2026-08-10T12:{index / 60:00}:{index % 60:00}.000000000Z";

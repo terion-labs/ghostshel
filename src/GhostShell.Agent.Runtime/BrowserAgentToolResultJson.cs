@@ -106,8 +106,8 @@ internal static class BrowserAgentToolResultJson
         var stableCode = error.StableCode;
         return AgentToolResultJson.Failure(
             stableCode,
-            stableCode != InteractionOutcomeUnknownStableCode
-                && error.Retryable,
+!string.Equals(stableCode, InteractionOutcomeUnknownStableCode
+, StringComparison.Ordinal) && error.Retryable,
             panelId);
     }
 
@@ -119,8 +119,8 @@ internal static class BrowserAgentToolResultJson
         var stableCode = ProviderStableCode(error);
         return AgentToolResultJson.Failure(
             stableCode,
-            stableCode != InteractionOutcomeUnknownStableCode
-                && error.Retryable,
+!string.Equals(stableCode, InteractionOutcomeUnknownStableCode
+, StringComparison.Ordinal) && error.Retryable,
             panelId);
     }
 

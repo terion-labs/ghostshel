@@ -53,10 +53,7 @@ public sealed partial class SavedConnectionShortcutView : UserControl
         _ = e;
         if (sender is Control { DataContext: SavedConnectionLaunchViewModel launch })
         {
-            if (ShortcutMenuButton.Flyout is not null)
-            {
-                ShortcutMenuButton.Flyout.IsOpen = false;
-            }
+            ShortcutMenuButton.Flyout?.IsOpen = false;
 
             LaunchRequested?.Invoke(this, launch);
         }

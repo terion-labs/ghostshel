@@ -32,9 +32,9 @@ public sealed class CalciteSqlLanguageNativeIntegrationTests
             0,
             timeout.Token);
         Assert.Contains(empty.Items, item =>
-            item.Kind == SqlCompletionItemKind.Table && item.Label == "people");
+            item.Kind == SqlCompletionItemKind.Table && string.Equals(item.Label, "people", StringComparison.Ordinal));
         Assert.Contains(empty.Items, item =>
-            item.Kind == SqlCompletionItemKind.Keyword && item.Label == "SELECT");
+            item.Kind == SqlCompletionItemKind.Keyword && string.Equals(item.Label, "SELECT", StringComparison.Ordinal));
 
         const string aliasSql = "SELECT p. FROM people p";
         var aliasCompletion = await session.CompleteAsync(
@@ -42,9 +42,9 @@ public sealed class CalciteSqlLanguageNativeIntegrationTests
             aliasSql.IndexOf("p.", StringComparison.Ordinal) + 2,
             timeout.Token);
         Assert.Contains(aliasCompletion.Items, item =>
-            item.Kind == SqlCompletionItemKind.Column && item.Label == "id");
+            item.Kind == SqlCompletionItemKind.Column && string.Equals(item.Label, "id", StringComparison.Ordinal));
         Assert.Contains(aliasCompletion.Items, item =>
-            item.Kind == SqlCompletionItemKind.Column && item.Label == "name");
+            item.Kind == SqlCompletionItemKind.Column && string.Equals(item.Label, "name", StringComparison.Ordinal));
 
         const string preferredSql = "SELECT na";
         var preferredCompletion = await session.CompleteAsync(
@@ -54,7 +54,7 @@ public sealed class CalciteSqlLanguageNativeIntegrationTests
                 new DatabaseObjectId("app", "public", "people")),
             timeout.Token);
         Assert.Contains(preferredCompletion.Items, item =>
-            item.Kind == SqlCompletionItemKind.Column && item.Label == "name");
+            item.Kind == SqlCompletionItemKind.Column && string.Equals(item.Label, "name", StringComparison.Ordinal));
 
         const string preferredQualifierSql = "SELECT people";
         var preferredQualifierCompletion = await session.CompleteAsync(
@@ -65,8 +65,8 @@ public sealed class CalciteSqlLanguageNativeIntegrationTests
             timeout.Token);
         Assert.Contains(preferredQualifierCompletion.Items, item =>
             item.Kind == SqlCompletionItemKind.Column
-            && item.Label == "people.name"
-            && item.InsertText == "people.name");
+            && string.Equals(item.Label, "people.name"
+, StringComparison.Ordinal) && string.Equals(item.InsertText, "people.name", StringComparison.Ordinal));
 
         var valid = await session.DiagnoseAsync(
             "SELECT p.id, p.name FROM people p",
@@ -92,15 +92,15 @@ public sealed class CalciteSqlLanguageNativeIntegrationTests
             updatedSql.IndexOf("c.", StringComparison.Ordinal) + 2,
             timeout.Token);
         Assert.Contains(updatedCompletion.Items, item =>
-            item.Kind == SqlCompletionItemKind.Column && item.Label == "email");
+            item.Kind == SqlCompletionItemKind.Column && string.Equals(item.Label, "email", StringComparison.Ordinal));
         Assert.Empty(await session.DiagnoseAsync(
             "SELECT c.id, c.email FROM contacts c",
             timeout.Token));
         var updatedRoot = await session.CompleteAsync(string.Empty, 0, timeout.Token);
         Assert.Contains(updatedRoot.Items, item =>
-            item.Kind == SqlCompletionItemKind.Table && item.Label == "contacts");
+            item.Kind == SqlCompletionItemKind.Table && string.Equals(item.Label, "contacts", StringComparison.Ordinal));
         Assert.DoesNotContain(updatedRoot.Items, item =>
-            item.Kind == SqlCompletionItemKind.Table && item.Label == "people");
+            item.Kind == SqlCompletionItemKind.Table && string.Equals(item.Label, "people", StringComparison.Ordinal));
 
         await session.DisposeAsync();
         Assert.False(session.IsAvailable);

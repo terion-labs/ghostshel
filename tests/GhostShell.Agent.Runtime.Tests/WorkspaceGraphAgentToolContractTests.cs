@@ -22,7 +22,7 @@ public sealed class WorkspaceGraphAgentToolContractTests
                 BuiltInAgentTools.TabList,
                 BuiltInAgentTools.PanelList,
             ],
-            tools.Select(tool => tool.Name));
+            tools.Select(tool => tool.Name), StringComparer.Ordinal);
 
         foreach (var tool in tools)
         {
@@ -62,7 +62,7 @@ public sealed class WorkspaceGraphAgentToolContractTests
         }
 
         var inspectSchema = tools
-            .Single(tool => tool.Name == BuiltInAgentTools.WorkspaceInspect)
+            .Single(tool => string.Equals(tool.Name, BuiltInAgentTools.WorkspaceInspect, StringComparison.Ordinal))
             .InputSchema;
         Assert.Empty(
             inspectSchema.GetProperty("properties").EnumerateObject());
@@ -74,7 +74,7 @@ public sealed class WorkspaceGraphAgentToolContractTests
                  })
         {
             var schema = tools
-                .Single(tool => tool.Name == toolName)
+                .Single(tool => string.Equals(tool.Name, toolName, StringComparison.Ordinal))
                 .InputSchema;
             var properties = schema.GetProperty("properties");
             var offset = Assert.Single(properties.EnumerateObject());

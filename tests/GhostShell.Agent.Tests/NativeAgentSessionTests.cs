@@ -39,12 +39,11 @@ public sealed partial class NativeAgentSessionTests
 
         var events = await ReadCurrentEventBatchAsync(session);
         Assert.Equal(
-            new[]
-            {
+            [
                 AgentRunEventKind.TurnStarted,
                 AgentRunEventKind.ProvisionalText,
                 AgentRunEventKind.TurnCommitted,
-            },
+            ],
             events.Select(agentEvent => agentEvent.Kind));
         Assert.True(events[1].ContainsUntrustedContent);
     }
@@ -120,11 +119,10 @@ public sealed partial class NativeAgentSessionTests
         var image = new AgentImageAttachment(
             "sample.png",
             "image/png",
-            new byte[]
-            {
+            [
                 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
                 0x01,
-            });
+            ]);
 
         var result = await session.RunTurnAsync(
             string.Empty,
@@ -274,12 +272,11 @@ public sealed partial class NativeAgentSessionTests
         Assert.Equal(1, provider.LastRequest.Messages.Count(
             message => message.Role == AgentMessageRole.User));
         Assert.Equal(
-            new[]
-            {
+            [
                 AgentMessageRole.User,
                 AgentMessageRole.Assistant,
                 AgentMessageRole.Tool,
-            },
+            ],
             provider.LastRequest.Messages.Select(message => message.Role));
         Assert.Same(
             proposal,
@@ -339,7 +336,7 @@ public sealed partial class NativeAgentSessionTests
         Assert.Contains(
             provider.LastRequest.Messages,
             message => message.Role == AgentMessageRole.Summary
-                && message.Content == "Older turn summary");
+                && string.Equals(message.Content, "Older turn summary", StringComparison.Ordinal));
         Assert.Contains(
             provider.LastRequest.Messages,
             message => message.ToolResult is not null);
@@ -385,15 +382,14 @@ public sealed partial class NativeAgentSessionTests
         Assert.True(completed.Succeeded);
         var conversation = session.Snapshot().Conversation;
         Assert.Equal(
-            new[]
-            {
+            [
                 AgentMessageRole.User,
                 AgentMessageRole.Assistant,
                 AgentMessageRole.Tool,
                 AgentMessageRole.Assistant,
                 AgentMessageRole.Tool,
                 AgentMessageRole.Assistant,
-            },
+            ],
             conversation.Select(message => message.Role));
         Assert.Single(conversation, message => message.Role == AgentMessageRole.User);
         Assert.Equal(3, session.Snapshot().Generation);
@@ -432,7 +428,7 @@ public sealed partial class NativeAgentSessionTests
         Assert.NotNull(continuationProvider.LastRequest);
         Assert.Equal(
             ["processes.list"],
-            continuationProvider.LastRequest.Tools.Select(tool => tool.Name));
+            continuationProvider.LastRequest.Tools.Select(tool => tool.Name), StringComparer.Ordinal);
 
         var completed = await session.SubmitToolResultsAsync(
             processProposal.Generation,
@@ -497,8 +493,8 @@ public sealed partial class NativeAgentSessionTests
         var result = await session.SubmitToolResultsAsync(
             proposal.Generation,
             [SuccessJson(proposal, "{\"permission\":\"ask\"}")],
-            ImmutableArray.Create(Tool("foreign.tool")),
-            ImmutableArray.Create(Tool("processes.list")),
+            [Tool("foreign.tool")],
+            [Tool("processes.list")],
             continuationProvider,
             CancellationToken.None);
 
@@ -798,12 +794,11 @@ public sealed partial class NativeAgentSessionTests
         Assert.Equal(NativeAgentSessionState.Cancelled, snapshot.State);
         Assert.Empty(snapshot.PendingToolProposals);
         Assert.Equal(
-            new[]
-            {
+            [
                 AgentMessageRole.User,
                 AgentMessageRole.Assistant,
                 AgentMessageRole.Tool,
-            },
+            ],
             snapshot.Conversation.Select(message => message.Role));
         Assert.Same(result, snapshot.Conversation[^1].ToolResult);
 
@@ -921,7 +916,7 @@ public sealed partial class NativeAgentSessionTests
         Assert.Single(events, agentEvent => agentEvent.Kind == AgentRunEventKind.TurnCancelled);
         Assert.DoesNotContain(
             events,
-            agentEvent => agentEvent.ProvisionalText == "late response");
+            agentEvent => string.Equals(agentEvent.ProvisionalText, "late response", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -1588,7 +1583,7 @@ public sealed partial class NativeAgentSessionTests
                 "next user",
                 "next assistant",
             ],
-            session.Snapshot().Conversation.Select(message => message.Content));
+            session.Snapshot().Conversation.Select(message => message.Content), StringComparer.Ordinal);
         Assert.Equal(
             [
                 "system",
@@ -1599,11 +1594,11 @@ public sealed partial class NativeAgentSessionTests
                 "next user",
                 "next assistant",
             ],
-            session.Snapshot().Transcript.Select(message => message.Content));
+            session.Snapshot().Transcript.Select(message => message.Content), StringComparer.Ordinal);
         Assert.NotNull(provider.LastRequest);
         Assert.Equal(
             ["system", "summary", "current user", "current assistant", "next user"],
-            provider.LastRequest.Messages.Select(message => message.Content));
+            provider.LastRequest.Messages.Select(message => message.Content), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -1639,13 +1634,12 @@ public sealed partial class NativeAgentSessionTests
         Assert.True(compacted.Succeeded);
         Assert.NotNull(compactor.LastRequest);
         Assert.Equal(
-            new[]
-            {
+            [
                 AgentMessageRole.User,
                 AgentMessageRole.Assistant,
                 AgentMessageRole.Tool,
                 AgentMessageRole.Assistant,
-            },
+            ],
             compactor.LastRequest.Messages.Select(message => message.Role));
         Assert.Collection(
             session.Snapshot().Conversation,
@@ -1680,7 +1674,7 @@ public sealed partial class NativeAgentSessionTests
         Assert.Equal(AgentCompactionErrorCode.ConversationConflict, result.ErrorCode);
         Assert.DoesNotContain(
             session.Snapshot().Conversation,
-            message => message.Content == "stale summary");
+            message => string.Equals(message.Content, "stale summary", StringComparison.Ordinal));
         Assert.Equal(7, session.Snapshot().Conversation.Length);
     }
 
@@ -1874,7 +1868,7 @@ public sealed partial class NativeAgentSessionTests
         Assert.NotNull(compactor.LastRequest);
         Assert.Empty(compactor.LastRequest.Messages);
         Assert.Equal(
-            new[] { AgentMessageRole.User },
+            [AgentMessageRole.User],
             compactor.LastRequest.TurnPrefixMessages.Select(message => message.Role));
         Assert.Collection(
             session.Snapshot().Conversation,
@@ -2088,7 +2082,9 @@ public sealed partial class NativeAgentSessionTests
         string stableCode,
         string publicMessage,
         Exception innerException)
-        : AgentProviderException(stableCode, publicMessage, innerException);
+        : AgentProviderException(stableCode, publicMessage, innerException)
+    {
+    }
 
     private sealed class NonCooperativeProvider(
         bool throwOnCancellation = false,

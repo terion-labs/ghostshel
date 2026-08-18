@@ -352,20 +352,19 @@ public sealed class AgentBrowserActionComposer
             SessionCapabilities.BrowserMouse,
             value.SessionId,
             requiresOriginGuard: true,
-            AutomationArguments(value.SessionId, value.Binding)
-                .Concat(
-                [
-                    Argument("action", value.Action.ToString().ToLowerInvariant()),
-                    Argument("x", Number(value.XCss)),
-                    Argument("y", Number(value.YCss)),
-                    Argument("button", value.Button.ToString().ToLowerInvariant()),
-                    Argument("buttons", MouseButtons(value.Buttons)),
-                    Argument("modifiers", Modifiers(value.Modifiers)),
-                    Argument("click_count", value.ClickCount.ToString(CultureInfo.InvariantCulture)),
-                    Argument("delta_x", Number(value.DeltaX)),
-                    Argument("delta_y", Number(value.DeltaY)),
-                ])
-                .ToArray());
+            [
+                .. AutomationArguments(value.SessionId, value.Binding)
+,
+                Argument("action", value.Action.ToString().ToLowerInvariant()),
+                Argument("x", Number(value.XCss)),
+                Argument("y", Number(value.YCss)),
+                Argument("button", value.Button.ToString().ToLowerInvariant()),
+                Argument("buttons", MouseButtons(value.Buttons)),
+                Argument("modifiers", Modifiers(value.Modifiers)),
+                Argument("click_count", value.ClickCount.ToString(CultureInfo.InvariantCulture)),
+                Argument("delta_x", Number(value.DeltaX)),
+                Argument("delta_y", Number(value.DeltaY)),
+            ]);
     }
 
     private static PreparedRequest PrepareKey(AgentBrowserRequest.Key request)
@@ -377,14 +376,13 @@ public sealed class AgentBrowserActionComposer
             SessionCapabilities.BrowserKey,
             value.SessionId,
             requiresOriginGuard: true,
-            AutomationArguments(value.SessionId, value.Binding)
-                .Concat(
-                [
-                    Argument("action", value.Action.ToString().ToLowerInvariant()),
-                    Argument("key", value.Key.ToString()),
-                    Argument("modifiers", Modifiers(value.Modifiers)),
-                ])
-                .ToArray());
+            [
+                .. AutomationArguments(value.SessionId, value.Binding)
+,
+                Argument("action", value.Action.ToString().ToLowerInvariant()),
+                Argument("key", value.Key.ToString()),
+                Argument("modifiers", Modifiers(value.Modifiers)),
+            ]);
     }
 
     private static PreparedRequest PrepareScroll(AgentBrowserRequest.Scroll request)
@@ -396,16 +394,15 @@ public sealed class AgentBrowserActionComposer
             SessionCapabilities.BrowserScroll,
             value.SessionId,
             requiresOriginGuard: true,
-            AutomationArguments(value.SessionId, value.Binding)
-                .Concat(
-                [
-                    Argument("origin_x", Number(value.OriginXCss)),
-                    Argument("origin_y", Number(value.OriginYCss)),
-                    Argument("delta_x", Number(value.DeltaX)),
-                    Argument("delta_y", Number(value.DeltaY)),
-                    Argument("modifiers", Modifiers(value.Modifiers)),
-                ])
-                .ToArray());
+            [
+                .. AutomationArguments(value.SessionId, value.Binding)
+,
+                Argument("origin_x", Number(value.OriginXCss)),
+                Argument("origin_y", Number(value.OriginYCss)),
+                Argument("delta_x", Number(value.DeltaX)),
+                Argument("delta_y", Number(value.DeltaY)),
+                Argument("modifiers", Modifiers(value.Modifiers)),
+            ]);
     }
 
     private static PreparedRequest PrepareEvaluate(AgentBrowserRequest.Evaluate request)
@@ -417,15 +414,14 @@ public sealed class AgentBrowserActionComposer
             SessionCapabilities.BrowserEvaluate,
             value.SessionId,
             requiresOriginGuard: true,
-            AutomationArguments(value.SessionId, value.Binding)
-                .Concat(
-                [
-                    Argument("world", value.World.ToString().ToLowerInvariant()),
-                    Argument("await", value.AwaitPromise ? "true" : "false"),
-                    Argument("timeout_ms", Milliseconds(value.Timeout)),
-                    Argument("source", value.Source, QuoteForApproval(value.Source)),
-                ])
-                .ToArray());
+            [
+                .. AutomationArguments(value.SessionId, value.Binding)
+,
+                Argument("world", value.World.ToString().ToLowerInvariant()),
+                Argument("await", value.AwaitPromise ? "true" : "false"),
+                Argument("timeout_ms", Milliseconds(value.Timeout)),
+                Argument("source", value.Source, QuoteForApproval(value.Source)),
+            ]);
     }
 
     private static IEnumerable<MaterialArgument> AutomationArguments(

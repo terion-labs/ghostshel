@@ -268,8 +268,8 @@ public sealed class RuntimePanelLayoutPanelTests
         tab.RemovePanel(temporary.Id);
 
         Assert.Equal(
-            new[] { left.Id.Value, right.Id.Value }.Order(),
-            Dockables(tab.DockLayout).OfType<IDocument>().Select(item => item.Id).Order());
+            new[] { left.Id.Value, right.Id.Value }.Order(StringComparer.Ordinal),
+            Dockables(tab.DockLayout).OfType<IDocument>().Select(item => item.Id).Order(StringComparer.Ordinal));
         var savedSplit = Assert.Single(Dockables(tab.DockLayout).OfType<ProportionalDock>());
         Assert.Equal(Orientation.Horizontal, savedSplit.Orientation);
     }
@@ -288,8 +288,8 @@ public sealed class RuntimePanelLayoutPanelTests
         Assert.True(tab.RemovePanel(left.Id));
 
         Assert.Equal(
-            new[] { upperRight.Id.Value, lowerRight.Id.Value }.Order(),
-            Dockables(tab.DockLayout).OfType<IDocument>().Select(item => item.Id).Order());
+            new[] { upperRight.Id.Value, lowerRight.Id.Value }.Order(StringComparer.Ordinal),
+            Dockables(tab.DockLayout).OfType<IDocument>().Select(item => item.Id).Order(StringComparer.Ordinal));
         var survivingSplit = Assert.Single(
             Dockables(tab.DockLayout).OfType<ProportionalDock>(),
             dock => dock.Orientation == Orientation.Vertical

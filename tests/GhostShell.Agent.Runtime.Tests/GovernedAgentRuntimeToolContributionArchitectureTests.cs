@@ -50,7 +50,7 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.NotNull(resolve);
 
         foreach (var tool in BuiltInAgentTools.Catalog.Tools
-                     .Where(tool => tool.Name != BuiltInAgentTools.McpCall))
+                     .Where(tool => !string.Equals(tool.Name, BuiltInAgentTools.McpCall, StringComparison.Ordinal)))
         {
             var resolved = resolve.Invoke(
                 fixture.Runtime,

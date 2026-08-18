@@ -1181,7 +1181,7 @@ public sealed partial class MainWindowViewModel
                     }
                 }
 
-                return candidates.Select(candidate =>
+                return [.. candidates.Select(candidate =>
                 {
                     if (!_referencesByIdentity.TryGetValue(
                             candidate.Identity,
@@ -1197,7 +1197,7 @@ public sealed partial class MainWindowViewModel
                         BoundedLabel(candidate.Name, 128),
                         BoundedLabel(candidate.Kind, 64),
                         candidate.SupportedKinds);
-                }).ToArray();
+                })];
             }
         }
 
@@ -1259,15 +1259,14 @@ public sealed partial class MainWindowViewModel
                     option.Name,
                     option.Kind,
                     [PanelKind.DatabaseViewer]));
-            return execution
+            return [.. execution
                 .Concat(files)
                 .Concat(databases)
                 .GroupBy(candidate => candidate.Identity, StringComparer.Ordinal)
                 .Select(group => group.First())
                 .OrderBy(candidate => candidate.Name, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(candidate => candidate.Kind, StringComparer.OrdinalIgnoreCase)
-                .Take(64)
-                .ToArray();
+                .Take(64)];
         }
 
         private static string BoundedLabel(string value, int maximumRunes)

@@ -26,35 +26,49 @@ jobs:
         os: [macos-14, ubuntu-24.04, windows-2022]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
-      - name: Restore
-        run: dotnet restore GhostShell.slnx
-      - name: Build
-        run: dotnet build GhostShell.slnx --configuration Release --no-restore
-      - name: Test
-        run: dotnet test GhostShell.slnx --configuration Release --no-build --logger "trx;LogFilePrefix=${{ runner.os }}"
+      - name: Run the canonical repository gate
+        shell: bash
+        run: ./scripts/check.sh --full
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-results-${{ runner.os }}
-          path: "**/TestResults/*.trx"
+          path: ".test-results/**/*.trx"
           if-no-files-found: error
 
   format-and-boundaries:
     name: Format and architecture boundaries
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
-      - run: dotnet restore GhostShell.slnx
-      - run: dotnet format GhostShell.slnx --verify-no-changes --no-restore
-      - run: dotnet test tests/GhostShell.Architecture.Tests/GhostShell.Architecture.Tests.csproj --configuration Release --no-restore
+      - name: Run the fast repository gate
+        run: ./scripts/check.sh --quick
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Reject vulnerable dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: low
+          comment-summary-in-pr: never
 
   portable-release-publish:
     name: Publish ${{ matrix.rid }}
@@ -68,11 +82,13 @@ jobs:
         # toolchain and must never be emitted as a feature-incomplete package.
         rid: [linux-x64, linux-arm64]
     steps:
-      - uses: actions/checkout@v6
-      - uses: docker/setup-qemu-action@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
         with:
           platforms: arm64
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
       - name: Expose the SDK at the repository-local path
@@ -84,6 +100,11 @@ jobs:
         run: |
           ./scripts/build-libghostty-vt.sh --rid ${{ matrix.rid }}
           ./scripts/build-sql-language-worker.sh --docker --rid ${{ matrix.rid }}
+      - name: Restore the locked dependency graph
+        run: >-
+          dotnet restore src/GhostShell.Desktop/GhostShell.Desktop.csproj
+          --runtime ${{ matrix.rid }}
+          --locked-mode
       - name: Publish portable desktop
         run: >-
           dotnet publish src/GhostShell.Desktop/GhostShell.Desktop.csproj
@@ -91,6 +112,7 @@ jobs:
           --runtime ${{ matrix.rid }}
           --self-contained true
           -p:GhostShellSqlLanguageRequired=true
+          --no-restore
           --output artifacts/${{ matrix.rid }}
       - name: Verify SQL intelligence payload in candidate
         run: |
@@ -123,7 +145,7 @@ jobs:
           test "$(jq -r '.thirdPartyNoticesSha256' "$receipt")" = \
             "$(sha256sum "$native_dir/THIRD-PARTY-NOTICES.md" | awk '{print $1}')"
       - name: Upload package candidate
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ghostshell-${{ matrix.rid }}
           path: artifacts/${{ matrix.rid }}

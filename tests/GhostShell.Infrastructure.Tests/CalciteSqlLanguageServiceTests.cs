@@ -445,7 +445,7 @@ public sealed class CalciteSqlLanguageServiceTests
     {
         var arguments = marker is null
             ? new[] { WorkerAssemblyPath(), mode }
-            : new[] { WorkerAssemblyPath(), mode, marker };
+            : [WorkerAssemblyPath(), mode, marker];
         return new CalciteSqlLanguageService(
             new SqlLanguageWorkerLaunch(ResolveDotnetHost(), arguments),
             requestTimeout ?? RequestTimeout);

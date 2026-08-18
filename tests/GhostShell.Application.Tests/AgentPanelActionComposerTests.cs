@@ -153,7 +153,7 @@ public sealed class AgentPanelActionComposerTests
         Assert.True(typeof(AgentPanelRequest).IsAbstract);
         Assert.Equal(
             ["Focus", "Inspect"],
-            requestKinds.Select(type => type.Name));
+            requestKinds.Select(type => type.Name), StringComparer.Ordinal);
         Assert.All(requestKinds, type => Assert.True(type.IsSealed));
         Assert.All(
             requestKinds,
@@ -163,7 +163,7 @@ public sealed class AgentPanelActionComposerTests
         Assert.True(typeof(AgentPanelActionResult).IsAbstract);
         Assert.Equal(
             ["Focused", "Inspected"],
-            resultKinds.Select(type => type.Name));
+            resultKinds.Select(type => type.Name), StringComparer.Ordinal);
         Assert.All(resultKinds, type => Assert.True(type.IsSealed));
         Assert.Empty(typeof(AgentPanelAction).GetConstructors());
         Assert.Equal("RunAgentPanelActionAsync", hostMethod.Name);

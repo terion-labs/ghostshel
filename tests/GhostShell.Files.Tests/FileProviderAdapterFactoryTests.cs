@@ -135,14 +135,13 @@ public sealed class FileProviderAdapterFactoryTests
             Assert.False(profileCapabilities["files.webdav"].HasFlag(
                 FilePanelCapability.GovernedDelete));
             Assert.All(
-                new[]
-                {
+                [
                     "files.local",
                     "files.sftp",
                     "files.ftp",
                     "files.smb",
                     "files.webdav",
-                },
+                ],
                 id =>
                 {
                     Assert.True(profileCapabilities[id].HasFlag(
@@ -151,7 +150,7 @@ public sealed class FileProviderAdapterFactoryTests
                         FilePanelCapability.Delete));
                 });
             Assert.All(
-                new[] { "files.sftp", "files.ftp", "files.smb" },
+                ["files.sftp", "files.ftp", "files.smb"],
                 id => Assert.Equal(
                     FilePanelCapability.None,
                     profileCapabilities[id]

@@ -18,7 +18,7 @@ public sealed class WorkspaceDefinitionTests
 
         Assert.Equal(
             ["screen-entry", "connection-entry", "notes-entry"],
-            reordered.Entries.Select(entry => entry.Id.Value));
+            reordered.Entries.Select(entry => entry.Id.Value), StringComparer.Ordinal);
         Assert.Equal(workspace.Id, reordered.Id);
         Assert.Equal(workspace.Icon, reordered.Icon);
     }
@@ -130,8 +130,8 @@ public sealed class WorkspaceDefinitionTests
         Assert.Contains(
             result.Issues,
             issue => issue.Code == DefinitionValidationCode.InvalidPanel
-                && issue.Target == browser.Id.Value
-                && issue.Message.Contains(
+                && string.Equals(issue.Target, browser.Id.Value
+, StringComparison.Ordinal) && issue.Message.Contains(
                     "delivery failure policy",
                     StringComparison.OrdinalIgnoreCase));
     }

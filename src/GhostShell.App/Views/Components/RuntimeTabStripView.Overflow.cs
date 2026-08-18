@@ -41,10 +41,7 @@ public sealed partial class RuntimeTabStripView
     {
         StopObservingTabs();
         _observedCollection = tabs as INotifyCollectionChanged;
-        if (_observedCollection is not null)
-        {
-            _observedCollection.CollectionChanged += OnTabsCollectionChanged;
-        }
+        _observedCollection?.CollectionChanged += OnTabsCollectionChanged;
 
         if (tabs is not null)
         {
@@ -60,11 +57,8 @@ public sealed partial class RuntimeTabStripView
 
     private void StopObservingTabs()
     {
-        if (_observedCollection is not null)
-        {
-            _observedCollection.CollectionChanged -= OnTabsCollectionChanged;
-            _observedCollection = null;
-        }
+        _observedCollection?.CollectionChanged -= OnTabsCollectionChanged;
+        _observedCollection = null;
 
         foreach (var tab in _observedTabs)
         {

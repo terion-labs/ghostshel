@@ -59,10 +59,7 @@ public sealed class StartupProtectionRuntime : IStartupProtection
         _encryption = encryption;
         _state = Read();
         _locked = _state is not null;
-        if (_encryption is not null)
-        {
-            _encryption.Changed += OnEncryptionChanged;
-        }
+        _encryption?.Changed += OnEncryptionChanged;
     }
 
     /// <summary>

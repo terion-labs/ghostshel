@@ -21,12 +21,10 @@ internal static class QuickTerminalRecoveryCodec
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         var payload = new QuickTerminalRecoveryPayload(
-            viewModel.Tabs
-                .Select(tab => tab.ConnectionId?.Value)
-                .ToArray(),
+            [.. viewModel.Tabs.Select(tab => tab.ConnectionId?.Value)],
             Math.Max(0, viewModel.Tabs.IndexOf(viewModel.ActiveTab!)),
-            viewModel.Tabs.Select(tab => tab.Title).ToArray(),
-            viewModel.Tabs.Select(tab => tab.Icon).ToArray());
+            [.. viewModel.Tabs.Select(tab => tab.Title)],
+            [.. viewModel.Tabs.Select(tab => tab.Icon)]);
         return JsonSerializer.Serialize(
             payload,
             QuickTerminalRecoveryJsonContext.Default.QuickTerminalRecoveryPayload);
@@ -38,7 +36,7 @@ internal static class QuickTerminalRecoveryCodec
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         payload = null;
-        if (snapshot.Key != SnapshotKey || snapshot.SchemaVersion != SchemaVersion)
+        if (!string.Equals(snapshot.Key, SnapshotKey, StringComparison.Ordinal) || snapshot.SchemaVersion != SchemaVersion)
         {
             return false;
         }

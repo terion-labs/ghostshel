@@ -8,7 +8,7 @@ public sealed class PortablePtyEnvironmentTests
     public void Process_environment_advertises_the_supported_interactive_state_protocol()
     {
         var environment = PortaPtyFactory.CreateProcessEnvironment(
-            new Dictionary<string, string>
+            new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["LANG"] = "C",
                 ["TERM"] = "inherited-terminal",

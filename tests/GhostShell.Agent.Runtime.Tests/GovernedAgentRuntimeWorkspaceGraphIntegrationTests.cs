@@ -45,37 +45,37 @@ public sealed partial class GovernedAgentRuntimeTests
             WorkspaceGraphToolNames,
             toolName => Assert.Contains(
                 requests[0].Tools,
-                tool => tool.Name == toolName));
+                tool => string.Equals(tool.Name, toolName, StringComparison.Ordinal)));
         Assert.Contains(
             requests[0].Tools,
-            tool => tool.Name == BuiltInAgentTools.TabCreate);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TabCreate, StringComparison.Ordinal));
         Assert.Contains(
             requests[0].Tools,
-            tool => tool.Name == BuiltInAgentTools.PanelAdd);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.PanelAdd, StringComparison.Ordinal));
         Assert.Contains(
             requests[0].Tools,
             tool => tool.Name.StartsWith("terminal.", StringComparison.Ordinal));
         Assert.Contains(
             requests[0].Tools,
-            tool => tool.Name == BuiltInAgentTools.BrowserReadState);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.BrowserReadState, StringComparison.Ordinal));
         Assert.Contains(
             requests[0].Tools,
-            tool => tool.Name == BuiltInAgentTools.FilesList);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.FilesList, StringComparison.Ordinal));
         Assert.Contains(
             requests[0].Tools,
-            tool => tool.Name == BuiltInAgentTools.ProcessesList);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.ProcessesList, StringComparison.Ordinal));
         Assert.Contains(
             requests[0].Tools,
-            tool => tool.Name == BuiltInAgentTools.StatisticsRead);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.StatisticsRead, StringComparison.Ordinal));
         Assert.Contains(
             requests[0].Tools,
-            tool => tool.Name == BuiltInAgentTools.DatabaseReadState);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.DatabaseReadState, StringComparison.Ordinal));
         Assert.Contains(
             requests[0].Tools,
-            tool => tool.Name == BuiltInAgentTools.RedisScan);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.RedisScan, StringComparison.Ordinal));
         Assert.Contains(
             requests[0].Tools,
-            tool => tool.Name == BuiltInAgentTools.DockerReadState);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.DockerReadState, StringComparison.Ordinal));
         Assert.Contains(
             "kind=\"placeholder\"",
             Assert.Single(
@@ -162,10 +162,10 @@ public sealed partial class GovernedAgentRuntimeTests
         var request = Assert.Single(provider.Requests);
         Assert.Contains(
             request.Tools,
-            tool => tool.Name == BuiltInAgentTools.TerminalReadScreen);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalReadScreen, StringComparison.Ordinal));
         Assert.Contains(
             request.Tools,
-            tool => tool.Name == BuiltInAgentTools.WorkspaceInspect);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.WorkspaceInspect, StringComparison.Ordinal));
         Assert.Contains(
             "terminal_count=1",
             Assert.Single(
@@ -219,9 +219,8 @@ public sealed partial class GovernedAgentRuntimeTests
                 "workspace-graph-call-2").StableCode);
         Assert.Contains(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.PanelFocus
-                && auditEvent.Outcome == AuditOutcome.Succeeded
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.PanelFocus
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Succeeded
                 && auditEvent.Details is AuditDetails.AgentActionDetails
                 {
                     AuthorizationSource: AgentAuthorizationSource.YoloPolicy,
@@ -259,10 +258,10 @@ public sealed partial class GovernedAgentRuntimeTests
             WorkspaceGraphToolNames,
             toolName => Assert.Contains(
                 requests[0].Tools,
-                tool => tool.Name == toolName));
+                tool => string.Equals(tool.Name, toolName, StringComparison.Ordinal)));
         Assert.Contains(
             requests[0].Tools,
-            tool => tool.Name == BuiltInAgentTools.TerminalReadScreen);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalReadScreen, StringComparison.Ordinal));
 
         var graphResult = ToolResult(requests[1], "workspace-graph-call-1");
         Assert.Equal("workspace_inspected", graphResult.StableCode);
@@ -284,14 +283,10 @@ public sealed partial class GovernedAgentRuntimeTests
                 fixture.StatisticsPanelId.Value,
                 fixture.ProcessPanelId.Value,
             ],
-            panels
-                .Select(panel => panel.GetProperty("panel_id").GetString()!)
-                .ToArray());
+            [.. panels.Select(panel => panel.GetProperty("panel_id").GetString()!)]);
         Assert.Equal(
             ["terminal", "statistics", "process_monitor"],
-            panels
-                .Select(panel => panel.GetProperty("kind").GetString()!)
-                .ToArray());
+            [.. panels.Select(panel => panel.GetProperty("kind").GetString()!)]);
         Assert.DoesNotContain(
             fixture.SiblingPanelId.Value,
             graphResult.Value.Content,
@@ -305,14 +300,12 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Equal(1, fixture.GraphHost.SuccessCount);
         Assert.Contains(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.WorkspaceInspect
-                && auditEvent.Outcome == AuditOutcome.Succeeded);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.WorkspaceInspect
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Succeeded);
         Assert.Contains(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.TerminalReadScreen
-                && auditEvent.Outcome == AuditOutcome.Succeeded);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.TerminalReadScreen
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Succeeded);
 
         var effectivePolicy = Assert.IsType<AgentPolicy>(
             fixture.Runtime.Snapshot.EffectivePolicy);
@@ -344,10 +337,10 @@ public sealed partial class GovernedAgentRuntimeTests
             WorkspaceGraphToolNames,
             toolName => Assert.DoesNotContain(
                 request.Tools,
-                tool => tool.Name == toolName));
+                tool => string.Equals(tool.Name, toolName, StringComparison.Ordinal)));
         Assert.Contains(
             request.Tools,
-            tool => tool.Name == BuiltInAgentTools.TerminalReadScreen);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalReadScreen, StringComparison.Ordinal));
         Assert.Equal(0, fixture.GraphHost.CallCount);
     }
 
@@ -377,7 +370,7 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.True(result.IsSuccess);
         Assert.Contains(
             provider.Requests.ToArray()[0].Tools,
-            tool => tool.Name == BuiltInAgentTools.WorkspaceInspect);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.WorkspaceInspect, StringComparison.Ordinal));
         Assert.Equal(0, fixture.GraphHost.CallCount);
         var rejected = ToolResult(
             provider.Requests.ToArray()[1],
@@ -416,9 +409,8 @@ public sealed partial class GovernedAgentRuntimeTests
             denied.Status);
         Assert.Contains(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.WorkspaceInspect
-                && auditEvent.Outcome == AuditOutcome.Denied);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.WorkspaceInspect
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Denied);
         Assert.Equal(
             policy.Model,
             fixture.ProviderResolver.Binding.RequestedModel);
@@ -472,9 +464,8 @@ public sealed partial class GovernedAgentRuntimeTests
             .GetProperty("tabs")[0]
             .GetProperty("panels")
             .EnumerateArray()
-            .Single(panel =>
-                panel.GetProperty("panel_id").GetString()
-                == fixture.StatisticsPanelId.Value);
+            .Single(panel => string.Equals(panel.GetProperty("panel_id").GetString()
+, fixture.StatisticsPanelId.Value, StringComparison.Ordinal));
         Assert.True(statistics.GetProperty("focused").GetBoolean());
     }
 
@@ -526,8 +517,7 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Equal("tool_not_available", terminalResult.StableCode);
         Assert.DoesNotContain(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.TerminalReadScreen);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.TerminalReadScreen, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -661,7 +651,7 @@ public sealed partial class GovernedAgentRuntimeTests
             request.Messages,
             message =>
                 message.Role == AgentMessageRole.Tool
-                && message.ToolResult?.ProviderCallId == providerCallId)
+                && string.Equals(message.ToolResult?.ProviderCallId, providerCallId, StringComparison.Ordinal))
             .ToolResult!;
 
     private static AgentPolicy ExactWorkspaceGraphPolicy(
@@ -1269,9 +1259,9 @@ public sealed partial class GovernedAgentRuntimeTests
                 throw new ArgumentNullException(nameof(targetMethod));
             }
 
-            if (targetMethod.Name
-                    == nameof(ISessionHostClient.InspectAgentContextAsync)
-                && args is
+            if (string.Equals(targetMethod.Name
+, nameof(ISessionHostClient.InspectAgentContextAsync)
+, StringComparison.Ordinal) && args is
                 [
                     AgentContextRequest request,
                     OperationContext context,

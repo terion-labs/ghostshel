@@ -282,7 +282,7 @@ internal static class QaData
     ];
 
     public static IReadOnlyList<StoredDefinition<KeymapProfile>> Keymaps { get; } =
-        BuiltInKeymaps.All.Select(Stored).ToArray();
+        [.. BuiltInKeymaps.All.Select(Stored)];
 
     /// <summary>
     /// The capture set exercises a side-docked tab strip so the vertical layout

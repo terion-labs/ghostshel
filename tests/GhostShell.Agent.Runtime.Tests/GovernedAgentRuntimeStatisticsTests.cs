@@ -45,12 +45,12 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         var initial = fixture.Provider.Requests.ToArray()[0];
         var tool = Assert.Single(
             initial.Tools,
-            candidate => candidate.Name == BuiltInAgentTools.StatisticsRead);
+            candidate => string.Equals(candidate.Name, BuiltInAgentTools.StatisticsRead, StringComparison.Ordinal));
         Assert.Empty(tool.InputSchema.GetProperty("properties").EnumerateObject());
         Assert.DoesNotContain("panel_id", tool.InputSchema.GetRawText());
         Assert.DoesNotContain(
             initial.Tools,
-            candidate => candidate.Name == BuiltInAgentTools.ProcessesList);
+            candidate => string.Equals(candidate.Name, BuiltInAgentTools.ProcessesList, StringComparison.Ordinal));
         var system = Assert.Single(
             initial.Messages,
             message => message.Role == AgentMessageRole.System);
@@ -91,9 +91,8 @@ public sealed partial class GovernedAgentRuntimeProcessTests
 
         var completed = Assert.Single(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.StatisticsRead
-                && auditEvent.Outcome == AuditOutcome.Succeeded);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.StatisticsRead
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Succeeded);
         var details = Assert.IsType<AuditDetails.AgentActionDetails>(
             completed.Details);
         Assert.Equal(AgentCapability.SystemData, details.Capability);
@@ -186,7 +185,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             "invalid_tool_arguments",
             ToolResultFromLastRequest(omitted.Provider).StableCode);
         var schema = omitted.Provider.Requests.ToArray()[0].Tools
-            .Single(tool => tool.Name == BuiltInAgentTools.StatisticsRead)
+            .Single(tool => string.Equals(tool.Name, BuiltInAgentTools.StatisticsRead, StringComparison.Ordinal))
             .InputSchema;
         Assert.Equal(
             [ProcessRuntimeContextProxy.StatisticsPanelId.Value],
@@ -194,7 +193,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
                 .GetProperty("panel_id")
                 .GetProperty("enum")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
 
         await using var selected = ProcessRuntimeFixture.Create(
             ProcessScope.MixedStatisticsOpenTab,

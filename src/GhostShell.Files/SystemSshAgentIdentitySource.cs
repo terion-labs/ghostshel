@@ -12,11 +12,10 @@ internal sealed class SystemSshAgentIdentitySource : ISshAgentIdentitySource
         try
         {
             var agent = new SshAgent();
-            return (await agent
+            return [.. (await agent
                     .RequestIdentitiesAsync(cancellationToken)
                     .ConfigureAwait(false))
-                .Cast<IPrivateKeySource>()
-                .ToArray();
+                .Cast<IPrivateKeySource>()];
         }
         catch (Exception exception) when (exception is
             SshAgentException or IOException or SocketException or InvalidOperationException)

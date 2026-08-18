@@ -78,8 +78,7 @@ public sealed class DatabasePanelClientDuckDbSmokeTests : IDisposable
             ConnectionString,
             tunnel: null,
             CancellationToken.None);
-        var table = Assert.Single(objects, candidate =>
-            candidate.Name == "deployments" && candidate.Schema == "ops");
+        var table = Assert.Single(objects, candidate => string.Equals(candidate.Name, "deployments", StringComparison.Ordinal) && string.Equals(candidate.Schema, "ops", StringComparison.Ordinal));
 
         Assert.Equal(DatabaseTableKind.Table, table.Kind);
         Assert.False(string.IsNullOrWhiteSpace(table.Catalog));
@@ -94,7 +93,7 @@ public sealed class DatabasePanelClientDuckDbSmokeTests : IDisposable
 
         Assert.Equal(
             ["id", "service", "status", "amount", "deployed_at"],
-            details.Columns.Select(column => column.Name));
+            details.Columns.Select(column => column.Name), StringComparer.Ordinal);
         var id = details.Columns[0];
         Assert.True(id.IsPrimaryKey);
         Assert.Equal(1, id.PrimaryKeyOrdinal);
@@ -103,8 +102,7 @@ public sealed class DatabasePanelClientDuckDbSmokeTests : IDisposable
         Assert.False(service.IsNullable);
         Assert.Equal("'unknown'", service.DefaultExpression);
         Assert.Equal(DatabaseValueKind.Text, service.ValueKind);
-        var index = Assert.Single(details.Indexes, candidate =>
-            candidate.Name == "ix_deployments_service");
+        var index = Assert.Single(details.Indexes, candidate => string.Equals(candidate.Name, "ix_deployments_service", StringComparison.Ordinal));
         Assert.True(index.IsValid);
         Assert.Contains(
             "CREATE INDEX",
@@ -160,7 +158,7 @@ public sealed class DatabasePanelClientDuckDbSmokeTests : IDisposable
                 ConnectionString,
                 tunnel: null,
                 CancellationToken.None),
-            candidate => candidate.Name == "deployments" && candidate.Schema == "ops");
+            candidate => string.Equals(candidate.Name, "deployments", StringComparison.Ordinal) && string.Equals(candidate.Schema, "ops", StringComparison.Ordinal));
 
         var firstPage = await client.ReadTableAsync(
             "duckdb",

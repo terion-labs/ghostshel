@@ -546,15 +546,15 @@ public sealed class SavedScreenEditorViewModelTests
             [connection],
             [],
             [firstLayout, secondLayout]);
-        var sharedEditor = editor.Panels.Single(panel => panel.SlotId.Value == "shared");
+        var sharedEditor = editor.Panels.Single(panel => string.Equals(panel.SlotId.Value, "shared", StringComparison.Ordinal));
 
         editor.SelectedLayout = editor.LayoutOptions.Single(option =>
             option.Id == secondLayout.Id);
 
         Assert.Same(sharedEditor, editor.Panels[0]);
         Assert.Equal(sharedPanelId, editor.Panels[0].Id);
-        Assert.Equal(["shared", "added"], editor.Panels.Select(panel => panel.SlotId.Value));
-        Assert.DoesNotContain(editor.Panels, panel => panel.Id.Value == "panel-removed");
+        Assert.Equal(["shared", "added"], editor.Panels.Select(panel => panel.SlotId.Value), StringComparer.Ordinal);
+        Assert.DoesNotContain(editor.Panels, panel => string.Equals(panel.Id.Value, "panel-removed", StringComparison.Ordinal));
 
         editor.Panels[0].Kind = ScreenPanelKind.FileViewer;
         editor.Panels[1].Kind = ScreenPanelKind.Statistics;
@@ -1007,12 +1007,11 @@ public sealed class SavedScreenEditorViewModelTests
             LayoutDefinition.CurrentSchemaVersion,
             name,
             new LayoutGrid(slotIds.Length, 1),
-            slotIds
+            [.. slotIds
                 .Select((slotId, index) => new LayoutSlotDefinition(
                     new LayoutSlotId(slotId),
                     new LayoutGridBounds(index, 0, 1, 1),
-                    new LayoutMinimumSize(220, 140)))
-                .ToArray());
+                    new LayoutMinimumSize(220, 140)))]);
 
     private static ConnectionProfile LocalConnection(string id) => new(
         new ConnectionId(id),

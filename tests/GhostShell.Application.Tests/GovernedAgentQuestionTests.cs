@@ -212,8 +212,8 @@ public sealed class GovernedAgentQuestionTests
             ProviderId: null,
             Target: null,
             TargetTitle: "Target",
-            ContextItems: ImmutableArray<GovernedAgentContextItem>.Empty,
-            Messages: Array.Empty<AgentChatMessage>(),
+            ContextItems: [],
+            Messages: [],
             EffectivePolicy: AgentPolicy.Default,
             ProvisionalAssistantText: string.Empty,
             Status: "Waiting",
@@ -233,6 +233,6 @@ public sealed class GovernedAgentQuestionTests
             out _));
         Assert.DoesNotContain(
             BuiltInAgentTools.Catalog.Tools,
-            tool => tool.Name == IntrinsicAgentTools.AskUser);
+            tool => string.Equals(tool.Name, IntrinsicAgentTools.AskUser, StringComparison.Ordinal));
     }
 }

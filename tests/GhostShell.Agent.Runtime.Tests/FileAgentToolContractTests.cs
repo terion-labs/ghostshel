@@ -39,7 +39,7 @@ public sealed class FileAgentToolContractTests
                 BuiltInAgentTools.FilesCreateDirectory,
                 BuiltInAgentTools.FilesDelete,
             ],
-            tools.Select(tool => tool.Name));
+            tools.Select(tool => tool.Name), StringComparer.Ordinal);
         Assert.All(
             tools,
             tool =>
@@ -48,17 +48,17 @@ public sealed class FileAgentToolContractTests
                 Assert.False(
                     schema.GetProperty("additionalProperties").GetBoolean());
                 Assert.Equal(
-                    tool.Name == BuiltInAgentTools.FilesDelete
-                        ? ["path_segments", "recursive"]
+string.Equals(tool.Name, BuiltInAgentTools.FilesDelete
+, StringComparison.Ordinal) ? ["path_segments", "recursive"]
                         : ["path_segments"],
                     schema.GetProperty("properties")
                         .EnumerateObject()
-                        .Select(property => property.Name));
+                        .Select(property => property.Name), StringComparer.Ordinal);
                 Assert.Equal(
                     ["path_segments"],
                     schema.GetProperty("required")
                         .EnumerateArray()
-                        .Select(value => value.GetString()));
+                        .Select(value => value.GetString()), StringComparer.Ordinal);
                 Assert.DoesNotContain(
                     "panel_id",
                     schema.GetRawText(),
@@ -78,21 +78,21 @@ public sealed class FileAgentToolContractTests
 
         Assert.Equal(
             0,
-            tools.Single(tool => tool.Name == BuiltInAgentTools.FilesList)
+            tools.Single(tool => string.Equals(tool.Name, BuiltInAgentTools.FilesList, StringComparison.Ordinal))
                 .InputSchema.GetProperty("properties")
                 .GetProperty("path_segments")
                 .GetProperty("minItems")
                 .GetInt32());
         Assert.Equal(
             0,
-            tools.Single(tool => tool.Name == BuiltInAgentTools.FilesStat)
+            tools.Single(tool => string.Equals(tool.Name, BuiltInAgentTools.FilesStat, StringComparison.Ordinal))
                 .InputSchema.GetProperty("properties")
                 .GetProperty("path_segments")
                 .GetProperty("minItems")
                 .GetInt32());
         Assert.Equal(
             1,
-            tools.Single(tool => tool.Name == BuiltInAgentTools.FilesRead)
+            tools.Single(tool => string.Equals(tool.Name, BuiltInAgentTools.FilesRead, StringComparison.Ordinal))
                 .InputSchema.GetProperty("properties")
                 .GetProperty("path_segments")
                 .GetProperty("minItems")
@@ -100,16 +100,15 @@ public sealed class FileAgentToolContractTests
         Assert.Equal(
             1,
             tools.Single(
-                    tool =>
-                        tool.Name
-                        == BuiltInAgentTools.FilesCreateDirectory)
+                    tool => string.Equals(tool.Name
+, BuiltInAgentTools.FilesCreateDirectory, StringComparison.Ordinal))
                 .InputSchema.GetProperty("properties")
                 .GetProperty("path_segments")
                 .GetProperty("minItems")
                 .GetInt32());
         Assert.Equal(
             1,
-            tools.Single(tool => tool.Name == BuiltInAgentTools.FilesDelete)
+            tools.Single(tool => string.Equals(tool.Name, BuiltInAgentTools.FilesDelete, StringComparison.Ordinal))
                 .InputSchema.GetProperty("properties")
                 .GetProperty("path_segments")
                 .GetProperty("minItems")
@@ -162,14 +161,14 @@ public sealed class FileAgentToolContractTests
             PanelIds(tools, BuiltInAgentTools.FilesDelete));
         Assert.DoesNotContain(
             tools,
-            tool => tool.Name == BuiltInAgentTools.FilesStat);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.FilesStat, StringComparison.Ordinal));
         Assert.All(
             tools,
             tool => Assert.Contains(
                 "panel_id",
                 tool.InputSchema.GetProperty("required")
                     .EnumerateArray()
-                    .Select(value => value.GetString())));
+                    .Select(value => value.GetString()), StringComparer.Ordinal));
 
         var onePanelTools = FileAgentToolSet.For(
             [list],
@@ -246,16 +245,14 @@ public sealed class FileAgentToolContractTests
                 BuiltInAgentTools.FilesAccessRead,
                 BuiltInAgentTools.FilesTransfers,
             ],
-            tools.Select(tool => tool.Name));
-        var searchSchema = tools.Single(tool =>
-            tool.Name == BuiltInAgentTools.FilesSearch).InputSchema;
+            tools.Select(tool => tool.Name), StringComparer.Ordinal);
+        var searchSchema = tools.Single(tool => string.Equals(tool.Name, BuiltInAgentTools.FilesSearch, StringComparison.Ordinal)).InputSchema;
         Assert.Equal(
             ["path_segments", "query", "scope", "max_results"],
             searchSchema.GetProperty("required")
                 .EnumerateArray()
-                .Select(item => item.GetString()));
-        Assert.Empty(tools.Single(tool =>
-                tool.Name == BuiltInAgentTools.FilesTransfers)
+                .Select(item => item.GetString()), StringComparer.Ordinal);
+        Assert.Empty(tools.Single(tool => string.Equals(tool.Name, BuiltInAgentTools.FilesTransfers, StringComparison.Ordinal))
             .InputSchema.GetProperty("properties")
             .EnumerateObject());
 
@@ -520,30 +517,30 @@ public sealed class FileAgentToolContractTests
             Assert.IsType<FileAgentIntent.CreateDirectory>(
                     parsedCreate.Intent)
                 .RelativePath
-                .Select(segment => segment.Value));
+                .Select(segment => segment.Value), StringComparer.Ordinal);
         Assert.Equal(
             ["deploy", "old"],
             Assert.IsType<FileAgentIntent.Delete>(parsedDelete.Intent)
                 .RelativePath
-                .Select(segment => segment.Value));
+                .Select(segment => segment.Value), StringComparer.Ordinal);
         var moveIntent = Assert.IsType<FileAgentIntent.Move>(parsedMove.Intent);
         Assert.Equal(
             ["deploy", "draft"],
-            moveIntent.RelativePath.Select(segment => segment.Value));
+            moveIntent.RelativePath.Select(segment => segment.Value), StringComparer.Ordinal);
         Assert.Equal(
             ["archive", "draft"],
-            moveIntent.DestinationRelativePath.Select(segment => segment.Value));
+            moveIntent.DestinationRelativePath.Select(segment => segment.Value), StringComparer.Ordinal);
 
         var moveSchema = FileAgentToolSet.For(panel, panel.FileMetadata!)
-            .Single(tool => tool.Name == BuiltInAgentTools.FilesMove)
+            .Single(tool => string.Equals(tool.Name, BuiltInAgentTools.FilesMove, StringComparison.Ordinal))
             .InputSchema;
         Assert.Equal(
             ["source_path_segments", "destination_path_segments"],
             moveSchema.GetProperty("required")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
         Assert.All(
-            new[] { "source_path_segments", "destination_path_segments" },
+            ["source_path_segments", "destination_path_segments"],
             property => Assert.Equal(
                 1,
                 moveSchema.GetProperty("properties")
@@ -608,15 +605,14 @@ public sealed class FileAgentToolContractTests
     private static string[] PanelIds(
         ImmutableArray<AgentToolDefinition> tools,
         string toolName) =>
-        tools
-            .Single(tool => tool.Name == toolName)
+        [.. tools
+            .Single(tool => string.Equals(tool.Name, toolName, StringComparison.Ordinal))
             .InputSchema
             .GetProperty("properties")
             .GetProperty("panel_id")
             .GetProperty("enum")
             .EnumerateArray()
-            .Select(value => value.GetString()!)
-            .ToArray();
+            .Select(value => value.GetString()!)];
 
     private static AgentContextPanel ContextPanel(
         string suffix,

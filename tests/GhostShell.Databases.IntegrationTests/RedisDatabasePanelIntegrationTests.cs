@@ -94,10 +94,10 @@ public sealed class RedisDatabasePanelIntegrationTests
             }
 
             var indexes = await session.ListSearchIndexesAsync(cancellationToken);
-            Assert.Contains(indexes, index => index.Name == "ghostshell-index");
+            Assert.Contains(indexes, index => string.Equals(index.Name, "ghostshell-index", StringComparison.Ordinal));
             var search = await WaitForSearchResultAsync(session, cancellationToken);
             Assert.Equal(1, search.Total);
-            Assert.Contains(search.Values, value => value.Identity == "ghostshell:document:1");
+            Assert.Contains(search.Values, value => string.Equals(value.Identity, "ghostshell:document:1", StringComparison.Ordinal));
 
             await session.SelectDatabaseAsync(1, cancellationToken);
 
@@ -113,13 +113,13 @@ public sealed class RedisDatabasePanelIntegrationTests
             Assert.Equal(
                 ["city"],
                 (await session.ReadKeyAsync(Key("ghostshell:hash"), 100, cancellationToken))
-                    .Entries.Select(entry => entry.Field));
+                    .Entries.Select(entry => entry.Field), StringComparer.Ordinal);
 
             await RemoveFirstEntryAsync(session, "ghostshell:list", "list", cancellationToken);
             Assert.Equal(
                 ["second"],
                 (await session.ReadKeyAsync(Key("ghostshell:list"), 100, cancellationToken))
-                    .Entries.Select(entry => entry.Value));
+                    .Entries.Select(entry => entry.Value), StringComparer.Ordinal);
 
             await RemoveFirstEntryAsync(session, "ghostshell:set", "set", cancellationToken);
             Assert.Single((await session.ReadKeyAsync(Key("ghostshell:set"), 100, cancellationToken)).Entries);
@@ -172,7 +172,7 @@ public sealed class RedisDatabasePanelIntegrationTests
             }
         }
         while (true);
-        return keys.Values.ToArray();
+        return [.. keys.Values];
     }
 
     private static async Task<RedisSearchResult> WaitForSearchResultAsync(

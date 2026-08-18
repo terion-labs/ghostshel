@@ -1,5 +1,5 @@
-using GhostShell.Core;
 using System.Text;
+using GhostShell.Core;
 
 namespace GhostShell.Application;
 

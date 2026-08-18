@@ -197,7 +197,7 @@ internal static class SshConnectionArguments
         // data. The plan carries an explicit POSIX-target warning because Windows OpenSSH and
         // non-POSIX login shells do not guarantee this command contract.
         const string script = "cd \"$1\" && exec \"${SHELL:-/bin/sh}\" -l";
-        var directoryArgument = directory.StartsWith("-", StringComparison.Ordinal)
+        var directoryArgument = directory.StartsWith('-')
             ? $"./{directory}"
             : directory;
         return $"exec /bin/sh -c {QuotePosixShellWord(script)} ghostshell-startup {QuotePosixShellWord(directoryArgument)}";
@@ -232,7 +232,7 @@ internal static class SshConnectionArguments
                 nameof(directory));
         }
 
-        var directoryArgument = directory.StartsWith("-", StringComparison.Ordinal)
+        var directoryArgument = directory.StartsWith('-')
             ? $"./{directory}"
             : directory;
         return $"exec /bin/sh -c {QuotePosixShellWord(multiplexerScript)} ghostshell-multiplexer "

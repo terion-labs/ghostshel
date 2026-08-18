@@ -1,8 +1,8 @@
-using System.Diagnostics;
-using System.Collections.ObjectModel;
 using System.Collections.Immutable;
+using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -62,6 +62,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Reject,
     }
 
+    [StructLayout(LayoutKind.Auto)]
     private readonly record struct RuntimeMutationNavigationSnapshot(
         ShellRoute Route,
         ShellOverlay Overlay,
@@ -317,15 +318,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _sessionRestoreCoordinator = sessionRestoreCoordinator;
         _terminalMultiplexerCoordinator = terminalMultiplexerCoordinator;
         _agentPolicyCoordinator = agentPolicyCoordinator;
-        if (_agentPolicyCoordinator is not null)
-        {
-            _agentPolicyCoordinator.Changed += OnAgentPolicyCoordinatorChanged;
-        }
-        if (_terminalMultiplexerCoordinator is not null)
-        {
-            _terminalMultiplexerCoordinator.LeasesChanged +=
+        _agentPolicyCoordinator?.Changed += OnAgentPolicyCoordinatorChanged;
+        _terminalMultiplexerCoordinator?.LeasesChanged +=
                 OnTerminalMultiplexerLeasesChanged;
-        }
         _recentSessionHistory = recentSessionHistory;
         _timeProvider = timeProvider ?? TimeProvider.System;
         ClientId = agentApprovalPrincipal is null
@@ -344,25 +339,18 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             : null;
         DefaultAgentPolicy = new SavedScreenAgentPolicyEditorViewModel(
             _agentPolicyCoordinator?.Policy,
-            _aiProviderRuntime?.Profiles);
-        DefaultAgentPolicy.IsEnabled = true;
+            _aiProviderRuntime?.Profiles)
+        {
+            IsEnabled = true
+        };
         DefaultAgentPolicy.Changed += OnDefaultAgentPolicyChanged;
         Onboarding = onboarding;
         ProductComponents = productComponentCatalog?.Components ?? [];
         _catalog.Changed += OnCatalogChanged;
         _fileTransferQueue.TransfersChanged += OnFileTransfersChanged;
-        if (_fileProviderRuntime is not null)
-        {
-            _fileProviderRuntime.ProfilesChanged += OnFileProviderProfilesChanged;
-        }
-        if (_aiProviderRuntime is not null)
-        {
-            _aiProviderRuntime.ProfilesChanged += OnAiProviderProfilesChanged;
-        }
-        if (_runtimeRecoveryWriter is not null)
-        {
-            _runtimeRecoveryWriter.WriteFailed += OnRuntimeRecoveryWriteFailed;
-        }
+        _fileProviderRuntime?.ProfilesChanged += OnFileProviderProfilesChanged;
+        _aiProviderRuntime?.ProfilesChanged += OnAiProviderProfilesChanged;
+        _runtimeRecoveryWriter?.WriteFailed += OnRuntimeRecoveryWriteFailed;
         RefreshCatalog(_catalog.Snapshot);
         RefreshFileTransfers();
         _ = RefreshSecretsAsync(CancellationToken.None);
@@ -576,7 +564,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             var profile = item.Value;
             var driver = _databaseConnectionCatalog?.Drivers
-                .FirstOrDefault(descriptor => descriptor.Id == profile.DriverId);
+                .FirstOrDefault(descriptor => string.Equals(descriptor.Id, profile.DriverId, StringComparison.Ordinal));
             return new PanelConnectionOptionViewModel(
                 new PanelConnectionOptionViewModel.Target.Database(profile.Id),
                 profile.Name,
@@ -1621,20 +1609,19 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         RuntimeTabViewModel[] tabs = target switch
         {
             AgentTarget.Panel panel =>
-                workspace.Tabs.Where(tab => tab.Id == panel.TabId).ToArray(),
+                [.. workspace.Tabs.Where(tab => tab.Id == panel.TabId)],
             AgentTarget.OpenTab openTab =>
-                workspace.Tabs.Where(tab => tab.Id == openTab.TabId).ToArray(),
+                [.. workspace.Tabs.Where(tab => tab.Id == openTab.TabId)],
             AgentTarget.Workspace =>
-                workspace.Tabs.ToArray(),
+                [.. workspace.Tabs],
             AgentTarget.SelectedPanels selected
                 when selected.Panels.All(panel =>
                     workspace.Tabs.Any(tab =>
                         tab.Id == panel.TabId
                         && tab.Panels.Any(candidate => candidate.Id == panel.PanelId))) =>
-                selected.Panels
+                [.. selected.Panels
                     .Select(panel => workspace.Tabs.Single(tab => tab.Id == panel.TabId))
-                    .Distinct()
-                    .ToArray(),
+                    .Distinct()],
             _ => [],
         };
         if (tabs.Length == 0)
@@ -1738,10 +1725,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             var tab = workspace.Tabs.SingleOrDefault(
                 candidate => candidate.Id == option.TabId);
-            var terminal = tab?.Panels.SingleOrDefault(
-                candidate => candidate.Id == option.PanelId)
-                as TerminalRuntimePanelViewModel;
-            if (tab is null || terminal is null || !IsLiveAgentTerminal(terminal))
+            if (tab is null || tab?.Panels.SingleOrDefault(
+                candidate => candidate.Id == option.PanelId) is not TerminalRuntimePanelViewModel terminal || !IsLiveAgentTerminal(terminal))
             {
                 error =
                     "A selected terminal is no longer live. Review the selected terminals before sending.";
@@ -1984,11 +1969,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     public IReadOnlyList<RecentSessionRecord> CaptureHistoryExportSnapshot() =>
-        (SelectedHistoryExportScope == HistoryExportScope.CurrentResults
+        [.. (SelectedHistoryExportScope == HistoryExportScope.CurrentResults
             ? FilteredHistorySessions
             : HistorySessions)
-        .Select(item => item.Record)
-        .ToArray();
+        .Select(item => item.Record)];
 
     public void SetHistoryExportStatus(string status)
     {
@@ -2190,7 +2174,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 theme.Accent,
                 theme.TextScaleOverride,
                 CancellationToken.None,
-                ThemeChromePreference.From(theme) with { ShowWorkspacesPanel = value });
+                ThemeChromePreference.From(theme) with { ShowWorkspacesPanel = value }).AsTask();
         }
     }
 
@@ -2518,12 +2502,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         WorkspaceEditor = new WorkspaceEditorViewModel(
             stored.Value,
             stored.Revision,
-            snapshot.Connections.Select(item => item.Value).ToArray(),
-            snapshot.Screens.Select(item => item.Value).ToArray(),
-            snapshot.Layouts.Select(item => item.Value).ToArray(),
-            snapshot.FileProviderProfiles.Select(item => item.Value).ToArray(),
+            [.. snapshot.Connections.Select(item => item.Value)],
+            [.. snapshot.Screens.Select(item => item.Value)],
+            [.. snapshot.Layouts.Select(item => item.Value)],
+            [.. snapshot.FileProviderProfiles.Select(item => item.Value)],
             _aiProviderRuntime?.Profiles);
-        WorkspaceEditor.SetPeers(snapshot.Workspaces.Select(item => item.Value).ToArray());
+        WorkspaceEditor.SetPeers([.. snapshot.Workspaces.Select(item => item.Value)]);
         _editingDefinition = stored.Value.Key;
         _editingRevision = stored.Revision;
         EditorName = stored.Value.Name;
@@ -2558,12 +2542,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         WorkspaceEditor = new WorkspaceEditorViewModel(
             definition,
             expectedRevision: null,
-            snapshot.Connections.Select(item => item.Value).ToArray(),
-            snapshot.Screens.Select(item => item.Value).ToArray(),
-            snapshot.Layouts.Select(item => item.Value).ToArray(),
-            snapshot.FileProviderProfiles.Select(item => item.Value).ToArray(),
+            [.. snapshot.Connections.Select(item => item.Value)],
+            [.. snapshot.Screens.Select(item => item.Value)],
+            [.. snapshot.Layouts.Select(item => item.Value)],
+            [.. snapshot.FileProviderProfiles.Select(item => item.Value)],
             _aiProviderRuntime?.Profiles);
-        WorkspaceEditor.SetPeers(snapshot.Workspaces.Select(item => item.Value).ToArray());
+        WorkspaceEditor.SetPeers([.. snapshot.Workspaces.Select(item => item.Value)]);
         _editingDefinition = definition.Key;
         _editingRevision = null;
         EditorName = definition.Name;
@@ -2909,7 +2893,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             WorkspaceInstanceId.New(),
             connection.Name,
             ThemePreference.BronzeFallback.ToString(),
-            Connections.Where(item => item.Id == connection.Id).ToArray(),
+            [.. Connections.Where(item => item.Id == connection.Id)],
             CurrentAgentPolicyProvenance());
         try
         {
@@ -2949,7 +2933,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             WorkspaceInstanceId.New(),
             screen.Name,
             ThemePreference.BronzeFallback.ToString(),
-            Connections.ToArray(),
+            [.. Connections],
             CurrentAgentPolicyProvenance());
         try
         {
@@ -3704,7 +3688,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         ArgumentNullException.ThrowIfNull(snapshots);
         var snapshot = snapshots
-            .Where(item => item.Key == RuntimeWorkspaceRecoveryCodec.SnapshotKey)
+            .Where(item => string.Equals(item.Key, RuntimeWorkspaceRecoveryCodec.SnapshotKey, StringComparison.Ordinal))
             .OrderByDescending(item => item.UpdatedAt)
             .FirstOrDefault();
         if (snapshot is null)
@@ -3816,12 +3800,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         var stored = _catalog.Snapshot.Connections
-            .SingleOrDefault(item => item.Value.Id == connectionId.Value);
-        if (stored is null)
-        {
-            throw new InvalidOperationException("That connection no longer exists.");
-        }
-
+            .SingleOrDefault(item => item.Value.Id == connectionId.Value) ?? throw new InvalidOperationException("That connection no longer exists.");
         return new ConnectionEditorViewModel(
             _connectionRuntime,
             stored.Value,
@@ -3856,20 +3835,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             return new FileProviderProfileEditorViewModel(
                 runtime,
                 connections,
-                Secrets.ToArray());
+                [.. Secrets]);
         }
 
         var stored = _catalog.Snapshot.FileProviderProfiles
-            .SingleOrDefault(item => item.Value.Id == profileId.Value);
-        if (stored is null)
-        {
-            throw new InvalidOperationException("That file-provider profile no longer exists.");
-        }
-
+            .SingleOrDefault(item => item.Value.Id == profileId.Value) ?? throw new InvalidOperationException("That file-provider profile no longer exists.");
         return new FileProviderProfileEditorViewModel(
             runtime,
             connections,
-            Secrets.ToArray(),
+            [.. Secrets],
             stored.Value,
             stored.Revision);
     }
@@ -3908,7 +3882,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
             database = new DatabaseConnectionEditorViewModel(
                 _databaseConnectionCatalog,
-                _catalog.Snapshot.Connections.Select(item => item.Value).ToArray(),
+                [.. _catalog.Snapshot.Connections.Select(item => item.Value)],
                 existing,
                 existing?.PasswordSecret is { } storedSecret
                     ? token => ResolveDatabasePasswordAsync(storedSecret, token)
@@ -3947,21 +3921,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             return new AiProviderProfileEditorViewModel(
                 runtime,
-                Secrets.ToArray(),
+                [.. Secrets],
                 suggestedOrder: NextAiProviderOrder(_catalog.Snapshot),
                 authenticationRuntime: _aiProviderAuthenticationRuntime);
         }
 
         var stored = _catalog.Snapshot.AiProviderProfiles
-            .SingleOrDefault(item => item.Value.Id == profileId.Value);
-        if (stored is null)
-        {
-            throw new InvalidOperationException("That AI-provider profile no longer exists.");
-        }
-
+            .SingleOrDefault(item => item.Value.Id == profileId.Value) ?? throw new InvalidOperationException("That AI-provider profile no longer exists.");
         return new AiProviderProfileEditorViewModel(
             runtime,
-            Secrets.ToArray(),
+            [.. Secrets],
             stored.Value,
             stored.Revision,
             authenticationRuntime: _aiProviderAuthenticationRuntime);
@@ -3988,20 +3957,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (profileId is null)
         {
             return new McpServerProfileEditorViewModel(
-                secrets: Secrets.ToArray());
+                secrets: [.. Secrets]);
         }
 
         var stored = _catalog.Snapshot.McpServerProfiles
-            .SingleOrDefault(item => item.Value.Id == profileId.Value);
-        if (stored is null)
-        {
-            throw new InvalidOperationException("That MCP-server profile no longer exists.");
-        }
-
+            .SingleOrDefault(item => item.Value.Id == profileId.Value) ?? throw new InvalidOperationException("That MCP-server profile no longer exists.");
         return new McpServerProfileEditorViewModel(
             stored.Value,
             stored.Revision,
-            Secrets.ToArray());
+            [.. Secrets]);
     }
 
     public async ValueTask<DefinitionStoreResult<StoredDefinition<McpServerProfile>>>
@@ -4662,8 +4626,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                         item.Scope.Kind == SecretScopeKind.Global
                             ? "Global"
                             : $"{item.Scope.Kind} · {item.Scope.OwnerId}",
-                        item.UpdatedAt.ToLocalTime().ToString("g"),
-                        item.LastUsedAt?.ToLocalTime().ToString("g") ?? "Never",
+                        item.UpdatedAt.ToLocalTime().ToString("g", System.Globalization.CultureInfo.InvariantCulture),
+                        item.LastUsedAt?.ToLocalTime().ToString("g", System.Globalization.CultureInfo.InvariantCulture) ?? "Never",
                         item.Scope,
                         dependencies.Length == 0
                             ? "No saved definition dependencies"
@@ -4695,17 +4659,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public SavedScreenEditorViewModel CreateSavedScreenEditor(ScreenId screenId)
     {
         var stored = _catalog.Snapshot.Screens
-            .SingleOrDefault(item => item.Value.Id == screenId);
-        if (stored is null)
-        {
-            throw new InvalidOperationException("That saved screen no longer exists.");
-        }
-
+            .SingleOrDefault(item => item.Value.Id == screenId) ?? throw new InvalidOperationException("That saved screen no longer exists.");
         return new SavedScreenEditorViewModel(
             stored.Value,
             stored.Revision,
-            _catalog.Snapshot.Connections.Select(item => item.Value).ToArray(),
-            _catalog.Snapshot.FileProviderProfiles.Select(item => item.Value).ToArray(),
+            [.. _catalog.Snapshot.Connections.Select(item => item.Value)],
+            [.. _catalog.Snapshot.FileProviderProfiles.Select(item => item.Value)],
             SelectableLayouts(),
             _aiProviderRuntime?.Profiles ?? []);
     }
@@ -4715,8 +4674,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         return SavedScreenEditorViewModel.CreateNew(
             RequireName(name, "Saved screen"),
             SelectableLayouts(),
-            _catalog.Snapshot.Connections.Select(item => item.Value).ToArray(),
-            _catalog.Snapshot.FileProviderProfiles.Select(item => item.Value).ToArray(),
+            [.. _catalog.Snapshot.Connections.Select(item => item.Value)],
+            [.. _catalog.Snapshot.FileProviderProfiles.Select(item => item.Value)],
             _aiProviderRuntime?.Profiles ?? []);
     }
 
@@ -4726,10 +4685,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// workspace editor still receives the full set so existing tab references
     /// resolve.
     /// </summary>
-    private LayoutDefinition[] SelectableLayouts() => _catalog.Snapshot.Layouts
+    private LayoutDefinition[] SelectableLayouts() => [.. _catalog.Snapshot.Layouts
         .Select(item => item.Value)
-        .Where(layout => !LayoutDefinition.IsAutoSaved(layout.Id))
-        .ToArray();
+        .Where(layout => !LayoutDefinition.IsAutoSaved(layout.Id))];
 
     public async ValueTask<DefinitionStoreResult<StoredDefinition<ScreenDefinition>>> SaveSavedScreenAsync(
         SavedScreenEditorSaveRequest request,
@@ -5886,7 +5844,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             return false;
         }
 
-        if (_filePanelClient.Profiles.All(profile => profile.Id != profileId.Value))
+        if (_filePanelClient.Profiles.All(profile => !string.Equals(profile.Id, profileId.Value, StringComparison.Ordinal)))
         {
             SetError("That file connection is not ready yet.");
             return false;
@@ -6620,7 +6578,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             return Task.FromResult(false);
         }
 
-        if (_filePanelClient.Profiles.All(profile => profile.Id != profileId.Value))
+        if (_filePanelClient.Profiles.All(profile => !string.Equals(profile.Id, profileId.Value, StringComparison.Ordinal)))
         {
             SetError("That file connection is not ready yet.");
             return Task.FromResult(false);
@@ -7485,8 +7443,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         DefaultAgentPolicy.Dispose();
         DefaultAgentPolicy = new SavedScreenAgentPolicyEditorViewModel(
             draft ?? _agentPolicyCoordinator?.Policy,
-            _aiProviderRuntime?.Profiles);
-        DefaultAgentPolicy.IsEnabled = true;
+            _aiProviderRuntime?.Profiles)
+        {
+            IsEnabled = true
+        };
         DefaultAgentPolicy.Changed += OnDefaultAgentPolicyChanged;
         OnPropertyChanged(nameof(DefaultAgentPolicy));
         OnPropertyChanged(nameof(CanSaveDefaultAgentPolicy));
@@ -7516,10 +7476,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private void StopTrackingAgentTerminalSelection(
         RuntimeWorkspaceViewModel? workspace)
     {
-        if (workspace is not null)
-        {
-            workspace.Tabs.CollectionChanged -= OnAgentSelectionTabsChanged;
-        }
+        workspace?.Tabs.CollectionChanged -= OnAgentSelectionTabsChanged;
 
         foreach (var tab in _agentSelectionTrackedTabs)
         {
@@ -7596,9 +7553,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         object? sender,
         PropertyChangedEventArgs eventArgs)
     {
-        if (eventArgs.PropertyName
-                == nameof(TerminalRuntimePanelViewModel.SessionRequest)
-            && sender is TerminalRuntimePanelViewModel { SessionRequest: not null } terminal)
+        if (string.Equals(eventArgs.PropertyName
+, nameof(TerminalRuntimePanelViewModel.SessionRequest)
+, StringComparison.Ordinal) && sender is TerminalRuntimePanelViewModel { SessionRequest: not null } terminal)
         {
             TrackRecentSession(terminal);
         }
@@ -7842,7 +7799,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         System.ComponentModel.PropertyChangedEventArgs eventArgs)
     {
         if (sender is RuntimeTabViewModel
-            && eventArgs.PropertyName == nameof(RuntimeTabViewModel.DockLayoutRevision))
+            && string.Equals(eventArgs.PropertyName, nameof(RuntimeTabViewModel.DockLayoutRevision), StringComparison.Ordinal))
         {
             QueueRuntimeRecoverySnapshot();
         }
@@ -7946,7 +7903,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         var stored = _catalog.Snapshot.Workspaces
-            .SingleOrDefault(item => item.Value.Id.Value == sourceKey.Value);
+            .SingleOrDefault(item => string.Equals(item.Value.Id.Value, sourceKey.Value, StringComparison.Ordinal));
         return stored is { Value.AutoSave: true } ? stored : null;
     }
 
@@ -8142,13 +8099,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 storedTab?.Id ?? WorkspaceEntryId.New(),
                 tab.Title,
                 layoutId,
-                slots
+                [.. slots
                     .Select(slot => CaptureAutoSavePanel(
                         panelsBySlot[slot.Id.Value],
                         slot.Id,
                         storedTab,
-                        usedStoredPanels))
-                    .ToArray()));
+                        usedStoredPanels))]));
         }
 
         // Every tab is the launcher, so nothing durable is open and the
@@ -10433,14 +10389,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         ReplaceIfChanged(HistorySessions, items, static (a, b) => a.PresentsSameAs(b));
         ReplaceIfChanged(
             RecentSessions,
-            items.Take(8).ToArray(),
+            [.. items.Take(8)],
             static (a, b) => a.PresentsSameAs(b));
         // The durable half was just replaced, so whatever the runtime half said
         // went with it.
         RefreshWorkspaceRuntimeFlags();
         RecentSessionStatus = HistorySessions.Count > 0
             ? "Recent sessions store definition metadata only; commands and terminal content are excluded."
-            : _storedHistoryRetention is { Policy: { IsEnabled: false } }
+            : _storedHistoryRetention is { Policy.IsEnabled: false }
                 ? "Session history is disabled in the local privacy settings."
                 : "Sessions you open will appear here without storing terminal content or commands.";
         OnPropertyChanged(nameof(HasRecentSessions));
@@ -10487,7 +10443,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // the row truthful after the connection is edited, and leaves it null for
         // a definition that no longer exists.
         var connection = record.SourceDefinition.Kind == ConnectionProfile.Kind
-            ? Connections.FirstOrDefault(item => item.Id.Value == record.SourceDefinition.Value)
+            ? Connections.FirstOrDefault(item => string.Equals(item.Id.Value, record.SourceDefinition.Value, StringComparison.Ordinal))
             : null;
 
         return new RecentSessionHistoryItemViewModel(
@@ -10601,7 +10557,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private bool CanOpenDefinition(DefinitionKey key) => key.Kind switch
     {
         var kind when kind == ConnectionProfile.Kind => Connections
-            .Any(item => item.Id.Value == key.Value && item.CanOpen),
+            .Any(item => string.Equals(item.Id.Value, key.Value, StringComparison.Ordinal) && item.CanOpen),
         var kind when kind == ScreenDefinition.Kind => _catalog.Snapshot.Screens
             .Any(item => item.Value.Key == key),
         var kind when kind == WorkspaceDefinition.Kind => _catalog.Snapshot.Workspaces
@@ -10670,7 +10626,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         ReplaceIfChanged(
             Workspaces,
-            snapshot.Workspaces
+            [.. snapshot.Workspaces
                 .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
                 .Select(item => new LauncherWorkspaceViewModel(
                     item.Value.Id,
@@ -10683,8 +10639,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                     WorkspaceTints.Of(item.Value),
                     Initials(item.Value.Name),
                     WorkspaceIconSymbol(item.Value.Icon),
-                    item.Value.Entries.Count))
-                .ToArray(),
+                    item.Value.Entries.Count))],
             static (a, b) => a.PresentsSameAs(b));
         // A rail item that was replaced arrives with its runtime flags cleared,
         // and the flags are derived rather than stored, so nothing else would
@@ -10698,24 +10653,21 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         SetActiveWorkspaceAccent(ShellAccentOf(RuntimeWorkspace, snapshot));
         ReplaceIfChanged(
             Connections,
-            snapshot.Connections
+            [.. snapshot.Connections
                 .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(item => ToConnectionItem(item.Value, item.Revision))
-                .ToArray(),
+                .Select(item => ToConnectionItem(item.Value, item.Revision))],
             static (a, b) => a.PresentsSameAs(b));
         ReplaceIfChanged(
             FileConnections,
-            snapshot.FileProviderProfiles
+            [.. snapshot.FileProviderProfiles
                 .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(item => ToFileConnectionItem(item.Value, item.Revision))
-                .ToArray(),
+                .Select(item => ToFileConnectionItem(item.Value, item.Revision))],
             static (a, b) => a.PresentsSameAs(b));
         ReplaceIfChanged(
             DatabaseConnections,
-            snapshot.DatabaseConnections
+            [.. snapshot.DatabaseConnections
                 .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(item => ToDatabaseConnectionItem(item.Value, item.Revision))
-                .ToArray(),
+                .Select(item => ToDatabaseConnectionItem(item.Value, item.Revision))],
             static (a, b) => a.PresentsSameAs(b));
         RefreshFileProviderDefinitions(snapshot);
         RefreshAiProviderDefinitions(snapshot);
@@ -10723,7 +10675,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var layoutsById = snapshot.Layouts.ToDictionary(item => item.Value.Id, item => item.Value);
         ReplaceIfChanged(
             Screens,
-            snapshot.Screens
+            [.. snapshot.Screens
                 .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
                 .Select(item =>
                 {
@@ -10737,12 +10689,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                         item.Value.Panels.Count,
                         CreateScreenPreview(item.Value, layout),
                         ScreenSummary(item.Value, snapshot));
-                })
-                .ToArray(),
+                })],
             static (a, b) => a.PresentsSameAs(b));
         ReplaceIfChanged(
             Layouts,
-            snapshot.Layouts
+            [.. snapshot.Layouts
                 .Where(item => !LayoutDefinition.IsAutoSaved(item.Value.Id))
                 .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
                 .Select(item => new LayoutCardViewModel(
@@ -10752,23 +10703,21 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                     item.Value.Grid.Rows,
                     item.Value.Grid.Columns,
                     item.Value.Slots.Count,
-                    CreateLayoutPreview(item.Value)))
-                .ToArray(),
+                    CreateLayoutPreview(item.Value)))],
             static (a, b) => a.PresentsSameAs(b));
         OnPropertyChanged(nameof(HasWorkspaces));
         OnPropertyChanged(nameof(HasNoWorkspaces));
         ReplaceIfChanged(
             ConnectionsPreview,
-            Connections
+            [.. Connections
                 .Concat(FileConnections)
                 .Concat(DatabaseConnections)
                 .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
-                .Take(HomePreviewConnectionCount)
-                .ToArray(),
+                .Take(HomePreviewConnectionCount)],
             static (a, b) => a.PresentsSameAs(b));
         ReplaceIfChanged(
             ScreensPreview,
-            Screens.Take(HomePreviewScreenCount).ToArray(),
+            [.. Screens.Take(HomePreviewScreenCount)],
             static (a, b) => a.PresentsSameAs(b));
         OnPropertyChanged(nameof(HasConnections));
         OnPropertyChanged(nameof(PanelConnectionOptions));
@@ -10862,7 +10811,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         ReplaceIfChanged(
             RecentSessions,
-            HistorySessions.Take(8).ToArray(),
+            [.. HistorySessions.Take(8)],
             static (a, b) => a.PresentsSameAs(b));
         RefreshHistorySearchResults();
     }
@@ -10874,7 +10823,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     private static IReadOnlyList<LauncherScreenPanelPreviewViewModel> CreateLayoutPreview(
         LayoutDefinition layout) =>
-        layout.Slots
+        [.. layout.Slots
             .Select(slot => new LauncherScreenPanelPreviewViewModel(
                 layout.Grid.Columns,
                 layout.Grid.Rows,
@@ -10882,8 +10831,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 slot.Bounds.Row,
                 slot.Bounds.ColumnSpan,
                 slot.Bounds.RowSpan,
-                IsPrimary: false))
-            .ToArray();
+                IsPrimary: false))];
 
     private static IReadOnlyList<LauncherScreenPanelPreviewViewModel> CreateScreenPreview(
         ScreenDefinition screen,
@@ -10895,7 +10843,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         var slots = layout.Slots.ToDictionary(slot => slot.Id);
-        return screen.Panels
+        return [.. screen.Panels
             .Select((panel, index) => (panel, index))
             .Where(item => slots.ContainsKey(item.panel.SlotId))
             .Select(item =>
@@ -10909,8 +10857,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                     bounds.ColumnSpan,
                     bounds.RowSpan,
                     item.index == 0);
-            })
-            .ToArray();
+            })];
     }
 
     private void RefreshFileProviderDefinitions(DefinitionCatalogSnapshot snapshot)
@@ -10986,10 +10933,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 FileProviderEndpoint(item.Value.Configuration),
                 liveFileProfiles.Contains(item.Value.Id.Value),
                 item.Value.Configuration.PanelLaunchCapabilities)));
-        return shortcuts
+        return [.. shortcuts
             .OrderBy(shortcut => shortcut.Name, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(shortcut => shortcut.Kind, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+            .ThenBy(shortcut => shortcut.Kind, StringComparer.OrdinalIgnoreCase)];
     }
 
     private static SavedConnectionShortcutViewModel CreateSavedConnectionShortcut(
@@ -11016,7 +10962,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             detail,
             canOpen,
             defaultLaunch,
-            launches.Where(launch => launch != defaultLaunch).ToArray());
+            [.. launches.Where(launch => launch != defaultLaunch)]);
     }
 
     private static string PanelLaunchLabel(PanelKind panel) => panel switch
@@ -11065,10 +11011,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 FileProviderFamilyLabel(profile.Family),
                 FileProviderDetail(profile),
                 true)));
-        return options
+        return [.. options
             .OrderBy(option => option.Name, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(option => option.Kind, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+            .ThenBy(option => option.Kind, StringComparer.OrdinalIgnoreCase)];
     }
 
     private void RefreshAiProviderDefinitions(DefinitionCatalogSnapshot snapshot)
@@ -11675,7 +11620,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             var bindings = activeBindings[command.Id].ToArray();
             if (bindings.Length == 0)
             {
-                bindings = command.DefaultBindings.ToArray();
+                bindings = [.. command.DefaultBindings];
             }
 
             var invocations = bindings
@@ -11686,7 +11631,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                         command.Id,
                         binding.Arguments),
                 })
-                .DistinctBy(invocation => invocation.Target.InvocationKey)
+                .DistinctBy(invocation => invocation.Target.InvocationKey, StringComparer.Ordinal)
                 .ToArray();
             if (invocations.Length == 0)
             {
@@ -12075,7 +12020,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         return snapshot.Workspaces
-            .FirstOrDefault(item => item.Value.Id.Value == source.SourceDefinition.Value)
+            .FirstOrDefault(item => string.Equals(item.Value.Id.Value, source.SourceDefinition.Value, StringComparison.Ordinal))
             ?.Value.Accent;
     }
 
@@ -12093,7 +12038,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             WorkspaceInstanceId.New(),
             recovered.Name,
             recovered.Accent,
-            Connections.Where(item => connectionIds.Contains(item.Id)).ToArray(),
+            [.. Connections.Where(item => connectionIds.Contains(item.Id))],
             recovered.AgentPolicy?.ToProvenance()
                 ?? RuntimeAgentPolicyProvenance.Unconfigured,
             ResolveRecoveredTerminalMultiplexingOverride(recovered));
@@ -12132,14 +12077,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         if (recovered.HistorySource is not
             { SourceKind: var kind, SourceValue: var value }
-            || kind != WorkspaceDefinition.Kind.Value)
+            || !string.Equals(kind, WorkspaceDefinition.Kind.Value, StringComparison.Ordinal))
         {
             return recovered.TerminalMultiplexingMode;
         }
 
         return _catalog.Snapshot.Workspaces
             .Select(item => item.Value)
-            .FirstOrDefault(workspace => workspace.Id.Value == value)
+            .FirstOrDefault(workspace => string.Equals(workspace.Id.Value, value, StringComparison.Ordinal))
             ?.TerminalMultiplexingOverride;
     }
 
@@ -12657,9 +12602,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             // identity here silently re-enabled continuity in disabled workspaces.
             multiplexerSession = null;
         }
-        else if (multiplexerSession is null)
+        else
         {
-            multiplexerSession = TerminalMultiplexerSession.CreateAutomatic();
+            multiplexerSession ??= TerminalMultiplexerSession.CreateAutomatic();
         }
 
         return new TerminalRuntimePanelViewModel(
@@ -12767,9 +12712,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         FileProviderProfileId? profileId) =>
         profileId is { } requestedProfile
             ? _filePanelClient.Profiles.FirstOrDefault(
-                item => item.Id == requestedProfile.Value)
+                item => string.Equals(item.Id, requestedProfile.Value, StringComparison.Ordinal))
             : _filePanelClient.Profiles.FirstOrDefault(
-                    item => item.Id == BuiltInFileProviders.HomeId.Value)
+                    item => string.Equals(item.Id, BuiltInFileProviders.HomeId.Value, StringComparison.Ordinal))
                 ?? _filePanelClient.Profiles.FirstOrDefault();
 
     private RuntimePanelViewModel CreateBrowserPanel(
@@ -12830,8 +12775,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             definition = _catalog.Snapshot.Workspaces
                 .Select(item => item.Value)
-                .FirstOrDefault(item =>
-                    item.Id.Value == source.SourceDefinition.Value);
+                .FirstOrDefault(item => string.Equals(item.Id.Value, source.SourceDefinition.Value, StringComparison.Ordinal));
         }
 
         var isolated = definition?.BrowserProfileOverride switch
@@ -13194,7 +13138,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (shellPath is null
             || !ReferenceEquals(RuntimeWorkspace, workspace)
             || !tab.Panels.Contains(source)
-            || source.SelectedResource?.Container?.Id != container.Id)
+            || !string.Equals(source.SelectedResource?.Container?.Id, container.Id, StringComparison.Ordinal))
         {
             return false;
         }
@@ -13401,7 +13345,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             var profileId = target[SavedDatabaseTargetPrefix.Length..];
             var stored = _catalog.Snapshot.DatabaseConnections
-                .SingleOrDefault(item => item.Value.Id.Value == profileId);
+                .SingleOrDefault(item => string.Equals(item.Value.Id.Value, profileId, StringComparison.Ordinal));
             if (stored is null)
             {
                 return new UnavailableRuntimePanelViewModel(
@@ -13602,7 +13546,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     /// <summary>Every saved database connection, for panel pickers.</summary>
     public IReadOnlyList<DatabaseConnectionProfile> DatabaseConnectionOptions =>
-        _catalog.Snapshot.DatabaseConnections.Select(item => item.Value).ToArray();
+        [.. _catalog.Snapshot.DatabaseConnections.Select(item => item.Value)];
 
     public DatabaseConnectionProfile? FindDatabaseConnection(DatabaseConnectionProfileId id) =>
         _catalog.Snapshot.DatabaseConnections
@@ -14244,7 +14188,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var ids = ResolveWorkspaceConnectionDefinitions(workspace)
             .Select(item => item.Id)
             .ToHashSet();
-        return Connections.Where(item => ids.Contains(item.Id)).ToArray();
+        return [.. Connections.Where(item => ids.Contains(item.Id))];
     }
 
     private IEnumerable<ConnectionProfile> ResolveWorkspaceConnectionDefinitions(
@@ -14382,7 +14326,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         long revision)
     {
         var driver = _databaseConnectionCatalog?.Drivers
-            .FirstOrDefault(item => item.Id == profile.DriverId);
+            .FirstOrDefault(item => string.Equals(item.Id, profile.DriverId, StringComparison.Ordinal));
         return new(
             new ConnectionId(profile.Id.Value),
             revision,
@@ -14558,27 +14502,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         _catalog.Changed -= OnCatalogChanged;
         _fileTransferQueue.TransfersChanged -= OnFileTransfersChanged;
-        if (_fileProviderRuntime is not null)
-        {
-            _fileProviderRuntime.ProfilesChanged -= OnFileProviderProfilesChanged;
-        }
-        if (_aiProviderRuntime is not null)
-        {
-            _aiProviderRuntime.ProfilesChanged -= OnAiProviderProfilesChanged;
-        }
-        if (_runtimeRecoveryWriter is not null)
-        {
-            _runtimeRecoveryWriter.WriteFailed -= OnRuntimeRecoveryWriteFailed;
-        }
-        if (_terminalMultiplexerCoordinator is not null)
-        {
-            _terminalMultiplexerCoordinator.LeasesChanged -=
+        _fileProviderRuntime?.ProfilesChanged -= OnFileProviderProfilesChanged;
+        _aiProviderRuntime?.ProfilesChanged -= OnAiProviderProfilesChanged;
+        _runtimeRecoveryWriter?.WriteFailed -= OnRuntimeRecoveryWriteFailed;
+        _terminalMultiplexerCoordinator?.LeasesChanged -=
                 OnTerminalMultiplexerLeasesChanged;
-        }
-        if (_agentPolicyCoordinator is not null)
-        {
-            _agentPolicyCoordinator.Changed -= OnAgentPolicyCoordinatorChanged;
-        }
+        _agentPolicyCoordinator?.Changed -= OnAgentPolicyCoordinatorChanged;
 
         lock (_historyGate)
         {
@@ -14591,7 +14520,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Task[] graphWatches;
         lock (_shutdownGate)
         {
-            graphWatches = _runtimeGraphWatchTasks.ToArray();
+            graphWatches = [.. _runtimeGraphWatchTasks];
         }
 
         await Task.WhenAll(graphWatches).ConfigureAwait(false);
@@ -14613,27 +14542,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         _catalog.Changed -= OnCatalogChanged;
         _fileTransferQueue.TransfersChanged -= OnFileTransfersChanged;
-        if (_fileProviderRuntime is not null)
-        {
-            _fileProviderRuntime.ProfilesChanged -= OnFileProviderProfilesChanged;
-        }
-        if (_aiProviderRuntime is not null)
-        {
-            _aiProviderRuntime.ProfilesChanged -= OnAiProviderProfilesChanged;
-        }
-        if (_runtimeRecoveryWriter is not null)
-        {
-            _runtimeRecoveryWriter.WriteFailed -= OnRuntimeRecoveryWriteFailed;
-        }
-        if (_terminalMultiplexerCoordinator is not null)
-        {
-            _terminalMultiplexerCoordinator.LeasesChanged -=
+        _fileProviderRuntime?.ProfilesChanged -= OnFileProviderProfilesChanged;
+        _aiProviderRuntime?.ProfilesChanged -= OnAiProviderProfilesChanged;
+        _runtimeRecoveryWriter?.WriteFailed -= OnRuntimeRecoveryWriteFailed;
+        _terminalMultiplexerCoordinator?.LeasesChanged -=
                 OnTerminalMultiplexerLeasesChanged;
-        }
-        if (_agentPolicyCoordinator is not null)
-        {
-            _agentPolicyCoordinator.Changed -= OnAgentPolicyCoordinatorChanged;
-        }
+        _agentPolicyCoordinator?.Changed -= OnAgentPolicyCoordinatorChanged;
         StopTrackingAgentTerminalSelection(_runtimeWorkspace);
         StopTrackingRecovery(_runtimeWorkspace);
         // Every open workspace, not only the one in front: the others are just
@@ -14725,12 +14639,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             PropertyChangedEventArgs eventArgs)
         {
             _ = sender;
-            if (eventArgs.PropertyName == nameof(AgentChatViewModel.PanelActivity))
+            if (string.Equals(eventArgs.PropertyName, nameof(AgentChatViewModel.PanelActivity), StringComparison.Ordinal))
             {
                 _activityChanged(ViewModel.PanelActivity);
             }
 
-            if (eventArgs.PropertyName == nameof(AgentChatViewModel.IsBusy))
+            if (string.Equals(eventArgs.PropertyName, nameof(AgentChatViewModel.IsBusy), StringComparison.Ordinal))
             {
                 _runningStateChanged();
             }

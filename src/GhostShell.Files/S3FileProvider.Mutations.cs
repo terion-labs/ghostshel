@@ -72,7 +72,7 @@ public sealed partial class S3FileProvider
             return FileProviderResult<FileTransferReceipt>.Failure(source.Error ?? destination.Error!);
         }
 
-        if (source.Value!.Key == destination.Value!.Key)
+        if (string.Equals(source.Value!.Key, destination.Value!.Key, StringComparison.Ordinal))
         {
             return Failure<FileTransferReceipt>(
                 FileProviderErrorCode.Conflict,

@@ -66,10 +66,10 @@ public sealed class LauncherSearchProjectionTests
         var forward = LauncherSearchProjection.Search(string.Empty, candidates);
         var reverse = LauncherSearchProjection.Search(string.Empty, candidates.Reverse());
 
-        Assert.Equal(forward.Select(TargetId), reverse.Select(TargetId));
+        Assert.Equal(forward.Select(TargetId), reverse.Select(TargetId), StringComparer.Ordinal);
         Assert.Equal(
             ["connection-a", "connection-z", "connection-b", "screen", "disabled-command"],
-            forward.Select(TargetId));
+            forward.Select(TargetId), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -84,7 +84,7 @@ public sealed class LauncherSearchProjectionTests
 
         var results = LauncherSearchProjection.Search(string.Empty, [newest, older]);
 
-        Assert.Equal(["newest", "older"], results.Select(TargetId));
+        Assert.Equal(["newest", "older"], results.Select(TargetId), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -177,17 +177,17 @@ public sealed class LauncherSearchProjectionTests
         var right = Result(
             new LauncherSearchTarget.Command(
                 BuiltInCommands.FocusPanel,
-                new Dictionary<string, string> { ["direction"] = "right" }),
+                new Dictionary<string, string>(StringComparer.Ordinal) { ["direction"] = "right" }),
             "Focus panel right");
         var left = Result(
             new LauncherSearchTarget.Command(
                 BuiltInCommands.FocusPanel,
-                new Dictionary<string, string> { ["direction"] = "left" }),
+                new Dictionary<string, string>(StringComparer.Ordinal) { ["direction"] = "left" }),
             "Focus panel left");
         var refreshedRight = Result(
             new LauncherSearchTarget.Command(
                 BuiltInCommands.FocusPanel,
-                new Dictionary<string, string> { ["direction"] = "right" }),
+                new Dictionary<string, string>(StringComparer.Ordinal) { ["direction"] = "right" }),
             "Focus panel right");
 
         var resolved = LauncherSearchProjection.ResolveAvailableSelection(

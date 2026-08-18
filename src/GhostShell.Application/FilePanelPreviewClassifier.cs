@@ -17,16 +17,55 @@ public static class FilePanelPreviewClassifier
         ReadOnlySpan<byte> content)
     {
         ArgumentNullException.ThrowIfNull(location);
-        if (IsPng(content)) return (FilePanelPreviewKind.Image, "image/png");
-        if (IsJpeg(content)) return (FilePanelPreviewKind.Image, "image/jpeg");
-        if (IsGif(content)) return (FilePanelPreviewKind.Image, "image/gif");
-        if (IsSqlite(content)) return (FilePanelPreviewKind.Database, "application/vnd.sqlite3");
-        if (content.StartsWith("%PDF-"u8)) return (FilePanelPreviewKind.Pdf, "application/pdf");
-        if (IsTiff(content)) return (FilePanelPreviewKind.Image, "image/tiff");
-        if (IsHeif(content) is { } heifType) return (FilePanelPreviewKind.Image, heifType);
-        if (IsWebp(content)) return (FilePanelPreviewKind.Image, "image/webp");
-        if (IsBmp(content)) return (FilePanelPreviewKind.Image, "image/bmp");
-        if (IsPsd(content)) return (FilePanelPreviewKind.Image, "image/vnd.adobe.photoshop");
+        if (IsPng(content))
+        {
+            return (FilePanelPreviewKind.Image, "image/png");
+        }
+
+        if (IsJpeg(content))
+        {
+            return (FilePanelPreviewKind.Image, "image/jpeg");
+        }
+
+        if (IsGif(content))
+        {
+            return (FilePanelPreviewKind.Image, "image/gif");
+        }
+
+        if (IsSqlite(content))
+        {
+            return (FilePanelPreviewKind.Database, "application/vnd.sqlite3");
+        }
+
+        if (content.StartsWith("%PDF-"u8))
+        {
+            return (FilePanelPreviewKind.Pdf, "application/pdf");
+        }
+
+        if (IsTiff(content))
+        {
+            return (FilePanelPreviewKind.Image, "image/tiff");
+        }
+
+        if (IsHeif(content) is { } heifType)
+        {
+            return (FilePanelPreviewKind.Image, heifType);
+        }
+
+        if (IsWebp(content))
+        {
+            return (FilePanelPreviewKind.Image, "image/webp");
+        }
+
+        if (IsBmp(content))
+        {
+            return (FilePanelPreviewKind.Image, "image/bmp");
+        }
+
+        if (IsPsd(content))
+        {
+            return (FilePanelPreviewKind.Image, "image/vnd.adobe.photoshop");
+        }
 
         if (TryDecodeText(content, out var text))
         {
@@ -103,7 +142,11 @@ public static class FilePanelPreviewClassifier
 
     private static string? IsHeif(ReadOnlySpan<byte> content)
     {
-        if (content.Length < 12 || !content[4..].StartsWith("ftyp"u8)) return null;
+        if (content.Length < 12 || !content[4..].StartsWith("ftyp"u8))
+        {
+            return null;
+        }
+
         var brand = content.Slice(8, 4);
         if (brand.StartsWith("heic"u8) || brand.StartsWith("heix"u8)
             || brand.StartsWith("hevc"u8) || brand.StartsWith("mif1"u8))

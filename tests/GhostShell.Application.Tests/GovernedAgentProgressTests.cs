@@ -141,8 +141,8 @@ public sealed class GovernedAgentProgressTests
             ProviderId: null,
             Target: null,
             TargetTitle: "Target",
-            ContextItems: ImmutableArray<GovernedAgentContextItem>.Empty,
-            Messages: Array.Empty<AgentChatMessage>(),
+            ContextItems: [],
+            Messages: [],
             EffectivePolicy: AgentPolicy.Default,
             ProvisionalAssistantText: string.Empty,
             Status: "Working",
@@ -160,6 +160,6 @@ public sealed class GovernedAgentProgressTests
             out _));
         Assert.DoesNotContain(
             BuiltInAgentTools.Catalog.Tools,
-            tool => tool.Name == IntrinsicAgentTools.ReportProgress);
+            tool => string.Equals(tool.Name, IntrinsicAgentTools.ReportProgress, StringComparison.Ordinal));
     }
 }

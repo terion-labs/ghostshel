@@ -356,10 +356,9 @@ public sealed class LocalArtifactControlViewModel : ObservableObject, IDisposabl
     private void ApplyInventory(LocalArtifactInventory inventory)
     {
         HasError = false;
-        Items = inventory.Artifacts
+        Items = [.. inventory.Artifacts
             .OrderBy(static item => item.Kind)
-            .Select(static item => new LocalArtifactItemViewModel(item))
-            .ToArray();
+            .Select(static item => new LocalArtifactItemViewModel(item))];
         StatusMessage = InventoryStatus(inventory);
     }
 
@@ -395,7 +394,7 @@ public sealed class LocalArtifactControlViewModel : ObservableObject, IDisposabl
 
     private void RemoveStaleKind(LocalArtifactKind kind)
     {
-        Items = Items.Where(item => item.Kind != kind).ToArray();
+        Items = [.. Items.Where(item => item.Kind != kind)];
     }
 
     private static string InventoryStatus(LocalArtifactInventory inventory)

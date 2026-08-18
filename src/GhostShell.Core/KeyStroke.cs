@@ -23,7 +23,7 @@ public readonly record struct KeyStroke
     public KeyStroke(string key, KeyModifiers modifiers = KeyModifiers.None)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
-        if ((modifiers & ~AllModifiers) != 0)
+        if ((modifiers & ~AllModifiers) != KeyModifiers.None)
         {
             throw new ArgumentOutOfRangeException(nameof(modifiers), modifiers, "The key stroke contains an unknown modifier.");
         }
@@ -39,22 +39,22 @@ public readonly record struct KeyStroke
     public override string ToString()
     {
         var parts = new List<string>(5);
-        if ((Modifiers & KeyModifiers.Control) != 0)
+        if ((Modifiers & KeyModifiers.Control) != KeyModifiers.None)
         {
             parts.Add("Ctrl");
         }
 
-        if ((Modifiers & KeyModifiers.Alt) != 0)
+        if ((Modifiers & KeyModifiers.Alt) != KeyModifiers.None)
         {
             parts.Add("Alt");
         }
 
-        if ((Modifiers & KeyModifiers.Shift) != 0)
+        if ((Modifiers & KeyModifiers.Shift) != KeyModifiers.None)
         {
             parts.Add("Shift");
         }
 
-        if ((Modifiers & KeyModifiers.Meta) != 0)
+        if ((Modifiers & KeyModifiers.Meta) != KeyModifiers.None)
         {
             parts.Add("Meta");
         }

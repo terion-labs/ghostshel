@@ -21,7 +21,7 @@ public sealed class ShellNavigationItemContractTests
         var root = Assert.IsType<XElement>(component.Root);
         var button = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "Button");
+            element => string.Equals(element.Name.LocalName, "Button", StringComparison.Ordinal));
 
         Assert.Equal("False", AttributeValue(root, "Focusable"));
         Assert.Equal("NavButton", AttributeValue(button, "Classes"));
@@ -50,7 +50,7 @@ public sealed class ShellNavigationItemContractTests
         var component = LoadComponent();
         var label = Assert.Single(
             component.Descendants(),
-            element => element.Name.LocalName == "TextBlock");
+            element => string.Equals(element.Name.LocalName, "TextBlock", StringComparison.Ordinal));
 
         Assert.Equal(
             "{DynamicResource ShellFontSize13}",
@@ -68,7 +68,7 @@ public sealed class ShellNavigationItemContractTests
             "Views",
             $"{view}.axaml"));
         return document.Descendants()
-            .Count(element => element.Name.LocalName == "ShellNavigationItem");
+            .Count(element => string.Equals(element.Name.LocalName, "ShellNavigationItem", StringComparison.Ordinal));
     }
 
     private static XDocument LoadComponent() =>
@@ -82,6 +82,6 @@ public sealed class ShellNavigationItemContractTests
 
     private static string? AttributeValue(XElement element, string name) =>
         element.Attributes()
-            .FirstOrDefault(attribute => attribute.Name.LocalName == name)
+            .FirstOrDefault(attribute => string.Equals(attribute.Name.LocalName, name, StringComparison.Ordinal))
             ?.Value;
 }

@@ -209,8 +209,8 @@ internal sealed class AiProviderOAuthHttp : IDisposable
     {
         ArgumentNullException.ThrowIfNull(endpoint);
         if (!endpoint.IsAbsoluteUri
-            || endpoint.Scheme != Uri.UriSchemeHttps
-            || !string.IsNullOrEmpty(endpoint.UserInfo)
+            || !string.Equals(endpoint.Scheme, Uri.UriSchemeHttps
+, StringComparison.Ordinal) || !string.IsNullOrEmpty(endpoint.UserInfo)
             || !string.IsNullOrEmpty(endpoint.Fragment))
         {
             throw AiProviderClientException.Create(

@@ -12,7 +12,7 @@ public sealed class McpStdioClientTests
         var launch = new McpStdioServerLaunch(
             Path.GetFullPath("secret-server"),
             ["--token", "secret-argument"],
-            environment: new Dictionary<string, string>
+            environment: new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["SECRET_TOKEN"] = "secret-value",
             });
@@ -79,7 +79,7 @@ public sealed class McpStdioClientTests
             await using var client = await ConnectAsync(
                 "environment",
                 [ambientName],
-                new Dictionary<string, string>
+                new Dictionary<string, string>(StringComparer.Ordinal)
                 {
                     ["GHOSTSHELL_ALLOWED"] = "resolved-value",
                 });
@@ -380,7 +380,7 @@ public sealed class McpStdioClientTests
         var dotnetPath = Environment.ProcessPath
             ?? throw new InvalidOperationException("The .NET host path is unavailable.");
         var childEnvironment = new Dictionary<string, string>(
-            environment ?? new Dictionary<string, string>(),
+            environment ?? new Dictionary<string, string>(StringComparer.Ordinal),
             StringComparer.Ordinal);
         childEnvironment.TryAdd(
             "DOTNET_ROOT",

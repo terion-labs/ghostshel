@@ -45,7 +45,7 @@ public sealed class SmbFileProvider : RemoteHierarchicalFileProvider
         diagnostics.Add(new SmbProviderDiagnostic(
             "smb_transport_security_unverified",
             "SMBLibrary negotiates signing and SMB 3 encryption, but does not expose the selected dialect or encryption state; GhostSHELL cannot attest that this share encrypts file data."));
-        Diagnostics = diagnostics.ToArray();
+        Diagnostics = [.. diagnostics];
     }
 
     public SmbFileProviderOptions Options { get; }

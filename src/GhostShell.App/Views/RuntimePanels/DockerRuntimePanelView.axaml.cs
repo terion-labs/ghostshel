@@ -106,20 +106,14 @@ public sealed partial class DockerRuntimePanelView : UserControl
 
     private void ObserveViewModel(DockerRuntimePanelViewModel? viewModel)
     {
-        if (_observedViewModel is not null)
-        {
-            _observedViewModel.PropertyChanged -= OnViewModelPropertyChanged;
-        }
+        _observedViewModel?.PropertyChanged -= OnViewModelPropertyChanged;
 
         _observedViewModel = viewModel;
         _logScrollGeneration++;
         _isScrollingLogsToEnd = false;
         _logScrollToEndPending = viewModel?.HasLogs == true;
         _hasPerformedInitialLogScroll = false;
-        if (_observedViewModel is not null)
-        {
-            _observedViewModel.PropertyChanged += OnViewModelPropertyChanged;
-        }
+        _observedViewModel?.PropertyChanged += OnViewModelPropertyChanged;
     }
 
     private void OnAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
@@ -133,11 +127,8 @@ public sealed partial class DockerRuntimePanelView : UserControl
     {
         _ = sender;
         _ = e;
-        if (_logScrollViewer is not null)
-        {
-            _logScrollViewer.ScrollChanged -= OnLogScrollChanged;
-            _logScrollViewer = null;
-        }
+        _logScrollViewer?.ScrollChanged -= OnLogScrollChanged;
+        _logScrollViewer = null;
 
         _logScrollGeneration++;
         _isScrollingLogsToEnd = false;
@@ -151,16 +142,10 @@ public sealed partial class DockerRuntimePanelView : UserControl
         var scrollViewer = LogList.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
         if (!ReferenceEquals(scrollViewer, _logScrollViewer))
         {
-            if (_logScrollViewer is not null)
-            {
-                _logScrollViewer.ScrollChanged -= OnLogScrollChanged;
-            }
+            _logScrollViewer?.ScrollChanged -= OnLogScrollChanged;
 
             _logScrollViewer = scrollViewer;
-            if (_logScrollViewer is not null)
-            {
-                _logScrollViewer.ScrollChanged += OnLogScrollChanged;
-            }
+            _logScrollViewer?.ScrollChanged += OnLogScrollChanged;
         }
 
         if (!_hasPerformedInitialLogScroll && ViewModel is { HasLogs: true })
@@ -173,7 +158,7 @@ public sealed partial class DockerRuntimePanelView : UserControl
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName != nameof(DockerRuntimePanelViewModel.LogScrollToEndRequest))
+        if (!string.Equals(e.PropertyName, nameof(DockerRuntimePanelViewModel.LogScrollToEndRequest), StringComparison.Ordinal))
         {
             return;
         }

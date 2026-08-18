@@ -4,7 +4,7 @@ using Microsoft.Data.Sqlite;
 
 namespace GhostShell.Infrastructure;
 
-public sealed class SqliteAgentModelFavoriteStore : IAgentModelFavoriteStore
+public sealed class SqliteAgentModelFavoriteStore : IAgentModelFavoriteStore, IDisposable
 {
     private readonly GhostShellDatabase _database;
     private readonly TimeProvider _timeProvider;
@@ -19,6 +19,8 @@ public sealed class SqliteAgentModelFavoriteStore : IAgentModelFavoriteStore
     }
 
     public event EventHandler? Changed;
+
+    public void Dispose() => _gate.Dispose();
 
     public async ValueTask<ApplicationRunResult<IReadOnlyList<AgentModelFavorite>>> ListAsync(
         CancellationToken cancellationToken)

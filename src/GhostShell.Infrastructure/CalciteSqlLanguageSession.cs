@@ -489,9 +489,7 @@ internal sealed class CalciteSqlLanguageSession : ISqlLanguageSession
         var combined = string.IsNullOrWhiteSpace(stderr)
             ? reason
             : $"{reason} Worker detail: {stderr}";
-        var sanitized = new string(combined
-            .Select(character => char.IsControl(character) ? ' ' : character)
-            .ToArray());
+        var sanitized = new string([.. combined.Select(character => char.IsControl(character) ? ' ' : character)]);
         const int maximumCharacters = 320;
         if (sanitized.Length > maximumCharacters)
         {

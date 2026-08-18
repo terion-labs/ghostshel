@@ -65,7 +65,7 @@ public sealed class BrowserProfileSettingsEditorViewModel : ObservableObject
 
             _ = _preferences.ApplyAsync(
                 new BrowserProfileSettings(value.Sharing),
-                CancellationToken.None);
+                CancellationToken.None).AsTask();
             OnPropertyChanged();
         }
     }

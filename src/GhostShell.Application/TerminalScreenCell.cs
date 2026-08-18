@@ -75,7 +75,7 @@ public sealed record TerminalScreenCell
             throw new ArgumentOutOfRangeException(nameof(Width));
         }
 
-        if (!Enum.IsDefined(Style) && (Style & ~AllStyles) != 0)
+        if (!Enum.IsDefined(Style) && (Style & ~AllStyles) != TerminalCellStyle.None)
         {
             throw new ArgumentOutOfRangeException(nameof(Style));
         }

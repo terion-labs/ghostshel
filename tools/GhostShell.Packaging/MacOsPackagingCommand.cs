@@ -92,8 +92,8 @@ internal sealed record MacOsPackagingCommand(
         IReadOnlyDictionary<string, string> values)
     {
         var value = Required(values, "--runtime-identifier");
-        return value == "osx-arm64"
-            ? value
+        return string.Equals(value, "osx-arm64"
+, StringComparison.Ordinal) ? value
             : throw new PackagingUsageException(
                 "Full macOS application packaging currently supports only "
                 + "osx-arm64; osx-x64 lacks a reviewed managed catalog and "
@@ -113,4 +113,16 @@ internal sealed record MacOsPackagingCommand(
     }
 }
 
-internal sealed class PackagingUsageException(string message) : Exception(message);
+internal sealed class PackagingUsageException : Exception
+{
+
+    public PackagingUsageException(string message)
+        : base(message)
+    {
+    }
+
+    public PackagingUsageException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+}

@@ -223,7 +223,7 @@ internal static class NativeTerminalPackageProvenance
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var line in manifest)
         {
-            if (line.Length < 67 || line[64..66] != "  ")
+            if (line.Length < 67 || !string.Equals(line[64..66], "  ", StringComparison.Ordinal))
             {
                 throw new InvalidDataException(
                     "The shell-integration manifest has an invalid entry.");

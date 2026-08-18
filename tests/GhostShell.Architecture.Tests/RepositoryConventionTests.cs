@@ -19,10 +19,10 @@ public sealed partial class RepositoryConventionTests
         var root = Assert.IsType<XElement>(dialog.Root);
         var shell = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "DialogShell");
+            element => string.Equals(element.Name.LocalName, "DialogShell", StringComparison.Ordinal));
         var test = Assert.Single(
             root.Descendants(),
-            element => AttributeValue(element, "Click") == "OnTestClick");
+            element => string.Equals(AttributeValue(element, "Click"), "OnTestClick", StringComparison.Ordinal));
 
         Assert.Equal("{Binding TestFooterHint}", AttributeValue(shell, "FooterHint"));
         Assert.Equal("{Binding !IsTesting}", AttributeValue(test, "IsEnabled"));
@@ -41,7 +41,7 @@ public sealed partial class RepositoryConventionTests
         var root = Assert.IsType<XElement>(dialog.Root);
         var savePassword = Assert.Single(
             root.Descendants(),
-            element => AttributeValue(element, "Name") == "SavePasswordCheckBox");
+            element => string.Equals(AttributeValue(element, "Name"), "SavePasswordCheckBox", StringComparison.Ordinal));
 
         Assert.Equal("CheckBox", savePassword.Name.LocalName);
         Assert.Equal("False", AttributeValue(savePassword, "IsChecked"));
@@ -269,7 +269,7 @@ public sealed partial class RepositoryConventionTests
             var document = XDocument.Load(file, LoadOptions.SetLineInfo);
             var unnamedButtons = document
                 .Descendants()
-                .Where(element => element.Name.LocalName == "Button")
+                .Where(element => string.Equals(element.Name.LocalName, "Button", StringComparison.Ordinal))
                 .Where(ContainsIconWithoutVisibleText)
                 .Where(element => !HasAttribute(element, "AutomationProperties.Name"))
                 .Select(DescribeElement)
@@ -290,8 +290,8 @@ public sealed partial class RepositoryConventionTests
             var document = XDocument.Load(file, LoadOptions.SetLineInfo);
             var unboundedOverlays = document
                 .Descendants()
-                .Where(element => element.Name.LocalName == "SurfaceCard"
-                    && string.Equals(
+                .Where(element => string.Equals(element.Name.LocalName, "SurfaceCard"
+, StringComparison.Ordinal) && string.Equals(
                         AttributeValue(element, "Elevation"),
                         "Overlay",
                         StringComparison.Ordinal))
@@ -319,31 +319,31 @@ public sealed partial class RepositoryConventionTests
             "Views");
         var mainWindow = ApplicationViews.FindUniqueOwnerDocument(
             "the agent authorization panel",
-            element => element.Name.LocalName == "Border"
-                && HasClass(element, "AgentPanel"))
+            element => string.Equals(element.Name.LocalName, "Border"
+, StringComparison.Ordinal) && HasClass(element, "AgentPanel"))
             .Document;
         var agentPanel = Assert.Single(
             mainWindow.Descendants(),
-            element => element.Name.LocalName == "Border"
-                && HasClass(element, "AgentPanel"));
+            element => string.Equals(element.Name.LocalName, "Border"
+, StringComparison.Ordinal) && HasClass(element, "AgentPanel"));
         var agentLayout = Assert.Single(
             agentPanel.Elements(),
-            element => element.Name.LocalName == "Grid");
+            element => string.Equals(element.Name.LocalName, "Grid", StringComparison.Ordinal));
 
         Assert.Equal(
             "Auto,Auto,*,Auto,Auto",
             AttributeValue(agentLayout, "RowDefinitions"));
         Assert.All(
             agentLayout.Elements()
-                .Where(element => element.Name.LocalName == "Grid")
+                .Where(element => string.Equals(element.Name.LocalName, "Grid", StringComparison.Ordinal))
                 .Take(2),
             row => Assert.False(
                 string.IsNullOrWhiteSpace(AttributeValue(row, "MinHeight")),
                 "Text-bearing agent header rows require minima, not fixed heights."));
         var activityScroller = Assert.Single(
             agentLayout.Elements(),
-            element => element.Name.LocalName == "ScrollViewer"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "ScrollViewer"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Name"),
                     "AgentChatTranscript",
                     StringComparison.Ordinal));
@@ -351,8 +351,8 @@ public sealed partial class RepositoryConventionTests
 
         var contextInspector = Assert.Single(
             agentLayout.Descendants(),
-            element => element.Name.LocalName == "Expander"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Expander"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Name"),
                     "AgentContextInspector",
                     StringComparison.Ordinal));
@@ -370,22 +370,22 @@ public sealed partial class RepositoryConventionTests
                     "AutomationProperties.HelpText")));
         Assert.Contains(
             contextInspector.Descendants(),
-            element => element.Name.LocalName == "ItemsControl"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "ItemsControl"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "ItemsSource"),
                     "{Binding AgentChat.ContextItems}",
                     StringComparison.Ordinal));
         Assert.Contains(
             contextInspector.Descendants(),
-            element => element.Name.LocalName == "Border"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Border"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "AutomationProperties.Name"),
                     "{Binding AccessibleName}",
                     StringComparison.Ordinal));
         var actionCancel = Assert.Single(
             activityScroller.Descendants(),
-            element => element.Name.LocalName == "Button"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Click"),
                     "OnCancelAgentActionClick",
                     StringComparison.Ordinal));
@@ -403,8 +403,8 @@ public sealed partial class RepositoryConventionTests
                     "AutomationProperties.HelpText")));
         Assert.Contains(
             agentLayout.Descendants(),
-            element => element.Name.LocalName == "Button"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Click"),
                     "OnCancelAgentChatClick",
                     StringComparison.Ordinal)
@@ -417,15 +417,15 @@ public sealed partial class RepositoryConventionTests
             AttributeValue(activityScroller, "AutomationProperties.Name"));
         Assert.Contains(
             mainWindow.Descendants(),
-            element => element.Name.LocalName == "StatusChip"
-                && AttributeValue(element, "AutomationProperties.Name")
-                    == "AI agent state");
+            element => string.Equals(element.Name.LocalName, "StatusChip"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "AutomationProperties.Name")
+, "AI agent state", StringComparison.Ordinal));
         Assert.Contains(
             agentLayout.Descendants(),
-            element => element.Name.LocalName == "TextBlock"
-                && AttributeValue(element, "Text") == "{Binding AgentChat.Status}"
-                && AttributeValue(element, "AutomationProperties.Name")
-                    == "AI agent status");
+            element => string.Equals(element.Name.LocalName, "TextBlock"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Text"), "{Binding AgentChat.Status}"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "AutomationProperties.Name")
+, "AI agent status", StringComparison.Ordinal));
         Assert.DoesNotContain(
             agentLayout.Descendants(),
             element => (AttributeValue(element, "Text") ?? string.Empty)
@@ -437,8 +437,8 @@ public sealed partial class RepositoryConventionTests
     {
         var mainWindow = ApplicationViews.FindUniqueOwnerDocument(
             "the AI agent panel",
-            element => element.Name.LocalName == "Border"
-                && HasClass(element, "AgentPanel"))
+            element => string.Equals(element.Name.LocalName, "Border"
+, StringComparison.Ordinal) && HasClass(element, "AgentPanel"))
             .Document;
         Assert.DoesNotContain(
             mainWindow.Descendants(),
@@ -475,8 +475,8 @@ public sealed partial class RepositoryConventionTests
 
         var undo = Assert.Single(
             notice.Descendants(),
-            element => element.Name.LocalName == "Button"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Name"),
                     "UndoDeletedSavedScreenButton",
                     StringComparison.Ordinal));
@@ -495,8 +495,8 @@ public sealed partial class RepositoryConventionTests
 
         var dismiss = Assert.Single(
             notice.Descendants(),
-            element => element.Name.LocalName == "Button"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Click"),
                     "OnDismissSavedScreenDeleteUndoClick",
                     StringComparison.Ordinal));
@@ -547,8 +547,8 @@ public sealed partial class RepositoryConventionTests
 
         var dropTarget = Assert.Single(
             tabStrip.Descendants(),
-            element => element.Name.LocalName == "Grid"
-                && HasClass(element, "RuntimeTabDropTarget"));
+            element => string.Equals(element.Name.LocalName, "Grid"
+, StringComparison.Ordinal) && HasClass(element, "RuntimeTabDropTarget"));
         Assert.Equal("True", AttributeValue(dropTarget, "DragDrop.AllowDrop"));
         Assert.Equal(
             "OnDragEnter",
@@ -565,8 +565,8 @@ public sealed partial class RepositoryConventionTests
 
         var indicators = dropTarget
             .Elements()
-            .Where(element => element.Name.LocalName == "Border"
-                && HasClass(element, "RuntimeTabDropIndicator"))
+            .Where(element => string.Equals(element.Name.LocalName, "Border"
+, StringComparison.Ordinal) && HasClass(element, "RuntimeTabDropIndicator"))
             .ToArray();
         Assert.Equal(2, indicators.Length);
         Assert.Contains(indicators, indicator => HasClass(indicator, "Before"));
@@ -583,8 +583,8 @@ public sealed partial class RepositoryConventionTests
 
         var activator = Assert.Single(
             dropTarget.Elements(),
-            element => element.Name.LocalName == "Button"
-                && HasClass(element, "RuntimeTabActivator"));
+            element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && HasClass(element, "RuntimeTabActivator"));
         Assert.Null(AttributeValue(activator, "PointerMoved"));
         Assert.Null(AttributeValue(activator, "PointerReleased"));
         Assert.Null(AttributeValue(activator, "PointerCaptureLost"));
@@ -597,8 +597,8 @@ public sealed partial class RepositoryConventionTests
         Assert.Contains("FindTabActivator(e.Source)", stripCode, StringComparison.Ordinal);
         Assert.DoesNotContain(
             dropTarget.Descendants(),
-            element => element.Name.LocalName == "SymbolIcon"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "SymbolIcon"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Symbol"),
                     "ReOrderDotsVertical",
                     StringComparison.Ordinal));
@@ -627,8 +627,8 @@ public sealed partial class RepositoryConventionTests
             StringComparison.Ordinal);
         var close = Assert.Single(
             dropTarget.Elements(),
-            element => element.Name.LocalName == "Button"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Click"),
                     "OnClose",
                     StringComparison.Ordinal));
@@ -642,8 +642,8 @@ public sealed partial class RepositoryConventionTests
 
         var status = Assert.Single(
             workspace.Descendants(),
-            element => element.Name.LocalName == "TextBlock"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "TextBlock"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Text"),
                     "{Binding TabReorderStatus}",
                     StringComparison.Ordinal));
@@ -697,16 +697,14 @@ public sealed partial class RepositoryConventionTests
     {
         var containsIcon = button
             .Descendants()
-            .Any(element => element.Name.LocalName == "SymbolIcon");
-        var hasContent = button.Attributes().Any(attribute =>
-            attribute.Name.LocalName == "Content"
-            && !string.IsNullOrWhiteSpace(attribute.Value));
+            .Any(element => string.Equals(element.Name.LocalName, "SymbolIcon", StringComparison.Ordinal));
+        var hasContent = button.Attributes().Any(attribute => string.Equals(attribute.Name.LocalName, "Content"
+, StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(attribute.Value));
         var containsText = button
             .Descendants()
-            .Where(element => element.Name.LocalName == "TextBlock")
-            .Any(element => element.Attributes().Any(attribute =>
-                attribute.Name.LocalName == "Text"
-                && !string.IsNullOrWhiteSpace(attribute.Value)));
+            .Where(element => string.Equals(element.Name.LocalName, "TextBlock", StringComparison.Ordinal))
+            .Any(element => element.Attributes().Any(attribute => string.Equals(attribute.Name.LocalName, "Text"
+, StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(attribute.Value)));
         return containsIcon && !hasContent && !containsText;
     }
 
@@ -720,7 +718,7 @@ public sealed partial class RepositoryConventionTests
 
     private static string? AttributeValue(XElement element, string name) =>
         element.Attributes()
-            .FirstOrDefault(attribute => attribute.Name.LocalName == name)
+            .FirstOrDefault(attribute => string.Equals(attribute.Name.LocalName, name, StringComparison.Ordinal))
             ?.Value;
 
     private static string DescribeElement(XElement element)
@@ -748,16 +746,21 @@ public sealed partial class RepositoryConventionTests
         throw new DirectoryNotFoundException("Unable to locate the GhostSHELL repository root.");
     }
 
-    [GeneratedRegex(@"\bpane(s)?\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(
+        @"\bpanes?\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        matchTimeoutMilliseconds: 1_000)]
     private static partial Regex PaneTerminology();
 
     [GeneratedRegex(
         "<(?<element>[A-Za-z0-9:]+)\\b[^>]*\\bFontSize=\"[0-9]",
-        RegexOptions.CultureInvariant | RegexOptions.Singleline)]
+        RegexOptions.CultureInvariant | RegexOptions.Singleline,
+        matchTimeoutMilliseconds: 1_000)]
     private static partial Regex LiteralElementFontSize();
 
     [GeneratedRegex(
         "<Setter\\s+Property=\"FontSize\"\\s+Value=\"[0-9]",
-        RegexOptions.CultureInvariant)]
+        RegexOptions.CultureInvariant,
+        matchTimeoutMilliseconds: 1_000)]
     private static partial Regex LiteralFontSizeSetter();
 }

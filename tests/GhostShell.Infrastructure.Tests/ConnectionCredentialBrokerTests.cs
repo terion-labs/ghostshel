@@ -1,5 +1,5 @@
-using System.Security.Cryptography;
 using System.Security.AccessControl;
+using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using GhostShell.Application;
@@ -168,7 +168,7 @@ public sealed class ConnectionCredentialBrokerTests
     [Fact]
     public async Task Expired_ticket_fails_closed_before_vault_resolution()
     {
-        var clock = new AdjustableTimeProvider(DateTimeOffset.Parse("2026-07-22T12:00:00Z"));
+        var clock = new AdjustableTimeProvider(DateTimeOffset.Parse("2026-07-22T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture));
         var reference = new SecretRef("password-ref");
         using var vault = new BrokerSecretVault();
         vault.Add(reference, "ssh-expired", "never-resolve-this");
@@ -370,12 +370,12 @@ public sealed class ConnectionCredentialBrokerTests
         Assert.False(plan.RequiresSecretBroker);
         Assert.Empty(vault.ResolveRequests);
         Assert.Equal("/usr/bin/ssh", invocation.Executable);
-        Assert.Contains("SendEnv=REMOTE_TOKEN", invocation.Arguments);
-        Assert.Contains("PreferredAuthentications=password", invocation.Arguments);
-        Assert.Contains("PubkeyAuthentication=no", invocation.Arguments);
-        Assert.Contains("PasswordAuthentication=yes", invocation.Arguments);
-        Assert.Contains("KbdInteractiveAuthentication=no", invocation.Arguments);
-        Assert.Contains("NumberOfPasswordPrompts=1", invocation.Arguments);
+        Assert.Contains("SendEnv=REMOTE_TOKEN", invocation.Arguments, StringComparer.Ordinal);
+        Assert.Contains("PreferredAuthentications=password", invocation.Arguments, StringComparer.Ordinal);
+        Assert.Contains("PubkeyAuthentication=no", invocation.Arguments, StringComparer.Ordinal);
+        Assert.Contains("PasswordAuthentication=yes", invocation.Arguments, StringComparer.Ordinal);
+        Assert.Contains("KbdInteractiveAuthentication=no", invocation.Arguments, StringComparer.Ordinal);
+        Assert.Contains("NumberOfPasswordPrompts=1", invocation.Arguments, StringComparer.Ordinal);
         Assert.DoesNotContain(passwordValue, plan.ToString(), StringComparison.Ordinal);
         Assert.DoesNotContain(environmentValue, plan.ToString(), StringComparison.Ordinal);
         Assert.DoesNotContain(passwordValue, string.Join('\n', plan.Launch.Arguments), StringComparison.Ordinal);
@@ -420,7 +420,7 @@ public sealed class ConnectionCredentialBrokerTests
         Assert.NotNull(dockerInvocation);
         Assert.True(dockerPlan.IsSecretBrokerPrepared);
         Assert.Equal("/usr/bin/docker", dockerInvocation.Executable);
-        Assert.Contains("DOCKER_TOKEN", dockerInvocation.Arguments);
+        Assert.Contains("DOCKER_TOKEN", dockerInvocation.Arguments, StringComparer.Ordinal);
         Assert.DoesNotContain(dockerValue, string.Join('\n', dockerPlan.Launch.Arguments), StringComparison.Ordinal);
 
         var wslLocator = new RecordingExecutableLocator();
@@ -452,7 +452,7 @@ public sealed class ConnectionCredentialBrokerTests
 
         var child = ConnectionCredentialProcessHost.BuildStartInfo(
             wslInvocation,
-            new Dictionary<string, string> { ["WSL_TOKEN"] = wslValue },
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["WSL_TOKEN"] = wslValue },
             null,
             null);
         Assert.Contains("WSL_TOKEN", child.Environment["WSLENV"], StringComparison.Ordinal);
@@ -476,13 +476,13 @@ public sealed class ConnectionCredentialBrokerTests
 
         var startInfo = ConnectionCredentialProcessHost.BuildStartInfo(
             invocation,
-            new Dictionary<string, string>(),
+            new Dictionary<string, string>(StringComparer.Ordinal),
             "/private/key/path",
             null);
 
         Assert.Equal("/usr/bin/ssh", startInfo.FileName);
-        Assert.Contains("IdentityAgent=none", startInfo.ArgumentList);
-        Assert.Contains("/private/key/path", startInfo.ArgumentList);
+        Assert.Contains("IdentityAgent=none", startInfo.ArgumentList, StringComparer.Ordinal);
+        Assert.Contains("/private/key/path", startInfo.ArgumentList, StringComparer.Ordinal);
         Assert.DoesNotContain(
             startInfo.ArgumentList,
             argument => argument.Contains(credential, StringComparison.Ordinal));
@@ -637,7 +637,7 @@ public sealed class ConnectionCredentialBrokerTests
             ConnectionCredentialAskpassRole.Password);
         var startInfo = ConnectionCredentialProcessHost.BuildStartInfo(
             invocation,
-            new Dictionary<string, string>(),
+            new Dictionary<string, string>(StringComparer.Ordinal),
             null,
             askpass,
             reentry);
@@ -801,7 +801,7 @@ internal class BrokerSecretVault : ISecretVault
                 SecretVaultError.Create(SecretVaultErrorCode.AccessDenied)));
         }
 
-        var now = DateTimeOffset.Parse("2026-07-22T12:00:00Z");
+        var now = DateTimeOffset.Parse("2026-07-22T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
         return ValueTask.FromResult(SecretVaultResult<SecretMetadata>.Succeed(
             new SecretMetadata(
                 request.Reference,

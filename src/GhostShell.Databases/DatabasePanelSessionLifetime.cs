@@ -4,7 +4,7 @@ using GhostShell.Core;
 
 namespace GhostShell.Databases;
 
-internal sealed class DatabasePanelSessionLifetime
+internal sealed class DatabasePanelSessionLifetime : IAsyncDisposable
 {
     private const int MaximumRetainedEvents = 64;
     private readonly object _gate = new();
@@ -92,9 +92,7 @@ internal sealed class DatabasePanelSessionLifetime
             bool completed;
             lock (_gate)
             {
-                pending = _events
-                    .Where(item => item.Sequence > afterSequence)
-                    .ToArray();
+                pending = [.. _events.Where(item => item.Sequence > afterSequence)];
                 completed = _closed;
                 waitForChange = _eventsChanged.Task;
             }

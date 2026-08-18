@@ -531,6 +531,7 @@ internal static class MacOsQuickTerminalReveal
 
     private static nint Selector(string name) => sel_registerName(name);
 
+    [StructLayout(LayoutKind.Auto)]
     private readonly record struct RevealViews(
         nint ContainerView,
         nint ContentView,
@@ -540,6 +541,7 @@ internal static class MacOsQuickTerminalReveal
         double Width,
         double Height);
 
+    [StructLayout(LayoutKind.Auto)]
     private readonly record struct RevealFrames(
         CGRect Blur,
         CGRect Content,

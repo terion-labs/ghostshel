@@ -13,7 +13,7 @@ public sealed class TabInstance
         : this(
             id,
             title,
-            (panels ?? throw new ArgumentNullException(nameof(panels))).ToArray(),
+            [.. (panels ?? throw new ArgumentNullException(nameof(panels)))],
             activePanelId)
     {
     }

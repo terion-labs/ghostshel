@@ -1,7 +1,7 @@
-using GhostShell.Application;
-using GhostShell.Core;
 using System.Globalization;
 using System.Text;
+using GhostShell.Application;
+using GhostShell.Core;
 
 namespace GhostShell.Infrastructure.Tests;
 
@@ -218,10 +218,10 @@ public sealed class RecoveryStoreTests
                 + Encoding.UTF8.GetByteCount(secondPayload),
             inventory.ListedPayloadBytes);
         Assert.False(inventory.IsTruncated);
-        Assert.Equal([second.RunId, first.RunId], inventory.Runs.Select(item => item.RunId));
+        Assert.Equal([second.RunId, first.RunId], inventory.Runs.Select(item => item.RunId), StringComparer.Ordinal);
         Assert.Equal(secondUpdated, inventory.Runs[0].LastUpdatedAt);
         Assert.Equal(2, inventory.Runs[1].SnapshotCount);
-        Assert.DoesNotContain(inventory.Runs, item => item.RunId == active.RunId);
+        Assert.DoesNotContain(inventory.Runs, item => string.Equals(item.RunId, active.RunId, StringComparison.Ordinal));
     }
 
     [Fact]

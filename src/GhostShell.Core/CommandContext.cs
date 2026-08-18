@@ -21,7 +21,7 @@ internal static class CommandContextRules
 {
     public static CommandContext Require(CommandContext contexts, string parameterName)
     {
-        if (contexts == CommandContext.None || (contexts & ~CommandContext.All) != 0)
+        if (contexts == CommandContext.None || (contexts & ~CommandContext.All) != CommandContext.None)
         {
             throw new ArgumentOutOfRangeException(parameterName, contexts, "At least one known command context is required.");
         }
@@ -38,7 +38,7 @@ internal static class CommandContextRules
                 continue;
             }
 
-            if ((contexts & context) != 0)
+            if ((contexts & context) != CommandContext.None)
             {
                 yield return context;
             }

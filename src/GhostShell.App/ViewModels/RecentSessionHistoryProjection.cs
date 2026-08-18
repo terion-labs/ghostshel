@@ -13,7 +13,7 @@ internal static class RecentSessionHistoryProjection
         ArgumentNullException.ThrowIfNull(candidates);
         var normalizedQuery = query?.Trim() ?? string.Empty;
 
-        return candidates
+        return [.. candidates
             .Select(candidate => new
             {
                 Candidate = candidate,
@@ -24,8 +24,7 @@ internal static class RecentSessionHistoryProjection
             .ThenByDescending(item => item.Candidate.Record.LastUsedAt)
             .ThenByDescending(item => item.Candidate.Record.StartedAt)
             .ThenBy(item => item.Candidate.SessionId.Value, StringComparer.Ordinal)
-            .Select(item => item.Candidate)
-            .ToArray();
+            .Select(item => item.Candidate)];
     }
 
     public static RecentSessionHistoryItemViewModel? ResolveSelection(

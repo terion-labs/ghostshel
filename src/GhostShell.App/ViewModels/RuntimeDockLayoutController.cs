@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Dock.Model;
 using Dock.Model.Controls;
 using Dock.Model.Core;
@@ -115,9 +116,8 @@ internal sealed class RuntimeDockLayoutController
         ArgumentNullException.ThrowIfNull(panel);
 
         var leaf = CreateLeaf(panel, panel.Id.Value);
-        var body = Layout.VisibleDockables?
-            .FirstOrDefault(dockable => dockable is not ProportionalDockSplitter) as IDock;
-        if (body is null)
+        if (Layout.VisibleDockables?
+            .FirstOrDefault(dockable => dockable is not ProportionalDockSplitter) is not IDock body)
         {
             Layout.VisibleDockables ??= Factory.CreateList<IDockable>();
             Factory.AddDockable(Layout, leaf);
@@ -728,6 +728,7 @@ internal sealed class RuntimeDockLayoutController
         DockRegion Bounds,
         int Order);
 
+    [StructLayout(LayoutKind.Auto)]
     private readonly record struct DockRegion(
         double X,
         double Y,
@@ -752,10 +753,10 @@ internal sealed class RuntimeDockFactory : Factory
     public RuntimeDockFactory(Func<string, object?> contextResolver)
     {
         _contextResolver = contextResolver;
-        ContextLocator = new Dictionary<string, Func<object?>>();
+        ContextLocator = [];
         Func<IHostWindow?> hostFactory = static () => new RuntimePanelHostWindow();
         DefaultHostWindowLocator = hostFactory;
-        HostWindowLocator = new Dictionary<string, Func<IHostWindow?>>
+        HostWindowLocator = new Dictionary<string, Func<IHostWindow?>>(StringComparer.Ordinal)
         {
             [nameof(IDockWindow)] = hostFactory,
         };
@@ -938,7 +939,7 @@ internal sealed class RuntimeDockFactory : Factory
             var (neighbour, operation) = index > 0
                 ? (siblings[index - 1], vertical ? DockOperation.Bottom : DockOperation.Right)
                 : (siblings[index + 1], vertical ? DockOperation.Top : DockOperation.Left);
-            if (FirstDocument(neighbour) is not { Id: { Length: > 0 } } anchor)
+            if (FirstDocument(neighbour) is not { Id.Length: > 0 } anchor)
             {
                 continue;
             }

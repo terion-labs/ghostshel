@@ -45,7 +45,7 @@ public sealed class FilePreviewCatalogTests
     {
         var outcome = Catalog.Create(
             Binary("payload.bin"),
-            new Dictionary<string, bool> { [BinaryPreviewer.HexToggle] = true });
+            new Dictionary<string, bool>(StringComparer.Ordinal) { [BinaryPreviewer.HexToggle] = true });
 
         // Rows, because a dump handed to a text view costs a measure of every
         // line before anything can be drawn; a list draws what is on screen.
@@ -67,7 +67,7 @@ public sealed class FilePreviewCatalogTests
                 "application/octet-stream",
                 content,
                 IsTruncated: false),
-            new Dictionary<string, bool> { [BinaryPreviewer.HexToggle] = true });
+            new Dictionary<string, bool>(StringComparer.Ordinal) { [BinaryPreviewer.HexToggle] = true });
 
         var hex = Assert.IsType<HexPreviewRendering>(outcome.Rendering);
         Assert.Equal(PreviewText.MaximumHexBytes / 16, hex.Rows.Count);
@@ -95,7 +95,7 @@ public sealed class FilePreviewCatalogTests
     {
         var raw = Catalog.Create(
             Source("notes.md", "# Title"),
-            new Dictionary<string, bool> { [MarkdownPreviewer.RawToggle] = true });
+            new Dictionary<string, bool>(StringComparer.Ordinal) { [MarkdownPreviewer.RawToggle] = true });
 
         Assert.IsType<SourcePreviewRendering>(raw.Rendering);
         var toggle = Assert.Single(raw.Toggles);
@@ -111,7 +111,7 @@ public sealed class FilePreviewCatalogTests
         Assert.IsType<WebPagePreviewRendering>(Catalog.Create(source).Rendering);
         Assert.IsType<SourcePreviewRendering>(Catalog.Create(
             source,
-            new Dictionary<string, bool> { [WebPagePreviewer.RawToggle] = true }).Rendering);
+            new Dictionary<string, bool>(StringComparer.Ordinal) { [WebPagePreviewer.RawToggle] = true }).Rendering);
     }
 
     [Fact]
@@ -125,7 +125,7 @@ public sealed class FilePreviewCatalogTests
 
         var raw = Assert.IsType<SourcePreviewRendering>(Catalog.Create(
             source,
-            new Dictionary<string, bool>
+            new Dictionary<string, bool>(StringComparer.Ordinal)
             {
                 [StructuredDataPreviewer.PrettifyToggle] = false,
             }).Rendering);
@@ -187,7 +187,7 @@ public sealed class FilePreviewCatalogTests
     {
         var outcome = Catalog.Create(
             Source("people.csv", "name,city\nada,london\n"),
-            new Dictionary<string, bool> { [DelimitedTextPreviewer.TableToggle] = false });
+            new Dictionary<string, bool>(StringComparer.Ordinal) { [DelimitedTextPreviewer.TableToggle] = false });
 
         Assert.IsType<SourcePreviewRendering>(outcome.Rendering);
     }

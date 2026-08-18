@@ -25,14 +25,14 @@ public sealed class ProcessAgentToolContractTests
             ["sort", "limit", "offset", "name_contains", "pid"],
             schema.GetProperty("properties")
                 .EnumerateObject()
-                .Select(property => property.Name));
+                .Select(property => property.Name), StringComparer.Ordinal);
         Assert.Equal(
             ["cpu_desc", "memory_desc", "name_asc", "pid_asc"],
             schema.GetProperty("properties")
                 .GetProperty("sort")
                 .GetProperty("enum")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
         Assert.Equal(
             [16, 32, 64],
             schema.GetProperty("properties")
@@ -81,14 +81,14 @@ public sealed class ProcessAgentToolContractTests
             ["panel_id"],
             schema.GetProperty("required")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
         Assert.Equal(
             [first.PanelId.Value, second.PanelId.Value],
             schema.GetProperty("properties")
                 .GetProperty("panel_id")
                 .GetProperty("enum")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
 
         var onePanel = Assert.Single(ProcessAgentToolSet.For([first]));
         Assert.Equal(
@@ -98,12 +98,12 @@ public sealed class ProcessAgentToolContractTests
                 .GetProperty("panel_id")
                 .GetProperty("enum")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
         Assert.Contains(
             "panel_id",
             onePanel.InputSchema.GetProperty("required")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
     }
 
     [Fact]

@@ -311,14 +311,14 @@ public sealed class AgentWorkspaceLayoutActionComposer
 
     internal static string OrientationName(
         AgentPanelSplitOrientation orientation) => orientation switch
-    {
-        AgentPanelSplitOrientation.LeftRight => "left_right",
-        AgentPanelSplitOrientation.TopBottom => "top_bottom",
-        _ => throw new ArgumentOutOfRangeException(
-            nameof(orientation),
-            orientation,
-            null),
-    };
+        {
+            AgentPanelSplitOrientation.LeftRight => "left_right",
+            AgentPanelSplitOrientation.TopBottom => "top_bottom",
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(orientation),
+                orientation,
+                null),
+        };
 
     private static void Append(StringBuilder builder, string value) =>
         builder

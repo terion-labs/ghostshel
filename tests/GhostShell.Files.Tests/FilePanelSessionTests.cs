@@ -361,7 +361,7 @@ public sealed class FilePanelSessionTests
 
         public event EventHandler? TransfersChanged;
 
-        public IReadOnlyList<FilePanelTransferSnapshot> Transfers => _transfers.ToArray();
+        public IReadOnlyList<FilePanelTransferSnapshot> Transfers => [.. _transfers];
 
         public HashSet<FilePanelTransferId> CancelledIds { get; } = [];
 

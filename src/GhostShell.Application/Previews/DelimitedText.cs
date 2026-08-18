@@ -32,7 +32,7 @@ public static class DelimitedText
         void EndRow()
         {
             EndField();
-            rows.Add(fields.ToArray());
+            rows.Add([.. fields]);
             fields.Clear();
             any = false;
         }

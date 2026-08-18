@@ -713,8 +713,8 @@ internal sealed class CefBrowserSemanticAdapter(ICefSemanticBrowser browser)
                     StringComparison.Ordinal)
                 || handle.MutationEpoch != _mutationEpoch
                 || !_leases.TryGetValue(handle.ElementToken, out lease!)
-                || lease.SnapshotNonce != handle.SnapshotNonce
-                || lease.MutationEpoch != handle.MutationEpoch)
+                || !string.Equals(lease.SnapshotNonce, handle.SnapshotNonce
+, StringComparison.Ordinal) || lease.MutationEpoch != handle.MutationEpoch)
             {
                 lease = null!;
                 return false;

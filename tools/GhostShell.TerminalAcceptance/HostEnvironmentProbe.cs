@@ -111,7 +111,7 @@ internal static class HostEnvironmentProbe
         {
             foreach (var processDirectory in Directory.EnumerateDirectories("/proc"))
             {
-                if (!int.TryParse(Path.GetFileName(processDirectory), out _))
+                if (!int.TryParse(Path.GetFileName(processDirectory), System.Globalization.CultureInfo.InvariantCulture, out _))
                 {
                     continue;
                 }
@@ -183,7 +183,7 @@ internal static class HostEnvironmentProbe
             return null;
         }
 
-        var screenSeparator = value.IndexOf('.');
+        var screenSeparator = value.IndexOf('.', StringComparison.Ordinal);
         return screenSeparator < 0 ? value : value[..screenSeparator];
     }
 

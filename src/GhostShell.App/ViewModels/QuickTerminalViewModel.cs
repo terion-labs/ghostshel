@@ -73,10 +73,7 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable
                 agentRunAuditReader,
                 agentModelFavoriteStore)
             : null;
-        if (AgentChat is not null)
-        {
-            AgentChat.PropertyChanged += OnAgentChatPropertyChanged;
-        }
+        AgentChat?.PropertyChanged += OnAgentChatPropertyChanged;
         _mainWindow.PropertyChanged += OnMainWindowPropertyChanged;
 
         var selection = QuickTerminalDefinitionSelection.Resolve(catalog.Snapshot);
@@ -267,10 +264,9 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable
 
     public EnsureTerminalSessionRequest? TerminalRequest => ActiveTab?.TerminalRequest;
 
-    public IReadOnlyList<EnsureTerminalSessionRequest> TerminalRequests => Tabs
+    public IReadOnlyList<EnsureTerminalSessionRequest> TerminalRequests => [.. Tabs
         .Select(tab => tab.TerminalRequest)
-        .OfType<EnsureTerminalSessionRequest>()
-        .ToArray();
+        .OfType<EnsureTerminalSessionRequest>()];
 
     public Task Initialization { get; }
 
@@ -513,10 +509,7 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable
 
         _disposed = true;
         _mainWindow.PropertyChanged -= OnMainWindowPropertyChanged;
-        if (AgentChat is not null)
-        {
-            AgentChat.PropertyChanged -= OnAgentChatPropertyChanged;
-        }
+        AgentChat?.PropertyChanged -= OnAgentChatPropertyChanged;
         _lifetime.Cancel();
         AgentChat?.Dispose();
         _ownedAgentRuntime?.Dispose();
@@ -532,7 +525,7 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable
         PropertyChangedEventArgs eventArgs)
     {
         _ = sender;
-        if (eventArgs.PropertyName != nameof(AgentChatViewModel.PanelActivity))
+        if (!string.Equals(eventArgs.PropertyName, nameof(AgentChatViewModel.PanelActivity), StringComparison.Ordinal))
         {
             return;
         }
@@ -771,7 +764,7 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable
     private void OnMainWindowPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         _ = sender;
-        if (e.PropertyName == nameof(MainWindowViewModel.PanelConnectionOptions))
+        if (string.Equals(e.PropertyName, nameof(MainWindowViewModel.PanelConnectionOptions), StringComparison.Ordinal))
         {
             OnPropertyChanged(nameof(ConnectionOptions));
         }

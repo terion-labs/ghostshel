@@ -43,12 +43,13 @@ public sealed class NewTabCommandContractTests
     }
 
     private static IReadOnlyList<string> NewTabHandlerBodies(string source) =>
-        Regex.Matches(
+        [.. Regex.Matches(
                 source,
-                @"(case ApplicationCommandActionKind\.NewTab:|command\.Id == BuiltInCommands\.NewTab\))")
+                @"(case ApplicationCommandActionKind\.NewTab:|command\.Id == BuiltInCommands\.NewTab\))",
+                RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture,
+                TimeSpan.FromSeconds(1))
             .Select(match => BodyAfter(source, match.Index + match.Length))
-            .Where(body => body.Length > 0)
-            .ToArray();
+            .Where(body => body.Length > 0)];
 
     /// <summary>
     /// From the marker to the end of what it guards — the next case label, or

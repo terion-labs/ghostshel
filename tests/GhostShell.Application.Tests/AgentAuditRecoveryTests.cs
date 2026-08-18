@@ -111,7 +111,7 @@ public sealed class AgentAuditRecoveryTests
                 CancellationToken cancellationToken) =>
             ValueTask.FromResult(
                 AuditStoreResult<IReadOnlyList<AuditEventRecord>>.Success(
-                    Array.Empty<AuditEventRecord>()));
+                    []));
 
         public ValueTask<AuditStoreResult<IReadOnlyList<AuditEventRecord>>>
             ListIncompleteAgentActionsAsync(CancellationToken cancellationToken)

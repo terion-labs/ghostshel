@@ -373,10 +373,9 @@ public sealed class MacOsKeychainSecretVault : ISecretVault
             }
 
             return SecretVaultResult<IReadOnlyList<SecretMetadata>>.Succeed(
-                metadata
+                [.. metadata
                     .OrderBy(item => item.Label, StringComparer.OrdinalIgnoreCase)
-                    .ThenBy(item => item.Reference.Value, StringComparer.Ordinal)
-                    .ToArray());
+                    .ThenBy(item => item.Reference.Value, StringComparer.Ordinal)]);
         }
         finally
         {

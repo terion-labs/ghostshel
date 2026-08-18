@@ -472,7 +472,7 @@ public sealed class SystemMonitorRuntimePanelViewModelTests
     private static ProcessMonitorSnapshot ProcessRange(int cpuOffset) =>
         new(
             new DateTimeOffset(2026, 1, 2, 3, 4, 5 + cpuOffset, TimeSpan.Zero),
-            Enumerable.Range(1, ProcessMonitorQuery.DefaultMaximumResults)
+            [.. Enumerable.Range(1, ProcessMonitorQuery.DefaultMaximumResults)
                 .Select(index => new ProcessMonitorEntry(
                     index,
                     $"process-{index}",
@@ -480,8 +480,7 @@ public sealed class SystemMonitorRuntimePanelViewModelTests
                     index * 1_024,
                     TimeSpan.FromSeconds(index),
                     DateTimeOffset.UnixEpoch.AddSeconds(index),
-                    false))
-                .ToArray(),
+                    false))],
             ProcessMonitorQuery.DefaultMaximumResults,
             ProcessMonitorQuery.DefaultMaximumResults,
             false);

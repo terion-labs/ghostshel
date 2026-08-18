@@ -69,9 +69,9 @@ public sealed partial class DatabaseViewerConformanceTests
                 fixture.OpenObject(environment.Provider.Seed.RowsTable);
                 await WaitOnDispatcherAsync(
                     () => !panel.IsBusy
-                        && panel.SelectedObject?.Descriptor.Name
-                            == environment.Provider.Seed.RowsTable
-                        && panel.ResultRows.Count > 0,
+                        && string.Equals(panel.SelectedObject?.Descriptor.Name
+, environment.Provider.Seed.RowsTable
+, StringComparison.Ordinal) && panel.ResultRows.Count > 0,
                     cancellationToken);
 
                 fixture.AssertResultColumns();
@@ -211,18 +211,16 @@ public sealed partial class DatabaseViewerConformanceTests
             cancellationToken);
 
         var quote = BuiltInDatabaseDrivers.All
-            .Single(driver => driver.Descriptor.Id == environment.Provider.Id)
+            .Single(driver => string.Equals(driver.Descriptor.Id, environment.Provider.Id, StringComparison.Ordinal))
             .QuoteIdentifier;
         var catalog = await client.GetSqlCatalogAsync(
             environment.Provider.Id,
             environment.ConnectionString,
             tunnel: null,
             cancellationToken);
-        var table = Assert.Single(catalog.Objects, item =>
-            item.Id.Name == objects.Rows.Name && item.Kind == DatabaseTableKind.Table);
-        var keylessTable = Assert.Single(catalog.Objects, item =>
-            item.Id.Name == objects.Keyless.Name
-                && item.Kind == objects.Keyless.Kind);
+        var table = Assert.Single(catalog.Objects, item => string.Equals(item.Id.Name, objects.Rows.Name, StringComparison.Ordinal) && item.Kind == DatabaseTableKind.Table);
+        var keylessTable = Assert.Single(catalog.Objects, item => string.Equals(item.Id.Name, objects.Keyless.Name
+, StringComparison.Ordinal) && item.Kind == objects.Keyless.Kind);
         await AssertRenderedSelectedObjectSqlContextAsync(
             environment,
             panel,
@@ -251,8 +249,8 @@ public sealed partial class DatabaseViewerConformanceTests
         var completionItems = completionWindow.CompletionList.CompletionData
             .Cast<SqlCompletionData>()
             .ToArray();
-        Assert.Contains(completionItems, item => item.Label == "id");
-        Assert.Contains(completionItems, item => item.Label == "title");
+        Assert.Contains(completionItems, item => string.Equals(item.Label, "id", StringComparison.Ordinal));
+        Assert.Contains(completionItems, item => string.Equals(item.Label, "title", StringComparison.Ordinal));
         completionWindow.Hide();
 
         var clauseSql = $"SELECT * FROM {objectName} ";
@@ -265,7 +263,7 @@ public sealed partial class DatabaseViewerConformanceTests
             editor.ActiveCompletionWindowForTesting);
         Assert.Contains(
             clauseCompletion.CompletionList.CompletionData.Cast<SqlCompletionData>(),
-            item => item.Kind == SqlCompletionItemKind.Keyword && item.Label == "WHERE");
+            item => item.Kind == SqlCompletionItemKind.Keyword && string.Equals(item.Label, "WHERE", StringComparison.Ordinal));
         clauseCompletion.Hide();
 
         var expressionSql = $"SELECT * FROM {objectName} WHERE ";
@@ -278,7 +276,7 @@ public sealed partial class DatabaseViewerConformanceTests
             editor.ActiveCompletionWindowForTesting);
         Assert.Contains(
             expressionCompletion.CompletionList.CompletionData.Cast<SqlCompletionData>(),
-            item => item.Kind == SqlCompletionItemKind.Column && item.Label == "title");
+            item => item.Kind == SqlCompletionItemKind.Column && string.Equals(item.Label, "title", StringComparison.Ordinal));
         Assert.DoesNotContain(
             expressionCompletion.CompletionList.CompletionData.Cast<SqlCompletionData>(),
             item => item.Kind is SqlCompletionItemKind.Catalog
@@ -296,7 +294,7 @@ public sealed partial class DatabaseViewerConformanceTests
             objectName,
             quote,
             cancellationToken);
-        if (catalog.DriverId == "postgres")
+        if (string.Equals(catalog.DriverId, "postgres", StringComparison.Ordinal))
         {
             await AssertRenderedPostgresRoutineInsertionAsync(
                 panel,
@@ -397,7 +395,7 @@ public sealed partial class DatabaseViewerConformanceTests
     {
         var timestampColumn = Assert.Single(
             table.Columns,
-            column => column.Name == "created_at");
+            column => string.Equals(column.Name, "created_at", StringComparison.Ordinal));
         Assert.True(
             timestampColumn.ValueKind is DatabaseValueKind.Timestamp
                 or DatabaseValueKind.TimestampWithZone,
@@ -431,12 +429,12 @@ public sealed partial class DatabaseViewerConformanceTests
         {
             Assert.DoesNotContain(
                 valueItems,
-                item => item.Label == "CURRENT_TIMESTAMP");
+                item => string.Equals(item.Label, "CURRENT_TIMESTAMP", StringComparison.Ordinal));
             valueCompletionWindow?.Hide();
         }
         else
         {
-            Assert.Contains(valueItems, item => item.Label == "CURRENT_TIMESTAMP");
+            Assert.Contains(valueItems, item => string.Equals(item.Label, "CURRENT_TIMESTAMP", StringComparison.Ordinal));
             AcceptRenderedCompletion(
                 fixture,
                 editor,
@@ -456,8 +454,7 @@ public sealed partial class DatabaseViewerConformanceTests
                 cancellationToken);
         }
 
-        foreach (var valueItem in valueItems.Where(item =>
-                     item.Label != "CURRENT_TIMESTAMP"))
+        foreach (var valueItem in valueItems.Where(item => !string.Equals(item.Label, "CURRENT_TIMESTAMP", StringComparison.Ordinal)))
         {
             await AssertRenderedQueryRunsAsync(
                 panel,
@@ -565,8 +562,7 @@ public sealed partial class DatabaseViewerConformanceTests
         Func<string, string> quote,
         CancellationToken cancellationToken)
     {
-        var timestampColumn = Assert.Single(table.Columns, column =>
-            column.Name == "created_at");
+        var timestampColumn = Assert.Single(table.Columns, column => string.Equals(column.Name, "created_at", StringComparison.Ordinal));
         var expressionPrefix = $"SELECT * FROM {objectName} WHERE "
             + $"{quote(timestampColumn.Name)} < ";
 
@@ -630,7 +626,7 @@ public sealed partial class DatabaseViewerConformanceTests
         void ObserveBusy(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
         {
             _ = sender;
-            if (args.PropertyName != nameof(panel.IsBusy))
+            if (!string.Equals(args.PropertyName, nameof(panel.IsBusy), StringComparison.Ordinal))
             {
                 return;
             }
@@ -708,13 +704,13 @@ public sealed partial class DatabaseViewerConformanceTests
             .ToArray() ?? [];
         if (expected)
         {
-            Assert.Contains(items, item => item.Label == expectedLabel
-                && item.Kind == SqlCompletionItemKind.Function
-                && item.InsertText == $"{expectedLabel}(");
+            Assert.Contains(items, item => string.Equals(item.Label, expectedLabel
+, StringComparison.Ordinal) && item.Kind == SqlCompletionItemKind.Function
+                && string.Equals(item.InsertText, $"{expectedLabel}(", StringComparison.Ordinal));
         }
         else
         {
-            Assert.DoesNotContain(items, item => item.Label == expectedLabel);
+            Assert.DoesNotContain(items, item => string.Equals(item.Label, expectedLabel, StringComparison.Ordinal));
         }
 
         completionWindow?.Hide();
@@ -761,8 +757,8 @@ public sealed partial class DatabaseViewerConformanceTests
         var item = Assert.Single(
             completionWindow.CompletionList.CompletionData.Cast<SqlCompletionData>(),
             candidate => candidate.Kind == kind
-                && candidate.Label == label
-                && candidate.InsertText == insertText);
+                && string.Equals(candidate.Label, label
+, StringComparison.Ordinal) && string.Equals(candidate.InsertText, insertText, StringComparison.Ordinal));
         completionWindow.CompletionList.SelectedItem = item;
         fixture.Window.KeyPress(
             Key.Enter,
@@ -831,9 +827,9 @@ public sealed partial class DatabaseViewerConformanceTests
             $"SELECT {rowsMemberQualifier}",
             cancellationToken);
         Assert.Contains(rowsCompletion, item =>
-            item.Kind == SqlCompletionItemKind.Column && item.Label == "id");
+            item.Kind == SqlCompletionItemKind.Column && string.Equals(item.Label, "id", StringComparison.Ordinal));
         Assert.Contains(rowsCompletion, item =>
-            item.Kind == SqlCompletionItemKind.Column && item.Label == "title");
+            item.Kind == SqlCompletionItemKind.Column && string.Equals(item.Label, "title", StringComparison.Ordinal));
 
         fixture.OpenObject(environment.Provider.Seed.KeylessTable);
         await WaitForSelectedObjectAsync(
@@ -854,11 +850,11 @@ public sealed partial class DatabaseViewerConformanceTests
             $"SELECT {keylessMemberQualifier}",
             cancellationToken);
         Assert.Contains(keylessCompletion, item =>
-            item.Kind == SqlCompletionItemKind.Column && item.Label == "position");
+            item.Kind == SqlCompletionItemKind.Column && string.Equals(item.Label, "position", StringComparison.Ordinal));
         Assert.Contains(keylessCompletion, item =>
-            item.Kind == SqlCompletionItemKind.Column && item.Label == "label");
+            item.Kind == SqlCompletionItemKind.Column && string.Equals(item.Label, "label", StringComparison.Ordinal));
         Assert.DoesNotContain(keylessCompletion, item =>
-            item.Kind == SqlCompletionItemKind.Column && item.Label == "title");
+            item.Kind == SqlCompletionItemKind.Column && string.Equals(item.Label, "title", StringComparison.Ordinal));
 
         var rowsObjectName = catalog.DefaultCatalog is not null
             || catalog.DefaultSchema is not null
@@ -873,11 +869,11 @@ public sealed partial class DatabaseViewerConformanceTests
             explicitSql.IndexOf(explicitAlias, StringComparison.Ordinal) + explicitAlias.Length,
             cancellationToken);
         Assert.Contains(explicitCompletion, item =>
-            item.Kind == SqlCompletionItemKind.Column && item.Label == "id");
+            item.Kind == SqlCompletionItemKind.Column && string.Equals(item.Label, "id", StringComparison.Ordinal));
         Assert.Contains(explicitCompletion, item =>
-            item.Kind == SqlCompletionItemKind.Column && item.Label == "title");
+            item.Kind == SqlCompletionItemKind.Column && string.Equals(item.Label, "title", StringComparison.Ordinal));
         Assert.DoesNotContain(explicitCompletion, item =>
-            item.Kind == SqlCompletionItemKind.Column && item.Label == "position");
+            item.Kind == SqlCompletionItemKind.Column && string.Equals(item.Label, "position", StringComparison.Ordinal));
 
         const string unresolvedAlias = "gsmissing";
         var unresolvedSql = $"SELECT {unresolvedAlias} "
@@ -965,8 +961,8 @@ public sealed partial class DatabaseViewerConformanceTests
             ? quoted
             : unquoted;
         return item.Kind == SqlCompletionItemKind.Column
-            && item.Label == unquoted
-            && item.InsertText == expectedInsertText;
+            && string.Equals(item.Label, unquoted
+, StringComparison.Ordinal) && string.Equals(item.InsertText, expectedInsertText, StringComparison.Ordinal);
     }
 
     private static async Task AssertHeadlessDatabaseDiagramAsync(
@@ -1068,7 +1064,7 @@ public sealed partial class DatabaseViewerConformanceTests
         await WaitOnDispatcherAsync(
             () => !panel.IsBusy
                 && panel.ResultRows.Count == 1
-                && Cell(panel.ResultRows[0], "code").Text == "alpha",
+                && string.Equals(Cell(panel.ResultRows[0], "code").Text, "alpha", StringComparison.Ordinal),
             cancellationToken);
 
         fixture.OpenCellContextMenu(panel.ResultRows[0], "code");
@@ -1076,7 +1072,7 @@ public sealed partial class DatabaseViewerConformanceTests
         await WaitOnDispatcherAsync(
             () => !panel.IsBusy
                 && panel.ResultRows.Count == 1
-                && Cell(panel.ResultRows[0], "code").Text == "alpha",
+                && string.Equals(Cell(panel.ResultRows[0], "code").Text, "alpha", StringComparison.Ordinal),
             cancellationToken);
         Assert.False(panel.HasError, panel.ErrorMessage);
 
@@ -1108,7 +1104,7 @@ public sealed partial class DatabaseViewerConformanceTests
             () => !panel.IsBusy
                 && SortDescending(panel, "score") == false
                 && RowCodes(panel).SequenceEqual(
-                    ["row-201", "row-202", "row-203", "row-204", "row-205"]),
+                    ["row-201", "row-202", "row-203", "row-204", "row-205"], StringComparer.Ordinal),
             cancellationToken);
         fixture.AssertColumnHeaderSortState("score", descending: false);
         AssertActiveScoreFilter(panel);
@@ -1118,7 +1114,7 @@ public sealed partial class DatabaseViewerConformanceTests
             () => !panel.IsBusy
                 && SortDescending(panel, "score") == true
                 && RowCodes(panel).SequenceEqual(
-                    ["row-205", "row-204", "row-203", "row-202", "row-201"]),
+                    ["row-205", "row-204", "row-203", "row-202", "row-201"], StringComparer.Ordinal),
             cancellationToken);
         fixture.AssertColumnHeaderSortState("score", descending: true);
         AssertActiveScoreFilter(panel);
@@ -1177,7 +1173,7 @@ public sealed partial class DatabaseViewerConformanceTests
             () => !panel.IsBusy
                 && (panel.HasError
                     || (panel.ResultRows.Count == 200
-                        && Cell(panel.ResultRows[0], "code").Text == "row-205")),
+                        && string.Equals(Cell(panel.ResultRows[0], "code").Text, "row-205", StringComparison.Ordinal))),
             cancellationToken);
         Assert.False(panel.HasError, panel.ErrorMessage);
 
@@ -1262,7 +1258,7 @@ public sealed partial class DatabaseViewerConformanceTests
             Assert.False(fixture.CanBeginTextCellEdit("row-205", "title"));
         }
 
-        if (environment.Provider.Id == "sqlserver")
+        if (string.Equals(environment.Provider.Id, "sqlserver", StringComparison.Ordinal))
         {
             await AssertSqlServerUnsafeRawProjectionsStayReadOnlyAsync(
                 objects,
@@ -1278,7 +1274,7 @@ public sealed partial class DatabaseViewerConformanceTests
         var expressionQuery = AddAliasedExpressionToGeneratedPreview(
             completeGeneratedPreview,
             environment.Provider.Id);
-        if (environment.Provider.Id == "sqlite")
+        if (string.Equals(environment.Provider.Id, "sqlite", StringComparison.Ordinal))
         {
             // A final line comment must not consume the generated outer
             // filter/order/page clauses. A semicolon before the comment stays
@@ -1291,8 +1287,7 @@ public sealed partial class DatabaseViewerConformanceTests
             () => !panel.IsBusy
                 && !panel.HasError
                 && panel.ResultRows.Count == 205
-                && panel.ResultColumns.Any(column =>
-                    column.Name == "ghostshell_expression"),
+                && panel.ResultColumns.Any(column => string.Equals(column.Name, "ghostshell_expression", StringComparison.Ordinal)),
             cancellationToken);
 
         Assert.Null(panel.SelectedObject);
@@ -1322,7 +1317,7 @@ public sealed partial class DatabaseViewerConformanceTests
                 || (!panel.IsBusy
                     && SortDescending(panel, "id") == false
                     && RowCodes(panel).Take(5).SequenceEqual(
-                        ["alpha", "beta", "literal", "omega-a", "omega-b"])),
+                        ["alpha", "beta", "literal", "omega-a", "omega-b"], StringComparer.Ordinal)),
             cancellationToken);
         Assert.False(panel.HasError, panel.ErrorMessage);
         fixture.AssertColumnHeaderSortState("id", descending: false);
@@ -1333,7 +1328,7 @@ public sealed partial class DatabaseViewerConformanceTests
                 || (!panel.IsBusy
                     && SortDescending(panel, "id") == true
                     && RowCodes(panel).Take(5).SequenceEqual(
-                        ["row-205", "row-204", "row-203", "row-202", "row-201"])),
+                        ["row-205", "row-204", "row-203", "row-202", "row-201"], StringComparer.Ordinal)),
             cancellationToken);
         Assert.False(panel.HasError, panel.ErrorMessage);
         fixture.AssertColumnHeaderSortState("id", descending: true);
@@ -1345,8 +1340,8 @@ public sealed partial class DatabaseViewerConformanceTests
         await WaitOnDispatcherAsync(
             () => !panel.IsBusy
                 && panel.ResultRows.Count == 1
-                && Cell(panel.ResultRows[0], "code").Text == "alpha"
-                && SortDescending(panel, "id") == true,
+                && string.Equals(Cell(panel.ResultRows[0], "code").Text, "alpha"
+, StringComparison.Ordinal) && SortDescending(panel, "id") == true,
             cancellationToken);
         fixture.AssertColumnHeaderSortState("id", descending: true);
 
@@ -1355,7 +1350,7 @@ public sealed partial class DatabaseViewerConformanceTests
         await WaitOnDispatcherAsync(
             () => !panel.IsBusy
                 && panel.ResultRows.Count == 1
-                && Cell(panel.ResultRows[0], "code").Text == "alpha",
+                && string.Equals(Cell(panel.ResultRows[0], "code").Text, "alpha", StringComparison.Ordinal),
             cancellationToken);
         Assert.False(panel.HasError, panel.ErrorMessage);
 
@@ -1363,8 +1358,8 @@ public sealed partial class DatabaseViewerConformanceTests
         await WaitOnDispatcherAsync(
             () => !panel.IsBusy
                 && panel.ResultRows.Count == 205
-                && Cell(panel.ResultRows[0], "code").Text == "row-205"
-                && SortDescending(panel, "id") == true,
+                && string.Equals(Cell(panel.ResultRows[0], "code").Text, "row-205"
+, StringComparison.Ordinal) && SortDescending(panel, "id") == true,
             cancellationToken);
         Assert.Equal(expressionQuery, panel.QueryText);
     }
@@ -1403,7 +1398,7 @@ public sealed partial class DatabaseViewerConformanceTests
             objects.RowsDetails.Columns.Where(column => !column.IsPrimaryKey),
             column => Assert.Contains(
                 panel.ResultColumns,
-                projected => projected.Name == column.Name));
+                projected => string.Equals(projected.Name, column.Name, StringComparison.Ordinal)));
 
         const string replacedColumnName = "title";
         var replacedProjection = objects.RowsDetails.Columns
@@ -1425,7 +1420,7 @@ public sealed partial class DatabaseViewerConformanceTests
         Assert.False(panel.HasError, panel.ErrorMessage);
         Assert.Equal(
             objects.RowsDetails.Columns.Select(column => column.Name),
-            panel.ResultColumns.Select(column => column.Name));
+            panel.ResultColumns.Select(column => column.Name), StringComparer.Ordinal);
         Assert.Equal("ALPHA", Cell(FindRow(panel, "alpha"), replacedColumnName).Text);
         AssertUnsafeRawProjectionReadOnly(panel, fixture);
 
@@ -1450,7 +1445,7 @@ public sealed partial class DatabaseViewerConformanceTests
         Assert.False(panel.HasError, panel.ErrorMessage);
         Assert.Equal(
             objects.RowsDetails.Columns.Select(column => column.Name),
-            panel.ResultColumns.Select(column => column.Name));
+            panel.ResultColumns.Select(column => column.Name), StringComparer.Ordinal);
         var alpha = FindRow(panel, "alpha");
         Assert.Equal("one", Cell(alpha, replacedColumnName).Text);
         Assert.Equal("Alpha", Cell(alpha, swappedColumnName).Text);
@@ -1483,10 +1478,10 @@ public sealed partial class DatabaseViewerConformanceTests
         DatabaseRuntimePanelViewModel panel,
         string columnName) => Assert.Single(
             panel.ResultColumns,
-            column => column.Name == columnName).SortDescending;
+            column => string.Equals(column.Name, columnName, StringComparison.Ordinal)).SortDescending;
 
     private static IReadOnlyList<string> RowCodes(DatabaseRuntimePanelViewModel panel) =>
-        panel.ResultRows.Select(row => Cell(row, "code").Text).ToArray();
+        [.. panel.ResultRows.Select(row => Cell(row, "code").Text)];
 
     private static string AddOrderByToGeneratedPreview(
         string generatedPreview,
@@ -1496,7 +1491,7 @@ public sealed partial class DatabaseViewerConformanceTests
     {
         var ordering = $"ORDER BY {QuoteIdentifier(providerId, columnName)}"
             + (descending ? " DESC" : " ASC");
-        if (providerId == "sqlserver")
+        if (string.Equals(providerId, "sqlserver", StringComparison.Ordinal))
         {
             return generatedPreview.Replace(
                 "ORDER BY (SELECT NULL)",
@@ -1504,7 +1499,7 @@ public sealed partial class DatabaseViewerConformanceTests
                 StringComparison.Ordinal);
         }
 
-        if (providerId == "oracle")
+        if (string.Equals(providerId, "oracle", StringComparison.Ordinal))
         {
             return generatedPreview.Replace(
                 "ORDER BY 1",
@@ -1512,7 +1507,7 @@ public sealed partial class DatabaseViewerConformanceTests
                 StringComparison.Ordinal);
         }
 
-        var pageMarker = providerId == "firebird" ? " ROWS " : " LIMIT ";
+        var pageMarker = string.Equals(providerId, "firebird", StringComparison.Ordinal) ? " ROWS " : " LIMIT ";
         var markerIndex = generatedPreview.LastIndexOf(pageMarker, StringComparison.Ordinal);
         Assert.True(markerIndex >= 0, $"Generated preview did not contain '{pageMarker.Trim()}'.");
         return generatedPreview.Insert(markerIndex, $" {ordering}");
@@ -1529,7 +1524,7 @@ public sealed partial class DatabaseViewerConformanceTests
         }
 
         var alias = QuoteIdentifier(providerId, "ghostshell_base");
-        var aliasJoiner = providerId == "oracle" ? " " : " AS ";
+        var aliasJoiner = string.Equals(providerId, "oracle", StringComparison.Ordinal) ? " " : " AS ";
         return $"SELECT {alias}.*, {alias}.{QuoteIdentifier(providerId, "score")} + 1 AS "
             + $"{QuoteIdentifier(providerId, "ghostshell_expression")} "
             + $"FROM ({source}){aliasJoiner}{alias}";
@@ -1594,7 +1589,7 @@ public sealed partial class DatabaseViewerConformanceTests
         await WaitOnDispatcherAsync(
             () => !panel.IsBusy
                 && panel.ResultRows.Count == 75
-                && panel.PageLimitText == "75",
+                && string.Equals(panel.PageLimitText, "75", StringComparison.Ordinal),
             cancellationToken);
         Assert.Equal(205, panel.TotalRows);
         Assert.Equal("205", fixture.TotalRowsText.Text);
@@ -1602,7 +1597,7 @@ public sealed partial class DatabaseViewerConformanceTests
         await WaitOnDispatcherAsync(
             () => !panel.IsBusy
                 && panel.ResultRows.Count == 200
-                && panel.PageLimitText == "200",
+                && string.Equals(panel.PageLimitText, "200", StringComparison.Ordinal),
             cancellationToken);
 
         fixture.SelectFilter("code", DatabaseFilterOperator.Equal, "alpha");
@@ -1610,7 +1605,7 @@ public sealed partial class DatabaseViewerConformanceTests
         await WaitOnDispatcherAsync(
             () => !panel.IsBusy
                 && panel.ResultRows.Count == 1
-                && Cell(panel.ResultRows[0], "code").Text == "alpha",
+                && string.Equals(Cell(panel.ResultRows[0], "code").Text, "alpha", StringComparison.Ordinal),
             cancellationToken);
 
         fixture.InvokeClickHandler(fixture.ClearFilterButton);
@@ -1770,7 +1765,7 @@ public sealed partial class DatabaseViewerConformanceTests
                 fixture.InvokeContextMenuItem(
                     "Paste a database cell value from the clipboard");
                 await WaitOnDispatcherAsync(
-                    () => Cell(source, "code").Text == duplicateCode,
+                    () => string.Equals(Cell(source, "code").Text, duplicateCode, StringComparison.Ordinal),
                     cancellationToken);
                 fixture.OpenCellContextMenu(source, "code");
                 fixture.InvokeContextMenuItem("Duplicate the selected database row");
@@ -1783,7 +1778,7 @@ public sealed partial class DatabaseViewerConformanceTests
                 fixture.InvokeContextMenuItem(
                     "Paste a database cell value from the clipboard");
                 await WaitOnDispatcherAsync(
-                    () => Cell(source, "code").Text == sourceCode,
+                    () => string.Equals(Cell(source, "code").Text, sourceCode, StringComparison.Ordinal),
                     cancellationToken);
                 Assert.True(fixture.SaveButton.IsEffectivelyEnabled);
             },
@@ -1976,7 +1971,7 @@ public sealed partial class DatabaseViewerConformanceTests
         string objectName,
         CancellationToken cancellationToken) => WaitOnDispatcherAsync(
             () => !panel.IsBusy
-                && panel.SelectedObject?.Descriptor.Name == objectName,
+                && string.Equals(panel.SelectedObject?.Descriptor.Name, objectName, StringComparison.Ordinal),
             cancellationToken);
 
     private static async Task ClickSaveAsync(
@@ -2012,7 +2007,7 @@ public sealed partial class DatabaseViewerConformanceTests
     {
         panel.FilterColumn = Assert.Single(
             panel.FilterColumns,
-            candidate => candidate.Name == columnName);
+            candidate => string.Equals(candidate.Name, columnName, StringComparison.Ordinal));
         panel.FilterOperator = Assert.Single(
             panel.FilterOperators,
             candidate => candidate.Operator == filterOperator);
@@ -2218,7 +2213,7 @@ public sealed partial class DatabaseViewerConformanceTests
                 Assert.Same(
                     Assert.Single(
                         Panel.ResultColumns,
-                        candidate => candidate.Name == descriptor.Name),
+                        candidate => string.Equals(candidate.Name, descriptor.Name, StringComparison.Ordinal)),
                     descriptor);
                 Assert.Equal(!descriptor.IsEditable, column.IsReadOnly);
             }
@@ -2244,7 +2239,7 @@ public sealed partial class DatabaseViewerConformanceTests
             UpdateLayout();
             var column = Assert.Single(
                 Panel.FilterColumns,
-                candidate => candidate.Name == columnName);
+                candidate => string.Equals(candidate.Name, columnName, StringComparison.Ordinal));
             var filter = Assert.Single(
                 Panel.FilterOperators,
                 candidate => candidate.Operator == filterOperator);
@@ -2377,8 +2372,7 @@ public sealed partial class DatabaseViewerConformanceTests
 
         public void EditTextCell(string code, string columnName, string value)
         {
-            var row = Assert.Single(Panel.ResultRows, candidate =>
-                Cell(candidate, "code").Text == code);
+            var row = Assert.Single(Panel.ResultRows, candidate => string.Equals(Cell(candidate, "code").Text, code, StringComparison.Ordinal));
             EditTextCell(row, columnName, value);
         }
 
@@ -2390,7 +2384,7 @@ public sealed partial class DatabaseViewerConformanceTests
             var column = Assert.Single(
                 RowsGrid.Columns,
                 candidate => candidate.Tag is DatabaseResultColumnViewModel descriptor
-                    && descriptor.Name == columnName);
+                    && string.Equals(descriptor.Name, columnName, StringComparison.Ordinal));
             var grid = RowsGrid;
             grid.SelectedItem = row;
             grid.CurrentColumn = column;
@@ -2431,7 +2425,7 @@ public sealed partial class DatabaseViewerConformanceTests
             var column = Assert.Single(
                 RowsGrid.Columns,
                 candidate => candidate.Tag is DatabaseResultColumnViewModel descriptor
-                    && descriptor.Name == columnName);
+                    && string.Equals(descriptor.Name, columnName, StringComparison.Ordinal));
             RowsGrid.SelectedItem = row;
             RowsGrid.CurrentColumn = column;
             RowsGrid.ScrollIntoView(row, column);
@@ -2752,12 +2746,11 @@ public sealed partial class DatabaseViewerConformanceTests
 
         public bool CanBeginTextCellEdit(string code, string columnName)
         {
-            var row = Assert.Single(Panel.ResultRows, candidate =>
-                Cell(candidate, "code").Text == code);
+            var row = Assert.Single(Panel.ResultRows, candidate => string.Equals(Cell(candidate, "code").Text, code, StringComparison.Ordinal));
             var column = Assert.Single(
                 RowsGrid.Columns,
                 candidate => candidate.Tag is DatabaseResultColumnViewModel descriptor
-                    && descriptor.Name == columnName);
+                    && string.Equals(descriptor.Name, columnName, StringComparison.Ordinal));
             RowsGrid.SelectedItem = row;
             RowsGrid.CurrentColumn = column;
             RowsGrid.ScrollIntoView(row, column);
@@ -2822,7 +2815,7 @@ public sealed partial class DatabaseViewerConformanceTests
             Assert.Single(
                 RowsGrid.Columns,
                 candidate => candidate.Tag is DatabaseResultColumnViewModel descriptor
-                    && descriptor.Name == columnName);
+                    && string.Equals(descriptor.Name, columnName, StringComparison.Ordinal));
 
         private DataGridColumnHeader ColumnHeader(string columnName) =>
             ColumnHeaderContent(columnName)
@@ -2846,7 +2839,7 @@ public sealed partial class DatabaseViewerConformanceTests
                 .OfType<Button>()
                 .FirstOrDefault(candidate =>
                     candidate.DataContext is DatabaseTableItemViewModel table
-                    && table.Descriptor.Name == name)
+                    && string.Equals(table.Descriptor.Name, name, StringComparison.Ordinal))
             ?? throw new InvalidOperationException(
                 $"The real database viewer did not render the '{name}' object button.");
 

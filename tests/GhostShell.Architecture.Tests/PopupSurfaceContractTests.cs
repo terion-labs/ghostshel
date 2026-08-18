@@ -33,8 +33,8 @@ public sealed class PopupSurfaceContractTests
         foreach (var selector in PopupSelectors)
         {
             var background = theme.Descendants()
-                .Where(element => element.Parent?.Attribute("Selector")?.Value == selector)
-                .SingleOrDefault(element => element.Attribute("Property")?.Value == "Background");
+                .Where(element => string.Equals(element.Parent?.Attribute("Selector")?.Value, selector, StringComparison.Ordinal))
+                .SingleOrDefault(element => string.Equals(element.Attribute("Property")?.Value, "Background", StringComparison.Ordinal));
 
             Assert.True(
                 background is not null,
@@ -62,7 +62,9 @@ public sealed class PopupSurfaceContractTests
 
         var publish = Regex.Match(
             appSource,
-            @"Publish\(""ShellPopupSurfaceBrush"",\s*(?<value>[^)]*\)?)\s*\);");
+            @"Publish\(""ShellPopupSurfaceBrush"",\s*(?<value>[^)]*\)?)\s*\);",
+            RegexOptions.CultureInvariant,
+            TimeSpan.FromSeconds(1));
 
         Assert.True(publish.Success, "The popup surface token is never published.");
         Assert.DoesNotContain(

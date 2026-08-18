@@ -423,14 +423,14 @@ public sealed partial class BrowserSurface
 
         if (nativeResult.Status == NativeBrowserAutomationStatus.Rejected)
         {
-            var error = nativeResult.StableCode == "renderer_unavailable"
-                ? BrowserError.Create(
+            var error = string.Equals(nativeResult.StableCode, "renderer_unavailable"
+, StringComparison.Ordinal) ? BrowserError.Create(
                     BrowserErrorCode.RendererUnavailable,
                     "The native browser renderer is unavailable.",
                     retryable: true)
                 : BrowserError.Create(
-                    nativeResult.StableCode == "script_result_not_serializable"
-                        ? BrowserErrorCode.ScriptResultRejected
+string.Equals(nativeResult.StableCode, "script_result_not_serializable"
+, StringComparison.Ordinal) ? BrowserErrorCode.ScriptResultRejected
                         : BrowserErrorCode.ScriptRejected,
                     "The bounded browser script was rejected.");
             CompleteBrowserAutomation(

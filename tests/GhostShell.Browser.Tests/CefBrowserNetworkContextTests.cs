@@ -20,7 +20,7 @@ public sealed class CefBrowserNetworkContextTests
             "disable_non_proxied_udp",
             JsonSerializer.Deserialize<string>(
                 preferences["webrtc.ip_handling_policy"]));
-        Assert.DoesNotContain("proxy.mode", preferences.Keys);
+        Assert.DoesNotContain("proxy.mode", preferences.Keys, StringComparer.Ordinal);
     }
 
     [Theory]

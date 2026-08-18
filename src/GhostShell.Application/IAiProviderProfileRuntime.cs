@@ -77,7 +77,7 @@ public sealed record AiProviderProfileDescriptor
     {
         var efforts = SupportedReasoningEfforts is null
             ? ImmutableArray.Create(AgentReasoningEffort.Automatic)
-            : SupportedReasoningEfforts.ToImmutableArray();
+            : [.. SupportedReasoningEfforts];
         if (efforts.IsEmpty
             || efforts[0] != AgentReasoningEffort.Automatic
             || efforts.Any(effort => !Enum.IsDefined(effort))
@@ -98,11 +98,11 @@ public sealed record AiProviderProfileDescriptor
         this.RequiresCredential = RequiresCredential;
         this.SupportsImageInput = SupportsImageInput;
         this.SupportedReasoningEfforts = efforts;
-        this.SupportsReasoning = efforts.Length > 1;
+        SupportsReasoning = efforts.Length > 1;
 
         var models = Models is null
             ? ImmutableArray.Create(new AiProviderModelDescriptor(DefaultModel, DefaultModel))
-            : Models.ToImmutableArray();
+            : [.. Models];
         if (models.IsEmpty
             || models.Select(model => model.Id).Distinct(StringComparer.Ordinal).Count()
                 != models.Length

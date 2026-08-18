@@ -65,15 +65,14 @@ public sealed partial class NativeAgentSessionTests
 
         var events = await ReadCurrentEventBatchAsync(session);
         Assert.Equal(
-            new[]
-            {
+            [
                 AgentRunEventKind.TurnStarted,
                 AgentRunEventKind.ProvisionalText,
                 AgentRunEventKind.TurnSteered,
                 AgentRunEventKind.TurnStarted,
                 AgentRunEventKind.ProvisionalText,
                 AgentRunEventKind.TurnCommitted,
-            },
+            ],
             events.Select(agentEvent => agentEvent.Kind));
         var steeredEvent = Assert.Single(
             events,
@@ -83,7 +82,7 @@ public sealed partial class NativeAgentSessionTests
         Assert.Null(steeredEvent.ProvisionalText);
         Assert.DoesNotContain(
             events,
-            agentEvent => agentEvent.ProvisionalText == "late old response");
+            agentEvent => string.Equals(agentEvent.ProvisionalText, "late old response", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -53,7 +53,7 @@ public sealed class DockerPanelSessionFactoryTests
             container.Resource.Reference,
             CancellationToken.None));
         Assert.Equal(ContainerId, client.LastInspectedResource?.Id);
-        Assert.Equal(["Name", "Config.Image"], inspection.Properties.Select(item => item.Name));
+        Assert.Equal(["Name", "Config.Image"], inspection.Properties.Select(item => item.Name), StringComparer.Ordinal);
         Assert.DoesNotContain("PASSWORD=needle", JsonSerializer.Serialize(inspection), StringComparison.Ordinal);
         Assert.DoesNotContain(ContainerId, JsonSerializer.Serialize(inspection), StringComparison.Ordinal);
         Assert.True(inspection.IsTruncated);
@@ -162,8 +162,7 @@ public sealed class DockerPanelSessionFactoryTests
             new DockerSessionTarget(BuiltInConnections.Local, 1),
             CancellationToken.None);
         var state = Success(await session.ReadStateAsync(10, CancellationToken.None));
-        var container = Assert.Single(state.Containers, item =>
-            item.Resource.DisplayName == "api");
+        var container = Assert.Single(state.Containers, item => string.Equals(item.Resource.DisplayName, "api", StringComparison.Ordinal));
         var raw = new DockerResourceReference(
             DockerResourceKind.Container,
             ContainerId,
@@ -181,18 +180,17 @@ public sealed class DockerPanelSessionFactoryTests
             container.Resource.Reference,
             CancellationToken.None));
 
-        Assert.Equal(["Config.Image"], inspection.Properties.Select(item => item.Name));
+        Assert.Equal(["Config.Image"], inspection.Properties.Select(item => item.Name), StringComparer.Ordinal);
         Assert.True(inspection.IsTruncated);
         var inspectJson = JsonSerializer.Serialize(inspection);
         Assert.DoesNotContain("hunter2", inspectJson, StringComparison.Ordinal);
         Assert.DoesNotContain("abcdefghijklmnop", inspectJson, StringComparison.Ordinal);
 
         client.LogsOverride = new DockerContainerLogPage(
-            Enumerable.Range(0, 100)
+            [.. Enumerable.Range(0, 100)
                 .Select(index => new DockerContainerLogLine(
-                    index.ToString(),
-                    new string('x', 8_192)))
-                .ToArray(),
+                    index.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    new string('x', 8_192)))],
             HasOlder: false,
             OldestTimestamp: null,
             NewestTimestamp: null);

@@ -30,7 +30,7 @@ public sealed record TerminalScreenDiffResult
         this.InitialContentRevision = InitialContentRevision;
         this.CurrentContentRevision = CurrentContentRevision;
         this.BaselineAvailable = BaselineAvailable;
-        this.ChangedRows = new ReadOnlyCollection<RowChange>(ChangedRows.ToArray());
+        this.ChangedRows = new ReadOnlyCollection<RowChange>([.. ChangedRows]);
         this.IsTruncated = IsTruncated;
         this.CursorRow = CursorRow;
         this.CursorColumn = CursorColumn;

@@ -209,13 +209,14 @@ internal static class PackageFingerprint
         }
 
         var root = document.Root;
-        if (root?.Name.LocalName != "plist")
+        if (root is null
+            || !string.Equals(root.Name.LocalName, "plist", StringComparison.Ordinal))
         {
             throw new InvalidDataException("Info.plist does not contain a plist root element.");
         }
 
         var rootValues = root.Elements().ToArray();
-        if (rootValues.Length != 1 || rootValues[0].Name.LocalName != "dict")
+        if (rootValues.Length != 1 || !string.Equals(rootValues[0].Name.LocalName, "dict", StringComparison.Ordinal))
         {
             throw new InvalidDataException("Info.plist does not contain one root dictionary.");
         }
@@ -231,7 +232,7 @@ internal static class PackageFingerprint
         var keys = new HashSet<string>(StringComparer.Ordinal);
         for (var index = 0; index < children.Length; index += 2)
         {
-            if (children[index].Name.LocalName != "key")
+            if (!string.Equals(children[index].Name.LocalName, "key", StringComparison.Ordinal))
             {
                 throw new InvalidDataException(
                     "Info.plist dictionary values must be preceded by a key element.");
@@ -243,7 +244,7 @@ internal static class PackageFingerprint
                 throw new InvalidDataException("Info.plist contains a duplicate key.");
             }
 
-            if (children[index + 1].Name.LocalName == "string")
+            if (string.Equals(children[index + 1].Name.LocalName, "string", StringComparison.Ordinal))
             {
                 result.Add(key, children[index + 1].Value);
             }
@@ -349,7 +350,7 @@ internal static class PackageFingerprint
         var mode = File.GetUnixFileMode(path);
         const UnixFileMode executeBits =
             UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute;
-        if ((mode & executeBits) == 0)
+        if ((mode & executeBits) == UnixFileMode.None)
         {
             throw new InvalidDataException("The package executable lacks an execute bit.");
         }
@@ -453,7 +454,7 @@ internal static class PackageFingerprint
                          "*",
                          new EnumerationOptions
                          {
-                             AttributesToSkip = 0,
+                             AttributesToSkip = FileAttributes.None,
                              IgnoreInaccessible = false,
                              RecurseSubdirectories = false,
                              ReturnSpecialDirectories = false,
@@ -546,7 +547,7 @@ internal static class PackageFingerprint
             var attributes = File.GetAttributes(path);
             if ((attributes & (FileAttributes.Directory
                     | FileAttributes.ReparsePoint
-                    | FileAttributes.Device)) != 0)
+                    | FileAttributes.Device)) != FileAttributes.None)
             {
                 throw new InvalidDataException(
                     "The acceptance package contains a non-regular file.");
@@ -653,9 +654,13 @@ internal static class PackageFingerprint
         return Marshal.ReadInt32(statBuffer, modeOffset) & 0xFFFF;
     }
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
     [DllImport("libc", EntryPoint = "open", SetLastError = true)]
-    private static extern int Open(string path, int flags);
+    private static extern int Open(
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string path,
+        int flags);
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
     [DllImport("libc", EntryPoint = "fstat", SetLastError = true)]
     private static extern int FStat(int fileDescriptor, nint statBuffer);
 

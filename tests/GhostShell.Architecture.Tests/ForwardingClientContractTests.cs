@@ -69,6 +69,6 @@ public sealed class ForwardingClientContractTests
             && seam.IsAssignableFrom(type)
             // A client that exists to refuse everything is the one place the
             // defaults are the point.
-            && type.Name != "UnavailableFilePanelClient")
+            && !string.Equals(type.Name, "UnavailableFilePanelClient", StringComparison.Ordinal))
         .OrderBy(type => type.FullName, StringComparer.Ordinal);
 }

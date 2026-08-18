@@ -5,8 +5,8 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using GhostShell.App;
-using GhostShell.App.Views.SettingsPages;
 using GhostShell.App.ViewModels;
+using GhostShell.App.Views.SettingsPages;
 using GhostShell.Application;
 using GhostShell.Core;
 
@@ -690,7 +690,7 @@ public sealed partial class MainWindow
 
     private void ApplySampledColor(string field, Avalonia.Media.Color color)
     {
-        if (field == WorkspaceAccentSampleField)
+        if (string.Equals(field, WorkspaceAccentSampleField, StringComparison.Ordinal))
         {
             this.FindControl<WorkspaceEditorView>("WorkspaceDefinitionEditor")
                 ?.ApplySampledColor(color);
@@ -699,7 +699,7 @@ public sealed partial class MainWindow
 
         // The accent lives on the theme, not the terminal profile, so it is
         // written through the page that owns its field.
-        if (field == "Accent")
+        if (string.Equals(field, "Accent", StringComparison.Ordinal))
         {
             SettingsRoute.SetCustomAccent(color);
             return;

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using GhostShell.Application;
@@ -11,7 +12,7 @@ namespace GhostShell.Browser;
 /// share this instance so the visible cursor is the cursor that Chromium
 /// actually receives.
 /// </summary>
-internal sealed class CefHumanizedInput
+internal sealed class CefHumanizedInput : IDisposable
 {
     private const int MaximumCurvePoints = 20;
     private const int MinimumCurvePoints = 3;
@@ -34,6 +35,8 @@ internal sealed class CefHumanizedInput
     private readonly Func<TimeSpan, Task> _delay;
     private readonly Action<CefCursorPoint>? _cursorActivity;
     private readonly SemaphoreSlim _gestureGate = new(1, 1);
+
+    public void Dispose() => _gestureGate.Dispose();
     private CefCursorPoint? _cursor;
 
     public CefHumanizedInput(
@@ -657,4 +660,5 @@ internal sealed class CefHumanizedInput
         };
 }
 
+[StructLayout(LayoutKind.Auto)]
 internal readonly record struct CefCursorPoint(double X, double Y);

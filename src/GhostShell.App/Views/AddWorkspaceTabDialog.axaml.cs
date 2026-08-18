@@ -13,7 +13,7 @@ namespace GhostShell.App.Views;
 /// </summary>
 public sealed partial class AddWorkspaceTabDialog : Window
 {
-    private IReadOnlyList<TabSourceRow> _rows = [];
+    private readonly IReadOnlyList<TabSourceRow> _rows = [];
 
     public AddWorkspaceTabDialog()
     {
@@ -74,9 +74,7 @@ public sealed partial class AddWorkspaceTabDialog : Window
         var term = SearchInput.Text;
         ShowRows(string.IsNullOrWhiteSpace(term)
             ? _rows
-            : _rows
-                .Where(row => row.Matches(term))
-                .ToArray());
+            : [.. _rows.Where(row => row.Matches(term))]);
     }
 
     private void ShowRows(IReadOnlyList<TabSourceRow> rows)

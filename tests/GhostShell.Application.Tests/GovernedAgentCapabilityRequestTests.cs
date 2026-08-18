@@ -247,7 +247,7 @@ public sealed class GovernedAgentCapabilityRequestTests
             out _));
         Assert.DoesNotContain(
             BuiltInAgentTools.Catalog.Tools,
-            tool => tool.Name == IntrinsicAgentTools.RequestCapability);
+            tool => string.Equals(tool.Name, IntrinsicAgentTools.RequestCapability, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -260,8 +260,8 @@ public sealed class GovernedAgentCapabilityRequestTests
             ProviderId: null,
             Target: request.Target,
             TargetTitle: request.TargetTitle,
-            ContextItems: ImmutableArray<GovernedAgentContextItem>.Empty,
-            Messages: Array.Empty<AgentChatMessage>(),
+            ContextItems: [],
+            Messages: [],
             EffectivePolicy: AgentPolicy.Default,
             ProvisionalAssistantText: string.Empty,
             Status: "Waiting",
@@ -282,8 +282,8 @@ public sealed class GovernedAgentCapabilityRequestTests
             ProviderId: null,
             Target: request.Target,
             TargetTitle: request.TargetTitle,
-            ContextItems: ImmutableArray<GovernedAgentContextItem>.Empty,
-            Messages: Array.Empty<AgentChatMessage>(),
+            ContextItems: [],
+            Messages: [],
             EffectivePolicy: AgentPolicy.Default,
             ProvisionalAssistantText: string.Empty,
             Status: "Ready",

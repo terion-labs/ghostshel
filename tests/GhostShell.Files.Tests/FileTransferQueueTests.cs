@@ -75,8 +75,8 @@ public sealed class FileTransferQueueTests
         using var client = CreateLocalClient(
             ("local-source", "source", sourceRoot.Path),
             ("local-destination", "destination", destinationRoot.Path));
-        var sourceProfile = client.Profiles.Single(profile => profile.Id == "local-source");
-        var destinationProfile = client.Profiles.Single(profile => profile.Id == "local-destination");
+        var sourceProfile = client.Profiles.Single(profile => string.Equals(profile.Id, "local-source", StringComparison.Ordinal));
+        var destinationProfile = client.Profiles.Single(profile => string.Equals(profile.Id, "local-destination", StringComparison.Ordinal));
 
         var queued = await client.EnqueueAsync(
             new FilePanelTransferRequest(
@@ -157,10 +157,8 @@ public sealed class FileTransferQueueTests
                 destinationProvider,
                 destinationRoot),
         ]);
-        var sourcePanelRoot = client.Profiles.Single(profile =>
-            profile.Id == sourceProfileId.Value).Root;
-        var destinationPanelRoot = client.Profiles.Single(profile =>
-            profile.Id == destinationProfileId.Value).Root;
+        var sourcePanelRoot = client.Profiles.Single(profile => string.Equals(profile.Id, sourceProfileId.Value, StringComparison.Ordinal)).Root;
+        var destinationPanelRoot = client.Profiles.Single(profile => string.Equals(profile.Id, destinationProfileId.Value, StringComparison.Ordinal)).Root;
         var queued = await client.EnqueueAsync(
             new FilePanelTransferRequest(
                 Child(sourcePanelRoot, "large.bin"),
@@ -205,9 +203,8 @@ public sealed class FileTransferQueueTests
         using var client = CreateLocalClient(
             ("local-source", "source", sourceRoot.Path),
             ("local-destination", "destination", destinationRoot.Path));
-        var sourceProfile = client.Profiles.Single(profile => profile.Id == "local-source");
-        var destinationProfile = client.Profiles.Single(profile =>
-            profile.Id == "local-destination");
+        var sourceProfile = client.Profiles.Single(profile => string.Equals(profile.Id, "local-source", StringComparison.Ordinal));
+        var destinationProfile = client.Profiles.Single(profile => string.Equals(profile.Id, "local-destination", StringComparison.Ordinal));
 
         var queued = await client.EnqueueAsync(
             new FilePanelTransferRequest(

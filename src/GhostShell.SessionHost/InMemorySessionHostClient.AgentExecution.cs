@@ -11,7 +11,7 @@ public sealed partial class InMemorySessionHostClient
         HostedSession[] hostedSessions;
         lock (_gate)
         {
-            hostedSessions = _sessions.Values.ToArray();
+            hostedSessions = [.. _sessions.Values];
         }
 
         var sessions = hostedSessions

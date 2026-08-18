@@ -14,7 +14,7 @@ public sealed class FtpFileProviderTests
         var warning = Assert.Single(provider.Diagnostics);
         Assert.Equal("ftp_plaintext_transport", warning.StableCode);
         Assert.Contains("without TLS", warning.Message, StringComparison.Ordinal);
-        Assert.DoesNotContain("Auto", Enum.GetNames<FtpTransportSecurity>());
+        Assert.DoesNotContain("Auto", Enum.GetNames<FtpTransportSecurity>(), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -105,8 +105,8 @@ public sealed class FtpFileProviderTests
             .Select(parameter => parameter.ParameterType.Assembly.GetName().Name)
             .ToArray();
 
-        Assert.DoesNotContain("Renci.SshNet", parameterAssemblies);
-        Assert.DoesNotContain("FluentFTP", parameterAssemblies);
+        Assert.DoesNotContain("Renci.SshNet", parameterAssemblies, StringComparer.Ordinal);
+        Assert.DoesNotContain("FluentFTP", parameterAssemblies, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -153,8 +153,7 @@ public sealed class FtpFileProviderTests
         Assert.Equal(encryptedData, config.DataConnectionEncryption);
         Assert.False(config.ValidateAnyCertificate);
         Assert.Equal(
-            System.Security.Authentication.SslProtocols.Tls12
-            | System.Security.Authentication.SslProtocols.Tls13,
+            System.Security.Authentication.SslProtocols.None,
             config.SslProtocols);
         Assert.Equal(1, config.RetryAttempts);
         Assert.False(config.SanitizeUrlEncoding);

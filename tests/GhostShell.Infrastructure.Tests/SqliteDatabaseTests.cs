@@ -180,7 +180,7 @@ public sealed class SqliteDatabaseTests
         Assert.True(catalogResult.IsSuccess, catalogResult.Error?.Message);
         var restoredLayout = Assert.Single(
             catalogResult.Value!.Layouts,
-            item => item.Value.Id.Value == HistoricalDatabaseFixture.DefinitionId);
+            item => string.Equals(item.Value.Id.Value, HistoricalDatabaseFixture.DefinitionId, StringComparison.Ordinal));
         Assert.Equal(HistoricalDatabaseFixture.DefinitionName, restoredLayout.Value.Name);
 
         var runStore = new SqliteApplicationRunStore(
@@ -472,7 +472,7 @@ public sealed class SqliteDatabaseTests
             $"ghostshell-before-v{migration.Version}-*.db"));
         Assert.DoesNotContain(
             Directory.GetFileSystemEntries(options.BackupDirectory),
-            path => Path.GetFileName(path).StartsWith(".", StringComparison.Ordinal));
+            path => Path.GetFileName(path).StartsWith('.'));
         await using var migrated = await database.OpenConnectionAsync(CancellationToken.None);
         Assert.Equal(
             migration.Version.ToString(System.Globalization.CultureInfo.InvariantCulture),

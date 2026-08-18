@@ -245,9 +245,11 @@ internal sealed class WindowsProcessTreeProbe : IProcessTreeProbe
         return creationTime.ToUInt64();
     }
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr CreateToolhelp32Snapshot(uint flags, uint processId);
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [DllImport(
         "kernel32.dll",
         EntryPoint = "Process32FirstW",
@@ -258,6 +260,7 @@ internal sealed class WindowsProcessTreeProbe : IProcessTreeProbe
         IntPtr snapshot,
         ref ProcessEntry32 entry);
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [DllImport(
         "kernel32.dll",
         EntryPoint = "Process32NextW",
@@ -268,12 +271,14 @@ internal sealed class WindowsProcessTreeProbe : IProcessTreeProbe
         IntPtr snapshot,
         ref ProcessEntry32 entry);
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr OpenProcess(
         uint desiredAccess,
         [MarshalAs(UnmanagedType.Bool)] bool inheritHandle,
         int processId);
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetProcessTimes(
@@ -283,14 +288,17 @@ internal sealed class WindowsProcessTreeProbe : IProcessTreeProbe
         out NativeFileTime kernelTime,
         out NativeFileTime userTime);
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool TerminateProcess(IntPtr processHandle, uint exitCode);
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [DllImport("kernel32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CloseHandle(IntPtr handle);
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [DllImport("kernel32.dll")]
     private static extern void GetSystemTimeAsFileTime(out NativeFileTime systemTime);
 

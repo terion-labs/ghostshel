@@ -26,7 +26,7 @@ public sealed partial class DefinitionImportPreflightDialog : Window
                 : "The bundle will be committed in one transaction. Existing definitions remain unchanged. AI credential bindings are detached, and AI/MCP profiles are disabled for review."
             : "Resolve blocking issues or choose a different file. This import cannot be applied.";
         CanApply = plan.CanApply;
-        Issues = plan.Issues.Select(DefinitionImportIssueItem.From).ToArray();
+        Issues = [.. plan.Issues.Select(DefinitionImportIssueItem.From)];
         HasIssues = Issues.Count > 0;
         HasNoIssues = !HasIssues;
         InitializeComponent();

@@ -1,5 +1,5 @@
-using System.Globalization;
 using System.ComponentModel;
+using System.Globalization;
 using Dock.Model.Controls;
 using Dock.Model.Core;
 using Dock.Model.Inpc.Controls;
@@ -26,8 +26,8 @@ public sealed class RuntimeDockLayoutPersistenceTests
 
         Assert.Contains(
             Enumerate(tab.DockLayout).OfType<IDocument>(),
-            document => document.Id == placeholder.Id.Value
-                && ReferenceEquals(document.Context, placeholder));
+            document => string.Equals(document.Id, placeholder.Id.Value
+, StringComparison.Ordinal) && ReferenceEquals(document.Context, placeholder));
         Assert.Contains(
             Enumerate(tab.DockLayout).OfType<ProportionalDock>(),
             dock => dock.Orientation == orientation);
@@ -49,8 +49,8 @@ public sealed class RuntimeDockLayoutPersistenceTests
         Assert.NotNull(placeholder);
         Assert.Contains(
             Enumerate(tab.DockLayout).OfType<IDocument>(),
-            document => document.Id == placeholder!.Id.Value
-                && ReferenceEquals(document.Context, placeholder));
+            document => string.Equals(document.Id, placeholder!.Id.Value
+, StringComparison.Ordinal) && ReferenceEquals(document.Context, placeholder));
         Assert.Contains(
             Enumerate(tab.DockLayout).OfType<ProportionalDock>(),
             dock => dock.Orientation == orientation);
@@ -68,7 +68,7 @@ public sealed class RuntimeDockLayoutPersistenceTests
 
         var document = Assert.Single(
             Enumerate(tab.DockLayout).OfType<IDocument>(),
-            candidate => candidate.Id == original.Id.Value);
+            candidate => string.Equals(candidate.Id, original.Id.Value, StringComparison.Ordinal));
 
         tab.DockFactory.RemoveDockable(document, collapse: true);
 
@@ -93,9 +93,9 @@ public sealed class RuntimeDockLayoutPersistenceTests
 
         var documents = Enumerate(tab.DockLayout).OfType<IDocument>().ToArray();
         Assert.Equal(3, documents.Length);
-        Assert.Contains(documents, document => document.Id == first.Id.Value);
-        Assert.Contains(documents, document => document.Id == second.Id.Value);
-        Assert.Contains(documents, document => document.Id == placeholder.Id.Value);
+        Assert.Contains(documents, document => string.Equals(document.Id, first.Id.Value, StringComparison.Ordinal));
+        Assert.Contains(documents, document => string.Equals(document.Id, second.Id.Value, StringComparison.Ordinal));
+        Assert.Contains(documents, document => string.Equals(document.Id, placeholder.Id.Value, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -109,7 +109,7 @@ public sealed class RuntimeDockLayoutPersistenceTests
 
         var documents = Enumerate(tab.DockLayout)
             .OfType<IDocument>()
-            .ToDictionary(document => document.Id!);
+            .ToDictionary(document => document.Id!, StringComparer.Ordinal);
         var leftDocument = documents[leftPanel.Id.Value];
         var rightDocument = documents[rightPanel.Id.Value];
         var leftLeaf = Assert.IsAssignableFrom<IDock>(leftDocument.Owner);
@@ -163,7 +163,7 @@ public sealed class RuntimeDockLayoutPersistenceTests
         var ownerChangeNotifications = 0;
         PropertyChangedEventHandler handler = (_, eventArgs) =>
         {
-            if (eventArgs.PropertyName == nameof(IDockable.Owner))
+            if (string.Equals(eventArgs.PropertyName, nameof(IDockable.Owner), StringComparison.Ordinal))
             {
                 ownerChangeNotifications++;
             }
@@ -204,7 +204,7 @@ public sealed class RuntimeDockLayoutPersistenceTests
         restored.AddPanel(livePanel, savedDockableId: original.Id.Value);
         restored.PropertyChanged += (_, eventArgs) =>
         {
-            if (eventArgs.PropertyName == nameof(RuntimeTabViewModel.DockLayoutRevision))
+            if (string.Equals(eventArgs.PropertyName, nameof(RuntimeTabViewModel.DockLayoutRevision), StringComparison.Ordinal))
             {
                 _ = restored.SerializeDockLayout();
             }
@@ -390,7 +390,7 @@ public sealed class RuntimeDockLayoutPersistenceTests
         tab.AddPanel(leaving);
 
         var document = Enumerate(tab.DockLayout).OfType<IDocument>()
-            .Single(candidate => candidate.Id == leaving.Id.Value);
+            .Single(candidate => string.Equals(candidate.Id, leaving.Id.Value, StringComparison.Ordinal));
         Assert.True(tab.FloatPanel(leaving.Id));
 
         // Out of the layout, still the workspace's, still the same document.
@@ -408,7 +408,7 @@ public sealed class RuntimeDockLayoutPersistenceTests
         Assert.Same(
             document,
             Enumerate(tab.DockLayout).OfType<IDocument>()
-                .Single(candidate => candidate.Id == leaving.Id.Value));
+                .Single(candidate => string.Equals(candidate.Id, leaving.Id.Value, StringComparison.Ordinal)));
         Assert.Same(leaving, document.Context);
         var leaf = Assert.IsAssignableFrom<IDock>(document.Owner);
         Assert.Contains(document, leaf.VisibleDockables!);
@@ -482,11 +482,10 @@ public sealed class RuntimeDockLayoutPersistenceTests
     }
 
     private static string[] ColumnOrder(IDock column) =>
-        (column.VisibleDockables ?? [])
+        [.. (column.VisibleDockables ?? [])
             .Select(FirstDocumentIn)
             .Where(id => id is not null)
-            .Select(id => id!)
-            .ToArray();
+            .Select(id => id!)];
 
     /// <summary>
     /// The panel it named has been closed while it was away. It still comes back.
@@ -503,7 +502,7 @@ public sealed class RuntimeDockLayoutPersistenceTests
         tab.AddPanel(leaving);
 
         var document = Enumerate(tab.DockLayout).OfType<IDocument>()
-            .Single(candidate => candidate.Id == leaving.Id.Value);
+            .Single(candidate => string.Equals(candidate.Id, leaving.Id.Value, StringComparison.Ordinal));
         Assert.True(tab.FloatPanel(leaving.Id));
         tab.RemovePanel(neighbour.Id);
 
@@ -517,11 +516,10 @@ public sealed class RuntimeDockLayoutPersistenceTests
     {
         var split = Enumerate(tab.DockLayout).OfType<ProportionalDock>()
             .First(dock => dock.Orientation == orientation);
-        return (split.VisibleDockables ?? [])
+        return [.. (split.VisibleDockables ?? [])
             .Select(FirstDocumentIn)
             .Where(id => id is not null)
-            .Select(id => id!)
-            .ToArray();
+            .Select(id => id!)];
     }
 
     private static string? FirstDocumentIn(IDockable dockable) => dockable switch

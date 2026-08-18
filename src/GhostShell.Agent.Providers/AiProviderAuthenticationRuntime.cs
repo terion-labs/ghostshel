@@ -363,14 +363,14 @@ public sealed class AiProviderAuthenticationRuntime : IAiProviderAuthenticationR
                 if (response.StatusCode != HttpStatusCode.OK)
                 {
                     var error = ReadDeviceError(response.Body);
-                    if (error == "deviceauth_authorization_pending")
+                    if (string.Equals(error, "deviceauth_authorization_pending", StringComparison.Ordinal))
                     {
                         await DelayForPollingAsync(interval, cancellationToken)
                             .ConfigureAwait(false);
                         continue;
                     }
 
-                    if (error == "slow_down")
+                    if (string.Equals(error, "slow_down", StringComparison.Ordinal))
                     {
                         interval = checked(interval + 5);
                         await DelayForPollingAsync(interval, cancellationToken)
@@ -379,11 +379,11 @@ public sealed class AiProviderAuthenticationRuntime : IAiProviderAuthenticationR
                     }
 
                     return AiProviderAuthenticationResult.Failure(
-                        error == "access_denied"
-                            ? "ai_provider_authentication_denied"
+string.Equals(error, "access_denied"
+, StringComparison.Ordinal) ? "ai_provider_authentication_denied"
                             : "ai_provider_authentication_failed",
-                        error == "access_denied"
-                            ? "Authentication was denied."
+string.Equals(error, "access_denied"
+, StringComparison.Ordinal) ? "Authentication was denied."
                             : "Authentication failed.");
                 }
 
@@ -725,8 +725,8 @@ public sealed class AiProviderAuthenticationRuntime : IAiProviderAuthenticationR
                 .ConfigureAwait(false);
             var request = context.Request;
             if (!string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal)
-                || request.Url?.AbsolutePath != OpenAiBrowserRedirectEndpoint.AbsolutePath
-                || !IsLoopback(request.RemoteEndPoint?.Address))
+                || !string.Equals(request.Url?.AbsolutePath, OpenAiBrowserRedirectEndpoint.AbsolutePath
+, StringComparison.Ordinal) || !IsLoopback(request.RemoteEndPoint?.Address))
             {
                 await RespondAsync(context.Response, succeeded: false).ConfigureAwait(false);
                 continue;
@@ -792,8 +792,8 @@ public sealed class AiProviderAuthenticationRuntime : IAiProviderAuthenticationR
     {
         var value = RequiredString(root, propertyName, 2048);
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)
-            || uri.Scheme != Uri.UriSchemeHttps
-            || !string.IsNullOrEmpty(uri.UserInfo)
+            || !string.Equals(uri.Scheme, Uri.UriSchemeHttps
+, StringComparison.Ordinal) || !string.IsNullOrEmpty(uri.UserInfo)
             || !string.IsNullOrEmpty(uri.Fragment))
         {
             throw AiProviderClientException.Create(
@@ -993,5 +993,6 @@ public sealed class AiProviderAuthenticationRuntime : IAiProviderAuthenticationR
         : Exception
     {
         public OpenAiTokenResponseIssue Issue { get; } = issue;
+
     }
 }

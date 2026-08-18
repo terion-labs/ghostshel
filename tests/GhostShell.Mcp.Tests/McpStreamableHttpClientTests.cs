@@ -17,7 +17,7 @@ public sealed class McpStreamableHttpClientTests
         var handler = new FakeMcpHttpHandler(callResponseUsesSse: true);
         var connected = await McpStreamableHttpClient.ConnectAsync(
             Endpoint,
-            new Dictionary<string, string>
+            new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["Authorization"] = "Bearer vault-backed-token",
             },
@@ -28,7 +28,7 @@ public sealed class McpStreamableHttpClientTests
         await using var client = connected.Value!;
         var tools = await client.ListToolsAsync();
         Assert.True(tools.IsSuccess, tools.Error?.Message);
-        Assert.Equal(["first", "second"], tools.Value!.Select(tool => tool.Name));
+        Assert.Equal(["first", "second"], tools.Value!.Select(tool => tool.Name), StringComparer.Ordinal);
 
         using var arguments = JsonDocument.Parse("""{"value":"hello"}""");
         var called = await client.CallToolAsync(
@@ -48,14 +48,14 @@ public sealed class McpStreamableHttpClientTests
         Assert.All(posts, request =>
         {
             Assert.Equal(Endpoint, request.Uri);
-            Assert.Contains("application/json", request.Accept);
-            Assert.Contains("text/event-stream", request.Accept);
+            Assert.Contains("application/json", request.Accept, StringComparer.Ordinal);
+            Assert.Contains("text/event-stream", request.Accept, StringComparer.Ordinal);
             Assert.Equal(
                 "Bearer vault-backed-token",
                 request.Authorization);
         });
         Assert.All(
-            posts.Where(request => request.MethodName != "initialize"),
+            posts.Where(request => !string.Equals(request.MethodName, "initialize", StringComparison.Ordinal)),
             request =>
             {
                 Assert.Equal("session-1", request.SessionId);
@@ -70,7 +70,7 @@ public sealed class McpStreamableHttpClientTests
 
         var connected = await McpStreamableHttpClient.ConnectAsync(
             Endpoint,
-            new Dictionary<string, string>(),
+            new Dictionary<string, string>(StringComparer.Ordinal),
             new McpClientInfo("ghostshell-tests", "1.0.0"),
             handler: handler);
 
@@ -93,7 +93,7 @@ public sealed class McpStreamableHttpClientTests
 
         var connected = await McpStreamableHttpClient.ConnectAsync(
             Endpoint,
-            new Dictionary<string, string>(),
+            new Dictionary<string, string>(StringComparer.Ordinal),
             new McpClientInfo("ghostshell-tests", "1.0.0"),
             options,
             handler);
@@ -110,7 +110,7 @@ public sealed class McpStreamableHttpClientTests
         using var cancellation = new CancellationTokenSource();
         var connecting = McpStreamableHttpClient.ConnectAsync(
             Endpoint,
-            new Dictionary<string, string>(),
+            new Dictionary<string, string>(StringComparer.Ordinal),
             new McpClientInfo("ghostshell-tests", "1.0.0"),
             handler: handler,
             cancellationToken: cancellation.Token);
@@ -161,9 +161,7 @@ public sealed class McpStreamableHttpClientTests
                     methodName,
                     Header(request.Headers, "MCP-Session-Id"),
                     Header(request.Headers, "MCP-Protocol-Version"),
-                    request.Headers.Accept
-                        .Select(value => value.MediaType!)
-                        .ToArray(),
+                    [.. request.Headers.Accept.Select(value => value.MediaType!)],
                     Header(request.Headers, "Authorization")));
 
                 return (request.Method.Method, methodName) switch

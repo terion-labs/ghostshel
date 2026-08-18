@@ -16,7 +16,7 @@ public sealed class TerminalTypefaceResolverTests
         var rejected = TerminalTypefaceResolver.SelectInstalledFamily(
             ["Custom Mono"],
             ["Menlo", "Custom Mono"],
-            family => family == "Menlo");
+            family => string.Equals(family, "Menlo", StringComparison.Ordinal));
 
         Assert.Equal("Custom Mono", resolved);
         Assert.Null(rejected);
@@ -39,7 +39,7 @@ public sealed class TerminalTypefaceResolverTests
         var resolved = TerminalTypefaceResolver.SelectInstalledFamily(
             ["Inter", "Cascadia Mono", "Consolas"],
             ["Inter", "Cascadia Mono", "Consolas"],
-            family => family == "Consolas");
+            family => string.Equals(family, "Consolas", StringComparison.Ordinal));
 
         Assert.Equal("Consolas", resolved);
     }
@@ -50,7 +50,7 @@ public sealed class TerminalTypefaceResolverTests
         var resolved = TerminalTypefaceResolver.SelectInstalledFamily(
             [],
             ["Ubuntu", "Zeta Mono", "Alpha Sans"],
-            family => family == "Zeta Mono");
+            family => string.Equals(family, "Zeta Mono", StringComparison.Ordinal));
 
         Assert.Null(resolved);
     }

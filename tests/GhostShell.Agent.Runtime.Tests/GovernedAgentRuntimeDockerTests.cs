@@ -33,7 +33,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         var initial = fixture.Provider.Requests.ToArray()[0];
         Assert.Contains(
             initial.Tools,
-            candidate => candidate.Name == BuiltInAgentTools.DockerReadState);
+            candidate => string.Equals(candidate.Name, BuiltInAgentTools.DockerReadState, StringComparison.Ordinal));
         var system = Assert.Single(
             initial.Messages,
             message => message.Role == AgentMessageRole.System);

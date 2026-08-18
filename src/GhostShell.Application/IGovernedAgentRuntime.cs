@@ -286,7 +286,7 @@ public sealed record GovernedAgentPrompt
         ArgumentNullException.ThrowIfNull(message);
         var imageArray = images is null
             ? ImmutableArray<AgentImageAttachment>.Empty
-            : images.ToImmutableArray();
+            : [.. images];
         if (imageArray.Any(image => image is null))
         {
             throw new ArgumentException(

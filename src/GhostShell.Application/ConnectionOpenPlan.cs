@@ -73,7 +73,7 @@ public sealed record ConnectionOpenPlan
             HostKeyPolicy,
             ReconnectMode,
             SecretRequirements,
-            Warnings.Where(warning => warning != ConnectionPlanWarning.SecretBrokerRequired).ToArray(),
+            [.. Warnings.Where(warning => warning != ConnectionPlanWarning.SecretBrokerRequired)],
             isSecretBrokerPrepared: true);
     }
 }

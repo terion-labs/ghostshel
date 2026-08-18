@@ -26,10 +26,13 @@ internal sealed partial class MacOsUserNotificationCenter : IDisposable
                 "UNUserNotificationCenter requires macOS 10.14 or newer.");
         }
 
+        // Loading UserNotifications in an unbundled command-line host can
+        // destabilize the process even if currentNotificationCenter is never
+        // requested. Reject unsupported hosts before loading the framework.
+        RunWithAutoreleasePool(RequireApplicationBundle);
         EnsureFrameworkLoaded();
         RunWithAutoreleasePool(() =>
         {
-            RequireApplicationBundle();
             _center = SendObject(
                 RequireClass("UNUserNotificationCenter"),
                 Selector("currentNotificationCenter"));
@@ -82,7 +85,7 @@ internal sealed partial class MacOsUserNotificationCenter : IDisposable
             .ConfigureAwait(false);
         if (result.Error is { } error)
         {
-            throw new ExternalException(
+            throw new InvalidOperationException(
                 $"macOS could not authorize notifications: {error}");
         }
 
@@ -127,7 +130,7 @@ internal sealed partial class MacOsUserNotificationCenter : IDisposable
                 .ConfigureAwait(false);
             if (error is not null)
             {
-                throw new ExternalException(
+                throw new InvalidOperationException(
                     $"macOS could not schedule the notification: {error}");
             }
         }

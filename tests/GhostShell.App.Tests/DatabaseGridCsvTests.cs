@@ -62,8 +62,8 @@ public sealed class DatabaseGridCsvTests
         var text = DatabaseGridCsv.Format(
             ["id", "title", "note"],
             [
-                new string?[] { "1", "Ada, Lovelace", "she said \"hi\"\nagain" },
-                new string?[] { "2", null, string.Empty },
+                ["1", "Ada, Lovelace", "she said \"hi\"\nagain"],
+                ["2", null, string.Empty],
             ]);
 
         var parsed = DatabaseGridCsv.Parse(text);
@@ -92,7 +92,11 @@ public sealed class DatabaseGridCsvTests
 
         var error = Assert.Throws<InvalidDataException>(() => DatabaseGridCsv.Parse(text));
 
-        Assert.Contains(DatabaseGridCsv.MaximumRows.ToString(), error.Message, StringComparison.Ordinal);
+        Assert.Contains(
+            DatabaseGridCsv.MaximumRows.ToString(
+                System.Globalization.CultureInfo.InvariantCulture),
+            error.Message,
+            StringComparison.Ordinal);
     }
 
     [Fact]

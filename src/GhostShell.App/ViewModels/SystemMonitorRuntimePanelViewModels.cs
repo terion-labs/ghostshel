@@ -529,10 +529,10 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
         AppendBounded(_memorySamples, snapshot.ObservedWorkingSetBytes);
         AppendBounded(_networkReceivedSamples, snapshot.NetworkReceivedBytesPerSecond);
         AppendBounded(_networkSentSamples, snapshot.NetworkSentBytesPerSecond);
-        _cpuHistory = _cpuSamples.ToArray();
-        _memoryHistory = _memorySamples.ToArray();
-        _networkReceivedHistory = _networkReceivedSamples.ToArray();
-        _networkSentHistory = _networkSentSamples.ToArray();
+        _cpuHistory = [.. _cpuSamples];
+        _memoryHistory = [.. _memorySamples];
+        _networkReceivedHistory = [.. _networkReceivedSamples];
+        _networkSentHistory = [.. _networkSentSamples];
         OnPropertyChanged(nameof(CpuHistory));
         OnPropertyChanged(nameof(MemoryHistory));
         OnPropertyChanged(nameof(NetworkReceivedHistory));
@@ -571,7 +571,7 @@ public sealed class ProcessMonitorEntryViewModel : ObservableObject
 
     public string Memory => MonitorPanelPresentation.FormatBytes(Entry.WorkingSetBytes);
 
-    public string Started => Entry.StartedAtUtc?.ToLocalTime().ToString("g") ?? "Unknown";
+    public string Started => Entry.StartedAtUtc?.ToLocalTime().ToString("g", System.Globalization.CultureInfo.InvariantCulture) ?? "Unknown";
 
     public string AccessibleSummary =>
         $"PID {ProcessId}, {Name}, CPU {MonitorPanelPresentation.AccessiblePercent(Entry.CpuPercent)}, "

@@ -79,7 +79,7 @@ public sealed class TerminalAgentToolParserTests
 
         Assert.Contains(
             rejected.StableCode,
-            new[] { "invalid_tool_arguments", "unknown_tool" });
+            ["invalid_tool_arguments", "unknown_tool"], StringComparer.Ordinal);
     }
 
     [Fact]
@@ -145,13 +145,13 @@ public sealed class TerminalAgentToolParserTests
 
         Assert.Contains(
             TerminalAgentToolSet.For(readOnly),
-            tool => tool.Name == BuiltInAgentTools.TerminalFindRenderedHistory);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalFindRenderedHistory, StringComparison.Ordinal));
         Assert.DoesNotContain(
             TerminalAgentToolSet.For(readOnly),
-            tool => tool.Name == BuiltInAgentTools.TerminalJumpToRenderedHistory);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalJumpToRenderedHistory, StringComparison.Ordinal));
         Assert.Contains(
             TerminalAgentToolSet.For(interactive),
-            tool => tool.Name == BuiltInAgentTools.TerminalJumpToRenderedHistory);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalJumpToRenderedHistory, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -201,7 +201,7 @@ public sealed class TerminalAgentToolParserTests
                 BuiltInAgentTools.TerminalSendMouse,
                 BuiltInAgentTools.TerminalInterrupt,
             ],
-            tools.Select(tool => tool.Name));
+            tools.Select(tool => tool.Name), StringComparer.Ordinal);
         Assert.All(
             tools,
             tool =>
@@ -252,7 +252,7 @@ public sealed class TerminalAgentToolParserTests
                 BuiltInAgentTools.TerminalSendMouse,
                 BuiltInAgentTools.TerminalInterrupt,
             ],
-            tools.Select(tool => tool.Name));
+            tools.Select(tool => tool.Name), StringComparer.Ordinal);
         Assert.True(TerminalAgentToolSet.SupportsMutations(panel));
     }
 
@@ -274,7 +274,7 @@ public sealed class TerminalAgentToolParserTests
                 BuiltInAgentTools.TerminalFindOnScreen,
                 BuiltInAgentTools.TerminalWait,
             ],
-            tools.Select(tool => tool.Name));
+            tools.Select(tool => tool.Name), StringComparer.Ordinal);
         Assert.False(TerminalAgentToolSet.SupportsMutations(panel));
     }
 
@@ -310,13 +310,13 @@ public sealed class TerminalAgentToolParserTests
 
         Assert.Contains(
             TerminalAgentToolSet.For(eligible),
-            tool => tool.Name == BuiltInAgentTools.TerminalPaste);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalPaste, StringComparison.Ordinal));
         Assert.DoesNotContain(
             TerminalAgentToolSet.For(noBarrier),
-            tool => tool.Name == BuiltInAgentTools.TerminalPaste);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalPaste, StringComparison.Ordinal));
         Assert.DoesNotContain(
             TerminalAgentToolSet.For(noPaste),
-            tool => tool.Name == BuiltInAgentTools.TerminalPaste);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalPaste, StringComparison.Ordinal));
         Assert.True(TerminalAgentToolSet.SupportsMutations(eligible));
         Assert.False(TerminalAgentToolSet.SupportsMutations(noBarrier));
         Assert.False(TerminalAgentToolSet.SupportsMutations(noPaste));
@@ -335,14 +335,14 @@ public sealed class TerminalAgentToolParserTests
 
         var tool = Assert.Single(
             TerminalAgentToolSet.For(eligible),
-            candidate => candidate.Name == BuiltInAgentTools.TerminalSubmitText);
+            candidate => string.Equals(candidate.Name, BuiltInAgentTools.TerminalSubmitText, StringComparison.Ordinal));
         Assert.Contains(
             "Prefer this for submitting",
             tool.Description,
             StringComparison.Ordinal);
         Assert.DoesNotContain(
             TerminalAgentToolSet.For(noEnter),
-            candidate => candidate.Name == BuiltInAgentTools.TerminalSubmitText);
+            candidate => string.Equals(candidate.Name, BuiltInAgentTools.TerminalSubmitText, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -360,10 +360,10 @@ public sealed class TerminalAgentToolParserTests
                 BuiltInAgentTools.TerminalReadScrollback,
                 BuiltInAgentTools.TerminalFind,
             ],
-            TerminalAgentToolSet.For(projection).Select(tool => tool.Name));
+            TerminalAgentToolSet.For(projection).Select(tool => tool.Name), StringComparer.Ordinal);
         Assert.Equal(
             [BuiltInAgentTools.TerminalScrollViewport],
-            TerminalAgentToolSet.For(scrolling).Select(tool => tool.Name));
+            TerminalAgentToolSet.For(scrolling).Select(tool => tool.Name), StringComparer.Ordinal);
         Assert.False(TerminalAgentToolSet.SupportsMutations(projection));
         Assert.True(TerminalAgentToolSet.SupportsMutations(scrolling));
     }

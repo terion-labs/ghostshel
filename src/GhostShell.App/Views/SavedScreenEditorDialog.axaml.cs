@@ -10,7 +10,7 @@ namespace GhostShell.App.Views;
 public sealed partial class SavedScreenEditorDialog : Window
 {
     private readonly CancellationTokenSource _lifetime = new();
-    private SavedScreenPersistenceOperation? _persist;
+    private readonly SavedScreenPersistenceOperation? _persist;
     private bool _closeApproved;
     private bool _closeInProgress;
 
@@ -112,10 +112,7 @@ public sealed partial class SavedScreenEditorDialog : Window
         try
         {
             var error = this.FindControl<TextBlock>("ValidationError");
-            if (error is not null)
-            {
-                error.IsVisible = false;
-            }
+            error?.IsVisible = false;
 
             var persist = _persist
                 ?? throw new InvalidOperationException(

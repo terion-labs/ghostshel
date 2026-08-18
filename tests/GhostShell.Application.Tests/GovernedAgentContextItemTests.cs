@@ -21,7 +21,7 @@ public sealed class GovernedAgentContextItemTests
                 BuiltInAgentTools.TerminalReadScreen,
                 BuiltInAgentTools.TerminalWait,
             ],
-            item.SupportedOperations.ToArray());
+            [.. item.SupportedOperations]);
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public sealed class GovernedAgentContextItemTests
         Assert.Equal(PanelKind.Browser, item.Kind);
         Assert.Equal(
             [BuiltInAgentTools.BrowserReadState],
-            item.SupportedOperations.ToArray());
+            [.. item.SupportedOperations]);
     }
 
     [Fact]

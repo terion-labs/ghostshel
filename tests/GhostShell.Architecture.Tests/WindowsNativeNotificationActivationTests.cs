@@ -99,7 +99,7 @@ public sealed class WindowsNativeNotificationActivationTests
         PanelNotificationKind.AgentCompleted,
         "Build finished",
         "All targets succeeded.",
-        DateTimeOffset.Parse("2026-08-18T09:15:00Z"),
+        DateTimeOffset.Parse("2026-08-18T09:15:00Z", System.Globalization.CultureInfo.InvariantCulture),
         new NativeNotificationRoute(
             new WorkspaceInstanceId("workspace/with-delimiter"),
             new TabInstanceId("tab:1"),

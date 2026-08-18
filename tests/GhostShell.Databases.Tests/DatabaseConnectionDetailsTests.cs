@@ -92,5 +92,5 @@ public sealed class DatabaseConnectionDetailsTests
     }
 
     private static IDatabaseDriver Driver(string id) =>
-        BuiltInDatabaseDrivers.All.Single(driver => driver.Descriptor.Id == id);
+        BuiltInDatabaseDrivers.All.Single(driver => string.Equals(driver.Descriptor.Id, id, StringComparison.Ordinal));
 }

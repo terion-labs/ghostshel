@@ -2,7 +2,7 @@ namespace GhostShell.Application;
 
 public sealed class ApplicationStartupState
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly TaskCompletionSource _initialized =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 

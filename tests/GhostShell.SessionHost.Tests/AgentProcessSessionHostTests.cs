@@ -581,8 +581,7 @@ public sealed class AgentProcessSessionHostTests
         Assert.Equal(HostErrorCode.InvalidRequest, replay.Error().Code);
         Assert.Equal(1, fixture.ProcessSession.ListCount);
         var events = audit.Events
-            .Where(item =>
-                item.CorrelationId == action.Proposal.Id.Value)
+            .Where(item => string.Equals(item.CorrelationId, action.Proposal.Id.Value, StringComparison.Ordinal))
             .ToArray();
         Assert.Equal(
             [
@@ -606,7 +605,7 @@ public sealed class AgentProcessSessionHostTests
                 auditEvent.ToString(),
                 StringComparison.Ordinal);
             Assert.DoesNotContain(
-                processId.ToString(),
+                processId.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 auditEvent.ToString(),
                 StringComparison.Ordinal);
         });
@@ -846,7 +845,7 @@ public sealed class AgentProcessSessionHostTests
             ref _completionAttempts);
 
         public IReadOnlyList<AgentActionCompletion> Completions =>
-            _completions.ToArray();
+            [.. _completions];
 
         public AgentAuthorizationId Arm(AgentProcessListAction action)
         {
@@ -990,7 +989,7 @@ public sealed class AgentProcessSessionHostTests
             {
                 lock (_gate)
                 {
-                    return _events.ToArray();
+                    return [.. _events];
                 }
             }
         }
@@ -1023,13 +1022,12 @@ public sealed class AgentProcessSessionHostTests
                 return ValueTask.FromResult(
                     AuditStoreResult<
                         IReadOnlyList<AuditEventRecord>>.Success(
-                        _events
+                        [.. _events
                             .Where(item =>
                                 string.Equals(
                                     item.CorrelationId,
                                     correlationId,
-                                    StringComparison.Ordinal))
-                            .ToArray()));
+                                    StringComparison.Ordinal))]));
             }
         }
     }

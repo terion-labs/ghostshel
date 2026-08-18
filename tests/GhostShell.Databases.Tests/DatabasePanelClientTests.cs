@@ -53,7 +53,7 @@ public sealed class DatabasePanelClientTests : IDisposable
 
         Assert.Null(probes["firebird"]);
         Assert.All(
-            probes.Where(item => item.Key != "firebird"),
+            probes.Where(item => !string.Equals(item.Key, "firebird", StringComparison.Ordinal)),
             item => Assert.False(
                 string.IsNullOrWhiteSpace(item.Value),
                 $"{item.Key} must report its live catalog/schema defaults."));
@@ -72,7 +72,7 @@ public sealed class DatabasePanelClientTests : IDisposable
 
         Assert.Null(queries["redshift"]);
         Assert.All(
-            queries.Where(item => item.Key != "redshift"),
+            queries.Where(item => !string.Equals(item.Key, "redshift", StringComparison.Ordinal)),
             item => Assert.False(
                 string.IsNullOrWhiteSpace(item.Value),
                 $"{item.Key} must own its routine-catalog query."));
@@ -164,7 +164,7 @@ public sealed class DatabasePanelClientTests : IDisposable
             client.BuildTablePreviewQuery("sqlite", "people", limit: 10),
             maxRows: 10,
             CancellationToken.None);
-        Assert.Equal(["id", "name", "joined"], page.Columns.Select(column => column.Name));
+        Assert.Equal(["id", "name", "joined"], page.Columns.Select(column => column.Name), StringComparer.Ordinal);
         Assert.Equal(3, page.Rows.Count);
         Assert.False(page.Truncated);
         Assert.Equal("Ada", page.Rows[0][1]);
@@ -206,12 +206,9 @@ public sealed class DatabasePanelClientTests : IDisposable
     [Fact]
     public void Bare_paths_normalize_and_connection_strings_pass_through()
     {
-        var sqlite = BuiltInDatabaseDrivers.All.Single(driver =>
-            driver.Descriptor.Id == "sqlite");
-        var duckdb = BuiltInDatabaseDrivers.All.Single(driver =>
-            driver.Descriptor.Id == "duckdb");
-        var postgres = BuiltInDatabaseDrivers.All.Single(driver =>
-            driver.Descriptor.Id == "postgres");
+        var sqlite = BuiltInDatabaseDrivers.All.Single(driver => string.Equals(driver.Descriptor.Id, "sqlite", StringComparison.Ordinal));
+        var duckdb = BuiltInDatabaseDrivers.All.Single(driver => string.Equals(driver.Descriptor.Id, "duckdb", StringComparison.Ordinal));
+        var postgres = BuiltInDatabaseDrivers.All.Single(driver => string.Equals(driver.Descriptor.Id, "postgres", StringComparison.Ordinal));
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
         Assert.Equal(

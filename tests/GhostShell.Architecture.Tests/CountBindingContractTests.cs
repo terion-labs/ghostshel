@@ -70,7 +70,10 @@ public sealed partial class CountBindingContractTests
         return ObservableCollectionPaths.Contains(collection, StringComparer.Ordinal);
     }
 
-    [GeneratedRegex(@"\{Binding (?<path>[A-Za-z_][A-Za-z0-9_.]*)\.Count[,}]")]
+    [GeneratedRegex(
+        @"\{Binding (?<path>[A-Za-z_][A-Za-z0-9_.]*)\.Count[,}]",
+        RegexOptions.CultureInvariant,
+        matchTimeoutMilliseconds: 1_000)]
     private static partial Regex CountBindings();
 
     private static string FindRepositoryRoot()

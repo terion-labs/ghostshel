@@ -106,8 +106,8 @@ internal static partial class FileAgentToolResultJson
         var stableCode = ProviderStableCode(error);
         return AgentToolResultJson.Failure(
             stableCode,
-            stableCode != FileMutationOutcomeUnknownStableCode
-                && error.Retryable,
+!string.Equals(stableCode, FileMutationOutcomeUnknownStableCode
+, StringComparison.Ordinal) && error.Retryable,
             panelId);
     }
 

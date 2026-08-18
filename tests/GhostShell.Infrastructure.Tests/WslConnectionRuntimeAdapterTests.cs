@@ -79,7 +79,7 @@ public sealed class WslConnectionRuntimeAdapterTests
         Assert.Equal("amber", plan.Launch.Environment["COLOR"]);
         Assert.Equal("safe value", plan.Launch.Environment["MODE"]);
         Assert.Equal("COLOR:MODE", plan.Launch.Environment["WSLENV"]);
-        Assert.DoesNotContain("SECRET_MODE", plan.Launch.Environment.Keys);
+        Assert.DoesNotContain("SECRET_MODE", plan.Launch.Environment.Keys, StringComparer.Ordinal);
         var requirement = Assert.Single(plan.SecretRequirements);
         Assert.Equal(ConnectionSecretRole.EnvironmentVariable, requirement.Role);
         Assert.Equal(secret, requirement.Reference);

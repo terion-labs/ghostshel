@@ -1,9 +1,11 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using GhostShell.Application;
 using GhostShell.Core;
 
 namespace GhostShell.Desktop;
 
+[StructLayout(LayoutKind.Auto)]
 internal readonly record struct X11HotkeyGesture(nuint KeySymbol, uint Modifiers);
 
 internal readonly record struct X11HotkeyNativeResult(bool Succeeded, byte ErrorCode)
@@ -22,7 +24,9 @@ internal interface IX11HotkeyLoop : IDisposable
     void Unregister(int id);
 }
 
-internal sealed class X11HotkeyConnectionException(string message) : Exception(message);
+internal sealed class X11HotkeyConnectionException(string message) : Exception(message)
+{
+}
 
 internal sealed class LinuxX11GlobalHotkeyService : IGlobalHotkeyService
 {
@@ -191,22 +195,22 @@ internal sealed class LinuxX11GlobalHotkeyService : IGlobalHotkeyService
         }
 
         var modifiers = 0U;
-        if ((gesture.Modifiers & KeyModifiers.Shift) != 0)
+        if ((gesture.Modifiers & KeyModifiers.Shift) != KeyModifiers.None)
         {
             modifiers |= ShiftMask;
         }
 
-        if ((gesture.Modifiers & KeyModifiers.Control) != 0)
+        if ((gesture.Modifiers & KeyModifiers.Control) != KeyModifiers.None)
         {
             modifiers |= ControlMask;
         }
 
-        if ((gesture.Modifiers & KeyModifiers.Alt) != 0)
+        if ((gesture.Modifiers & KeyModifiers.Alt) != KeyModifiers.None)
         {
             modifiers |= AltMask;
         }
 
-        if ((gesture.Modifiers & KeyModifiers.Meta) != 0)
+        if ((gesture.Modifiers & KeyModifiers.Meta) != KeyModifiers.None)
         {
             modifiers |= MetaMask;
         }
@@ -250,8 +254,7 @@ internal sealed class LinuxX11GlobalHotkeyService : IGlobalHotkeyService
 
         if (key.Length >= 2
             && key[0] == 'F'
-            && int.TryParse(key.AsSpan(1), out var functionNumber)
-            && functionNumber is >= 1 and <= 24)
+            && int.TryParse(key.AsSpan(1), System.Globalization.CultureInfo.InvariantCulture, out var functionNumber) && functionNumber is >= 1 and <= 24)
         {
             keySymbol = F1KeySymbol + (nuint)(functionNumber - 1);
             return keySymbol <= F24KeySymbol;

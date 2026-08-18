@@ -10,7 +10,7 @@ public sealed class RuntimeRecoveryWriter
 {
     private const int MaximumScheduledKeys = RuntimeRecoveryInventory.MaximumSnapshotsPerRun;
 
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly IRuntimeRecoveryStore _store;
     private readonly ApplicationStartupState _startupState;
     private readonly TimeProvider _timeProvider;

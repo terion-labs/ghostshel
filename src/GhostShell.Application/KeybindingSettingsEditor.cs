@@ -216,7 +216,7 @@ public sealed class KeybindingSettingsEditor
         }
 
         var term = query.Trim();
-        return rows.Where(row => Matches(row, term)).ToArray();
+        return [.. rows.Where(row => Matches(row, term))];
     }
 
     /// <summary>
@@ -227,10 +227,9 @@ public sealed class KeybindingSettingsEditor
         _initialProfile.Id,
         _name,
         _initialProfile.Layer,
-        _bindings
+        [.. _bindings
             .Where(binding => binding.Current is not null)
-            .Select(binding => binding.Current!)
-            .ToArray(),
+            .Select(binding => binding.Current!)],
         _prefix,
         _initialProfile.BasedOn);
 

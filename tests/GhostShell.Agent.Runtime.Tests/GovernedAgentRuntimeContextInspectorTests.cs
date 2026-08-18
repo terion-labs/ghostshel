@@ -57,7 +57,7 @@ public sealed partial class GovernedAgentRuntimeTests
                 BuiltInAgentTools.TerminalSendKeys,
                 BuiltInAgentTools.TerminalInterrupt,
             ],
-            logs.SupportedOperations.ToArray());
+            [.. logs.SupportedOperations]);
 
         var operations = fixture.Provider.Requests.First().Tools
             .Select(tool => tool.Name)
@@ -111,7 +111,7 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Equal(
             expected,
             firstRequest.Tools.Any(
-                tool => tool.Name == BuiltInAgentTools.TerminalPaste));
+                tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalPaste, StringComparison.Ordinal)));
         var context = Assert.Single(fixture.Runtime.Snapshot.ContextItems);
         Assert.Equal(
             expected,
@@ -223,18 +223,17 @@ public sealed partial class GovernedAgentRuntimeTests
             fixture.Runtime.Snapshot.ContextItems.Select(item => item.PanelId));
         var continuation = fixture.Provider.Requests.ToArray()[1];
         var refreshedPanelSchema = continuation.Tools
-            .Single(tool =>
-                tool.Name == BuiltInAgentTools.TerminalReadScreen)
+            .Single(tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalReadScreen, StringComparison.Ordinal))
             .InputSchema
             .GetProperty("properties")
             .GetProperty("panel_id");
         Assert.False(refreshedPanelSchema.TryGetProperty("enum", out _));
         Assert.Equal(
             fixture.Provider.Requests.ToArray()[0].Tools
-                .Single(tool => tool.Name == BuiltInAgentTools.TerminalReadScreen)
+                .Single(tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalReadScreen, StringComparison.Ordinal))
                 .InputSchema.GetRawText(),
             continuation.Tools
-                .Single(tool => tool.Name == BuiltInAgentTools.TerminalReadScreen)
+                .Single(tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalReadScreen, StringComparison.Ordinal))
                 .InputSchema.GetRawText());
         Assert.Equal(
             "tool_succeeded",

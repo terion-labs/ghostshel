@@ -55,12 +55,12 @@ public sealed class DatabasePanelSessionFactoryTests : IAsyncLifetime
         Assert.DoesNotContain(_databasePath, JsonSerializer.Serialize(target));
 
         var objects = await relational.ListObjectsAsync(20, CancellationToken.None);
-        var widget = Assert.Single(objects.Objects, item => item.Name == "widgets");
+        var widget = Assert.Single(objects.Objects, item => string.Equals(item.Name, "widgets", StringComparison.Ordinal));
         Assert.DoesNotContain("widgets", widget.Reference.Value, StringComparison.OrdinalIgnoreCase);
         var details = await relational.DescribeObjectAsync(
             widget.Reference,
             CancellationToken.None);
-        Assert.Equal(["id", "name"], details.Columns.Select(column => column.Name));
+        Assert.Equal(["id", "name"], details.Columns.Select(column => column.Name), StringComparer.Ordinal);
 
         var page = await relational.ReadTableAsync(
             new DatabaseTableReadRequest(
@@ -75,7 +75,7 @@ public sealed class DatabasePanelSessionFactoryTests : IAsyncLifetime
         Assert.Equal("alpha", page.Page.Result.Rows[0][1]);
 
         var graph = await relational.ReadSchemaGraphAsync(20, CancellationToken.None);
-        Assert.Contains(graph.Tables, table => table.Object.Name == "widgets");
+        Assert.Contains(graph.Tables, table => string.Equals(table.Object.Name, "widgets", StringComparison.Ordinal));
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             relational.DescribeObjectAsync(
                     new DatabaseObjectReference("opaque_but_unknown"),

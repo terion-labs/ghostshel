@@ -39,7 +39,13 @@ public abstract class FilePreviewContent : IDisposable
         return buffer;
     }
 
-    public virtual void Dispose()
+    public void Dispose()
+    {
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
     {
     }
 

@@ -11,7 +11,7 @@ internal static class ClickHouseProviderCase
         "ClickHouse 26.3.17.56 LTS",
         "clickhouse/clickhouse-server:26.3.17.56",
         8123,
-        new Dictionary<string, string>
+        new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["CLICKHOUSE_DB"] = "ghostshell",
             ["CLICKHOUSE_USER"] = "ghostshell",

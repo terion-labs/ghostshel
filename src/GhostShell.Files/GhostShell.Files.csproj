@@ -7,12 +7,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="AWSSDK.S3" Version="4.0.101.3" />
-    <PackageReference Include="LiteDB" Version="5.0.21" />
-    <PackageReference Include="FluentFTP" Version="54.2.0" />
-    <PackageReference Include="SMBLibrary" Version="1.5.7.1" />
-    <PackageReference Include="SSH.NET" Version="2026.0.0" />
-    <PackageReference Include="SshNet.Agent" Version="2024.2.0.5" />
+    <PackageReference Include="AWSSDK.S3" />
+    <PackageReference Include="LiteDB" />
+    <PackageReference Include="FluentFTP" />
+    <PackageReference Include="SMBLibrary" />
+    <PackageReference Include="SSH.NET" />
+    <PackageReference Include="SshNet.Agent" />
   </ItemGroup>
 
   <ItemGroup>

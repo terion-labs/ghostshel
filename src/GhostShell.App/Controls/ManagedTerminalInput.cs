@@ -200,7 +200,7 @@ internal static class ManagedTerminalInput
         }
 
         var value = stroke.Key;
-        if ((stroke.Modifiers & GhostShell.Core.KeyModifiers.Shift) == 0)
+        if ((stroke.Modifiers & GhostShell.Core.KeyModifiers.Shift) == Core.KeyModifiers.None)
         {
             value = value.ToLowerInvariant();
         }
@@ -209,7 +209,7 @@ internal static class ManagedTerminalInput
             & (GhostShell.Core.KeyModifiers.Control
                 | GhostShell.Core.KeyModifiers.Alt
                 | GhostShell.Core.KeyModifiers.Meta);
-        if ((characterModifiers & GhostShell.Core.KeyModifiers.Control) != 0)
+        if ((characterModifiers & GhostShell.Core.KeyModifiers.Control) != Core.KeyModifiers.None)
         {
             var character = char.ToUpperInvariant(value[0]);
             value = character switch
@@ -232,7 +232,7 @@ internal static class ManagedTerminalInput
         }
 
         if ((characterModifiers
-                & (GhostShell.Core.KeyModifiers.Alt | GhostShell.Core.KeyModifiers.Meta)) != 0)
+                & (GhostShell.Core.KeyModifiers.Alt | GhostShell.Core.KeyModifiers.Meta)) != Core.KeyModifiers.None)
         {
             value = "\u001b" + value;
         }

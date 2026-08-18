@@ -59,8 +59,8 @@ public sealed class MacOsNotificationUserInfoTests
 
         var values = MacOsNotificationUserInfo.Create(notification);
 
-        Assert.DoesNotContain(MacOsNotificationUserInfo.TabIdKey, values.Keys);
-        Assert.DoesNotContain(MacOsNotificationUserInfo.PanelIdKey, values.Keys);
+        Assert.DoesNotContain(MacOsNotificationUserInfo.TabIdKey, values.Keys, StringComparer.Ordinal);
+        Assert.DoesNotContain(MacOsNotificationUserInfo.PanelIdKey, values.Keys, StringComparer.Ordinal);
         Assert.True(MacOsNotificationUserInfo.TryParse(
             values,
             out _,
@@ -76,7 +76,7 @@ public sealed class MacOsNotificationUserInfoTests
     [InlineData(MacOsNotificationUserInfo.WorkspaceIdKey)]
     public void User_info_rejects_missing_required_identity(string missingKey)
     {
-        var values = new Dictionary<string, string>
+        var values = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             [MacOsNotificationUserInfo.NotificationIdKey] = "notification-9",
             [MacOsNotificationUserInfo.WorkspaceIdKey] = "workspace-1",

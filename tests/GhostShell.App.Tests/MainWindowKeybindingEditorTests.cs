@@ -125,7 +125,7 @@ public sealed class MainWindowKeybindingEditorTests
         var notifications = 0;
         viewModel.PropertyChanged += (_, eventArgs) =>
         {
-            if (eventArgs.PropertyName == nameof(MainWindowViewModel.DefinitionBundleStatus))
+            if (string.Equals(eventArgs.PropertyName, nameof(MainWindowViewModel.DefinitionBundleStatus), StringComparison.Ordinal))
             {
                 notifications++;
             }
@@ -232,10 +232,10 @@ public sealed class MainWindowKeybindingEditorTests
             focusCommands,
             item => item.Target is LauncherSearchTarget.Command command
                 && command.Arguments.TryGetValue("direction", out var direction)
-                && direction == "right");
+                && string.Equals(direction, "right", StringComparison.Ordinal));
         Assert.Contains("right", right.Title, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("direction=right", right.Detail, StringComparison.Ordinal);
-        Assert.NotEqual("Unbound", right.TrailingText);
+        Assert.NotEqual("Unbound", right.TrailingText, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -284,11 +284,11 @@ public sealed class MainWindowKeybindingEditorTests
                     || command.Id == BuiltInCommands.MoveTabRight))
             .ToArray();
         Assert.Equal(2, commands.Length);
-        Assert.Contains(commands, item => item.Title == "Move tab left");
-        Assert.Contains(commands, item => item.Title == "Move tab right");
+        Assert.Contains(commands, item => string.Equals(item.Title, "Move tab left", StringComparison.Ordinal));
+        Assert.Contains(commands, item => string.Equals(item.Title, "Move tab right", StringComparison.Ordinal));
         Assert.All(commands, item =>
         {
-            Assert.NotEqual("Unbound", item.TrailingText);
+            Assert.NotEqual("Unbound", item.TrailingText, StringComparer.Ordinal);
             Assert.False(item.IsAvailable);
             Assert.Equal("Unavailable in the current route.", item.UnavailableReason);
         });
@@ -370,9 +370,7 @@ public sealed class MainWindowKeybindingEditorTests
     private static DefinitionCatalogSnapshot KeymapSnapshot() =>
         DefinitionCatalogSnapshot.Empty with
         {
-            Keymaps = BuiltInKeymaps.All
-                .Select((profile, index) => Store(profile, index + 1))
-                .ToArray(),
+            Keymaps = [.. BuiltInKeymaps.All.Select((profile, index) => Store(profile, index + 1))],
         };
 
     private static StoredDefinition<T> Store<T>(T value, long revision)
@@ -412,10 +410,13 @@ public sealed class MainWindowKeybindingEditorTests
             var stored = Store(definition, revision);
             Snapshot = Snapshot with
             {
-                Keymaps = Snapshot.Keymaps
-                    .Where(item => item.Value.Id != definition.Id)
-                    .Append(stored)
-                    .ToArray(),
+                Keymaps =
+                [
+                    .. Snapshot.Keymaps
+                                        .Where(item => item.Value.Id != definition.Id)
+,
+                    stored,
+                ],
             };
             Changed?.Invoke(this, EventArgs.Empty);
             return ValueTask.FromResult(DefinitionStoreResult<StoredDefinition<KeymapProfile>>
@@ -455,10 +456,13 @@ public sealed class MainWindowKeybindingEditorTests
             var stored = Store(definition, revision);
             Snapshot = Snapshot with
             {
-                Workspaces = Snapshot.Workspaces
-                    .Where(item => item.Value.Id != definition.Id)
-                    .Append(stored)
-                    .ToArray(),
+                Workspaces =
+                [
+                    .. Snapshot.Workspaces
+                                        .Where(item => item.Value.Id != definition.Id)
+,
+                    stored,
+                ],
             };
             Changed?.Invoke(this, EventArgs.Empty);
             return ValueTask.FromResult(

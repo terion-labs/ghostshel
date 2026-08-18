@@ -132,13 +132,13 @@ public sealed partial class InMemorySessionHostClient :
             SessionCapabilities.AgentContextInspect,
             SessionCapabilities.InputLease,
             .. terminalFactory.Capabilities.Values,
-            .. (filePanelFactory?.Capabilities.Values ?? Array.Empty<string>()),
+            .. (filePanelFactory?.Capabilities.Values ?? []),
             .. _browserPanelCapabilities.Values,
-            .. (systemMonitorFactory?.StatisticsCapabilities.Values ?? Array.Empty<string>()),
-            .. (systemMonitorFactory?.ProcessMonitorCapabilities.Values ?? Array.Empty<string>()),
-            .. (databasePanelFactory?.RelationalCapabilities.Values ?? Array.Empty<string>()),
-            .. (databasePanelFactory?.RedisCapabilities.Values ?? Array.Empty<string>()),
-            .. (dockerPanelFactory?.Capabilities.Values ?? Array.Empty<string>()),
+            .. (systemMonitorFactory?.StatisticsCapabilities.Values ?? []),
+            .. (systemMonitorFactory?.ProcessMonitorCapabilities.Values ?? []),
+            .. (databasePanelFactory?.RelationalCapabilities.Values ?? []),
+            .. (databasePanelFactory?.RedisCapabilities.Values ?? []),
+            .. (dockerPanelFactory?.Capabilities.Values ?? []),
         ]);
     }
 
@@ -1831,7 +1831,7 @@ public sealed partial class InMemorySessionHostClient :
         HostedSession[] sessions;
         lock (_gate)
         {
-            sessions = _sessions.Values.ToArray();
+            sessions = [.. _sessions.Values];
         }
 
         var revision = 0L;
@@ -1893,7 +1893,7 @@ public sealed partial class InMemorySessionHostClient :
                 }
 
                 _disposed = true;
-                sessions = _sessions.Values.ToArray();
+                sessions = [.. _sessions.Values];
                 _sessions.Clear();
             }
 
@@ -2011,19 +2011,17 @@ public sealed partial class InMemorySessionHostClient :
     {
         lock (_gate)
         {
-            return _sessions.Values
+            return [.. _sessions.Values
                 .Where(session => request.Scope switch
                 {
-                    CloseScopeKind.Panel => session.Owner.PanelId.Value == request.TargetId,
-                    CloseScopeKind.Tab => session.Owner.TabId.Value == request.TargetId,
-                    CloseScopeKind.Workspace =>
-                        session.Owner.WorkspaceId.Value == request.TargetId,
-                    CloseScopeKind.Window => session.Owner.WindowId.Value == request.TargetId,
-                    CloseScopeKind.Session => session.Id.Value == request.TargetId,
+                    CloseScopeKind.Panel => string.Equals(session.Owner.PanelId.Value, request.TargetId, StringComparison.Ordinal),
+                    CloseScopeKind.Tab => string.Equals(session.Owner.TabId.Value, request.TargetId, StringComparison.Ordinal),
+                    CloseScopeKind.Workspace => string.Equals(session.Owner.WorkspaceId.Value, request.TargetId, StringComparison.Ordinal),
+                    CloseScopeKind.Window => string.Equals(session.Owner.WindowId.Value, request.TargetId, StringComparison.Ordinal),
+                    CloseScopeKind.Session => string.Equals(session.Id.Value, request.TargetId, StringComparison.Ordinal),
                     _ => false,
                 })
-                .OrderBy(session => session.Id.Value, StringComparer.Ordinal)
-                .ToArray();
+                .OrderBy(session => session.Id.Value, StringComparer.Ordinal)];
         }
     }
 
@@ -2090,7 +2088,7 @@ public sealed partial class InMemorySessionHostClient :
                 return false;
             }
 
-            if (record.Fingerprint != fingerprint || record.Result is not HostResult<T> typed)
+            if (!string.Equals(record.Fingerprint, fingerprint, StringComparison.Ordinal) || record.Result is not HostResult<T> typed)
             {
                 result = HostResult<T>.Fail(
                     HostError.Create(

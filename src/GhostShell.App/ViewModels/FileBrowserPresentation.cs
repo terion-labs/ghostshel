@@ -356,7 +356,7 @@ public sealed class FileEntryMetadataViewModel
         ? "Folder"
         : FileEntryViewModel.FormatSize(Entry.Size);
 
-    public string Modified => Entry.LastModifiedAt?.ToLocalTime().ToString("g") ?? "Unknown";
+    public string Modified => Entry.LastModifiedAt?.ToLocalTime().ToString("g", System.Globalization.CultureInfo.InvariantCulture) ?? "Unknown";
 
     public string Location => FileLocationPresentation.Display(Entry.Location);
 

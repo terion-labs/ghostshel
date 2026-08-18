@@ -26,10 +26,10 @@ public sealed class WorkspaceIconCatalogTests
     [Fact]
     public void The_default_icon_is_in_the_catalog_and_resolves()
     {
-        Assert.Contains(WorkspaceIcons.All, icon => icon.Id == WorkspaceDefinition.DefaultIcon);
+        Assert.Contains(WorkspaceIcons.All, icon => string.Equals(icon.Id, WorkspaceDefinition.DefaultIcon, StringComparison.Ordinal));
         Assert.Equal(
             WorkspaceIcons.SymbolFor(WorkspaceDefinition.DefaultIcon),
-            WorkspaceIcons.All.Single(icon => icon.Id == WorkspaceDefinition.DefaultIcon).Symbol);
+            WorkspaceIcons.All.Single(icon => string.Equals(icon.Id, WorkspaceDefinition.DefaultIcon, StringComparison.Ordinal)).Symbol);
     }
 
     /// <summary>
@@ -53,7 +53,7 @@ public sealed class WorkspaceIconCatalogTests
     [InlineData("Docker", "box")]
     public void Search_finds_an_icon_by_name_or_purpose(string query, string expectedId)
     {
-        Assert.Contains(WorkspaceIcons.Search(query), icon => icon.Id == expectedId);
+        Assert.Contains(WorkspaceIcons.Search(query), icon => string.Equals(icon.Id, expectedId, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -63,7 +63,7 @@ public sealed class WorkspaceIconCatalogTests
         var narrowed = WorkspaceIcons.Search("storage disk");
 
         Assert.True(narrowed.Count <= broad.Count);
-        Assert.All(narrowed, icon => Assert.Contains(broad, candidate => candidate.Id == icon.Id));
+        Assert.All(narrowed, icon => Assert.Contains(broad, candidate => string.Equals(candidate.Id, icon.Id, StringComparison.Ordinal)));
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 
 namespace GhostShell.Core.Tests;
@@ -105,7 +106,7 @@ public sealed class RuntimeInstanceTests
             new TabInstanceId("tab-overflow")));
 
         Assert.Contains(
-            WorkspaceInstance.MaximumPanelCount.ToString(),
+            WorkspaceInstance.MaximumPanelCount.ToString(CultureInfo.InvariantCulture),
             exception.Message,
             StringComparison.Ordinal);
     }

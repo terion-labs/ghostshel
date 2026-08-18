@@ -60,7 +60,7 @@ public sealed class AcceptancePrompterTests
     {
         var check = Assert.Single(
             AcceptanceCatalog.All,
-            item => item.Id == "scale-reflow-contrast-status");
+            item => string.Equals(item.Id, "scale-reflow-contrast-status", StringComparison.Ordinal));
         var input = new StringReader(
             "PASS\nPASS\nPASS\nPASS\nObserved 250 percent application reflow.\n");
 
@@ -74,7 +74,7 @@ public sealed class AcceptancePrompterTests
             AcceptanceStatus.Pass,
             Assert.Single(
                 observation.Assertions,
-                assertion => assertion.Id == "high-text-scale-exercised").Result);
+                assertion => string.Equals(assertion.Id, "high-text-scale-exercised", StringComparison.Ordinal)).Result);
     }
 
     [Fact]

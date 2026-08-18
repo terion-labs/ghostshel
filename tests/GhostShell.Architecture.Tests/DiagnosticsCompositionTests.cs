@@ -55,7 +55,7 @@ public sealed class DiagnosticsCompositionTests
                 "artifacts/performance/performance-summary.txt",
                 "artifacts/status/component-status.txt",
             ],
-            archive.Entries.Select(entry => entry.FullName));
+            archive.Entries.Select(entry => entry.FullName), StringComparer.Ordinal);
         var exportedText = string.Join(
             '\n',
             archive.Entries.Select(ReadEntry));

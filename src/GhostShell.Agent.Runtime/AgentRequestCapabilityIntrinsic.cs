@@ -97,8 +97,8 @@ internal static class AgentRequestCapabilityIntrinsic
         foreach (var property in arguments.EnumerateObject())
         {
             if (!seen.Add(property.Name)
-                || property.Name != "capability"
-                || property.Value.ValueKind != JsonValueKind.String)
+                || !string.Equals(property.Name, "capability"
+, StringComparison.Ordinal) || property.Value.ValueKind != JsonValueKind.String)
             {
                 return Invalid();
             }

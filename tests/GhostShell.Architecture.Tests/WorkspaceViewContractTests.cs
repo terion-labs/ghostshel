@@ -56,8 +56,8 @@ public sealed class WorkspaceViewContractTests
         var toggle = FindNamedElement(root, "AgentToggleButton");
         var pulse = Assert.Single(
             toggle.Descendants(),
-            element => AttributeValue(element, "Name")
-                == "AgentToolbarActivityPulseIcon");
+            element => string.Equals(AttributeValue(element, "Name")
+, "AgentToolbarActivityPulseIcon", StringComparison.Ordinal));
 
         Assert.Equal("Bot", AttributeValue(pulse, "Symbol"));
         Assert.Equal("0", AttributeValue(pulse, "Opacity"));
@@ -76,18 +76,18 @@ public sealed class WorkspaceViewContractTests
             "DesignSystem.axaml"));
         var pulseStyle = Assert.Single(
             designSystem.Descendants(),
-            element => element.Name.LocalName == "Style"
-                && AttributeValue(element, "Selector")
-                    == "icons|SymbolIcon.AgentToolbarActivityPulse.running");
+            element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Selector")
+, "icons|SymbolIcon.AgentToolbarActivityPulse.running", StringComparison.Ordinal));
         var animation = Assert.Single(
             pulseStyle.Descendants(),
-            element => element.Name.LocalName == "Animation");
+            element => string.Equals(element.Name.LocalName, "Animation", StringComparison.Ordinal));
         Assert.Equal("0:0:2.5", AttributeValue(animation, "Duration"));
         Assert.Equal(
             ["0%", "50%", "100%"],
             animation.Elements()
-                .Where(element => element.Name.LocalName == "KeyFrame")
-                .Select(element => AttributeValue(element, "Cue")));
+                .Where(element => string.Equals(element.Name.LocalName, "KeyFrame", StringComparison.Ordinal))
+                .Select(element => AttributeValue(element, "Cue")), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -96,7 +96,7 @@ public sealed class WorkspaceViewContractTests
         var mainWindow = LoadView("MainWindow");
         var workspace = Assert.Single(
             mainWindow.Descendants(),
-            element => element.Name.LocalName == "WorkspaceView");
+            element => string.Equals(element.Name.LocalName, "WorkspaceView", StringComparison.Ordinal));
 
         Assert.Equal("WorkspaceRouteView", AttributeValue(workspace, "Name"));
         Assert.Equal(
@@ -123,7 +123,7 @@ public sealed class WorkspaceViewContractTests
             element => HasClass(element, "AgentPanel"));
         Assert.DoesNotContain(
             mainWindow.Descendants(),
-            element => element.Name.LocalName == "RuntimePanelLayoutPanel");
+            element => string.Equals(element.Name.LocalName, "RuntimePanelLayoutPanel", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -139,7 +139,7 @@ public sealed class WorkspaceViewContractTests
 
         var surface = Assert.Single(
             root.Elements(),
-            element => element.Name.LocalName == "Grid");
+            element => string.Equals(element.Name.LocalName, "Grid", StringComparison.Ordinal));
         // Chrome, canvas, bottom tab strip. The fourth row was a status band.
         Assert.Equal("Auto,*,Auto", AttributeValue(surface, "RowDefinitions"));
 
@@ -185,22 +185,22 @@ public sealed class WorkspaceViewContractTests
         Assert.Equal("Workspaces", AttributeValue(workspacesMenu, "ToolTip.Tip"));
         var workspacesMenuIcon = Assert.Single(
             workspacesMenu.Elements(),
-            element => element.Name.LocalName == "Panel");
+            element => string.Equals(element.Name.LocalName, "Panel", StringComparison.Ordinal));
         Assert.DoesNotContain(
             workspacesMenuIcon.Descendants(),
-            element => element.Name.LocalName == "SymbolIcon"
-                && AttributeValue(element, "Symbol") == "Bot");
+            element => string.Equals(element.Name.LocalName, "SymbolIcon"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Symbol"), "Bot", StringComparison.Ordinal));
         Assert.Single(
             workspacesMenu.Descendants(),
-            element => element.Name.LocalName == "ItemsControl"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "ItemsControl"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "ItemsSource"),
                     "{Binding Workspaces}",
                     StringComparison.Ordinal));
         Assert.Single(
             workspacesMenu.Descendants(),
-            element => element.Name.LocalName == "ToggleSwitch"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "ToggleSwitch"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "IsChecked"),
                     "{Binding ShowWorkspacesPanel, Mode=TwoWay}",
                     StringComparison.Ordinal));
@@ -230,8 +230,8 @@ public sealed class WorkspaceViewContractTests
         // both are bindings rather than fixed values.
         var rail = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "Border"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Border"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "DockPanel.Dock"),
                     "{Binding WorkspacePanelDock}",
                     StringComparison.Ordinal));
@@ -246,7 +246,7 @@ public sealed class WorkspaceViewContractTests
         // up the exact slot the overlay already occupies.
         var agentWorkspace = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "AgentWorkspaceView");
+            element => string.Equals(element.Name.LocalName, "AgentWorkspaceView", StringComparison.Ordinal));
         Assert.Equal("AgentWorkspaceSurface", AttributeValue(agentWorkspace, "Name"));
         Assert.Null(AttributeValue(agentWorkspace, "DockPanel.Dock"));
         Assert.Equal("Right", AttributeValue(agentWorkspace, "HorizontalAlignment"));
@@ -277,17 +277,17 @@ public sealed class WorkspaceViewContractTests
             "{Binding #AgentWorkspaceSurface.Bounds.Width}",
             AttributeValue(agentDockSpacer, "Width"));
         var agentStates = root.Descendants()
-            .Where(element => element.Name.LocalName == "Style")
+            .Where(element => string.Equals(element.Name.LocalName, "Style", StringComparison.Ordinal))
             .ToDictionary(
                 element => AttributeValue(element, "Selector") ?? string.Empty,
-                element => element);
+                element => element, StringComparer.Ordinal);
         // The base style supplies the initial width. Once the docked resize
         // edge changes it, the spacer follows the surface's live bounds.
         var agentBase = agentStates["views|AgentWorkspaceView"];
         Assert.Contains(
             agentBase.Descendants(),
-            setter => AttributeValue(setter, "Property") == "Width"
-                && AttributeValue(setter, "Value") == "352");
+            setter => string.Equals(AttributeValue(setter, "Property"), "Width"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(setter, "Value"), "352", StringComparison.Ordinal));
         Assert.True(agentStates.ContainsKey("views|AgentWorkspaceView.floating"));
         // Floating wears the sidebar's own swatch as glass over the blurred
         // snapshot of what it covers, ringed by the flyout shadow — spread on
@@ -296,12 +296,12 @@ public sealed class WorkspaceViewContractTests
         var floatingSurface = agentStates["views|AgentWorkspaceView.floating Border.AgentPanel"];
         Assert.Contains(
             floatingSurface.Descendants(),
-            setter => AttributeValue(setter, "Property") == "Background"
-                && AttributeValue(setter, "Value") == "{DynamicResource ShellSidebarOverlayBrush}");
+            setter => string.Equals(AttributeValue(setter, "Property"), "Background"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(setter, "Value"), "{DynamicResource ShellSidebarOverlayBrush}", StringComparison.Ordinal));
         Assert.Contains(
             floatingSurface.Descendants(),
-            setter => AttributeValue(setter, "Property") == "BoxShadow"
-                && AttributeValue(setter, "Value") == "{DynamicResource ShellFlyoutShadow}");
+            setter => string.Equals(AttributeValue(setter, "Property"), "BoxShadow"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(setter, "Value"), "{DynamicResource ShellFlyoutShadow}", StringComparison.Ordinal));
         var agentOverlay = agentWorkspace.Parent!;
         Assert.Equal("Panel", agentOverlay.Name.LocalName);
         Assert.Equal(
@@ -344,11 +344,11 @@ public sealed class WorkspaceViewContractTests
         // preparing one aside either. Each workspace keeps its own.
         var canvases = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "ItemsControl"
-                && AttributeValue(element, "ItemsSource") == "{Binding OpenWorkspaces}");
+            element => string.Equals(element.Name.LocalName, "ItemsControl"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "ItemsSource"), "{Binding OpenWorkspaces}", StringComparison.Ordinal));
         var dockControl = Assert.Single(
             canvases.Descendants(),
-            element => element.Name.LocalName == "DockControl");
+            element => string.Equals(element.Name.LocalName, "DockControl", StringComparison.Ordinal));
         Assert.Equal("{Binding ActiveTab.DockLayout}", AttributeValue(dockControl, "Layout"));
         Assert.Equal("{Binding ActiveTab.DockFactory}", AttributeValue(dockControl, "Factory"));
         // Shown, not in front: the workspace being left keeps its canvas on
@@ -373,15 +373,15 @@ public sealed class WorkspaceViewContractTests
         Assert.Null(AttributeValue(dockControl, "MinHeight"));
         Assert.NotEqual(
             "ScrollViewer",
-            dockControl.Parent?.Name.LocalName);
+            dockControl.Parent?.Name.LocalName, StringComparer.Ordinal);
         Assert.DoesNotContain(
             root.Descendants(),
-            element => element.Name.LocalName == "RuntimePanelLayoutPanel");
+            element => string.Equals(element.Name.LocalName, "RuntimePanelLayoutPanel", StringComparison.Ordinal));
 
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "TextBlock"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "TextBlock"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Text"),
                     "{Binding TabReorderStatus}",
                     StringComparison.Ordinal)
@@ -391,8 +391,8 @@ public sealed class WorkspaceViewContractTests
                     StringComparison.Ordinal));
         var transferManagerButton = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "Button"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "IsVisible"),
                     "{Binding HasFileTransfers}",
                     StringComparison.Ordinal)
@@ -408,15 +408,15 @@ public sealed class WorkspaceViewContractTests
             element => element.Name.LocalName is "Flyout" or "Popup");
         Assert.Contains(
             transferManagerButton.Descendants(),
-            element => element.Name.LocalName == "SymbolIcon"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "SymbolIcon"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Symbol"),
                     "ArrowSort",
                     StringComparison.Ordinal));
         var transferManager = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "SurfaceCard"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "SurfaceCard"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "AutomationProperties.Name"),
                     "File transfer manager",
                     StringComparison.Ordinal)
@@ -432,8 +432,8 @@ public sealed class WorkspaceViewContractTests
                 "KeyboardNavigation.TabNavigation"));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "ItemsControl"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "ItemsControl"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "ItemsSource"),
                     "{Binding FileTransfers}",
                     StringComparison.Ordinal));
@@ -511,7 +511,7 @@ public sealed class WorkspaceViewContractTests
     {
         var mainWindow = LoadView("MainWindow");
         var runtimeTemplateTypes = mainWindow.Descendants()
-            .Where(element => element.Name.LocalName == "DataTemplate")
+            .Where(element => string.Equals(element.Name.LocalName, "DataTemplate", StringComparison.Ordinal))
             .Select(element => AttributeValue(element, "DataType"))
             .Where(dataType => dataType?.EndsWith(
                 "RuntimePanelViewModel",
@@ -636,6 +636,6 @@ public sealed class WorkspaceViewContractTests
 
     private static string? AttributeValue(XElement element, string name) =>
         element.Attributes()
-            .FirstOrDefault(attribute => attribute.Name.LocalName == name)
+            .FirstOrDefault(attribute => string.Equals(attribute.Name.LocalName, name, StringComparison.Ordinal))
             ?.Value;
 }

@@ -180,8 +180,7 @@ public static class MarkdownPreviewDocument
                 break;
             case ListBlock list:
                 var ordinal = list.OrderedStart is { } startText
-                    && int.TryParse(startText, out var parsed)
-                    ? parsed
+                    && int.TryParse(startText, System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? parsed
                     : 1;
                 foreach (var item in list)
                 {

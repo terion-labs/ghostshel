@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 
@@ -132,5 +133,6 @@ public sealed class CardGridPanel : Panel
         return new Metrics(columns, itemWidth, width);
     }
 
+    [StructLayout(LayoutKind.Auto)]
     private readonly record struct Metrics(int Columns, double ItemWidth, double Width);
 }

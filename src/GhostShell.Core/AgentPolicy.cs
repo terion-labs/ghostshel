@@ -117,7 +117,7 @@ public sealed record AgentPolicy(
     public const int MaximumModelLength = 256;
 
     public static ImmutableArray<AgentCapability> Capabilities { get; } =
-        Enum.GetValues<AgentCapability>().ToImmutableArray();
+        [.. Enum.GetValues<AgentCapability>()];
 
     public static ImmutableDictionary<AgentCapability, AgentPermission> InitialPermissions
     { get; } =
@@ -185,6 +185,9 @@ public sealed record AgentPolicy(
     /// </summary>
     public AgentPolicy SelectPrimaryModel(string provider, string model)
     {
+        ArgumentNullException.ThrowIfNull(provider);
+        ArgumentNullException.ThrowIfNull(model);
+
         if (!IsValidProvider(provider))
         {
             throw new ArgumentException(

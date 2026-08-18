@@ -19,8 +19,13 @@ public sealed record CommandBinding
         {
             foreach (var (name, value) in arguments)
             {
-                ArgumentException.ThrowIfNullOrWhiteSpace(name);
-                ArgumentException.ThrowIfNullOrWhiteSpace(value);
+                if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(value))
+                {
+                    throw new ArgumentException(
+                        "Command argument names and values cannot be empty.",
+                        nameof(arguments));
+                }
+
                 argumentBuilder.Add(name, value);
             }
         }

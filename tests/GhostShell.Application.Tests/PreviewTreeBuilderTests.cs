@@ -35,7 +35,7 @@ public sealed class PreviewTreeBuilderTests
             new ArchiveEntryDescriptor("assets/logo.png", false, 30, 20),
         ]);
 
-        Assert.Equal(["assets", "src", "readme.md"], nodes.Select(node => node.Name));
+        Assert.Equal(["assets", "src", "readme.md"], nodes.Select(node => node.Name), StringComparer.Ordinal);
     }
 
     [Fact]

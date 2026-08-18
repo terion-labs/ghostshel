@@ -11,7 +11,7 @@ internal static class OracleFirebirdProviderCases
         "Oracle Database Free 23.26.2",
         "container-registry.oracle.com/database/free:23.26.2.0-lite",
         1521,
-        new Dictionary<string, string>
+        new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["ORACLE_PWD"] = Password,
         },
@@ -44,7 +44,7 @@ internal static class OracleFirebirdProviderCases
         "Firebird 5.0.4",
         "firebirdsql/firebird:5.0.4-trixie",
         3050,
-        new Dictionary<string, string>
+        new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["FIREBIRD_ROOT_PASSWORD"] = Password,
             ["FIREBIRD_DATABASE"] = "ghostshell.fdb",

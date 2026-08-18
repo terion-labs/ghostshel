@@ -382,7 +382,7 @@ public sealed class DatabaseSessionHostTests
         private int _consumed;
 
         public IReadOnlyList<AgentActionCompletion> Completions =>
-            _completions.ToArray();
+            [.. _completions];
 
         public AgentAuthorizationId Arm(AgentDatabaseReadAction action)
         {

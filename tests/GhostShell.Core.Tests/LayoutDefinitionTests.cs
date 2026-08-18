@@ -12,7 +12,7 @@ public sealed class LayoutDefinitionTests
 
         Assert.Contains(result.Issues, issue =>
             issue.Code == DefinitionValidationCode.OutOfBounds
-            && issue.Target == "outside");
+            && string.Equals(issue.Target, "outside", StringComparison.Ordinal));
     }
 
     [Fact]

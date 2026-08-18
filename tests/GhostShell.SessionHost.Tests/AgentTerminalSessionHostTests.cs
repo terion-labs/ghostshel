@@ -54,7 +54,7 @@ public sealed class AgentTerminalSessionHostTests
             "/srv/current",
             nextAction.Proposal.Presentation.WorkingDirectory);
         var events = audit.Events
-            .Where(item => item.CorrelationId == action.Proposal.Id.Value)
+            .Where(item => string.Equals(item.CorrelationId, action.Proposal.Id.Value, StringComparison.Ordinal))
             .ToArray();
         Assert.Equal(
             [
@@ -130,7 +130,7 @@ public sealed class AgentTerminalSessionHostTests
         Assert.Equal(1, terminal.MouseCount);
         Assert.Equal(mouseInput, terminal.LastMouseInput);
         var events = audit.Events
-            .Where(item => item.CorrelationId == action.Proposal.Id.Value)
+            .Where(item => string.Equals(item.CorrelationId, action.Proposal.Id.Value, StringComparison.Ordinal))
             .ToArray();
         Assert.Equal(
             [
@@ -222,9 +222,8 @@ public sealed class AgentTerminalSessionHostTests
                     AgentApprovalDuration.Once,
                     clock.GetUtcNow()),
                 default));
-        audit.FailurePredicate = item =>
-            item.CorrelationId == action.Proposal.Id.Value
-            && item.Outcome == AuditOutcome.Succeeded;
+        audit.FailurePredicate = item => string.Equals(item.CorrelationId, action.Proposal.Id.Value
+, StringComparison.Ordinal) && item.Outcome == AuditOutcome.Succeeded;
 
         var result = await fixture.Client.RunAgentTerminalActionAsync(
             approved.Authorization.Id,
@@ -246,9 +245,8 @@ public sealed class AgentTerminalSessionHostTests
             Assert.IsType<AgentAuthorizationResult.Denied>(nextRequest).Error.Code);
         Assert.DoesNotContain(
             audit.Events,
-            item =>
-                item.CorrelationId == action.Proposal.Id.Value
-                && item.Outcome == AuditOutcome.Succeeded);
+            item => string.Equals(item.CorrelationId, action.Proposal.Id.Value
+, StringComparison.Ordinal) && item.Outcome == AuditOutcome.Succeeded);
         Assert.Null((await fixture.SnapshotAsync()).InputLease);
     }
 
@@ -2140,8 +2138,10 @@ public sealed class AgentTerminalSessionHostTests
             string? excludedCapability = null)
         {
             Clock = clock ?? new ManualTimeProvider(DateTimeOffset.UnixEpoch);
-            Factory = new FakeTerminalSessionFactory();
-            Factory.ExcludedCapabilityForNewSessions = excludedCapability;
+            Factory = new FakeTerminalSessionFactory
+            {
+                ExcludedCapabilityForNewSessions = excludedCapability
+            };
             Composer = new AgentTerminalActionComposer();
             Authorization = new FakeAuthorizationConsumer(Clock);
             Client = new InMemorySessionHostClient(
@@ -2370,7 +2370,7 @@ public sealed class AgentTerminalSessionHostTests
             {
                 lock (_gate)
                 {
-                    return _events.ToArray();
+                    return [.. _events];
                 }
             }
         }
@@ -2412,10 +2412,8 @@ public sealed class AgentTerminalSessionHostTests
             {
                 return ValueTask.FromResult(
                     AuditStoreResult<IReadOnlyList<AuditEventRecord>>.Success(
-                        _events
-                            .Where(item =>
-                                item.CorrelationId == correlationId)
-                            .ToArray()));
+                        [.. _events
+                            .Where(item => string.Equals(item.CorrelationId, correlationId, StringComparison.Ordinal))]));
             }
         }
     }
@@ -2450,7 +2448,7 @@ public sealed class AgentTerminalSessionHostTests
         public bool LastCompletionTokenWasCancelled { get; private set; }
 
         public IReadOnlyList<AgentActionCompletion> Completions =>
-            _completions.ToArray();
+            [.. _completions];
 
         public AgentAuthorizationId Arm(
             AgentTerminalAction action,

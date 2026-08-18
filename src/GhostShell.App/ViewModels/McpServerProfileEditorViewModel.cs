@@ -642,8 +642,7 @@ public sealed class McpServerProfileEditorViewModel : ObservableObject
             _schemaVersion,
             Required(Name, "Server name"),
             transport,
-            EnabledTools.Select(tool => Required(tool.Name, "Enabled tool name"))
-                .ToArray(),
+            [.. EnabledTools.Select(tool => Required(tool.Name, "Enabled tool name"))],
             IsEnabled);
         var review = CreateTrustReview(profile);
         return new McpServerProfileSaveRequest(
@@ -675,14 +674,13 @@ public sealed class McpServerProfileEditorViewModel : ObservableObject
 
         return new McpServerTransport.Stdio(
             executable,
-            Arguments.Select(argument => argument.Value).ToArray(),
+            [.. Arguments.Select(argument => argument.Value)],
             workingDirectory,
-            Environment.Select(binding => new McpServerEnvironmentVariable(
+            [.. Environment.Select(binding => new McpServerEnvironmentVariable(
                 Required(binding.Name, "Environment variable name"),
                 new SecretRef(Required(
                     binding.SecretReference,
-                    "Environment secret reference"))))
-                .ToArray());
+                    "Environment secret reference"))))]);
     }
 
     private McpServerTransport.StreamableHttp CreateStreamableHttpTransport()
@@ -706,12 +704,11 @@ public sealed class McpServerProfileEditorViewModel : ObservableObject
 
         return new McpServerTransport.StreamableHttp(
             endpoint,
-            HttpHeaders.Select(binding => new McpServerHttpHeader(
+            [.. HttpHeaders.Select(binding => new McpServerHttpHeader(
                 Required(binding.Name, "HTTP header name"),
                 new SecretRef(Required(
                     binding.SecretReference,
-                    "HTTP header secret reference"))))
-                .ToArray(),
+                    "HTTP header secret reference"))))],
             allowInsecureTransport: isPlaintext);
     }
 
@@ -771,24 +768,21 @@ public sealed class McpServerProfileEditorViewModel : ObservableObject
                     ? "Plaintext loopback · explicitly acknowledged"
                     : "HTTPS · TLS required",
             changes.AsReadOnly(),
-            (stdioTransport?.Arguments ?? [])
+            [.. (stdioTransport?.Arguments ?? [])
                 .Select((argument, index) => new McpServerTrustReviewEntry(
                     $"Argument {index + 1}",
-                    argument.Length == 0 ? "(empty argument)" : argument))
-                .ToArray(),
-            (stdioTransport?.Environment ?? [])
+                    argument.Length == 0 ? "(empty argument)" : argument))],
+            [.. (stdioTransport?.Environment ?? [])
                 .Select(binding => CreateCredentialTrustReviewEntry(
                     profile.Id,
                     binding.Name,
-                    binding.Reference))
-                .ToArray(),
-            (httpTransport?.Headers ?? [])
+                    binding.Reference))],
+            [.. (httpTransport?.Headers ?? [])
                 .Select(binding => CreateCredentialTrustReviewEntry(
                     profile.Id,
                     binding.Name,
-                    binding.Reference))
-                .ToArray(),
-            profile.EnabledTools.ToArray());
+                    binding.Reference))],
+            [.. profile.EnabledTools]);
     }
 
     private static void AddStdioAuthorityChanges(

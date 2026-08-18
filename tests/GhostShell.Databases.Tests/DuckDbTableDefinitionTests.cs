@@ -16,7 +16,10 @@ public sealed class DuckDbTableDefinitionTests
 
         var generated = DuckDbTableDefinition.FindGeneratedColumns(sql);
 
-        Assert.Equal(["computed_label", "odd\"name"], generated.Order());
+        Assert.Equal(
+            ["computed_label", "odd\"name"],
+            generated.Order(StringComparer.Ordinal),
+            StringComparer.Ordinal);
     }
 
     [Theory]

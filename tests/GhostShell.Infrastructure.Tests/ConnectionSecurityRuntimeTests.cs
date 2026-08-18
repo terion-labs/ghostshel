@@ -184,7 +184,7 @@ public sealed class ConnectionSecurityRuntimeTests : IDisposable
     [Fact]
     public async Task Expired_review_cannot_be_replayed()
     {
-        var clock = new AdjustableTimeProvider(DateTimeOffset.Parse("2026-07-22T12:00:00Z"));
+        var clock = new AdjustableTimeProvider(DateTimeOffset.Parse("2026-07-22T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture));
         var store = new SshKnownHostStore(_knownHostsDirectory);
         using var vault = new RecordingSecretVault();
         var locator = new RecordingExecutableLocator();
@@ -271,7 +271,7 @@ public sealed class ConnectionSecurityRuntimeTests : IDisposable
         Assert.Equal(0, scanner.CallCount);
         Assert.Equal(2, commandRunner.Commands.Count);
         Assert.All(
-            new[] { first, retry },
+            [first, retry],
             report => Assert.Contains(report.Items, item =>
                 item.Stage == ConnectionDiagnosticStage.HostKey
                 && item.Status == ConnectionDiagnosticStatus.Passed));
@@ -337,8 +337,8 @@ public sealed class ConnectionSecurityRuntimeTests : IDisposable
         Assert.Contains(report.Items, item =>
             item.Stage == ConnectionDiagnosticStage.Credentials
             && item.Status == ConnectionDiagnosticStatus.Passed
-            && item.StableCode == "connection_credential_references_available"
-            && item.Message == "Every credential reference is available for this connection scope.");
+            && string.Equals(item.StableCode, "connection_credential_references_available"
+, StringComparison.Ordinal) && string.Equals(item.Message, "Every credential reference is available for this connection scope.", StringComparison.Ordinal));
         Assert.Empty(vault.ResolveRequests);
         var metadataRequest = Assert.Single(vault.MetadataRequests);
         Assert.Equal(new SecretScope(SecretScopeKind.Connection, "secure-ssh"), metadataRequest.Scope);
@@ -366,11 +366,11 @@ public sealed class ConnectionSecurityRuntimeTests : IDisposable
         var plan = Success(await adapter.PlanOpenAsync(profile, null, CancellationToken.None));
         var binding = store.Binding(profile.Id);
 
-        Assert.Contains($"UserKnownHostsFile={binding.FilePath}", plan.Launch.Arguments);
-        Assert.Contains($"HostKeyAlias={binding.Alias}", plan.Launch.Arguments);
+        Assert.Contains($"UserKnownHostsFile={binding.FilePath}", plan.Launch.Arguments, StringComparer.Ordinal);
+        Assert.Contains($"HostKeyAlias={binding.Alias}", plan.Launch.Arguments, StringComparer.Ordinal);
         Assert.Contains(
             $"GlobalKnownHostsFile={(OperatingSystem.IsWindows() ? "NUL" : "/dev/null")}",
-            plan.Launch.Arguments);
+            plan.Launch.Arguments, StringComparer.Ordinal);
     }
 
     [Fact]

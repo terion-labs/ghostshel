@@ -23,7 +23,7 @@ public sealed class ClaudeCodeTerminalLaunchAdapterTests : IDisposable
     {
         var launch = Launch(
             "/bin/zsh",
-            new Dictionary<string, string> { ["PATH"] = "/user/bin:/usr/bin" });
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["PATH"] = "/user/bin:/usr/bin" });
         var preparation = new GhosttyShellIntegrationPreparation(
             launch,
             GhosttyShellIntegrationPreparationStatus.Disabled,
@@ -57,7 +57,7 @@ public sealed class ClaudeCodeTerminalLaunchAdapterTests : IDisposable
             "export PATH=/real-claude-bin:$PATH\n");
         var launch = Launch(
             bash,
-            new Dictionary<string, string> { ["PATH"] = "/usr/bin:/bin" },
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["PATH"] = "/usr/bin:/bin" },
             arguments: ["--noprofile", "--rcfile", rcFile, "-i", "-c", "type -t claude"]);
         var preparation = new GhosttyShellIntegrationPreparation(
             launch,
@@ -89,7 +89,7 @@ public sealed class ClaudeCodeTerminalLaunchAdapterTests : IDisposable
         WriteResource("user-zsh/.zshrc", "export PATH=/real-claude-bin:$PATH\n");
         var launch = Launch(
             zsh,
-            new Dictionary<string, string>
+            new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["PATH"] = "/usr/bin:/bin",
                 ["ZDOTDIR"] = userDotDirectory,
@@ -119,7 +119,7 @@ public sealed class ClaudeCodeTerminalLaunchAdapterTests : IDisposable
             "terminal-shell-integration/fish/vendor_conf.d/ghostshell-claude.fish");
         var launch = Launch(
             "/usr/bin/fish",
-            new Dictionary<string, string> { ["PATH"] = "/usr/bin" });
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["PATH"] = "/usr/bin" });
         var preparation = new GhosttyShellIntegrationPreparation(
             launch,
             GhosttyShellIntegrationPreparationStatus.Disabled,
@@ -145,7 +145,7 @@ public sealed class ClaudeCodeTerminalLaunchAdapterTests : IDisposable
     {
         var launch = Launch(
             "/bin/zsh",
-            new Dictionary<string, string>
+            new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["PATH"] = "/usr/bin",
                 ["ZDOTDIR"] = "/ghostty",
@@ -170,7 +170,7 @@ public sealed class ClaudeCodeTerminalLaunchAdapterTests : IDisposable
     {
         var launch = Launch(
             "/usr/bin/ssh",
-            new Dictionary<string, string>(),
+            new Dictionary<string, string>(StringComparer.Ordinal),
             new TerminalConnectionMetadata("SSH: example.test:22", null));
         var preparation = new GhosttyShellIntegrationPreparation(
             launch,
@@ -192,7 +192,7 @@ public sealed class ClaudeCodeTerminalLaunchAdapterTests : IDisposable
     {
         var launch = Launch(
             executable,
-            new Dictionary<string, string> { ["PATH"] = "/usr/bin" });
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["PATH"] = "/usr/bin" });
         var preparation = new GhosttyShellIntegrationPreparation(
             launch,
             GhosttyShellIntegrationPreparationStatus.NotDetected,
@@ -217,7 +217,7 @@ public sealed class ClaudeCodeTerminalLaunchAdapterTests : IDisposable
     {
         var launch = Launch(
             "/bin/sh",
-            new Dictionary<string, string>(),
+            new Dictionary<string, string>(StringComparer.Ordinal),
             new TerminalConnectionMetadata(boundary, null));
         var preparation = new GhosttyShellIntegrationPreparation(
             launch,
@@ -237,7 +237,7 @@ public sealed class ClaudeCodeTerminalLaunchAdapterTests : IDisposable
             "notifications",
             "hooks",
             "hooks.json"));
-        var launch = Launch("/bin/zsh", new Dictionary<string, string>());
+        var launch = Launch("/bin/zsh", new Dictionary<string, string>(StringComparer.Ordinal));
         var preparation = new GhosttyShellIntegrationPreparation(
             launch,
             GhosttyShellIntegrationPreparationStatus.Disabled,
@@ -255,7 +255,7 @@ public sealed class ClaudeCodeTerminalLaunchAdapterTests : IDisposable
     {
         var launch = Launch(
             "/bin/zsh",
-            new Dictionary<string, string>
+            new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 [ClaudeCodeWrapperProcessHost.DisableEnvironment] = value,
             });
@@ -277,7 +277,7 @@ public sealed class ClaudeCodeTerminalLaunchAdapterTests : IDisposable
         WriteResource("npm-bin/claude.cmd");
         var launch = Launch(
             "cmd.exe",
-            new Dictionary<string, string> { ["PATH"] = npmDirectory });
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["PATH"] = npmDirectory });
         var preparation = new GhosttyShellIntegrationPreparation(
             launch,
             GhosttyShellIntegrationPreparationStatus.NotDetected,
@@ -300,7 +300,7 @@ public sealed class ClaudeCodeTerminalLaunchAdapterTests : IDisposable
         WriteResource("native-bin/claude.exe");
         var launch = Launch(
             "cmd.exe",
-            new Dictionary<string, string> { ["PATH"] = nativeDirectory });
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["PATH"] = nativeDirectory });
         var preparation = new GhosttyShellIntegrationPreparation(
             launch,
             GhosttyShellIntegrationPreparationStatus.NotDetected,

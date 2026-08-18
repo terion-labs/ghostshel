@@ -24,7 +24,7 @@ public sealed class AcceptanceCatalogTests
     {
         var scaleCheck = Assert.Single(
             AcceptanceCatalog.All,
-            check => check.Id == "scale-reflow-contrast-status");
+            check => string.Equals(check.Id, "scale-reflow-contrast-status", StringComparison.Ordinal));
 
         Assert.Contains("Application text size", scaleCheck.MacOSInstructions);
         Assert.Contains("200% or 250%", scaleCheck.MacOSInstructions);
@@ -116,12 +116,14 @@ public sealed class AcceptanceCatalogTests
     {
         get
         {
-            var data = new TheoryData<string[]>();
-            data.Add(FullArguments("Windows", "VoiceOver"));
-            data.Add(FullArguments("LinuxX11", "Orca", systemName: "linux"));
-            data.Add(FullArguments("MacOS", "VoiceOver", observer: "/Users/alice"));
-            data.Add([.. FullArguments("MacOS", "VoiceOver"), "--observer", "duplicate"]);
-            data.Add(["--unknown", "value"]);
+            var data = new TheoryData<string[]>
+            {
+                FullArguments("Windows", "VoiceOver"),
+                FullArguments("LinuxX11", "Orca", systemName: "linux"),
+                FullArguments("MacOS", "VoiceOver", observer: "/Users/alice"),
+                ([.. FullArguments("MacOS", "VoiceOver"), "--observer", "duplicate"]),
+                (["--unknown", "value"])
+            };
             return data;
         }
     }

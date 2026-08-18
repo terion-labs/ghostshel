@@ -23,9 +23,9 @@ public sealed class UnifiedConnectionEditorViewModelTests
                 SavedConnectionFamily.Database,
             ],
             families);
-        Assert.Contains(editor.TypeOptions, option => option.DisplayName == "Terminal · SSH");
-        Assert.Contains(editor.TypeOptions, option => option.DisplayName == "Files · SFTP");
-        Assert.Contains(editor.TypeOptions, option => option.DisplayName == "Database · PostgreSQL");
+        Assert.Contains(editor.TypeOptions, option => string.Equals(option.DisplayName, "Terminal · SSH", StringComparison.Ordinal));
+        Assert.Contains(editor.TypeOptions, option => string.Equals(option.DisplayName, "Files · SFTP", StringComparison.Ordinal));
+        Assert.Contains(editor.TypeOptions, option => string.Equals(option.DisplayName, "Database · PostgreSQL", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -47,13 +47,13 @@ public sealed class UnifiedConnectionEditorViewModelTests
         var editor = CreateEditor();
 
         editor.SelectedType = editor.TypeOptions
-            .Single(option => option.DisplayName == "Files · WebDAV");
+            .Single(option => string.Equals(option.DisplayName, "Files · WebDAV", StringComparison.Ordinal));
 
         Assert.True(editor.IsFiles);
         Assert.Equal(FileProviderKind.WebDav, editor.Files!.Kind);
 
         editor.SelectedType = editor.TypeOptions
-            .Single(option => option.DisplayName == "Database · SQLite");
+            .Single(option => string.Equals(option.DisplayName, "Database · SQLite", StringComparison.Ordinal));
 
         Assert.True(editor.IsDatabase);
         Assert.Equal("sqlite", editor.Database!.SelectedDriver.Id);
@@ -68,7 +68,7 @@ public sealed class UnifiedConnectionEditorViewModelTests
         editor.Name = "Production";
 
         editor.SelectedType = editor.TypeOptions
-            .Single(option => option.DisplayName == "Database · PostgreSQL");
+            .Single(option => string.Equals(option.DisplayName, "Database · PostgreSQL", StringComparison.Ordinal));
 
         Assert.Equal("Production", editor.Name);
         Assert.Equal("Production", editor.Database!.Name);
@@ -86,7 +86,7 @@ public sealed class UnifiedConnectionEditorViewModelTests
         Assert.Equal("Local box", terminal.Request.Profile.Name);
 
         editor.SelectedType = editor.TypeOptions
-            .Single(option => option.DisplayName == "Database · PostgreSQL");
+            .Single(option => string.Equals(option.DisplayName, "Database · PostgreSQL", StringComparison.Ordinal));
         editor.Database!.Host = "db.example";
         editor.Database.Port = "5433";
         editor.Database.DatabaseName = "app";
@@ -145,7 +145,7 @@ public sealed class UnifiedConnectionEditorViewModelTests
         editor.Port = "not-a-port";
         Assert.Throws<ArgumentException>(() => editor.CreateSaveRequest());
 
-        editor.SelectedDriver = editor.Drivers.Single(driver => driver.Id == "sqlite");
+        editor.SelectedDriver = editor.Drivers.Single(driver => string.Equals(driver.Id, "sqlite", StringComparison.Ordinal));
         Assert.Throws<ArgumentException>(() => editor.CreateSaveRequest());
 
         editor.FilePath = "/data/app.db";
@@ -162,7 +162,7 @@ public sealed class UnifiedConnectionEditorViewModelTests
 
         Assert.Equal(
             ["No tunnel", "bastion", "Custom — this connection only"],
-            editor.TunnelOptions.Select(option => option.DisplayName).ToArray());
+            [.. editor.TunnelOptions.Select(option => option.DisplayName)]);
     }
 
     [Fact]
@@ -170,10 +170,12 @@ public sealed class UnifiedConnectionEditorViewModelTests
     {
         var editor = new DatabaseConnectionEditorViewModel(
             new StructuralDatabaseClient(),
-            []);
-        editor.Name = "Pasted";
-        editor.UseConnectionString = true;
-        editor.ConnectionStringInput = "Host=db.example;Port=5433;Database=app;Username=reader;Password=secret";
+            [])
+        {
+            Name = "Pasted",
+            UseConnectionString = true,
+            ConnectionStringInput = "Host=db.example;Port=5433;Database=app;Username=reader;Password=secret"
+        };
 
         var request = editor.CreateSaveRequest();
         Assert.Equal("db.example", request.Details.Host);
@@ -194,13 +196,15 @@ public sealed class UnifiedConnectionEditorViewModelTests
     {
         var editor = new DatabaseConnectionEditorViewModel(
             new StructuralDatabaseClient(),
-            []);
-        editor.Host = "db.example";
-        editor.Port = "5432";
-        editor.DatabaseName = "app";
-        editor.Password = "secret";
+            [])
+        {
+            Host = "db.example",
+            Port = "5432",
+            DatabaseName = "app",
+            Password = "secret",
 
-        editor.UseConnectionString = true;
+            UseConnectionString = true
+        };
 
         Assert.Contains("Host=db.example", editor.ConnectionStringInput, StringComparison.Ordinal);
         Assert.DoesNotContain("secret", editor.ConnectionStringInput, StringComparison.Ordinal);
@@ -211,9 +215,11 @@ public sealed class UnifiedConnectionEditorViewModelTests
     {
         var editor = new DatabaseConnectionEditorViewModel(
             new StructuralDatabaseClient(),
-            [SshConnection("bastion")]);
-        editor.Name = "Tunnelled";
-        editor.Host = "db.internal";
+            [SshConnection("bastion")])
+        {
+            Name = "Tunnelled",
+            Host = "db.internal"
+        };
         editor.SelectedTunnel = editor.TunnelOptions.Single(option => option.IsInline);
         editor.TunnelHost = "bastion.example";
         editor.TunnelUsername = "ops";
@@ -234,9 +240,11 @@ public sealed class UnifiedConnectionEditorViewModelTests
     {
         var editor = new DatabaseConnectionEditorViewModel(
             new StructuralDatabaseClient(),
-            []);
-        editor.Name = "Tunnelled";
-        editor.Host = "db.internal";
+            [])
+        {
+            Name = "Tunnelled",
+            Host = "db.internal"
+        };
         editor.SelectedTunnel = editor.TunnelOptions.Single(option => option.IsInline);
         editor.TunnelHost = "bastion.example";
         editor.TunnelAuthentication = DatabaseConnectionEditorViewModel.PasswordAuthentication;
@@ -294,10 +302,12 @@ public sealed class UnifiedConnectionEditorViewModelTests
         {
             SessionInfo = new DatabaseSessionInfo("16.4", "TLSv1.3"),
         };
-        var editor = new DatabaseConnectionEditorViewModel(client, []);
-        editor.Name = "Probe";
-        editor.Host = "db.example";
-        editor.Password = "secret";
+        var editor = new DatabaseConnectionEditorViewModel(client, [])
+        {
+            Name = "Probe",
+            Host = "db.example",
+            Password = "secret"
+        };
 
         await editor.TestAsync(CancellationToken.None);
 
@@ -316,9 +326,11 @@ public sealed class UnifiedConnectionEditorViewModelTests
         {
             ProbeError = new InvalidOperationException("connection refused"),
         };
-        var editor = new DatabaseConnectionEditorViewModel(client, []);
-        editor.Name = "Probe";
-        editor.Host = "db.example";
+        var editor = new DatabaseConnectionEditorViewModel(client, [])
+        {
+            Name = "Probe",
+            Host = "db.example"
+        };
 
         await editor.TestAsync(CancellationToken.None);
 
@@ -337,7 +349,7 @@ public sealed class UnifiedConnectionEditorViewModelTests
             Name = "Local Redis",
             Host = "localhost",
         };
-        database.SelectedDriver = database.Drivers.Single(driver => driver.Id == RedisDatabase.DriverId);
+        database.SelectedDriver = database.Drivers.Single(driver => string.Equals(driver.Id, RedisDatabase.DriverId, StringComparison.Ordinal));
         var editor = new UnifiedConnectionEditorViewModel(
             new ConnectionEditorViewModel(new StubConnectionRuntime()),
             files: null,
@@ -511,7 +523,7 @@ public sealed class UnifiedConnectionEditorViewModelTests
                 .ToDictionary(pair => pair[0], pair => pair[1], StringComparer.OrdinalIgnoreCase);
             return new DatabaseConnectionDetails(
                 values.GetValueOrDefault("Host"),
-                values.TryGetValue("Port", out var port) ? int.Parse(port) : null,
+                values.TryGetValue("Port", out var port) ? int.Parse(port, System.Globalization.CultureInfo.InvariantCulture) : null,
                 values.GetValueOrDefault("Database"),
                 values.GetValueOrDefault("Username"),
                 values.GetValueOrDefault("Password"),

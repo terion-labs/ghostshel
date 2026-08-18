@@ -24,19 +24,19 @@ public sealed class WorkspaceGutterContractTests
 
         var canvas = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "Grid"
-                && (string?)element.Attribute("IsVisible")
-                    == "{Binding IsWorkspaceCanvasVisible}");
+            element => string.Equals(element.Name.LocalName, "Grid"
+, StringComparison.Ordinal) && string.Equals((string?)element.Attribute("IsVisible")
+, "{Binding IsWorkspaceCanvasVisible}", StringComparison.Ordinal));
         // The agent panel is not a canvas panel: it floats over the canvas or
         // holds a slot beside it, and its docked/floating margins live in state
         // styles precisely so an inline value cannot silence either state.
         var panelMargins = root.Descendants()
-            .Where(element => element.Name.LocalName == "Style"
-                && ((string?)element.Attribute("Selector"))
+            .Where(element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && ((string?)element.Attribute("Selector"))
                     ?.StartsWith("views|AgentWorkspaceView", StringComparison.Ordinal) != true)
             .SelectMany(element => element.Descendants())
-            .Where(element => element.Name.LocalName == "Setter"
-                && (string?)element.Attribute("Property") == "Margin")
+            .Where(element => string.Equals(element.Name.LocalName, "Setter"
+, StringComparison.Ordinal) && string.Equals((string?)element.Attribute("Property"), "Margin", StringComparison.Ordinal))
             .Select(element => (string?)element.Attribute("Value"))
             .ToArray();
 
@@ -51,7 +51,7 @@ public sealed class WorkspaceGutterContractTests
         Assert.Empty(panelMargins);
         Assert.Single(
             canvas.Descendants(),
-            element => element.Name.LocalName == "DockControl");
+            element => string.Equals(element.Name.LocalName, "DockControl", StringComparison.Ordinal));
     }
 
     /// <summary>

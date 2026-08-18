@@ -80,8 +80,8 @@ public sealed partial class GovernedAgentRuntimeTests
             previousApproval: null);
         Assert.Contains(
             deniedApproval.Presentation.Arguments,
-            argument => argument.Name == "text"
-                && argument.DisplayValue == "first");
+            argument => string.Equals(argument.Name, "text"
+, StringComparison.Ordinal) && string.Equals(argument.DisplayValue, "first", StringComparison.Ordinal));
 
         Assert.True((await fixture.Runtime.DecideAsync(
             deniedApproval.Id,
@@ -92,8 +92,8 @@ public sealed partial class GovernedAgentRuntimeTests
             deniedApproval.Id);
         Assert.Contains(
             cancelledApproval.Presentation.Arguments,
-            argument => argument.Name == "text"
-                && argument.DisplayValue == "second");
+            argument => string.Equals(argument.Name, "text"
+, StringComparison.Ordinal) && string.Equals(argument.DisplayValue, "second", StringComparison.Ordinal));
         Assert.True((await fixture.Runtime.DecideAsync(
             cancelledApproval.Id,
             approved: true,
@@ -220,7 +220,7 @@ public sealed partial class GovernedAgentRuntimeTests
 
             events.Add(new AgentProviderEvent.ResponseCompleted(
                 AgentProviderStopReason.ToolUse));
-            return events.ToArray();
+            return [.. events];
         }
     }
 }

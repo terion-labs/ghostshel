@@ -1,6 +1,6 @@
+using System.Text;
 using GhostShell.Application;
 using GhostShell.Core;
-using System.Text;
 using RuntimeProfileId = GhostShell.Core.FileProviderProfileId;
 
 namespace GhostShell.Files.Tests;
@@ -61,8 +61,8 @@ public sealed class CatalogFileProviderRuntimeTests
         Assert.True(saved.IsSuccess, saved.Error?.Message);
         await added;
 
-        Assert.Contains(runtime.Profiles, item => item.Id == profile.Id.Value);
-        Assert.Contains(runtime.Profiles, item => item.Id == "builtin.files.home");
+        Assert.Contains(runtime.Profiles, item => string.Equals(item.Id, profile.Id.Value, StringComparison.Ordinal));
+        Assert.Contains(runtime.Profiles, item => string.Equals(item.Id, "builtin.files.home", StringComparison.Ordinal));
         Assert.DoesNotContain(runtime.Diagnostics, item => item.ProfileId == profile.Id
             && item.Severity == FileProviderRuntimeDiagnosticSeverity.Error);
 
@@ -108,8 +108,7 @@ public sealed class CatalogFileProviderRuntimeTests
                 CancellationToken.None);
             Assert.True(saved.IsSuccess, saved.Error?.Message);
             await refreshed;
-            var descriptor = Assert.Single(runtime.Profiles, item =>
-                item.Id == profile.Id.Value);
+            var descriptor = Assert.Single(runtime.Profiles, item => string.Equals(item.Id, profile.Id.Value, StringComparison.Ordinal));
             Assert.True(descriptor.Capabilities.HasFlag(
                 FilePanelCapability.GovernedCreateDirectory));
             Assert.True(descriptor.Capabilities.HasFlag(
@@ -178,10 +177,10 @@ public sealed class CatalogFileProviderRuntimeTests
         await initialRefresh;
         await WaitForProfilesAsync(
             runtime,
-            () => runtime.Profiles.Any(item => item.Id == profile.Id.Value));
+            () => runtime.Profiles.Any(item => string.Equals(item.Id, profile.Id.Value, StringComparison.Ordinal)));
         var factory = new FilePanelSessionFactory(runtime, runtime);
         var oldLocation = runtime.Profiles
-            .Single(item => item.Id == profile.Id.Value)
+            .Single(item => string.Equals(item.Id, profile.Id.Value, StringComparison.Ordinal))
             .Root;
         await using var oldSession = await factory.CreateAsync(
             new SessionId("files-old-generation"),
@@ -201,7 +200,7 @@ public sealed class CatalogFileProviderRuntimeTests
         Assert.True(replaced.IsSuccess, replaced.Error?.Message);
         await replacementRefresh;
         var newLocation = runtime.Profiles
-            .Single(item => item.Id == profile.Id.Value)
+            .Single(item => string.Equals(item.Id, profile.Id.Value, StringComparison.Ordinal))
             .Root;
         await using var newSession = await factory.CreateAsync(
             new SessionId("files-new-generation"),
@@ -253,7 +252,7 @@ public sealed class CatalogFileProviderRuntimeTests
         await initialRefresh;
         var factory = new FilePanelSessionFactory(runtime, runtime);
         var oldLocation = runtime.Profiles
-            .Single(item => item.Id == profile.Id.Value)
+            .Single(item => string.Equals(item.Id, profile.Id.Value, StringComparison.Ordinal))
             .Root;
         await using var oldSession = await factory.CreateAsync(
             new SessionId("files-old-transfer-generation"),
@@ -520,7 +519,7 @@ internal sealed class MemoryDefinitionRepository<TDefinition> : IDefinitionRepos
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        IReadOnlyList<StoredDefinition<TDefinition>> items = _items.Values.ToArray();
+        IReadOnlyList<StoredDefinition<TDefinition>> items = [.. _items.Values];
         return ValueTask.FromResult(
             DefinitionStoreResult<IReadOnlyList<StoredDefinition<TDefinition>>>.Success(items));
     }

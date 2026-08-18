@@ -91,7 +91,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
                     "Contents",
                     "MacOS",
                     "ghostshell-cli-shims",
-                    "claude")) & executeBits) != 0);
+                    "claude")) & executeBits) != UnixFileMode.None);
         }
         Assert.True(File.Exists(Path.Combine(
             output,
@@ -241,27 +241,38 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
                 "GhostShell.Previews",
                 "GhostShell.Previews.dll");
             Assert.Single(packages, package =>
-                package.GetProperty("name").GetString() == "libghostty-vt"
-                && package.GetProperty("licenseDeclared").GetString() == "MIT");
+                string.Equals(
+                    package.GetProperty("name").GetString(),
+                    "libghostty-vt",
+                    StringComparison.Ordinal)
+                && string.Equals(
+                    package.GetProperty("licenseDeclared").GetString(),
+                    "MIT",
+                    StringComparison.Ordinal));
             Assert.Equal(
                 "NOASSERTION",
                 packages.Single(package =>
-                        package.GetProperty("name").GetString()
-                        == "Microsoft.NETCore.App.Runtime.osx-arm64")
+                        string.Equals(
+                            package.GetProperty("name").GetString(),
+                            "Microsoft.NETCore.App.Runtime.osx-arm64",
+                            StringComparison.Ordinal))
                     .GetProperty("licenseDeclared")
                     .GetString());
             var relationships = document.RootElement
                 .GetProperty("relationships")
                 .EnumerateArray()
                 .ToArray();
-            Assert.Single(relationships, relationship =>
-                relationship.GetProperty("relationshipType").GetString()
-                == "DESCRIBES");
+            Assert.Single(relationships, relationship => string.Equals(
+                relationship.GetProperty("relationshipType").GetString(),
+                "DESCRIBES",
+                StringComparison.Ordinal));
             Assert.Equal(
                 23,
                 relationships.Count(relationship =>
-                    relationship.GetProperty("relationshipType").GetString()
-                    == "DEPENDS_ON"));
+                    string.Equals(
+                        relationship.GetProperty("relationshipType").GetString(),
+                        "DEPENDS_ON",
+                        StringComparison.Ordinal)));
         }
 
         Assert.False(File.Exists(Path.Combine(
@@ -365,9 +376,8 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         var component = catalog["dependencies"]!
             .AsArray()
             .Select(node => node!.AsObject())
-            .Single(node =>
-                node["identity"]!.GetValue<string>()
-                == "SkiaSharp.NativeAssets.macOS/3.119.3-preview.1.1");
+            .Single(node => string.Equals(node["identity"]!.GetValue<string>()
+, "SkiaSharp.NativeAssets.macOS/3.119.3-preview.1.1", StringComparison.Ordinal));
         component["notices"]![1]!["archivePath"] = "LICENSE.txt";
         File.WriteAllText(inputs.CatalogPath, catalog.ToJsonString());
 
@@ -695,9 +705,8 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         var runtime = catalog["dependencies"]!
             .AsArray()
             .Select(node => node!.AsObject())
-            .Single(node =>
-                node["identity"]!.GetValue<string>()
-                == "runtimepack.Microsoft.NETCore.App.Runtime.osx-arm64/10.0.10");
+            .Single(node => string.Equals(node["identity"]!.GetValue<string>()
+, "runtimepack.Microsoft.NETCore.App.Runtime.osx-arm64/10.0.10", StringComparison.Ordinal));
         runtime["nuspecLicenseType"] = "file";
         runtime["nuspecLicense"] = "LICENSE.txt";
         File.WriteAllText(inputs.CatalogPath, catalog.ToJsonString());
@@ -727,9 +736,9 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             inputs.NuGetPackageRoot,
             id,
             version);
-        var rootName = mutation == "wrong-root" ? "not-package" : "package";
-        var metadataNamespace = mutation == "mixed-namespace"
-            ? " xmlns=\"urn:ghostshell:test:wrong\""
+        var rootName = string.Equals(mutation, "wrong-root", StringComparison.Ordinal) ? "not-package" : "package";
+        var metadataNamespace = string.Equals(mutation, "mixed-namespace"
+, StringComparison.Ordinal) ? " xmlns=\"urn:ghostshell:test:wrong\""
             : string.Empty;
         RewriteNuspecDocument(
             packagePath,
@@ -792,9 +801,8 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         var component = catalog["dependencies"]!
             .AsArray()
             .Select(node => node!.AsObject())
-            .Single(node =>
-                node["identity"]!.GetValue<string>()
-                == "SkiaSharp.NativeAssets.macOS/3.119.3-preview.1.1");
+            .Single(node => string.Equals(node["identity"]!.GetValue<string>()
+, "SkiaSharp.NativeAssets.macOS/3.119.3-preview.1.1", StringComparison.Ordinal));
         component["notices"]![0]!["outputPath"] = "GHOSTTY-LICENSE";
         File.WriteAllText(inputs.CatalogPath, catalog.ToJsonString());
         var output = OutputPath();
@@ -1252,7 +1260,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
     {
         var package = Assert.Single(
             packages,
-            candidate => candidate.GetProperty("name").GetString() == name);
+            candidate => string.Equals(candidate.GetProperty("name").GetString(), name, StringComparison.Ordinal));
         Assert.Equal("1.2.3", package.GetProperty("versionInfo").GetString());
         Assert.Equal(
             "NOASSERTION",
@@ -1389,8 +1397,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         var component = catalog["dependencies"]!
             .AsArray()
             .Select(node => node!.AsObject())
-            .Single(node =>
-                node["identity"]!.GetValue<string>() == $"{id}/{version}");
+            .Single(node => string.Equals(node["identity"]!.GetValue<string>(), $"{id}/{version}", StringComparison.Ordinal));
         component["nupkgSha512"] = hash;
         File.WriteAllText(inputs.CatalogPath, catalog.ToJsonString());
     }
@@ -1515,13 +1522,13 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             var identity = $"{assemblyName}/1.2.3";
             libraries.Add(
                 identity,
-                new Dictionary<string, object?>
+                new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["type"] = "project",
                     ["serviceable"] = false,
                     ["sha512"] = string.Empty,
                 });
-            catalogDependencies.Add(new Dictionary<string, object?>
+            catalogDependencies.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["identity"] = identity,
                 ["kind"] = "project",
@@ -1531,12 +1538,12 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             });
             selectedTarget.Add(
                 identity,
-                new Dictionary<string, object?>
+                new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
-                    ["runtime"] = new Dictionary<string, object?>
+                    ["runtime"] = new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         [$"{assemblyName}.dll"] =
-                            new Dictionary<string, object?>(),
+                            new Dictionary<string, object?>(StringComparer.Ordinal),
                     },
                 });
         }
@@ -1545,7 +1552,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         {
             libraries.Add(
                 package.Identity,
-                new Dictionary<string, object?>
+                new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["type"] = "package",
                     ["serviceable"] = true,
@@ -1560,12 +1567,12 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
                 licenseDeclared: "MIT"));
             selectedTarget.Add(
                 package.Identity,
-                new Dictionary<string, object?>
+                new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
-                    ["runtime"] = new Dictionary<string, object?>
+                    ["runtime"] = new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         [$"lib/net10.0/{package.Id}.dll"] =
-                            new Dictionary<string, object?>
+                            new Dictionary<string, object?>(StringComparer.Ordinal)
                             {
                                 ["assemblyVersion"] = "1.0.0.0",
                                 ["fileVersion"] = "1.0.0.0",
@@ -1578,7 +1585,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             "runtimepack.Microsoft.NETCore.App.Runtime.osx-arm64/10.0.10";
         libraries.Add(
             runtimeIdentity,
-            new Dictionary<string, object?>
+            new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["type"] = "runtimepack",
                 ["serviceable"] = false,
@@ -1593,20 +1600,20 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         catalogDependencies.Add(runtimeCatalog);
         selectedTarget.Add(
             runtimeIdentity,
-            new Dictionary<string, object?>
+            new Dictionary<string, object?>(StringComparer.Ordinal)
             {
-                ["runtime"] = new Dictionary<string, object?>
+                ["runtime"] = new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["System.Private.CoreLib.dll"] =
-                        new Dictionary<string, object?>
+                        new Dictionary<string, object?>(StringComparer.Ordinal)
                         {
                             ["assemblyVersion"] = "10.0.0.0",
                             ["fileVersion"] = "10.0.0.0",
                         },
                 },
-                ["native"] = new Dictionary<string, object?>
+                ["native"] = new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
-                    ["libcoreclr.dylib"] = new Dictionary<string, object?>
+                    ["libcoreclr.dylib"] = new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["fileVersion"] = "0.0.0.0",
                     },
@@ -1615,7 +1622,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         var rootTarget = (Dictionary<string, object?>)selectedTarget[
             "GhostShell/1.2.3"]!;
         rootTarget["dependencies"] = libraries.Keys
-            .Where(identity => identity != "GhostShell/1.2.3")
+            .Where(identity => !string.Equals(identity, "GhostShell/1.2.3", StringComparison.Ordinal))
             .ToDictionary(
                 identity => identity[..identity.LastIndexOf('/')],
                 identity => identity[(identity.LastIndexOf('/') + 1)..],
@@ -1625,20 +1632,20 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             publishDirectory,
             "GhostShell.deps.json",
             JsonSerializer.Serialize(
-                new Dictionary<string, object?>
+                new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
-                    ["runtimeTarget"] = new Dictionary<string, object?>
+                    ["runtimeTarget"] = new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["name"] = RuntimeTargetName,
                         ["signature"] = string.Empty,
                     },
-                    ["targets"] = new Dictionary<string, object?>
+                    ["targets"] = new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         [".NETCoreApp,Version=v10.0"] =
-                            new Dictionary<string, object?>(),
+                            new Dictionary<string, object?>(StringComparer.Ordinal),
                         [RuntimeTargetName] = selectedTarget,
                     },
-                    ["runtimes"] = new Dictionary<string, object?>
+                    ["runtimes"] = new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["osx-arm64"] = new[]
                         {
@@ -1661,7 +1668,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         File.WriteAllText(
             catalogPath,
             JsonSerializer.Serialize(
-                new Dictionary<string, object?>
+                new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["schemaVersion"] = 1,
                     ["documentName"] = "GhostSHELL test managed-component evidence",
@@ -1680,7 +1687,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
                         .ToArray(),
                     ["additionalComponents"] = new object[]
                     {
-                        new Dictionary<string, object?>
+                        new Dictionary<string, object?>(StringComparer.Ordinal)
                         {
                             ["identity"] = "libghostty-vt/0.1.0-dev",
                             ["kind"] = "native",
@@ -1720,7 +1727,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         string depsType,
         string licenseDeclared)
     {
-        var result = new Dictionary<string, object?>
+        var result = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["identity"] = package.Identity,
             ["kind"] = kind,
@@ -1813,7 +1820,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         IReadOnlyList<Dictionary<string, object?>> notices = includeNotices
             ?
             [
-                new Dictionary<string, object?>
+                new Dictionary<string, object?>(global::System.StringComparer.Ordinal)
                 {
                     ["archivePath"] = "LICENSE.txt",
                     ["outputPath"] = $"{id}-{version}/LICENSE.txt",
@@ -1822,7 +1829,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
                         .ToLowerInvariant(),
                     ["minimumBytes"] = 1_024,
                 },
-                new Dictionary<string, object?>
+                new Dictionary<string, object?>(global::System.StringComparer.Ordinal)
                 {
                     ["archivePath"] = "THIRD-PARTY-NOTICES.txt",
                     ["outputPath"] =

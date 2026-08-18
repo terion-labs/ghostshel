@@ -466,7 +466,7 @@ public sealed class AgentProcessListActionComposerTests
         Assert.Throws<ArgumentException>(() => composer.Project(
             action,
             Snapshot(
-                new ProcessMonitorEntry[] { null! },
+                [null!],
                 enumeratedCount: 1,
                 observedCount: 0)));
         Assert.Throws<ArgumentException>(() => composer.Project(

@@ -178,7 +178,7 @@ internal sealed class ManagedTerminalKeymapResolver
             && binding.Sequence[1] == suffix);
 
     private IEnumerable<CommandBinding> ApplicableBindings() => _keymap.Bindings.Where(binding =>
-        (binding.Contexts & (CommandContext.Global | CommandContext.Terminal)) != 0);
+        (binding.Contexts & (CommandContext.Global | CommandContext.Terminal)) != CommandContext.None);
 
     private bool PendingExpired(DateTimeOffset timestamp) =>
         _pendingStartedAt is { } startedAt

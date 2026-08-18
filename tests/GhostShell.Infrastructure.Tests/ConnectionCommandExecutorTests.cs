@@ -91,7 +91,7 @@ public sealed class ConnectionCommandExecutorTests
             request,
             "/tmp/ghostshell-test-%C");
 
-        Assert.DoesNotContain("-tt", arguments);
+        Assert.DoesNotContain("-tt", arguments, StringComparer.Ordinal);
         AssertOption(arguments, "ControlMaster=auto");
         AssertOption(arguments, "ControlPersist=15");
         AssertOption(arguments, "ControlPath=/tmp/ghostshell-test-%C");
@@ -122,7 +122,7 @@ public sealed class ConnectionCommandExecutorTests
         {
             Assert.NotNull(first);
             Assert.Equal(first, repeated);
-            Assert.NotEqual(first, changed);
+            Assert.NotEqual(first, changed, StringComparer.Ordinal);
             Assert.EndsWith("-%C", first, StringComparison.Ordinal);
         }
         else
@@ -146,7 +146,7 @@ public sealed class ConnectionCommandExecutorTests
         var valueIndex = -1;
         for (var index = 1; index < arguments.Count; index++)
         {
-            if (arguments[index - 1] == "-o" && arguments[index] == expectedValue)
+            if (string.Equals(arguments[index - 1], "-o", StringComparison.Ordinal) && string.Equals(arguments[index], expectedValue, StringComparison.Ordinal))
             {
                 valueIndex = index;
                 break;

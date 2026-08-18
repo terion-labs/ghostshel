@@ -61,14 +61,11 @@ public sealed class PreviewTableViewModel
         ArgumentNullException.ThrowIfNull(rendering);
         Summary = rendering.Summary;
         var widths = MeasureColumns(rendering);
-        Columns = rendering.Columns
+        Columns = [.. rendering.Columns
             .Select((name, index) => new PreviewTableColumnViewModel(
                 name.Length == 0 ? $"Column {index + 1}" : name,
-                widths[index]))
-            .ToArray();
-        _rows = rendering.Rows
-            .Select((cells, index) => new PreviewTableRowViewModel(index + 1, cells, widths))
-            .ToArray();
+                widths[index]))];
+        _rows = [.. rendering.Rows.Select((cells, index) => new PreviewTableRowViewModel(index + 1, cells, widths))];
     }
 
     public string Summary { get; }
@@ -118,11 +115,10 @@ public sealed class PreviewTableRowViewModel
         IReadOnlyList<double> widths)
     {
         Number = number;
-        Cells = widths
+        Cells = [.. widths
             .Select((width, index) => new PreviewTableCellViewModel(
                 index < cells.Count ? cells[index] : string.Empty,
-                width))
-            .ToArray();
+                width))];
     }
 
     public int Number { get; }
@@ -165,8 +161,7 @@ public sealed class PreviewTreeViewModel
         Summary = summary;
         // Opened at the top level: an archive with a single wrapping folder —
         // the common shape — should not need a click to show anything at all.
-        _nodes = roots.Select(node => new PreviewTreeNodeViewModel(node, roots.Count == 1))
-            .ToArray();
+        _nodes = [.. roots.Select(node => new PreviewTreeNodeViewModel(node, roots.Count == 1))];
     }
 
     public string Summary { get; }
@@ -188,7 +183,7 @@ public sealed class PreviewTreeNodeViewModel : ObservableObject
         Detail = node.Detail;
         IsContainer = node.IsContainer;
         _isExpanded = expanded && node.IsContainer;
-        Children = node.Children.Select(child => new PreviewTreeNodeViewModel(child)).ToArray();
+        Children = [.. node.Children.Select(child => new PreviewTreeNodeViewModel(child))];
     }
 
     public string Name { get; }

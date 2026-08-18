@@ -25,7 +25,7 @@ public sealed class SshConnectionRuntimeAdapterTests
             CancellationToken.None));
 
         Assert.Equal(ConnectionAuthenticationMode.None, plan.Authentication);
-        Assert.Contains("AddKeysToAgent=yes", plan.Launch.Arguments);
+        Assert.Contains("AddKeysToAgent=yes", plan.Launch.Arguments, StringComparer.Ordinal);
         Assert.DoesNotContain(
             plan.Launch.Arguments,
             argument => argument.StartsWith(
@@ -70,18 +70,18 @@ public sealed class SshConnectionRuntimeAdapterTests
         Assert.Equal(ConnectionAuthenticationMode.SshAgent, plan.Authentication);
         Assert.Equal(SshHostKeyPolicy.Strict, plan.HostKeyPolicy);
         Assert.Equal(ConnectionReconnectMode.BoundedBackoff, plan.ReconnectMode);
-        Assert.Contains("StrictHostKeyChecking=yes", plan.Launch.Arguments);
-        Assert.Contains("ServerAliveInterval=17", plan.Launch.Arguments);
-        Assert.Contains("ServerAliveCountMax=4", plan.Launch.Arguments);
-        Assert.Contains("PreferredAuthentications=publickey", plan.Launch.Arguments);
-        Assert.Contains("AddKeysToAgent=yes", plan.Launch.Arguments);
+        Assert.Contains("StrictHostKeyChecking=yes", plan.Launch.Arguments, StringComparer.Ordinal);
+        Assert.Contains("ServerAliveInterval=17", plan.Launch.Arguments, StringComparer.Ordinal);
+        Assert.Contains("ServerAliveCountMax=4", plan.Launch.Arguments, StringComparer.Ordinal);
+        Assert.Contains("PreferredAuthentications=publickey", plan.Launch.Arguments, StringComparer.Ordinal);
+        Assert.Contains("AddKeysToAgent=yes", plan.Launch.Arguments, StringComparer.Ordinal);
         var binding = knownHosts.Binding(profile.Id);
         Assert.False(File.Exists(binding.FilePath));
-        Assert.Contains($"UserKnownHostsFile={binding.FilePath}", plan.Launch.Arguments);
+        Assert.Contains($"UserKnownHostsFile={binding.FilePath}", plan.Launch.Arguments, StringComparer.Ordinal);
         Assert.Contains(
             $"GlobalKnownHostsFile={(OperatingSystem.IsWindows() ? "NUL" : "/dev/null")}",
-            plan.Launch.Arguments);
-        Assert.Contains($"HostKeyAlias={binding.Alias}", plan.Launch.Arguments);
+            plan.Launch.Arguments, StringComparer.Ordinal);
+        Assert.Contains($"HostKeyAlias={binding.Alias}", plan.Launch.Arguments, StringComparer.Ordinal);
         Assert.DoesNotContain(
             ConnectionPlanWarning.RemoteEnvironmentRequiresServerAcceptance,
             plan.Warnings);
@@ -95,7 +95,7 @@ public sealed class SshConnectionRuntimeAdapterTests
         Assert.Equal(
             "exec /bin/sh -c 'cd \"$1\" && exec \"${SHELL:-/bin/sh}\" -l' ghostshell-startup '/remote/work'",
             plan.Launch.Arguments[separator + 2]);
-        Assert.Contains("operator name", plan.Launch.Arguments);
+        Assert.Contains("operator name", plan.Launch.Arguments, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -124,7 +124,7 @@ public sealed class SshConnectionRuntimeAdapterTests
         var binding = knownHosts.Binding(profile.Id);
         Assert.Contains(
             $"UserKnownHostsFile=\"{binding.FilePath}\"",
-            plan.Launch.Arguments);
+            plan.Launch.Arguments, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -236,7 +236,7 @@ public sealed class SshConnectionRuntimeAdapterTests
         Assert.Contains(
             ConnectionPlanWarning.RemoteEnvironmentRequiresServerAcceptance,
             plan.Warnings);
-        Assert.Contains("SendEnv=DEPLOY_ENV", plan.Launch.Arguments);
+        Assert.Contains("SendEnv=DEPLOY_ENV", plan.Launch.Arguments, StringComparer.Ordinal);
     }
 
     [Theory]
@@ -265,7 +265,7 @@ public sealed class SshConnectionRuntimeAdapterTests
             CancellationToken.None));
 
         Assert.Equal(policy, plan.HostKeyPolicy);
-        Assert.Contains(expectedOption, plan.Launch.Arguments);
+        Assert.Contains(expectedOption, plan.Launch.Arguments, StringComparer.Ordinal);
         Assert.Equal(
             warningExpected,
             plan.Warnings.Contains(ConnectionPlanWarning.HostKeyVerificationDisabled));
@@ -349,11 +349,11 @@ public sealed class SshConnectionRuntimeAdapterTests
             CancellationToken.None));
 
         Assert.Equal(ConnectionAuthenticationMode.PrivateKeyWithPassphrase, plan.Authentication);
-        Assert.Contains("PreferredAuthentications=publickey", plan.Launch.Arguments);
-        Assert.Contains("PubkeyAuthentication=yes", plan.Launch.Arguments);
-        Assert.Contains("PasswordAuthentication=no", plan.Launch.Arguments);
-        Assert.Contains("KbdInteractiveAuthentication=no", plan.Launch.Arguments);
-        Assert.Contains("IdentitiesOnly=yes", plan.Launch.Arguments);
+        Assert.Contains("PreferredAuthentications=publickey", plan.Launch.Arguments, StringComparer.Ordinal);
+        Assert.Contains("PubkeyAuthentication=yes", plan.Launch.Arguments, StringComparer.Ordinal);
+        Assert.Contains("PasswordAuthentication=no", plan.Launch.Arguments, StringComparer.Ordinal);
+        Assert.Contains("KbdInteractiveAuthentication=no", plan.Launch.Arguments, StringComparer.Ordinal);
+        Assert.Contains("IdentitiesOnly=yes", plan.Launch.Arguments, StringComparer.Ordinal);
         Assert.Collection(
             plan.SecretRequirements,
             requirement =>
@@ -414,9 +414,9 @@ public sealed class SshConnectionRuntimeAdapterTests
         Assert.True(report.EndpointReached);
         var command = Assert.Single(runner.Commands);
         Assert.Equal("/usr/bin/ssh", command.Executable);
-        Assert.Contains("BatchMode=yes", command.Arguments);
-        Assert.Contains("ConnectTimeout=10", command.Arguments);
-        Assert.DoesNotContain("-tt", command.Arguments);
+        Assert.Contains("BatchMode=yes", command.Arguments, StringComparer.Ordinal);
+        Assert.Contains("ConnectTimeout=10", command.Arguments, StringComparer.Ordinal);
+        Assert.DoesNotContain("-tt", command.Arguments, StringComparer.Ordinal);
         Assert.Equal("true", command.Arguments[^1]);
         Assert.Equal(TimeSpan.FromSeconds(12), command.Timeout);
     }

@@ -40,7 +40,7 @@ internal sealed class ConnectionCredentialClaim : IDisposable
     public ConnectionCredentialClaim(IEnumerable<ConnectionCredentialClaimEntry> entries)
     {
         ArgumentNullException.ThrowIfNull(entries);
-        _entries = entries.ToList();
+        _entries = [.. entries];
     }
 
     public IReadOnlyList<ConnectionCredentialClaimEntry> Entries => _entries;

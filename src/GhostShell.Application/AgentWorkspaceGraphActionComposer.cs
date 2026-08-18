@@ -237,19 +237,17 @@ public sealed class AgentWorkspaceGraphActionComposer
 
     private static IReadOnlyList<AgentWorkspaceGraphTabInspection> InspectTabs(
         IReadOnlyList<AgentContextPanel> panels) =>
-        panels
+        [.. panels
             .GroupBy(panel => panel.TabId)
             .Select(group => new AgentWorkspaceGraphTabInspection(
                 Tab(group.First()),
-                group.Select(Panel).ToArray()))
-            .ToArray();
+                [.. group.Select(Panel)]))];
 
     private static IReadOnlyList<AgentWorkspaceGraphTab> Tabs(
         IReadOnlyList<AgentContextPanel> panels) =>
-        panels
+        [.. panels
             .GroupBy(panel => panel.TabId)
-            .Select(group => Tab(group.First()))
-            .ToArray();
+            .Select(group => Tab(group.First()))];
 
     private static AgentWorkspaceGraphWorkspace Workspace(
         AgentContextPanel panel) =>
@@ -413,12 +411,11 @@ public sealed class AgentWorkspaceGraphActionComposer
                         tabs.Offset.ToString(CultureInfo.InvariantCulture)),
                 },
             AgentWorkspaceGraphRequest.PanelList panels =>
-                new[]
-                {
+                [
                     new AgentApprovalArgument(
                         "offset",
                         panels.Offset.ToString(CultureInfo.InvariantCulture)),
-                },
+                ],
             _ => [],
         };
         return new AgentApprovalPresentation(

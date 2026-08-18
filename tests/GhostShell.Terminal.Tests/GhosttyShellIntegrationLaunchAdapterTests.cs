@@ -41,7 +41,7 @@ public sealed class GhosttyShellIntegrationLaunchAdapterTests : IDisposable
             "/bin/zsh",
             ["-l"],
             TerminalShellIntegrationMode.Detect,
-            new Dictionary<string, string>
+            new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["ZDOTDIR"] = "/user/zsh",
             });
@@ -65,7 +65,7 @@ public sealed class GhosttyShellIntegrationLaunchAdapterTests : IDisposable
             "/usr/local/bin/fish",
             [],
             TerminalShellIntegrationMode.Detect,
-            new Dictionary<string, string>
+            new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["XDG_DATA_DIRS"] = "/opt/share:/usr/share",
             });
@@ -92,7 +92,7 @@ public sealed class GhosttyShellIntegrationLaunchAdapterTests : IDisposable
             "/usr/local/bin/bash",
             ["--noprofile", "--rcfile", "/user/bashrc", "-l"],
             TerminalShellIntegrationMode.Bash,
-            new Dictionary<string, string>
+            new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["ENV"] = "/user/env",
                 ["HISTFILE"] = "/user/history",
@@ -191,7 +191,7 @@ public sealed class GhosttyShellIntegrationLaunchAdapterTests : IDisposable
             "/bin/zsh",
             [],
             TerminalShellIntegrationMode.Zsh,
-            new Dictionary<string, string>
+            new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["ZDOTDIR"] = "/user/zsh",
             });

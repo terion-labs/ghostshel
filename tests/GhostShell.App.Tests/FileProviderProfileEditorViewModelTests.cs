@@ -13,11 +13,13 @@ public sealed class FileProviderProfileEditorViewModelTests
         var editor = new FileProviderProfileEditorViewModel(
             new StubProviderRuntime(),
             [connection],
-            []);
-        editor.Name = "Files";
+            [])
+        {
+            Name = "Files",
 
-        editor.Kind = FileProviderKind.Local;
-        editor.LocalRoot = Path.GetTempPath();
+            Kind = FileProviderKind.Local,
+            LocalRoot = Path.GetTempPath()
+        };
         Assert.IsType<FileProviderConfiguration.Local>(editor.CreateSaveRequest().Profile.Configuration);
 
         editor.Kind = FileProviderKind.S3;

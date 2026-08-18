@@ -39,7 +39,7 @@ public sealed record BrowserSnapshotNode
 
         Role = CopyRole(role);
         Name = CopyName(name);
-        if ((states & ~AllStates) != 0)
+        if ((states & ~AllStates) != BrowserSnapshotNodeState.None)
         {
             throw new ArgumentOutOfRangeException(nameof(states));
         }

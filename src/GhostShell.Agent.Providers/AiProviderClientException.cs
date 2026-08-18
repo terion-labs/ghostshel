@@ -103,4 +103,5 @@ internal sealed class AiProviderClientException : AgentProviderException
                 innerException),
             _ => throw new ArgumentOutOfRangeException(nameof(code), code, null),
         };
+
 }

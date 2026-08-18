@@ -37,8 +37,33 @@ The first native build downloads the pinned Zig toolchain and Ghostty source and
 Build, test, and run:
 
 ```sh
-./scripts/check.sh
+./scripts/check.sh --full
 ./.dotnet/dotnet run --project src/GhostShell.Desktop/GhostShell.Desktop.csproj
+```
+
+The repository gate is intentionally deterministic and warning-free. It uses
+the exact SDK in `global.json`, locked NuGet restores with central package
+versions and vulnerability auditing, `dotnet format`, all enabled compiler and
+security analyzers, architecture contracts, and the test projects in a stable
+sequence. `./scripts/check.sh --quick` runs the same restore, audit, formatting,
+build, and architecture checks for fast iteration. Bootstrap installs the
+checked-in pre-commit and pre-push hooks; they can be reinstalled with
+`./scripts/install-hooks.sh`.
+
+Dependency updates must refresh every graph that CI consumes: the ordinary
+managed graph, the Windows-targeted managed graph, and both portable Linux
+release RIDs. Regenerate them deliberately, review the lock-file diffs, and
+then run the full gate:
+
+```sh
+./.dotnet/dotnet restore GhostShell.slnx --force-evaluate
+./.dotnet/dotnet restore GhostShell.slnx \
+  -p:GhostShellWindowsBuild=true --force-evaluate
+./.dotnet/dotnet restore src/GhostShell.Desktop/GhostShell.Desktop.csproj \
+  --runtime linux-x64 --force-evaluate
+./.dotnet/dotnet restore src/GhostShell.Desktop/GhostShell.Desktop.csproj \
+  --runtime linux-arm64 --force-evaluate
+./scripts/check.sh --full
 ```
 
 GitHub Copilot device authorization uses GitHub's public first-party Copilot

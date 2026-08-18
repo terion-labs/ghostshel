@@ -17,7 +17,7 @@ internal abstract record FileAgentIntent
         public List(IEnumerable<FilePanelPathSegment> pathSegments)
         {
             ArgumentNullException.ThrowIfNull(pathSegments);
-            RelativePath = pathSegments.ToImmutableArray();
+            RelativePath = [.. pathSegments];
         }
 
         public override ImmutableArray<FilePanelPathSegment> RelativePath { get; }
@@ -32,7 +32,7 @@ internal abstract record FileAgentIntent
             int maximumResults)
         {
             ArgumentNullException.ThrowIfNull(pathSegments);
-            RelativePath = pathSegments.ToImmutableArray();
+            RelativePath = [.. pathSegments];
             Query = query;
             Scope = scope;
             MaximumResults = maximumResults;
@@ -52,7 +52,7 @@ internal abstract record FileAgentIntent
         public Stat(IEnumerable<FilePanelPathSegment> pathSegments)
         {
             ArgumentNullException.ThrowIfNull(pathSegments);
-            RelativePath = pathSegments.ToImmutableArray();
+            RelativePath = [.. pathSegments];
         }
 
         public override ImmutableArray<FilePanelPathSegment> RelativePath { get; }
@@ -63,7 +63,7 @@ internal abstract record FileAgentIntent
         public Read(IEnumerable<FilePanelPathSegment> pathSegments)
         {
             ArgumentNullException.ThrowIfNull(pathSegments);
-            RelativePath = pathSegments.ToImmutableArray();
+            RelativePath = [.. pathSegments];
         }
 
         public override ImmutableArray<FilePanelPathSegment> RelativePath { get; }
@@ -74,7 +74,7 @@ internal abstract record FileAgentIntent
         public AccessRead(IEnumerable<FilePanelPathSegment> pathSegments)
         {
             ArgumentNullException.ThrowIfNull(pathSegments);
-            RelativePath = pathSegments.ToImmutableArray();
+            RelativePath = [.. pathSegments];
         }
 
         public override ImmutableArray<FilePanelPathSegment> RelativePath { get; }
@@ -90,7 +90,7 @@ internal abstract record FileAgentIntent
         public CreateDirectory(IEnumerable<FilePanelPathSegment> pathSegments)
         {
             ArgumentNullException.ThrowIfNull(pathSegments);
-            RelativePath = pathSegments.ToImmutableArray();
+            RelativePath = [.. pathSegments];
         }
 
         public override ImmutableArray<FilePanelPathSegment> RelativePath { get; }
@@ -104,8 +104,8 @@ internal abstract record FileAgentIntent
         {
             ArgumentNullException.ThrowIfNull(sourcePathSegments);
             ArgumentNullException.ThrowIfNull(destinationPathSegments);
-            RelativePath = sourcePathSegments.ToImmutableArray();
-            DestinationRelativePath = destinationPathSegments.ToImmutableArray();
+            RelativePath = [.. sourcePathSegments];
+            DestinationRelativePath = [.. destinationPathSegments];
         }
 
         public override ImmutableArray<FilePanelPathSegment> RelativePath { get; }
@@ -120,7 +120,7 @@ internal abstract record FileAgentIntent
             bool recursive = false)
         {
             ArgumentNullException.ThrowIfNull(pathSegments);
-            RelativePath = pathSegments.ToImmutableArray();
+            RelativePath = [.. pathSegments];
             Recursive = recursive;
         }
 

@@ -1,5 +1,8 @@
+using System.Runtime.InteropServices;
+
 namespace GhostShell.Infrastructure;
 
+[StructLayout(LayoutKind.Auto)]
 internal readonly record struct LocalArtifactScanLimits(
     int MaximumEntries,
     int MaximumDepth,

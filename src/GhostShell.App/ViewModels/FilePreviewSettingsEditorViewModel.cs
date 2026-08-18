@@ -88,7 +88,7 @@ public sealed class FilePreviewSettingsEditorViewModel : ObservableObject
     private FilePreviewSettings Current => _preferences.Current;
 
     private void Apply(FilePreviewSettings settings) =>
-        _ = _preferences.ApplyAsync(settings, CancellationToken.None);
+        _ = _preferences.ApplyAsync(settings, CancellationToken.None).AsTask();
 
     private async Task ClearCacheAsync()
     {

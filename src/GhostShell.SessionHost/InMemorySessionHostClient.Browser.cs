@@ -412,8 +412,8 @@ public sealed partial class InMemorySessionHostClient
                     Kind: ActorKind.Human,
                     ClientId: { } clientId,
                 }
-                || context.Actor.Id.Value != clientId.Value
-                || !session.TryCaptureBrowserAttachmentAuthority(
+                || !string.Equals(context.Actor.Id.Value, clientId.Value
+, StringComparison.Ordinal) || !session.TryCaptureBrowserAttachmentAuthority(
                     clientId,
                     revision,
                     out _,

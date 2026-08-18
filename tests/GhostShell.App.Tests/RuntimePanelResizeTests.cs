@@ -218,10 +218,8 @@ public sealed class RuntimePanelResizeTests
         Assert.Equal(2, tab.Panels.Count);
         Assert.Equal(2, tab.Rows * tab.Columns);
         Assert.Equal(
-            new[] { 0, 1 },
-            tab.Panels.Select(panel => panel.LayoutRow * tab.Columns + panel.LayoutColumn)
-                .Order()
-                .ToArray());
+            [0, 1],
+            [.. tab.Panels.Select(panel => panel.LayoutRow * tab.Columns + panel.LayoutColumn).Order()]);
     }
 
     [Fact]

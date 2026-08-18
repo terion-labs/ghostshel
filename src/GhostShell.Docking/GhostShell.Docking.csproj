@@ -5,8 +5,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Dock.Model.Inpc" Version="12.0.0.2" />
-    <PackageReference Include="Dock.Serializer.SystemTextJson" Version="12.0.0.2" />
+    <PackageReference Include="Dock.Model.Inpc" />
+    <PackageReference Include="Dock.Serializer.SystemTextJson" />
   </ItemGroup>
 
 </Project>

@@ -33,7 +33,7 @@ internal sealed class CefSemanticBrowser : ICefSemanticBrowser
         var nodes = await _browser.Accessibility
             .GetFullTreeAsync(maxDepth: 64)
             .ConfigureAwait(false);
-        return nodes.Select(Project).ToArray();
+        return [.. nodes.Select(Project)];
     }
 
     public async Task<CefSemanticNode?> ReadAccessibilityNodeAsync(

@@ -32,21 +32,20 @@ internal static class TestDocuments
         for (var index = 0; index < objects.Count; index++)
         {
             offsets.Add(builder.Length);
-            builder.Append($"{index + 1} 0 obj\n{objects[index]}\nendobj\n");
+            builder.Append(System.Globalization.CultureInfo.InvariantCulture, $"{index + 1} 0 obj\n{objects[index]}\nendobj\n");
         }
 
         AppendStream(builder, offsets, 6, firstPage);
         AppendStream(builder, offsets, 7, secondPage);
 
         var startXref = builder.Length;
-        builder.Append($"xref\n0 {offsets.Count + 1}\n0000000000 65535 f \n");
+        builder.Append(System.Globalization.CultureInfo.InvariantCulture, $"xref\n0 {offsets.Count + 1}\n0000000000 65535 f \n");
         foreach (var offset in offsets)
         {
-            builder.Append($"{offset:D10} 00000 n \n");
+            builder.Append(System.Globalization.CultureInfo.InvariantCulture, $"{offset:D10} 00000 n \n");
         }
 
-        builder.Append(
-            $"trailer\n<< /Size {offsets.Count + 1} /Root 1 0 R >>\n"
+        builder.Append(System.Globalization.CultureInfo.InvariantCulture, $"trailer\n<< /Size {offsets.Count + 1} /Root 1 0 R >>\n"
             + $"startxref\n{startXref}\n%%EOF\n");
         return builder.ToString();
     }
@@ -58,7 +57,6 @@ internal static class TestDocuments
         string content)
     {
         offsets.Add(builder.Length);
-        builder.Append(
-            $"{number} 0 obj\n<< /Length {content.Length} >>\nstream\n{content}\nendstream\nendobj\n");
+        builder.Append(System.Globalization.CultureInfo.InvariantCulture, $"{number} 0 obj\n<< /Length {content.Length} >>\nstream\n{content}\nendstream\nendobj\n");
     }
 }

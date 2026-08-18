@@ -58,14 +58,13 @@ internal sealed class SelectableMarkdownDocument : Control
     }
 
     internal ImmutableArray<MarkdownListLayout> ListLayouts =>
-        _layoutBlocks
+        [.. _layoutBlocks
             .Where(block => block.Kind == MarkdownBlockKind.ListItem)
             .Select(block => new MarkdownListLayout(
                 block.Origin.X,
                 block.ContentOrigin.X,
                 block.Layout.TextLines.Count,
-                block.Layout.TextLines.Skip(1).Select(line => line.Start).ToImmutableArray()))
-            .ToImmutableArray();
+                [.. block.Layout.TextLines.Skip(1).Select(line => line.Start)]))];
 
     internal int MathFormulaCount =>
         _sourceBlocks.Sum(block =>
@@ -512,13 +511,12 @@ internal sealed class SelectableMarkdownDocument : Control
 
         if (block.Kind != MarkdownBlockKind.Table)
         {
-            return block.Runs
+            return [.. block.Runs
                 .Select(run => new SourceRun(
                     run.Text,
                     run.Style,
                     run.LinkTarget is not null,
-                    false))
-                .ToImmutableArray();
+                    false))];
         }
 
         var rows = ImmutableArray.CreateBuilder<SourceRun>();
@@ -693,7 +691,7 @@ internal sealed class SelectableMarkdownDocument : Control
                 {
                     var consumed = textSourceIndex - segment.Start;
                     return new TextCharacters(
-                        characters.Text.Slice(consumed),
+                        characters.Text[consumed..],
                         characters.Properties);
                 }
 

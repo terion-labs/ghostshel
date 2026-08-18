@@ -154,9 +154,9 @@ internal static class AcceptanceCatalog
             macOSInstructions,
             windowsInstructions,
             linuxInstructions,
-            assertions.Select(assertion => new AcceptanceAssertion(
+            [.. assertions.Select(assertion => new AcceptanceAssertion(
                 assertion.Id,
-                assertion.Instructions)).ToArray());
+                assertion.Instructions))]);
 
     private static string ComputeDigest()
     {

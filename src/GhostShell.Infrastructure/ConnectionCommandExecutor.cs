@@ -329,7 +329,7 @@ public sealed class ConnectionCommandExecutor(IConnectionRuntime connectionRunti
         var boundary = -1;
         for (var index = 0; index < launchArguments.Count; index++)
         {
-            if (launchArguments[index] == "--")
+            if (string.Equals(launchArguments[index], "--", StringComparison.Ordinal))
             {
                 boundary = index;
                 break;
@@ -342,7 +342,7 @@ public sealed class ConnectionCommandExecutor(IConnectionRuntime connectionRunti
 
         var arguments = launchArguments
             .Take(boundary)
-            .Where(argument => argument != "-tt")
+            .Where(argument => !string.Equals(argument, "-tt", StringComparison.Ordinal))
             .ToList();
         if (controlPath is not null)
         {
@@ -429,7 +429,7 @@ public sealed class ConnectionCommandExecutor(IConnectionRuntime connectionRunti
         var arguments = launchArguments
             .Where(argument => argument is not "--interactive" and not "--tty")
             .ToList();
-        if (arguments.Count == 0 || arguments[^1] != "/bin/sh")
+        if (arguments.Count == 0 || !string.Equals(arguments[^1], "/bin/sh", StringComparison.Ordinal))
         {
             throw new InvalidOperationException("The Docker connection plan is malformed.");
         }

@@ -1,6 +1,6 @@
+using System.Collections.Immutable;
 using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
-using System.Collections.Immutable;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -647,7 +647,7 @@ internal sealed class OpenAiResponsesAgentProvider(
         writer.WriteStartObject();
         writer.WriteString(
             "type",
-            role == "assistant" ? "output_text" : "input_text");
+string.Equals(role, "assistant", StringComparison.Ordinal) ? "output_text" : "input_text");
         writer.WriteString("text", content);
         writer.WriteEndObject();
         writer.WriteEndArray();
@@ -1035,8 +1035,8 @@ internal sealed class OpenAiResponsesAgentProvider(
             foreach (var part in summary.EnumerateArray())
             {
                 if (part.ValueKind != JsonValueKind.Object
-                    || AiProviderJson.RequiredBoundedString(part, "type", 64)
-                        != "summary_text")
+                    || !string.Equals(AiProviderJson.RequiredBoundedString(part, "type", 64)
+, "summary_text", StringComparison.Ordinal))
                 {
                     throw ProtocolError();
                 }
@@ -1078,7 +1078,7 @@ internal sealed class OpenAiResponsesAgentProvider(
                 throw ProtocolError();
             }
 
-            if (type == "reasoning")
+            if (string.Equals(type, "reasoning", StringComparison.Ordinal))
             {
                 _replaySlots.Add(
                     outputIndex,
@@ -1088,7 +1088,7 @@ internal sealed class OpenAiResponsesAgentProvider(
                 return;
             }
 
-            if (type == "message")
+            if (string.Equals(type, "message", StringComparison.Ordinal))
             {
                 _replaySlots.Add(
                     outputIndex,
@@ -1098,7 +1098,7 @@ internal sealed class OpenAiResponsesAgentProvider(
                 return;
             }
 
-            if (type != "function_call")
+            if (!string.Equals(type, "function_call", StringComparison.Ordinal))
             {
                 throw ProtocolError();
             }
@@ -1169,13 +1169,13 @@ internal sealed class OpenAiResponsesAgentProvider(
 
             replaySlot.Finalize(item);
 
-            if (type == "reasoning")
+            if (string.Equals(type, "reasoning", StringComparison.Ordinal))
             {
                 AppendFinalReasoningSummary(outputIndex, item, events);
                 return;
             }
 
-            if (type != "function_call")
+            if (!string.Equals(type, "function_call", StringComparison.Ordinal))
             {
                 return;
             }
@@ -1203,7 +1203,7 @@ internal sealed class OpenAiResponsesAgentProvider(
             if (!incomplete)
             {
                 var status = AiProviderJson.OptionalBoundedString(response, "status", 64);
-                if (status is not null && status != "completed")
+                if (status is not null && !string.Equals(status, "completed", StringComparison.Ordinal))
                 {
                     throw ProtocolError();
                 }
@@ -1257,7 +1257,7 @@ internal sealed class OpenAiResponsesAgentProvider(
                 lastOutputIndex = match.Key;
                 var slot = match.Value;
 
-                if (type == "reasoning")
+                if (string.Equals(type, "reasoning", StringComparison.Ordinal))
                 {
                     slot.BackfillEncryptedReasoning(item);
                     AppendFinalReasoningSummary(match.Key, item, events);
@@ -1707,8 +1707,8 @@ internal sealed class OpenAiResponsesAgentProvider(
             foreach (var part in content.EnumerateArray())
             {
                 if (part.ValueKind != JsonValueKind.Object
-                    || AiProviderJson.RequiredBoundedString(part, "type", 64)
-                        != "reasoning_text")
+                    || !string.Equals(AiProviderJson.RequiredBoundedString(part, "type", 64)
+, "reasoning_text", StringComparison.Ordinal))
                 {
                     throw ProtocolError();
                 }

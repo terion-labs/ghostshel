@@ -187,7 +187,7 @@ public sealed class DatabaseConnectionControlsTests
                 .ToDictionary(pair => pair[0], pair => pair[1], StringComparer.OrdinalIgnoreCase);
             return new DatabaseConnectionDetails(
                 values.GetValueOrDefault("Host"),
-                values.TryGetValue("Port", out var port) ? int.Parse(port) : null,
+                values.TryGetValue("Port", out var port) ? int.Parse(port, System.Globalization.CultureInfo.InvariantCulture) : null,
                 values.GetValueOrDefault("Database"),
                 values.GetValueOrDefault("Username"),
                 values.GetValueOrDefault("Password"));

@@ -68,10 +68,9 @@ internal sealed class InMemoryDefinitionRepository<TDefinition> : IDefinitionRep
                 DefinitionStoreResult<IReadOnlyList<StoredDefinition<TDefinition>>>.Failure(ListError));
         }
 
-        IReadOnlyList<StoredDefinition<TDefinition>> snapshot = _definitions.Values
+        IReadOnlyList<StoredDefinition<TDefinition>> snapshot = [.. _definitions.Values
             .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(item => item.Value.Key.Value, StringComparer.Ordinal)
-            .ToArray();
+            .ThenBy(item => item.Value.Key.Value, StringComparer.Ordinal)];
         return ValueTask.FromResult(
             DefinitionStoreResult<IReadOnlyList<StoredDefinition<TDefinition>>>.Success(snapshot));
     }

@@ -58,7 +58,7 @@ public sealed class ConnectionContractsTests
             .Select(ConnectionRuntimeError.Create)
             .ToArray();
 
-        Assert.Equal(errors.Length, errors.Select(error => error.StableCode).Distinct().Count());
+        Assert.Equal(errors.Length, errors.Select(error => error.StableCode).Distinct(StringComparer.Ordinal).Count());
         Assert.All(errors, error =>
         {
             Assert.StartsWith("connection_", error.StableCode, StringComparison.Ordinal);

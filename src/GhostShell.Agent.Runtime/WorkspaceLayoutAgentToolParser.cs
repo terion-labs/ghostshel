@@ -72,7 +72,7 @@ internal static class WorkspaceLayoutAgentToolParser
     {
         if (properties.Count != 2
             || !TryString(properties, "panel_id", out var panelId)
-            || context.Panels.All(panel => panel.PanelId.Value != panelId)
+            || context.Panels.All(panel => !string.Equals(panel.PanelId.Value, panelId, StringComparison.Ordinal))
             || !TryString(properties, "connection_ref", out var connectionRef)
             || connectionRef.Length > 128)
         {
@@ -111,7 +111,7 @@ internal static class WorkspaceLayoutAgentToolParser
     {
         if (properties.Count != 1
             || !TryString(properties, "tab_id", out var value)
-            || context.Panels.All(panel => panel.TabId.Value != value))
+            || context.Panels.All(panel => !string.Equals(panel.TabId.Value, value, StringComparison.Ordinal)))
         {
             return Invalid("tab.close requires one in-scope tab_id.");
         }
@@ -126,7 +126,7 @@ internal static class WorkspaceLayoutAgentToolParser
         IReadOnlySet<PanelKind> supportedKinds)
     {
         if (!TryString(properties, "tab_id", out var tabId)
-            || context.Panels.All(panel => panel.TabId.Value != tabId)
+            || context.Panels.All(panel => !string.Equals(panel.TabId.Value, tabId, StringComparison.Ordinal))
             || !TryCreation(
                 properties,
                 supportedKinds,
@@ -150,7 +150,7 @@ internal static class WorkspaceLayoutAgentToolParser
         IReadOnlySet<PanelKind> supportedKinds)
     {
         if (!TryString(properties, "panel_id", out var panelId)
-            || context.Panels.All(panel => panel.PanelId.Value != panelId)
+            || context.Panels.All(panel => !string.Equals(panel.PanelId.Value, panelId, StringComparison.Ordinal))
             || !TryString(properties, "orientation", out var orientationValue)
             || !TryOrientation(orientationValue, out var orientation)
             || !TryCreation(
@@ -177,7 +177,7 @@ internal static class WorkspaceLayoutAgentToolParser
     {
         if (properties.Count != 1
             || !TryString(properties, "panel_id", out var value)
-            || context.Panels.All(panel => panel.PanelId.Value != value))
+            || context.Panels.All(panel => !string.Equals(panel.PanelId.Value, value, StringComparison.Ordinal)))
         {
             return Invalid("panel.close requires one in-scope panel_id.");
         }

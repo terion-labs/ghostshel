@@ -2,7 +2,7 @@ using GhostShell.Core;
 
 namespace GhostShell.Application;
 
-public sealed class DefinitionCatalog : IDefinitionCatalog
+public sealed class DefinitionCatalog : IDefinitionCatalog, IDisposable
 {
     private const string DefaultTerminalProfileId = "builtin.terminal.default";
     private static readonly TerminalPalette LegacyGhostShellDarkPalette = new(
@@ -91,7 +91,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
     private sealed class EphemeralRepository<TDefinition> : IDefinitionRepository<TDefinition>
         where TDefinition : IDurableDefinition
     {
-        private readonly object _gate = new();
+        private readonly Lock _gate = new();
         private readonly Dictionary<string, StoredDefinition<TDefinition>> _items = [];
 
         public ValueTask<DefinitionStoreResult<StoredDefinition<TDefinition>>> GetAsync(
@@ -115,7 +115,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
             {
                 return ValueTask.FromResult(
                     DefinitionStoreResult<IReadOnlyList<StoredDefinition<TDefinition>>>.Success(
-                        _items.Values.OrderBy(item => item.Value.Name).ToArray()));
+                        [.. _items.Values.OrderBy(item => item.Value.Name, StringComparer.Ordinal)]));
             }
         }
 
@@ -302,9 +302,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
                 result = await _layoutGraph.SaveLayoutWithScreensAsync(
                         definition,
                         expectedRevision,
-                        reconciled
-                            .Select(item => new ScreenRevisionUpdate(item.Screen, item.Revision))
-                            .ToArray(),
+                        [.. reconciled.Select(item => new ScreenRevisionUpdate(item.Screen, item.Revision))],
                         cancellationToken)
                     .ConfigureAwait(false);
                 if (!result.IsSuccess)
@@ -462,7 +460,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
 
             var error = ValidateWorkspace(
                 workspace,
-                layouts.Select(item => item.Definition).ToArray());
+                [.. layouts.Select(item => item.Definition)]);
             if (error is not null)
             {
                 return error;
@@ -1100,20 +1098,33 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
                 databaseConnectionsTask)
             .ConfigureAwait(false);
 
+        var connections = await connectionsTask.ConfigureAwait(false);
+        var layouts = await layoutsTask.ConfigureAwait(false);
+        var screens = await screensTask.ConfigureAwait(false);
+        var workspaces = await workspacesTask.ConfigureAwait(false);
+        var themes = await themesTask.ConfigureAwait(false);
+        var terminals = await terminalsTask.ConfigureAwait(false);
+        var keymaps = await keymapsTask.ConfigureAwait(false);
+        var fileProviders = await fileProvidersTask.ConfigureAwait(false);
+        var aiProviders = await aiProvidersTask.ConfigureAwait(false);
+        var mcpServers = await mcpServersTask.ConfigureAwait(false);
+        var quickTerminal = await quickTerminalTask.ConfigureAwait(false);
+        var databaseConnections = await databaseConnectionsTask.ConfigureAwait(false);
+
         var errors = new DefinitionStoreError?[]
         {
-            connectionsTask.Result.Error,
-            layoutsTask.Result.Error,
-            screensTask.Result.Error,
-            workspacesTask.Result.Error,
-            themesTask.Result.Error,
-            terminalsTask.Result.Error,
-            keymapsTask.Result.Error,
-            fileProvidersTask.Result.Error,
-            aiProvidersTask.Result.Error,
-            mcpServersTask.Result.Error,
-            quickTerminalTask.Result.Error,
-            databaseConnectionsTask.Result.Error,
+            connections.Error,
+            layouts.Error,
+            screens.Error,
+            workspaces.Error,
+            themes.Error,
+            terminals.Error,
+            keymaps.Error,
+            fileProviders.Error,
+            aiProviders.Error,
+            mcpServers.Error,
+            quickTerminal.Error,
+            databaseConnections.Error,
         };
         var error = errors.FirstOrDefault(item => item is not null);
         if (error is not null)
@@ -1122,19 +1133,19 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
         }
 
         var snapshot = new DefinitionCatalogSnapshot(
-            connectionsTask.Result.Value!,
-            layoutsTask.Result.Value!,
-            screensTask.Result.Value!,
-            workspacesTask.Result.Value!,
-            themesTask.Result.Value!,
-            terminalsTask.Result.Value!,
-            keymapsTask.Result.Value!,
-            fileProvidersTask.Result.Value!,
-            quickTerminalTask.Result.Value!)
+            connections.Value!,
+            layouts.Value!,
+            screens.Value!,
+            workspaces.Value!,
+            themes.Value!,
+            terminals.Value!,
+            keymaps.Value!,
+            fileProviders.Value!,
+            quickTerminal.Value!)
         {
-            AiProviderProfiles = aiProvidersTask.Result.Value!,
-            McpServerProfiles = mcpServersTask.Result.Value!,
-            DatabaseConnections = databaseConnectionsTask.Result.Value!,
+            AiProviderProfiles = aiProviders.Value!,
+            McpServerProfiles = mcpServers.Value!,
+            DatabaseConnections = databaseConnections.Value!,
         };
         Volatile.Write(ref _snapshot, snapshot);
         return DefinitionStoreResult<DefinitionCatalogSnapshot>.Success(snapshot);
@@ -1329,8 +1340,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
     private async ValueTask<DefinitionStoreResult<Unit>>
         MigrateLegacyDefaultWorkspaceNameAsync(CancellationToken cancellationToken)
     {
-        var stored = Snapshot.Workspaces.FirstOrDefault(item =>
-            item.Value.Id.Value == WorkspaceDefinition.DefaultWorkspaceId);
+        var stored = Snapshot.Workspaces.FirstOrDefault(item => string.Equals(item.Value.Id.Value, WorkspaceDefinition.DefaultWorkspaceId, StringComparison.Ordinal));
         if (stored is null
             || !string.Equals(
                 stored.Value.Name,
@@ -1367,8 +1377,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
     private async ValueTask<DefinitionStoreResult<Unit>>
         MigrateLegacyDefaultTerminalPaletteAsync(CancellationToken cancellationToken)
     {
-        var stored = Snapshot.TerminalProfiles.FirstOrDefault(item =>
-            item.Value.Id.Value == DefaultTerminalProfileId);
+        var stored = Snapshot.TerminalProfiles.FirstOrDefault(item => string.Equals(item.Value.Id.Value, DefaultTerminalProfileId, StringComparison.Ordinal));
         if (stored is null
             || !string.Equals(
                 stored.Value.Palette.Name,
@@ -1477,6 +1486,8 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
 
     private static DefinitionStoreError Invalid(string message) =>
         new(DefinitionStoreErrorCode.InvalidDefinition, message);
+
+    public void Dispose() => _mutationGate.Dispose();
 
     private sealed record FirstRunDefinitions(
         ConnectionProfile Connection,

@@ -383,7 +383,7 @@ internal sealed class ClaudeCodeTerminalLaunchAdapter
                     string.Equals(argument, "/c", StringComparison.OrdinalIgnoreCase)
                     || string.Equals(argument, "/k", StringComparison.OrdinalIgnoreCase)))
             {
-                return arguments.ToArray();
+                return [.. arguments];
             }
 
             var bootstrap = Path.Combine(
@@ -392,14 +392,14 @@ internal sealed class ClaudeCodeTerminalLaunchAdapter
                 "windows",
                 "ghostshell-claude.cmd");
             return File.Exists(bootstrap)
-                ? arguments.Concat(["/K", bootstrap]).ToArray()
-                : arguments.ToArray();
+                ? [.. arguments, "/K", bootstrap]
+                : [.. arguments];
         }
 
         if (arguments.Any(argument => argument is "-Command" or "-File" or "-EncodedCommand"
             || string.Equals(argument, "-c", StringComparison.OrdinalIgnoreCase)))
         {
-            return arguments.ToArray();
+            return [.. arguments];
         }
 
         var powershellBootstrap = Path.Combine(
@@ -408,8 +408,8 @@ internal sealed class ClaudeCodeTerminalLaunchAdapter
             "windows",
             "ghostshell-claude.ps1");
         return File.Exists(powershellBootstrap)
-            ? arguments.Concat(["-NoExit", "-File", powershellBootstrap]).ToArray()
-            : arguments.ToArray();
+            ? [.. arguments, "-NoExit", "-File", powershellBootstrap]
+            : [.. arguments];
     }
 
     private static void PrependPath(

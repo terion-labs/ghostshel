@@ -2252,9 +2252,8 @@ public sealed class ManagedTerminalSurface : Control
         }
 
         byte[] rgba;
-        ArraySegment<byte> source;
         if (image.PixelFormat == TerminalKittyImagePixelFormat.Rgba
-            && MemoryMarshal.TryGetArray(image.Pixels, out source)
+            && MemoryMarshal.TryGetArray(image.Pixels, out ArraySegment<byte> source)
             && source.Array is not null)
         {
             rgba = source.Array;
@@ -2732,9 +2731,7 @@ public sealed class ManagedTerminalSurface : Control
         _ = sender;
         _ = e;
         _blinkVisible = !_blinkVisible;
-        _cursorVisible = (_renderFrame?.Cursor.IsBlinking ?? Profile?.CursorBlink) == true
-            ? !_cursorVisible
-            : true;
+        _cursorVisible = (_renderFrame?.Cursor.IsBlinking ?? Profile?.CursorBlink) != true || !_cursorVisible;
         InvalidateVisual();
     }
 

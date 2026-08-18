@@ -242,7 +242,7 @@ public sealed class RecentSessionHistoryTests
         var result = await history.ClearAllAsync(CancellationToken.None);
 
         Assert.Equal(2, result.Value);
-        Assert.Contains("clear-all", store.Calls);
+        Assert.Contains("clear-all", store.Calls, StringComparer.Ordinal);
         Assert.Empty(store.ClearCutoffs);
     }
 
@@ -315,7 +315,7 @@ public sealed class RecentSessionHistoryTests
             StartResult = RecentSessionStoreResult<Unit>.Success(Unit.Value);
             CompletionResult = RecentSessionStoreResult<Unit>.Success(Unit.Value);
             ListResult = RecentSessionStoreResult<IReadOnlyList<RecentSessionRecord>>.Success(
-                Array.Empty<RecentSessionRecord>());
+                []);
             ClearResult = RecentSessionStoreResult<int>.Success(0);
             ClearAllResult = RecentSessionStoreResult<int>.Success(0);
         }

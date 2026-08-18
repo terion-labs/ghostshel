@@ -119,7 +119,7 @@ public sealed class RecoveryDataControlViewModelTests
 
         Assert.Equal(
             ["Clear saved recovery 1", "Clear saved recovery 2"],
-            viewModel.Runs.Select(item => item.ClearAutomationName));
+            viewModel.Runs.Select(item => item.ClearAutomationName), StringComparer.Ordinal);
         Assert.All(
             viewModel.Runs,
             item =>
@@ -173,13 +173,12 @@ public sealed class RecoveryDataControlViewModelTests
             ApplicationRunErrorCode.StorageFailure,
             "Unsafe details must not be shown."));
         source.ListResults.Enqueue(Success(new RuntimeRecoveryInventory(
-            Enumerable.Range(1, RuntimeRecoveryInventory.MaximumListedRuns)
+            [.. Enumerable.Range(1, RuntimeRecoveryInventory.MaximumListedRuns)
                 .Select(index => new RuntimeRecoveryRunSummary(
                     $"run-{index}",
                     1,
                     2,
-                    DateTimeOffset.UnixEpoch))
-                .ToArray(),
+                    DateTimeOffset.UnixEpoch))],
             hasAdditionalRuns: true)));
         using var viewModel = new RecoveryDataControlViewModel(source);
         viewModel.Start();

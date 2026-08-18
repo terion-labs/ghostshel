@@ -14,7 +14,13 @@ public sealed class CommandRegistry
 
         foreach (var command in commands)
         {
-            ArgumentNullException.ThrowIfNull(command);
+            if (command is null)
+            {
+                throw new ArgumentException(
+                    "The command sequence cannot contain null entries.",
+                    nameof(commands));
+            }
+
             if (!builder.TryAdd(command.Id, command))
             {
                 throw new ArgumentException($"Command '{command.Id}' is registered more than once.", nameof(commands));
@@ -22,7 +28,7 @@ public sealed class CommandRegistry
         }
 
         _commands = builder.ToImmutable();
-        _definitions = _commands.Values.ToImmutableArray();
+        _definitions = [.. _commands.Values];
     }
 
     public IReadOnlyCollection<CommandDefinition> Commands => _definitions;
@@ -34,12 +40,11 @@ public sealed class CommandRegistry
     public IReadOnlyList<CommandDefinition> Search(string query)
     {
         query ??= string.Empty;
-        return _commands.Values
+        return [.. _commands.Values
             .Where(command => command.Id.Value.Contains(query, StringComparison.OrdinalIgnoreCase)
                 || command.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
                 || command.Category.Contains(query, StringComparison.OrdinalIgnoreCase))
             .OrderBy(command => command.Category, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(command => command.Title, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+            .ThenBy(command => command.Title, StringComparer.OrdinalIgnoreCase)];
     }
 }

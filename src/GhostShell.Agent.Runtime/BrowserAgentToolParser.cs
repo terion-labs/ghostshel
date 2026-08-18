@@ -871,7 +871,7 @@ internal static class BrowserAgentToolParser
             }
 
             var parsed = parse(item.GetString());
-            var value = Convert.ToUInt64(parsed);
+            var value = Convert.ToUInt64(parsed, System.Globalization.CultureInfo.InvariantCulture);
             if (value == 0 || (bits & value) != 0)
             {
                 return false;

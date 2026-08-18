@@ -14,7 +14,6 @@ internal sealed class X11HotkeyMessageLoop : IX11HotkeyLoop
     private const string X11Library = "libX11.so.6";
     private const int KeyPress = 2;
     private const byte BadValue = 2;
-    private const uint ShiftMask = 1U << 0;
     private const uint LockMask = 1U << 1;
     private const nuint NumLockKeySymbol = 0xFF7F;
     private const int GrabModeAsync = 1;
@@ -31,7 +30,7 @@ internal sealed class X11HotkeyMessageLoop : IX11HotkeyLoop
     private readonly ConcurrentQueue<WorkItem> _workItems = new();
     private readonly AutoResetEvent _workAvailable = new(initialState: false);
     private readonly ManualResetEventSlim _ready = new();
-    private readonly Dictionary<int, Registration> _registrations = new();
+    private readonly Dictionary<int, Registration> _registrations = [];
     private readonly Thread _thread;
     private ExceptionDispatchInfo? _startupFailure;
     private IntPtr _display;
@@ -305,9 +304,7 @@ internal sealed class X11HotkeyMessageLoop : IX11HotkeyLoop
     }
 
     private static uint[] BuildIgnoredModifierVariants(uint numLockMask) =>
-        new[] { 0U, LockMask, numLockMask, LockMask | numLockMask }
-            .Distinct()
-            .ToArray();
+        [.. new[] { 0U, LockMask, numLockMask, LockMask | numLockMask }.Distinct()];
 
     private static int CaptureXError(IntPtr display, ref XErrorEvent errorEvent)
     {

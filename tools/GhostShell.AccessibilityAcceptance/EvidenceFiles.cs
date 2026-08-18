@@ -295,7 +295,8 @@ internal static class EvidenceFiles
             TargetPlatform.MacOS => "macos",
             TargetPlatform.Windows => "windows",
             TargetPlatform.LinuxX11 => "linux-x11",
-            _ => throw new ArgumentOutOfRangeException(),
+            _ => throw new InvalidOperationException(
+                "The evidence platform is not supported."),
         };
 
         for (var attempt = 0; attempt < 100; attempt++)
@@ -475,7 +476,7 @@ internal static class EvidenceFiles
         var attributes = File.GetAttributes(path);
         if ((attributes & (FileAttributes.Directory
                 | FileAttributes.ReparsePoint
-                | FileAttributes.Device)) != 0)
+                | FileAttributes.Device)) != FileAttributes.None)
         {
             throw new InvalidDataException("Evidence contains a non-regular file.");
         }
@@ -520,10 +521,10 @@ internal static class EvidenceValidator
             errors.Add($"Unsupported schema version {evidence.SchemaVersion}.");
         }
 
-        if (evidence.EvidenceKind != AcceptanceEvidence.CurrentEvidenceKind
-            || evidence.RunnerVersion != AcceptanceEvidence.CurrentRunnerVersion
-            || evidence.CatalogVersion != AcceptanceEvidence.CurrentCatalogVersion
-            || evidence.CatalogSha256 != AcceptanceCatalog.Digest)
+        if (!string.Equals(evidence.EvidenceKind, AcceptanceEvidence.CurrentEvidenceKind
+, StringComparison.Ordinal) || !string.Equals(evidence.RunnerVersion, AcceptanceEvidence.CurrentRunnerVersion
+, StringComparison.Ordinal) || !string.Equals(evidence.CatalogVersion, AcceptanceEvidence.CurrentCatalogVersion
+, StringComparison.Ordinal) || !string.Equals(evidence.CatalogSha256, AcceptanceCatalog.Digest, StringComparison.Ordinal))
         {
             errors.Add("Evidence or catalog identity does not match this runner.");
         }
@@ -622,17 +623,17 @@ internal static class EvidenceValidator
                 "AT_SPI_SESSION_BUS_PRESENT"),
             _ => (string.Empty, string.Empty, string.Empty),
         };
-        if (technology.StatusBefore == "ACTIVE_VERIFIED"
-            && (technology.Product != expectedVerifiedIdentity.Item1
-                || technology.IdentitySource != expectedVerifiedIdentity.Item2
-                || technology.AccessibilityBusStatus != expectedVerifiedIdentity.Item3))
+        if (string.Equals(technology.StatusBefore, "ACTIVE_VERIFIED"
+, StringComparison.Ordinal) && (!string.Equals(technology.Product, expectedVerifiedIdentity.Item1
+, StringComparison.Ordinal) || !string.Equals(technology.IdentitySource, expectedVerifiedIdentity.Item2
+, StringComparison.Ordinal) || !string.Equals(technology.AccessibilityBusStatus, expectedVerifiedIdentity.Item3, StringComparison.Ordinal)))
         {
             errors.Add("Verified screen-reader identity does not match the platform contract.");
         }
 
         if (evidence.OverallResult == AcceptanceStatus.Pass
-            && (technology.StatusBefore != "ACTIVE_VERIFIED"
-                || technology.StatusAfter != "ACTIVE_VERIFIED"))
+            && (!string.Equals(technology.StatusBefore, "ACTIVE_VERIFIED"
+, StringComparison.Ordinal) || !string.Equals(technology.StatusAfter, "ACTIVE_VERIFIED", StringComparison.Ordinal)))
         {
             errors.Add("PASS requires the expected screen reader before and after observations.");
         }
@@ -658,9 +659,9 @@ internal static class EvidenceValidator
             TargetPlatform.LinuxX11 => ("linux-x11-package", "GhostShell", "GhostShell"),
             _ => (string.Empty, string.Empty, string.Empty),
         };
-        if (build.PackageKind != expected.Item1
-            || build.PackageExecutable != expected.Item2
-            || build.ApplicationIdentity != expected.Item3)
+        if (!string.Equals(build.PackageKind, expected.Item1
+, StringComparison.Ordinal) || !string.Equals(build.PackageExecutable, expected.Item2
+, StringComparison.Ordinal) || !string.Equals(build.ApplicationIdentity, expected.Item3, StringComparison.Ordinal))
         {
             errors.Add("Build identity does not match the target platform.");
         }
@@ -678,7 +679,7 @@ internal static class EvidenceValidator
         {
             var actual = evidence.Checks[index];
             var expected = AcceptanceCatalog.All[index];
-            if (actual.Id != expected.Id || actual.Title != expected.Title)
+            if (!string.Equals(actual.Id, expected.Id, StringComparison.Ordinal) || !string.Equals(actual.Title, expected.Title, StringComparison.Ordinal))
             {
                 errors.Add($"Check {index + 1} does not match catalog entry {expected.Id}.");
             }
@@ -689,7 +690,7 @@ internal static class EvidenceValidator
             }
 
             if (actual.Result == AcceptanceStatus.Pass
-                && actual.ObservationMode != PassingObservationMode(index))
+                && !string.Equals(actual.ObservationMode, PassingObservationMode(index), StringComparison.Ordinal))
             {
                 errors.Add(
                     $"Passing check {actual.Id} does not have its required observation mode.");
@@ -727,7 +728,7 @@ internal static class EvidenceValidator
                  assertionIndex < Math.Min(actual.Assertions.Count, expected.Assertions.Count);
                  assertionIndex++)
             {
-                if (actual.Assertions[assertionIndex].Id != expected.Assertions[assertionIndex].Id)
+                if (!string.Equals(actual.Assertions[assertionIndex].Id, expected.Assertions[assertionIndex].Id, StringComparison.Ordinal))
                 {
                     errors.Add(
                         $"Check {actual.Id} assertion {assertionIndex + 1} does not match the catalog.");
@@ -782,20 +783,20 @@ internal static class EvidenceValidator
             AcceptanceStatus.Fail => AcceptanceEvidence.PreferencesNotRestoredDisposition,
             _ => AcceptanceEvidence.PreferencesUnconfirmedDisposition,
         };
-        if (evidence.PreferenceRestorationDisposition != expectedRestoration)
+        if (!string.Equals(evidence.PreferenceRestorationDisposition, expectedRestoration, StringComparison.Ordinal))
         {
             errors.Add("Preference-restoration disposition does not match the final assertion.");
         }
 
         if (packageExited == AcceptanceStatus.Pass
-            && evidence.CleanupDisposition != AcceptanceEvidence.CleanExitDisposition)
+            && !string.Equals(evidence.CleanupDisposition, AcceptanceEvidence.CleanExitDisposition, StringComparison.Ordinal))
         {
             errors.Add("A passing package-exit assertion requires runner-confirmed clean exit.");
         }
 
         if (readerActive == AcceptanceStatus.Pass
-            && (evidence.AssistiveTechnology.StatusBefore != "ACTIVE_VERIFIED"
-                || evidence.AssistiveTechnology.StatusAfter != "ACTIVE_VERIFIED"))
+            && (!string.Equals(evidence.AssistiveTechnology.StatusBefore, "ACTIVE_VERIFIED"
+, StringComparison.Ordinal) || !string.Equals(evidence.AssistiveTechnology.StatusAfter, "ACTIVE_VERIFIED", StringComparison.Ordinal)))
         {
             errors.Add(
                 "A passing screen-reader-active assertion requires verified reader identity before and after observations.");
@@ -812,7 +813,7 @@ internal static class EvidenceValidator
     }
 
     private static AcceptanceStatus? AssertionResult(CheckObservation check, string id) =>
-        check.Assertions.FirstOrDefault(assertion => assertion.Id == id)?.Result;
+        check.Assertions.FirstOrDefault(assertion => string.Equals(assertion.Id, id, StringComparison.Ordinal))?.Result;
 
     private static string PassingObservationMode(int checkIndex) => checkIndex switch
     {

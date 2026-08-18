@@ -57,7 +57,7 @@ public sealed class DeterministicRecentSessionHistoryExporterTests
         var root = document.RootElement;
         Assert.Equal(
             ["schemaVersion", "contentPolicy", "exportedAt", "sessions"],
-            root.EnumerateObject().Select(property => property.Name));
+            root.EnumerateObject().Select(property => property.Name), StringComparer.Ordinal);
         Assert.Equal(
             RecentSessionHistoryExportFormat.CurrentSchemaVersion,
             root.GetProperty("schemaVersion").GetInt32());
@@ -71,7 +71,7 @@ public sealed class DeterministicRecentSessionHistoryExporterTests
         var sessions = root.GetProperty("sessions").EnumerateArray().ToArray();
         Assert.Equal(
             ["session-newer", "session-older"],
-            sessions.Select(session => session.GetProperty("sessionId").GetString()));
+            sessions.Select(session => session.GetProperty("sessionId").GetString()), StringComparer.Ordinal);
         Assert.All(
             sessions,
             session => Assert.Equal(
@@ -85,7 +85,7 @@ public sealed class DeterministicRecentSessionHistoryExporterTests
                     "endedAt",
                     "outcome",
                 ],
-                session.EnumerateObject().Select(property => property.Name)));
+                session.EnumerateObject().Select(property => property.Name), StringComparer.Ordinal));
         Assert.Equal("screen", sessions[0].GetProperty("sourceDefinitionKind").GetString());
         Assert.Equal("operations", sessions[0].GetProperty("sourceDefinitionId").GetString());
         Assert.Equal("file-viewer", sessions[0].GetProperty("panelKind").GetString());
@@ -133,7 +133,7 @@ public sealed class DeterministicRecentSessionHistoryExporterTests
             document.RootElement
                 .GetProperty("sessions")
                 .EnumerateArray()
-                .Select(session => session.GetProperty("sessionId").GetString()));
+                .Select(session => session.GetProperty("sessionId").GetString()), StringComparer.Ordinal);
     }
 
     [Fact]

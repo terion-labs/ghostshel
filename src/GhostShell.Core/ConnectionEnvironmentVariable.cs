@@ -4,6 +4,8 @@ namespace GhostShell.Core;
 
 public sealed partial record ConnectionEnvironmentVariable
 {
+    private const int RegexTimeoutMilliseconds = 1_000;
+
     public ConnectionEnvironmentVariable(string name, ConnectionEnvironmentValue value)
     {
         ArgumentNullException.ThrowIfNull(value);
@@ -23,6 +25,9 @@ public sealed partial record ConnectionEnvironmentVariable
 
     public ConnectionEnvironmentValue Value { get; }
 
-    [GeneratedRegex("^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(
+        "^[A-Za-z_][A-Za-z0-9_]*$",
+        RegexOptions.CultureInvariant,
+        RegexTimeoutMilliseconds)]
     private static partial Regex PortableName();
 }

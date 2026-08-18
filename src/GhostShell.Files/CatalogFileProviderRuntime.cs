@@ -349,7 +349,7 @@ public sealed class CatalogFileProviderRuntime :
             _catalog.Changed -= OnCatalogChanged;
             _lifetime.Cancel();
             active = _active;
-            routes = _transferRoutes.Values.ToArray();
+            routes = [.. _transferRoutes.Values];
             _transferRoutes.Clear();
         }
 
@@ -656,8 +656,8 @@ public sealed class CatalogFileProviderRuntime :
 
         foreach (var stored in snapshot.FileProviderProfiles)
         {
-            if (stored.Value.Id.Value == "builtin.files.home"
-                || stored.Value.Id.Value.StartsWith(
+            if (string.Equals(stored.Value.Id.Value, "builtin.files.home"
+, StringComparison.Ordinal) || stored.Value.Id.Value.StartsWith(
                     "builtin.files.connection.",
                     StringComparison.Ordinal))
             {
@@ -806,7 +806,7 @@ public sealed class CatalogFileProviderRuntime :
 
         if (profile.Configuration is FileProviderConfiguration.S3
             {
-                RootPrefix: { Length: > 0 },
+                RootPrefix.Length: > 0,
             })
         {
             diagnostics.Add(new FileProviderRuntimeDiagnostic(

@@ -19,7 +19,7 @@ internal static class RegularPackageFileReader
             var attributes = File.GetAttributes(path);
             if ((attributes & (FileAttributes.Directory
                     | FileAttributes.ReparsePoint
-                    | FileAttributes.Device)) != 0)
+                    | FileAttributes.Device)) != FileAttributes.None)
             {
                 throw new InvalidDataException(
                     "The publish payload contains a non-regular file.");
@@ -98,9 +98,13 @@ internal static class RegularPackageFileReader
         return Marshal.ReadInt32(statBuffer, modeOffset) & 0xFFFF;
     }
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
     [DllImport("libc", EntryPoint = "open", SetLastError = true)]
-    private static extern int OpenUnix(string path, int flags);
+    private static extern int OpenUnix(
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string path,
+        int flags);
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
     [DllImport("libc", EntryPoint = "fstat", SetLastError = true)]
     private static extern int FStat(int fileDescriptor, nint statBuffer);
 }

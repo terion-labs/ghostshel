@@ -21,8 +21,7 @@ public sealed class BrowserOperationTests
             ])
             : new CapabilitySet(
                 advertisedCapabilities.Values.Where(
-                    capability =>
-                        capability != SessionCapabilities.BrowserStop));
+                    capability => !string.Equals(capability, SessionCapabilities.BrowserStop, StringComparison.Ordinal)));
         var browsers = new FakeBrowserPanelSessionFactory(
             advertisedCapabilities,
             createdCapabilities);

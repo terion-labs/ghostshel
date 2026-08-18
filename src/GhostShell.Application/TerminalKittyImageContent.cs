@@ -1,5 +1,8 @@
+using System.Runtime.InteropServices;
+
 namespace GhostShell.Application;
 
+[StructLayout(LayoutKind.Auto)]
 public readonly record struct TerminalKittyImageKey
 {
     public TerminalKittyImageKey(uint ImageId, ulong Generation)

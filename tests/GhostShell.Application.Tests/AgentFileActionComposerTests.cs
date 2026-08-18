@@ -65,7 +65,7 @@ public sealed class AgentFileActionComposerTests
                 "Stat",
                 "Transfers",
             ],
-            requestKinds.Select(type => type.Name));
+            requestKinds.Select(type => type.Name), StringComparer.Ordinal);
         Assert.All(requestKinds, type => Assert.True(type.IsSealed));
         Assert.All(requestKinds, type => Assert.Contains(
             type.GetProperties(),
@@ -92,7 +92,7 @@ public sealed class AgentFileActionComposerTests
                 "SearchResults",
                 "Transfers",
             ],
-            resultKinds.Select(type => type.Name));
+            resultKinds.Select(type => type.Name), StringComparer.Ordinal);
         Assert.All(resultKinds, type => Assert.True(type.IsSealed));
         Assert.Empty(typeof(AgentFileAction).GetConstructors());
         Assert.Empty(typeof(AgentActionExecutionBinding).GetConstructors());
@@ -252,17 +252,17 @@ public sealed class AgentFileActionComposerTests
 
         Assert.Equal(BuiltInAgentTools.FilesSearch, search.Proposal.ToolName);
         Assert.Contains(search.Proposal.Presentation.Arguments,
-            argument => argument.Name == "query" && argument.DisplayValue == "error");
+            argument => string.Equals(argument.Name, "query", StringComparison.Ordinal) && string.Equals(argument.DisplayValue, "error", StringComparison.Ordinal));
         Assert.Contains(search.Proposal.Presentation.Arguments,
-            argument => argument.Name == "scope" && argument.DisplayValue == "subtree");
+            argument => string.Equals(argument.Name, "scope", StringComparison.Ordinal) && string.Equals(argument.DisplayValue, "subtree", StringComparison.Ordinal));
         Assert.Contains(search.Proposal.Presentation.Arguments,
-            argument => argument.Name == "maximum_results" && argument.DisplayValue == "17");
+            argument => string.Equals(argument.Name, "maximum_results", StringComparison.Ordinal) && string.Equals(argument.DisplayValue, "17", StringComparison.Ordinal));
         Assert.Contains(access.Proposal.Presentation.Arguments,
-            argument => argument.Name == "maximum_grants"
-                && argument.DisplayValue == "100");
+            argument => string.Equals(argument.Name, "maximum_grants"
+, StringComparison.Ordinal) && string.Equals(argument.DisplayValue, "100", StringComparison.Ordinal));
         Assert.Contains(transfers.Proposal.Presentation.Arguments,
-            argument => argument.Name == "owned_by_session"
-                && argument.DisplayValue == "true");
+            argument => string.Equals(argument.Name, "owned_by_session"
+, StringComparison.Ordinal) && string.Equals(argument.DisplayValue, "true", StringComparison.Ordinal));
         Assert.NotEqual(search.Proposal.ArgumentDigest, access.Proposal.ArgumentDigest);
         Assert.NotEqual(access.Proposal.ArgumentDigest, transfers.Proposal.ArgumentDigest);
     }
@@ -280,7 +280,7 @@ public sealed class AgentFileActionComposerTests
             "7",
             Assert.Single(
                 action.Proposal.Presentation.Arguments,
-                argument => argument.Name == "page_size").DisplayValue);
+                argument => string.Equals(argument.Name, "page_size", StringComparison.Ordinal)).DisplayValue);
         Assert.Equal(
             7,
             AgentFileActionComposer.GetEffectiveListPageSize(metadata));
@@ -356,11 +356,11 @@ public sealed class AgentFileActionComposerTests
 
         var location = AgentFileActionComposer.ResolveLocation(
             metadata,
-            ImmutableArray<FilePanelPathSegment>.Empty);
+            []);
         var path = Assert.IsType<FilePanelAddress.Hierarchical>(location.Address).Path;
 
         Assert.Equal(metadata.TrustedRoot, location);
-        Assert.Equal(["srv", "data"], path.Segments.Select(segment => segment.Value));
+        Assert.Equal(["srv", "data"], path.Segments.Select(segment => segment.Value), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -373,7 +373,7 @@ public sealed class AgentFileActionComposerTests
 
         Assert.Equal(
             ["srv", "data", "folder", "literal name", "file.txt"],
-            path.Segments.Select(segment => segment.Value));
+            path.Segments.Select(segment => segment.Value), StringComparer.Ordinal);
         Assert.Equal("files.production", location.ProviderProfileId);
         Assert.Equal("storage.example", location.Authority);
         Assert.Null(location.Version);
@@ -444,7 +444,7 @@ public sealed class AgentFileActionComposerTests
             Assert.NotEqual(
                 baseline.Proposal.ArgumentDigest,
                 action.Proposal.ArgumentDigest);
-            Assert.NotEqual(ApprovalMaterial(baseline), ApprovalMaterial(action));
+            Assert.NotEqual(ApprovalMaterial(baseline), ApprovalMaterial(action), StringComparer.Ordinal);
         });
     }
 
@@ -564,7 +564,7 @@ public sealed class AgentFileActionComposerTests
                 FileContext(),
                 new AgentFileRequest.List(
                     new SessionId("other-session"),
-                    ImmutableArray<FilePanelPathSegment>.Empty)));
+                    [])));
     }
 
     [Fact]
@@ -602,7 +602,7 @@ public sealed class AgentFileActionComposerTests
         var invalidPaths = new[]
         {
             default(ImmutableArray<FilePanelPathSegment>),
-            ImmutableArray.Create(default(FilePanelPathSegment)),
+            [default(FilePanelPathSegment)],
             Segments("line\nbreak"),
             Segments("hidden\u200Bformat"),
             Segments("hidden\U000E0001format"),
@@ -611,15 +611,13 @@ public sealed class AgentFileActionComposerTests
             Segments("C:", "absolute"),
             Segments("\uD800"),
             Segments(new string('x', AgentFileActionComposer.MaximumPathSegmentBytes + 1)),
-            Enumerable
+            [.. Enumerable
                 .Range(0, AgentFileActionComposer.MaximumRelativePathSegments + 1)
-                .Select(index => new FilePanelPathSegment($"segment-{index}"))
-                .ToImmutableArray(),
-            Enumerable
+                .Select(index => new FilePanelPathSegment($"segment-{index}"))],
+            [.. Enumerable
                 .Range(0, 20)
                 .Select(index => new FilePanelPathSegment(
-                    $"{index:D2}-{new string('x', 247)}"))
-                .ToImmutableArray(),
+                    $"{index:D2}-{new string('x', 247)}"))],
         };
 
         foreach (var path in invalidPaths)
@@ -732,16 +730,16 @@ public sealed class AgentFileActionComposerTests
             @"/literal\\root",
             Assert.Single(
                 plain.Proposal.Presentation.Arguments,
-                argument => argument.Name == "trusted_root").DisplayValue);
+                argument => string.Equals(argument.Name, "trusted_root", StringComparison.Ordinal)).DisplayValue);
         Assert.Equal(
             "literal child",
             Assert.Single(
                 plain.Proposal.Presentation.Arguments,
-                argument => argument.Name == "relative_path").DisplayValue);
+                argument => string.Equals(argument.Name, "relative_path", StringComparison.Ordinal)).DisplayValue);
         Assert.NotEqual(
             plain.Proposal.ArgumentDigest,
             escapedText.Proposal.ArgumentDigest);
-        Assert.NotEqual(ApprovalMaterial(plain), ApprovalMaterial(escapedText));
+        Assert.NotEqual(ApprovalMaterial(plain), ApprovalMaterial(escapedText), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -869,7 +867,7 @@ public sealed class AgentFileActionComposerTests
 
     private static ImmutableArray<FilePanelPathSegment> Segments(
         params string[] values) =>
-        values.Select(value => new FilePanelPathSegment(value)).ToImmutableArray();
+        [.. values.Select(value => new FilePanelPathSegment(value))];
 
     private static AgentActionEnvelope Envelope() =>
         new(

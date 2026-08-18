@@ -118,7 +118,7 @@ internal static class FileAgentToolParser
         IReadOnlyDictionary<string, JsonElement> properties,
         PanelInstanceId? panelId)
     {
-        if (toolName == BuiltInAgentTools.FilesTransfers)
+        if (string.Equals(toolName, BuiltInAgentTools.FilesTransfers, StringComparison.Ordinal))
         {
             return properties.Count == 0
                 ? new FileAgentIntentResult.Parsed(
@@ -127,17 +127,17 @@ internal static class FileAgentToolParser
                 : Invalid("File transfer observation accepts no arguments.");
         }
 
-        if (toolName == BuiltInAgentTools.FilesSearch)
+        if (string.Equals(toolName, BuiltInAgentTools.FilesSearch, StringComparison.Ordinal))
         {
             return ParseSearch(properties, panelId);
         }
 
-        if (toolName == BuiltInAgentTools.FilesDelete)
+        if (string.Equals(toolName, BuiltInAgentTools.FilesDelete, StringComparison.Ordinal))
         {
             return ParseDelete(properties, panelId);
         }
 
-        if (toolName == BuiltInAgentTools.FilesMove)
+        if (string.Equals(toolName, BuiltInAgentTools.FilesMove, StringComparison.Ordinal))
         {
             return ParseMove(properties, panelId);
         }

@@ -490,15 +490,14 @@ public sealed partial class AgentWorkspaceView : UserControl
             row => row.Item.IsSteering == item.IsSteering);
 
     private List<QueuedFollowUpRow> QueuedFollowUpRows() =>
-        AgentQueuedFollowUps
+        [.. AgentQueuedFollowUps
             .GetVisualDescendants()
             .OfType<Grid>()
             .Where(row => row.Classes.Contains("agentQueueRow"))
             .Select(row => new QueuedFollowUpRow(
                 row,
                 (AgentQueuedFollowUpViewModel)row.DataContext!))
-            .OrderBy(row => row.Row.TranslatePoint(default, AgentQueuedFollowUps)?.Y)
-            .ToList();
+            .OrderBy(row => row.Row.TranslatePoint(default, AgentQueuedFollowUps)?.Y)];
 
     internal static bool ShouldSubmitPrompt(Key key, KeyModifiers modifiers) =>
         key == Key.Enter && modifiers == KeyModifiers.None;

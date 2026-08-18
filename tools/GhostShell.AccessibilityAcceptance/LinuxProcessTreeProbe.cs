@@ -144,7 +144,7 @@ internal sealed class LinuxProcessTreeProbe : IProcessTreeProbe
         }
         finally
         {
-            Close((int)descriptor);
+            _ = Close((int)descriptor);
         }
     }
 
@@ -287,12 +287,14 @@ internal sealed class LinuxProcessTreeProbe : IProcessTreeProbe
             parentProcessId);
     }
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
     [DllImport("libc", EntryPoint = "syscall", SetLastError = true)]
     private static extern long SyscallPidFdOpen(
         long number,
         int processId,
         uint flags);
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
     [DllImport("libc", EntryPoint = "syscall", SetLastError = true)]
     private static extern long SyscallPidFdSendSignal(
         long number,
@@ -301,9 +303,11 @@ internal sealed class LinuxProcessTreeProbe : IProcessTreeProbe
         IntPtr signalInformation,
         uint flags);
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
     [DllImport("libc")]
     private static extern int Close(int descriptor);
 
+    [StructLayout(LayoutKind.Auto)]
     private readonly record struct LinuxProcess(
         ProcessIdentity Identity,
         int ParentProcessId);

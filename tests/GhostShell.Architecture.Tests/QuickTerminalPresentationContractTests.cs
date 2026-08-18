@@ -43,10 +43,10 @@ public sealed class QuickTerminalPresentationContractTests
         var root = Assert.IsType<XElement>(document.Root);
         var viewport = Assert.Single(
             root.Descendants(),
-            element => AttributeValue(element, "Name") == "RevealViewport");
+            element => string.Equals(AttributeValue(element, "Name"), "RevealViewport", StringComparison.Ordinal));
         var slidingPanel = Assert.Single(
             root.Descendants(),
-            element => AttributeValue(element, "Name") == "SlidingPanel");
+            element => string.Equals(AttributeValue(element, "Name"), "SlidingPanel", StringComparison.Ordinal));
 
         Assert.Equal("Transparent", AttributeValue(root, "Background"));
         Assert.Null(AttributeValue(root, "TransparencyBackgroundFallback"));
@@ -56,52 +56,51 @@ public sealed class QuickTerminalPresentationContractTests
         Assert.Equal("0", AttributeValue(slidingPanel, "CornerRadius"));
         Assert.Contains(
             root.Descendants(),
-            element => AttributeValue(element, "Name") == "ResizeGrip"
-                && AttributeValue(element, "PointerPressed") == "OnResizeGripPointerPressed");
+            element => string.Equals(AttributeValue(element, "Name"), "ResizeGrip"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "PointerPressed"), "OnResizeGripPointerPressed", StringComparison.Ordinal));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "PanelConnectionSelectorView"
-                && AttributeValue(element, "Options") == "{Binding ConnectionOptions}");
+            element => string.Equals(element.Name.LocalName, "PanelConnectionSelectorView"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Options"), "{Binding ConnectionOptions}", StringComparison.Ordinal));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "RuntimeTabStripView"
-                && AttributeValue(element, "Tabs") == "{Binding Tabs}"
-                && AttributeValue(element, "IconPickerPlacement") == "TopEdgeAlignedLeft"
-                && AttributeValue(element, "AddTabRequested") == "OnAddTabRequested");
+            element => string.Equals(element.Name.LocalName, "RuntimeTabStripView"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Tabs"), "{Binding Tabs}"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "IconPickerPlacement"), "TopEdgeAlignedLeft"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "AddTabRequested"), "OnAddTabRequested", StringComparison.Ordinal));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "Border"
-                && AttributeValue(element, "Classes") == "PanelAgentGlow"
-                && AttributeValue(element, "BoxShadow")
-                    == "{DynamicResource ShellAgentPanelGlowShadow}"
-                && AttributeValue(element, "IsVisible")
-                    == "{Binding ActiveTab.HasAgentActivity}");
+            element => string.Equals(element.Name.LocalName, "Border"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Classes"), "PanelAgentGlow"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "BoxShadow")
+, "{DynamicResource ShellAgentPanelGlowShadow}"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "IsVisible")
+, "{Binding ActiveTab.HasAgentActivity}", StringComparison.Ordinal));
         var agentGlow = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "Border"
-                && AttributeValue(element, "Classes") == "PanelAgentGlow");
+            element => string.Equals(element.Name.LocalName, "Border"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Classes"), "PanelAgentGlow", StringComparison.Ordinal));
         Assert.Null(AttributeValue(agentGlow, "Margin"));
         Assert.Equal("0", AttributeValue(agentGlow, "CornerRadius"));
         var controlBar = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "Grid"
-                && AttributeValue(element, "ColumnDefinitions") == "*,Auto,Auto"
-                && element.Descendants().Any(descendant =>
-                    AttributeValue(descendant, "Click") == "OnHideClick"));
+            element => string.Equals(element.Name.LocalName, "Grid"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "ColumnDefinitions"), "*,Auto,Auto"
+, StringComparison.Ordinal) && element.Descendants().Any(descendant => string.Equals(AttributeValue(descendant, "Click"), "OnHideClick", StringComparison.Ordinal)));
         Assert.Equal(
             "{controls:Inset Left=Md, Right=Xs}",
             AttributeValue(controlBar, "Margin"));
         var statusBackground = Assert.Single(
             root.Descendants(),
-            element => AttributeValue(element, "Name")
-                == "QuickTerminalStatusBackground");
+            element => string.Equals(AttributeValue(element, "Name")
+, "QuickTerminalStatusBackground", StringComparison.Ordinal));
         Assert.Equal(
             "{DynamicResource ShellSurfaceBrush}",
             AttributeValue(statusBackground, "Background"));
         var statusDivider = Assert.Single(
             root.Descendants(),
-            element => AttributeValue(element, "Name")
-                == "QuickTerminalStatusDivider");
+            element => string.Equals(AttributeValue(element, "Name")
+, "QuickTerminalStatusDivider", StringComparison.Ordinal));
         Assert.Equal("1", AttributeValue(statusDivider, "Height"));
         Assert.Equal("Top", AttributeValue(statusDivider, "VerticalAlignment"));
         Assert.Equal(
@@ -109,91 +108,87 @@ public sealed class QuickTerminalPresentationContractTests
             AttributeValue(statusDivider, "Background"));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "AgentWorkspaceView"
-                && AttributeValue(element, "Name") == "QuickTerminalAgentSurface"
-                && AttributeValue(element, "MaxHeight")
-                    == "{Binding #AgentViewport.Bounds.Height}"
-                && AttributeValue(element, "Classes.floating")
-                    == "{Binding !IsAgentPanelDocked}"
-                && AttributeValue(element, "Classes") == "edgeResizable"
-                && AttributeValue(element, "Classes.docked")
-                    == "{Binding IsAgentPanelDocked}"
-                && AttributeValue(element, "Classes.edgeLeft")
-                    == "{Binding IsAgentPanelOnLeft}"
-                && AttributeValue(element, "Classes.edgeRight")
-                    == "{Binding IsAgentPanelOnRight}"
-                && AttributeValue(element, "Classes.anchorBottom")
-                    == "{Binding IsAgentPanelAnchoredBottom}"
-                && AttributeValue(element, "Classes.anchorTop")
-                    == "{Binding IsAgentPanelAnchoredTop}"
-                && AttributeValue(element, "HorizontalAlignment")
-                    == "{Binding AgentPanelAlignment}"
-                && AttributeValue(element, "VerticalAlignment")
-                    == "{Binding AgentPanelVerticalAlignment}");
+            element => string.Equals(element.Name.LocalName, "AgentWorkspaceView"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Name"), "QuickTerminalAgentSurface"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "MaxHeight")
+, "{Binding #AgentViewport.Bounds.Height}"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Classes.floating")
+, "{Binding !IsAgentPanelDocked}"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Classes"), "edgeResizable"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Classes.docked")
+, "{Binding IsAgentPanelDocked}"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Classes.edgeLeft")
+, "{Binding IsAgentPanelOnLeft}"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Classes.edgeRight")
+, "{Binding IsAgentPanelOnRight}"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Classes.anchorBottom")
+, "{Binding IsAgentPanelAnchoredBottom}"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Classes.anchorTop")
+, "{Binding IsAgentPanelAnchoredTop}"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "HorizontalAlignment")
+, "{Binding AgentPanelAlignment}"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "VerticalAlignment")
+, "{Binding AgentPanelVerticalAlignment}", StringComparison.Ordinal));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "Border"
-                && AttributeValue(element, "Width")
-                    == "{Binding #QuickTerminalAgentSurface.Bounds.Width}"
-                && AttributeValue(element, "IsVisible")
-                    == "{Binding IsAgentPanelDockedVisible}");
+            element => string.Equals(element.Name.LocalName, "Border"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Width")
+, "{Binding #QuickTerminalAgentSurface.Bounds.Width}"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "IsVisible")
+, "{Binding IsAgentPanelDockedVisible}", StringComparison.Ordinal));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "Button"
-                && AttributeValue(element, "Click") == "OnToggleAgentClick"
-                && element.Descendants().Any(descendant =>
-                    AttributeValue(descendant, "Symbol") == "Bot"));
+            element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Click"), "OnToggleAgentClick"
+, StringComparison.Ordinal) && element.Descendants().Any(descendant => string.Equals(AttributeValue(descendant, "Symbol"), "Bot", StringComparison.Ordinal)));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "SymbolIcon"
-                && AttributeValue(element, "Classes")
-                    == "AgentToolbarActivityPulse"
-                && AttributeValue(element, "Classes.running")
-                    == "{Binding AgentChat.IsBusy}"
-                && AttributeValue(element, "Opacity") == "0");
+            element => string.Equals(element.Name.LocalName, "SymbolIcon"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Classes")
+, "AgentToolbarActivityPulse"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Classes.running")
+, "{Binding AgentChat.IsBusy}"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Opacity"), "0", StringComparison.Ordinal));
         Assert.DoesNotContain(
             root.Descendants(),
-            element => AttributeValue(element, "Click") == "OnSettingsClick");
+            element => string.Equals(AttributeValue(element, "Click"), "OnSettingsClick", StringComparison.Ordinal));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "Setter"
-                && AttributeValue(element, "Property") == "CornerRadius"
-                && AttributeValue(element, "Value") == "0"
-                && element.Parent is { } style
-                && AttributeValue(style, "Selector")
-                    == "views|AgentWorkspaceView.docked Border.AgentPanel");
+            element => string.Equals(element.Name.LocalName, "Setter"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Property"), "CornerRadius"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Value"), "0"
+, StringComparison.Ordinal) && element.Parent is { } style
+                && string.Equals(AttributeValue(style, "Selector")
+, "views|AgentWorkspaceView.docked Border.AgentPanel", StringComparison.Ordinal));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "Setter"
-                && AttributeValue(element, "Property") == "BorderThickness"
-                && AttributeValue(element, "Value") == "1,0,1,0"
-                && element.Parent is { } style
-                && AttributeValue(style, "Selector")
-                    == "views|AgentWorkspaceView.docked Border.AgentPanel");
+            element => string.Equals(element.Name.LocalName, "Setter"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Property"), "BorderThickness"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Value"), "1,0,1,0"
+, StringComparison.Ordinal) && element.Parent is { } style
+                && string.Equals(AttributeValue(style, "Selector")
+, "views|AgentWorkspaceView.docked Border.AgentPanel", StringComparison.Ordinal));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "Style"
-                && AttributeValue(element, "Selector")
-                    == "views|AgentWorkspaceView.docked.nativeMaterial Border.AgentPanel"
-                && element.Elements().Any(setter =>
-                    AttributeValue(setter, "Property") == "Background"
-                    && AttributeValue(setter, "Value") == "Transparent"));
+            element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Selector")
+, "views|AgentWorkspaceView.docked.nativeMaterial Border.AgentPanel"
+, StringComparison.Ordinal) && element.Elements().Any(setter => string.Equals(AttributeValue(setter, "Property"), "Background"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(setter, "Value"), "Transparent", StringComparison.Ordinal)));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "Style"
-                && AttributeValue(element, "Selector")
-                    == "views|AgentWorkspaceView.floating.anchorBottom"
-                && element.Elements().Any(setter =>
-                    AttributeValue(setter, "Property") == "Margin"
-                    && AttributeValue(setter, "Value") == "0,12,0,0"));
+            element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Selector")
+, "views|AgentWorkspaceView.floating.anchorBottom"
+, StringComparison.Ordinal) && element.Elements().Any(setter => string.Equals(AttributeValue(setter, "Property"), "Margin"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(setter, "Value"), "0,12,0,0", StringComparison.Ordinal)));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "Style"
-                && AttributeValue(element, "Selector")
-                    == "views|AgentWorkspaceView.floating.anchorTop"
-                && element.Elements().Any(setter =>
-                    AttributeValue(setter, "Property") == "Margin"
-                    && AttributeValue(setter, "Value") == "0,0,0,12"));
+            element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Selector")
+, "views|AgentWorkspaceView.floating.anchorTop"
+, StringComparison.Ordinal) && element.Elements().Any(setter => string.Equals(AttributeValue(setter, "Property"), "Margin"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(setter, "Value"), "0,0,0,12", StringComparison.Ordinal)));
         Assert.DoesNotContain(
             root.Descendants(),
             element => AttributeValue(element, "Text") is
@@ -220,7 +215,8 @@ public sealed class QuickTerminalPresentationContractTests
         var toggle = Regex.Match(
             controller,
             @"public void Toggle\(\)(?<body>.*?)public void Hide\(\)",
-            RegexOptions.Singleline);
+            RegexOptions.Singleline | RegexOptions.CultureInvariant,
+            TimeSpan.FromSeconds(1));
 
         Assert.True(toggle.Success);
         Assert.Contains("window.PlaceAt(workingArea.Position, scale)", controller, StringComparison.Ordinal);
@@ -307,7 +303,9 @@ public sealed class QuickTerminalPresentationContractTests
             StringComparison.Ordinal);
         Assert.Single(Regex.Matches(
             window,
-            @"TransparencyLevelHint\s*=\s*hint;"));
+            @"TransparencyLevelHint\s*=\s*hint;",
+            RegexOptions.CultureInvariant,
+            TimeSpan.FromSeconds(1)));
     }
 
     [Fact]
@@ -322,15 +320,18 @@ public sealed class QuickTerminalPresentationContractTests
         var pressed = Regex.Match(
             window,
             @"private void OnTabReorderPointerPressed\(.*?private void OnTabReorderPointerMoved\(",
-            RegexOptions.Singleline);
+            RegexOptions.Singleline | RegexOptions.CultureInvariant,
+            TimeSpan.FromSeconds(1));
         var moved = Regex.Match(
             window,
             @"private void OnTabReorderPointerMoved\(.*?private void OnTabReorderPointerReleased\(",
-            RegexOptions.Singleline);
+            RegexOptions.Singleline | RegexOptions.CultureInvariant,
+            TimeSpan.FromSeconds(1));
         var released = Regex.Match(
             window,
             @"private void OnTabReorderPointerReleased\(.*?private void OnTabReorderPointerCaptureLost\(",
-            RegexOptions.Singleline);
+            RegexOptions.Singleline | RegexOptions.CultureInvariant,
+            TimeSpan.FromSeconds(1));
 
         Assert.True(pressed.Success);
         Assert.True(moved.Success);
@@ -353,7 +354,8 @@ public sealed class QuickTerminalPresentationContractTests
         var closing = Regex.Match(
             window,
             @"private void OnWindowClosing\(.*?private void RequestDismiss",
-            RegexOptions.Singleline);
+            RegexOptions.Singleline | RegexOptions.CultureInvariant,
+            TimeSpan.FromSeconds(1));
 
         Assert.True(closing.Success);
         Assert.Contains("if (_allowClose)", closing.Value, StringComparison.Ordinal);
@@ -398,6 +400,6 @@ public sealed class QuickTerminalPresentationContractTests
 
     private static string? AttributeValue(XElement element, string localName) =>
         element.Attributes()
-            .SingleOrDefault(attribute => attribute.Name.LocalName == localName)
+            .SingleOrDefault(attribute => string.Equals(attribute.Name.LocalName, localName, StringComparison.Ordinal))
             ?.Value;
 }

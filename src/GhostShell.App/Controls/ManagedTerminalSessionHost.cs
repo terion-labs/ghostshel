@@ -600,7 +600,7 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
                 || lease.AttachmentId != attachmentId
                 || lease.Holder.Kind != ActorKind.Human
                 || lease.Holder.ClientId != clientId
-                || lease.Holder.Id.Value != clientId.Value)
+                || !string.Equals(lease.Holder.Id.Value, clientId.Value, StringComparison.Ordinal))
             {
                 throw new InvalidOperationException(
                     "The session host returned an input lease for a different attachment or client.");
@@ -1509,6 +1509,7 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
         : InvalidOperationException($"{error.StableCode}: {error.Message}")
     {
         public HostError Error { get; } = error;
+
     }
 
     private static CapabilitySet InteractiveCapabilities() => new(

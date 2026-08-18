@@ -146,7 +146,7 @@ public sealed class AgentFileActionComposer
             BuiltInAgentTools.FilesAccessRead =>
                 (available & (
                     FilePanelCapability.Permissions
-                    | FilePanelCapability.AccessControlLists)) != 0,
+                    | FilePanelCapability.AccessControlLists)) != FilePanelCapability.None,
             BuiltInAgentTools.FilesTransfers => true,
             _ => available.HasFlag(required),
         };

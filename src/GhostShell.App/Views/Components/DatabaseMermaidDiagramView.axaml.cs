@@ -286,13 +286,13 @@ public sealed partial class DatabaseMermaidDiagramView : UserControl
             return DatabaseDiagramKeyboardAction.None;
         }
 
-        if (key is Key.Add or Key.OemPlus || keySymbol == "+")
+        if (key is Key.Add or Key.OemPlus || string.Equals(keySymbol, "+", StringComparison.Ordinal))
         {
             return DatabaseDiagramKeyboardAction.ZoomIn;
         }
 
         if (!modifiers.HasFlag(KeyModifiers.Shift)
-            && (key is Key.OemMinus or Key.Subtract || keySymbol == "-"))
+            && (key is Key.OemMinus or Key.Subtract || string.Equals(keySymbol, "-", StringComparison.Ordinal)))
         {
             return DatabaseDiagramKeyboardAction.ZoomOut;
         }

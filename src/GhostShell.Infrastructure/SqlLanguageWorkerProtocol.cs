@@ -14,10 +14,10 @@ internal static class SqlLanguageWorkerProtocol
         snapshot.DriverId,
         snapshot.DefaultCatalog,
         snapshot.DefaultSchema,
-        snapshot.Objects.Select(Object).ToArray(),
-        snapshot.Routines.Select(Routine).ToArray(),
+        [.. snapshot.Objects.Select(Object)],
+        [.. snapshot.Routines.Select(Routine)],
         Coverage(snapshot.RoutineCoverage),
-        snapshot.IntrinsicSymbols.Select(IntrinsicSymbol).ToArray(),
+        [.. snapshot.IntrinsicSymbols.Select(IntrinsicSymbol)],
         Coverage(snapshot.IntrinsicCoverage));
 
     public static byte[] Serialize(WorkerRequestEnvelope request)
@@ -86,7 +86,7 @@ internal static class SqlLanguageWorkerProtocol
     private static WorkerCatalogObject Object(SqlCatalogObject value) => new(
         ObjectId(value.Id),
         value.Kind == DatabaseTableKind.View ? "view" : "table",
-        value.Columns.Select(Column).ToArray());
+        [.. value.Columns.Select(Column)]);
 
     private static WorkerCatalogColumn Column(SqlCatalogColumn value) => new(
         value.Name,
@@ -98,7 +98,7 @@ internal static class SqlLanguageWorkerProtocol
         ObjectId(value.Id),
         value.Kind.ToString().ToLowerInvariant(),
         value.Signature,
-        value.Parameters.Select(RoutineParameter).ToArray(),
+        [.. value.Parameters.Select(RoutineParameter)],
         value.ReturnTypeName,
         ValueKind(value.ReturnValueKind),
         value.MinimumArgumentCount,
@@ -207,6 +207,7 @@ internal sealed class SqlLanguageProtocolException : Exception
         : base(message, innerException)
     {
     }
+
 }
 
 internal sealed record WorkerRequestEnvelope(

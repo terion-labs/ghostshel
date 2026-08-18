@@ -44,14 +44,11 @@ public sealed class ApplicationSecurityEditorViewModel : ObservableObject
         _encryption = encryption;
         _protection = protection;
         _biometrics = biometrics;
-        if (_encryption is not null)
-        {
-            _encryption.Changed += (_, _) =>
+        _encryption?.Changed += (_, _) =>
             {
                 OnPropertyChanged(nameof(IsEncryptionEnabled));
                 OnPropertyChanged(nameof(CanUseBiometrics));
             };
-        }
 
         if (_protection is not null)
         {
@@ -211,7 +208,7 @@ public sealed class ApplicationSecurityEditorViewModel : ObservableObject
             {
                 _ = _protection.SetLockTimeoutAsync(
                     value.Minutes == 0 ? null : TimeSpan.FromMinutes(value.Minutes),
-                    CancellationToken.None);
+                    CancellationToken.None).AsTask();
             }
         }
     }

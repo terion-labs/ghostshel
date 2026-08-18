@@ -60,15 +60,14 @@ internal static class DatabaseValueMaterializer
             }
         }
 
-        return columns
+        return [.. columns
             .Select((column, ordinal) => unsafeOrdinals[ordinal]
                 ? column with
                 {
                     ValueKind = DatabaseValueKind.Other,
                     IsReadOnly = true,
                 }
-                : column)
-            .ToArray();
+                : column)];
     }
 
     public static DatabaseValue FromProviderValue(

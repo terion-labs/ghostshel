@@ -3,13 +3,14 @@ using GhostShell.Core;
 
 namespace GhostShell.Monitoring;
 
-public sealed class SystemMonitorPanelSessionFactory : ISystemMonitorPanelSessionFactory
+public sealed class SystemMonitorPanelSessionFactory : ISystemMonitorPanelSessionFactory, IDisposable
 {
     private readonly IConnectionCommandExecutor? _executor;
     private readonly INetworkSnapshotSource? _networkSource;
     private readonly IProcessSnapshotSource? _source;
     private readonly object _samplerGate = new();
     private readonly Dictionary<ConnectionId, SamplerRegistration> _samplers = [];
+    private readonly List<ProcessResourceSampler> _retiredSamplers = [];
     private readonly TimeProvider _timeProvider;
 
     public SystemMonitorPanelSessionFactory(TimeProvider timeProvider)
@@ -115,6 +116,11 @@ public sealed class SystemMonitorPanelSessionFactory : ISystemMonitorPanelSessio
             }
 
             var sampler = CreateSampler(connection);
+            if (_samplers.Remove(connection.Id, out var replaced))
+            {
+                _retiredSamplers.Add(replaced.Sampler);
+            }
+
             _samplers[connection.Id] = new SamplerRegistration(connection, sampler);
             return sampler;
         }
@@ -148,6 +154,25 @@ public sealed class SystemMonitorPanelSessionFactory : ISystemMonitorPanelSessio
         && Equals(left.Startup, right.Startup)
         && Equals(left.KeepAlive, right.KeepAlive)
         && left.HostKeyPolicy == right.HostKeyPolicy;
+
+    public void Dispose()
+    {
+        lock (_samplerGate)
+        {
+            foreach (var registration in _samplers.Values)
+            {
+                registration.Sampler.Dispose();
+            }
+
+            foreach (var sampler in _retiredSamplers)
+            {
+                sampler.Dispose();
+            }
+
+            _samplers.Clear();
+            _retiredSamplers.Clear();
+        }
+    }
 
     private sealed record SamplerRegistration(
         ConnectionProfile Connection,

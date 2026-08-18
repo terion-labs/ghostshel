@@ -79,7 +79,7 @@ public sealed class Fido2SecurityKeyAuthenticator : ISecurityKeyAuthenticator
         System.Reflection.Assembly assembly,
         DllImportSearchPath? searchPath)
     {
-        if (libraryName != Native.LibraryName)
+        if (!string.Equals(libraryName, Native.LibraryName, StringComparison.Ordinal))
         {
             return IntPtr.Zero;
         }

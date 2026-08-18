@@ -308,9 +308,7 @@ public sealed class SqliteDefinitionBundleStore : IDefinitionBundleStore
         PortableDefinitionDocument[] documents;
         try
         {
-            documents = bundle.Definitions
-                .Take(MaximumDefinitionCount + 1)
-                .ToArray();
+            documents = [.. bundle.Definitions.Take(MaximumDefinitionCount + 1)];
         }
         catch (Exception exception) when (IsBundleCollectionException(exception))
         {

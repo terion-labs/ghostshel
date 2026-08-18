@@ -26,9 +26,7 @@ internal static class DatabaseDataGridColumnFactory
         bool canSort)
     {
         ArgumentNullException.ThrowIfNull(columns);
-        return columns
-            .Select((column, ordinal) => CreateColumn(column, ordinal, canSort))
-            .ToArray();
+        return [.. columns.Select((column, ordinal) => CreateColumn(column, ordinal, canSort))];
     }
 
     public static bool CanReuse(

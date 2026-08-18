@@ -147,7 +147,7 @@ internal static class ClaudeCodeExecutableResolver
                 UnixFileMode.UserExecute
                 | UnixFileMode.GroupExecute
                 | UnixFileMode.OtherExecute;
-            return (File.GetUnixFileMode(path) & executeBits) != 0;
+            return (File.GetUnixFileMode(path) & executeBits) != UnixFileMode.None;
         }
         catch (Exception error) when (error is IOException
                                       or UnauthorizedAccessException

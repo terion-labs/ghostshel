@@ -203,7 +203,7 @@ public abstract class FileProviderConformanceSuite
         await WriteBytesAsync(
             context.Provider,
             location,
-            Enumerable.Range(0, 10).Select(value => (byte)value).ToArray(),
+            [.. Enumerable.Range(0, 10).Select(value => (byte)value)],
             new FileMutationPrecondition.MustNotExist());
 
         await using var destination = new MemoryStream();
@@ -337,7 +337,7 @@ public abstract class FileProviderConformanceSuite
         await WriteBytesAsync(
             context.Provider,
             source,
-            Enumerable.Range(0, 32).Select(value => (byte)value).ToArray(),
+            [.. Enumerable.Range(0, 32).Select(value => (byte)value)],
             new FileMutationPrecondition.MustNotExist());
 
         var result = await context.Provider.TransferAsync(
@@ -373,7 +373,7 @@ public abstract class FileProviderConformanceSuite
         await WriteBytesAsync(
             context.Provider,
             source,
-            Enumerable.Range(0, 1_024).Select(value => (byte)value).ToArray(),
+            [.. Enumerable.Range(0, 1_024).Select(value => (byte)(value % 251))],
             new FileMutationPrecondition.MustNotExist());
         await WriteBytesAsync(
             context.Provider,

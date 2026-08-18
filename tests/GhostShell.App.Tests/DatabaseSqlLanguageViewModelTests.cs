@@ -70,7 +70,7 @@ public sealed class DatabaseSqlLanguageViewModelTests
 
         var replacement = Assert.Single(
             panel.Tables,
-            table => table.Descriptor.Name == "named_people");
+            table => string.Equals(table.Descriptor.Name, "named_people", StringComparison.Ordinal));
         await panel.PreviewTableAsync(replacement);
 
         Assert.Equal(replacement.Descriptor.Id, panel.SelectedObject?.Descriptor.Id);

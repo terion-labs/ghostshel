@@ -25,9 +25,9 @@ public sealed class AgentMcpToolCallActionComposerTests
         Assert.Equal(
             AgentMcpToolManifest.ProviderAliasLength,
             first.ProviderAlias.Length);
-        Assert.NotEqual(first.ProviderAlias, changedRevision.ProviderAlias);
-        Assert.NotEqual(first.ProviderAlias, changedSchema.ProviderAlias);
-        Assert.NotEqual(first.ProviderAlias, changedIdentity.ProviderAlias);
+        Assert.NotEqual(first.ProviderAlias, changedRevision.ProviderAlias, StringComparer.Ordinal);
+        Assert.NotEqual(first.ProviderAlias, changedSchema.ProviderAlias, StringComparer.Ordinal);
+        Assert.NotEqual(first.ProviderAlias, changedIdentity.ProviderAlias, StringComparer.Ordinal);
         Assert.DoesNotContain(first.ToolName, first.ProviderAlias, StringComparison.Ordinal);
     }
 
@@ -232,7 +232,7 @@ public sealed class AgentMcpToolCallActionComposerTests
 
         Assert.Equal(
             ["CloseRunAsync", "OpenRunAsync", "RunToolAsync"],
-            methods.Select(method => method.Name));
+            methods.Select(method => method.Name), StringComparer.Ordinal);
         Assert.All(
             methods,
             method => Assert.DoesNotContain(

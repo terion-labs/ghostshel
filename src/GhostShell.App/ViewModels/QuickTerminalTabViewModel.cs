@@ -1,6 +1,6 @@
+using FluentIcons.Common;
 using GhostShell.Application;
 using GhostShell.Core;
-using FluentIcons.Common;
 
 namespace GhostShell.App.ViewModels;
 

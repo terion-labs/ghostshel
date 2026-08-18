@@ -203,10 +203,9 @@ public sealed partial class DatabaseWorkspaceView
 
     private DatabaseGridCellTarget? ResolveCurrentCellTarget()
     {
-        var row = ResultDataGrid.SelectedItem as DatabaseResultRowViewModel;
         var gridColumn = ResultDataGrid.CurrentColumn;
         var ordinal = gridColumn?.DisplayIndex ?? -1;
-        if (row is null
+        if (ResultDataGrid.SelectedItem is not DatabaseResultRowViewModel row
             || gridColumn?.Tag is not DatabaseResultColumnViewModel column
             || ordinal < 0
             || ordinal >= row.Cells.Count)
@@ -1042,9 +1041,7 @@ public sealed partial class DatabaseWorkspaceView
     {
         var name = panel.SelectedObject?.Descriptor.Name ?? "database-page";
         var invalid = Path.GetInvalidFileNameChars();
-        var safe = new string(name
-            .Select(character => invalid.Contains(character) ? '-' : character)
-            .ToArray());
+        var safe = new string([.. name.Select(character => invalid.Contains(character) ? '-' : character)]);
         return string.IsNullOrWhiteSpace(safe) ? "database-page" : safe;
     }
 

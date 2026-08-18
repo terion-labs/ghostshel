@@ -78,7 +78,7 @@ internal sealed class FakeFilePanelSession : IFilePanelSession
 
     public CapabilitySet Capabilities { get; private set; }
 
-    public IReadOnlyList<FilePanelTransferSnapshot> Transfers => _transfers.ToArray();
+    public IReadOnlyList<FilePanelTransferSnapshot> Transfers => [.. _transfers];
 
     public int CreateDirectoryCount { get; private set; }
 

@@ -10,7 +10,7 @@ internal static class MySqlProviderCases
         "mysql",
         "MySQL 8.4.10 LTS",
         "mysql:8.4.10",
-        new Dictionary<string, string>
+        new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["MYSQL_ROOT_PASSWORD"] = Password,
             ["MYSQL_DATABASE"] = "ghostshell",
@@ -23,7 +23,7 @@ internal static class MySqlProviderCases
         "mariadb",
         "MariaDB 11.8.8 LTS",
         "mariadb:11.8.8",
-        new Dictionary<string, string>
+        new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["MARIADB_ROOT_PASSWORD"] = Password,
             ["MARIADB_DATABASE"] = "ghostshell",

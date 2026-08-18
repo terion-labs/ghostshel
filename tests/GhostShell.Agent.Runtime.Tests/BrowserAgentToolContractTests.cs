@@ -46,7 +46,7 @@ public sealed class BrowserAgentToolContractTests
                 BuiltInAgentTools.BrowserReload,
                 BuiltInAgentTools.BrowserStop,
             ],
-            tools.Select(tool => tool.Name));
+            tools.Select(tool => tool.Name), StringComparer.Ordinal);
         Assert.All(
             tools,
             tool =>
@@ -66,10 +66,10 @@ public sealed class BrowserAgentToolContractTests
             });
 
         var navigate = tools.Single(
-            tool => tool.Name == BuiltInAgentTools.BrowserNavigate);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.BrowserNavigate, StringComparison.Ordinal));
         var schema = navigate.InputSchema;
         var properties = schema.GetProperty("properties");
-        Assert.Equal(["url"], properties.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(["url"], properties.EnumerateObject().Select(p => p.Name), StringComparer.Ordinal);
         Assert.Equal(
             2_048,
             properties
@@ -80,10 +80,10 @@ public sealed class BrowserAgentToolContractTests
             ["url"],
             schema.GetProperty("required")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
 
         var click = tools.Single(
-            tool => tool.Name == BuiltInAgentTools.BrowserClick);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.BrowserClick, StringComparison.Ordinal));
         var clickSchema = click.InputSchema;
         var clickProperties = clickSchema.GetProperty("properties");
         var reference = clickProperties.GetProperty("reference");
@@ -109,15 +109,15 @@ public sealed class BrowserAgentToolContractTests
             ["reference", "document_revision"],
             clickSchema.GetProperty("required")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
 
         var fill = tools.Single(
-            tool => tool.Name == BuiltInAgentTools.BrowserFill);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.BrowserFill, StringComparison.Ordinal));
         var fillSchema = fill.InputSchema;
         var fillProperties = fillSchema.GetProperty("properties");
         Assert.Equal(
             ["reference", "document_revision", "text"],
-            fillProperties.EnumerateObject().Select(property => property.Name));
+            fillProperties.EnumerateObject().Select(property => property.Name), StringComparer.Ordinal);
         Assert.Equal(
             2_048,
             fillProperties.GetProperty("text")
@@ -127,9 +127,9 @@ public sealed class BrowserAgentToolContractTests
             ["reference", "document_revision", "text"],
             fillSchema.GetProperty("required")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
         var check = tools.Single(
-            tool => tool.Name == BuiltInAgentTools.BrowserCheck);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.BrowserCheck, StringComparison.Ordinal));
         Assert.Equal(
             clickSchema.GetRawText(),
             check.InputSchema.GetRawText());
@@ -186,7 +186,7 @@ public sealed class BrowserAgentToolContractTests
                 BuiltInAgentTools.BrowserSnapshot,
                 BuiltInAgentTools.BrowserStop,
             ],
-            tools.Select(tool => tool.Name));
+            tools.Select(tool => tool.Name), StringComparer.Ordinal);
         Assert.True(BrowserAgentToolSet.SupportsMutations(panel));
         Assert.False(BrowserAgentToolSet.SupportsMutations(
             ContextPanel(
@@ -234,7 +234,7 @@ public sealed class BrowserAgentToolContractTests
                 BuiltInAgentTools.BrowserReadState,
                 BuiltInAgentTools.BrowserSnapshot,
             ],
-            tools.Select(tool => tool.Name));
+            tools.Select(tool => tool.Name), StringComparer.Ordinal);
         Assert.False(BrowserAgentToolSet.SupportsMutations(panel));
     }
 
@@ -243,7 +243,7 @@ public sealed class BrowserAgentToolContractTests
     {
         var panel = ContextPanel(
             "production",
-            BrowserCapabilityProfile.Production.Capabilities.Values.ToArray());
+            [.. BrowserCapabilityProfile.Production.Capabilities.Values]);
 
         var tools = BrowserAgentToolSet.For(panel);
 
@@ -264,7 +264,7 @@ public sealed class BrowserAgentToolContractTests
                 BuiltInAgentTools.BrowserReload,
                 BuiltInAgentTools.BrowserStop,
             ],
-            tools.Select(tool => tool.Name));
+            tools.Select(tool => tool.Name), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -315,13 +315,13 @@ public sealed class BrowserAgentToolContractTests
             [click.PanelId.Value],
             PanelIds(tools, BuiltInAgentTools.BrowserCheck));
         var broadClick = tools.Single(
-            tool => tool.Name == BuiltInAgentTools.BrowserClick);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.BrowserClick, StringComparison.Ordinal));
         Assert.Equal(
             ["reference", "document_revision", "panel_id"],
             broadClick.InputSchema
                 .GetProperty("required")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
         Assert.Equal(
             [click.PanelId.Value],
             broadClick.InputSchema
@@ -329,7 +329,7 @@ public sealed class BrowserAgentToolContractTests
                 .GetProperty("panel_id")
                 .GetProperty("enum")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
         Assert.Equal(
             [history.PanelId.Value],
             PanelIds(tools, BuiltInAgentTools.BrowserBack));
@@ -338,22 +338,21 @@ public sealed class BrowserAgentToolContractTests
             PanelIds(tools, BuiltInAgentTools.BrowserForward));
         Assert.DoesNotContain(
             tools,
-            tool => tool.Name == BuiltInAgentTools.BrowserReload);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.BrowserReload, StringComparison.Ordinal));
         Assert.DoesNotContain(
             tools,
-            tool => tool.Name == BuiltInAgentTools.BrowserStop);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.BrowserStop, StringComparison.Ordinal));
         Assert.All(
             tools,
             tool => Assert.Contains(
                 tool.InputSchema.GetProperty("required").EnumerateArray(),
-                requirement => requirement.GetString() == "panel_id"));
+                requirement => string.Equals(requirement.GetString(), "panel_id", StringComparison.Ordinal)));
         Assert.DoesNotContain(
             "panel_id",
             BrowserAgentToolSet.For(read)
                 .Single(
-                    tool =>
-                        tool.Name
-                        == BuiltInAgentTools.BrowserReadState)
+                    tool => string.Equals(tool.Name
+, BuiltInAgentTools.BrowserReadState, StringComparison.Ordinal))
                 .InputSchema
                 .GetRawText(),
             StringComparison.Ordinal);
@@ -375,12 +374,12 @@ public sealed class BrowserAgentToolContractTests
                 .GetProperty("panel_id")
                 .GetProperty("enum")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
         Assert.Equal(
             ["panel_id"],
             schema.GetProperty("required")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
 
         var omittedProposal = await ProposalAsync(
             BuiltInAgentTools.BrowserReadState,
@@ -970,21 +969,20 @@ public sealed class BrowserAgentToolContractTests
             PanelIds(tools, BuiltInAgentTools.BrowserReadState));
         Assert.Throws<ArgumentException>(
             () => BrowserAgentToolSet.For(
-                Enumerable.Repeat(special, 257).ToArray()));
+                [.. Enumerable.Repeat(special, 257)]));
     }
 
     private static string[] PanelIds(
         ImmutableArray<AgentToolDefinition> tools,
         string toolName) =>
-        tools
-            .Single(tool => tool.Name == toolName)
+        [.. tools
+            .Single(tool => string.Equals(tool.Name, toolName, StringComparison.Ordinal))
             .InputSchema
             .GetProperty("properties")
             .GetProperty("panel_id")
             .GetProperty("enum")
             .EnumerateArray()
-            .Select(value => value.GetString()!)
-            .ToArray();
+            .Select(value => value.GetString()!)];
 
     [Fact]
     public void LowLevelSchemasAreClosedAndExposeOnlyAtomicGestures()
@@ -1007,19 +1005,19 @@ public sealed class BrowserAgentToolContractTests
                 BuiltInAgentTools.BrowserScroll,
                 BuiltInAgentTools.BrowserEvaluate,
             ],
-            tools.Select(tool => tool.Name));
+            tools.Select(tool => tool.Name), StringComparer.Ordinal);
         Assert.All(tools, tool => Assert.False(
             tool.InputSchema.GetProperty("additionalProperties").GetBoolean()));
         var mouseActions = tools[0].InputSchema
             .GetProperty("properties").GetProperty("action")
             .GetProperty("enum").EnumerateArray()
             .Select(value => value.GetString());
-        Assert.Equal(["move", "click", "wheel"], mouseActions);
+        Assert.Equal(["move", "click", "wheel"], mouseActions, StringComparer.Ordinal);
         var keyActions = tools[1].InputSchema
             .GetProperty("properties").GetProperty("action")
             .GetProperty("enum").EnumerateArray()
             .Select(value => value.GetString());
-        Assert.Equal(["press"], keyActions);
+        Assert.Equal(["press"], keyActions, StringComparer.Ordinal);
         Assert.Contains("side-effect-free", tools[3].Description, StringComparison.Ordinal);
     }
 

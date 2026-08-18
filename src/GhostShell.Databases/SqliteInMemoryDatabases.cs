@@ -41,7 +41,7 @@ public static class SqliteInMemoryDatabases
 
     private const int SQLITE_DESERIALIZE_READONLY = 4;
 
-    private static readonly ConcurrentDictionary<string, PinnedDatabase> Registered = new();
+    private static readonly ConcurrentDictionary<string, PinnedDatabase> Registered = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Registers a database image and returns the connection string that

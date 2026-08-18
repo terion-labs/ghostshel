@@ -109,7 +109,7 @@ internal static partial class FileAgentToolResultJson
         {
             if (grant?.Grantee is null
                 || !Enum.IsDefined(grant.Grantee.Kind)
-                || (grant.Rights & ~FilePanelAccessRight.FullControl) != 0)
+                || (grant.Rights & ~FilePanelAccessRight.FullControl) != FilePanelAccessRight.None)
             {
                 return Rejected("file_result_invalid", panelId);
             }
@@ -328,7 +328,7 @@ internal static partial class FileAgentToolResultJson
         FilePanelAccessRight right,
         string name)
     {
-        if ((available & right) != 0)
+        if ((available & right) != FilePanelAccessRight.None)
         {
             writer.WriteStringValue(name);
         }

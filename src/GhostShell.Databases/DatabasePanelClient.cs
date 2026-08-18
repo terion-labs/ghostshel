@@ -51,7 +51,7 @@ public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
             driver => driver.Descriptor.Id,
             StringComparer.Ordinal);
         _tunnelFactory = tunnelFactory;
-        Drivers = drivers.Select(driver => driver.Descriptor).ToArray();
+        Drivers = [.. drivers.Select(driver => driver.Descriptor)];
     }
 
     public IReadOnlyList<DatabaseDriverDescriptor> Drivers { get; }
@@ -707,10 +707,9 @@ public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
         }
 
         return new IntrinsicCatalogReadResult(
-            symbols.Values
+            [.. symbols.Values
                 .OrderBy(symbol => symbol.Name, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(symbol => symbol.Kind)
-                .ToArray(),
+                .ThenBy(symbol => symbol.Kind)],
             isPartial || symbols.Count == 0,
             estimatedUtf8Bytes);
     }
@@ -1169,8 +1168,8 @@ public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
                 var pageResult = hasLookAheadRow
                     ? result with
                     {
-                        Rows = result.Rows.Take(requestedLimit).ToArray(),
-                        TypedRows = result.ValueRows.Take(requestedLimit).ToArray(),
+                        Rows = [.. result.Rows.Take(requestedLimit)],
+                        TypedRows = [.. result.ValueRows.Take(requestedLimit)],
                         Truncated = true,
                     }
                     : result;
@@ -1279,8 +1278,8 @@ public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
                 var pageResult = hasLookAheadRow
                     ? result with
                     {
-                        Rows = result.Rows.Take(requestedLimit).ToArray(),
-                        TypedRows = result.ValueRows.Take(requestedLimit).ToArray(),
+                        Rows = [.. result.Rows.Take(requestedLimit)],
+                        TypedRows = [.. result.ValueRows.Take(requestedLimit)],
                         Truncated = true,
                     }
                     : result;
@@ -1530,9 +1529,7 @@ public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
             .ToArray();
         var columns = schema is null
             ? visibleOrdinals.Select(item => item.column).ToArray()
-            : visibleOrdinals
-                .Select(item => MergeSchema(item.column, schema))
-                .ToArray();
+            : [.. visibleOrdinals.Select(item => MergeSchema(item.column, schema))];
         var values = new List<IReadOnlyList<DatabaseValue>>();
         var displayRows = new List<IReadOnlyList<string?>>();
         var truncated = false;

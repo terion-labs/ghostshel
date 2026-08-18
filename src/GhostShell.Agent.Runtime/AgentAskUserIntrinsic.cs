@@ -66,8 +66,8 @@ internal static class AgentAskUserIntrinsic
         foreach (var property in arguments.EnumerateObject())
         {
             if (!seen.Add(property.Name)
-                || property.Name != "question"
-                || property.Value.ValueKind != JsonValueKind.String)
+                || !string.Equals(property.Name, "question"
+, StringComparison.Ordinal) || property.Value.ValueKind != JsonValueKind.String)
             {
                 return Invalid();
             }

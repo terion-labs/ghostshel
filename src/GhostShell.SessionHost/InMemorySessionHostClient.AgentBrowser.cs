@@ -998,13 +998,11 @@ public sealed partial class InMemorySessionHostClient
                 error.StableCode,
                 "The browser engine rejected the governed action.",
                 error.Code is
-                    BrowserErrorCode.ElementNotInteractable
-                    or BrowserErrorCode.ElementNotFillable
-                    or BrowserErrorCode.ElementNotCheckable
-                    or BrowserErrorCode.FillValueNotSupported
-                    or BrowserErrorCode.InteractionOutcomeUnknown
-                    ? false
-                    : error.Retryable),
+                    not BrowserErrorCode.ElementNotInteractable
+                    and not BrowserErrorCode.ElementNotFillable
+                    and not BrowserErrorCode.ElementNotCheckable
+                    and not BrowserErrorCode.FillValueNotSupported
+                    and not BrowserErrorCode.InteractionOutcomeUnknown && error.Retryable),
             revision);
     }
 
@@ -1253,5 +1251,6 @@ public sealed partial class InMemorySessionHostClient
         : Exception(error.Message)
     {
         public HostError Error { get; } = error;
+
     }
 }

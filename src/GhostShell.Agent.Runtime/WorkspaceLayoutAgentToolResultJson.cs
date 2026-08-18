@@ -47,7 +47,7 @@ internal static class WorkspaceLayoutAgentToolResultJson
         {
             writer.WriteBoolean("panel_ready", receipt.IsPanelReady);
         }
-        if (receipt.Operation == BuiltInAgentTools.ConnectionsList)
+        if (string.Equals(receipt.Operation, BuiltInAgentTools.ConnectionsList, StringComparison.Ordinal))
         {
             writer.WriteStartArray("connections");
             foreach (var connection in receipt.Connections.Take(64))
@@ -78,7 +78,7 @@ internal static class WorkspaceLayoutAgentToolResultJson
     {
         ArgumentNullException.ThrowIfNull(error);
         var stableCode = ProviderStableCode(error);
-        if (stableCode == OutcomeUnknownStableCode)
+        if (string.Equals(stableCode, OutcomeUnknownStableCode, StringComparison.Ordinal))
         {
             return AgentToolResultJson.Failure(stableCode, retryable: false);
         }

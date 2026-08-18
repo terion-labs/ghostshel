@@ -31,7 +31,7 @@ public sealed class WorkspaceLayoutAgentToolContractTests
                 BuiltInAgentTools.PanelClose,
                 BuiltInAgentTools.PanelConnect,
             ],
-            tools.Select(tool => tool.Name));
+            tools.Select(tool => tool.Name), StringComparer.Ordinal);
         foreach (var tool in tools)
         {
             Assert.False(tool.InputSchema
@@ -43,7 +43,7 @@ public sealed class WorkspaceLayoutAgentToolContractTests
             Assert.DoesNotContain("outside", contract, StringComparison.Ordinal);
         }
 
-        var split = tools.Single(tool => tool.Name == BuiltInAgentTools.PanelSplit)
+        var split = tools.Single(tool => string.Equals(tool.Name, BuiltInAgentTools.PanelSplit, StringComparison.Ordinal))
             .InputSchema;
         var panelId = split.GetProperty("properties").GetProperty("panel_id");
         Assert.Equal("string", panelId.GetProperty("type").GetString());
@@ -54,7 +54,7 @@ public sealed class WorkspaceLayoutAgentToolContractTests
                 .GetProperty("orientation")
                 .GetProperty("enum")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
         Assert.Equal(
             [
                 "terminal", "browser", "file_viewer", "statistics",
@@ -64,7 +64,7 @@ public sealed class WorkspaceLayoutAgentToolContractTests
                 .GetProperty("kind")
                 .GetProperty("enum")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
     }
 
     [Theory]

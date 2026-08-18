@@ -10,6 +10,7 @@ namespace GhostShell.Core;
 public sealed partial record McpServerEnvironmentVariable
 {
     public const int MaximumNameLength = 128;
+    private const int RegexTimeoutMilliseconds = 1_000;
 
     [JsonConstructor]
     public McpServerEnvironmentVariable(string name, SecretRef reference)
@@ -32,6 +33,9 @@ public sealed partial record McpServerEnvironmentVariable
 
     public SecretRef Reference { get; }
 
-    [GeneratedRegex("^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(
+        "^[A-Za-z_][A-Za-z0-9_]*$",
+        RegexOptions.CultureInvariant,
+        RegexTimeoutMilliseconds)]
     private static partial Regex PortableName();
 }

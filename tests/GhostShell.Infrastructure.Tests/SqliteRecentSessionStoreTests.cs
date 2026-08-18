@@ -50,7 +50,7 @@ public sealed class SqliteRecentSessionStoreTests
             new RecentSessionQuery(sourceKind: DefinitionKind.Screen),
             CancellationToken.None));
 
-        Assert.Equal(new[] { older.SessionId, newer.SessionId }, all.Select(item => item.SessionId));
+        Assert.Equal([older.SessionId, newer.SessionId], all.Select(item => item.SessionId));
         Assert.Equal(RecentSessionOutcome.GracefullyClosed, all[0].Outcome);
         Assert.Equal(ReferenceTime.AddMinutes(-5), all[0].EndedAt);
         Assert.Equal(newer, Assert.Single(screens));
@@ -511,8 +511,7 @@ public sealed class SqliteRecentSessionStoreTests
         }
 
         Assert.Equal(
-            new[]
-            {
+            [
                 "session_id",
                 "definition_kind",
                 "definition_id",
@@ -521,8 +520,8 @@ public sealed class SqliteRecentSessionStoreTests
                 "started_utc",
                 "ended_utc",
                 "outcome",
-            },
-            columns);
+            ],
+            columns, StringComparer.Ordinal);
         Assert.DoesNotContain(columns, column =>
             column.Contains("payload", StringComparison.OrdinalIgnoreCase)
             || column.Contains("content", StringComparison.OrdinalIgnoreCase)

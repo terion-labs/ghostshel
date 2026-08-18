@@ -198,8 +198,8 @@ internal sealed class LinuxHostAccessibilityPreferencesSource :
     private bool IsRelevant(LinuxPortalSettingChanged setting) =>
         setting is { Namespace: AppearanceNamespace, Key: ReducedMotionKey }
         || (_readGnomePreferences
-            && setting.Namespace == GnomeInterfaceNamespace
-            && setting.Key is GnomeAnimationsKey or GnomeTextScaleKey);
+            && string.Equals(setting.Namespace, GnomeInterfaceNamespace
+, StringComparison.Ordinal) && setting.Key is GnomeAnimationsKey or GnomeTextScaleKey);
 
     private static T? TryRead<T>(VariantValue value, Func<VariantValue, T> read)
         where T : struct

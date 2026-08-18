@@ -44,7 +44,7 @@ public sealed class DeterministicDiagnosticsBundleExporterTests
                 "artifacts/logs/application.log",
                 "artifacts/status/runtime.json",
             ],
-            archive.Entries.Select(entry => entry.FullName));
+            archive.Entries.Select(entry => entry.FullName), StringComparer.Ordinal);
         Assert.All(
             archive.Entries,
             entry => Assert.Equal(
@@ -394,7 +394,7 @@ public sealed class DeterministicDiagnosticsBundleExporterTests
 
     private static string ReadEntry(ZipArchive archive, string path)
     {
-        var entry = Assert.Single(archive.Entries, candidate => candidate.FullName == path);
+        var entry = Assert.Single(archive.Entries, candidate => string.Equals(candidate.FullName, path, StringComparison.Ordinal));
         using var reader = new StreamReader(entry.Open(), Encoding.UTF8, leaveOpen: false);
         return reader.ReadToEnd();
     }

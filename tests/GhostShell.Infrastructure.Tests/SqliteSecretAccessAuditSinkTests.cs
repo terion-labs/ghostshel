@@ -34,7 +34,7 @@ public sealed class SqliteSecretAccessAuditSinkTests
         Assert.Equal("secret.resolve", auditEvent.Action);
         Assert.Equal("secret", auditEvent.Target!.Kind);
         Assert.StartsWith("secret-ref-", auditEvent.Target.Id, StringComparison.Ordinal);
-        Assert.NotEqual(reference.Value, auditEvent.Target.Id);
+        Assert.NotEqual(reference.Value, auditEvent.Target.Id, StringComparer.Ordinal);
         Assert.Equal(AuditOutcome.Denied, auditEvent.Outcome);
         var details = Assert.IsType<AuditDetails.SecretAccessDetails>(auditEvent.Details);
         Assert.Equal(SecretUseKind.AiProviderAuthentication, details.PurposeKind);

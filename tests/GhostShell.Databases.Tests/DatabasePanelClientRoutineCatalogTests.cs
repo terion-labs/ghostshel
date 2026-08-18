@@ -46,13 +46,13 @@ public sealed class DatabasePanelClientRoutineCatalogTests : IDisposable
             tunnel: null,
             CancellationToken.None);
 
-        var join = Assert.Single(catalog.Routines, item => item.Id.Name == "viewer_join");
+        var join = Assert.Single(catalog.Routines, item => string.Equals(item.Id.Name, "viewer_join", StringComparison.Ordinal));
         Assert.Equal(0, join.MinimumArgumentCount);
         Assert.Null(join.MaximumArgumentCount);
         Assert.True(Assert.Single(join.Parameters).IsVariadic);
-        var mix = Assert.Single(catalog.Routines, item => item.Id.Name == "viewer_mix");
+        var mix = Assert.Single(catalog.Routines, item => string.Equals(item.Id.Name, "viewer_mix", StringComparison.Ordinal));
         Assert.Equal((1, 2), (mix.MinimumArgumentCount, mix.MaximumArgumentCount));
-        Assert.Equal(["value", "suffix"], mix.Parameters.Select(item => item.Name));
+        Assert.Equal(["value", "suffix"], mix.Parameters.Select(item => item.Name), StringComparer.Ordinal);
         Assert.True(mix.Parameters[^1].IsOptional);
         Assert.Equal(DatabaseValueKind.SignedInteger, mix.ReturnValueKind);
         Assert.Equal(SqlCatalogCoverage.Complete, catalog.RoutineCoverage);
@@ -82,12 +82,12 @@ public sealed class DatabasePanelClientRoutineCatalogTests : IDisposable
             CancellationToken.None);
 
         var overloads = catalog.Routines
-            .Where(item => item.Id.Name == "viewer_convert")
+            .Where(item => string.Equals(item.Id.Name, "viewer_convert", StringComparison.Ordinal))
             .ToArray();
         Assert.Equal(2, overloads.Length);
         Assert.Equal(
             ["viewer_convert(integer)", "viewer_convert(text)"],
-            overloads.Select(item => item.Signature));
+            overloads.Select(item => item.Signature), StringComparer.Ordinal);
         Assert.All(overloads, routine => Assert.Single(routine.Parameters));
     }
 
@@ -112,8 +112,7 @@ public sealed class DatabasePanelClientRoutineCatalogTests : IDisposable
             tunnel: null,
             CancellationToken.None);
 
-        var routines = catalog.Routines.Where(routine =>
-                routine.Id.Name == "viewer_duplicate")
+        var routines = catalog.Routines.Where(routine => string.Equals(routine.Id.Name, "viewer_duplicate", StringComparison.Ordinal))
             .ToArray();
         Assert.Single(routines);
         Assert.Single(routines[0].Parameters);
@@ -141,13 +140,12 @@ public sealed class DatabasePanelClientRoutineCatalogTests : IDisposable
             tunnel: null,
             CancellationToken.None);
 
-        var routines = catalog.Routines.Where(routine =>
-                routine.Id.Name == "viewer_duplicate")
+        var routines = catalog.Routines.Where(routine => string.Equals(routine.Id.Name, "viewer_duplicate", StringComparison.Ordinal))
             .ToArray();
         Assert.Equal(2, routines.Length);
         Assert.Equal(
             ["integer", "text"],
-            routines.Select(routine => Assert.Single(routine.Parameters).DataTypeName));
+            routines.Select(routine => Assert.Single(routine.Parameters).DataTypeName), StringComparer.Ordinal);
         Assert.False(catalog.IsPartial, catalog.Limitation);
     }
 
@@ -177,9 +175,9 @@ public sealed class DatabasePanelClientRoutineCatalogTests : IDisposable
             CancellationToken.None);
 
         Assert.True(catalog.IsPartial);
-        Assert.DoesNotContain(catalog.Routines, item => item.Id.Name == "viewer_absurd");
-        Assert.DoesNotContain(catalog.Routines, item => item.Id.Name == "viewer_negative");
-        Assert.Contains(catalog.Routines, item => item.Id.Name == "viewer_safe");
+        Assert.DoesNotContain(catalog.Routines, item => string.Equals(item.Id.Name, "viewer_absurd", StringComparison.Ordinal));
+        Assert.DoesNotContain(catalog.Routines, item => string.Equals(item.Id.Name, "viewer_negative", StringComparison.Ordinal));
+        Assert.Contains(catalog.Routines, item => string.Equals(item.Id.Name, "viewer_safe", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -224,8 +222,7 @@ public sealed class DatabasePanelClientRoutineCatalogTests : IDisposable
             tunnel: null,
             CancellationToken.None);
 
-        var logical = Assert.Single(catalog.Routines, routine =>
-            routine.Id.Name == "viewer_logical");
+        var logical = Assert.Single(catalog.Routines, routine => string.Equals(routine.Id.Name, "viewer_logical", StringComparison.Ordinal));
         Assert.Equal(2, logical.MinimumArgumentCount);
         Assert.Null(logical.MaximumArgumentCount);
         Assert.True(logical.Parameters[2].IsOptional);
@@ -309,7 +306,7 @@ public sealed class DatabasePanelClientRoutineCatalogTests : IDisposable
         Assert.Equal(2, catalog.IntrinsicSymbols.Count);
         Assert.Equal(
             ["CURRENT_TIMESTAMP", "DATEADD"],
-            catalog.IntrinsicSymbols.Select(symbol => symbol.Name));
+            catalog.IntrinsicSymbols.Select(symbol => symbol.Name), StringComparer.Ordinal);
         Assert.All(catalog.IntrinsicSymbols, symbol =>
             Assert.Equal(SqlCatalogIntrinsicKind.Keyword, symbol.Kind));
     }

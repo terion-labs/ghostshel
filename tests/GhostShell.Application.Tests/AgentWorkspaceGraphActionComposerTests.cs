@@ -30,7 +30,7 @@ public sealed class AgentWorkspaceGraphActionComposerTests
             (
                 Target: (AgentTarget)new AgentTarget.ConnectionSession(
                     terminalSession.Id),
-                Panels: new[] { TerminalPanel() },
+                Panels: [TerminalPanel()],
                 ExpectedKind: AgentWorkspaceGraphScopeKind.ConnectionSession,
                 ExpectedTabs: 1),
             (
@@ -38,20 +38,20 @@ public sealed class AgentWorkspaceGraphActionComposerTests
                     Window(),
                     Workspace(),
                     FirstTab()),
-                Panels: new[] { TerminalPanel(), StatisticsPanel() },
+                Panels: [TerminalPanel(), StatisticsPanel()],
                 ExpectedKind: AgentWorkspaceGraphScopeKind.OpenTab,
                 ExpectedTabs: 1),
             (
                 Target: (AgentTarget)new AgentTarget.Workspace(
                     Window(),
                     Workspace()),
-                Panels: new[]
-                {
+                Panels:
+                [
                     TerminalPanel(),
                     StatisticsPanel(),
                     ProcessPanel(),
                     BrowserPanel(),
-                },
+                ],
                 ExpectedKind: AgentWorkspaceGraphScopeKind.Workspace,
                 ExpectedTabs: 2),
             (
@@ -60,7 +60,7 @@ public sealed class AgentWorkspaceGraphActionComposerTests
                     Exact(StatisticsPanel(), FirstTab()),
                     Exact(ProcessPanel(), SecondTab()),
                 ]),
-                Panels: new[] { StatisticsPanel(), ProcessPanel() },
+                Panels: [StatisticsPanel(), ProcessPanel()],
                 ExpectedKind: AgentWorkspaceGraphScopeKind.SelectedPanels,
                 ExpectedTabs: 2),
         };
@@ -318,7 +318,7 @@ public sealed class AgentWorkspaceGraphActionComposerTests
         var largeContext = Context(
             largeGraph,
             target,
-            largePanels.Select(panel => panel.Id).ToArray());
+            [.. largePanels.Select(panel => panel.Id)]);
         var largeAction = composer.Prepare(
             Envelope(),
             largeContext,

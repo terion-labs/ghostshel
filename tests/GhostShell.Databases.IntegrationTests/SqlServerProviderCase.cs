@@ -11,7 +11,7 @@ internal static class SqlServerProviderCase
         "SQL Server 2025 CU7",
         "mcr.microsoft.com/mssql/server:2025-CU7-ubuntu-24.04",
         1433,
-        new Dictionary<string, string>
+        new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["ACCEPT_EULA"] = "Y",
             ["MSSQL_PID"] = "Developer",

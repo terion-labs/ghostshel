@@ -63,7 +63,7 @@ public sealed class AgentDatabaseReadActionComposerTests
                 StringComparison.Ordinal));
         Assert.Contains(
             action.Proposal.Presentation.Arguments,
-            argument => argument.Name == "filter_count" && argument.DisplayValue == "1");
+            argument => string.Equals(argument.Name, "filter_count", StringComparison.Ordinal) && string.Equals(argument.DisplayValue, "1", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -1,10 +1,12 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using GhostShell.Application;
 using GhostShell.Core;
 
 namespace GhostShell.Desktop;
 
+[StructLayout(LayoutKind.Auto)]
 internal readonly record struct WindowsHotkeyGesture(uint VirtualKey, uint Modifiers);
 
 internal readonly record struct WindowsHotkeyNativeResult(bool Succeeded, int ErrorCode)
@@ -185,22 +187,22 @@ internal sealed class WindowsGlobalHotkeyService : IGlobalHotkeyService
         }
 
         var modifiers = ModifierNoRepeat;
-        if ((gesture.Modifiers & KeyModifiers.Alt) != 0)
+        if ((gesture.Modifiers & KeyModifiers.Alt) != KeyModifiers.None)
         {
             modifiers |= ModifierAlt;
         }
 
-        if ((gesture.Modifiers & KeyModifiers.Control) != 0)
+        if ((gesture.Modifiers & KeyModifiers.Control) != KeyModifiers.None)
         {
             modifiers |= ModifierControl;
         }
 
-        if ((gesture.Modifiers & KeyModifiers.Shift) != 0)
+        if ((gesture.Modifiers & KeyModifiers.Shift) != KeyModifiers.None)
         {
             modifiers |= ModifierShift;
         }
 
-        if ((gesture.Modifiers & KeyModifiers.Meta) != 0)
+        if ((gesture.Modifiers & KeyModifiers.Meta) != KeyModifiers.None)
         {
             modifiers |= ModifierWindows;
         }
@@ -251,8 +253,7 @@ internal sealed class WindowsGlobalHotkeyService : IGlobalHotkeyService
 
         if (key.Length >= 2
             && key[0] == 'F'
-            && int.TryParse(key.AsSpan(1), out var functionNumber)
-            && functionNumber is >= 1 and <= 24)
+            && int.TryParse(key.AsSpan(1), System.Globalization.CultureInfo.InvariantCulture, out var functionNumber) && functionNumber is >= 1 and <= 24)
         {
             virtualKey = VirtualKeyF1 + (uint)(functionNumber - 1);
             return virtualKey <= VirtualKeyF24;

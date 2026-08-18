@@ -44,7 +44,7 @@ public sealed class McpServerProfileTests
         Assert.Equal(["--transport", "stdio"], restoredStdio.Arguments);
         Assert.Equal(
             ["A_TOKEN", "Z_TOKEN"],
-            restoredStdio.Environment.Select(item => item.Name));
+            restoredStdio.Environment.Select(item => item.Name), StringComparer.Ordinal);
         Assert.Equal(
             ["issues.list", "repositories.read"],
             restored.EnabledTools);
@@ -77,17 +77,14 @@ public sealed class McpServerProfileTests
             ["--verbose", "--verbose"],
             Assert.IsType<McpServerTransport.Stdio>(repeated.Transport).Arguments);
         Assert.Throws<ArgumentException>(() => CreateProfile(
-            arguments: Enumerable
-                .Repeat("x", McpServerProfile.MaximumArgumentCount + 1)
-                .ToArray()));
+            arguments: [.. Enumerable.Repeat("x", McpServerProfile.MaximumArgumentCount + 1)]));
         Assert.Throws<ArgumentException>(() => CreateProfile(
-            arguments: Enumerable
+            arguments: [.. Enumerable
                 .Repeat(
                     new string('x', McpServerProfile.MaximumArgumentBytes),
                     McpServerProfile.MaximumArgumentsBytes
                     / McpServerProfile.MaximumArgumentBytes
-                    + 1)
-                .ToArray()));
+                    + 1)]));
     }
 
     [Theory]
@@ -130,17 +127,15 @@ public sealed class McpServerProfileTests
         Assert.Throws<ArgumentException>(() => CreateProfile(
             executable: new string('x', McpServerProfile.MaximumExecutableBytes + 1)));
         Assert.Throws<ArgumentException>(() => CreateProfile(
-            environment: Enumerable
+            environment: [.. Enumerable
                 .Range(0, McpServerProfile.MaximumEnvironmentVariableCount + 1)
                 .Select(index => new McpServerEnvironmentVariable(
                     $"TOKEN_{index}",
-                    new SecretRef($"vault-{index}")))
-                .ToArray()));
+                    new SecretRef($"vault-{index}")))]));
         Assert.Throws<ArgumentException>(() => CreateProfile(
-            enabledTools: Enumerable
+            enabledTools: [.. Enumerable
                 .Range(0, McpServerProfile.MaximumEnabledToolCount + 1)
-                .Select(index => $"tool-{index}")
-                .ToArray()));
+                .Select(index => $"tool-{index}")]));
         Assert.Throws<ArgumentException>(() => new McpServerEnvironmentVariable(
             "TOKEN",
             new SecretRef(
@@ -226,7 +221,7 @@ public sealed class McpServerProfileTests
         Assert.Equal("https://mcp.example.test/rpc", transport.Endpoint.AbsoluteUri);
         Assert.Equal(
             ["Authorization", "X-Tenant"],
-            transport.Headers.Select(header => header.Name));
+            transport.Headers.Select(header => header.Name), StringComparer.Ordinal);
         Assert.Equal(authorization, transport.Headers[0].Reference);
         Assert.False(transport.AllowInsecureTransport);
         Assert.Contains(

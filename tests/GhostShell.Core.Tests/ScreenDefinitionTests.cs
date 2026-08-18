@@ -20,7 +20,7 @@ public sealed class ScreenDefinitionTests
         var result = ScreenValidator.Validate(screen, layout);
 
         Assert.True(result.IsValid);
-        Assert.Equal(["left", "right"], screen.Panels.Select(panel => panel.SlotId.Value));
+        Assert.Equal(["left", "right"], screen.Panels.Select(panel => panel.SlotId.Value), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -45,7 +45,7 @@ public sealed class ScreenDefinitionTests
         Assert.Contains(result.Issues, issue => issue.Code == DefinitionValidationCode.UnknownSlot);
         Assert.Contains(result.Issues, issue =>
             issue.Code == DefinitionValidationCode.MissingSlot
-            && issue.Target == "right");
+            && string.Equals(issue.Target, "right", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -105,8 +105,8 @@ public sealed class ScreenDefinitionTests
         Assert.Contains(
             result.Issues,
             issue => issue.Code == DefinitionValidationCode.InvalidPanel
-                && issue.Target == browser.Id.Value
-                && issue.Message.Contains(
+                && string.Equals(issue.Target, browser.Id.Value
+, StringComparison.Ordinal) && issue.Message.Contains(
                     "delivery failure policy",
                     StringComparison.OrdinalIgnoreCase));
     }

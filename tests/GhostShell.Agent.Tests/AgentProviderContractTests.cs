@@ -32,8 +32,8 @@ public sealed class AgentProviderContractTests
             """{"type":"object"}"""u8.ToArray());
 
         Assert.Equal(first.ProviderName, repeated.ProviderName);
-        Assert.NotEqual(first.Name, first.ProviderName);
-        Assert.NotEqual(first.ProviderName, different.ProviderName);
+        Assert.NotEqual(first.Name, first.ProviderName, StringComparer.Ordinal);
+        Assert.NotEqual(first.ProviderName, different.ProviderName, StringComparer.Ordinal);
         Assert.Matches(
             "^[A-Za-z0-9_-]{1,64}$",
             first.ProviderName);

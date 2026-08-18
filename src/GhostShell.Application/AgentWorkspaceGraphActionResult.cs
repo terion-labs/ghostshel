@@ -106,11 +106,10 @@ public sealed record AgentWorkspaceGraphPage<T>
 
         Offset = offset;
         Items = new ReadOnlyCollection<T>(
-            items
+            [.. items
                 .Select(item => item ?? throw new ArgumentException(
                     "A workspace graph page cannot contain null items.",
-                    nameof(items)))
-                .ToArray());
+                    nameof(items)))]);
         NextOffset = nextOffset;
     }
 
@@ -160,11 +159,10 @@ public sealed record AgentWorkspaceGraphTabInspection
         Tab = tab ?? throw new ArgumentNullException(nameof(tab));
         ArgumentNullException.ThrowIfNull(panels);
         Panels = new ReadOnlyCollection<AgentWorkspaceGraphPanel>(
-            panels
+            [.. panels
                 .Select(panel => panel ?? throw new ArgumentException(
                     "A tab inspection cannot contain null panels.",
-                    nameof(panels)))
-                .ToArray());
+                    nameof(panels)))]);
     }
 
     public AgentWorkspaceGraphTab Tab { get; }
@@ -182,11 +180,10 @@ public sealed record AgentWorkspaceGraphWorkspaceInspection
             ?? throw new ArgumentNullException(nameof(workspace));
         ArgumentNullException.ThrowIfNull(tabs);
         Tabs = new ReadOnlyCollection<AgentWorkspaceGraphTabInspection>(
-            tabs
+            [.. tabs
                 .Select(tab => tab ?? throw new ArgumentException(
                     "A workspace inspection cannot contain null tabs.",
-                    nameof(tabs)))
-                .ToArray());
+                    nameof(tabs)))]);
     }
 
     public AgentWorkspaceGraphWorkspace Workspace { get; }

@@ -242,7 +242,7 @@ internal static partial class ScreenReaderProbe
             return Unavailable(ScreenReaderKind.Orca, "VERSION_UNAVAILABLE", busStatus);
         }
 
-        if (busStatus != "AT_SPI_SESSION_BUS_PRESENT")
+        if (!string.Equals(busStatus, "AT_SPI_SESSION_BUS_PRESENT", StringComparison.Ordinal))
         {
             return Unavailable(ScreenReaderKind.Orca, "ACCESSIBILITY_BUS_UNAVAILABLE", busStatus);
         }

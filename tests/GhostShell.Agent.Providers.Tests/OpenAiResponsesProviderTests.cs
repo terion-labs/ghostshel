@@ -134,7 +134,7 @@ public sealed class OpenAiResponsesProviderTests
         var replayedAssistant = request.RootElement.GetProperty("input")
             .EnumerateArray()
             .Single(item => item.TryGetProperty("role", out var role)
-                && role.GetString() == "assistant");
+                && string.Equals(role.GetString(), "assistant", StringComparison.Ordinal));
         Assert.Equal(
             multiline,
             Assert.Single(replayedAssistant.GetProperty("content").EnumerateArray())
@@ -296,7 +296,7 @@ public sealed class OpenAiResponsesProviderTests
         var reasoning = request.RootElement.GetProperty("input")
             .EnumerateArray()
             .Single(item => item.TryGetProperty("type", out var type)
-                && type.GetString() == "reasoning");
+                && string.Equals(type.GetString(), "reasoning", StringComparison.Ordinal));
         Assert.Equal(
             "done-ciphertext",
             reasoning.GetProperty("encrypted_content").GetString());
@@ -366,7 +366,7 @@ public sealed class OpenAiResponsesProviderTests
         Assert.Contains(
             restored.Snapshot().Conversation,
             message => message.Role == AgentMessageRole.Assistant
-                && message.Content == "handled");
+                && string.Equals(message.Content, "handled", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -429,11 +429,11 @@ public sealed class OpenAiResponsesProviderTests
         Assert.Contains(
             body.RootElement.GetProperty("input").EnumerateArray(),
             item => item.TryGetProperty("type", out var type)
-                && type.GetString() == "function_call");
+                && string.Equals(type.GetString(), "function_call", StringComparison.Ordinal));
         Assert.Contains(
             body.RootElement.GetProperty("input").EnumerateArray(),
             item => item.TryGetProperty("type", out var type)
-                && type.GetString() == "function_call_output");
+                && string.Equals(type.GetString(), "function_call_output", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -1139,7 +1139,7 @@ public sealed class OpenAiResponsesProviderTests
         new(
             "capture.png",
             "image/png",
-            new byte[] { 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a });
+            [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
     private static ValueTask<AgentTurnResult> SubmitResultAsync(
         NativeAgentSession session,

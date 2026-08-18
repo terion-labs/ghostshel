@@ -323,10 +323,7 @@ public sealed partial class App : Avalonia.Application
         hostAccessibilityPreferences.Changed += OnHostAccessibilityPreferencesChanged;
         hostAccessibilityPreferences.Start();
         ApplyAppearance();
-        if (_definitionCatalog is not null)
-        {
-            _definitionCatalog.Changed += OnDefinitionCatalogChanged;
-        }
+        _definitionCatalog?.Changed += OnDefinitionCatalogChanged;
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
             && desktop.Windows is INotifyCollectionChanged windowCollection)
@@ -337,20 +334,11 @@ public sealed partial class App : Avalonia.Application
 
         mainWindow.Closed += (_, _) =>
         {
-            if (_platformSettings is not null)
-            {
-                _platformSettings.ColorValuesChanged -= OnPlatformColorValuesChanged;
-            }
+            _platformSettings?.ColorValuesChanged -= OnPlatformColorValuesChanged;
             hostAccessibilityPreferences.Changed -= OnHostAccessibilityPreferencesChanged;
-            if (_definitionCatalog is not null)
-            {
-                _definitionCatalog.Changed -= OnDefinitionCatalogChanged;
-            }
-            if (_windowCollection is not null)
-            {
-                _windowCollection.CollectionChanged -= OnWindowCollectionChanged;
-                _windowCollection = null;
-            }
+            _definitionCatalog?.Changed -= OnDefinitionCatalogChanged;
+            _windowCollection?.CollectionChanged -= OnWindowCollectionChanged;
+            _windowCollection = null;
         };
     }
 

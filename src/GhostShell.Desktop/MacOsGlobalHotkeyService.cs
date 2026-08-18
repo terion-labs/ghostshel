@@ -259,22 +259,22 @@ internal sealed class MacOsGlobalHotkeyService : IGlobalHotkeyService
         }
 
         var modifiers = 0U;
-        if ((gesture.Modifiers & KeyModifiers.Meta) != 0)
+        if ((gesture.Modifiers & KeyModifiers.Meta) != KeyModifiers.None)
         {
             modifiers |= CommandKey;
         }
 
-        if ((gesture.Modifiers & KeyModifiers.Shift) != 0)
+        if ((gesture.Modifiers & KeyModifiers.Shift) != KeyModifiers.None)
         {
             modifiers |= ShiftKey;
         }
 
-        if ((gesture.Modifiers & KeyModifiers.Alt) != 0)
+        if ((gesture.Modifiers & KeyModifiers.Alt) != KeyModifiers.None)
         {
             modifiers |= OptionKey;
         }
 
-        if ((gesture.Modifiers & KeyModifiers.Control) != 0)
+        if ((gesture.Modifiers & KeyModifiers.Control) != KeyModifiers.None)
         {
             modifiers |= ControlKey;
         }
@@ -425,4 +425,5 @@ internal sealed class MacOsGlobalHotkeyService : IGlobalHotkeyService
         out EventHotKeyId data);
 }
 
+[StructLayout(LayoutKind.Auto)]
 internal readonly record struct MacOsHotkeyGesture(uint VirtualKey, uint Modifiers);

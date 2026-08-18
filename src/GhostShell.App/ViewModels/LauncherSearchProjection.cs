@@ -11,7 +11,7 @@ internal static class LauncherSearchProjection
         ArgumentNullException.ThrowIfNull(candidates);
         var normalizedQuery = query?.Trim() ?? string.Empty;
 
-        return candidates
+        return [.. candidates
             .Select((candidate, sourceIndex) => new
             {
                 Candidate = candidate,
@@ -28,8 +28,7 @@ internal static class LauncherSearchProjection
             .ThenBy(item => item.Candidate.Group, StringComparer.OrdinalIgnoreCase)
             .ThenBy(item => item.Candidate.Title, StringComparer.OrdinalIgnoreCase)
             .ThenBy(item => StableTargetId(item.Candidate.Target), StringComparer.Ordinal)
-            .Select(item => item.Candidate)
-            .ToArray();
+            .Select(item => item.Candidate)];
     }
 
     public static int FindNextAvailableIndex(
@@ -68,7 +67,7 @@ internal static class LauncherSearchProjection
             ? items.FirstOrDefault(item => item.IsAvailable)
             : items.FirstOrDefault(item =>
                 item.IsAvailable
-                && StableTargetId(item.Target) == StableTargetId(preferredTarget))
+                && string.Equals(StableTargetId(item.Target), StableTargetId(preferredTarget), StringComparison.Ordinal))
                 ?? items.FirstOrDefault(item => item.IsAvailable);
     }
 

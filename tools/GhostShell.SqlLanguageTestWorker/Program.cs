@@ -7,12 +7,12 @@ var mode = args.ElementAtOrDefault(0) ?? "normal";
 var markerPath = args.ElementAtOrDefault(1);
 long previousId = 0;
 string? activeObjectName = null;
-if (mode == "stderr")
+if (string.Equals(mode, "stderr", StringComparison.Ordinal))
 {
     await Console.Error.WriteAsync(new string('!', 1024 * 1024));
     await Console.Error.FlushAsync();
 }
-if (mode == "environment" && markerPath is not null
+if (string.Equals(mode, "environment", StringComparison.Ordinal) && markerPath is not null
     && Environment.GetEnvironmentVariable("GHOSTSHELL_SQL_LANGUAGE_TEST_SECRET") is not null)
 {
     await File.WriteAllTextAsync(markerPath, "inherited");
@@ -36,13 +36,13 @@ while (true)
         continue;
     }
     previousId = id;
-    if (method == "shutdown")
+    if (string.Equals(method, "shutdown", StringComparison.Ordinal))
     {
         await WriteJsonAsync(id, "{}", Console.OpenStandardOutput());
         return;
     }
 
-    if (method == "initialize" || method == "updateCatalog")
+    if (string.Equals(method, "initialize", StringComparison.Ordinal) || string.Equals(method, "updateCatalog", StringComparison.Ordinal))
     {
         var catalog = root.GetProperty("params").GetProperty("catalog");
         var firstObject = catalog.GetProperty("objects")[0];
@@ -52,15 +52,14 @@ while (true)
             ?? throw new InvalidDataException("object id missing");
         _ = firstObject.GetProperty("columns")[0].GetProperty("valueKind").GetString()
             ?? throw new InvalidDataException("column kind missing");
-        if (mode == "init-error" && method == "initialize")
+        if (string.Equals(mode, "init-error", StringComparison.Ordinal) && string.Equals(method, "initialize", StringComparison.Ordinal))
         {
             if (markerPath is not null)
             {
                 var attempts = File.Exists(markerPath)
-                    && int.TryParse(await File.ReadAllTextAsync(markerPath), out var parsed)
-                        ? parsed
+                    && int.TryParse(await File.ReadAllTextAsync(markerPath), System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? parsed
                         : 0;
-                await File.WriteAllTextAsync(markerPath, (attempts + 1).ToString());
+                await File.WriteAllTextAsync(markerPath, (attempts + 1).ToString(System.Globalization.CultureInfo.InvariantCulture));
             }
             await Console.Error.WriteAsync("Babel token-list initialization failed.");
             await Console.Error.FlushAsync();
@@ -72,8 +71,8 @@ while (true)
             continue;
         }
 
-        if (mode == "catalog-atomic" && method == "updateCatalog"
-            && requestedObjectName == "reject")
+        if (string.Equals(mode, "catalog-atomic", StringComparison.Ordinal) && string.Equals(method, "updateCatalog"
+, StringComparison.Ordinal) && string.Equals(requestedObjectName, "reject", StringComparison.Ordinal))
         {
             await WriteErrorAsync(id, "invalidCatalog", Console.OpenStandardOutput());
             continue;
@@ -84,60 +83,58 @@ while (true)
         continue;
     }
 
-    if (method == "complete" && mode == "crash-once" && markerPath is not null
+    if (string.Equals(method, "complete", StringComparison.Ordinal) && string.Equals(mode, "crash-once", StringComparison.Ordinal) && markerPath is not null
         && !File.Exists(markerPath))
     {
         await File.WriteAllTextAsync(markerPath, "crashed");
         return;
     }
 
-    if (method == "complete" && mode == "crash-twice" && markerPath is not null)
+    if (string.Equals(method, "complete", StringComparison.Ordinal) && string.Equals(mode, "crash-twice", StringComparison.Ordinal) && markerPath is not null)
     {
         var crashCount = File.Exists(markerPath)
-            && int.TryParse(await File.ReadAllTextAsync(markerPath), out var parsed)
-                ? parsed
+            && int.TryParse(await File.ReadAllTextAsync(markerPath), System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? parsed
                 : 0;
         if (crashCount < 2)
         {
-            await File.WriteAllTextAsync(markerPath, (crashCount + 1).ToString());
+            await File.WriteAllTextAsync(markerPath, (crashCount + 1).ToString(System.Globalization.CultureInfo.InvariantCulture));
             return;
         }
     }
 
-    if (method == "complete" && mode == "crash-count" && markerPath is not null)
+    if (string.Equals(method, "complete", StringComparison.Ordinal) && string.Equals(mode, "crash-count", StringComparison.Ordinal) && markerPath is not null)
     {
         var crashCount = File.Exists(markerPath)
-            && int.TryParse(await File.ReadAllTextAsync(markerPath), out var parsed)
-                ? parsed
+            && int.TryParse(await File.ReadAllTextAsync(markerPath), System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? parsed
                 : 0;
-        await File.WriteAllTextAsync(markerPath, (crashCount + 1).ToString());
+        await File.WriteAllTextAsync(markerPath, (crashCount + 1).ToString(System.Globalization.CultureInfo.InvariantCulture));
         return;
     }
 
-    if (method == "complete" && mode == "catalog-atomic" && markerPath is not null
+    if (string.Equals(method, "complete", StringComparison.Ordinal) && string.Equals(mode, "catalog-atomic", StringComparison.Ordinal) && markerPath is not null
         && !File.Exists(markerPath))
     {
         await File.WriteAllTextAsync(markerPath, "crashed");
         return;
     }
 
-    if (method == "complete" && mode == "crash")
+    if (string.Equals(method, "complete", StringComparison.Ordinal) && string.Equals(mode, "crash", StringComparison.Ordinal))
     {
         return;
     }
 
-    if (method == "complete" && mode == "hang")
+    if (string.Equals(method, "complete", StringComparison.Ordinal) && string.Equals(mode, "hang", StringComparison.Ordinal))
     {
         await Task.Delay(Timeout.InfiniteTimeSpan);
     }
 
-    if (method == "complete" && mode == "malformed")
+    if (string.Equals(method, "complete", StringComparison.Ordinal) && string.Equals(mode, "malformed", StringComparison.Ordinal))
     {
         await WriteFrameAsync("{not-json"u8.ToArray(), Console.OpenStandardOutput());
         continue;
     }
 
-    if (method == "complete" && mode == "oversized")
+    if (string.Equals(method, "complete", StringComparison.Ordinal) && string.Equals(mode, "oversized", StringComparison.Ordinal))
     {
         var prefix = new byte[4];
         BinaryPrimitives.WriteInt32BigEndian(prefix, maximumFrameBytes + 1);
@@ -146,7 +143,7 @@ while (true)
         await Task.Delay(Timeout.InfiniteTimeSpan);
     }
 
-    if (method == "complete" && mode == "operation-error")
+    if (string.Equals(method, "complete", StringComparison.Ordinal) && string.Equals(mode, "operation-error", StringComparison.Ordinal))
     {
         await WriteErrorAsync(
             id,
@@ -156,20 +153,20 @@ while (true)
         continue;
     }
 
-    if (method == "complete" && mode == "invalid-params")
+    if (string.Equals(method, "complete", StringComparison.Ordinal) && string.Equals(mode, "invalid-params", StringComparison.Ordinal))
     {
         await WriteErrorAsync(id, "invalidParams", Console.OpenStandardOutput());
         continue;
     }
 
-    var responseId = mode == "wrong-id" && method == "complete" ? id + 1 : id;
-    var responseVersion = mode == "wrong-version" && method == "complete" ? 2 : 1;
-    if (method == "complete")
+    var responseId = string.Equals(mode, "wrong-id", StringComparison.Ordinal) && string.Equals(method, "complete", StringComparison.Ordinal) ? id + 1 : id;
+    var responseVersion = string.Equals(mode, "wrong-version", StringComparison.Ordinal) && string.Equals(method, "complete", StringComparison.Ordinal) ? 2 : 1;
+    if (string.Equals(method, "complete", StringComparison.Ordinal))
     {
-        var result = mode == "preferred-object"
-            ? PreferredObjectCompletion(root.GetProperty("params"))
-            : mode == "catalog-atomic"
-            ? $$"""
+        var result = string.Equals(mode, "preferred-object"
+, StringComparison.Ordinal) ? PreferredObjectCompletion(root.GetProperty("params"))
+            : string.Equals(mode, "catalog-atomic"
+, StringComparison.Ordinal) ? $$"""
                 {"replacementStart":9,"replacementLength":2,"items":[
                   {"label":"{{activeObjectName}}","kind":"table","detail":"public","insertText":"{{activeObjectName}}"}
                 ]}
@@ -188,7 +185,7 @@ while (true)
         continue;
     }
 
-    if (method == "diagnose")
+    if (string.Equals(method, "diagnose", StringComparison.Ordinal))
     {
         const string result = """
             {"items":[{"start":7,"length":7,"severity":"error",

@@ -265,7 +265,7 @@ public sealed class CefRuntimePackageProvenanceTests : IDisposable
         {
             CreateMacPayload(root, rid);
         }
-        else if (rid == "win-x64")
+        else if (string.Equals(rid, "win-x64", StringComparison.Ordinal))
         {
             CreateFlatPayload(root, rid, windows: true);
         }
@@ -335,9 +335,9 @@ public sealed class CefRuntimePackageProvenanceTests : IDisposable
             else if (!windows
                      && (path.EndsWith(".so", StringComparison.Ordinal)
                          || path.EndsWith(".so.1", StringComparison.Ordinal)
-                         || path == "chrome-sandbox"))
+                         || string.Equals(path, "chrome-sandbox", StringComparison.Ordinal)))
             {
-                WriteElf(fullPath, arm64: rid == "linux-arm64");
+                WriteElf(fullPath, arm64: string.Equals(rid, "linux-arm64", StringComparison.Ordinal));
             }
         }
 
@@ -350,7 +350,7 @@ public sealed class CefRuntimePackageProvenanceTests : IDisposable
     private static void CreateMacPayload(string root, string rid)
     {
         const string framework = "Chromium Embedded Framework.framework";
-        var architecture = rid == "osx-arm64" ? "arm64" : "x86_64";
+        var architecture = string.Equals(rid, "osx-arm64", StringComparison.Ordinal) ? "arm64" : "x86_64";
         Write(root, "libexclr8cef.dylib", "binding shim");
         Write(root, $"{framework}/Chromium Embedded Framework", "cef binary");
         Write(root, $"{framework}/Libraries/libEGL.dylib", "egl");
@@ -429,7 +429,7 @@ public sealed class CefRuntimePackageProvenanceTests : IDisposable
             ("osx-arm64", "macosarm64", new string('3', 40)),
             ("osx-x64", "macosx64", new string('4', 40)),
             ("win-x64", "windows64", new string('5', 40)),
-        }.Select(item => new Dictionary<string, object?>
+        }.Select(item => new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["rid"] = item.Item1,
             ["platform"] = item.Item2,
@@ -445,7 +445,7 @@ public sealed class CefRuntimePackageProvenanceTests : IDisposable
         File.WriteAllText(
             path,
             JsonSerializer.Serialize(
-                new Dictionary<string, object?>
+                new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["schemaVersion"] = 1,
                     ["documentCreatedUtc"] = "2026-08-08T00:00:00Z",
@@ -520,7 +520,7 @@ public sealed class CefRuntimePackageProvenanceTests : IDisposable
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, 0xfeedfacf);
         BinaryPrimitives.WriteInt32LittleEndian(
             bytes.AsSpan(4),
-            architecture == "arm64" ? 0x0100000c : 0x01000007);
+string.Equals(architecture, "arm64", StringComparison.Ordinal) ? 0x0100000c : 0x01000007);
         File.WriteAllBytes(path, bytes);
     }
 

@@ -108,6 +108,7 @@ internal sealed class ExceptionMappingStream(
             throw mapException(exception);
         }
 
+        await base.DisposeAsync().ConfigureAwait(false);
         GC.SuppressFinalize(this);
     }
 

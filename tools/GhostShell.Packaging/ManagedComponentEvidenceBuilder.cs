@@ -183,9 +183,7 @@ internal static class ManagedComponentEvidenceBuilder
             evidence.RemainingBytes);
         evidence.CompleteReserved(SpdxFileName, spdxBytes);
         return new ManagedComponentEvidence(
-            evidence.Files
-                .OrderBy(file => file.RelativePath, StringComparer.Ordinal)
-                .ToArray());
+            [.. evidence.Files.OrderBy(file => file.RelativePath, StringComparer.Ordinal)]);
     }
 
     private static CatalogDocument ParseCatalog(byte[] bytes)
@@ -238,11 +236,11 @@ internal static class ManagedComponentEvidenceBuilder
                 catalog.NamespaceBase,
                 UriKind.Absolute,
                 out var namespaceBase)
-            || namespaceBase.Scheme != Uri.UriSchemeHttps
-            || namespaceBase.UserInfo.Length != 0
+            || !string.Equals(namespaceBase.Scheme, Uri.UriSchemeHttps
+, StringComparison.Ordinal) || namespaceBase.UserInfo.Length != 0
             || namespaceBase.Query.Length != 0
             || namespaceBase.Fragment.Length != 0
-            || catalog.NamespaceBase.EndsWith("/", StringComparison.Ordinal))
+            || catalog.NamespaceBase.EndsWith('/'))
         {
             throw CatalogError(
                 "namespaceBase must be an absolute HTTPS URI without a trailing slash");
@@ -340,7 +338,7 @@ internal static class ManagedComponentEvidenceBuilder
             case "runtime":
                 RequireEqual(
                     component.DepsType,
-                    component.Kind == "runtime" ? "runtimepack" : "package",
+string.Equals(component.Kind, "runtime", StringComparison.Ordinal) ? "runtimepack" : "package",
                     component.Identity,
                     "depsType");
                 RequirePresent(component.NuGetId, component.Identity, "nugetId");
@@ -357,8 +355,8 @@ internal static class ManagedComponentEvidenceBuilder
                 RequireAbsent(component.File, component.Identity, "file");
                 ValidateNuGetSegment(component.NuGetId!, component.Identity, "nugetId");
                 ValidateNuGetSegment(version, component.Identity, "version");
-                if (component.Kind == "nuget"
-                    && !string.Equals(name, component.NuGetId, StringComparison.Ordinal))
+                if (string.Equals(component.Kind, "nuget"
+, StringComparison.Ordinal) && !string.Equals(name, component.NuGetId, StringComparison.Ordinal))
                 {
                     throw CatalogError(
                         $"component {component.Identity} nugetId does not match its identity");
@@ -382,7 +380,7 @@ internal static class ManagedComponentEvidenceBuilder
                     component.NuspecLicense!,
                     $"{component.Identity} nuspecLicense",
                     500);
-                if (component.NuspecLicenseType == "file")
+                if (string.Equals(component.NuspecLicenseType, "file", StringComparison.Ordinal))
                 {
                     RequireEqual(
                         component.LicenseDeclared,
@@ -390,7 +388,7 @@ internal static class ManagedComponentEvidenceBuilder
                         component.Identity,
                         "licenseDeclared");
                 }
-                else if (component.Kind == "nuget")
+                else if (string.Equals(component.Kind, "nuget", StringComparison.Ordinal))
                 {
                     RequireEqual(
                         component.LicenseDeclared,
@@ -415,8 +413,8 @@ internal static class ManagedComponentEvidenceBuilder
                 EnsureUnique(
                     component.Notices.Select(notice => notice.ArchivePath),
                     $"{component.Identity} notice archive path");
-                if (component.NuspecLicenseType == "file"
-                    && !component.Notices.Any(notice => string.Equals(
+                if (string.Equals(component.NuspecLicenseType, "file"
+, StringComparison.Ordinal) && !component.Notices.Any(notice => string.Equals(
                         notice.ArchivePath,
                         component.NuspecLicense,
                         StringComparison.Ordinal)))
@@ -441,12 +439,12 @@ internal static class ManagedComponentEvidenceBuilder
         ValidateSimpleFileName(component.File, component.Identity);
         ValidateLicenseValue(component.LicenseDeclared, "licenseDeclared");
         ValidateText(component.Comment, $"{component.Identity} comment", 1_000);
-        if (component.DownloadLocation != NoAssertion
-            && (!Uri.TryCreate(
+        if (!string.Equals(component.DownloadLocation, NoAssertion
+, StringComparison.Ordinal) && (!Uri.TryCreate(
                     component.DownloadLocation,
                     UriKind.Absolute,
                     out var location)
-                || location.Scheme != Uri.UriSchemeHttps))
+                || !string.Equals(location.Scheme, Uri.UriSchemeHttps, StringComparison.Ordinal)))
         {
             throw CatalogError(
                 $"component {component.Identity} downloadLocation is invalid");
@@ -472,7 +470,7 @@ internal static class ManagedComponentEvidenceBuilder
                     $"component {component.Identity} license evidence is not required to be nontrivial");
             }
         }
-        else if (component.LicenseDeclared != NoAssertion)
+        else if (!string.Equals(component.LicenseDeclared, NoAssertion, StringComparison.Ordinal))
         {
             throw CatalogError(
                 $"component {component.Identity} declares a license without evidence");
@@ -550,7 +548,7 @@ internal static class ManagedComponentEvidenceBuilder
                     library.Name,
                     library.Value,
                     "hashPath");
-                if (type == "package")
+                if (string.Equals(type, "package", StringComparison.Ordinal))
                 {
                     if (packagePath is null || hashPath is null)
                     {
@@ -576,7 +574,7 @@ internal static class ManagedComponentEvidenceBuilder
                     }
 
                     var serializedHash = hashNode.GetString()!;
-                    if (type == "package")
+                    if (string.Equals(type, "package", StringComparison.Ordinal))
                     {
                         const string prefix = "sha512-";
                         if (!serializedHash.StartsWith(prefix, StringComparison.Ordinal))
@@ -597,7 +595,7 @@ internal static class ManagedComponentEvidenceBuilder
                             $"GhostShell.deps.json library {library.Name} has an unexpected sha512.");
                     }
                 }
-                else if (type == "package")
+                else if (string.Equals(type, "package", StringComparison.Ordinal))
                 {
                     throw new InvalidDataException(
                         $"GhostShell.deps.json library {library.Name} is missing sha512.");
@@ -770,8 +768,7 @@ internal static class ManagedComponentEvidenceBuilder
         IReadOnlyDictionary<string, IReadOnlyList<string>> graph)
     {
         var roots = graph.Keys
-            .Where(identity =>
-                ParseIdentity(identity).Name == "GhostShell")
+            .Where(identity => string.Equals(ParseIdentity(identity).Name, "GhostShell", StringComparison.Ordinal))
             .ToArray();
         if (roots.Length != 1)
         {
@@ -866,7 +863,7 @@ internal static class ManagedComponentEvidenceBuilder
                     + $"unsupported group {group.Name} or value shape.");
             }
 
-            if (group.Name == "dependencies")
+            if (string.Equals(group.Name, "dependencies", StringComparison.Ordinal))
             {
                 dependencies = ValidateTargetDependencies(
                     identity,
@@ -906,7 +903,7 @@ internal static class ManagedComponentEvidenceBuilder
         {
             if (dependency.Name.Length == 0
                 || dependency.Name.Length > 200
-                || dependency.Name.Contains('/')
+                || dependency.Name.Contains('/', StringComparison.Ordinal)
                 || dependency.Name.Any(char.IsControl)
                 || dependency.Value.ValueKind != JsonValueKind.String)
             {
@@ -1114,7 +1111,7 @@ internal static class ManagedComponentEvidenceBuilder
         CatalogDependency component,
         DependencyManifestEntry manifest)
     {
-        if (manifest.Type != "project")
+        if (!string.Equals(manifest.Type, "project", StringComparison.Ordinal))
         {
             throw new InvalidDataException(
                 $"Managed project {component.Identity} has an unexpected dependency type.");
@@ -1135,7 +1132,7 @@ internal static class ManagedComponentEvidenceBuilder
             $"SHA-256 was computed from the published project assembly {file}.",
             null,
             "Managed project assembly from GhostSHELL.",
-            IsRoot: file == "GhostShell.dll");
+            IsRoot: string.Equals(file, "GhostShell.dll", StringComparison.Ordinal));
     }
 
     private static PackageEvidence ValidateNuGetPackage(
@@ -1144,8 +1141,8 @@ internal static class ManagedComponentEvidenceBuilder
         DependencyManifestEntry manifest,
         EvidenceAccumulator evidence)
     {
-        if (component.Kind == "nuget"
-            && !string.Equals(
+        if (string.Equals(component.Kind, "nuget"
+, StringComparison.Ordinal) && !string.Equals(
                 manifest.ContentHash,
                 component.ContentHash,
                 StringComparison.Ordinal))
@@ -1161,8 +1158,8 @@ internal static class ManagedComponentEvidenceBuilder
         var expectedPackagePath = $"{normalizedId}/{normalizedVersion}";
         var expectedHashPath =
             $"{normalizedId}.{normalizedVersion}.nupkg.sha512";
-        if (component.Kind == "nuget"
-            && (!string.Equals(
+        if (string.Equals(component.Kind, "nuget"
+, StringComparison.Ordinal) && (!string.Equals(
                     manifest.PackagePath,
                     expectedPackagePath,
                     StringComparison.Ordinal)
@@ -1243,8 +1240,8 @@ internal static class ManagedComponentEvidenceBuilder
             + $"NuGet contentHash {component.ContentHash}, and nuspec license metadata "
             + $"{component.NuspecLicenseType}:{component.NuspecLicense}.",
             $"pkg:nuget/{Uri.EscapeDataString(packageId)}@{Uri.EscapeDataString(version)}",
-            component.Kind == "runtime"
-                ? "The runtime package may contain components under additional terms; "
+string.Equals(component.Kind, "runtime"
+, StringComparison.Ordinal) ? "The runtime package may contain components under additional terms; "
                   + "licenseDeclared remains NOASSERTION."
                 : null,
             IsRoot: false);
@@ -1347,7 +1344,7 @@ internal static class ManagedComponentEvidenceBuilder
                         + $"{entry.FullName}.");
                 }
 
-                if (!entry.FullName.Contains('/')
+                if (!entry.FullName.Contains('/', StringComparison.Ordinal)
                     && entry.FullName.EndsWith(
                         ".nuspec",
                         StringComparison.OrdinalIgnoreCase))
@@ -1450,8 +1447,8 @@ internal static class ManagedComponentEvidenceBuilder
         var document = XDocument.Load(reader, LoadOptions.None);
         var root = document.Root;
         if (root is null
-            || root.Name.LocalName != "package"
-            || !SupportedNuspecNamespaces.Contains(root.Name.NamespaceName)
+            || !string.Equals(root.Name.LocalName, "package"
+, StringComparison.Ordinal) || !SupportedNuspecNamespaces.Contains(root.Name.NamespaceName)
             || root.DescendantsAndSelf().Any(element =>
                 element.Name.Namespace != root.Name.Namespace))
         {
@@ -1626,7 +1623,7 @@ internal static class ManagedComponentEvidenceBuilder
         IReadOnlyList<CatalogDependency> dependencies)
     {
         var projectFiles = dependencies
-            .Where(component => component.Kind == "project")
+            .Where(component => string.Equals(component.Kind, "project", StringComparison.Ordinal))
             .Select(component => component.File!)
             .ToHashSet(StringComparer.Ordinal);
         if (!projectFiles.SetEquals(RequiredProjectFiles))
@@ -1636,11 +1633,11 @@ internal static class ManagedComponentEvidenceBuilder
         }
 
         var runtimeComponents = dependencies
-            .Where(component => component.Kind == "runtime")
+            .Where(component => string.Equals(component.Kind, "runtime", StringComparison.Ordinal))
             .ToArray();
         if (runtimeComponents.Length != 1
-            || runtimeComponents[0].NuGetId
-                != "Microsoft.NETCore.App.Runtime.osx-arm64")
+            || !string.Equals(runtimeComponents[0].NuGetId
+, "Microsoft.NETCore.App.Runtime.osx-arm64", StringComparison.Ordinal))
         {
             throw CatalogError(
                 "dependencies must model the exact macOS arm64 .NET runtime package");
@@ -1656,13 +1653,8 @@ internal static class ManagedComponentEvidenceBuilder
                 string.Equals(
                     candidate.NuGetId,
                     requiredId,
-                    StringComparison.Ordinal));
-            if (component is null)
-            {
-                throw CatalogError(
+                    StringComparison.Ordinal)) ?? throw CatalogError(
                     $"dependencies must include reviewed notices for {requiredId}");
-            }
-
             var archivePaths = component.Notices
                 .Select(notice => notice.ArchivePath)
                 .ToHashSet(StringComparer.Ordinal);
@@ -1944,7 +1936,7 @@ internal static class ManagedComponentEvidenceBuilder
         var separator = identity.LastIndexOf('/');
         if (separator <= 0
             || separator == identity.Length - 1
-            || identity.IndexOf('/') != separator)
+            || identity.IndexOf('/', StringComparison.Ordinal) != separator)
         {
             throw CatalogError(
                 $"component identity {identity} must be name/version");
@@ -2005,8 +1997,8 @@ internal static class ManagedComponentEvidenceBuilder
         string identity)
     {
         if (string.IsNullOrEmpty(value)
-            || value != Path.GetFileName(value)
-            || value is "." or ".."
+            || !string.Equals(value, Path.GetFileName(value)
+, StringComparison.Ordinal) || value is "." or ".."
             || value.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
         {
             throw CatalogError(
@@ -2029,9 +2021,9 @@ internal static class ManagedComponentEvidenceBuilder
         !string.IsNullOrEmpty(path)
         && path.Length <= maximumLength
         && !Path.IsPathFullyQualified(path)
-        && !path.StartsWith("/", StringComparison.Ordinal)
-        && !path.Contains('\\')
-        && !path.Contains(':')
+        && !path.StartsWith('/')
+        && !path.Contains('\\', StringComparison.Ordinal)
+        && !path.Contains(':', StringComparison.Ordinal)
         && !path.Any(char.IsControl)
         && !path.Split('/').Any(segment =>
             segment.Length == 0 || segment is "." or "..");
@@ -2041,7 +2033,7 @@ internal static class ManagedComponentEvidenceBuilder
         string identity)
     {
         ValidateArchivePath(path, identity);
-        if (path == SpdxFileName)
+        if (string.Equals(path, SpdxFileName, StringComparison.Ordinal))
         {
             throw CatalogError(
                 $"component {identity} outputPath collides with the SPDX document");
@@ -2056,7 +2048,7 @@ internal static class ManagedComponentEvidenceBuilder
         try
         {
             if (Convert.FromBase64String(value).Length != 64
-                || Convert.ToBase64String(Convert.FromBase64String(value)) != value)
+                || !string.Equals(Convert.ToBase64String(Convert.FromBase64String(value)), value, StringComparison.Ordinal))
             {
                 throw CatalogError(
                     $"component {identity} has invalid {field}");
@@ -2402,10 +2394,7 @@ internal static class ManagedComponentEvidenceBuilder
 
         private void EnsureCapacity(int sizeHint)
         {
-            if (sizeHint < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(sizeHint));
-            }
+            ArgumentOutOfRangeException.ThrowIfNegative(sizeHint);
 
             sizeHint = Math.Max(sizeHint, 1);
             if (sizeHint > _maximumBytes - _written)

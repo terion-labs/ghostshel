@@ -223,13 +223,13 @@ public sealed record BrowserMouseRequest
             | BrowserMouseButtons.Right
             | BrowserMouseButtons.Middle
             | BrowserMouseButtons.Back
-            | BrowserMouseButtons.Forward)) == 0;
+            | BrowserMouseButtons.Forward)) == BrowserMouseButtons.None;
 
     private static bool AreDefined(BrowserInputModifiers value) =>
         (value & ~(BrowserInputModifiers.Alt
             | BrowserInputModifiers.Control
             | BrowserInputModifiers.Meta
-            | BrowserInputModifiers.Shift)) == 0;
+            | BrowserInputModifiers.Shift)) == BrowserInputModifiers.None;
 
     private static void ValidateSession(SessionId sessionId)
     {
@@ -281,7 +281,7 @@ public sealed record BrowserKeyRequest
             || (modifiers & ~(BrowserInputModifiers.Alt
                 | BrowserInputModifiers.Control
                 | BrowserInputModifiers.Meta
-                | BrowserInputModifiers.Shift)) != 0)
+                | BrowserInputModifiers.Shift)) != BrowserInputModifiers.None)
         {
             throw new ArgumentOutOfRangeException(nameof(action));
         }
@@ -327,7 +327,7 @@ public sealed record BrowserScrollRequest
             || (modifiers & ~(BrowserInputModifiers.Alt
                 | BrowserInputModifiers.Control
                 | BrowserInputModifiers.Meta
-                | BrowserInputModifiers.Shift)) != 0)
+                | BrowserInputModifiers.Shift)) != BrowserInputModifiers.None)
         {
             throw new ArgumentOutOfRangeException(nameof(deltaX));
         }

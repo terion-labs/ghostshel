@@ -78,7 +78,7 @@ public sealed class PathConnectionExecutableLocator : IConnectionExecutableLocat
             var mode = File.GetUnixFileMode(fullPath);
             const UnixFileMode executableBits =
                 UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute;
-            return (mode & executableBits) != 0 ? fullPath : null;
+            return (mode & executableBits) != UnixFileMode.None ? fullPath : null;
         }
         catch (PlatformNotSupportedException)
         {

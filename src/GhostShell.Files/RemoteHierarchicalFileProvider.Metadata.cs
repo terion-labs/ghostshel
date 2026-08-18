@@ -24,7 +24,7 @@ public abstract partial class RemoteHierarchicalFileProvider
         if (request.ContinuationToken is { } continuation)
         {
             if (!_pageCursors.TryGet(continuation, out var cursor)
-                || cursor!.Scope != scope)
+                || !string.Equals(cursor!.Scope, scope, StringComparison.Ordinal))
             {
                 return Failure<FilePage>(
                     FileProviderErrorCode.InvalidLocation,
@@ -361,7 +361,7 @@ public abstract partial class RemoteHierarchicalFileProvider
             remoteEntry.LastModifiedAt,
             version.Value,
             location.Path.Name is { } name
-                && name.Value.StartsWith(".", StringComparison.Ordinal)));
+                && name.Value.StartsWith('.')));
     }
 
     private FileProviderResult<FileVersion> CreateVersion(RemoteFileEntry remoteEntry)

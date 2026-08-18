@@ -223,7 +223,7 @@ public sealed class RuntimeTabStripSideDockHeadlessTests
             dragReleasedBy = null;
             var close = strip.GetVisualDescendants()
                 .OfType<Button>()
-                .Single(button => ToolTip.GetTip(button) as string == "Close tab");
+                .Single(button => string.Equals(ToolTip.GetTip(button) as string, "Close tab", StringComparison.Ordinal));
             var closeCentre = close.TranslatePoint(
                 new Point(close.Bounds.Width / 2, close.Bounds.Height / 2),
                 window);
@@ -322,8 +322,8 @@ public sealed class RuntimeTabStripSideDockHeadlessTests
 
             var iconTarget = strip.GetVisualDescendants()
                 .OfType<Border>()
-                .Single(candidate => ToolTip.GetTip(candidate) as string
-                    == "Double-click to change icon");
+                .Single(candidate => string.Equals(ToolTip.GetTip(candidate) as string
+, "Double-click to change icon", StringComparison.Ordinal));
             iconTarget.RaiseEvent(new TappedEventArgs(InputElement.DoubleTappedEvent, null!));
 
             var flyout = Assert.IsType<Flyout>(FlyoutBase.GetAttachedFlyout(iconTarget));
@@ -333,7 +333,7 @@ public sealed class RuntimeTabStripSideDockHeadlessTests
             window.UpdateLayout();
             var rocket = picker.GetVisualDescendants()
                 .OfType<Button>()
-                .Single(button => ToolTip.GetTip(button) as string == "Rocket");
+                .Single(button => string.Equals(ToolTip.GetTip(button) as string, "Rocket", StringComparison.Ordinal));
             rocket.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
             Assert.Same(tab, requestedTab);

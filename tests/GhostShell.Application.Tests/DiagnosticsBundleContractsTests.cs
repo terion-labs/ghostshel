@@ -44,9 +44,9 @@ public sealed class DiagnosticsBundleContractsTests
             .ToArray();
 
         Assert.DoesNotContain(propertyNames, name => ContainsSensitiveSourceName(name));
-        Assert.DoesNotContain("MachineName", propertyNames);
-        Assert.DoesNotContain("UserName", propertyNames);
-        Assert.DoesNotContain("ProcessArguments", propertyNames);
+        Assert.DoesNotContain("MachineName", propertyNames, StringComparer.Ordinal);
+        Assert.DoesNotContain("UserName", propertyNames, StringComparer.Ordinal);
+        Assert.DoesNotContain("ProcessArguments", propertyNames, StringComparer.Ordinal);
     }
 
     [Fact]

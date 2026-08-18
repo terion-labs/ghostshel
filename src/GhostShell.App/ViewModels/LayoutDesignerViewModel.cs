@@ -449,11 +449,10 @@ public sealed class LayoutDesignerViewModel : ObservableObject
         {
             return CreateProportional(
                 Orientation.Vertical,
-                bands
+                [.. bands
                     .Select(band => (
                         Child: BuildRegion(band.Slots, left, right, band.Start, band.End),
-                        Proportion: (double)(band.End - band.Start) / (bottom - top)))
-                    .ToArray());
+                        Proportion: (double)(band.End - band.Start) / (bottom - top)))]);
         }
 
         var columns = SplitAlongAxis(
@@ -466,11 +465,10 @@ public sealed class LayoutDesignerViewModel : ObservableObject
         {
             return CreateProportional(
                 Orientation.Horizontal,
-                columns
+                [.. columns
                     .Select(column => (
                         Child: BuildRegion(column.Slots, column.Start, column.End, top, bottom),
-                        Proportion: (double)(column.End - column.Start) / (right - left)))
-                    .ToArray());
+                        Proportion: (double)(column.End - column.Start) / (right - left)))]);
         }
 
         // No clean cut on either axis: a pinwheel arrangement, which Dock's
@@ -486,11 +484,10 @@ public sealed class LayoutDesignerViewModel : ObservableObject
                     ? CreateLeaf(CreateSlotDocument(rowSlots[0].Id.Value))
                     : (IDockable)CreateProportional(
                         Orientation.Horizontal,
-                        rowSlots
+                        [.. rowSlots
                             .Select(slot => (
                                 Child: (IDockable)CreateLeaf(CreateSlotDocument(slot.Id.Value)),
-                                Proportion: 1d / rowSlots.Length))
-                            .ToArray());
+                                Proportion: 1d / rowSlots.Length))]);
                 return row;
             })
             .ToArray();
@@ -498,7 +495,7 @@ public sealed class LayoutDesignerViewModel : ObservableObject
             ? rows[0]
             : CreateProportional(
                 Orientation.Vertical,
-                rows.Select(row => (Child: row, Proportion: 1d / rows.Length)).ToArray());
+                [.. rows.Select(row => (Child: row, Proportion: 1d / rows.Length))]);
     }
 
     /// <summary>

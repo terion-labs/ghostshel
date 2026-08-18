@@ -384,7 +384,7 @@ public sealed class DockerSessionHostTests
         private int _consumed;
 
         public IReadOnlyList<AgentActionCompletion> Completions =>
-            _completions.ToArray();
+            [.. _completions];
 
         public AgentAuthorizationId Arm(AgentDockerReadAction action)
         {

@@ -77,7 +77,7 @@ public sealed class FileAgentToolResultJsonTests
             ["logs", "[REDACTED SECRET-BEARING LINE]"],
             projectedEntry.GetProperty("path_segments")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
         Assert.Equal(
             "[REDACTED SECRET-BEARING LINE]",
             projectedEntry.GetProperty("name").GetString());
@@ -117,7 +117,7 @@ public sealed class FileAgentToolResultJsonTests
             ["reports", "status.txt"],
             projectedEntry.GetProperty("path_segments")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
         Assert.Equal(
             "status.txt",
             projectedEntry.GetProperty("name").GetString());
@@ -436,7 +436,7 @@ public sealed class FileAgentToolResultJsonTests
             new FileAgentIntent.Transfers(),
             metadata);
 
-        Assert.All(new[] { search, access, transfers }, projection =>
+        Assert.All([search, access, transfers], projection =>
         {
             Assert.True(projection.IsSuccess);
             Assert.True(
@@ -457,7 +457,7 @@ public sealed class FileAgentToolResultJsonTests
                     .EnumerateArray())
                 .GetProperty("rights")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
         using var transferDocument = JsonDocument.Parse(transfers.Json);
         var transferRoot = transferDocument.RootElement;
         Assert.True(transferRoot.GetProperty(
@@ -659,5 +659,5 @@ public sealed class FileAgentToolResultJsonTests
     }
 
     private static FilePanelPathSegment[] Segments(params string[] values) =>
-        values.Select(value => new FilePanelPathSegment(value)).ToArray();
+        [.. values.Select(value => new FilePanelPathSegment(value))];
 }

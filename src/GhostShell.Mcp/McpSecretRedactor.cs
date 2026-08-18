@@ -17,7 +17,7 @@ internal sealed class McpSecretRedactor : IDisposable
     public McpSecretRedactor(IEnumerable<char[]> literals)
     {
         ArgumentNullException.ThrowIfNull(literals);
-        _literals = literals
+        _literals = [.. literals
             .Select(literal =>
             {
                 ArgumentNullException.ThrowIfNull(literal);
@@ -29,8 +29,7 @@ internal sealed class McpSecretRedactor : IDisposable
                 }
 
                 return literal;
-            })
-            .ToArray();
+            })];
     }
 
     public string Redact(string value, out bool redacted)

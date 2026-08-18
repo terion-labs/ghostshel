@@ -55,11 +55,12 @@ public sealed class ArchiveTableOfContentsTests : IDisposable
         Assert.NotNull(entries);
         Assert.Equal(
             ["docs/", "docs/guide.md", "src/main.c"],
-            entries!.Select(entry => entry.Path).Order());
+            entries!.Select(entry => entry.Path).Order(StringComparer.Ordinal),
+            StringComparer.Ordinal);
         var guide = entries.Single(entry => entry.Path.EndsWith("guide.md", StringComparison.Ordinal));
         Assert.False(guide.IsDirectory);
         Assert.Equal(11, guide.Size);
-        Assert.True(entries.Single(entry => entry.Path == "docs/").IsDirectory);
+        Assert.True(entries.Single(entry => string.Equals(entry.Path, "docs/", StringComparison.Ordinal)).IsDirectory);
     }
 
     [Fact]
@@ -74,13 +75,16 @@ public sealed class ArchiveTableOfContentsTests : IDisposable
             CancellationToken.None);
 
         Assert.NotNull(entries);
-        var file = Assert.Single(entries!, entry => entry.Path == "readme.txt");
+        var file = Assert.Single(entries!, entry => string.Equals(entry.Path, "readme.txt", StringComparison.Ordinal));
         Assert.Equal(5, file.Size);
         // Nothing is unpacked: the only file beside the archive is the one the
         // fixture wrote to build it.
         Assert.Equal(
             ["readme.txt", Path.GetFileName(path)],
-            Directory.GetFiles(_root).Select(Path.GetFileName).Order());
+            Directory.GetFiles(_root)
+                .Select(Path.GetFileName)
+                .Order(StringComparer.Ordinal),
+            StringComparer.Ordinal);
     }
 
     [Fact]
@@ -95,7 +99,7 @@ public sealed class ArchiveTableOfContentsTests : IDisposable
             CancellationToken.None);
 
         Assert.NotNull(entries);
-        Assert.Contains(entries!, entry => entry.Path == "readme.txt");
+        Assert.Contains(entries!, entry => string.Equals(entry.Path, "readme.txt", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -140,7 +144,7 @@ public sealed class ArchiveTableOfContentsTests : IDisposable
 
         for (var index = 0; index < entryCount; index++)
         {
-            Write(archive, $"file-{index}.txt", index.ToString());
+            Write(archive, $"file-{index}.txt", index.ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
 
         return path;

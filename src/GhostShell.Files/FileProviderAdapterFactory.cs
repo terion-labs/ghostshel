@@ -152,7 +152,7 @@ internal sealed class FileProviderAdapterFactory(
         if (configuration.ServiceUri is { } serviceUri)
         {
             clientConfiguration.ServiceURL = serviceUri.AbsoluteUri;
-            clientConfiguration.UseHttp = serviceUri.Scheme == Uri.UriSchemeHttp;
+            clientConfiguration.UseHttp = string.Equals(serviceUri.Scheme, Uri.UriSchemeHttp, StringComparison.Ordinal);
             clientConfiguration.AuthenticationRegion = configuration.Region ?? "us-east-1";
         }
         else
@@ -297,6 +297,7 @@ internal sealed class FileProviderAdapterFactory(
         var handler = new HttpClientHandler
         {
             AllowAutoRedirect = false,
+            CheckCertificateRevocationList = true,
             PreAuthenticate = true,
         };
         if (configuration.PasswordSecret is { } secretReference)
@@ -431,7 +432,7 @@ internal sealed class FileProviderAdapterFactory(
             return FileLocation.ForContainerRoot(providerId, authority);
         }
 
-        if (configuredPrefix.StartsWith("/", StringComparison.Ordinal))
+        if (configuredPrefix.StartsWith('/'))
         {
             throw InvalidConfiguration(
                 "An S3 initial prefix cannot start with '/'; exact leading-slash keys are not hierarchical browser roots.");
@@ -504,4 +505,6 @@ internal sealed record OwnedFileProviderRegistration(
     }
 }
 
-internal sealed class FileProviderAdapterConfigurationException(string message) : Exception(message);
+internal sealed class FileProviderAdapterConfigurationException(string message) : Exception(message)
+{
+}

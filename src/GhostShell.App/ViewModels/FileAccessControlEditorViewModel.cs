@@ -175,8 +175,8 @@ public sealed class FileAccessRowViewModel : ObservableObject
         _who = who;
         _privileges = PosixPrivileges;
         _rights =
-            (mode.Has(who, FilePanelPosixRight.Read) ? FilePanelAccessRight.Read : 0)
-            | (mode.Has(who, FilePanelPosixRight.Write) ? FilePanelAccessRight.Write : 0);
+            (mode.Has(who, FilePanelPosixRight.Read) ? FilePanelAccessRight.Read : FilePanelAccessRight.None)
+            | (mode.Has(who, FilePanelPosixRight.Write) ? FilePanelAccessRight.Write : FilePanelAccessRight.None);
         _privilege = Nearest(_rights, _privileges);
         Name = who switch
         {
@@ -214,7 +214,7 @@ public sealed class FileAccessRowViewModel : ObservableObject
 
     public bool HasDetail => Detail.Length > 0;
 
-    public IReadOnlyList<string> Choices => _privileges.Select(option => option.Label).ToArray();
+    public IReadOnlyList<string> Choices => [.. _privileges.Select(option => option.Label)];
 
     public string Privilege
     {
@@ -226,7 +226,7 @@ public sealed class FileAccessRowViewModel : ObservableObject
                 return;
             }
 
-            _rights = _privileges.FirstOrDefault(option => option.Label == value).Rights;
+            _rights = _privileges.FirstOrDefault(option => string.Equals(option.Label, value, StringComparison.Ordinal)).Rights;
             if (_mode is not null)
             {
                 _mode.Set(

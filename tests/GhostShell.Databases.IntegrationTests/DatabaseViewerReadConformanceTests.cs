@@ -135,7 +135,7 @@ public sealed partial class DatabaseViewerConformanceTests
             cancellationToken);
         Assert.Equal(204, notEqual.Result.ValueRows.Count);
         Assert.Equal(204, notEqual.TotalRows);
-        Assert.DoesNotContain("alpha", ColumnText(notEqual.Result, "code"));
+        Assert.DoesNotContain("alpha", ColumnText(notEqual.Result, "code"), StringComparer.Ordinal);
 
         await AssertFilterCodesAsync(
             client, environment, rows,
@@ -185,7 +185,7 @@ public sealed partial class DatabaseViewerConformanceTests
             cancellationToken);
         Assert.Equal(204, notContains.Result.ValueRows.Count);
         Assert.Equal(204, notContains.TotalRows);
-        Assert.DoesNotContain("literal", ColumnText(notContains.Result, "code"));
+        Assert.DoesNotContain("literal", ColumnText(notContains.Result, "code"), StringComparer.Ordinal);
         await AssertFilterCodesAsync(
             client, environment, rows,
             new DatabaseFilterCondition("title", DatabaseFilterOperator.StartsWith, "literal%_!"),
@@ -220,8 +220,8 @@ public sealed partial class DatabaseViewerConformanceTests
         Assert.Equal(203, notIn.Result.ValueRows.Count);
         Assert.Equal(203, notIn.TotalRows);
         var notInCodes = ColumnText(notIn.Result, "code");
-        Assert.DoesNotContain("alpha", notInCodes);
-        Assert.DoesNotContain("beta", notInCodes);
+        Assert.DoesNotContain("alpha", notInCodes, StringComparer.Ordinal);
+        Assert.DoesNotContain("beta", notInCodes, StringComparer.Ordinal);
 
         var isNull = await FilterAsync(
             client, environment, rows,
@@ -229,7 +229,7 @@ public sealed partial class DatabaseViewerConformanceTests
             cancellationToken);
         Assert.Equal(68, isNull.Result.ValueRows.Count);
         Assert.Equal(68, isNull.TotalRows);
-        Assert.Contains("literal", ColumnText(isNull.Result, "code"));
+        Assert.Contains("literal", ColumnText(isNull.Result, "code"), StringComparer.Ordinal);
         var noteOrdinal = FindColumn(isNull.Result, "note");
         Assert.All(isNull.Result.ValueRows, row => Assert.True(row[noteOrdinal].IsNull));
 
@@ -239,7 +239,7 @@ public sealed partial class DatabaseViewerConformanceTests
             cancellationToken);
         Assert.Equal(137, isNotNull.Result.ValueRows.Count);
         Assert.Equal(137, isNotNull.TotalRows);
-        Assert.Contains("alpha", ColumnText(isNotNull.Result, "code"));
+        Assert.Contains("alpha", ColumnText(isNotNull.Result, "code"), StringComparer.Ordinal);
         noteOrdinal = FindColumn(isNotNull.Result, "note");
         Assert.All(isNotNull.Result.ValueRows, row => Assert.False(row[noteOrdinal].IsNull));
 
@@ -271,7 +271,7 @@ public sealed partial class DatabaseViewerConformanceTests
             environment.ConnectionString,
             tunnel: null,
             cancellationToken);
-        Assert.Contains(objectsAfterInjection, item => item.Name == environment.Provider.Seed.RowsTable);
+        Assert.Contains(objectsAfterInjection, item => string.Equals(item.Name, environment.Provider.Seed.RowsTable, StringComparison.Ordinal));
     }
 
     private static async Task AssertFilterCodesAsync(
@@ -325,13 +325,13 @@ public sealed partial class DatabaseViewerConformanceTests
         string columnName)
     {
         var ordinal = FindColumn(page, columnName);
-        return page.ValueRows.Select(row => row[ordinal].DisplayText).ToArray();
+        return [.. page.ValueRows.Select(row => row[ordinal].DisplayText)];
     }
 
     private static int FindColumn(DatabaseQueryPage page, string columnName) =>
         page.Columns
             .Select((column, ordinal) => (column, ordinal))
-            .Single(pair => pair.column.Name == columnName)
+            .Single(pair => string.Equals(pair.column.Name, columnName, StringComparison.Ordinal))
             .ordinal;
 
     private static void AssertCanonicalAlphaValues(

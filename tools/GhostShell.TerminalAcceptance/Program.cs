@@ -659,4 +659,10 @@ internal sealed class UsageException : Exception
         : base(message)
     {
     }
+
+
+    public UsageException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
 }

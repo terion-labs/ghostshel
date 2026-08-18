@@ -2,10 +2,9 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using GhostShell.App.Controls;
-using GhostShell.Application;
-using GhostShell.App.Views.Components;
-
 using GhostShell.App.ViewModels;
+using GhostShell.App.Views.Components;
+using GhostShell.Application;
 
 namespace GhostShell.App.Views.RuntimePanels;
 

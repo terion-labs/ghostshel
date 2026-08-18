@@ -25,7 +25,7 @@ public static class GhosttyVtRuntimeProbe
 
     // The probe derives its compatibility closure from the binding itself so a
     // newly imported native call cannot silently bypass startup validation.
-    private static readonly string[] RequiredExports = typeof(GhosttyVtNative)
+    private static readonly string[] RequiredExports = [.. typeof(GhosttyVtNative)
         .GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
         .Select(static method => method.GetCustomAttribute<LibraryImportAttribute>(inherit: false))
         .Where(static attribute => attribute is not null)
@@ -33,8 +33,7 @@ public static class GhosttyVtRuntimeProbe
         .Where(static entryPoint => !string.IsNullOrWhiteSpace(entryPoint))
         .Select(static entryPoint => entryPoint!)
         .Distinct(StringComparer.Ordinal)
-        .Order(StringComparer.Ordinal)
-        .ToArray();
+        .Order(StringComparer.Ordinal)];
 
     internal static IReadOnlyList<string> RequiredExportsForTesting => RequiredExports;
 
@@ -135,11 +134,10 @@ public static class GhosttyVtRuntimeProbe
             Path.Combine(AppContext.BaseDirectory, "runtimes", runtimeIdentifier, "native", fileName),
         ];
 
-        return candidates
+        return [.. candidates
             .Where(static candidate => !string.IsNullOrWhiteSpace(candidate))
             .Select(static candidate => candidate!)
-            .Distinct(StringComparer.Ordinal)
-            .ToArray();
+            .Distinct(StringComparer.Ordinal)];
     }
 
     private static bool TryLoadCompatible(

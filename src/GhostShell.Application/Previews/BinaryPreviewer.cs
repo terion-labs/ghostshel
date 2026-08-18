@@ -32,12 +32,18 @@ public sealed class BinaryPreviewer : IFilePreviewer
 {
     public const string HexToggle = "hex";
 
-    public bool Claims(FilePreviewSource source) => source.Kind == FilePanelPreviewKind.Hex;
+    public bool Claims(FilePreviewSource source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return source.Kind == FilePanelPreviewKind.Hex;
+    }
 
     public FilePreviewOutcome Create(
         FilePreviewSource source,
         IReadOnlyDictionary<string, bool> toggles)
     {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(toggles);
         var hex = PreviewText.IsOn(toggles, HexToggle, byDefault: false);
         var toggle = new FilePreviewToggle(HexToggle, "Show hex", hex);
         if (hex)

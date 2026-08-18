@@ -82,11 +82,13 @@ public sealed partial class AgentChatViewModelTests
                 runtime.Snapshot = runtime.Snapshot with
                 {
                     State = GovernedAgentState.Ready,
-                    Messages = committedMessages.Append(
+                    Messages =
+                    [
+                        .. committedMessages,
                         new AgentChatMessage(
                             AgentChatMessageRole.Assistant,
-                            "The full panel test passed."))
-                        .ToArray(),
+                            "The full panel test passed."),
+                    ],
                     ProvisionalAssistantText = string.Empty,
                     CurrentProgress = null,
                     Status = string.Empty,
@@ -154,8 +156,8 @@ public sealed partial class AgentChatViewModelTests
                 var send = Assert.Single(
                     view.GetVisualDescendants()
                         .OfType<Button>(),
-                    button => AutomationProperties.GetName(button)
-                        == "Send AI agent prompt");
+                    button => string.Equals(AutomationProperties.GetName(button)
+, "Send AI agent prompt", StringComparison.Ordinal));
                 var stop = Assert.Single(
                     view.GetVisualDescendants()
                         .OfType<Button>(),
@@ -172,8 +174,8 @@ public sealed partial class AgentChatViewModelTests
                 Assert.NotNull(prompt);
                 var status = Assert.Single(
                     view.GetVisualDescendants().OfType<TextBlock>(),
-                    text => AutomationProperties.GetName(text)
-                        == "AI agent status");
+                    text => string.Equals(AutomationProperties.GetName(text)
+, "AI agent status", StringComparison.Ordinal));
                 var statusTop = Assert.NotNull(
                     status.TranslatePoint(default, view)).Y;
                 var promptTop = Assert.NotNull(
@@ -268,11 +270,11 @@ public sealed partial class AgentChatViewModelTests
 
                 Assert.Equal(
                     ["Check this next.", "Then inspect the result.", "Then summarize."],
-                    viewModel.QueuedFollowUps.Select(item => item.Message));
+                    viewModel.QueuedFollowUps.Select(item => item.Message), StringComparer.Ordinal);
                 var dragHandles = view.GetVisualDescendants()
                     .OfType<Border>()
-                    .Where(border => AutomationProperties.GetName(border)
-                        == "Drag queued agent message to reorder")
+                    .Where(border => string.Equals(AutomationProperties.GetName(border)
+, "Drag queued agent message to reorder", StringComparison.Ordinal))
                     .ToArray();
                 Assert.Equal(3, dragHandles.Length);
                 Assert.DoesNotContain(
@@ -296,8 +298,8 @@ public sealed partial class AgentChatViewModelTests
                 Assert.Equal(1, move.DestinationIndex);
                 var send = Assert.Single(
                     view.GetVisualDescendants().OfType<Button>(),
-                    button => AutomationProperties.GetName(button)
-                        == "Queue a message for the AI agent");
+                    button => string.Equals(AutomationProperties.GetName(button)
+, "Queue a message for the AI agent", StringComparison.Ordinal));
                 var stop = Assert.Single(
                     view.GetVisualDescendants().OfType<Button>(),
                     button => AutomationProperties.GetName(button)
@@ -379,8 +381,8 @@ public sealed partial class AgentChatViewModelTests
 
                 var reasoning = Assert.Single(
                     window.GetVisualDescendants().OfType<ComboBox>(),
-                    combo => AutomationProperties.GetName(combo)
-                        == "AI reasoning effort");
+                    combo => string.Equals(AutomationProperties.GetName(combo)
+, "AI reasoning effort", StringComparison.Ordinal));
                 reasoning.SelectedItem = viewModel.ReasoningEfforts.Single(option =>
                     option.Value == AgentReasoningEffort.High);
                 Assert.Equal(
@@ -489,15 +491,15 @@ public sealed partial class AgentChatViewModelTests
 
                 var fastModel = Assert.Single(
                     window.GetVisualDescendants().OfType<Button>(),
-                    button => AutomationProperties.GetName(button)
-                        == "Use model Fast model");
+                    button => string.Equals(AutomationProperties.GetName(button)
+, "Use model Fast model", StringComparison.Ordinal));
                 fastModel.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 await selection;
 
                 Assert.Equal(0, runtime.ClearCount);
                 Assert.Equal(
                     ["Hello.", "Hello!"],
-                    viewModel.Messages.Select(message => message.Content));
+                    viewModel.Messages.Select(message => message.Content), StringComparer.Ordinal);
                 Assert.Equal("model-fast", viewModel.SelectedModel?.Id);
 
                 await viewModel.SendAsync(
@@ -569,8 +571,8 @@ public sealed partial class AgentChatViewModelTests
 
                 var context = Assert.Single(
                     view.GetVisualDescendants().OfType<Button>(),
-                    button => AutomationProperties.GetName(button)
-                        == "141k / 256k tokens used");
+                    button => string.Equals(AutomationProperties.GetName(button)
+, "141k / 256k tokens used", StringComparison.Ordinal));
                 Assert.True(context.IsEffectivelyVisible);
                 var donut = Assert.IsType<ContextWindowDonut>(context.Content);
                 Assert.Equal(viewModel.ContextWindowPercent, donut.Percentage);
@@ -598,18 +600,18 @@ public sealed partial class AgentChatViewModelTests
                 window.UpdateLayout();
                 Assert.Contains(
                     window.GetVisualDescendants().OfType<TextBlock>(),
-                    block => block.Text == "Context window" && block.IsEffectivelyVisible);
+                    block => string.Equals(block.Text, "Context window", StringComparison.Ordinal) && block.IsEffectivelyVisible);
 
                 var access = Assert.Single(
                     view.GetVisualDescendants().OfType<Button>(),
-                    button => AutomationProperties.GetName(button)
-                        == "Choose how AI actions are approved");
+                    button => string.Equals(AutomationProperties.GetName(button)
+, "Choose how AI actions are approved", StringComparison.Ordinal));
                 access.Flyout!.ShowAt(access);
                 window.UpdateLayout();
                 var fullAccess = Assert.Single(
                     window.GetVisualDescendants().OfType<Button>(),
-                    button => AutomationProperties.GetName(button)
-                        == "Enable full access for agent actions");
+                    button => string.Equals(AutomationProperties.GetName(button)
+, "Enable full access for agent actions", StringComparison.Ordinal));
                 fullAccess.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 await selection;
 
@@ -621,8 +623,8 @@ public sealed partial class AgentChatViewModelTests
                 window.UpdateLayout();
                 var askApproval = Assert.Single(
                     window.GetVisualDescendants().OfType<Button>(),
-                    button => AutomationProperties.GetName(button)
-                        == "Ask for approval for agent actions");
+                    button => string.Equals(AutomationProperties.GetName(button)
+, "Ask for approval for agent actions", StringComparison.Ordinal));
                 askApproval.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 await selection;
 
@@ -686,9 +688,9 @@ public sealed partial class AgentChatViewModelTests
 
                 var reasoningDisclosure = Assert.Single(
                     view.GetVisualDescendants().OfType<ToggleButton>(),
-                    toggle => AutomationProperties.GetName(toggle)
-                        == "Show or hide AI reasoning summary"
-                        && toggle.IsEffectivelyVisible);
+                    toggle => string.Equals(AutomationProperties.GetName(toggle)
+, "Show or hide AI reasoning summary"
+, StringComparison.Ordinal) && toggle.IsEffectivelyVisible);
                 Assert.False(reasoningDisclosure.IsChecked);
                 reasoningDisclosure.IsChecked = true;
                 await Task.Delay(80);
@@ -1056,9 +1058,9 @@ public sealed partial class AgentChatViewModelTests
                 window.UpdateLayout();
                 var disclosure = Assert.Single(
                     view.GetVisualDescendants().OfType<ToggleButton>(),
-                    toggle => AutomationProperties.GetName(toggle)
-                        == "Show or hide AI reasoning summary"
-                        && toggle.IsEffectivelyVisible);
+                    toggle => string.Equals(AutomationProperties.GetName(toggle)
+, "Show or hide AI reasoning summary"
+, StringComparison.Ordinal) && toggle.IsEffectivelyVisible);
 
                 Assert.False(disclosure.IsChecked);
                 window.UpdateLayout();
@@ -1325,9 +1327,7 @@ public sealed partial class AgentChatViewModelTests
                 {
                     await Task.Delay(25);
                     window.UpdateLayout();
-                    diagrams = window.GetVisualDescendants()
-                        .OfType<DatabaseMermaidDiagramView>()
-                        .ToArray();
+                    diagrams = [.. window.GetVisualDescendants().OfType<DatabaseMermaidDiagramView>()];
                     if (diagrams.Length == 2 && diagrams.All(diagram => diagram.HasRenderedDiagram))
                     {
                         break;

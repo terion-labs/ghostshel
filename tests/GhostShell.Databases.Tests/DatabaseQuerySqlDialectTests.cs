@@ -39,7 +39,7 @@ public sealed class DatabaseQuerySqlDialectTests
         Assert.DoesNotContain("ORDER BY", command.Sql, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(" OFFSET ", command.Sql, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(" FETCH ", command.Sql, StringComparison.OrdinalIgnoreCase);
-        if (driverId == "duckdb")
+        if (string.Equals(driverId, "duckdb", StringComparison.Ordinal))
         {
             Assert.StartsWith(
                 "WITH \"__ghostshell_query\" AS MATERIALIZED",
@@ -191,7 +191,7 @@ public sealed class DatabaseQuerySqlDialectTests
             : expectedAlias;
         var expectedProjection = $"{queryAlias}.{expectedFilterColumn}, "
             + $"{queryAlias}.{expectedSortColumn}";
-        if (driverId == "duckdb")
+        if (string.Equals(driverId, "duckdb", StringComparison.Ordinal))
         {
             Assert.StartsWith(
                 $"WITH \"__ghostshell_query\" AS MATERIALIZED (\n{sourceBody}\n)\n"

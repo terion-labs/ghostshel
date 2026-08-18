@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repository_dir="$(git rev-parse --show-toplevel)"
+exec "${repository_dir}/scripts/check.sh" --full

@@ -42,9 +42,9 @@ public sealed class McpServerProfileEditorViewModelTests
         Assert.Equal("/opt/tools/mcp-server", request.TrustReview.Executable);
         Assert.Contains(
             request.TrustReview.Environment,
-            item => item.VariableName == "API_TOKEN"
-                && item.ReferenceValue == "vault-token-ref"
-                && item.State == McpServerCredentialReviewState.Missing);
+            item => string.Equals(item.VariableName, "API_TOKEN"
+, StringComparison.Ordinal) && string.Equals(item.ReferenceValue, "vault-token-ref"
+, StringComparison.Ordinal) && item.State == McpServerCredentialReviewState.Missing);
         Assert.DoesNotContain(
             request.TrustReview.Environment,
             item => item.MetadataSummary.Contains(
@@ -209,7 +209,8 @@ public sealed class McpServerProfileEditorViewModelTests
             editor.AddHttpHeaderBinding);
 
         Assert.Contains(
-            McpServerProfile.MaximumHttpHeaderCount.ToString(),
+            McpServerProfile.MaximumHttpHeaderCount.ToString(
+                System.Globalization.CultureInfo.InvariantCulture),
             error.Message,
             StringComparison.Ordinal);
     }
@@ -257,43 +258,43 @@ public sealed class McpServerProfileEditorViewModelTests
                 "Environment binding 1 variable name",
                 "Environment binding 2 variable name",
             ],
-            editor.Environment.Select(item => item.NameAccessibleName));
+            editor.Environment.Select(item => item.NameAccessibleName), StringComparer.Ordinal);
         Assert.Equal(
             [
                 "Environment binding 1 secret reference",
                 "Environment binding 2 secret reference",
             ],
-            editor.Environment.Select(item => item.SecretReferenceAccessibleName));
+            editor.Environment.Select(item => item.SecretReferenceAccessibleName), StringComparer.Ordinal);
         Assert.Equal(
             [
                 "Remove environment binding 1",
                 "Remove environment binding 2",
             ],
-            editor.Environment.Select(item => item.RemoveAccessibleName));
+            editor.Environment.Select(item => item.RemoveAccessibleName), StringComparer.Ordinal);
         Assert.Equal(
             [
                 "HTTP header binding 1 name",
                 "HTTP header binding 2 name",
             ],
-            editor.HttpHeaders.Select(item => item.NameAccessibleName));
+            editor.HttpHeaders.Select(item => item.NameAccessibleName), StringComparer.Ordinal);
         Assert.Equal(
             [
                 "HTTP header binding 1 secret reference",
                 "HTTP header binding 2 secret reference",
             ],
-            editor.HttpHeaders.Select(item => item.SecretReferenceAccessibleName));
+            editor.HttpHeaders.Select(item => item.SecretReferenceAccessibleName), StringComparer.Ordinal);
         Assert.Equal(
             [
                 "Remove HTTP header binding 1",
                 "Remove HTTP header binding 2",
             ],
-            editor.HttpHeaders.Select(item => item.RemoveAccessibleName));
+            editor.HttpHeaders.Select(item => item.RemoveAccessibleName), StringComparer.Ordinal);
         Assert.Equal(
             ["Enabled MCP tool 1 name", "Enabled MCP tool 2 name"],
-            editor.EnabledTools.Select(item => item.NameAccessibleName));
+            editor.EnabledTools.Select(item => item.NameAccessibleName), StringComparer.Ordinal);
         Assert.Equal(
             ["Remove enabled MCP tool 1", "Remove enabled MCP tool 2"],
-            editor.EnabledTools.Select(item => item.RemoveAccessibleName));
+            editor.EnabledTools.Select(item => item.RemoveAccessibleName), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -361,7 +362,7 @@ public sealed class McpServerProfileEditorViewModelTests
             Name = "Renamed server",
             IsEnabled = false,
         };
-        editor.RemoveEnabledTool(editor.EnabledTools.Single(item => item.Name == "write"));
+        editor.RemoveEnabledTool(editor.EnabledTools.Single(item => string.Equals(item.Name, "write", StringComparison.Ordinal)));
 
         var request = editor.CreateSaveRequest();
 
@@ -662,26 +663,23 @@ public sealed class McpServerProfileEditorViewModelTests
             "McpServerTrustConfirmationDialog.axaml"));
 
         Assert.Equal("OnOpened", editor.Root?.Attribute("Opened")?.Value);
-        Assert.NotNull(editor.Descendants(view + "TextBox").Single(element =>
-            element.Attribute(x + "Name")?.Value == "McpServerNameInput"));
-        Assert.NotNull(editor.Descendants(view + "ComboBox").Single(element =>
-            element.Attribute(x + "Name")?.Value == "McpServerTransportPicker"
-            && element.Attribute("ItemsSource")?.Value
-                == "{Binding TransportOptions}"
-            && element.Attribute("SelectedItem")?.Value
-                == "{Binding SelectedTransport}"));
+        Assert.NotNull(editor.Descendants(view + "TextBox").Single(element => string.Equals(element.Attribute(x + "Name")?.Value, "McpServerNameInput", StringComparison.Ordinal)));
+        Assert.NotNull(editor.Descendants(view + "ComboBox").Single(element => string.Equals(element.Attribute(x + "Name")?.Value, "McpServerTransportPicker"
+, StringComparison.Ordinal) && string.Equals(element.Attribute("ItemsSource")?.Value
+, "{Binding TransportOptions}"
+, StringComparison.Ordinal) && string.Equals(element.Attribute("SelectedItem")?.Value
+, "{Binding SelectedTransport}", StringComparison.Ordinal)));
         Assert.Contains(
             editor.Descendants(view + "TextBox"),
-            element => element.Attribute("AutomationProperties.Name")?.Value
-                == "MCP Streamable HTTP endpoint");
+            element => string.Equals(element.Attribute("AutomationProperties.Name")?.Value
+, "MCP Streamable HTTP endpoint", StringComparison.Ordinal));
         Assert.Contains(
             editor.Descendants(view + "ItemsControl"),
-            element => element.Attribute("ItemsSource")?.Value
-                == "{Binding HttpHeaders}");
-        Assert.NotNull(editor.Descendants(view + "TextBlock").Single(element =>
-            element.Attribute(x + "Name")?.Value == "ValidationError"
-            && element.Attribute("Focusable")?.Value == "True"
-            && !string.IsNullOrWhiteSpace(
+            element => string.Equals(element.Attribute("ItemsSource")?.Value
+, "{Binding HttpHeaders}", StringComparison.Ordinal));
+        Assert.NotNull(editor.Descendants(view + "TextBlock").Single(element => string.Equals(element.Attribute(x + "Name")?.Value, "ValidationError"
+, StringComparison.Ordinal) && string.Equals(element.Attribute("Focusable")?.Value, "True"
+, StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(
                 element.Attribute("AutomationProperties.Name")?.Value)));
         // The sentence lives on the executable field's Hint, which LabeledField
         // renders below the control; the guarantee is that it is stated, not
@@ -704,24 +702,24 @@ public sealed class McpServerProfileEditorViewModelTests
 
         var editorCancel = Assert.Single(
             editor.Descendants(view + "Button"),
-            button => button.Attribute("Content")?.Value == "Cancel");
+            button => string.Equals(button.Attribute("Content")?.Value, "Cancel", StringComparison.Ordinal));
         Assert.Equal("True", editorCancel.Attribute("IsCancel")?.Value);
         var editorSave = Assert.Single(
             editor.Descendants(view + "Button"),
-            button => button.Attribute("Content")?.Value == "Review and save");
+            button => string.Equals(button.Attribute("Content")?.Value, "Review and save", StringComparison.Ordinal));
         Assert.Equal("True", editorSave.Attribute("IsDefault")?.Value);
 
         Assert.Equal("OnOpened", confirmation.Root?.Attribute("Opened")?.Value);
         var acknowledgement = Assert.Single(
             confirmation.Descendants(view + "CheckBox"),
-            element => element.Attribute(x + "Name")?.Value == "Acknowledgement");
+            element => string.Equals(element.Attribute(x + "Name")?.Value, "Acknowledgement", StringComparison.Ordinal));
         Assert.False(string.IsNullOrWhiteSpace(
             acknowledgement.Attribute("AutomationProperties.Name")?.Value));
         Assert.False(string.IsNullOrWhiteSpace(
             acknowledgement.Attribute("AutomationProperties.HelpText")?.Value));
         var confirm = Assert.Single(
             confirmation.Descendants(view + "Button"),
-            button => button.Attribute(x + "Name")?.Value == "ConfirmButton");
+            button => string.Equals(button.Attribute(x + "Name")?.Value, "ConfirmButton", StringComparison.Ordinal));
         Assert.Equal("False", confirm.Attribute("IsEnabled")?.Value);
         Assert.Equal("True", confirm.Attribute("IsDefault")?.Value);
         Assert.Contains(
@@ -749,26 +747,23 @@ public sealed class McpServerProfileEditorViewModelTests
         Assert.Equal(view + "StackPanel", section.Name);
         Assert.Equal(
             "{Binding IsAgentSettingsVisible}",
-            section.Ancestors().Single(element =>
-                element.Attribute(x + "Name")?.Value == "AiSettingsPage")
+            section.Ancestors().Single(element => string.Equals(element.Attribute(x + "Name")?.Value, "AiSettingsPage", StringComparison.Ordinal))
                 .Attribute("IsVisible")?.Value);
         Assert.DoesNotContain(
             mainWindow.Descendants(),
-            navigationItem =>
-                navigationItem.Name.LocalName == "ShellNavigationItem"
-                && navigationItem.Attribute("Click")?.Value == "OnMcpSettingsClick");
+            navigationItem => string.Equals(navigationItem.Name.LocalName, "ShellNavigationItem"
+, StringComparison.Ordinal) && string.Equals(navigationItem.Attribute("Click")?.Value, "OnMcpSettingsClick", StringComparison.Ordinal));
         Assert.Contains(
             section.Descendants(),
-            element => element.Name.LocalName == "EmptyStatePanel"
-                && element.Attribute("Heading")?.Value == "No MCP server configured");
+            element => string.Equals(element.Name.LocalName, "EmptyStatePanel"
+, StringComparison.Ordinal) && string.Equals(element.Attribute("Heading")?.Value, "No MCP server configured", StringComparison.Ordinal));
         Assert.Contains(
             section.Descendants(view + "Button"),
-            button =>
-                button.Attribute("Click")?.Value
-                    == "OnTestMcpServerClick"
-                && button.Attribute("IsEnabled")?.Value
-                    == "{Binding CanTest}"
-                && !string.IsNullOrWhiteSpace(
+            button => string.Equals(button.Attribute("Click")?.Value
+, "OnTestMcpServerClick"
+, StringComparison.Ordinal) && string.Equals(button.Attribute("IsEnabled")?.Value
+, "{Binding CanTest}"
+, StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(
                     button.Attribute(
                         "AutomationProperties.Name")?.Value));
         Assert.DoesNotContain(
@@ -776,11 +771,9 @@ public sealed class McpServerProfileEditorViewModelTests
             element => element.Attribute("Text")?.Value?.Contains(
                 "No process is started",
                 StringComparison.OrdinalIgnoreCase) == true);
-        Assert.NotNull(section.Descendants(view + "ComboBox").Single(element =>
-            element.Attribute(x + "Name")?.Value == "McpServerSecretTargetPicker"));
-        Assert.NotNull(section.Descendants(view + "TextBox").Single(element =>
-            element.Attribute(x + "Name")?.Value == "McpServerSecretValueInput"
-            && element.Attribute("PasswordChar")?.Value == "●"));
+        Assert.NotNull(section.Descendants(view + "ComboBox").Single(element => string.Equals(element.Attribute(x + "Name")?.Value, "McpServerSecretTargetPicker", StringComparison.Ordinal)));
+        Assert.NotNull(section.Descendants(view + "TextBox").Single(element => string.Equals(element.Attribute(x + "Name")?.Value, "McpServerSecretValueInput"
+, StringComparison.Ordinal) && string.Equals(element.Attribute("PasswordChar")?.Value, "●", StringComparison.Ordinal)));
         Assert.All(
             section.Descendants(view + "Button").Where(button =>
                 button.Descendants(view + "SymbolIcon").Any()),
@@ -1194,9 +1187,9 @@ public sealed class McpServerProfileEditorViewModelTests
             MethodInfo? targetMethod,
             object?[]? arguments)
         {
-            if (targetMethod?.Name
-                    == nameof(IMcpServerDiagnostics.TestAsync)
-                && arguments is
+            if (string.Equals(targetMethod?.Name
+, nameof(IMcpServerDiagnostics.TestAsync)
+, StringComparison.Ordinal) && arguments is
                 [
                     McpServerTestRequest request,
                     OperationContext context,
@@ -1229,8 +1222,8 @@ public sealed class McpServerProfileEditorViewModelTests
             MethodInfo? targetMethod,
             object?[]? arguments)
         {
-            if (targetMethod?.Name == nameof(ISecretVault.CreateAsync)
-                && arguments is
+            if (string.Equals(targetMethod?.Name, nameof(ISecretVault.CreateAsync)
+, StringComparison.Ordinal) && arguments is
                 [
                     CreateSecretRequest createRequest,
                     SecretMaterial,
@@ -1251,8 +1244,8 @@ public sealed class McpServerProfileEditorViewModelTests
                     SecretVaultResult<SecretMetadata>.Succeed(metadata));
             }
 
-            if (targetMethod?.Name == nameof(ISecretVault.ReplaceAsync)
-                && arguments is
+            if (string.Equals(targetMethod?.Name, nameof(ISecretVault.ReplaceAsync)
+, StringComparison.Ordinal) && arguments is
                 [
                     ReplaceSecretRequest request,
                     SecretMaterial,
@@ -1301,11 +1294,11 @@ public sealed class McpServerProfileEditorViewModelTests
             MethodInfo? targetMethod,
             object?[]? arguments)
         {
-            if (targetMethod?.Name
-                    == nameof(
+            if (string.Equals(targetMethod?.Name
+, nameof(
                         IMcpCredentialSessionInvalidator
                             .InvalidateAsync)
-                && arguments is [SecretRef reference])
+, StringComparison.Ordinal) && arguments is [SecretRef reference])
             {
                 References.Add(reference);
                 return ValueTask.CompletedTask;

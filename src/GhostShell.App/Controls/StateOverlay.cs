@@ -109,16 +109,10 @@ internal sealed class StateOverlay : ContentControl
     protected override void OnApplyTemplate(TemplateAppliedEventArgs e)
     {
         base.OnApplyTemplate(e);
-        if (_action is not null)
-        {
-            _action.Click -= OnActionClick;
-        }
+        _action?.Click -= OnActionClick;
 
         _action = e.NameScope.Find<Button>("PART_Action");
-        if (_action is not null)
-        {
-            _action.Click += OnActionClick;
-        }
+        _action?.Click += OnActionClick;
     }
 
     private void OnActionClick(object? sender, RoutedEventArgs e)

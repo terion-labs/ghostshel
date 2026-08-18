@@ -283,12 +283,12 @@ public sealed record TerminalPhysicalKeyEvent
             throw new ArgumentOutOfRangeException(nameof(Action));
         }
 
-        if ((Modifiers & ~AllKeyboardModifiers) != 0)
+        if ((Modifiers & ~AllKeyboardModifiers) != TerminalKeyModifiers.None)
         {
             throw new ArgumentOutOfRangeException(nameof(Modifiers));
         }
 
-        if ((ConsumedModifiers & ~Modifiers) != 0)
+        if ((ConsumedModifiers & ~Modifiers) != TerminalKeyModifiers.None)
         {
             throw new ArgumentException(
                 "Consumed modifiers must also be present in the keyboard event.",
@@ -354,7 +354,7 @@ public sealed record TerminalKeyStroke
             throw new ArgumentOutOfRangeException(nameof(Key));
         }
 
-        if ((Modifiers & ~AllModifiers) != 0)
+        if ((Modifiers & ~AllModifiers) != TerminalKeyModifiers.None)
         {
             throw new ArgumentOutOfRangeException(nameof(Modifiers));
         }
@@ -477,7 +477,7 @@ public sealed record TerminalMouseInput
             throw new ArgumentOutOfRangeException(nameof(Row));
         }
 
-        if ((Modifiers & ~(TerminalKeyModifiers.Shift | TerminalKeyModifiers.Alt | TerminalKeyModifiers.Control | TerminalKeyModifiers.Meta)) != 0)
+        if ((Modifiers & ~(TerminalKeyModifiers.Shift | TerminalKeyModifiers.Alt | TerminalKeyModifiers.Control | TerminalKeyModifiers.Meta)) != TerminalKeyModifiers.None)
         {
             throw new ArgumentOutOfRangeException(nameof(Modifiers));
         }

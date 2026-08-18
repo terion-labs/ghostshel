@@ -196,7 +196,7 @@ public sealed class SavedScreenEditorViewModel : ObservableObject, IDisposable
                 FileProviderOptions));
         }
 
-        _layoutDrafts[_selectedLayout.Id] = _panels.ToArray();
+        _layoutDrafts[_selectedLayout.Id] = [.. _panels];
     }
 
     public long? ExpectedRevision { get; }
@@ -225,7 +225,7 @@ public sealed class SavedScreenEditorViewModel : ObservableObject, IDisposable
         set
         {
             ArgumentNullException.ThrowIfNull(value);
-            _layoutDrafts[_selectedLayout.Id] = _panels.ToArray();
+            _layoutDrafts[_selectedLayout.Id] = [.. _panels];
             if (!SetProperty(ref _selectedLayout, value))
             {
                 return;
@@ -350,7 +350,7 @@ public sealed class SavedScreenEditorViewModel : ObservableObject, IDisposable
             }
 
             var slots = layout.Slots.ToDictionary(slot => slot.Id);
-            return _panels
+            return [.. _panels
                 .Select((panel, index) => (panel, index))
                 .Where(item => slots.ContainsKey(item.panel.SlotId))
                 .Select(item =>
@@ -364,8 +364,7 @@ public sealed class SavedScreenEditorViewModel : ObservableObject, IDisposable
                         bounds.ColumnSpan,
                         bounds.RowSpan,
                         item.index == 0);
-                })
-                .ToArray();
+                })];
         }
     }
 
@@ -447,7 +446,7 @@ public sealed class SavedScreenEditorViewModel : ObservableObject, IDisposable
             name.Trim(),
             Description,
             layout.Id,
-            _panels.Select(panel => panel.Build()).ToArray(),
+            [.. _panels.Select(panel => panel.Build())],
             _original.Tags,
             AgentPolicy.Build());
         var validation = ScreenValidator.Validate(definition, layout);
@@ -455,7 +454,7 @@ public sealed class SavedScreenEditorViewModel : ObservableObject, IDisposable
         {
             throw new ArgumentException(string.Join(
                 " ",
-                validation.Issues.Select(issue => issue.Message).Distinct()));
+                validation.Issues.Select(issue => issue.Message).Distinct(StringComparer.Ordinal)));
         }
 
         return new SavedScreenEditorSaveRequest(definition, expectedRevision);
@@ -791,10 +790,9 @@ public sealed class SavedScreenPanelEditorViewModel : ObservableObject
 
     public IReadOnlyList<ScreenConnectionOption> ApplicableConnectionOptions =>
         Kind == ScreenPanelKind.Browser
-            ? ConnectionOptions
+            ? [.. ConnectionOptions
                 .Where(option => option.ConnectionKind is ConnectionKind.Local or ConnectionKind.Ssh
-                    || !option.IsAvailable && option.Id == _original.ConnectionId)
-                .ToArray()
+                    || !option.IsAvailable && option.Id == _original.ConnectionId)]
             : ConnectionOptions;
 
     public IReadOnlyList<ScreenFileProviderOption> FileProviderOptions { get; }

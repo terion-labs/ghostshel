@@ -59,10 +59,10 @@ public sealed class DockSplitterThicknessContractTests
 
         var setter = Assert.Single(
             theme.Descendants(),
-            element => element.Name.LocalName == "Setter"
-                && element.Attribute("Property")?.Value == "Thickness"
-                && element.Parent?.Attribute("Selector")?.Value
-                    == "proportional|ProportionalStackPanelSplitter");
+            element => string.Equals(element.Name.LocalName, "Setter"
+, StringComparison.Ordinal) && string.Equals(element.Attribute("Property")?.Value, "Thickness"
+, StringComparison.Ordinal) && string.Equals(element.Parent?.Attribute("Selector")?.Value
+, "proportional|ProportionalStackPanelSplitter", StringComparison.Ordinal));
 
         Assert.Equal("{DynamicResource ShellSpaceSm}", setter.Attribute("Value")?.Value);
     }

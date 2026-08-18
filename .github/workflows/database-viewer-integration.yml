@@ -37,9 +37,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
 
@@ -51,6 +53,7 @@ jobs:
           dotnet restore \
             tools/GhostShell.SqlLanguageAotProbe/GhostShell.SqlLanguageAotProbe.csproj \
             --runtime linux-x64 \
+            --locked-mode \
             -p:PublishAot=true
           dotnet publish \
             tools/GhostShell.SqlLanguageAotProbe/GhostShell.SqlLanguageAotProbe.csproj \
@@ -72,7 +75,7 @@ jobs:
         run: ./artifacts/sql-language-aot-probe/GhostShell.SqlLanguageAotProbe
 
       - name: Upload the tested worker
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sql-language-worker-linux-x64
           path: native/artifacts/linux-x64
@@ -104,10 +107,12 @@ jobs:
           - clickhouse
           - redis
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Download the tested SQL language worker
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: sql-language-worker-linux-x64
           path: native/artifacts/linux-x64
@@ -117,7 +122,7 @@ jobs:
           chmod +x native/artifacts/linux-x64/ghostshell-sql-language
           test -x native/artifacts/linux-x64/ghostshell-sql-language
 
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
 
@@ -127,11 +132,15 @@ jobs:
           mkdir -p .dotnet
           ln -s "$(command -v dotnet)" .dotnet/dotnet
 
+      - name: Restore the locked dependency graph
+        run: dotnet restore GhostShell.slnx --locked-mode
+
       - name: Run the real native client lifecycle
         run: >-
           ./.dotnet/dotnet test
           tests/GhostShell.Infrastructure.Tests/GhostShell.Infrastructure.Tests.csproj
           --configuration Release
+          --no-restore
           --filter "FullyQualifiedName~CalciteSqlLanguageNativeIntegrationTests"
           --logger "trx;LogFileName=sql-language-native-${{ matrix.provider }}.trx"
 
@@ -139,11 +148,12 @@ jobs:
         run: >-
           ./scripts/test-database-viewer-integration.sh
           ${{ matrix.provider }}
+          --no-restore
           --logger "trx;LogFileName=database-viewer-${{ matrix.provider }}.trx"
 
       - name: Upload test result
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: database-viewer-${{ matrix.provider }}-results
           path: |

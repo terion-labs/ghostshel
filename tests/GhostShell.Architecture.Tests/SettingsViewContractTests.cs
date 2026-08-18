@@ -90,7 +90,7 @@ public sealed class SettingsViewContractTests
         var mainWindow = LoadView("MainWindow");
         var settings = Assert.Single(
             mainWindow.Descendants(),
-            element => element.Name.LocalName == "SettingsView");
+            element => string.Equals(element.Name.LocalName, "SettingsView", StringComparison.Ordinal));
 
         Assert.Equal("SettingsRouteView", AttributeValue(settings, "Name"));
         Assert.Equal(
@@ -119,34 +119,34 @@ public sealed class SettingsViewContractTests
         var settings = LoadView("SettingsView");
         var aiNavigation = Assert.Single(
             settings.Descendants(),
-            element => element.Name.LocalName == "ShellNavigationItem"
-                && AttributeValue(element, "Label") == "AI");
+            element => string.Equals(element.Name.LocalName, "ShellNavigationItem"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Label"), "AI", StringComparison.Ordinal));
         Assert.Equal("AI settings", AttributeValue(aiNavigation, "AutomationName"));
         Assert.DoesNotContain(
             settings.Descendants(),
-            element => element.Name.LocalName == "ShellNavigationItem"
-                && AttributeValue(element, "Label") == "MCP servers");
+            element => string.Equals(element.Name.LocalName, "ShellNavigationItem"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Label"), "MCP servers", StringComparison.Ordinal));
         Assert.Contains(
             settings.Descendants(),
-            element => AttributeValue(element, "Heading")
-                == "Default agent configuration");
+            element => string.Equals(AttributeValue(element, "Heading")
+, "Default agent configuration", StringComparison.Ordinal));
         Assert.Contains(
             settings.Descendants(),
-            element => AttributeValue(element, "Heading") == "System prompt");
+            element => string.Equals(AttributeValue(element, "Heading"), "System prompt", StringComparison.Ordinal));
         var systemPrompt = Assert.Single(
             settings.Descendants(),
-            element => element.Name.LocalName == "TextBox"
-                && AttributeValue(element, "AutomationProperties.Name")
-                    == "Default agent system prompt");
+            element => string.Equals(element.Name.LocalName, "TextBox"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "AutomationProperties.Name")
+, "Default agent system prompt", StringComparison.Ordinal));
         Assert.Equal(
             "{Binding DefaultAgentPolicy.SystemPrompt, Mode=TwoWay}",
             AttributeValue(systemPrompt, "Text"));
         Assert.DoesNotContain(
             settings.Descendants(),
-            element => AttributeValue(element, "Content")
-                    == "Use first message as title"
-                || AttributeValue(element, "Text")
-                    == "Use first message as title");
+            element => string.Equals(AttributeValue(element, "Content")
+, "Use first message as title"
+, StringComparison.Ordinal) || string.Equals(AttributeValue(element, "Text")
+, "Use first message as title", StringComparison.Ordinal));
         var aiPage = FindNamedElement(settings.Root!, "AiSettingsPage");
         Assert.Equal(
             "{Binding IsAgentSettingsVisible}",
@@ -183,8 +183,8 @@ public sealed class SettingsViewContractTests
         var settings = LoadView("SettingsView");
         var toggle = Assert.Single(
             settings.Descendants(),
-            element => element.Name.LocalName == "ToggleSwitch"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "ToggleSwitch"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "AutomationProperties.Name"),
                     "Restore sessions on start",
                     StringComparison.Ordinal));
@@ -207,7 +207,7 @@ public sealed class SettingsViewContractTests
         var root = Assert.IsType<XElement>(settings.Root);
         var surface = Assert.Single(
             root.Elements(),
-            element => element.Name.LocalName == "Grid");
+            element => string.Equals(element.Name.LocalName, "Grid", StringComparison.Ordinal));
 
         Assert.Equal("Auto,*", AttributeValue(surface, "RowDefinitions"));
         Assert.Equal("Stretch", AttributeValue(root, "HorizontalContentAlignment"));
@@ -234,24 +234,24 @@ public sealed class SettingsViewContractTests
             "ChromeNavigation",
             AttributeValue(FindNamedElement(root, "SettingsBackButton"), "Classes")
                 ?.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                ?? []);
+                ?? [], StringComparer.Ordinal);
 
         var body = Assert.Single(
             surface.Elements(),
-            element => element.Name.LocalName == "Grid"
-                && string.Equals(AttributeValue(element, "Grid.Row"), "1", StringComparison.Ordinal));
+            element => string.Equals(element.Name.LocalName, "Grid"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Grid.Row"), "1", StringComparison.Ordinal));
         Assert.Equal("244,*", AttributeValue(body, "ColumnDefinitions"));
         Assert.Contains(
             body.Elements(),
-            element => element.Name.LocalName == "Border"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Border"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Classes"),
                     "FloatingSidebar",
                     StringComparison.Ordinal));
 
         var appearancePage = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "AppearanceSettingsPageView");
+            element => string.Equals(element.Name.LocalName, "AppearanceSettingsPageView", StringComparison.Ordinal));
         Assert.Equal(
             "AppearanceSettingsPage",
             AttributeValue(appearancePage, "Name"));
@@ -266,7 +266,7 @@ public sealed class SettingsViewContractTests
 
         var quickTerminalPage = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "QuickTerminalSettingsPageView");
+            element => string.Equals(element.Name.LocalName, "QuickTerminalSettingsPageView", StringComparison.Ordinal));
         Assert.Equal(
             "QuickTerminalSettingsPage",
             AttributeValue(quickTerminalPage, "Name"));
@@ -278,7 +278,7 @@ public sealed class SettingsViewContractTests
             AttributeValue(quickTerminalPage, "SaveRequested"));
 
         var pageHeaders = root.Descendants()
-            .Where(element => element.Name.LocalName == "SettingsPageHeader")
+            .Where(element => string.Equals(element.Name.LocalName, "SettingsPageHeader", StringComparison.Ordinal))
             .ToArray();
         // AI is one navigation page with two explicit groups: agent defaults/providers
         // and MCP servers. Every other page has one page header.
@@ -332,13 +332,13 @@ public sealed class SettingsViewContractTests
 
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "RecoveryDataControlView");
+            element => string.Equals(element.Name.LocalName, "RecoveryDataControlView", StringComparison.Ordinal));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "LocalArtifactControlView");
+            element => string.Equals(element.Name.LocalName, "LocalArtifactControlView", StringComparison.Ordinal));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "DiagnosticsExportView");
+            element => string.Equals(element.Name.LocalName, "DiagnosticsExportView", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -352,7 +352,7 @@ public sealed class SettingsViewContractTests
 
         var content = Assert.Single(
             root.Elements(),
-            element => element.Name.LocalName == "StackPanel");
+            element => string.Equals(element.Name.LocalName, "StackPanel", StringComparison.Ordinal));
         // Sections are one step apart on the spacing scale. This page and Quick
         // Terminal used to say 22 and 20 for the same intent, which is the drift
         // the scale exists to stop; a literal pinned here would reintroduce it.
@@ -364,7 +364,7 @@ public sealed class SettingsViewContractTests
 
         var header = Assert.Single(
             content.Descendants(),
-            element => element.Name.LocalName == "SettingsPageHeader");
+            element => string.Equals(element.Name.LocalName, "SettingsPageHeader", StringComparison.Ordinal));
         Assert.Equal("Appearance", AttributeValue(header, "Heading"));
         Assert.Equal(
             "Customize how the app looks — colour scheme, accent, and window chrome.",
@@ -420,7 +420,7 @@ public sealed class SettingsViewContractTests
         Assert.Equal(
             new[] { "Follow host", "GhostSHELL bronze", "Custom" },
             accentMode.Elements()
-                .Where(element => element.Name.LocalName == "ComboBoxItem")
+                .Where(element => string.Equals(element.Name.LocalName, "ComboBoxItem", StringComparison.Ordinal))
                 .Select(element => AttributeValue(element, "Content"))
                 .ToArray());
 
@@ -428,8 +428,8 @@ public sealed class SettingsViewContractTests
         // button that implies changes are pending until it is pressed.
         Assert.DoesNotContain(
             root.Descendants(),
-            element => element.Name.LocalName == "Button"
-                && (AttributeValue(element, "Content") ?? string.Empty)
+            element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && (AttributeValue(element, "Content") ?? string.Empty)
                     .Contains("Save", StringComparison.Ordinal));
 
         foreach (var binding in new[] { "ThemeMode", "ThemeProfile", "ThemeTextScale" })
@@ -474,7 +474,7 @@ public sealed class SettingsViewContractTests
 
         var content = Assert.Single(
             root.Elements(),
-            element => element.Name.LocalName == "StackPanel");
+            element => string.Equals(element.Name.LocalName, "StackPanel", StringComparison.Ordinal));
         // The gap between sections comes from the spacing scale, not from a number
         // written here. A literal is a gap the density and text-scale settings
         // cannot reach, and pinning one in a test is how it would stay that way.
@@ -486,7 +486,7 @@ public sealed class SettingsViewContractTests
 
         var header = Assert.Single(
             content.Descendants(),
-            element => element.Name.LocalName == "SettingsPageHeader");
+            element => string.Equals(element.Name.LocalName, "SettingsPageHeader", StringComparison.Ordinal));
         Assert.Equal("Quick Terminal", AttributeValue(header, "Heading"));
         Assert.Equal(
             "A global drop-down terminal that stays one keystroke away. Configure where it appears and how it behaves.",
@@ -494,8 +494,8 @@ public sealed class SettingsViewContractTests
 
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "Button"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Content"),
                     "Save settings",
                     StringComparison.Ordinal)
@@ -516,8 +516,8 @@ public sealed class SettingsViewContractTests
 
         var opacity = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "NumericUpDown"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "NumericUpDown"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "AutomationProperties.Name"),
                     "Quick Terminal background opacity",
                     StringComparison.Ordinal));
@@ -527,8 +527,8 @@ public sealed class SettingsViewContractTests
 
         var height = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "NumericUpDown"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "NumericUpDown"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "AutomationProperties.Name"),
                     "Quick Terminal panel height",
                     StringComparison.Ordinal));
@@ -536,8 +536,8 @@ public sealed class SettingsViewContractTests
 
         var display = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "ComboBox"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "ComboBox"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "AutomationProperties.Name"),
                     "Quick Terminal display",
                     StringComparison.Ordinal));
@@ -549,14 +549,14 @@ public sealed class SettingsViewContractTests
             AttributeValue(display, "SelectedItem"));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "SettingRow"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "SettingRow"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Description"),
                     "Active window follows whichever app is in front and falls back to GhostSHELL where unsupported. GhostSHELL window follows this app; Primary always uses the OS primary display.",
                     StringComparison.Ordinal));
 
         var toggles = root.Descendants()
-            .Where(element => element.Name.LocalName == "ToggleSwitch")
+            .Where(element => string.Equals(element.Name.LocalName, "ToggleSwitch", StringComparison.Ordinal))
             .ToArray();
         Assert.Equal(6, toggles.Length);
         Assert.Equal(
@@ -615,7 +615,7 @@ public sealed class SettingsViewContractTests
         Assert.Equal("False", AttributeValue(root, "Focusable"));
 
         var textBlocks = root.Descendants()
-            .Where(element => element.Name.LocalName == "TextBlock")
+            .Where(element => string.Equals(element.Name.LocalName, "TextBlock", StringComparison.Ordinal))
             .ToArray();
         Assert.Equal(2, textBlocks.Length);
         Assert.Contains(
@@ -915,6 +915,6 @@ public sealed class SettingsViewContractTests
 
     private static string? AttributeValue(XElement element, string name) =>
         element.Attributes()
-            .FirstOrDefault(attribute => attribute.Name.LocalName == name)
+            .FirstOrDefault(attribute => string.Equals(attribute.Name.LocalName, name, StringComparison.Ordinal))
             ?.Value;
 }

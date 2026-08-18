@@ -1,5 +1,5 @@
-using System.Text.Json;
 using System.Text;
+using System.Text.Json;
 using Exclr8Cef;
 using GhostShell.Application;
 
@@ -168,7 +168,7 @@ internal sealed class CefBrowserAutomationAdapter
                 .GetInt32();
         }
 
-        var sharedEvaluationParameters = new Dictionary<string, object?>
+        var sharedEvaluationParameters = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["expression"] = request.Source,
             ["awaitPromise"] = request.AwaitPromise,
@@ -221,12 +221,12 @@ internal sealed class CefBrowserAutomationAdapter
                 modifiers = (int)modifiers,
                 key = key.Key,
                 code = key.Code,
-                text = type == "keyDown"
-                    && modifiers is BrowserInputModifiers.None
+                text = string.Equals(type, "keyDown"
+, StringComparison.Ordinal) && modifiers is BrowserInputModifiers.None
                     ? key.Text
                     : string.Empty,
-                unmodifiedText = type == "keyDown"
-                    && modifiers is BrowserInputModifiers.None
+                unmodifiedText = string.Equals(type, "keyDown"
+, StringComparison.Ordinal) && modifiers is BrowserInputModifiers.None
                     ? key.Text
                     : string.Empty,
                 windowsVirtualKeyCode = key.VirtualKeyCode,

@@ -300,7 +300,7 @@ public sealed class ManagedTerminalSurfaceTests
                 "Sequence",
                 [binding]),
         };
-        var start = DateTimeOffset.Parse("2026-07-22T12:00:00Z");
+        var start = DateTimeOffset.Parse("2026-07-22T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
 
         var prefix = await surface.DispatchKeymapShortcutAsync(
             Key.X,
@@ -343,7 +343,7 @@ public sealed class ManagedTerminalSurfaceTests
                     repeatable: true,
                     FailedSequenceBehavior.DiscardAndShowHint)),
         };
-        var start = DateTimeOffset.Parse("2026-07-22T12:00:00Z");
+        var start = DateTimeOffset.Parse("2026-07-22T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
 
         var prefix = await surface.DispatchKeymapStrokeAsync(prefixStroke, start);
         var first = await surface.DispatchKeymapStrokeAsync(
@@ -382,7 +382,7 @@ public sealed class ManagedTerminalSurfaceTests
                     repeatable: false,
                     FailedSequenceBehavior.PassThrough)),
         };
-        var start = DateTimeOffset.Parse("2026-07-22T12:00:00Z");
+        var start = DateTimeOffset.Parse("2026-07-22T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
 
         _ = await surface.DispatchKeymapStrokeAsync(prefixStroke, start);
         var result = await surface.DispatchKeymapStrokeAsync(
@@ -417,7 +417,7 @@ public sealed class ManagedTerminalSurfaceTests
                     repeatable: false,
                     FailedSequenceBehavior.DiscardAndShowHint)),
         };
-        var start = DateTimeOffset.Parse("2026-07-22T12:00:00Z");
+        var start = DateTimeOffset.Parse("2026-07-22T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
 
         var pending = await surface.DispatchKeymapStrokeAsync(prefixStroke, start);
 

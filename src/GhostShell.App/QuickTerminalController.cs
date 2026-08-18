@@ -656,7 +656,7 @@ public sealed class QuickTerminalController : IDisposable
                     CancellationToken.None);
                 var snapshot = result.IsSuccess
                     ? result.Value!
-                        .Where(item => item.Key == QuickTerminalRecoveryCodec.SnapshotKey)
+                        .Where(item => string.Equals(item.Key, QuickTerminalRecoveryCodec.SnapshotKey, StringComparison.Ordinal))
                         .OrderByDescending(item => item.UpdatedAt)
                         .FirstOrDefault()
                     : null;

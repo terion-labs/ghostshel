@@ -53,7 +53,7 @@ internal sealed class RuntimeTabIconPickerViewModel : ObservableObject
     {
         var current = WorkspaceIcons.OptionFor(_icon);
         var options = string.IsNullOrWhiteSpace(_iconSearch) && !_showAllIcons
-            ? WorkspaceIcons.Common.Any(option => option.Id == current.Id)
+            ? WorkspaceIcons.Common.Any(option => string.Equals(option.Id, current.Id, StringComparison.Ordinal))
                 ? WorkspaceIcons.Common
                 : [current, .. WorkspaceIcons.Common]
             : WorkspaceIcons.Search(_iconSearch);

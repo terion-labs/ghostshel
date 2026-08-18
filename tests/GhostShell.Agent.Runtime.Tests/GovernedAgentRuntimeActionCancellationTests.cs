@@ -93,15 +93,15 @@ public sealed partial class GovernedAgentRuntimeTests
         var cancelledToolResult = Assert.Single(
             fixture.Provider.Requests.SelectMany(request => request.Messages),
             message => message.Role == AgentMessageRole.Tool
-                && message.ToolResult?.StableCode == "caller_cancelled");
+                && string.Equals(message.ToolResult?.StableCode, "caller_cancelled", StringComparison.Ordinal));
         Assert.Contains(
             "\"code\":\"caller_cancelled\"",
             cancelledToolResult.Content,
             StringComparison.Ordinal);
         Assert.Contains(
             fixture.Audit.Events,
-            item => item.Action == BuiltInAgentTools.TerminalSendText
-                && item.Outcome == AuditOutcome.Cancelled
+            item => string.Equals(item.Action, BuiltInAgentTools.TerminalSendText
+, StringComparison.Ordinal) && item.Outcome == AuditOutcome.Cancelled
                 && item.Details is AuditDetails.AgentActionDetails
                 {
                     ResultCode: "caller_cancelled",
@@ -245,8 +245,8 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Equal("agent_cancelled", sendResult.Code);
         Assert.Contains(
             fixture.Audit.Events,
-            item => item.Action == BuiltInAgentTools.TerminalSendText
-                && item.Outcome == AuditOutcome.Cancelled
+            item => string.Equals(item.Action, BuiltInAgentTools.TerminalSendText
+, StringComparison.Ordinal) && item.Outcome == AuditOutcome.Cancelled
                 && item.Details is AuditDetails.AgentActionDetails
                 {
                     ResultCode: "authority_revoked",
@@ -291,8 +291,8 @@ public sealed partial class GovernedAgentRuntimeTests
             StringComparison.Ordinal);
         Assert.Contains(
             fixture.Audit.Events,
-            item => item.Action == BuiltInAgentTools.TerminalSendKeys
-                && item.Outcome == AuditOutcome.Cancelled
+            item => string.Equals(item.Action, BuiltInAgentTools.TerminalSendKeys
+, StringComparison.Ordinal) && item.Outcome == AuditOutcome.Cancelled
                 && item.Details is AuditDetails.AgentActionDetails
                 {
                     ResultCode: "caller_cancelled",
@@ -338,8 +338,8 @@ public sealed partial class GovernedAgentRuntimeTests
             StringComparison.Ordinal);
         Assert.Contains(
             fixture.Audit.Events,
-            item => item.Action == BuiltInAgentTools.TerminalWait
-                && item.Outcome == AuditOutcome.Cancelled
+            item => string.Equals(item.Action, BuiltInAgentTools.TerminalWait
+, StringComparison.Ordinal) && item.Outcome == AuditOutcome.Cancelled
                 && item.Details is AuditDetails.AgentActionDetails
                 {
                     ResultCode: "caller_cancelled",

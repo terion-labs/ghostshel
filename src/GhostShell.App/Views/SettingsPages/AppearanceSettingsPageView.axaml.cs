@@ -308,7 +308,7 @@ public sealed partial class AppearanceSettingsPageView : UserControl
 
     private void UpdateCustomAccentAvailability()
     {
-        var isCustom = SelectedTextOrDefault(AccentModePicker) == "Custom";
+        var isCustom = string.Equals(SelectedTextOrDefault(AccentModePicker), "Custom", StringComparison.Ordinal);
         CustomAccentText.IsEnabled = isCustom;
         CustomAccentPicker.IsEnabled = isCustom;
         CustomAccentEyedropper.IsEnabled = isCustom;

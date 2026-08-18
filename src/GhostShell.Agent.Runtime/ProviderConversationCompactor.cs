@@ -64,7 +64,7 @@ internal sealed class ProviderConversationCompactor(
     {
         ArgumentNullException.ThrowIfNull(request);
         var turnPrefix = request.TurnPrefixMessages.IsDefault
-            ? ImmutableArray<AgentMessage>.Empty
+            ? []
             : request.TurnPrefixMessages;
         string summary;
         if (turnPrefix.IsDefaultOrEmpty)

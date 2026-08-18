@@ -58,8 +58,11 @@ public sealed partial class DatabaseWorkspaceView : UserControl
     {
         _ = sender;
         var ordinal = ResultDataGrid.Columns.IndexOf(e.Column);
-        var cell = (e.Row?.DataContext as DatabaseResultRowViewModel)?.Cells
-            is { } cells && ordinal >= 0 && ordinal < cells.Count
+        var cell = e.Row?.DataContext is DatabaseResultRowViewModel
+        {
+            Cells:
+            { } cells
+        } && ordinal >= 0 && ordinal < cells.Count
             ? cells[ordinal]
             : null;
         if (cell?.UsesLargeTextEditor != true)
@@ -202,16 +205,10 @@ public sealed partial class DatabaseWorkspaceView : UserControl
     {
         CloseCellExpandEditor();
         InvalidateDatabaseContextMenu(closePopup: true);
-        if (_observedPanel is not null)
-        {
-            _observedPanel.PropertyChanged -= OnPanelPropertyChanged;
-        }
+        _observedPanel?.PropertyChanged -= OnPanelPropertyChanged;
 
         _observedPanel = Panel;
-        if (_observedPanel is not null)
-        {
-            _observedPanel.PropertyChanged += OnPanelPropertyChanged;
-        }
+        _observedPanel?.PropertyChanged += OnPanelPropertyChanged;
 
         RebuildResultColumns();
         SyncSelectedRow();
@@ -658,7 +655,7 @@ public sealed partial class DatabaseWorkspaceView : UserControl
     private void OnFieldEditClick(object? sender, RoutedEventArgs e)
     {
         _ = e;
-        if ((sender as Control)?.DataContext is DatabaseRowFieldViewModel field)
+        if (sender is Control { DataContext: DatabaseRowFieldViewModel field })
         {
             field.BeginEdit();
         }
@@ -667,7 +664,7 @@ public sealed partial class DatabaseWorkspaceView : UserControl
     private void OnFieldApplyClick(object? sender, RoutedEventArgs e)
     {
         _ = e;
-        if ((sender as Control)?.DataContext is DatabaseRowFieldViewModel field)
+        if (sender is Control { DataContext: DatabaseRowFieldViewModel field })
         {
             field.ApplyEdit();
         }
@@ -676,7 +673,7 @@ public sealed partial class DatabaseWorkspaceView : UserControl
     private void OnFieldCancelClick(object? sender, RoutedEventArgs e)
     {
         _ = e;
-        if ((sender as Control)?.DataContext is DatabaseRowFieldViewModel field)
+        if (sender is Control { DataContext: DatabaseRowFieldViewModel field })
         {
             field.CancelEdit();
         }
@@ -718,7 +715,7 @@ public sealed partial class DatabaseWorkspaceView : UserControl
     private void OnObjectOpenInTabClick(object? sender, RoutedEventArgs e)
     {
         _ = e;
-        if ((sender as Control)?.DataContext is DatabaseTableItemViewModel item)
+        if (sender is Control { DataContext: DatabaseTableItemViewModel item })
         {
             OpenObjectInTabRequested?.Invoke(this, item.Descriptor);
         }
@@ -727,7 +724,7 @@ public sealed partial class DatabaseWorkspaceView : UserControl
     private void OnObjectOpenInPanelClick(object? sender, RoutedEventArgs e)
     {
         _ = e;
-        if ((sender as Control)?.DataContext is DatabaseTableItemViewModel item)
+        if (sender is Control { DataContext: DatabaseTableItemViewModel item })
         {
             OpenObjectInPanelRequested?.Invoke(this, item.Descriptor);
         }
@@ -737,7 +734,7 @@ public sealed partial class DatabaseWorkspaceView : UserControl
     {
         _ = e;
         if (Panel is { } panel
-            && (sender as Control)?.DataContext is DatabaseTableItemViewModel item)
+            && sender is Control { DataContext: DatabaseTableItemViewModel item })
         {
             await panel.PreviewTableAsync(item);
             panel.SetMode(DatabaseWorkspaceMode.Structure);
@@ -748,7 +745,7 @@ public sealed partial class DatabaseWorkspaceView : UserControl
     {
         _ = e;
         if (Panel is { } panel
-            && (sender as Control)?.DataContext is DatabaseTableItemViewModel item)
+            && sender is Control { DataContext: DatabaseTableItemViewModel item })
         {
             _ = await CopyTextAsync(item.Name, panel);
         }
@@ -773,7 +770,7 @@ public sealed partial class DatabaseWorkspaceView : UserControl
     {
         _ = e;
         if (Panel is { } panel
-            && (sender as Control)?.DataContext is DatabaseFilterRowViewModel row)
+            && sender is Control { DataContext: DatabaseFilterRowViewModel row })
         {
             panel.RemoveFilterRow(row);
         }

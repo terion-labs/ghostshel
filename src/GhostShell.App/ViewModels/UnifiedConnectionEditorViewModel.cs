@@ -86,15 +86,9 @@ public sealed class UnifiedConnectionEditorViewModel : ObservableObject
 
         _selectedType = InitialOption(lockedFamily ?? initialFamily);
         Terminal.PropertyChanged += OnFamilyEditorPropertyChanged;
-        if (Files is not null)
-        {
-            Files.PropertyChanged += OnFamilyEditorPropertyChanged;
-        }
+        Files?.PropertyChanged += OnFamilyEditorPropertyChanged;
 
-        if (Database is not null)
-        {
-            Database.PropertyChanged += OnFamilyEditorPropertyChanged;
-        }
+        Database?.PropertyChanged += OnFamilyEditorPropertyChanged;
     }
 
     public ConnectionEditorViewModel Terminal { get; }
@@ -210,15 +204,9 @@ public sealed class UnifiedConnectionEditorViewModel : ObservableObject
         set
         {
             Terminal.Name = value;
-            if (Files is not null)
-            {
-                Files.Name = value;
-            }
+            Files?.Name = value;
 
-            if (Database is not null)
-            {
-                Database.Name = value;
-            }
+            Database?.Name = value;
 
             OnPropertyChanged();
         }
@@ -282,7 +270,7 @@ public sealed class UnifiedConnectionEditorViewModel : ObservableObject
             case SavedConnectionFamily.Database when Database is not null
                 && option.DatabaseDriverId is { } driverId:
                 Database.SelectedDriver = Database.Drivers
-                    .First(item => item.Id == driverId);
+                    .First(item => string.Equals(item.Id, driverId, StringComparison.Ordinal));
                 break;
         }
     }
@@ -327,8 +315,7 @@ public sealed class UnifiedConnectionEditorViewModel : ObservableObject
                 .FirstOrDefault(item => item.FileKind == Files!.Kind)
                 ?? candidates[0],
             SavedConnectionFamily.Database => candidates
-                .FirstOrDefault(item =>
-                    item.DatabaseDriverId == Database!.SelectedDriver.Id)
+                .FirstOrDefault(item => string.Equals(item.DatabaseDriverId, Database!.SelectedDriver.Id, StringComparison.Ordinal))
                 ?? candidates[0],
             _ => candidates[0],
         };

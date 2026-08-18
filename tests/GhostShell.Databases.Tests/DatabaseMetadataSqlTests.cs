@@ -20,7 +20,7 @@ public sealed class DatabaseMetadataSqlTests
     {
         var driver = Assert.Single(
             BuiltInDatabaseDrivers.All,
-            candidate => candidate.Descriptor.Id == "firebird");
+            candidate => string.Equals(candidate.Descriptor.Id, "firebird", StringComparison.Ordinal));
 
         Assert.Contains("rdb$relation_type = 1", driver.ListTablesSql, StringComparison.Ordinal);
         Assert.Contains("AS VARCHAR(5)", driver.ListTablesSql, StringComparison.Ordinal);

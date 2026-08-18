@@ -258,11 +258,10 @@ internal sealed class SmbLibrarySession(
                     throw MapStatus(status, "list an SMB directory");
                 }
 
-                return listed
+                return [.. listed
                     .OfType<FileIdBothDirectoryInformation>()
                     .Where(entry => entry.FileName is not ("." or ".."))
-                    .Select(ToRemoteEntry)
-                    .ToArray();
+                    .Select(ToRemoteEntry)];
             }
             finally
             {
@@ -319,7 +318,7 @@ internal sealed class SmbLibrarySession(
                         "The SMB server returned an unsupported entry identity.");
                 }
 
-                var name = path == "/" ? string.Empty : path[(path.LastIndexOf('/') + 1)..];
+                var name = string.Equals(path, "/", StringComparison.Ordinal) ? string.Empty : path[(path.LastIndexOf('/') + 1)..];
                 return ToRemoteEntry(name, metadata, identity);
             }
             finally
@@ -444,11 +443,11 @@ internal sealed class SmbLibrarySession(
             var status = fileStore.ReadFile(out var bytes, handle, offset, count);
             if (status == NTStatus.STATUS_END_OF_FILE)
             {
-                return Array.Empty<byte>();
+                return [];
             }
 
             ThrowForStatus(status, "read an SMB file");
-            return bytes ?? Array.Empty<byte>();
+            return bytes ?? [];
         },
         cancellationToken);
 
@@ -490,7 +489,7 @@ internal sealed class SmbLibrarySession(
     internal static string ToSmbPath(string remotePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(remotePath);
-        if (!remotePath.StartsWith("/", StringComparison.Ordinal)
+        if (!remotePath.StartsWith('/')
             || remotePath.Any(character => character == '\\' || char.IsControl(character)))
         {
             throw new RemoteFileSessionException(

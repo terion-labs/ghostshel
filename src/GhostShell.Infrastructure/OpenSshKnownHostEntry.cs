@@ -73,7 +73,7 @@ internal static class OpenSshKnownHostEntry
     private static bool HashedHostMatches(string pattern, string lookupHost)
     {
         var fields = pattern.Split('|');
-        if (fields.Length != 4 || fields[0].Length != 0 || fields[1] != "1")
+        if (fields.Length != 4 || fields[0].Length != 0 || !string.Equals(fields[1], "1", StringComparison.Ordinal))
         {
             return false;
         }

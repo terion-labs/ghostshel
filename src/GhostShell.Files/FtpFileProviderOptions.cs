@@ -139,7 +139,7 @@ public sealed record FtpFileProviderOptions
             }
 
             var encoded = encoding.GetBytes(value);
-            return encoding.GetString(encoded) == value;
+            return string.Equals(encoding.GetString(encoded), value, StringComparison.Ordinal);
         }
         catch (ArgumentException)
         {

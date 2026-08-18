@@ -32,7 +32,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             StringComparison.Ordinal);
         Assert.Contains(
             request.Tools,
-            tool => tool.Name == BuiltInAgentTools.RedisListIndexes);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.RedisListIndexes, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -61,7 +61,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         var initial = fixture.Provider.Requests.ToArray()[0];
         var tool = Assert.Single(
             initial.Tools,
-            candidate => candidate.Name == BuiltInAgentTools.DatabaseReadState);
+            candidate => string.Equals(candidate.Name, BuiltInAgentTools.DatabaseReadState, StringComparison.Ordinal));
         Assert.Empty(tool.InputSchema.GetProperty("properties").EnumerateObject());
         var system = Assert.Single(
             initial.Messages,
@@ -72,7 +72,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         Assert.Equal(PanelKind.DatabaseViewer, contextItem.Kind);
         Assert.Contains(
             BuiltInAgentTools.DatabaseReadState,
-            contextItem.SupportedOperations);
+            contextItem.SupportedOperations, StringComparer.Ordinal);
 
         var toolResult = ToolResultFromLastRequest(fixture.Provider);
         Assert.Equal(AgentToolResultStatus.Succeeded, toolResult.Status);
@@ -86,9 +86,8 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             document.RootElement.GetProperty("backend").GetString());
         Assert.Contains(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.DatabaseReadState
-                && auditEvent.Outcome == AuditOutcome.Succeeded);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.DatabaseReadState
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Succeeded);
     }
 
     private static AgentPolicy DatabasePolicy(AgentPermission permission) =>

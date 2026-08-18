@@ -33,7 +33,7 @@ public sealed class FileAccessControlEditorViewModelTests
         var editor = Posix(0b111_101_100);
 
         Assert.True(editor.HasMode);
-        Assert.Equal(["Owner", "Group", "Everyone"], editor.Rows.Select(row => row.Name));
+        Assert.Equal(["Owner", "Group", "Everyone"], editor.Rows.Select(row => row.Name), StringComparer.Ordinal);
         Assert.Equal("Read & Write", editor.Rows[0].Privilege);
         Assert.Equal("Read only", editor.Rows[1].Privilege);
         Assert.Equal("Read only", editor.Rows[2].Privilege);
@@ -128,7 +128,7 @@ public sealed class FileAccessControlEditorViewModelTests
                 FilePanelAccessRight.FullControl));
 
         Assert.False(editor.HasMode);
-        Assert.Equal(["Everyone", "p3179430"], editor.Rows.Select(row => row.Name));
+        Assert.Equal(["Everyone", "p3179430"], editor.Rows.Select(row => row.Name), StringComparer.Ordinal);
         Assert.Equal("Read only", editor.Rows[0].Privilege);
         Assert.Equal("Full control", editor.Rows[1].Privilege);
         Assert.All(editor.Rows, row => Assert.False(row.ShowsExecute));

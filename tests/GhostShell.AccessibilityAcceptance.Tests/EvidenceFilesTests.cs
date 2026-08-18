@@ -13,15 +13,14 @@ public sealed class EvidenceFilesTests : IDisposable
         var first = EvidenceFiles.Write(_temporaryDirectory, EvidenceFixture.Valid());
         var second = EvidenceFiles.Write(_temporaryDirectory, EvidenceFixture.Valid());
 
-        Assert.NotEqual(first.Directory, second.Directory);
+        Assert.NotEqual(first.Directory, second.Directory, StringComparer.Ordinal);
         Assert.Empty(EvidenceFiles.Validate(first.Directory));
         Assert.Empty(EvidenceFiles.Validate(second.Json));
         Assert.Equal(
             ["evidence.json", "evidence.json.sha256", "evidence.md"],
-            Directory.EnumerateFiles(first.Directory)
+            [.. Directory.EnumerateFiles(first.Directory)
                 .Select(path => Path.GetFileName(path)!)
-                .Order()
-                .ToArray());
+                .Order(StringComparer.Ordinal)]);
     }
 
     [Fact]
@@ -122,11 +121,11 @@ public sealed class EvidenceFilesTests : IDisposable
     public void Model_validator_rejects_matrix_result_and_mapping_tampering()
     {
         var valid = EvidenceFixture.Valid();
-        var reordered = valid with { Checks = valid.Checks.Reverse().ToArray() };
+        var reordered = valid with { Checks = [.. valid.Checks.Reverse()] };
         var wrongOverall = valid with { OverallResult = AcceptanceStatus.Blocked };
         var wrongReader = valid with { ScreenReader = ScreenReaderKind.Orca };
         var incomplete = valid.Checks.ToArray();
-        incomplete[0] = incomplete[0] with { Assertions = incomplete[0].Assertions.Skip(1).ToArray() };
+        incomplete[0] = incomplete[0] with { Assertions = [.. incomplete[0].Assertions.Skip(1)] };
 
         Assert.NotEmpty(EvidenceValidator.Validate(reordered));
         Assert.NotEmpty(EvidenceValidator.Validate(wrongOverall));
@@ -142,7 +141,7 @@ public sealed class EvidenceFilesTests : IDisposable
         var assertions = final.Assertions.ToArray();
         var preferenceIndex = Array.FindIndex(
             assertions,
-            assertion => assertion.Id == "preferences-restored");
+            assertion => string.Equals(assertion.Id, "preferences-restored", StringComparison.Ordinal));
         assertions[preferenceIndex] = assertions[preferenceIndex] with
         {
             Result = AcceptanceStatus.Blocked,
@@ -204,7 +203,7 @@ public sealed class EvidenceFilesTests : IDisposable
         var assertions = final.Assertions.ToArray();
         var readerIndex = Array.FindIndex(
             assertions,
-            assertion => assertion.Id == "screen-reader-remained-active");
+            assertion => string.Equals(assertion.Id, "screen-reader-remained-active", StringComparison.Ordinal));
         assertions[readerIndex] = assertions[readerIndex] with
         {
             Result = AcceptanceStatus.Pass,

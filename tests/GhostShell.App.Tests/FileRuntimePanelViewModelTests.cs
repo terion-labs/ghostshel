@@ -1,5 +1,5 @@
-using System.Text;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Threading.Channels;
 using Avalonia.Controls;
 using GhostShell.App.ViewModels;
@@ -34,9 +34,9 @@ public sealed class FileRuntimePanelViewModelTests
         Assert.True(panel.IsSortingByName);
         Assert.False(panel.IsSortingByModified);
         Assert.False(panel.IsSortDescending);
-        Assert.Contains(nameof(FileRuntimePanelViewModel.IsSortingByName), changed);
-        Assert.Contains(nameof(FileRuntimePanelViewModel.IsSortingByModified), changed);
-        Assert.Contains(nameof(FileRuntimePanelViewModel.IsSortDescending), changed);
+        Assert.Contains(nameof(FileRuntimePanelViewModel.IsSortingByName), changed, StringComparer.Ordinal);
+        Assert.Contains(nameof(FileRuntimePanelViewModel.IsSortingByModified), changed, StringComparer.Ordinal);
+        Assert.Contains(nameof(FileRuntimePanelViewModel.IsSortDescending), changed, StringComparer.Ordinal);
 
         panel.ChangeSort(FileEntrySortField.Name);
 
@@ -524,7 +524,7 @@ public sealed class FileRuntimePanelViewModelTests
         Assert.Equal(501, panel.Entries.Count);
         Assert.Equal(2, client.ListCallCount);
         Assert.False(panel.HasMore);
-        Assert.Contains(panel.Entries, entry => entry.Name == "file-500.txt");
+        Assert.Contains(panel.Entries, entry => string.Equals(entry.Name, "file-500.txt", StringComparison.Ordinal));
         Assert.Equal("501 item(s)", panel.Status);
     }
 
@@ -582,7 +582,7 @@ public sealed class FileRuntimePanelViewModelTests
         }
 
         Assert.Equal(2, panel.Entries.Count);
-        Assert.Contains(panel.Entries, entry => entry.Name == "after.txt");
+        Assert.Contains(panel.Entries, entry => string.Equals(entry.Name, "after.txt", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -862,7 +862,7 @@ public sealed class FileRuntimePanelViewModelTests
 
         Assert.Empty(notifications);
 
-        var completedAt = DateTimeOffset.Parse("2026-08-18T10:30:00Z");
+        var completedAt = DateTimeOffset.Parse("2026-08-18T10:30:00Z", System.Globalization.CultureInfo.InvariantCulture);
         queue.Transition(completedId, FilePanelTransferState.Completed, completedAt);
         queue.SignalChanged();
 
@@ -1066,7 +1066,7 @@ public sealed class FileRuntimePanelViewModelTests
 
         Assert.Equal(
             ["folder", "large.txt", "small.txt", "unknown.txt"],
-            panel.Entries.Select(item => item.Name));
+            panel.Entries.Select(item => item.Name), StringComparer.Ordinal);
         Assert.Equal(FileBrowserViewMode.Grid, panel.ViewMode);
 
         panel.ChangeSort(FileEntrySortField.Size);
@@ -1074,7 +1074,7 @@ public sealed class FileRuntimePanelViewModelTests
         Assert.Equal(FileEntrySortDirection.Ascending, panel.SortDirection);
         Assert.Equal(
             ["folder", "small.txt", "large.txt", "unknown.txt"],
-            panel.Entries.Select(item => item.Name));
+            panel.Entries.Select(item => item.Name), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -1151,7 +1151,7 @@ public sealed class FileRuntimePanelViewModelTests
             "Files",
             client);
         await panel.Initialization;
-        panel.SelectedEntry = panel.Entries.Single(item => item.Name == "selected.txt");
+        panel.SelectedEntry = panel.Entries.Single(item => string.Equals(item.Name, "selected.txt", StringComparison.Ordinal));
         await panel.PreviewSelectedAsync();
 
         panel.Filter = "visible";
@@ -1177,11 +1177,11 @@ public sealed class FileRuntimePanelViewModelTests
             "Files",
             client);
         await panel.Initialization;
-        panel.SelectedEntry = panel.Entries.Single(item => item.Name == "slow.txt");
+        panel.SelectedEntry = panel.Entries.Single(item => string.Equals(item.Name, "slow.txt", StringComparison.Ordinal));
         var preview = panel.PreviewSelectedAsync();
         Assert.True(panel.IsPreviewLoading);
 
-        panel.SelectedEntry = panel.Entries.Single(item => item.Name == "folder");
+        panel.SelectedEntry = panel.Entries.Single(item => string.Equals(item.Name, "folder", StringComparison.Ordinal));
         await panel.PreviewSelectedAsync();
         await preview;
 
@@ -1747,7 +1747,7 @@ public sealed class FileRuntimePanelViewModelTests
         Assert.True(panel.HasTablePreview);
         Assert.False(panel.HasSourcePreview);
         var table = panel.PreviewTable!;
-        Assert.Equal(["name", "city"], table.Columns.Select(column => column.Name));
+        Assert.Equal(["name", "city"], table.Columns.Select(column => column.Name), StringComparer.Ordinal);
         Assert.Equal(2, table.Rows.Count);
         // Every cell in a column is as wide as its header, or they do not line up.
         Assert.Equal(
@@ -1789,7 +1789,7 @@ public sealed class FileRuntimePanelViewModelTests
         await panel.PreviewSelectedAsync();
 
         Assert.True(panel.HasPreviewToggles);
-        Assert.Contains(nameof(FileRuntimePanelViewModel.HasPreviewToggles), announced);
+        Assert.Contains(nameof(FileRuntimePanelViewModel.HasPreviewToggles), announced, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -1817,7 +1817,7 @@ public sealed class FileRuntimePanelViewModelTests
         var seen = new List<string?>();
         panel.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(FileRuntimePanelViewModel.PreviewText))
+            if (string.Equals(e.PropertyName, nameof(FileRuntimePanelViewModel.PreviewText), StringComparison.Ordinal))
             {
                 seen.Add(panel.PreviewText);
             }
@@ -1829,7 +1829,7 @@ public sealed class FileRuntimePanelViewModelTests
         // Nulling the text between readings makes every view bound to it tear
         // down and rebuild, and rebuilding a Markdown document reinstalls a
         // syntax grammar per fenced block — which is what made this slow.
-        Assert.DoesNotContain(null, seen);
+        Assert.DoesNotContain(null, seen, StringComparer.Ordinal);
         panel.Dispose();
     }
 
@@ -1848,15 +1848,15 @@ public sealed class FileRuntimePanelViewModelTests
 
         Assert.True(panel.HasSourcePreview);
         Assert.False(panel.HasMarkdownPreview);
-        Assert.Contains(nameof(FileRuntimePanelViewModel.HasSourcePreview), announced);
-        Assert.Contains(nameof(FileRuntimePanelViewModel.HasMarkdownPreview), announced);
+        Assert.Contains(nameof(FileRuntimePanelViewModel.HasSourcePreview), announced, StringComparer.Ordinal);
+        Assert.Contains(nameof(FileRuntimePanelViewModel.HasMarkdownPreview), announced, StringComparer.Ordinal);
 
         announced.Clear();
         panel.PreviewToggles.Single().IsOn = false;
         await panel.PreviewPresentation;
 
         Assert.True(panel.HasMarkdownPreview);
-        Assert.Contains(nameof(FileRuntimePanelViewModel.HasMarkdownPreview), announced);
+        Assert.Contains(nameof(FileRuntimePanelViewModel.HasMarkdownPreview), announced, StringComparer.Ordinal);
         panel.Dispose();
     }
 
@@ -1924,7 +1924,7 @@ public sealed class FileRuntimePanelViewModelTests
             client.Root.Child(new FilePanelPathSegment("bundle.zip")),
             FilePanelPreviewKind.Hex,
             "application/octet-stream",
-            new byte[] { 0x50, 0x4B, 0x03, 0x04 },
+            [0x50, 0x4B, 0x03, 0x04],
             isTruncated: true);
         client.MaterializedPath = Path.Combine(Path.GetTempPath(), "bundle.zip");
         using var panel = new FileRuntimePanelViewModel(
@@ -1945,7 +1945,7 @@ public sealed class FileRuntimePanelViewModelTests
         // panel with a summary under it.
         Assert.True(panel.HasTreePreview);
         Assert.Equal(2, panel.PreviewTree!.Nodes.Count);
-        Assert.Equal(["docs", "src"], panel.PreviewTree.Nodes.Select(node => node.Name));
+        Assert.Equal(["docs", "src"], panel.PreviewTree.Nodes.Select(node => node.Name), StringComparer.Ordinal);
     }
 
     private sealed class StubArchiveReader(IReadOnlyList<ArchiveEntryDescriptor> entries)
@@ -1971,14 +1971,14 @@ public sealed class FileRuntimePanelViewModelTests
         await panel.Initialization;
 
         client.Preview = BinaryPreview(client.Root, "first.bin");
-        panel.SelectedEntry = panel.Entries.Single(entry => entry.Name == "first.bin");
+        panel.SelectedEntry = panel.Entries.Single(entry => string.Equals(entry.Name, "first.bin", StringComparison.Ordinal));
         await panel.PreviewSelectedAsync();
         panel.PreviewToggles.Single().IsOn = true;
         await panel.PreviewPresentation;
         Assert.True(panel.HasHexPreview);
 
         client.Preview = BinaryPreview(client.Root, "second.bin");
-        panel.SelectedEntry = panel.Entries.Single(entry => entry.Name == "second.bin");
+        panel.SelectedEntry = panel.Entries.Single(entry => string.Equals(entry.Name, "second.bin", StringComparison.Ordinal));
         await panel.PreviewSelectedAsync();
 
         // Someone reading bytes is reading bytes, not reading one file's bytes.
@@ -1996,7 +1996,7 @@ public sealed class FileRuntimePanelViewModelTests
         await panel.Initialization;
 
         client.Preview = BinaryPreview(client.Root, "payload.bin");
-        panel.SelectedEntry = panel.Entries.Single(entry => entry.Name == "payload.bin");
+        panel.SelectedEntry = panel.Entries.Single(entry => string.Equals(entry.Name, "payload.bin", StringComparison.Ordinal));
         await panel.PreviewSelectedAsync();
         panel.PreviewToggles.Single().IsOn = true;
         await panel.PreviewPresentation;
@@ -2007,7 +2007,7 @@ public sealed class FileRuntimePanelViewModelTests
             "text/plain; charset=utf-8",
             Encoding.UTF8.GetBytes("name,city\nada,london\n"),
             isTruncated: false);
-        panel.SelectedEntry = panel.Entries.Single(entry => entry.Name == "people.csv");
+        panel.SelectedEntry = panel.Entries.Single(entry => string.Equals(entry.Name, "people.csv", StringComparison.Ordinal));
         await panel.PreviewSelectedAsync();
 
         Assert.False(panel.HasHexPreview);
@@ -2020,7 +2020,7 @@ public sealed class FileRuntimePanelViewModelTests
             root.Child(new FilePanelPathSegment(name)),
             FilePanelPreviewKind.Hex,
             "application/octet-stream",
-            new byte[] { 1, 2, 3 },
+            [1, 2, 3],
             isTruncated: false);
 
     [Fact]
@@ -2037,7 +2037,7 @@ public sealed class FileRuntimePanelViewModelTests
             Encoding.UTF8.GetBytes("plain"),
             isTruncated: false);
         await panel.RefreshAsync();
-        panel.SelectedEntry = panel.Entries.Single(entry => entry.Name == "readme.txt");
+        panel.SelectedEntry = panel.Entries.Single(entry => string.Equals(entry.Name, "readme.txt", StringComparison.Ordinal));
         await panel.PreviewSelectedAsync();
 
         // The choices are the claiming previewer's; plain text offers none,
@@ -2060,7 +2060,7 @@ public sealed class FileRuntimePanelViewModelTests
             new StubTransferQueue());
         await panel.Initialization;
 
-        panel.SetSelectedEntries(panel.Entries.Select(entry => entry.Entry).ToArray());
+        panel.SetSelectedEntries([.. panel.Entries.Select(entry => entry.Entry)]);
         var requests = panel.CreateDownloadRequests(
             Path.Combine(Path.GetTempPath(), "downloads"));
 
@@ -2199,7 +2199,7 @@ public sealed class FileRuntimePanelViewModelTests
         {
             var panel = new FileRuntimePanelViewModel(PanelInstanceId.New(), "Files", stub);
             await panel.Initialization;
-            panel.SelectedEntry = panel.Entries.Single(entry => entry.Name == name);
+            panel.SelectedEntry = panel.Entries.Single(entry => string.Equals(entry.Name, name, StringComparison.Ordinal));
             await panel.PreviewSelectedAsync();
             return panel;
         }
@@ -2220,7 +2220,7 @@ public sealed class FileRuntimePanelViewModelTests
 
         var announced = false;
         panel.PropertyChanged += (_, e) =>
-            announced |= e.PropertyName == nameof(panel.AutoDownloadPreviewLabel);
+            announced |= string.Equals(e.PropertyName, nameof(panel.AutoDownloadPreviewLabel), StringComparison.Ordinal);
         await preferences.ApplyAsync(
             preferences.Current with { AutoLoadThresholdBytes = 8 * 1024 * 1024 },
             CancellationToken.None);
@@ -2525,7 +2525,7 @@ public sealed class FileRuntimePanelViewModelTests
     {
         private readonly List<FilePanelTransferSnapshot> _transfers = [];
 
-        public IReadOnlyList<FilePanelTransferSnapshot> Transfers => _transfers.ToArray();
+        public IReadOnlyList<FilePanelTransferSnapshot> Transfers => [.. _transfers];
 
         public event EventHandler? TransfersChanged;
 

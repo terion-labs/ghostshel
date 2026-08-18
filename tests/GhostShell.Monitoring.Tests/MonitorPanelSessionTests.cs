@@ -213,7 +213,7 @@ public sealed class MonitorPanelSessionTests
             firstConnection.Startup,
             firstConnection.KeepAlive,
             firstConnection.HostKeyPolicy,
-            firstConnection.Tags.ToArray());
+            [.. firstConnection.Tags]);
 
         await using var statistics = await factory.CreateStatisticsAsync(
             new SessionId("statistics-equivalent"),

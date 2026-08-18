@@ -32,10 +32,9 @@ public sealed class ClaudeHookTerminalNotificationAdapterTests
             response.RootElement.GetProperty("terminalSequence").GetString());
         Assert.Equal(
             ["terminalSequence", "suppressOutput"],
-            response.RootElement
+            [.. response.RootElement
                 .EnumerateObject()
-                .Select(property => property.Name)
-                .ToArray());
+                .Select(property => property.Name)]);
     }
 
     [Fact]

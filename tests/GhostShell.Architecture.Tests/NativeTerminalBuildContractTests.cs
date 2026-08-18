@@ -280,7 +280,10 @@ public sealed partial class NativeTerminalBuildContractTests
         }
     }
 
-    [GeneratedRegex("EntryPoint\\s*=\\s*\"([^\"]+)\"")]
+    [GeneratedRegex(
+        "EntryPoint\\s*=\\s*\"(?<entryPoint>[^\"]+)\"",
+        RegexOptions.CultureInvariant,
+        matchTimeoutMilliseconds: 1_000)]
     private static partial Regex EntryPointPattern();
 
     private static string FindRepositoryRoot()

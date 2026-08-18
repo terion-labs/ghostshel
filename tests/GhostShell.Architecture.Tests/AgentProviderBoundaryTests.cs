@@ -130,12 +130,11 @@ public sealed class AgentProviderBoundaryTests
             ghostShellReferences,
             name => Assert.Contains(
                 name,
-                new[]
-                {
+                [
                     "GhostShell.Agent",
                     "GhostShell.Application",
                     "GhostShell.Core",
-                }));
+                ], StringComparer.Ordinal));
 
         var forbiddenAssemblyReferences = new HashSet<string>(
             [

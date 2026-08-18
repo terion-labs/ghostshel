@@ -219,8 +219,8 @@ public sealed partial class WebDavFileProvider : IFileProvider
 
         var rootPath = _options.BaseUri.AbsolutePath;
         var rootWithoutSlash = rootPath.TrimEnd('/');
-        return finalUri.AbsolutePath == rootWithoutSlash
-               || finalUri.AbsolutePath.StartsWith(rootPath, StringComparison.Ordinal)
+        return string.Equals(finalUri.AbsolutePath, rootWithoutSlash
+, StringComparison.Ordinal) || finalUri.AbsolutePath.StartsWith(rootPath, StringComparison.Ordinal)
             ? null
             : FileProviderError.Create(
                 FileProviderErrorCode.OutsideRoot,

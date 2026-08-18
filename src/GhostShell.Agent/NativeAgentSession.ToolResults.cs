@@ -173,9 +173,7 @@ public sealed partial class NativeAgentSession
             ImmutableArray<AgentMessage> conversationWithResults;
             try
             {
-                resultMessages = results
-                    .Select(AgentMessage.FromToolResult)
-                    .ToImmutableArray();
+                resultMessages = [.. results.Select(AgentMessage.FromToolResult)];
                 conversationWithResults = _conversation.AddRange(resultMessages);
                 ValidateConversation(
                     conversationWithResults,

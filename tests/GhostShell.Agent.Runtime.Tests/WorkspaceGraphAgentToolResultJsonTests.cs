@@ -44,7 +44,7 @@ public sealed class WorkspaceGraphAgentToolResultJsonTests
                 "title",
                 "tabs",
             ],
-            workspace.EnumerateObject().Select(property => property.Name));
+            workspace.EnumerateObject().Select(property => property.Name), StringComparer.Ordinal);
         var tab = Assert.Single(
             workspace.GetProperty("tabs").EnumerateArray());
         AssertTabShape(
@@ -56,7 +56,7 @@ public sealed class WorkspaceGraphAgentToolResultJsonTests
             tab.GetProperty("panels")
                 .EnumerateArray()
                 .Select(panel =>
-                    panel.GetProperty("panel_id").GetString()));
+                    panel.GetProperty("panel_id").GetString()), StringComparer.Ordinal);
         AssertNoSensitiveOrOutOfScopeFields(root);
     }
 
@@ -403,7 +403,7 @@ public sealed class WorkspaceGraphAgentToolResultJsonTests
                 "scope_limited",
                 payloadProperty,
             ],
-            root.EnumerateObject().Select(property => property.Name));
+            root.EnumerateObject().Select(property => property.Name), StringComparer.Ordinal);
         Assert.True(root.GetProperty("ok").GetBoolean());
         Assert.Equal(
             "untrusted_workspace_graph_metadata",
@@ -442,7 +442,7 @@ public sealed class WorkspaceGraphAgentToolResultJsonTests
 
         Assert.Equal(
             expected,
-            tab.EnumerateObject().Select(property => property.Name));
+            tab.EnumerateObject().Select(property => property.Name), StringComparer.Ordinal);
         if (includesPanels)
         {
             Assert.All(
@@ -479,7 +479,7 @@ public sealed class WorkspaceGraphAgentToolResultJsonTests
         ]);
         Assert.Equal(
             expected,
-            panel.EnumerateObject().Select(property => property.Name));
+            panel.EnumerateObject().Select(property => property.Name), StringComparer.Ordinal);
     }
 
     private static void AssertPageReceipt(
@@ -497,7 +497,7 @@ public sealed class WorkspaceGraphAgentToolResultJsonTests
                 "complete",
                 "items",
             ],
-            page.EnumerateObject().Select(property => property.Name));
+            page.EnumerateObject().Select(property => property.Name), StringComparer.Ordinal);
         Assert.Equal(offset, page.GetProperty("offset").GetInt32());
         Assert.Equal(
             AgentWorkspaceGraphRequest.PageSize,
@@ -726,8 +726,8 @@ public sealed class WorkspaceGraphAgentToolResultJsonTests
                 return new GraphFixture(
                     graph,
                     terminalDescriptor: null,
-                    panels.Select(panel => panel.Id).ToArray(),
-                    panels.Select(panel => panel.Id).ToArray(),
+                    [.. panels.Select(panel => panel.Id)],
+                    [.. panels.Select(panel => panel.Id)],
                     firstTabId,
                     firstTabId,
                     panels[0].Id,

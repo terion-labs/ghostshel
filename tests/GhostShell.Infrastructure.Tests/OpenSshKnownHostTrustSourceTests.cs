@@ -30,7 +30,7 @@ public sealed class OpenSshKnownHostTrustSourceTests : IDisposable
     public async Task Hashed_hostname_is_trusted()
     {
         var candidate = Candidate(2);
-        var hashedHost = HashHost("host.example", Enumerable.Repeat((byte)7, 20).ToArray());
+        var hashedHost = HashHost("host.example", [.. Enumerable.Repeat((byte)7, 20)]);
         var source = await SourceAsync(
             $"{hashedHost} {candidate.Identity.Algorithm} {candidate.PublicKeyBase64}\n");
 

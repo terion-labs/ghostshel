@@ -21,7 +21,7 @@ internal static class PostgreSqlProviderCases
         "CockroachDB 26.2.4",
         "cockroachdb/cockroach:v26.2.4",
         26257,
-        new Dictionary<string, string>(),
+        new Dictionary<string, string>(StringComparer.Ordinal),
         [
             "start-single-node",
             "--insecure",
@@ -63,7 +63,7 @@ internal static class PostgreSqlProviderCases
             displayName,
             "postgres:18.4",
             5432,
-            new Dictionary<string, string>
+            new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["POSTGRES_DB"] = "ghostshell",
                 ["POSTGRES_USER"] = "ghostshell",
@@ -75,10 +75,10 @@ internal static class PostgreSqlProviderCases
             "SELECT 1",
             CreatePostgreSqlSeed(),
             new DatabaseProviderExpectations(
-                CanEdit: id != "redshift",
-                HasIndexes: id != "redshift",
-                HasIdentity: id != "redshift",
-                HasGeneratedColumn: id != "redshift",
+                CanEdit: !string.Equals(id, "redshift", StringComparison.Ordinal),
+                HasIndexes: !string.Equals(id, "redshift", StringComparison.Ordinal),
+                HasIdentity: !string.Equals(id, "redshift", StringComparison.Ordinal),
+                HasGeneratedColumn: !string.Equals(id, "redshift", StringComparison.Ordinal),
                 RequiredValueKinds: new HashSet<DatabaseValueKind>
                 {
                     DatabaseValueKind.SignedInteger,
@@ -93,8 +93,8 @@ internal static class PostgreSqlProviderCases
                 ExpectedCodeLength: 80,
                 ExpectedScorePrecision: 12,
                 ExpectedScoreScale: 2,
-                ScoreIndex: id == "redshift"
-                    ? null
+                ScoreIndex: string.Equals(id, "redshift"
+, StringComparison.Ordinal) ? null
                     : new DatabaseIndexExpectations(
                         FirstColumnDescending: true,
                         IncludedColumn: "note",

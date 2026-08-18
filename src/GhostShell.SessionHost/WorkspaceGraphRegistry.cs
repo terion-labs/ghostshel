@@ -362,7 +362,7 @@ internal sealed class WorkspaceGraphRegistry
                 removed.AddRange(RemoveWindowUnsafe(windowId));
             }
 
-            graphs = removed.ToArray();
+            graphs = [.. removed];
         }
 
         foreach (var graph in graphs)
@@ -376,7 +376,7 @@ internal sealed class WorkspaceGraphRegistry
         HostedWorkspaceGraph[] graphs;
         lock (_gate)
         {
-            graphs = _workspaces.Values.ToArray();
+            graphs = [.. _workspaces.Values];
             _clientByWindow.Clear();
             _workspacesByWindow.Clear();
             _workspaces.Clear();

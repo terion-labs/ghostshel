@@ -473,7 +473,7 @@ internal sealed class SqliteDefinitionGraphValidator
             }
         }
 
-        return owners.ToArray();
+        return [.. owners];
     }
 
     private async Task<IReadOnlyList<DefinitionKey>> ReadKeysAsync(

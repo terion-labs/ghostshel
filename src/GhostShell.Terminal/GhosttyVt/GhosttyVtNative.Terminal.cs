@@ -17,10 +17,7 @@ internal static unsafe partial class GhosttyVtNative
     static GhosttyVtNative()
     {
         var loadContext = AssemblyLoadContext.GetLoadContext(typeof(GhosttyVtNative).Assembly);
-        if (loadContext is not null)
-        {
-            loadContext.ResolvingUnmanagedDll += ResolveLibrary;
-        }
+        loadContext?.ResolvingUnmanagedDll += ResolveLibrary;
     }
 
     private static nint ResolveLibrary(Assembly assembly, string libraryName)

@@ -26,7 +26,7 @@ public sealed class TerminalPalettePresetTests
         var editor = Editor();
         Assert.Equal(
             TerminalPalette.Presets.Select(preset => preset.Name),
-            editor.PalettePresets.Select(option => option.Name));
+            editor.PalettePresets.Select(option => option.Name), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -63,7 +63,7 @@ public sealed class TerminalPalettePresetTests
 
         Assert.Equal(
             TerminalPalette.Solarized.AnsiColors.Take(8).Select(color => color.ToString()),
-            editor.NormalAnsiColors.Select(swatch => swatch.Hex));
+            editor.NormalAnsiColors.Select(swatch => swatch.Hex), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -76,7 +76,7 @@ public sealed class TerminalPalettePresetTests
         Assert.Equal("Midnight", editor.SelectedPalettePreset?.Name);
         Assert.Single(editor.PalettePresets, option => option.IsSelected);
         Assert.True(
-            editor.PalettePresets.Single(option => option.Name == "Midnight").IsSelected);
+            editor.PalettePresets.Single(option => string.Equals(option.Name, "Midnight", StringComparison.Ordinal)).IsSelected);
     }
 
     [Fact]
@@ -152,7 +152,7 @@ public sealed class TerminalPalettePresetTests
     public void Preset_names_are_distinct() =>
         Assert.Equal(
             TerminalPalette.Presets.Count,
-            TerminalPalette.Presets.Select(preset => preset.Name).Distinct().Count());
+            TerminalPalette.Presets.Select(preset => preset.Name).Distinct(StringComparer.Ordinal).Count());
 }
 
 public sealed class TerminalAppearanceEditorTests
@@ -177,7 +177,7 @@ public sealed class TerminalAppearanceEditorTests
     {
         var editor = Editor("A Font Nobody Has Installed");
 
-        Assert.Contains("A Font Nobody Has Installed", editor.FontFamilies);
+        Assert.Contains("A Font Nobody Has Installed", editor.FontFamilies, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -188,7 +188,7 @@ public sealed class TerminalAppearanceEditorTests
         Assert.Equal(families.Distinct(StringComparer.OrdinalIgnoreCase).Count(), families.Count);
         Assert.Equal(
             families.OrderBy(name => name, StringComparer.CurrentCultureIgnoreCase),
-            families);
+            families, StringComparer.Ordinal);
     }
 
     [Fact]

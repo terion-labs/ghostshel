@@ -402,16 +402,15 @@ public sealed partial class NativeAgentSession
             conversationRevision,
             _sequence,
             _lastSubmittedToolGeneration,
-            durableConversation.Select(ToCheckpointMessage).ToArray(),
-            _providerToolBindings
+            [.. durableConversation.Select(ToCheckpointMessage)],
+            [.. _providerToolBindings
                 .OrderBy(binding => binding.Key, StringComparer.Ordinal)
                 .Select(binding => new CheckpointToolBinding(
                     binding.Key,
-                    binding.Value))
-                .ToArray(),
+                    binding.Value))],
             providerBinding?.ProfileId.Value ?? _conversationProviderId?.Value,
             providerBinding?.Model ?? _conversationModel,
-            durableTranscript.Select(ToCheckpointMessage).ToArray());
+            [.. durableTranscript.Select(ToCheckpointMessage)]);
         var payloadJson = JsonSerializer.Serialize(payload, CheckpointJsonOptions);
         var checkpoint = new AgentSessionCheckpoint(
             RunId,
@@ -622,13 +621,13 @@ public sealed partial class NativeAgentSession
         new(
             ToRoleToken(message.Role),
             message.Content,
-            message.ToolCalls.Select(toolCall => new CheckpointToolCall(
+            [.. message.ToolCalls.Select(toolCall => new CheckpointToolCall(
                 toolCall.Id,
                 toolCall.Generation,
                 toolCall.ProviderCallId,
                 toolCall.ProviderName,
                 toolCall.ToolName,
-                toolCall.Arguments.Clone())).ToArray(),
+                toolCall.Arguments.Clone()))],
             message.ToolResult is null
                 ? null
                 : ToCheckpointToolResult(message.ToolResult),
@@ -640,12 +639,11 @@ public sealed partial class NativeAgentSession
                     message.Usage.OutputTokens,
                     message.Usage.CachedInputTokens,
                     message.Usage.ReasoningTokens),
-            message.Images
+            [.. message.Images
                 .Select(image => new CheckpointImage(
                     image.FileName,
                     image.MediaType,
-                    Convert.ToBase64String(image.Content)))
-                .ToArray(),
+                    Convert.ToBase64String(image.Content)))],
             message.ProviderReplayState is null
                 ? null
                 : ToCheckpointReplayState(message.ProviderReplayState),
@@ -676,11 +674,11 @@ public sealed partial class NativeAgentSession
             state.Binding.RouteIdentity,
             (int)state.Format,
             state.ContainsSuppressedRawReasoning,
-            state.Items.Select(item => new CheckpointProviderReplayItem(
+            [.. state.Items.Select(item => new CheckpointProviderReplayItem(
                 item.Index,
                 (int)item.Kind,
                 Convert.ToBase64String(Encoding.UTF8.GetBytes(item.PayloadJson)),
-                item.ToolIndex)).ToArray());
+                item.ToolIndex))]);
 
     private static CheckpointToolResult ToCheckpointToolResult(AgentToolResult result)
     {

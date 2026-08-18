@@ -74,7 +74,7 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Equal(requests[0].RunId, requests[1].RunId);
         Assert.Equal(
             requests[0].Tools.Select(ToolFingerprint),
-            requests[1].Tools.Select(ToolFingerprint));
+            requests[1].Tools.Select(ToolFingerprint), StringComparer.Ordinal);
         Assert.Equal(
             $"{original}\n\nSteering update:\n{update}",
             Assert.Single(
@@ -94,7 +94,7 @@ public sealed partial class GovernedAgentRuntimeTests
                 "revised answer",
             ],
             fixture.Runtime.Snapshot.Messages.Select(message =>
-                message.Content));
+                message.Content), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -268,7 +268,7 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Equal(
             [original, "obsolete draftoriginal answer"],
             fixture.Runtime.Snapshot.Messages.Select(message =>
-                message.Content));
+                message.Content), StringComparer.Ordinal);
     }
 
     [Fact]

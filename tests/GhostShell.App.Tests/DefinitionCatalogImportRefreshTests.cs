@@ -85,7 +85,7 @@ public sealed class DefinitionCatalogImportRefreshTests
 
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
         {
-            if (targetMethod?.Name != nameof(IDefinitionCatalog.ReloadAsync))
+            if (!string.Equals(targetMethod?.Name, nameof(IDefinitionCatalog.ReloadAsync), StringComparison.Ordinal))
             {
                 throw new NotSupportedException(targetMethod?.Name);
             }

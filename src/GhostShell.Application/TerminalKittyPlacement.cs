@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace GhostShell.Application;
 
 public enum TerminalKittyPlacementLayer
@@ -7,6 +9,7 @@ public enum TerminalKittyPlacementLayer
     AboveText,
 }
 
+[StructLayout(LayoutKind.Auto)]
 public readonly record struct TerminalKittySourceRectangle
 {
     public TerminalKittySourceRectangle(int X, int Y, int Width, int Height)
@@ -49,6 +52,7 @@ public readonly record struct TerminalKittySourceRectangle
 }
 
 /// <summary>Viewport geometry for a visible Kitty placement instance.</summary>
+[StructLayout(LayoutKind.Auto)]
 public readonly record struct TerminalKittyPlacementGeometry
 {
     public TerminalKittyPlacementGeometry(

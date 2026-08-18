@@ -29,7 +29,7 @@ internal static class TerminalAgentToolParser
             return Invalid("Tool arguments cannot contain duplicate fields.");
         }
 
-        if (proposal.ToolName == BuiltInAgentTools.TerminalResize)
+        if (string.Equals(proposal.ToolName, BuiltInAgentTools.TerminalResize, StringComparison.Ordinal))
         {
             return UnavailableTool();
         }
@@ -869,8 +869,8 @@ internal static class TerminalAgentToolParser
         string? value,
         out TerminalScrollbackFindDirection direction)
     {
-        direction = value == "backward"
-            ? TerminalScrollbackFindDirection.Backward
+        direction = string.Equals(value, "backward"
+, StringComparison.Ordinal) ? TerminalScrollbackFindDirection.Backward
             : TerminalScrollbackFindDirection.Forward;
         return value is "forward" or "backward";
     }
@@ -894,8 +894,8 @@ internal static class TerminalAgentToolParser
         string? value,
         out TerminalViewportScrollUnit unit)
     {
-        unit = value == "page"
-            ? TerminalViewportScrollUnit.Page
+        unit = string.Equals(value, "page"
+, StringComparison.Ordinal) ? TerminalViewportScrollUnit.Page
             : TerminalViewportScrollUnit.Line;
         return value is "line" or "page";
     }
@@ -906,7 +906,7 @@ internal static class TerminalAgentToolParser
         out int dimension)
     {
         dimension = 0;
-        var minimum = name == "columns" ? MinimumGridColumns : 1;
+        var minimum = string.Equals(name, "columns", StringComparison.Ordinal) ? MinimumGridColumns : 1;
         return properties.TryGetValue(name, out var element)
             && element.ValueKind == JsonValueKind.Number
             && element.TryGetInt32(out dimension)
@@ -993,7 +993,7 @@ internal static class TerminalAgentToolParser
                 "meta" => TerminalKeyModifiers.Meta,
                 _ => (TerminalKeyModifiers?)null,
             };
-            if (modifier is null || (modifiers & modifier.Value) != 0)
+            if (modifier is null || (modifiers & modifier.Value) != TerminalKeyModifiers.None)
             {
                 return false;
             }

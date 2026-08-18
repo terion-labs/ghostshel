@@ -2067,10 +2067,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         _disposed = true;
         _runtime.Changed -= OnRuntimeChanged;
         _profiles.ProfilesChanged -= OnProfilesChanged;
-        if (_favoriteStore is not null)
-        {
-            _favoriteStore.Changed -= OnFavoriteModelsChanged;
-        }
+        _favoriteStore?.Changed -= OnFavoriteModelsChanged;
         _auditCancellation?.Cancel();
         _auditCancellation?.Dispose();
         _auditCancellation = null;
@@ -2898,12 +2895,11 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
             FormatTarget(approval.Target),
             approval.Presentation.Host ?? "Not reported",
             approval.Presentation.WorkingDirectory ?? "Not reported",
-            approval.Presentation.Arguments
+            [.. approval.Presentation.Arguments
                 .Select(argument => new AgentApprovalArgumentViewModel(
                     argument.Name,
                     argument.DisplayValue,
-                    argument.IsSensitive))
-                .ToArray(),
+                    argument.IsSensitive))],
             AgentPresentationTime.Friendly(approval.ExpiresAtUtc),
             approval.TemporarilyYieldsTerminalInput);
     }
@@ -2922,7 +2918,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
             request.CapabilityToken,
             request.TargetTitle,
             FormatTarget(request.Target),
-            request.AffectedToolTitles.ToArray(),
+            [.. request.AffectedToolTitles],
             AgentPresentationTime.Friendly(request.ExpiresAtUtc));
     }
 
@@ -2991,7 +2987,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         var divisor = value >= 1_000_000 ? 1_000_000d : 1_000d;
         var suffix = value >= 1_000_000 ? "m" : "k";
         var scaled = value / divisor;
-        var format = scaled >= 100 ? "0" : scaled >= 10 ? "0.#" : "0.#";
+        var format = scaled >= 100 ? "0" : "0.#";
         return scaled.ToString(format, CultureInfo.InvariantCulture) + suffix;
     }
 
@@ -3052,7 +3048,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
     {
         GovernedAgentQueuedFollowUp[] desired = queued.Count == 0
             ? []
-            : queued.ToArray();
+            : [.. queued];
         var desiredIds = desired.Select(item => item.Id).ToHashSet();
         for (var index = QueuedFollowUps.Count - 1; index >= 0; index--)
         {
@@ -3310,7 +3306,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         ObservableCollection<T> destination,
         IEnumerable<T> source)
     {
-        var replacement = source as IReadOnlyList<T> ?? source.ToArray();
+        var replacement = source as IReadOnlyList<T> ?? [.. source];
         var sharedPrefixLength = 0;
         var maximumSharedPrefixLength = Math.Min(
             destination.Count,

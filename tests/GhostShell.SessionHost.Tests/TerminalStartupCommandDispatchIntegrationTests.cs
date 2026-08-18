@@ -67,8 +67,8 @@ public sealed class TerminalStartupCommandDispatchIntegrationTests
 
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
         {
-            if (targetMethod?.Name != nameof(ISessionHostClient.WriteTerminalAsync)
-                || args is not
+            if (!string.Equals(targetMethod?.Name, nameof(ISessionHostClient.WriteTerminalAsync)
+, StringComparison.Ordinal) || args is not
                 [TerminalWriteRequest request, OperationContext context, CancellationToken token])
             {
                 throw new NotSupportedException(targetMethod?.Name);
@@ -114,6 +114,6 @@ public sealed class TerminalStartupCommandDispatchIntegrationTests
                 string correlationId,
                 CancellationToken cancellationToken) =>
             ValueTask.FromResult(AuditStoreResult<IReadOnlyList<AuditEventRecord>>.Success(
-                Events.Where(item => item.CorrelationId == correlationId).ToArray()));
+                [.. Events.Where(item => string.Equals(item.CorrelationId, correlationId, StringComparison.Ordinal))]));
     }
 }

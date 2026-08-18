@@ -142,7 +142,7 @@ internal static class DatabaseGridCsv
         void EndRow()
         {
             EndField();
-            rows.Add(fields.ToArray());
+            rows.Add([.. fields]);
             fields.Clear();
             rowStarted = false;
             if (rows.Count > MaximumRows + 1)

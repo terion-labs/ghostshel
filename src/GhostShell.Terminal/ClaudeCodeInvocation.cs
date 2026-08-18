@@ -117,7 +117,7 @@ internal static class ClaudeCodeInvocation
                 return false;
             }
 
-            if (!argument.StartsWith("-", StringComparison.Ordinal)
+            if (!argument.StartsWith('-')
                 || string.Equals(argument, "-", StringComparison.Ordinal))
             {
                 return ManagementCommands.Contains(argument);
@@ -137,7 +137,7 @@ internal static class ClaudeCodeInvocation
             if (OptionsWithOptionalValue.Contains(argument))
             {
                 if (index + 1 < arguments.Count
-                    && !arguments[index + 1].StartsWith("-", StringComparison.Ordinal))
+                    && !arguments[index + 1].StartsWith('-'))
                 {
                     index++;
                 }
@@ -187,7 +187,7 @@ internal static class ClaudeCodeInvocation
             }
 
             while (++index < arguments.Count
-                   && !arguments[index].StartsWith("-", StringComparison.Ordinal))
+                   && !arguments[index].StartsWith('-'))
             {
                 if (PathsEqual(arguments[index], pluginDirectory))
                 {

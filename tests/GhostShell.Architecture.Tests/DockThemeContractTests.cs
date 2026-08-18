@@ -62,15 +62,15 @@ public sealed class DockThemeContractTests
             "App.axaml"));
         var styles = Assert.Single(
             Assert.IsType<XElement>(application.Root).Elements(),
-            element => element.Name.LocalName == "Application.Styles");
+            element => string.Equals(element.Name.LocalName, "Application.Styles", StringComparison.Ordinal));
         var entries = styles.Elements().ToArray();
         var dockDefaults = Assert.Single(
             entries,
-            element => element.Name.LocalName == "DockFluentTheme");
+            element => string.Equals(element.Name.LocalName, "DockFluentTheme", StringComparison.Ordinal));
         var ghostShellTheme = Assert.Single(
             entries,
-            element => element.Name.LocalName == "StyleInclude"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "StyleInclude"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Source"),
                     "avares://GhostShell.App/Styles/GhostShellDockTheme.axaml",
                     StringComparison.Ordinal));
@@ -125,8 +125,8 @@ public sealed class DockThemeContractTests
 
         var glyphStyle = Assert.Single(
             theme.Descendants(),
-            element => element.Name.LocalName == "Style"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Selector"),
                     "Path.DockTargetGlyph",
                     StringComparison.Ordinal));
@@ -182,7 +182,7 @@ public sealed class DockThemeContractTests
         }
 
         var elements = Assert.IsType<XElement>(theme.Root).DescendantsAndSelf();
-        Assert.DoesNotContain(elements, element => element.Name.LocalName == "Image");
+        Assert.DoesNotContain(elements, element => string.Equals(element.Name.LocalName, "Image", StringComparison.Ordinal));
         Assert.DoesNotContain(
             elements.SelectMany(element => element.Attributes()),
             attribute => attribute.Value.StartsWith('#')
@@ -195,7 +195,7 @@ public sealed class DockThemeContractTests
     {
         var selectors = controlTheme
             .Descendants()
-            .Where(element => element.Name.LocalName == "ContentControl")
+            .Where(element => string.Equals(element.Name.LocalName, "ContentControl", StringComparison.Ordinal))
             .Where(element => AttributeValue(element, "Name")?.EndsWith(
                 "Selector",
                 StringComparison.Ordinal) is true)
@@ -212,7 +212,7 @@ public sealed class DockThemeContractTests
                     StringComparison.Ordinal));
             var glyph = Assert.Single(
                 selector.Elements(),
-                element => element.Name.LocalName == "Path");
+                element => string.Equals(element.Name.LocalName, "Path", StringComparison.Ordinal));
 
             Assert.Equal(
                 "{StaticResource GhostShellDockTargetSelectorTheme}",
@@ -268,8 +268,8 @@ public sealed class DockThemeContractTests
     {
         Assert.Single(
             style.Elements(),
-            element => element.Name.LocalName == "Setter"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Setter"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Property"),
                     property,
                     StringComparison.Ordinal)
@@ -286,8 +286,8 @@ public sealed class DockThemeContractTests
     {
         var style = Assert.Single(
             theme.Descendants(),
-            element => element.Name.LocalName == "Style"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Selector"),
                     selector,
                     StringComparison.Ordinal));
@@ -298,8 +298,8 @@ public sealed class DockThemeContractTests
     private static XElement FindControlTheme(XDocument theme, string key) =>
         Assert.Single(
             theme.Descendants(),
-            element => element.Name.LocalName == "ControlTheme"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "ControlTheme"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Key"),
                     key,
                     StringComparison.Ordinal));
@@ -318,7 +318,7 @@ public sealed class DockThemeContractTests
 
     private static string? AttributeValue(XElement element, string name) =>
         element.Attributes()
-            .FirstOrDefault(attribute => attribute.Name.LocalName == name)
+            .FirstOrDefault(attribute => string.Equals(attribute.Name.LocalName, name, StringComparison.Ordinal))
             ?.Value;
 
     private static XDocument LoadDockTheme() => XDocument.Load(DockThemePath());

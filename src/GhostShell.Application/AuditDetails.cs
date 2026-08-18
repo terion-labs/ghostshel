@@ -1,7 +1,7 @@
-namespace GhostShell.Application;
 
 using GhostShell.Core;
 
+namespace GhostShell.Application;
 /// <summary>
 /// Audit details are a closed set of value-only shapes. Adding a new shape requires an explicit
 /// storage mapping, so callers cannot smuggle arbitrary or secret-bearing JSON into the audit log.

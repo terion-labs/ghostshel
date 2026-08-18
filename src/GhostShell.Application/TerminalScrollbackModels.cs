@@ -257,6 +257,7 @@ public sealed class TerminalScrollbackAnchorStaleException(
     public long ExpectedContentRevision { get; } = expectedContentRevision;
 
     public long CurrentContentRevision { get; } = currentContentRevision;
+
 }
 
 public sealed class TerminalRenderedHistoryAnchorStaleException(
@@ -268,6 +269,7 @@ public sealed class TerminalRenderedHistoryAnchorStaleException(
     public long ExpectedContentRevision { get; } = expectedContentRevision;
 
     public long CurrentContentRevision { get; } = currentContentRevision;
+
 }
 
 /// <summary>

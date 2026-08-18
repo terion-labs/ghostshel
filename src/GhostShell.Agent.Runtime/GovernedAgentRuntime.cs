@@ -1077,7 +1077,7 @@ public sealed partial class GovernedAgentRuntime :
         TryCancel(turnCancellation);
         NotifyChanged();
         session?.Cancel();
-        approval?.Completion.TrySetCanceled();
+        approval?.Completion.TrySetCanceled(cancellationToken);
         CancelDetachedQuestionAwaiter(
             question,
             "question_cancelled",
@@ -1402,9 +1402,7 @@ public sealed partial class GovernedAgentRuntime :
                     Conversations = _snapshot.Conversations.IsDefault
                         ? []
                         : deleteStoredConversation && runId is { } deletedRunId
-                            ? _snapshot.Conversations
-                                .Where(item => item.RunId != deletedRunId)
-                                .ToImmutableArray()
+                            ? [.. _snapshot.Conversations.Where(item => item.RunId != deletedRunId)]
                             : _snapshot.Conversations,
                 };
             }
@@ -2379,7 +2377,7 @@ public sealed partial class GovernedAgentRuntime :
                     stableCode,
                     AgentToolResultJson.Failure(
                         stableCode,
-                        retryable: stableCode == "tool_execution_failed"));
+                        retryable: string.Equals(stableCode, "tool_execution_failed", StringComparison.Ordinal)));
             }
 
             // Approval and authorization leases are deliberately short-lived and
@@ -2743,9 +2741,7 @@ public sealed partial class GovernedAgentRuntime :
             .ToArray();
         if (candidates.Length == 0)
         {
-            return ImmutableDictionary<
-                PanelInstanceId,
-                ResizeAttachmentBinding>.Empty;
+            return [];
         }
 
         var inspections = candidates
@@ -2869,9 +2865,7 @@ public sealed partial class GovernedAgentRuntime :
                 cancellationToken))
             .ToArray();
         var panelIds = await Task.WhenAll(inspections).ConfigureAwait(false);
-        return panelIds
-            .OfType<PanelInstanceId>()
-            .ToImmutableHashSet();
+        return [.. panelIds.OfType<PanelInstanceId>()];
     }
 
     private async Task<PanelInstanceId?> InspectBrowserAttachmentAsync(
@@ -2964,9 +2958,7 @@ public sealed partial class GovernedAgentRuntime :
     {
         if (_agentFileHost is null || _fileComposer is null)
         {
-            return ImmutableDictionary<
-                PanelInstanceId,
-                FileSessionMetadata>.Empty;
+            return [];
         }
 
         var candidates = context.Panels
@@ -2977,9 +2969,7 @@ public sealed partial class GovernedAgentRuntime :
             .ToArray();
         if (candidates.Length == 0)
         {
-            return ImmutableDictionary<
-                PanelInstanceId,
-                FileSessionMetadata>.Empty;
+            return [];
         }
 
         var inspections = candidates
@@ -3636,7 +3626,7 @@ public sealed partial class GovernedAgentRuntime :
 
     private static ImmutableArray<PanelSessionBinding> CreateScopeBindings(
         AgentContextSnapshot context) =>
-        context.Panels
+        [.. context.Panels
             .Where(panel =>
                 panel.SessionId is not null
                 && panel.Lifecycle == SessionLifecycle.Active
@@ -3649,12 +3639,11 @@ public sealed partial class GovernedAgentRuntime :
                 panel.SessionId
                     ?? throw new ArgumentException(
                         "A governed panel scope requires a live session.",
-                        nameof(context))))
-            .ToImmutableArray();
+                        nameof(context))))];
 
     private static ImmutableArray<GraphStructureBinding>
         CreateGraphStructureBindings(AgentContextSnapshot context) =>
-        context.Panels
+        [.. context.Panels
             .OrderBy(panel => panel.GraphTabOrder ?? int.MaxValue)
             .ThenBy(panel => panel.GraphPanelOrder ?? int.MaxValue)
             .Select(panel => new GraphStructureBinding(
@@ -3663,8 +3652,7 @@ public sealed partial class GovernedAgentRuntime :
                 panel.TabId,
                 panel.PanelId,
                 panel.Kind,
-                panel.HasRegisteredGraph))
-            .ToImmutableArray();
+                panel.HasRegisteredGraph))];
 
     private static string BuildSystemPrompt(
         string? configuredInstructions,
@@ -3813,7 +3801,7 @@ public sealed partial class GovernedAgentRuntime :
         IReadOnlySet<PanelInstanceId> resizeEligiblePanelIds,
         IReadOnlySet<PanelInstanceId> browserEligiblePanelIds,
         IReadOnlyDictionary<PanelInstanceId, FileSessionMetadata> fileMetadata) =>
-        context.Panels
+        [.. context.Panels
             .Where(panel =>
                 panel.SessionId is not null
                 && panel.Lifecycle == SessionLifecycle.Active
@@ -3860,8 +3848,7 @@ public sealed partial class GovernedAgentRuntime :
                     panel.PanelId,
                     out panelFileMetadata)
                     ? FileRootDisplay(panelFileMetadata)
-                    : null))
-            .ToImmutableArray();
+                    : null))];
 
     private static string FileRootDisplay(FileSessionMetadata metadata)
     {
@@ -4177,18 +4164,14 @@ public sealed partial class GovernedAgentRuntime :
     private static string? ConnectionSummary(
         IReadOnlyList<AgentContextPanel> panels) =>
         SharedContextSummary(
-            panels
-                .Where(panel => panel.Kind == PanelKind.Terminal)
-                .ToArray(),
+            [.. panels.Where(panel => panel.Kind == PanelKind.Terminal)],
             panel => panel.ConnectionBoundary,
             "terminal connections");
 
     private static string? WorkingDirectorySummary(
         IReadOnlyList<AgentContextPanel> panels) =>
         SharedContextSummary(
-            panels
-                .Where(panel => panel.Kind == PanelKind.Terminal)
-                .ToArray(),
+            [.. panels.Where(panel => panel.Kind == PanelKind.Terminal)],
             panel => panel.CurrentWorkingDirectory
                 ?? panel.InitialWorkingDirectory,
             "working directories");
@@ -4209,7 +4192,7 @@ public sealed partial class GovernedAgentRuntime :
             .Distinct(StringComparer.Ordinal)
             .ToArray();
         if (values.Length == 1
-            && panels.All(panel => selector(panel) == values[0]))
+            && panels.All(panel => string.Equals(selector(panel), values[0], StringComparison.Ordinal)))
         {
             return values[0];
         }
@@ -5158,8 +5141,8 @@ public sealed partial class GovernedAgentRuntime :
         ArgumentNullException.ThrowIfNull(actor);
         if (actor.Kind != ActorKind.Human
             || actor.ClientId is not { } clientId
-            || actor.Id.Value != clientId.Value
-            || string.IsNullOrWhiteSpace(actor.Id.Value)
+            || !string.Equals(actor.Id.Value, clientId.Value
+, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(actor.Id.Value)
             || string.IsNullOrWhiteSpace(actor.DisplayName)
             || actor.Id.Value.Any(char.IsControl)
             || actor.DisplayName.Any(char.IsControl)

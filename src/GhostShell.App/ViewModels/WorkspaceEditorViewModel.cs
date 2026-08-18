@@ -148,7 +148,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
     /// custom picker, so this is a shortcut rather than a restriction.
     /// </summary>
     public IReadOnlyList<WorkspaceAccentChoiceViewModel> ColorChoices { get; } =
-        WorkspaceAccents.All.Select(option => new WorkspaceAccentChoiceViewModel(option)).ToArray();
+        [.. WorkspaceAccents.All.Select(option => new WorkspaceAccentChoiceViewModel(option))];
 
     /// <summary>
     /// The accent presets. Deliberately a separate row from
@@ -156,7 +156,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
     /// retints the shell, and one is not the other.
     /// </summary>
     public IReadOnlyList<WorkspaceAccentChoiceViewModel> AccentChoices { get; } =
-        WorkspaceAccents.All.Select(option => new WorkspaceAccentChoiceViewModel(option)).ToArray();
+        [.. WorkspaceAccents.All.Select(option => new WorkspaceAccentChoiceViewModel(option))];
 
     public IReadOnlyList<WorkspaceTerminalMultiplexingOption> TerminalMultiplexingOptions { get; }
 
@@ -336,13 +336,13 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
     public ReadOnlyObservableCollection<WorkspaceEntryEditorViewModel> Entries => _readOnlyEntries;
 
     public IReadOnlyList<WorkspaceEntryEditorViewModel> ConnectionEntries =>
-        _entries.Where(entry => entry.IsConnection).ToArray();
+        [.. _entries.Where(entry => entry.IsConnection)];
 
     public IReadOnlyList<WorkspaceEntryEditorViewModel> SavedScreenEntries =>
-        _entries.Where(entry => entry.IsSavedScreen).ToArray();
+        [.. _entries.Where(entry => entry.IsSavedScreen)];
 
     public IReadOnlyList<WorkspaceEntryEditorViewModel> WorkspaceTabEntries =>
-        _entries.Where(entry => entry.IsWorkspaceTab).ToArray();
+        [.. _entries.Where(entry => entry.IsWorkspaceTab)];
 
     public string Name
     {
@@ -468,7 +468,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
 
     public string ValidationSummary => IsValid
         ? "Workspace is valid."
-        : string.Join(" ", ValidationIssues.Select(issue => issue.Message).Distinct());
+        : string.Join(" ", ValidationIssues.Select(issue => issue.Message).Distinct(StringComparer.Ordinal));
 
     public int MissingReferenceCount => _entries.Count(entry => entry.HasMissingReference);
 
@@ -793,7 +793,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         (Name ?? string.Empty).Trim(),
         Description,
         Accent,
-        _entries.Select(entry => entry.Build()).ToArray(),
+        [.. _entries.Select(entry => entry.Build())],
         AgentPolicy.Build(),
         Icon,
         AutoSave,
@@ -863,9 +863,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
             issues.AddRange(ScreenValidator.Validate(screen, layout).Issues);
         }
 
-        return issues
-            .DistinctBy(issue => (issue.Code, issue.Message, issue.Target))
-            .ToArray();
+        return [.. issues.DistinctBy(issue => (issue.Code, issue.Message, issue.Target))];
     }
 
     private void OnEntryChanged(object? sender, PropertyChangedEventArgs e)
@@ -970,10 +968,9 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
                 false));
         }
 
-        return options
+        return [.. options
             .OrderByDescending(option => option.IsAvailable)
-            .ThenBy(option => option.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+            .ThenBy(option => option.Name, StringComparer.OrdinalIgnoreCase)];
     }
 
     private static IReadOnlyList<WorkspaceLayoutOption> BuildLayoutOptions(
@@ -1003,10 +1000,9 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
                 null));
         }
 
-        return options
+        return [.. options
             .OrderByDescending(option => option.IsAvailable)
-            .ThenBy(option => option.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+            .ThenBy(option => option.Name, StringComparer.OrdinalIgnoreCase)];
     }
 
     private static IReadOnlyList<WorkspaceScreenOption> BuildScreenOptions(
@@ -1035,10 +1031,9 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
                 false));
         }
 
-        return options
+        return [.. options
             .OrderByDescending(option => option.IsAvailable)
-            .ThenBy(option => option.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+            .ThenBy(option => option.Name, StringComparer.OrdinalIgnoreCase)];
     }
 
     private static IReadOnlyList<ScreenFileProviderOption> BuildFileProviderOptions(
@@ -1074,9 +1069,8 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
                 false));
         }
 
-        return options
+        return [.. options
             .OrderByDescending(option => option.IsAvailable)
-            .ThenBy(option => option.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+            .ThenBy(option => option.Name, StringComparer.OrdinalIgnoreCase)];
     }
 }

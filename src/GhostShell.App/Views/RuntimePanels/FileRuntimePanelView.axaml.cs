@@ -211,11 +211,11 @@ public sealed partial class FileRuntimePanelView : UserControl
     private void OnPanelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         _ = sender;
-        if (e.PropertyName == nameof(FileRuntimePanelViewModel.HtmlAddress))
+        if (string.Equals(e.PropertyName, nameof(FileRuntimePanelViewModel.HtmlAddress), StringComparison.Ordinal))
         {
             ShowHtmlPreview();
         }
-        else if (e.PropertyName == nameof(FileRuntimePanelViewModel.MenuActions))
+        else if (string.Equals(e.PropertyName, nameof(FileRuntimePanelViewModel.MenuActions), StringComparison.Ordinal))
         {
             RefreshOverflowMenu();
         }
@@ -250,7 +250,7 @@ public sealed partial class FileRuntimePanelView : UserControl
             HtmlPreviewHost.Content = _htmlPreview.View;
         }
 
-        _ = _htmlPreview.Renderer.NavigateAsync(address, CancellationToken.None);
+        _ = _htmlPreview.Renderer.NavigateAsync(address, CancellationToken.None).AsTask();
     }
 
     private void ReleaseHtmlPreview()
@@ -555,8 +555,7 @@ public sealed partial class FileRuntimePanelView : UserControl
             panel.Id,
             entries,
             FilePanelTransferOperation.Copy);
-        var window = TopLevel.GetTopLevel(this) as MainWindow;
-        if (window is null)
+        if (TopLevel.GetTopLevel(this) is not MainWindow window)
         {
             return;
         }

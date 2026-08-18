@@ -11,13 +11,18 @@ public sealed class MarkdownPreviewer : IFilePreviewer
 {
     public const string RawToggle = "raw";
 
-    public bool Claims(FilePreviewSource source) =>
-        PreviewText.Extension(source.FileName) is "md" or "markdown" or "mdown" or "mkd";
+    public bool Claims(FilePreviewSource source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return PreviewText.Extension(source.FileName)
+            is "md" or "markdown" or "mdown" or "mkd";
+    }
 
     public FilePreviewOutcome Create(
         FilePreviewSource source,
         IReadOnlyDictionary<string, bool> toggles)
     {
+        ArgumentNullException.ThrowIfNull(source);
         var raw = PreviewText.IsOn(toggles, RawToggle, byDefault: false);
         var text = PreviewText.Utf8(source.Content.Span, source.IsTruncated);
         return new FilePreviewOutcome(
@@ -37,14 +42,18 @@ public sealed class WebPagePreviewer : IFilePreviewer
 {
     public const string RawToggle = "raw";
 
-    public bool Claims(FilePreviewSource source) =>
-        source.Kind == FilePanelPreviewKind.Html
-        || PreviewText.Extension(source.FileName) is "html" or "htm" or "xhtml";
+    public bool Claims(FilePreviewSource source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return source.Kind == FilePanelPreviewKind.Html
+            || PreviewText.Extension(source.FileName) is "html" or "htm" or "xhtml";
+    }
 
     public FilePreviewOutcome Create(
         FilePreviewSource source,
         IReadOnlyDictionary<string, bool> toggles)
     {
+        ArgumentNullException.ThrowIfNull(source);
         var raw = PreviewText.IsOn(toggles, RawToggle, byDefault: false);
         return new FilePreviewOutcome(
             raw
@@ -71,6 +80,7 @@ public sealed class StructuredDataPreviewer : IFilePreviewer
 
     public bool Claims(FilePreviewSource source)
     {
+        ArgumentNullException.ThrowIfNull(source);
         var extension = PreviewText.Extension(source.FileName);
         return JsonExtensions.Contains(extension)
             || XmlExtensions.Contains(extension)
@@ -81,6 +91,7 @@ public sealed class StructuredDataPreviewer : IFilePreviewer
         FilePreviewSource source,
         IReadOnlyDictionary<string, bool> toggles)
     {
+        ArgumentNullException.ThrowIfNull(source);
         var prettify = PreviewText.IsOn(toggles, PrettifyToggle, byDefault: true);
         var isXml = XmlExtensions.Contains(PreviewText.Extension(source.FileName));
         var text = prettify
@@ -109,13 +120,17 @@ public sealed class DelimitedTextPreviewer : IFilePreviewer
     /// </summary>
     public const int MaximumRows = 500;
 
-    public bool Claims(FilePreviewSource source) =>
-        PreviewText.Extension(source.FileName) is "csv" or "tsv";
+    public bool Claims(FilePreviewSource source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return PreviewText.Extension(source.FileName) is "csv" or "tsv";
+    }
 
     public FilePreviewOutcome Create(
         FilePreviewSource source,
         IReadOnlyDictionary<string, bool> toggles)
     {
+        ArgumentNullException.ThrowIfNull(source);
         var asTable = PreviewText.IsOn(toggles, TableToggle, byDefault: true);
         var text = PreviewText.Utf8(source.Content.Span, source.IsTruncated);
         var toggle = new FilePreviewToggle(TableToggle, "As table", asTable);
@@ -126,7 +141,7 @@ public sealed class DelimitedTextPreviewer : IFilePreviewer
                 [toggle]);
         }
 
-        var separator = PreviewText.Extension(source.FileName) == "tsv" ? '\t' : ',';
+        var separator = string.Equals(PreviewText.Extension(source.FileName), "tsv", StringComparison.Ordinal) ? '\t' : ',';
         var rows = DelimitedText.Parse(
             Encoding.UTF8.GetString(source.Content.Span),
             separator,
@@ -171,12 +186,17 @@ public sealed class DelimitedTextPreviewer : IFilePreviewer
 /// </summary>
 public sealed class ArchivePreviewer : IFilePreviewer
 {
-    public bool Claims(FilePreviewSource source) => ArchiveFormats.IsArchive(source.FileName);
+    public bool Claims(FilePreviewSource source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return ArchiveFormats.IsArchive(source.FileName);
+    }
 
     public FilePreviewOutcome Create(
         FilePreviewSource source,
         IReadOnlyDictionary<string, bool> toggles)
     {
+        ArgumentNullException.ThrowIfNull(source);
         _ = toggles;
         return FilePreviewOutcome.For(new ArchivePreviewRendering());
     }
@@ -188,12 +208,17 @@ public sealed class ArchivePreviewer : IFilePreviewer
 /// </summary>
 public sealed class ClassifiedFilePreviewer : IFilePreviewer
 {
-    public bool Claims(FilePreviewSource source) => true;
+    public bool Claims(FilePreviewSource source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return true;
+    }
 
     public FilePreviewOutcome Create(
         FilePreviewSource source,
         IReadOnlyDictionary<string, bool> toggles)
     {
+        ArgumentNullException.ThrowIfNull(source);
         _ = toggles;
         return FilePreviewOutcome.For(source.Kind switch
         {

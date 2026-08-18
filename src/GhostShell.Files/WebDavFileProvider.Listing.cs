@@ -56,7 +56,7 @@ public sealed partial class WebDavFileProvider
         var scope = resolved.Value!.Uri.AbsoluteUri;
         if (request.ContinuationToken is { } continuation)
         {
-            if (!_pageCursors.TryGet(continuation, out var cursor) || cursor!.Scope != scope)
+            if (!_pageCursors.TryGet(continuation, out var cursor) || !string.Equals(cursor!.Scope, scope, StringComparison.Ordinal))
             {
                 return Failure<FilePage>(
                     FileProviderErrorCode.InvalidLocation,
@@ -310,7 +310,7 @@ public sealed partial class WebDavFileProvider
             size,
             lastModified,
             etag.Value,
-            path.Value!.Name is { } name && name.Value.StartsWith(".", StringComparison.Ordinal))));
+            path.Value!.Name is { } name && name.Value.StartsWith('.'))));
     }
 
     private FileProviderResult<FilePath> PathFromHref(Uri requestUri, string href)
@@ -356,10 +356,9 @@ public sealed partial class WebDavFileProvider
         return FileProviderResult<FilePath>.Success(FilePath.FromSegments(segments));
     }
 
-    private static bool SameOrigin(Uri left, Uri right) =>
-        left.Scheme == right.Scheme
-        && left.IdnHost == right.IdnHost
-        && left.Port == right.Port;
+    private static bool SameOrigin(Uri left, Uri right) => string.Equals(left.Scheme, right.Scheme
+, StringComparison.Ordinal) && string.Equals(left.IdnHost, right.IdnHost
+, StringComparison.Ordinal) && left.Port == right.Port;
 
     private static bool IsSuccessfulPropertyStatus(XElement propertyStatus)
     {

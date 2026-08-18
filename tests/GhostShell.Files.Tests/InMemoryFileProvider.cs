@@ -4,7 +4,7 @@ internal sealed partial class InMemoryFileProvider : IFileProvider
 {
     private readonly FileAuthority _authority;
     private readonly object _gate = new();
-    private readonly Dictionary<FilePath, MemoryNode> _nodes = new();
+    private readonly Dictionary<FilePath, MemoryNode> _nodes = [];
     private long _revision;
 
     public InMemoryFileProvider(
@@ -199,7 +199,7 @@ internal sealed partial class InMemoryFileProvider : IFileProvider
             node.Kind == FileEntryKind.File ? node.Content.LongLength : null,
             DateTimeOffset.UnixEpoch.AddTicks(node.Revision),
             version,
-            path.Name is { } name && name.Value.StartsWith(".", StringComparison.Ordinal));
+            path.Name is { } name && name.Value.StartsWith('.'));
     }
 
     private void TouchParents(FilePath path)

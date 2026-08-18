@@ -81,8 +81,8 @@ public sealed class TransientOverlayViewContractTests
 
         var overlayHost = Assert.Single(
             mainWindow.Descendants(),
-            element => element.Name.LocalName == "Grid"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Grid"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "IsVisible"),
                     "{Binding HasOverlay}",
                     StringComparison.Ordinal)
@@ -135,8 +135,8 @@ public sealed class TransientOverlayViewContractTests
             AttributeValue(results, "SelectedItem"));
         Assert.Contains(
             results.Descendants(),
-            element => element.Name.LocalName == "Button"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Click"),
                     "OnActivateSearchResultClick",
                     StringComparison.Ordinal)
@@ -172,14 +172,14 @@ public sealed class TransientOverlayViewContractTests
 
         var layout = Assert.Single(
             card.Elements(),
-            element => element.Name.LocalName == "Grid");
+            element => string.Equals(element.Name.LocalName, "Grid", StringComparison.Ordinal));
         Assert.Equal(
             "60,Auto,*,60",
             AttributeValue(layout, "RowDefinitions"));
         Assert.Contains(
             layout.Descendants(),
-            element => element.Name.LocalName == "Grid"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Grid"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "ColumnDefinitions"),
                     "*,300",
                     StringComparison.Ordinal));
@@ -204,7 +204,7 @@ public sealed class TransientOverlayViewContractTests
         Assert.Equal("False", AttributeValue(canvas, "InitializeLayout"));
         Assert.DoesNotContain(
             root.Descendants(),
-            element => element.Name.LocalName == "NumericUpDown");
+            element => string.Equals(element.Name.LocalName, "NumericUpDown", StringComparison.Ordinal));
         Assert.DoesNotContain(
             root.Descendants(),
             element => element.Name.LocalName is "LayoutDesignerPreviewPanel"
@@ -213,18 +213,18 @@ public sealed class TransientOverlayViewContractTests
         // Every slot exposes the workspace's own gestures from its own chrome.
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "PanelDockHandle");
+            element => string.Equals(element.Name.LocalName, "PanelDockHandle", StringComparison.Ordinal));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "ItemsControl"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "ItemsControl"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "ItemsSource"),
                     "{Binding Layouts}",
                     StringComparison.Ordinal));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "Button"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Content"),
                     "Save layout",
                     StringComparison.Ordinal)
@@ -256,7 +256,7 @@ public sealed class TransientOverlayViewContractTests
         var placeholder = LoadRuntimePanel("PanelPlaceholderView");
         var hostedLauncher = Assert.Single(
             Assert.IsType<XElement>(placeholder.Root).Descendants(),
-            element => element.Name.LocalName == "LauncherView");
+            element => string.Equals(element.Name.LocalName, "LauncherView", StringComparison.Ordinal));
         Assert.Equal("False", AttributeValue(hostedLauncher, "ShowCloseAction"));
 
         var catalog = LoadComponent("LauncherView");
@@ -267,14 +267,14 @@ public sealed class TransientOverlayViewContractTests
         // opens a tab or a session.
         Assert.Contains(
             catalogRoot.Descendants(),
-            element => element.Name.LocalName == "TextBlock"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "TextBlock"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Text"),
                     "Start something new",
                     StringComparison.Ordinal));
 
         var choices = catalogRoot.Descendants()
-            .Where(element => element.Name.LocalName == "ChooserTile")
+            .Where(element => string.Equals(element.Name.LocalName, "ChooserTile", StringComparison.Ordinal))
             .ToArray();
         Assert.Equal(7, choices.Length);
 
@@ -312,8 +312,8 @@ public sealed class TransientOverlayViewContractTests
         {
             Assert.Contains(
                 catalogRoot.Descendants(),
-                element => element.Name.LocalName == "ItemsControl"
-                    && string.Equals(
+                element => string.Equals(element.Name.LocalName, "ItemsControl"
+, StringComparison.Ordinal) && string.Equals(
                         AttributeValue(element, "ItemsSource"),
                         catalogBinding,
                         StringComparison.Ordinal));
@@ -322,31 +322,30 @@ public sealed class TransientOverlayViewContractTests
         Assert.Equal(
             4,
             catalogRoot.Descendants()
-                .Count(element => element.Name.LocalName == "CountPill"));
+                .Count(element => string.Equals(element.Name.LocalName, "CountPill", StringComparison.Ordinal)));
         // Screens and recent sessions. The saved-connection row is the same
         // list row, but it lives in its own component because it also carries
         // the other adapters its target supports.
         Assert.Equal(
             2,
             catalogRoot.Descendants()
-                .Count(element => element.Name.LocalName == "Button"
-                    && HasClasses(element, "ListRow", "LauncherListRow")));
+                .Count(element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && HasClasses(element, "ListRow", "LauncherListRow")));
 
         // No inline create form: the launcher opens things, and creating a
         // screen or workspace belongs to the page that owns that list. The one
         // text box narrows what is already there rather than adding to it.
         var textBox = Assert.Single(
             catalogRoot.Descendants(),
-            element => element.Name.LocalName == "TextBox");
+            element => string.Equals(element.Name.LocalName, "TextBox", StringComparison.Ordinal));
         Assert.Equal("HistorySearchBox", AttributeValue(textBox, "Name"));
         Assert.Equal("{Binding HistorySearchQuery}", AttributeValue(textBox, "Text"));
 
         var workspaceList = Assert.Single(
             catalogRoot.Descendants(),
-            element => element.Name.LocalName == "ScrollViewer"
-                && element.Descendants().Any(item =>
-                    item.Name.LocalName == "ItemsControl"
-                    && string.Equals(
+            element => string.Equals(element.Name.LocalName, "ScrollViewer"
+, StringComparison.Ordinal) && element.Descendants().Any(item => string.Equals(item.Name.LocalName, "ItemsControl"
+, StringComparison.Ordinal) && string.Equals(
                         AttributeValue(item, "ItemsSource"),
                         "{Binding Workspaces}",
                         StringComparison.Ordinal)));
@@ -358,16 +357,16 @@ public sealed class TransientOverlayViewContractTests
             AttributeValue(workspaceList, "IsVisible"));
         Assert.Contains(
             catalogRoot.Descendants(),
-            element => element.Name.LocalName == "Button"
-                && HasClasses(element, "SearchButton")
+            element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && HasClasses(element, "SearchButton")
                 && string.Equals(
                     AttributeValue(element, "AutomationProperties.Name"),
                     "Search commands, connections, screens, workspaces, and session history",
                     StringComparison.Ordinal));
         var searchButton = Assert.Single(
             catalogRoot.Descendants(),
-            element => element.Name.LocalName == "Button"
-                && HasClasses(element, "SearchButton"));
+            element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && HasClasses(element, "SearchButton"));
         var searchRow = Assert.IsType<XElement>(searchButton.Parent);
         Assert.Null(AttributeValue(searchRow, "ColumnSpacing"));
         var closeButton = Assert.Single(
@@ -389,7 +388,7 @@ public sealed class TransientOverlayViewContractTests
         Assert.Equal("900", AttributeValue(card, "Width"));
 
         var choices = root.Descendants()
-            .Where(element => element.Name.LocalName == "ChooserTile")
+            .Where(element => string.Equals(element.Name.LocalName, "ChooserTile", StringComparison.Ordinal))
             .ToArray();
         Assert.Equal(7, choices.Length);
 
@@ -409,8 +408,8 @@ public sealed class TransientOverlayViewContractTests
                     StringComparison.Ordinal));
         Assert.Contains(
             root.Descendants(),
-            element => element.Name.LocalName == "Button"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Content"),
                     "Open layout designer instead",
                     StringComparison.Ordinal)
@@ -615,7 +614,7 @@ public sealed class TransientOverlayViewContractTests
     {
         var overlay = Assert.Single(
             mainWindow.Descendants(),
-            element => element.Name.LocalName == viewName);
+            element => string.Equals(element.Name.LocalName, viewName, StringComparison.Ordinal));
         Assert.Equal(instanceName, AttributeValue(overlay, "Name"));
         Assert.Equal(visibilityBinding, AttributeValue(overlay, "IsVisible"));
 
@@ -643,8 +642,8 @@ public sealed class TransientOverlayViewContractTests
         // is gone because what a card looks like is no longer decided per view.
         var card = Assert.Single(
             root.Elements(),
-            element => element.Name.LocalName == "SurfaceCard"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "SurfaceCard"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Elevation"),
                     "Overlay",
                     StringComparison.Ordinal));
@@ -731,6 +730,6 @@ public sealed class TransientOverlayViewContractTests
 
     private static string? AttributeValue(XElement element, string name) =>
         element.Attributes()
-            .FirstOrDefault(attribute => attribute.Name.LocalName == name)
+            .FirstOrDefault(attribute => string.Equals(attribute.Name.LocalName, name, StringComparison.Ordinal))
             ?.Value;
 }

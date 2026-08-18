@@ -32,7 +32,7 @@ public sealed class TerminalRuntimePanelContinuityBadgeHeadlessTests
 
             var visibleBadges = view.GetVisualDescendants()
                 .OfType<SymbolIcon>()
-                .Where(icon => AutomationProperties.GetName(icon) == "Continuity enabled")
+                .Where(icon => string.Equals(AutomationProperties.GetName(icon), "Continuity enabled", StringComparison.Ordinal))
                 .Where(icon => icon.IsEffectivelyVisible)
                 .ToArray();
             if (isContinuityActive)

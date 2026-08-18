@@ -209,16 +209,10 @@ internal sealed class ConcentricCornerReconciler
             return;
         }
 
-        if (_watched is not null)
-        {
-            _watched.PropertyChanged -= OnContainerPropertyChanged;
-        }
+        _watched?.PropertyChanged -= OnContainerPropertyChanged;
 
         _watched = container;
-        if (_watched is not null)
-        {
-            _watched.PropertyChanged += OnContainerPropertyChanged;
-        }
+        _watched?.PropertyChanged += OnContainerPropertyChanged;
     }
 
     private void OnContainerPropertyChanged(

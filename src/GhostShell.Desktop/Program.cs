@@ -47,6 +47,7 @@ internal static class Program
         {
             Environment.ExitCode = ConnectionCredentialProcessHost
                 .TryRunAsync(args, CancellationToken.None)
+                .AsTask()
                 .GetAwaiter()
                 .GetResult()
                 ?? 1;
@@ -146,10 +147,7 @@ internal static class Program
             finally
             {
                 instanceCoordinator.StopAcceptingActivations();
-                if (nativeNotifications is not null)
-                {
-                    nativeNotifications.Activated -= OnNativeNotificationActivated;
-                }
+                nativeNotifications?.Activated -= OnNativeNotificationActivated;
 
                 // Startup and finalization failures also converge here before
                 // CEF closes browsers and stops its message pump.

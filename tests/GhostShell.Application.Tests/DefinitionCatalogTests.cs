@@ -56,8 +56,8 @@ public sealed class DefinitionCatalogTests
         var terminalProfile = Assert.Single(snapshot.TerminalProfiles).Value;
         Assert.Contains(snapshot.Keymaps, item => item.Value.Id == terminalProfile.KeymapId);
         Assert.Equal(
-            BuiltInKeymaps.All.Select(item => item.Id).OrderBy(item => item.Value),
-            snapshot.Keymaps.Select(item => item.Value.Id).OrderBy(item => item.Value));
+            BuiltInKeymaps.All.Select(item => item.Id).OrderBy(item => item.Value, StringComparer.Ordinal),
+            snapshot.Keymaps.Select(item => item.Value.Id).OrderBy(item => item.Value, StringComparer.Ordinal));
         Assert.Equal(QuickTerminalSettings.Default, Assert.Single(snapshot.QuickTerminalSettings).Value);
     }
 
@@ -96,9 +96,7 @@ public sealed class DefinitionCatalogTests
             current.Id,
             current.Name,
             current.Layer,
-            current.Bindings
-                .Where(binding => binding.CommandId != BuiltInCommands.SelectWorkspace)
-                .ToArray(),
+            [.. current.Bindings.Where(binding => binding.CommandId != BuiltInCommands.SelectWorkspace)],
             current.Prefix,
             current.BasedOn);
         fixture.Keymaps.Add(stale, revision: 7);
@@ -230,12 +228,12 @@ public sealed class DefinitionCatalogTests
         Assert.Equal(0, fixture.TerminalProfiles.SaveAttempts);
         var defaultProfile = Assert.Single(
             result.Value!.TerminalProfiles,
-            stored => stored.Value.Id.Value == "builtin.terminal.default");
+            stored => string.Equals(stored.Value.Id.Value, "builtin.terminal.default", StringComparison.Ordinal));
         Assert.Equal(customized.Background, defaultProfile.Value.Palette.Background);
         Assert.Equal(4, defaultProfile.Revision);
         var operatorProfile = Assert.Single(
             result.Value.TerminalProfiles,
-            stored => stored.Value.Id.Value == "operator");
+            stored => string.Equals(stored.Value.Id.Value, "operator", StringComparison.Ordinal));
         Assert.Equal(RgbColor.Parse("#12100E"), operatorProfile.Value.Palette.Background);
         Assert.Equal(9, operatorProfile.Revision);
     }
@@ -530,7 +528,7 @@ public sealed class DefinitionCatalogTests
         Assert.True((await fixture.Catalog.InitializeAsync(CancellationToken.None)).IsSuccess);
         var connection = Assert.Single(fixture.Catalog.Snapshot.Connections).Value;
         var stored = fixture.Catalog.Snapshot.Workspaces
-            .Single(item => item.Value.Id.Value == WorkspaceDefinition.DefaultWorkspaceId);
+            .Single(item => string.Equals(item.Value.Id.Value, WorkspaceDefinition.DefaultWorkspaceId, StringComparison.Ordinal));
         var autoLayout = new LayoutDefinition(
             new LayoutId($"{LayoutDefinition.AutoSaveIdPrefix}{stored.Value.Id.Value}.tab-0"),
             LayoutDefinition.CurrentSchemaVersion,

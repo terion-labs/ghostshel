@@ -26,7 +26,7 @@ public sealed partial class GovernedAgentRuntimeTests
         var tools = Assert.Single(provider.Requests).Tools;
         var tool = Assert.Single(
             tools,
-            candidate => candidate.Name == IntrinsicAgentTools.AskUser);
+            candidate => string.Equals(candidate.Name, IntrinsicAgentTools.AskUser, StringComparison.Ordinal));
         Assert.Contains(
             "Never request credentials",
             tool.Description,
@@ -42,12 +42,12 @@ public sealed partial class GovernedAgentRuntimeTests
             ["question"],
             schema.GetProperty("required")
                 .EnumerateArray()
-                .Select(item => item.GetString()));
+                .Select(item => item.GetString()), StringComparer.Ordinal);
 
         var properties = schema.GetProperty("properties");
         Assert.Equal(
             ["question"],
-            properties.EnumerateObject().Select(property => property.Name));
+            properties.EnumerateObject().Select(property => property.Name), StringComparer.Ordinal);
         var question = properties.GetProperty("question");
         Assert.Equal("string", question.GetProperty("type").GetString());
         Assert.Equal(1, question.GetProperty("minLength").GetInt32());
@@ -56,8 +56,8 @@ public sealed partial class GovernedAgentRuntimeTests
             question.GetProperty("maxLength").GetInt32());
         Assert.Single(
             tools,
-            candidate => candidate.Name
-                == IntrinsicAgentTools.ReportProgress);
+            candidate => string.Equals(candidate.Name
+, IntrinsicAgentTools.ReportProgress, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -219,7 +219,7 @@ public sealed partial class GovernedAgentRuntimeTests
 
         var toolResult = Assert.Single(
             provider.Requests.ToArray()[1].Messages,
-            message => message.ToolResult?.ProviderCallId == "ask-1")
+            message => string.Equals(message.ToolResult?.ProviderCallId, "ask-1", StringComparison.Ordinal))
             .ToolResult;
         Assert.NotNull(toolResult);
         Assert.Equal(AgentToolResultStatus.Succeeded, toolResult.Status);
@@ -277,8 +277,8 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.True(result.IsSuccess);
         var toolResult = Assert.Single(
             provider.Requests.ToArray()[1].Messages,
-            message => message.ToolResult?.ProviderCallId
-                == "ask-declined").ToolResult;
+            message => string.Equals(message.ToolResult?.ProviderCallId
+, "ask-declined", StringComparison.Ordinal)).ToolResult;
         Assert.NotNull(toolResult);
         Assert.Equal(AgentToolResultStatus.Failed, toolResult.Status);
         Assert.Equal("user_input_declined", toolResult.StableCode);
@@ -291,7 +291,7 @@ public sealed partial class GovernedAgentRuntimeTests
                 "I continued without the optional region.",
             ],
             fixture.Runtime.Snapshot.Messages.Select(message =>
-                message.Content));
+                message.Content), StringComparer.Ordinal);
         Assert.Empty(fixture.Terminal.Actions);
         Assert.Empty(fixture.Audit.Events);
     }
@@ -334,11 +334,11 @@ public sealed partial class GovernedAgentRuntimeTests
                 "The invalid question was rejected.",
             ],
             fixture.Runtime.Snapshot.Messages.Select(message =>
-                message.Content));
+                message.Content), StringComparer.Ordinal);
         var toolResult = Assert.Single(
             provider.Requests.ToArray()[1].Messages,
-            message => message.ToolResult?.ProviderCallId
-                == "ask-invalid").ToolResult;
+            message => string.Equals(message.ToolResult?.ProviderCallId
+, "ask-invalid", StringComparison.Ordinal)).ToolResult;
         Assert.NotNull(toolResult);
         Assert.Equal("invalid_tool_arguments", toolResult.StableCode);
         Assert.DoesNotContain(
@@ -449,8 +449,8 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Equal("question_not_found", alreadyApplied.Code);
         var toolResult = Assert.Single(
             provider.Requests.ToArray()[1].Messages,
-            message => message.ToolResult?.ProviderCallId
-                == "ask-single-response").ToolResult;
+            message => string.Equals(message.ToolResult?.ProviderCallId
+, "ask-single-response", StringComparison.Ordinal)).ToolResult;
         Assert.NotNull(toolResult);
         using var resultDocument = JsonDocument.Parse(
             toolResult.Value.Content);
@@ -513,7 +513,7 @@ public sealed partial class GovernedAgentRuntimeTests
                 "The staging API is healthy.",
             ],
             fixture.Runtime.Snapshot.Messages.Select(message =>
-                message.Content));
+                message.Content), StringComparer.Ordinal);
         Assert.Equal(5, fixture.Context.InspectionCount);
         Assert.Empty(fixture.Terminal.Actions);
         Assert.Empty(fixture.Audit.Events);
@@ -615,8 +615,8 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Null(fixture.Runtime.Snapshot.PendingQuestion);
         var toolResult = Assert.Single(
             provider.Requests.ToArray()[1].Messages,
-            message => message.ToolResult?.ProviderCallId
-                == "ask-pre-drift").ToolResult;
+            message => string.Equals(message.ToolResult?.ProviderCallId
+, "ask-pre-drift", StringComparison.Ordinal)).ToolResult;
         Assert.NotNull(toolResult);
         Assert.Equal("target_changed", toolResult.StableCode);
         Assert.Equal(
@@ -625,7 +625,7 @@ public sealed partial class GovernedAgentRuntimeTests
                 "The target changed.",
             ],
             fixture.Runtime.Snapshot.Messages.Select(message =>
-                message.Content));
+                message.Content), StringComparer.Ordinal);
         Assert.Equal(2, fixture.Context.InspectionCount);
         Assert.Empty(fixture.Terminal.Actions);
         Assert.Empty(fixture.Audit.Events);
@@ -658,8 +658,8 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.True(result.IsSuccess);
         var toolResult = Assert.Single(
             provider.Requests.ToArray()[1].Messages,
-            message => message.ToolResult?.ProviderCallId
-                == "ask-post-drift").ToolResult;
+            message => string.Equals(message.ToolResult?.ProviderCallId
+, "ask-post-drift", StringComparison.Ordinal)).ToolResult;
         Assert.NotNull(toolResult);
         Assert.Equal("target_changed", toolResult.StableCode);
         Assert.DoesNotContain(
@@ -672,7 +672,7 @@ public sealed partial class GovernedAgentRuntimeTests
                 "The target changed.",
             ],
             fixture.Runtime.Snapshot.Messages.Select(message =>
-                message.Content));
+                message.Content), StringComparer.Ordinal);
         Assert.Equal(3, fixture.Context.InspectionCount);
         Assert.Empty(fixture.Terminal.Actions);
         Assert.Empty(fixture.Audit.Events);
@@ -913,8 +913,8 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Null(fixture.Runtime.Snapshot.PendingQuestion);
         var toolResult = Assert.Single(
             provider.Requests.ToArray()[1].Messages,
-            message => message.ToolResult?.ProviderCallId
-                == "ask-expired").ToolResult;
+            message => string.Equals(message.ToolResult?.ProviderCallId
+, "ask-expired", StringComparison.Ordinal)).ToolResult;
         Assert.NotNull(toolResult);
         Assert.Equal(AgentToolResultStatus.Failed, toolResult.Status);
         Assert.Equal("user_input_expired", toolResult.StableCode);
@@ -933,7 +933,7 @@ public sealed partial class GovernedAgentRuntimeTests
                 "The question expired.",
             ],
             fixture.Runtime.Snapshot.Messages.Select(message =>
-                message.Content));
+                message.Content), StringComparer.Ordinal);
         Assert.Equal(2, fixture.Context.InspectionCount);
         Assert.Empty(fixture.Terminal.Actions);
         Assert.Empty(fixture.Audit.Events);
@@ -997,11 +997,11 @@ public sealed partial class GovernedAgentRuntimeTests
             {
                 Assert.Single(
                     request.Tools,
-                    tool => tool.Name == IntrinsicAgentTools.AskUser);
+                    tool => string.Equals(tool.Name, IntrinsicAgentTools.AskUser, StringComparison.Ordinal));
                 Assert.Single(
                     request.Tools,
-                    tool => tool.Name
-                        == IntrinsicAgentTools.ReportProgress);
+                    tool => string.Equals(tool.Name
+, IntrinsicAgentTools.ReportProgress, StringComparison.Ordinal));
             });
         Assert.Empty(fixture.Terminal.Actions);
         Assert.Empty(fixture.Audit.Events);

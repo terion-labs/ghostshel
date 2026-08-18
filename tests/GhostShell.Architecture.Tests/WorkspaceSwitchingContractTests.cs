@@ -80,13 +80,21 @@ public sealed class WorkspaceSwitchingContractTests
 
         // Assignments inside the owner's own methods are the registration; every
         // other one bypasses it.
-        var assignments = Regex.Matches(source, @"RuntimeWorkspace = (?<value>[^;]+);")
+        var assignments = Regex.Matches(
+                source,
+                @"RuntimeWorkspace = (?<value>[^;]+);",
+                RegexOptions.CultureInvariant,
+                TimeSpan.FromSeconds(1))
             .Select(match => match.Groups["value"].Value.Trim())
-            .Where(value => value != "null")
+            .Where(value => !string.Equals(value, "null", StringComparison.Ordinal))
             .ToArray();
 
         var registrations = OwnerMethodBodies(source)
-            .Sum(body => Regex.Matches(body, @"RuntimeWorkspace = [^;]+;").Count);
+            .Sum(body => Regex.Count(
+                body,
+                @"RuntimeWorkspace = [^;]+;",
+                RegexOptions.CultureInvariant,
+                TimeSpan.FromSeconds(1)));
 
         Assert.True(
             assignments.Length <= registrations,
@@ -99,7 +107,8 @@ public sealed class WorkspaceSwitchingContractTests
         Regex.Matches(
                 source,
                 @"(?<signature>(private|public|internal)[^\n;]*?(?<name>On\w*Open\w*|OpenDefaultLocalTerminalAsync)\s*\([^)]*\))",
-                RegexOptions.Singleline)
+                RegexOptions.Singleline | RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture,
+                TimeSpan.FromSeconds(1))
             .Select(match => (
                 Name: match.Groups["name"].Value,
                 Body: BodyAfter(source, match.Index + match.Length)))
@@ -129,7 +138,9 @@ public sealed class WorkspaceSwitchingContractTests
         // code it was written to reject.
         var match = Regex.Match(
             source,
-            $@"(private|public|internal|protected)[^\n;]*?\b{Regex.Escape(methodName)}\s*\([^)]*\)");
+            $@"(private|public|internal|protected)[^\n;]*?\b{Regex.Escape(methodName)}\s*\([^)]*\)",
+            RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture,
+            TimeSpan.FromSeconds(1));
         return match.Success ? BodyAfter(source, match.Index + match.Length) : null;
     }
 

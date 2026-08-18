@@ -219,7 +219,7 @@ public abstract record AgentDockerReadRequest
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
         if (Utf8Length(value, nameof(value)) > 4_096
             || value[0] != '/'
-            || value.Contains('\0')
+            || value.Contains('\0', StringComparison.Ordinal)
             || value.Split('/', StringSplitOptions.RemoveEmptyEntries)
                 .Any(segment => segment is "." or "..")
             || AgentLiteralSecretValidator.ContainsLikelyLiteralSecret(value))

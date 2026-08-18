@@ -42,7 +42,7 @@ internal sealed class RemoteDirectorySnapshot
     public IReadOnlyList<RemoteFileEntry> Complete(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return _entries.ToArray();
+        return [.. _entries];
     }
 
     public static IReadOnlyList<RemoteFileEntry> Capture(

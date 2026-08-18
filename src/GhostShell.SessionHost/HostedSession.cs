@@ -127,8 +127,8 @@ internal sealed class HostedSession
             if (_descriptor.Lifecycle == snapshot.Lifecycle
                 && _descriptor.Health == snapshot.Health
                 && _descriptor.HasActiveWork == snapshot.HasActiveWork
-                && _descriptor.StatusDetail == snapshot.StatusDetail
-                && _descriptor.Failure == snapshot.Failure)
+                && string.Equals(_descriptor.StatusDetail, snapshot.StatusDetail
+, StringComparison.Ordinal) && _descriptor.Failure == snapshot.Failure)
             {
                 return false;
             }
@@ -652,8 +652,8 @@ internal sealed class HostedSession
             Kind: ActorKind.Human,
             ClientId: { } clientId,
         }
-        && actor.Id.Value == clientId.Value
-        && _attachments.TryGetValue(attachmentId, out var attachment)
+        && string.Equals(actor.Id.Value, clientId.Value
+, StringComparison.Ordinal) && _attachments.TryGetValue(attachmentId, out var attachment)
         && attachment.Kind == AttachmentKind.Interactive
         && attachment.ClientId == clientId;
 
@@ -788,9 +788,7 @@ internal sealed class HostedSession
     {
         lock (_gate)
         {
-            return _attachments.Values
-                .Where(item => item.ClientId == clientId)
-                .ToArray();
+            return [.. _attachments.Values.Where(item => item.ClientId == clientId)];
         }
     }
 
@@ -1181,7 +1179,7 @@ internal sealed class HostedSession
                 }
                 else
                 {
-                    pending = _events.Where(item => item.Sequence > afterSequence).ToArray();
+                    pending = [.. _events.Where(item => item.Sequence > afterSequence)];
                     waitTask = _changed.Task;
                 }
             }
@@ -1292,7 +1290,7 @@ internal sealed class HostedSession
         return new(
             _descriptor,
             _sequence,
-            _attachments.Values.OrderBy(item => item.AttachedAtUtc).ToArray(),
+            [.. _attachments.Values.OrderBy(item => item.AttachedAtUtc)],
             _inputLease);
     }
 

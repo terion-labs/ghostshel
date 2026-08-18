@@ -51,10 +51,9 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         Assert.Equal("/srv", approval.Presentation.WorkingDirectory);
         Assert.Contains(
             approval.Presentation.Arguments,
-            argument =>
-                argument.Name == "arguments"
-                && argument.DisplayValue
-                    == """{"path":"/srv/app","force":false}""");
+            argument => string.Equals(argument.Name, "arguments"
+, StringComparison.Ordinal) && string.Equals(argument.DisplayValue
+, """{"path":"/srv/app","force":false}""", StringComparison.Ordinal));
         Assert.Equal(0, mcp.CallCount);
 
         var decision = await fixture.Runtime.DecideAsync(
@@ -70,7 +69,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         var request = fixture.Provider.Requests.ToArray()[0];
         var tool = Assert.Single(
             request.Tools,
-            candidate => candidate.Name == mcp.Manifest.ProviderAlias);
+            candidate => string.Equals(candidate.Name, mcp.Manifest.ProviderAlias, StringComparison.Ordinal));
         Assert.Equal(
             mcp.Manifest.InputSchema.GetRawText(),
             tool.InputSchema.GetRawText());
@@ -97,9 +96,8 @@ public sealed partial class GovernedAgentRuntimeProcessTests
                 .GetString());
         Assert.Contains(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.McpCall
-                && auditEvent.Outcome == AuditOutcome.Succeeded);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.McpCall
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Succeeded);
     }
 
     [Fact]
@@ -155,7 +153,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         Assert.Equal(0, mcp.CallCount);
         Assert.DoesNotContain(
             fixture.Provider.Requests.ToArray()[0].Tools,
-            tool => tool.Name == mcp.Manifest.ProviderAlias);
+            tool => string.Equals(tool.Name, mcp.Manifest.ProviderAlias, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -216,7 +214,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         Assert.Equal(1, mcp.OpenCount);
         Assert.Contains(
             fixture.Provider.Requests.ToArray()[0].Tools,
-            tool => tool.Name == mcp.Manifest.ProviderAlias);
+            tool => string.Equals(tool.Name, mcp.Manifest.ProviderAlias, StringComparison.Ordinal));
 
         var enabled = await fixture.Runtime.EnableYoloAsync(
             TimeSpan.FromMinutes(5),
@@ -230,7 +228,7 @@ public sealed partial class GovernedAgentRuntimeProcessTests
         Assert.Equal(2, mcp.OpenCount);
         Assert.Contains(
             fixture.Provider.Requests.ToArray()[1].Tools,
-            tool => tool.Name == mcp.Manifest.ProviderAlias);
+            tool => string.Equals(tool.Name, mcp.Manifest.ProviderAlias, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -336,9 +334,8 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             ToolResultFromLastRequest(fixture.Provider).StableCode);
         Assert.Contains(
             fixture.Audit.Events,
-            auditEvent =>
-                auditEvent.Action == BuiltInAgentTools.McpCall
-                && auditEvent.Outcome == AuditOutcome.Failed);
+            auditEvent => string.Equals(auditEvent.Action, BuiltInAgentTools.McpCall
+, StringComparison.Ordinal) && auditEvent.Outcome == AuditOutcome.Failed);
     }
 
     private static AgentPolicy McpPolicy(AgentPermission permission) =>

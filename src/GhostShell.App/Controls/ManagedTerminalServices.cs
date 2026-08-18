@@ -60,7 +60,7 @@ internal static class ManagedTerminalLinks
         uri = null;
         if (string.IsNullOrWhiteSpace(value)
             || !Uri.TryCreate(value, UriKind.Absolute, out var parsed)
-            || (parsed.Scheme != Uri.UriSchemeHttp && parsed.Scheme != Uri.UriSchemeHttps))
+            || (!string.Equals(parsed.Scheme, Uri.UriSchemeHttp, StringComparison.Ordinal) && !string.Equals(parsed.Scheme, Uri.UriSchemeHttps, StringComparison.Ordinal)))
         {
             return false;
         }

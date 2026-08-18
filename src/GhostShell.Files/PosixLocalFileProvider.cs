@@ -28,7 +28,7 @@ public sealed partial class PosixLocalFileProvider : LocalFileProvider, IFilePro
     protected override FileProviderError? ValidatePlatformSegment(FilePathSegment segment) => null;
 
     protected override bool IsHidden(FilePathSegment? name, FileAttributes attributes) =>
-        name is { } value && value.Value.StartsWith(".", StringComparison.Ordinal);
+        name is { } value && value.Value.StartsWith('.');
 
     /// <summary>
     /// The mode as the runtime reads it. The owning account's name is not

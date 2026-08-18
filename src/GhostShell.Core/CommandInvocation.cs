@@ -11,9 +11,9 @@ public sealed record CommandInvocation
     {
         ActiveContexts = CommandContextRules.Require(activeContexts, nameof(activeContexts));
         Arguments = arguments?.ToImmutableDictionary(StringComparer.Ordinal)
-            ?? ImmutableDictionary<string, string>.Empty;
+            ?? [];
         State = state?.ToImmutableDictionary(StringComparer.Ordinal)
-            ?? ImmutableDictionary<string, bool>.Empty;
+            ?? [];
     }
 
     public CommandContext ActiveContexts { get; }

@@ -149,9 +149,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         _forcedReadOnlyReason = string.IsNullOrWhiteSpace(forcedReadOnlyReason)
             ? null
             : forcedReadOnlyReason;
-        DriverOptions = client.Drivers
-            .Select(descriptor => new DatabaseDriverOptionViewModel(descriptor))
-            .ToArray();
+        DriverOptions = [.. client.Drivers.Select(descriptor => new DatabaseDriverOptionViewModel(descriptor))];
         if (DriverOptions.Count == 0)
         {
             throw new ArgumentException(
@@ -958,16 +956,10 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             row = null;
         }
 
-        if (_selectedRow is not null)
-        {
-            _selectedRow.IsSelected = false;
-        }
+        _selectedRow?.IsSelected = false;
 
         _selectedRow = row;
-        if (row is not null)
-        {
-            row.IsSelected = true;
-        }
+        row?.IsSelected = true;
 
         RefreshSelectedRowFields();
         OnPropertyChanged(nameof(SelectedRow));
@@ -1227,12 +1219,9 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             table.IsSelected = ReferenceEquals(table, item);
         }
 
-        if (item is not null)
-        {
-            // A restored object may not be in the sidebar list; it still reads
-            // as selected wherever it is shown.
-            item.IsSelected = true;
-        }
+        // A restored object may not be in the sidebar list; it still reads
+        // as selected wherever it is shown.
+        item?.IsSelected = true;
 
         OnPropertyChanged(nameof(IsDatabaseOverview));
         OnPropertyChanged(nameof(IsDatabaseObjectsOverview));
@@ -1295,20 +1284,16 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             new DatabaseColumnDescriptor("Kind", "TEXT", DatabaseValueKind.Text),
         };
         double[] widths = [180, 280, 100];
-        ResultColumns = columns
-            .Select((column, ordinal) => new DatabaseResultColumnViewModel(column, widths[ordinal]))
-            .ToArray();
-        ResultRows = _allTables
+        ResultColumns = [.. columns.Select((column, ordinal) => new DatabaseResultColumnViewModel(column, widths[ordinal]))];
+        ResultRows = [.. _allTables
             .Select((table, index) => new DatabaseResultRowViewModel(
                 index + 1,
-                new string?[]
-                {
+                [
                     table.Descriptor.Schema ?? table.Descriptor.Catalog,
                     table.Descriptor.Name,
                     table.KindLabel,
-                },
-                widths))
-            .ToArray();
+                ],
+                widths))];
         ResultSummary = $"{_allTables.Count} objects · {CurrentDatabaseLabel}";
         _isDatabaseOverview = true;
         OnPropertyChanged(nameof(IsDatabaseOverview));
@@ -1443,9 +1428,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
                 _tunnelConnection,
                 cancellationToken);
             ResetDatabaseDiagram();
-            _allTables = tables
-                .Select(table => new DatabaseTableItemViewModel(table))
-                .ToArray();
+            _allTables = [.. tables.Select(table => new DatabaseTableItemViewModel(table))];
             RefreshTables();
             SetConnected(true);
             OnPropertyChanged(nameof(RecoveryTarget));
@@ -1602,8 +1585,8 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         }
 
         return cell.IsNull
-            ? AllFilterOperators.Where(option => option.Operator is
-                DatabaseFilterOperator.IsNull or DatabaseFilterOperator.IsNotNull).ToArray()
+            ? [.. AllFilterOperators.Where(option => option.Operator is
+                DatabaseFilterOperator.IsNull or DatabaseFilterOperator.IsNotNull)]
             : FilterOperatorsFor(cell.Column.ValueKind, includeListOperators: true);
     }
 
@@ -1946,7 +1929,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             _deletedRows.Add(row);
         }
 
-        ResultRows = ResultRows.Where(candidate => !ReferenceEquals(candidate, row)).ToArray();
+        ResultRows = [.. ResultRows.Where(candidate => !ReferenceEquals(candidate, row))];
         SelectRow(null);
         PublishPendingChanges();
     }
@@ -2398,7 +2381,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
                 ? null
                 : DatabaseQueryProvenanceResolver.ResolveExactTableProjection(
                     page,
-                    _allTables.Select(table => table.Descriptor).ToArray(),
+                    [.. _allTables.Select(table => table.Descriptor)],
                     _queryProvenanceCandidate);
             var query = DatabaseTableQuery.FirstPage(MaxRows);
             var totalRows = canBrowse && page.Columns.Count > 0
@@ -2697,7 +2680,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         }
         if (isNewSource || isExplicitSourceExecution || _rawQueryColumns.Count == 0)
         {
-            _rawQueryColumns = result.Columns.ToArray();
+            _rawQueryColumns = [.. result.Columns];
         }
 
         if (result.Columns.Count == 0)
@@ -2725,9 +2708,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
                 DatabaseResultSource.RawQuery);
             if (isNewSource || isExplicitSourceExecution)
             {
-                _rawQueryColumns = ResultColumns
-                    .Select(column => column.Descriptor)
-                    .ToArray();
+                _rawQueryColumns = [.. ResultColumns.Select(column => column.Descriptor)];
             }
             return;
         }
@@ -2742,7 +2723,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         _resultSource = DatabaseResultSource.RawQuery;
         var selectedFilterColumnName = FilterColumn?.Name;
         var selectedFilterOperator = FilterOperator?.Operator;
-        FilterColumns = result.Columns
+        FilterColumns = [.. result.Columns
             .Select((column, ordinal) => new DatabaseFilterColumnViewModel(
                 new DatabaseColumnSchema(
                     column.Name,
@@ -2754,8 +2735,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
                     IsPrimaryKey: column.IsKey,
                     IsIdentity: column.IsIdentity,
                     IsReadOnly: true,
-                    DefaultExpression: column.DefaultExpression)))
-            .ToArray();
+                    DefaultExpression: column.DefaultExpression)))];
         FilterColumn = FilterColumns.FirstOrDefault(column =>
                 string.Equals(column.Name, selectedFilterColumnName, StringComparison.Ordinal))
             ?? FilterColumns.FirstOrDefault();
@@ -2781,14 +2761,13 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         }
 
         ResultColumns = nextColumns;
-        ResultRows = result.ValueRows
+        ResultRows = [.. result.ValueRows
             .Select((row, index) => new DatabaseResultRowViewModel(
                 page.Offset + index + 1,
                 row,
                 result.Columns,
                 widths,
-                canEdit: false))
-            .ToArray();
+                canEdit: false))];
         var elapsedText = result.Elapsed.TotalMilliseconds
             .ToString("0", CultureInfo.InvariantCulture);
         ResultSummary = result.Truncated
@@ -2883,17 +2862,15 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         result = result with { Columns = effectiveColumns };
         _selectedObjectDetails = details;
         _queryProvenanceCandidate = details;
-        StructureColumns = details.Columns
+        StructureColumns = [.. details.Columns
             .OrderBy(column => column.Ordinal)
-            .Select(column => new DatabaseStructureColumnViewModel(column))
-            .ToArray();
-        Indexes = details.Indexes.Select(index => new DatabaseIndexViewModel(index)).ToArray();
+            .Select(column => new DatabaseStructureColumnViewModel(column))];
+        Indexes = [.. details.Indexes.Select(index => new DatabaseIndexViewModel(index))];
         var selectedFilterColumnName = FilterColumn?.Name;
         var selectedFilterOperator = FilterOperator?.Operator;
-        FilterColumns = details.Columns
+        FilterColumns = [.. details.Columns
             .OrderBy(column => column.Ordinal)
-            .Select(column => new DatabaseFilterColumnViewModel(column))
-            .ToArray();
+            .Select(column => new DatabaseFilterColumnViewModel(column))];
         FilterColumn = FilterColumns.FirstOrDefault(column =>
                 string.Equals(column.Name, selectedFilterColumnName, StringComparison.Ordinal))
             ?? FilterColumns.FirstOrDefault();
@@ -3166,7 +3143,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
             or DatabaseValueKind.Timestamp
             or DatabaseValueKind.TimestampWithZone
             or DatabaseValueKind.Duration;
-        return AllFilterOperators.Where(option => option.Operator switch
+        return [.. AllFilterOperators.Where(option => option.Operator switch
         {
             DatabaseFilterOperator.IsNull or DatabaseFilterOperator.IsNotNull => true,
             _ when !supportsValueFilters => false,
@@ -3180,7 +3157,7 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
                 or DatabaseFilterOperator.GreaterThan
                 or DatabaseFilterOperator.GreaterThanOrEqual => supportsOrdering,
             _ => true,
-        }).ToArray();
+        })];
     }
 
     private static bool TryParseFilterValue(

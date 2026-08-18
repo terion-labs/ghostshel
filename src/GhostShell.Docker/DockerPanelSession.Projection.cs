@@ -511,8 +511,8 @@ internal sealed partial class DockerPanelSession
         string actualPath)
     {
         ValidateReturnedPath(actualPath);
-        var expectedPath = parentPath == "/"
-            ? $"/{name}"
+        var expectedPath = string.Equals(parentPath, "/"
+, StringComparison.Ordinal) ? $"/{name}"
             : $"{parentPath.TrimEnd('/')}/{name}";
         if (!string.Equals(expectedPath, actualPath, StringComparison.Ordinal))
         {

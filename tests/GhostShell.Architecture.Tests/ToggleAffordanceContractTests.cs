@@ -54,7 +54,7 @@ public sealed class ToggleAffordanceContractTests
                 StringComparer.Ordinal))
             .Where(file => XDocument.Load(file)
                 .Descendants()
-                .Any(element => element.Name.LocalName == "CheckBox"))
+                .Any(element => string.Equals(element.Name.LocalName, "CheckBox", StringComparison.Ordinal)))
             .Select(file => Path.GetRelativePath(RepositoryRoot, file))
             .ToArray();
 
@@ -81,7 +81,7 @@ public sealed class ToggleAffordanceContractTests
                 SearchOption.AllDirectories)
             .Where(file => XDocument.Load(file)
                 .Descendants()
-                .Where(element => element.Name.LocalName == "ToggleSwitch")
+                .Where(element => string.Equals(element.Name.LocalName, "ToggleSwitch", StringComparison.Ordinal))
                 .Any(element =>
                     element.Attribute("OnContent") is not null
                     || element.Attribute("OffContent") is not null))

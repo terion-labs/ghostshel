@@ -294,7 +294,7 @@ internal static class DatabaseAgentToolParser
             }
 
             RequireNoProperties(properties);
-            sorts.Add(new AgentDatabaseSort(column, direction == "desc"));
+            sorts.Add(new AgentDatabaseSort(column, string.Equals(direction, "desc", StringComparison.Ordinal)));
         }
 
         return sorts;
@@ -313,7 +313,7 @@ internal static class DatabaseAgentToolParser
             JsonValueKind.Number when element.TryGetDecimal(out var number) =>
                 new AgentDatabaseFilterValue.Decimal(number),
             JsonValueKind.Array => new AgentDatabaseFilterValue.List(
-                element.EnumerateArray().Select(ParseScalarFilterValue).ToArray()),
+                [.. element.EnumerateArray().Select(ParseScalarFilterValue)]),
             _ => throw new ArgumentException("A database filter value is invalid."),
         };
     }
@@ -445,12 +445,11 @@ internal static class DatabaseAgentToolParser
                 $"Database tool field '{name}' must be a bounded string array.");
         }
 
-        return element.EnumerateArray()
+        return [.. element.EnumerateArray()
             .Select(item => TryGetString(item, out var value)
                 ? value
                 : throw new ArgumentException(
-                    $"Database tool field '{name}' must contain only strings."))
-            .ToArray();
+                    $"Database tool field '{name}' must contain only strings."))];
     }
 
     private static bool TryGetString(JsonElement element, out string value)

@@ -73,7 +73,7 @@ public sealed class TerminalStartupCommandDispatcherTests
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
         {
             _ = args;
-            if (targetMethod?.Name != nameof(ISessionHostClient.WriteTerminalAsync))
+            if (!string.Equals(targetMethod?.Name, nameof(ISessionHostClient.WriteTerminalAsync), StringComparison.Ordinal))
             {
                 throw new NotSupportedException(targetMethod?.Name);
             }
@@ -108,6 +108,6 @@ public sealed class TerminalStartupCommandDispatcherTests
                 string correlationId,
                 CancellationToken cancellationToken) =>
             ValueTask.FromResult(AuditStoreResult<IReadOnlyList<AuditEventRecord>>.Success(
-                Events.Where(item => item.CorrelationId == correlationId).ToArray()));
+                [.. Events.Where(item => string.Equals(item.CorrelationId, correlationId, StringComparison.Ordinal))]));
     }
 }

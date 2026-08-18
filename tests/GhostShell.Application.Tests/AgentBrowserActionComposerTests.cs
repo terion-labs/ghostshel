@@ -77,12 +77,12 @@ public sealed class AgentBrowserActionComposerTests
                 "Stop",
                 "Wait",
             ],
-            requestKinds.Select(type => type.Name));
+            requestKinds.Select(type => type.Name), StringComparer.Ordinal);
         Assert.All(requestKinds, type => Assert.True(type.IsSealed));
         Assert.True(typeof(AgentBrowserActionResult).IsAbstract);
         Assert.Equal(
             ["Automation", "Completed", "Evaluation", "Snapshot", "State", "Wait"],
-            resultKinds.Select(type => type.Name));
+            resultKinds.Select(type => type.Name), StringComparer.Ordinal);
         Assert.All(resultKinds, type => Assert.True(type.IsSealed));
         Assert.Empty(typeof(AgentBrowserAction).GetConstructors());
         Assert.Empty(typeof(AgentActionExecutionBinding).GetConstructors());
@@ -216,7 +216,7 @@ public sealed class AgentBrowserActionComposerTests
             tailChanged.Proposal.ArgumentDigest);
         Assert.NotEqual(
             ApprovalMaterial(action),
-            ApprovalMaterial(tailChanged));
+            ApprovalMaterial(tailChanged), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -280,8 +280,8 @@ public sealed class AgentBrowserActionComposerTests
         Assert.NotEqual(
             action.Proposal.ArgumentDigest,
             revisionChanged.Proposal.ArgumentDigest);
-        Assert.NotEqual(ApprovalMaterial(action), ApprovalMaterial(referenceChanged));
-        Assert.NotEqual(ApprovalMaterial(action), ApprovalMaterial(revisionChanged));
+        Assert.NotEqual(ApprovalMaterial(action), ApprovalMaterial(referenceChanged), StringComparer.Ordinal);
+        Assert.NotEqual(ApprovalMaterial(action), ApprovalMaterial(revisionChanged), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -329,8 +329,8 @@ public sealed class AgentBrowserActionComposerTests
         Assert.NotEqual(
             action.Proposal.ArgumentDigest,
             revisionChanged.Proposal.ArgumentDigest);
-        Assert.NotEqual(ApprovalMaterial(action), ApprovalMaterial(referenceChanged));
-        Assert.NotEqual(ApprovalMaterial(action), ApprovalMaterial(revisionChanged));
+        Assert.NotEqual(ApprovalMaterial(action), ApprovalMaterial(referenceChanged), StringComparer.Ordinal);
+        Assert.NotEqual(ApprovalMaterial(action), ApprovalMaterial(revisionChanged), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -442,9 +442,9 @@ public sealed class AgentBrowserActionComposerTests
         Assert.NotEqual(
             action.Proposal.ArgumentDigest,
             textChanged.Proposal.ArgumentDigest);
-        Assert.NotEqual(ApprovalMaterial(action), ApprovalMaterial(referenceChanged));
-        Assert.NotEqual(ApprovalMaterial(action), ApprovalMaterial(revisionChanged));
-        Assert.NotEqual(ApprovalMaterial(action), ApprovalMaterial(textChanged));
+        Assert.NotEqual(ApprovalMaterial(action), ApprovalMaterial(referenceChanged), StringComparer.Ordinal);
+        Assert.NotEqual(ApprovalMaterial(action), ApprovalMaterial(revisionChanged), StringComparer.Ordinal);
+        Assert.NotEqual(ApprovalMaterial(action), ApprovalMaterial(textChanged), StringComparer.Ordinal);
     }
 
     [Theory]
@@ -496,7 +496,7 @@ public sealed class AgentBrowserActionComposerTests
 
             var argument = Assert.Single(
                 action.Proposal.Presentation.Arguments,
-                candidate => candidate.Name == "text");
+                candidate => string.Equals(candidate.Name, "text", StringComparison.Ordinal));
             Assert.Equal(item.Display, argument.DisplayValue);
         }
     }
@@ -518,7 +518,7 @@ public sealed class AgentBrowserActionComposerTests
 
         var argument = Assert.Single(
             action.Proposal.Presentation.Arguments,
-            candidate => candidate.Name == "text");
+            candidate => string.Equals(candidate.Name, "text", StringComparison.Ordinal));
         Assert.StartsWith("\"\\u00AD", argument.DisplayValue);
         Assert.EndsWith("\\u00AD\"", argument.DisplayValue);
         Assert.DoesNotContain(
@@ -587,7 +587,7 @@ public sealed class AgentBrowserActionComposerTests
             actions.Select(action => action.Proposal.ArgumentDigest).Distinct().Count());
         Assert.Equal(
             8,
-            actions.Select(action => action.Proposal.ToolName).Distinct().Count());
+            actions.Select(action => action.Proposal.ToolName).Distinct(StringComparer.Ordinal).Count());
     }
 
     [Theory]
@@ -612,10 +612,10 @@ public sealed class AgentBrowserActionComposerTests
 
         Assert.DoesNotContain(
             action.Proposal.Presentation.Arguments,
-            argument => argument.Name == "panel_id");
+            argument => string.Equals(argument.Name, "panel_id", StringComparison.Ordinal));
         Assert.Contains(
             action.Proposal.Presentation.Arguments,
-            argument => argument.Name == "session_id");
+            argument => string.Equals(argument.Name, "session_id", StringComparison.Ordinal));
     }
 
     [Fact]

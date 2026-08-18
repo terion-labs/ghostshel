@@ -40,6 +40,7 @@ public sealed class AgentCapabilityBroker :
     private readonly ConcurrentDictionary<AgentRunId, RunAuthoritySignal>
         _runAuthoritySignals = [];
     private readonly ConcurrentDictionary<AgentRunId, byte> _cancelledRuns = [];
+    private int _disposeStarted;
     private bool _disposed;
 
     public AgentCapabilityBroker(
@@ -228,14 +229,12 @@ public sealed class AgentCapabilityBroker :
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(update);
-        RunAuthoritySignal? authoritySignal = null;
-        PolicyUpdateLease? policyUpdateLease = null;
         var policyApplied = false;
         var signalError = BeginRunPolicyUpdate(
             update,
-            out authoritySignal,
+            out RunAuthoritySignal? authoritySignal,
             out var revokedGeneration,
-            out policyUpdateLease);
+            out PolicyUpdateLease? policyUpdateLease);
         if (signalError is not null)
         {
             return signalError;
@@ -245,7 +244,7 @@ public sealed class AgentCapabilityBroker :
         {
             if (revokedGeneration is not null)
             {
-                BeginCancellation(revokedGeneration);
+                BeginCancellationAndDispose(revokedGeneration);
             }
         }
 
@@ -294,7 +293,7 @@ public sealed class AgentCapabilityBroker :
 
                 if (revokedGeneration is not null)
                 {
-                    BeginCancellation(revokedGeneration);
+                    BeginCancellationAndDispose(revokedGeneration);
                 }
             }
 
@@ -693,7 +692,8 @@ public sealed class AgentCapabilityBroker :
                                 maximumExpiresAtUtc:
                                     run.YoloConfirmation.ExpiresAtUtc)
                             .ConfigureAwait(false),
-                _ => throw new ArgumentOutOfRangeException(nameof(decision)),
+                _ => throw new InvalidOperationException(
+                    $"Unsupported policy decision '{decision}'."),
             };
         }
         finally
@@ -1197,7 +1197,7 @@ public sealed class AgentCapabilityBroker :
                         is { } revokedGeneration)
                 {
                     completionAuditRevocation =
-                        StartCancellation(revokedGeneration);
+                        StartCancellationAndDispose(revokedGeneration);
                 }
             }
 
@@ -1218,6 +1218,11 @@ public sealed class AgentCapabilityBroker :
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposeStarted, 1) != 0)
+        {
+            return;
+        }
+
         List<CancellationTokenSource> cancellations;
         await _gate.WaitAsync().ConfigureAwait(false);
         try
@@ -1228,16 +1233,12 @@ public sealed class AgentCapabilityBroker :
             }
 
             _disposed = true;
-            cancellations = _activeActions.Values
+            cancellations = [.. _activeActions.Values
                 .Select(active => active.CancellationSource)
-                .Distinct()
-                .ToList();
+                .Distinct()];
             foreach (var signal in _runAuthoritySignals.Values)
             {
-                if (signal.CancelForDisposal() is { } generationSource)
-                {
-                    BeginCancellation(generationSource);
-                }
+                signal.Dispose();
             }
 
             foreach (var run in _runs.Values)
@@ -1256,6 +1257,8 @@ public sealed class AgentCapabilityBroker :
         {
             cancellation.Dispose();
         }
+
+        _gate.Dispose();
     }
 
     private AgentAuthorizationResult CreateApproval(
@@ -2105,10 +2108,9 @@ public sealed class AgentCapabilityBroker :
 
     private IEnumerable<CancellationTokenSource> CollectActiveCancellations(
         AgentRunId runId) =>
-        _activeActions.Values
+        [.. _activeActions.Values
             .Where(active => active.Issued.Proposal.RunId == runId)
-            .Select(active => active.CancellationSource)
-            .ToArray();
+            .Select(active => active.CancellationSource)];
 
     private AgentAuthorizationError? BeginRunPolicyUpdate(
         AgentRunPolicyUpdate update,
@@ -2158,7 +2160,8 @@ public sealed class AgentCapabilityBroker :
             PolicyUpdateSignalResult.Stale => Error(
                 AgentAuthorizationErrorCode.PolicyChanged,
                 "A run policy update must advance the authoritative generation."),
-            _ => throw new ArgumentOutOfRangeException(),
+            _ => throw new InvalidOperationException(
+                "The policy-update signal returned an unsupported result."),
         };
     }
 
@@ -2175,7 +2178,7 @@ public sealed class AgentCapabilityBroker :
         _cancelledRuns.TryAdd(cancellation.RunId, 0);
         if (generationSource is not null)
         {
-            BeginCancellation(generationSource);
+            BeginCancellationAndDispose(generationSource);
         }
     }
 
@@ -2202,6 +2205,24 @@ public sealed class AgentCapabilityBroker :
     private static void BeginCancellation(CancellationTokenSource cancellation)
     {
         _ = StartCancellation(cancellation);
+    }
+
+    private static void BeginCancellationAndDispose(CancellationTokenSource cancellation)
+    {
+        _ = StartCancellationAndDispose(cancellation);
+    }
+
+    private static async Task StartCancellationAndDispose(
+        CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await StartCancellation(cancellation).ConfigureAwait(false);
+        }
+        finally
+        {
+            cancellation.Dispose();
+        }
     }
 
     private static Task StartCancellation(CancellationTokenSource cancellation)
@@ -2421,9 +2442,9 @@ public sealed class AgentCapabilityBroker :
     private sealed class RunAuthoritySignal(
         ActorId agentId,
         ClientId approvingClientId,
-        long policyGeneration)
+        long policyGeneration) : IDisposable
     {
-        private readonly object _sync = new();
+        private readonly Lock _sync = new();
         private CancellationTokenSource _generationSource = new();
         private long _policyGeneration = policyGeneration;
         private long? _pendingPolicyGeneration;
@@ -2598,18 +2619,21 @@ public sealed class AgentCapabilityBroker :
             }
         }
 
-        public CancellationTokenSource? CancelForDisposal()
+        public void Dispose()
         {
+            CancellationTokenSource generationSource;
             lock (_sync)
             {
                 if (_cancelled)
                 {
-                    return null;
+                    return;
                 }
 
                 _cancelled = true;
-                return _generationSource;
+                generationSource = _generationSource;
             }
+
+            BeginCancellationAndDispose(generationSource);
         }
     }
 

@@ -252,7 +252,7 @@ public sealed class ManagedTerminalSessionHostTests
         await host.SendTextAsync("recovers");
 
         Assert.Equal(3, client.InputLeaseAcquireCalls);
-        Assert.Contains("text:recovers", client.TerminalInputs);
+        Assert.Contains("text:recovers", client.TerminalInputs, StringComparer.Ordinal);
         Assert.Equal(1, client.MaximumConcurrentPhysicalInputs);
     }
 
@@ -274,7 +274,7 @@ public sealed class ManagedTerminalSessionHostTests
         await host.SendTextAsync("after restart");
 
         Assert.Equal(1, client.DetachCalls);
-        Assert.Contains("text:after restart", client.TerminalInputs);
+        Assert.Contains("text:after restart", client.TerminalInputs, StringComparer.Ordinal);
         Assert.Equal(1, client.MaximumConcurrentPhysicalInputs);
     }
 
@@ -479,7 +479,7 @@ public sealed class ManagedTerminalSessionHostTests
             {
                 lock (_inputGate)
                 {
-                    return _humanLeaseIds.ToArray();
+                    return [.. _humanLeaseIds];
                 }
             }
         }
@@ -490,7 +490,7 @@ public sealed class ManagedTerminalSessionHostTests
             {
                 lock (_inputGate)
                 {
-                    return _physicalInputLeaseIds.ToArray();
+                    return [.. _physicalInputLeaseIds];
                 }
             }
         }
@@ -501,7 +501,7 @@ public sealed class ManagedTerminalSessionHostTests
             {
                 lock (_inputGate)
                 {
-                    return _physicalInputKinds.ToArray();
+                    return [.. _physicalInputKinds];
                 }
             }
         }

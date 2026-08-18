@@ -330,7 +330,7 @@ public sealed class AgentWorkspaceLayoutSessionHostTests
         private AgentAuthorizationId _authorizationId;
 
         public IReadOnlyList<AgentActionCompletion> Completions =>
-            _completions.ToArray();
+            [.. _completions];
 
         public AgentAuthorizationId Arm(AgentActionProposal proposal)
         {

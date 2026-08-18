@@ -63,10 +63,10 @@ internal sealed class FakeWebDavHandler : HttpMessageHandler
         {
             new(path, target),
         };
-        if (depth == "1")
+        if (string.Equals(depth, "1", StringComparison.Ordinal))
         {
             selected.AddRange(_resources
-                .Where(pair => pair.Key != path && Parent(pair.Key) == path)
+                .Where(pair => !string.Equals(pair.Key, path, StringComparison.Ordinal) && string.Equals(Parent(pair.Key), path, StringComparison.Ordinal))
                 .OrderBy(pair => pair.Key, StringComparer.Ordinal));
         }
 
@@ -194,7 +194,7 @@ internal sealed class FakeWebDavHandler : HttpMessageHandler
         var destinationHeader = request.Headers.GetValues("Destination").Single();
         var destinationPath = Normalize(new Uri(destinationHeader).AbsolutePath);
         _resources.TryGetValue(destinationPath, out var existing);
-        var overwrite = request.Headers.GetValues("Overwrite").Single() == "T";
+        var overwrite = string.Equals(request.Headers.GetValues("Overwrite").Single(), "T", StringComparison.Ordinal);
         if (!overwrite && existing is not null)
         {
             return new HttpResponseMessage(HttpStatusCode.PreconditionFailed);
@@ -251,18 +251,18 @@ internal sealed class FakeWebDavHandler : HttpMessageHandler
         HttpRequestMessage request)
     {
         var ifNoneMatch = Header(request, "If-None-Match");
-        if (ifNoneMatch == "*" && resource is not null)
+        if (string.Equals(ifNoneMatch, "*", StringComparison.Ordinal) && resource is not null)
         {
             return new HttpResponseMessage(HttpStatusCode.PreconditionFailed);
         }
 
         var ifMatch = Header(request, "If-Match");
-        if (ifMatch == "*" && resource is null)
+        if (string.Equals(ifMatch, "*", StringComparison.Ordinal) && resource is null)
         {
             return new HttpResponseMessage(HttpStatusCode.PreconditionFailed);
         }
 
-        if (ifMatch is not null and not "*" && resource?.ETag != ifMatch)
+        if (ifMatch is not null and not "*" && !string.Equals(resource?.ETag, ifMatch, StringComparison.Ordinal))
         {
             return new HttpResponseMessage(HttpStatusCode.PreconditionFailed);
         }

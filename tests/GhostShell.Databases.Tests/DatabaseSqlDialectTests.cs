@@ -249,7 +249,7 @@ public sealed class DatabaseSqlDialectTests
         var identifier = dialect.QuoteIdentifier("name");
         var firstMarker = dialect.ParameterMarker("p0");
         Assert.DoesNotContain(hostile, notContains.Sql, StringComparison.Ordinal);
-        if (driverId == "clickhouse")
+        if (string.Equals(driverId, "clickhouse", StringComparison.Ordinal))
         {
             Assert.Contains(
                 $"position({identifier}, {firstMarker}) = 0",

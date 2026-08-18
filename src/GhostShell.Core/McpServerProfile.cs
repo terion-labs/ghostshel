@@ -102,14 +102,9 @@ public sealed record McpServerProfile : IDurableDefinition
         var totalBytes = 0;
         for (var index = 0; index < arguments.Count; index++)
         {
-            var argument = arguments[index];
-            if (argument is null)
-            {
-                throw new ArgumentException(
+            var argument = arguments[index] ?? throw new ArgumentException(
                     "MCP server arguments cannot contain null values.",
                     nameof(arguments));
-            }
-
             copies[index] = CopyPrintableText(
                 argument,
                 nameof(arguments),

@@ -34,7 +34,7 @@ internal sealed partial class GhosttyVtTerminalSession
             encoded = EncodeKeyUnsafe(
                 MapKey(keyStroke.Key),
                 MapModifiers(keyStroke.Modifiers),
-                ReadOnlySpan<byte>.Empty,
+                [],
                 unshiftedCodepoint: 0,
                 GhosttyVtKeyAction.Press,
                 GhosttyVtModifiers.None,
@@ -88,7 +88,7 @@ internal sealed partial class GhosttyVtTerminalSession
         {
             ObjectDisposedException.ThrowIf(_closed, this);
             PrepareForTerminalInputUnsafe();
-            Span<byte> utf8 = stackalloc byte[1] { checked((byte)chord.Character) };
+            Span<byte> utf8 = [checked((byte)chord.Character)];
             var modifiers = chord.Modifier switch
             {
                 TerminalCharacterChordModifier.Control => GhosttyVtModifiers.Control,
@@ -272,7 +272,7 @@ internal sealed partial class GhosttyVtTerminalSession
             var enter = EncodeKeyUnsafe(
                 MapKey(TerminalKey.Enter),
                 GhosttyVtModifiers.None,
-                ReadOnlySpan<byte>.Empty,
+                [],
                 unshiftedCodepoint: 0,
                 GhosttyVtKeyAction.Press,
                 GhosttyVtModifiers.None,
@@ -398,7 +398,7 @@ internal sealed partial class GhosttyVtTerminalSession
             {
                 if (input.CancellationToken.IsCancellationRequested)
                 {
-                    input.Cancel();
+                    input.Cancel(input.CancellationToken);
                     continue;
                 }
 
@@ -415,7 +415,7 @@ internal sealed partial class GhosttyVtTerminalSession
                     using var deliveryCancellation = CancellationTokenSource.CreateLinkedTokenSource(
                         cancellationToken,
                         input.CancellationToken);
-                    ValueTask pendingWrite;
+                    Task pendingWrite;
                     if (input.RevisionBoundMouseInput is not null)
                     {
                         if (!TryBeginRevisionBoundMouseWriteUnsafe(
@@ -430,7 +430,7 @@ internal sealed partial class GhosttyVtTerminalSession
                     {
                         pendingWrite = _pty.Writer.WriteAsync(
                             input.Bytes,
-                            deliveryCancellation.Token);
+                            deliveryCancellation.Token).AsTask();
                     }
 
                     await pendingWrite.ConfigureAwait(false);
@@ -452,7 +452,7 @@ internal sealed partial class GhosttyVtTerminalSession
                 catch (OperationCanceledException) when (
                     !committed && input.CancellationToken.IsCancellationRequested)
                 {
-                    input.Cancel();
+                    input.Cancel(input.CancellationToken);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -494,7 +494,7 @@ internal sealed partial class GhosttyVtTerminalSession
             {
                 if (input.CancellationToken.IsCancellationRequested)
                 {
-                    input.Cancel();
+                    input.Cancel(input.CancellationToken);
                 }
                 else if (cancellationToken.IsCancellationRequested)
                 {
@@ -512,21 +512,21 @@ internal sealed partial class GhosttyVtTerminalSession
     private unsafe bool TryBeginRevisionBoundMouseWriteUnsafe(
         QueuedTerminalInput input,
         CancellationToken cancellationToken,
-        out ValueTask pendingWrite)
+        out Task pendingWrite)
     {
         lock (_gate)
         {
             if (GetInputRejectionUnsafe() is { } rejection)
             {
                 input.Fail(rejection);
-                pendingWrite = default;
+                pendingWrite = Task.CompletedTask;
                 return false;
             }
 
             if (_contentRevision != input.ExpectedContentRevision)
             {
                 input.Complete(TerminalRevisionBoundMouseOutcome.ContentRevisionChanged);
-                pendingWrite = default;
+                pendingWrite = Task.CompletedTask;
                 return false;
             }
 
@@ -534,7 +534,7 @@ internal sealed partial class GhosttyVtTerminalSession
             if (mouseInput.Column >= _columns || mouseInput.Row >= _rows)
             {
                 input.Complete(TerminalRevisionBoundMouseOutcome.CoordinatesOutOfBounds);
-                pendingWrite = default;
+                pendingWrite = Task.CompletedTask;
                 return false;
             }
 
@@ -551,7 +551,7 @@ internal sealed partial class GhosttyVtTerminalSession
                 if (mouseTracking == 0)
                 {
                     input.Complete(TerminalRevisionBoundMouseOutcome.MouseTrackingDisabled);
-                    pendingWrite = default;
+                    pendingWrite = Task.CompletedTask;
                     return false;
                 }
 
@@ -563,11 +563,11 @@ internal sealed partial class GhosttyVtTerminalSession
                 // beside dispatch must not turn a single input failure into a
                 // terminal-writer failure that rejects unrelated queued work.
                 input.Fail(exception);
-                pendingWrite = default;
+                pendingWrite = Task.CompletedTask;
                 return false;
             }
 
-            pendingWrite = _pty.Writer.WriteAsync(encoded, cancellationToken);
+            pendingWrite = _pty.Writer.WriteAsync(encoded, cancellationToken).AsTask();
             return true;
         }
     }
@@ -889,16 +889,56 @@ internal sealed partial class GhosttyVtTerminalSession
     private static GhosttyVtModifiers MapModifiers(TerminalKeyModifiers modifiers)
     {
         var result = GhosttyVtModifiers.None;
-        if (modifiers.HasFlag(TerminalKeyModifiers.Shift)) result |= GhosttyVtModifiers.Shift;
-        if (modifiers.HasFlag(TerminalKeyModifiers.Control)) result |= GhosttyVtModifiers.Control;
-        if (modifiers.HasFlag(TerminalKeyModifiers.Alt)) result |= GhosttyVtModifiers.Alt;
-        if (modifiers.HasFlag(TerminalKeyModifiers.Meta)) result |= GhosttyVtModifiers.Super;
-        if (modifiers.HasFlag(TerminalKeyModifiers.CapsLock)) result |= GhosttyVtModifiers.CapsLock;
-        if (modifiers.HasFlag(TerminalKeyModifiers.NumLock)) result |= GhosttyVtModifiers.NumLock;
-        if (modifiers.HasFlag(TerminalKeyModifiers.RightShift)) result |= GhosttyVtModifiers.RightShift;
-        if (modifiers.HasFlag(TerminalKeyModifiers.RightControl)) result |= GhosttyVtModifiers.RightControl;
-        if (modifiers.HasFlag(TerminalKeyModifiers.RightAlt)) result |= GhosttyVtModifiers.RightAlt;
-        if (modifiers.HasFlag(TerminalKeyModifiers.RightMeta)) result |= GhosttyVtModifiers.RightSuper;
+        if (modifiers.HasFlag(TerminalKeyModifiers.Shift))
+        {
+            result |= GhosttyVtModifiers.Shift;
+        }
+
+        if (modifiers.HasFlag(TerminalKeyModifiers.Control))
+        {
+            result |= GhosttyVtModifiers.Control;
+        }
+
+        if (modifiers.HasFlag(TerminalKeyModifiers.Alt))
+        {
+            result |= GhosttyVtModifiers.Alt;
+        }
+
+        if (modifiers.HasFlag(TerminalKeyModifiers.Meta))
+        {
+            result |= GhosttyVtModifiers.Super;
+        }
+
+        if (modifiers.HasFlag(TerminalKeyModifiers.CapsLock))
+        {
+            result |= GhosttyVtModifiers.CapsLock;
+        }
+
+        if (modifiers.HasFlag(TerminalKeyModifiers.NumLock))
+        {
+            result |= GhosttyVtModifiers.NumLock;
+        }
+
+        if (modifiers.HasFlag(TerminalKeyModifiers.RightShift))
+        {
+            result |= GhosttyVtModifiers.RightShift;
+        }
+
+        if (modifiers.HasFlag(TerminalKeyModifiers.RightControl))
+        {
+            result |= GhosttyVtModifiers.RightControl;
+        }
+
+        if (modifiers.HasFlag(TerminalKeyModifiers.RightAlt))
+        {
+            result |= GhosttyVtModifiers.RightAlt;
+        }
+
+        if (modifiers.HasFlag(TerminalKeyModifiers.RightMeta))
+        {
+            result |= GhosttyVtModifiers.RightSuper;
+        }
+
         return result;
     }
 

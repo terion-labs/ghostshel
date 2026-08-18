@@ -31,7 +31,7 @@ public sealed class PanelAgentToolContractTests
 
         Assert.Equal(
             [BuiltInAgentTools.PanelInspect, BuiltInAgentTools.PanelFocus],
-            exactTools.Select(tool => tool.Name));
+            exactTools.Select(tool => tool.Name), StringComparer.Ordinal);
         Assert.All(
             exactTools,
             tool =>
@@ -48,7 +48,7 @@ public sealed class PanelAgentToolContractTests
             });
         Assert.Equal(
             [BuiltInAgentTools.PanelInspect, BuiltInAgentTools.PanelFocus],
-            broadTools.Select(tool => tool.Name));
+            broadTools.Select(tool => tool.Name), StringComparer.Ordinal);
         Assert.All(
             broadTools,
             tool =>
@@ -61,12 +61,12 @@ public sealed class PanelAgentToolContractTests
                     [live.PanelId.Value],
                     panel.GetProperty("enum")
                         .EnumerateArray()
-                        .Select(value => value.GetString()));
+                        .Select(value => value.GetString()), StringComparer.Ordinal);
                 Assert.Equal(
                     ["panel_id"],
                     tool.InputSchema.GetProperty("required")
                         .EnumerateArray()
-                        .Select(value => value.GetString()));
+                        .Select(value => value.GetString()), StringComparer.Ordinal);
                 Assert.False(
                     tool.InputSchema.GetProperty("additionalProperties")
                         .GetBoolean());

@@ -28,7 +28,7 @@ public sealed class FileEntryViewModel
         ? "Folder"
         : FormatSize(Entry.Size);
 
-    public string Modified => Entry.LastModifiedAt?.ToLocalTime().ToString("g") ?? "Unknown";
+    public string Modified => Entry.LastModifiedAt?.ToLocalTime().ToString("g", System.Globalization.CultureInfo.InvariantCulture) ?? "Unknown";
 
     public bool IsDirectory => Entry.Kind == FilePanelEntryKind.Directory;
 
@@ -191,10 +191,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel, IPanelNot
         : base(id, PanelKind.FileViewer, title, "Files")
     {
         _clipboard = clipboard;
-        if (_clipboard is not null)
-        {
-            _clipboard.Changed += OnTransferClipboardChanged;
-        }
+        _clipboard?.Changed += OnTransferClipboardChanged;
 
         _client = client ?? throw new ArgumentNullException(nameof(client));
         // Both are optional: a build without database drivers, or a client that
@@ -211,10 +208,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel, IPanelNot
         _pdfRenderer = pdfRenderer;
         _databaseRegistry = databaseRegistry;
         _previewPreferences = previewPreferences;
-        if (_previewPreferences is not null)
-        {
-            _previewPreferences.Changed += OnPreviewPreferencesChanged;
-        }
+        _previewPreferences?.Changed += OnPreviewPreferencesChanged;
 
         _contentSource = client as IFileContentSource;
         _connection = connection ?? BuiltInConnections.Local;
@@ -226,7 +220,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel, IPanelNot
         _profileRuntime = client as IFileProviderProfileRuntime;
         if (initialProfileId is { } profileId
             && initialLocation is not null
-            && profileId.Value != initialLocation.ProviderProfileId)
+            && !string.Equals(profileId.Value, initialLocation.ProviderProfileId, StringComparison.Ordinal))
         {
             throw new ArgumentException(
                 "The restored file location must belong to the initial provider profile.",
@@ -242,15 +236,12 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel, IPanelNot
         {
             _hostedClient.ProfilesChanged += OnProfilesChanged;
         }
-        else if (_profileRuntime is not null)
+        else
         {
-            _profileRuntime.ProfilesChanged += OnProfilesChanged;
+            _profileRuntime?.ProfilesChanged += OnProfilesChanged;
         }
 
-        if (_transferQueue is not null)
-        {
-            _transferQueue.TransfersChanged += OnTransfersChanged;
-        }
+        _transferQueue?.TransfersChanged += OnTransfersChanged;
 
         RebuildActions();
         if (!deferInitialization)
@@ -304,24 +295,23 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel, IPanelNot
     public string ConnectionDisplayName =>
         SelectedProfile is null
             ? (_connection.Endpoint is ConnectionEndpoint.Local ? "Local" : _connection.Name)
-            : SelectedProfile.Id == BuiltInFileProviders.HomeId.Value
-                ? "Local"
+            : string.Equals(SelectedProfile.Id, BuiltInFileProviders.HomeId.Value
+, StringComparison.Ordinal) ? "Local"
                 : SelectedProfile.Name;
 
     public bool UsesConnection(ConnectionId connectionId)
     {
-        if (SelectedProfile?.Id == BuiltInFileProviders.HomeId.Value)
+        if (string.Equals(SelectedProfile?.Id, BuiltInFileProviders.HomeId.Value, StringComparison.Ordinal))
         {
             return connectionId == _connection.Id
                 && _connection.Endpoint is ConnectionEndpoint.Local;
         }
 
-        return SelectedProfile?.Id == ConnectionFileProviderProfiles.Id(connectionId).Value;
+        return string.Equals(SelectedProfile?.Id, ConnectionFileProviderProfiles.Id(connectionId).Value, StringComparison.Ordinal);
     }
 
-    public bool UsesProfile(FileProviderProfileId profileId) =>
-        SelectedProfile?.Id == profileId.Value
-        || (SelectedProfile is null && _initialProfileId == profileId.Value);
+    public bool UsesProfile(FileProviderProfileId profileId) => string.Equals(SelectedProfile?.Id, profileId.Value
+, StringComparison.Ordinal) || (SelectedProfile is null && string.Equals(_initialProfileId, profileId.Value, StringComparison.Ordinal));
 
     public FileProviderProfileDescriptor? SelectedProfile
     {
@@ -1058,10 +1048,9 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel, IPanelNot
                     SelectedEntry?.Entry.Kind == FilePanelEntryKind.File,
                 SelectionIsTransferable = transferable.Count > 0,
                 HasTransferQueue = _transferQueue is not null,
-                HasLocalProvider = Profiles.Any(profile =>
-                    profile.Id == BuiltInFileProviders.HomeId.Value),
+                HasLocalProvider = Profiles.Any(profile => string.Equals(profile.Id, BuiltInFileProviders.HomeId.Value, StringComparison.Ordinal)),
                 IsLocalProvider =
-                    SelectedProfile?.Id == BuiltInFileProviders.HomeId.Value,
+string.Equals(SelectedProfile?.Id, BuiltInFileProviders.HomeId.Value, StringComparison.Ordinal),
                 HasClipboard = _clipboard?.HasContent == true,
             };
         }
@@ -1111,17 +1100,11 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel, IPanelNot
             .Where(state => state.IsAvailable)
             .ToArray();
         _menuActions = Dress(states);
-        _toolbarActions = Dress(states
-            .Where(state => ToolbarPrimaryActions.Contains(state.Action))
-            .ToArray());
+        _toolbarActions = Dress([.. states.Where(state => ToolbarPrimaryActions.Contains(state.Action))]);
         // Each menu re-groups from its own survivors, so neither opens with a
         // rule across the top or draws one where nothing changed.
-        _entryMenuActions = Dress(states
-            .Where(state => state.Scope == FilePanelActionScope.Selection)
-            .ToArray());
-        _folderMenuActions = Dress(states
-            .Where(state => state.Scope == FilePanelActionScope.Folder)
-            .ToArray());
+        _entryMenuActions = Dress([.. states.Where(state => state.Scope == FilePanelActionScope.Selection)]);
+        _folderMenuActions = Dress([.. states.Where(state => state.Scope == FilePanelActionScope.Folder)]);
         OnPropertyChanged(nameof(MenuActions));
         OnPropertyChanged(nameof(ToolbarActions));
         OnPropertyChanged(nameof(EntryMenuActions));
@@ -1273,7 +1256,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel, IPanelNot
     {
         ArgumentNullException.ThrowIfNull(profile);
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (!Profiles.Any(item => item.Id == profile.Id))
+        if (!Profiles.Any(item => string.Equals(item.Id, profile.Id, StringComparison.Ordinal)))
         {
             SetOperationIssue(FileOperationIssue.Configuration(
                 "The selected file-provider profile no longer exists."));
@@ -1283,7 +1266,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel, IPanelNot
         if (_initialSelectionPending)
         {
             if (_initialProfileId is not null
-                && profile.Id != _initialProfileId)
+                && !string.Equals(profile.Id, _initialProfileId, StringComparison.Ordinal))
             {
                 SetOperationIssue(FileOperationIssue.Configuration(
                     "This File Viewer is still waiting for its saved provider. "
@@ -1725,30 +1708,27 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel, IPanelNot
             throw new InvalidOperationException("Select a file or folder to download.");
         }
 
-        var localProfile = Profiles.SingleOrDefault(profile =>
-            profile.Id == BuiltInFileProviders.HomeId.Value)
+        var localProfile = Profiles.SingleOrDefault(profile => string.Equals(profile.Id, BuiltInFileProviders.HomeId.Value, StringComparison.Ordinal))
             ?? throw new InvalidOperationException(
                 "This session has no local provider to download into.");
         var folder = LocalLocation(localProfile, destinationFolderPath);
-        return entries
+        return [.. entries
             .Select(entry => new FilePanelTransferRequest(
                 entry.Location,
                 FileLocationPresentation.Child(folder, entry.Name),
                 FilePanelTransferOperation.Copy,
                 // A second download of the same file replaces the first rather
                 // than failing: the reader asked for it again on purpose.
-                FilePanelConflictPolicy.Replace))
-            .ToArray();
+                FilePanelConflictPolicy.Replace))];
     }
 
     private IReadOnlyList<FilePanelEntry> DownloadableEntries()
     {
         if (_selectedEntries.Count > 0)
         {
-            return _selectedEntries
+            return [.. _selectedEntries
                 .Where(entry => entry.Kind is
-                    FilePanelEntryKind.File or FilePanelEntryKind.Directory)
-                .ToArray();
+                    FilePanelEntryKind.File or FilePanelEntryKind.Directory)];
         }
 
         return SelectedEntry?.Entry is { Kind: FilePanelEntryKind.File or FilePanelEntryKind.Directory } single
@@ -1789,7 +1769,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel, IPanelNot
                 "This provider cannot receive an uploaded file at the current location.");
         }
 
-        var homeProfile = Profiles.Single(profile => profile.Id == "builtin.files.home");
+        var homeProfile = Profiles.Single(profile => string.Equals(profile.Id, "builtin.files.home", StringComparison.Ordinal));
         var sourcePath = Path.GetFullPath(localPath.Trim());
         var file = new FileInfo(sourcePath);
         if (!file.Exists)
@@ -1805,7 +1785,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel, IPanelNot
             FilePanelEntryKind.File,
             file.Length,
             file.LastWriteTimeUtc,
-            file.Name.StartsWith(".", StringComparison.Ordinal));
+            file.Name.StartsWith('.'));
         var editor = new FileTransferEditorViewModel(source, Profiles, SelectedProfile.Id)
         {
             Destination = ChildLocationDisplay(CurrentLocation, file.Name),
@@ -1942,25 +1922,16 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel, IPanelNot
         {
             _hostedClient.ProfilesChanged -= OnProfilesChanged;
         }
-        else if (_profileRuntime is not null)
+        else
         {
-            _profileRuntime.ProfilesChanged -= OnProfilesChanged;
+            _profileRuntime?.ProfilesChanged -= OnProfilesChanged;
         }
 
-        if (_previewPreferences is not null)
-        {
-            _previewPreferences.Changed -= OnPreviewPreferencesChanged;
-        }
+        _previewPreferences?.Changed -= OnPreviewPreferencesChanged;
 
-        if (_clipboard is not null)
-        {
-            _clipboard.Changed -= OnTransferClipboardChanged;
-        }
+        _clipboard?.Changed -= OnTransferClipboardChanged;
 
-        if (_transferQueue is not null)
-        {
-            _transferQueue.TransfersChanged -= OnTransfersChanged;
-        }
+        _transferQueue?.TransfersChanged -= OnTransfersChanged;
 
         _lifetime.Cancel();
         _navigation?.Cancel();
@@ -1993,8 +1964,8 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel, IPanelNot
         }
 
         var initial = _initialProfileId is null
-            ? Profiles.FirstOrDefault(item => item.Id == "builtin.files.home")
-            : Profiles.FirstOrDefault(item => item.Id == _initialProfileId);
+            ? Profiles.FirstOrDefault(item => string.Equals(item.Id, "builtin.files.home", StringComparison.Ordinal))
+            : Profiles.FirstOrDefault(item => string.Equals(item.Id, _initialProfileId, StringComparison.Ordinal));
         if (_initialSelectionPending && initial is null)
         {
             Status = "Waiting for saved file provider";
@@ -2040,7 +2011,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel, IPanelNot
 
         var selected = selectedId is null
             ? null
-            : Profiles.FirstOrDefault(item => item.Id == selectedId);
+            : Profiles.FirstOrDefault(item => string.Equals(item.Id, selectedId, StringComparison.Ordinal));
         if (selected is not null)
         {
             if (_initialSelectionPending || previousRoot != selected.Root)
@@ -2130,7 +2101,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel, IPanelNot
                 && _initialProfileId is { } initialProfileId)
             {
                 retryProfile = Profiles.FirstOrDefault(
-                    item => item.Id == initialProfileId);
+                    item => string.Equals(item.Id, initialProfileId, StringComparison.Ordinal));
             }
 
             _initialSelectionRetryRequested = false;
@@ -2209,7 +2180,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel, IPanelNot
             return;
         }
 
-        var profile = Profiles.SingleOrDefault(item => item.Id == location.ProviderProfileId);
+        var profile = Profiles.SingleOrDefault(item => string.Equals(item.Id, location.ProviderProfileId, StringComparison.Ordinal));
         if (profile is null)
         {
             SetOperationIssue(FileOperationIssue.Configuration(
@@ -2227,8 +2198,8 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel, IPanelNot
         ScheduleSearch();
         StartObservation();
         if (_initialSelectionPending
-            && location.ProviderProfileId == _initialProfileId
-            && (_hostedClient is null || _hostedClient.IsInitialized))
+            && string.Equals(location.ProviderProfileId, _initialProfileId
+, StringComparison.Ordinal) && (_hostedClient is null || _hostedClient.IsInitialized))
         {
             _initialSelectionPending = false;
             _pendingInitialBindingLocation = null;
@@ -3796,8 +3767,8 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel, IPanelNot
         var displayed = FileLocationPresentation.Display(parent);
         return parent.Address switch
         {
-            FilePanelAddress.Hierarchical => displayed == "/"
-                ? $"/{name}"
+            FilePanelAddress.Hierarchical => string.Equals(displayed, "/"
+, StringComparison.Ordinal) ? $"/{name}"
                 : $"{displayed.TrimEnd('/')}/{name}",
             FilePanelAddress.ObjectKey or FilePanelAddress.ContainerRoot =>
                 displayed.Length == 0 ? name : $"{displayed.TrimEnd('/')}/{name}",
@@ -3826,8 +3797,8 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel, IPanelNot
     {
         var relativePath = Path.GetRelativePath(directory, candidate);
         return !Path.IsPathRooted(relativePath)
-            && relativePath != ".."
-            && !relativePath.StartsWith(
+            && !string.Equals(relativePath, ".."
+, StringComparison.Ordinal) && !relativePath.StartsWith(
                 $"..{Path.DirectorySeparatorChar}",
                 StringComparison.Ordinal)
             && !relativePath.StartsWith(

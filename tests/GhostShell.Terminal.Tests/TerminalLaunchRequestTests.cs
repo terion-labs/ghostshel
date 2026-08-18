@@ -1,6 +1,6 @@
+using System.Text.Json;
 using GhostShell.Application;
 using GhostShell.Core;
-using System.Text.Json;
 
 namespace GhostShell.Terminal.Tests;
 
@@ -43,7 +43,7 @@ public sealed class TerminalLaunchRequestTests
     {
         Assert.Throws<ArgumentException>(() => new TerminalLaunchRequest(
             "/tmp",
-            environment: new Dictionary<string, string> { [name] = "value" }));
+            environment: new Dictionary<string, string>(StringComparer.Ordinal) { [name] = "value" }));
     }
 
     [Fact]
@@ -51,7 +51,7 @@ public sealed class TerminalLaunchRequestTests
     {
         Assert.Throws<ArgumentException>(() => new TerminalLaunchRequest(
             "/tmp",
-            environment: new Dictionary<string, string> { ["NAME"] = null! }));
+            environment: new Dictionary<string, string>(StringComparer.Ordinal) { ["NAME"] = null! }));
     }
 
     [Theory]
@@ -71,10 +71,10 @@ public sealed class TerminalLaunchRequestTests
             "argument" => new TerminalLaunchRequest("/tmp", "/bin/sh", [invalid]),
             "environment-name" => new TerminalLaunchRequest(
                 "/tmp",
-                environment: new Dictionary<string, string> { [invalid] = "value" }),
+                environment: new Dictionary<string, string>(StringComparer.Ordinal) { [invalid] = "value" }),
             "environment-value" => new TerminalLaunchRequest(
                 "/tmp",
-                environment: new Dictionary<string, string> { ["NAME"] = invalid }),
+                environment: new Dictionary<string, string>(StringComparer.Ordinal) { ["NAME"] = invalid }),
             _ => throw new InvalidOperationException(),
         });
     }
@@ -118,7 +118,7 @@ public sealed class TerminalLaunchRequestTests
             "/tmp",
             "/bin/zsh",
             ["-l"],
-            new Dictionary<string, string> { ["LANG"] = "C" },
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["LANG"] = "C" },
             new TerminalRenderProfileSnapshot(
                 13,
                 TerminalCursorStyle.Block,

@@ -32,12 +32,11 @@ public sealed class ProjectDependencyTests
             "ProjectReference");
         Assert.All(references, reference => Assert.Contains(
             Path.GetFileName(reference.Replace('\\', Path.DirectorySeparatorChar)),
-            new[]
-            {
+            [
                 "GhostShell.Application.csproj",
                 "GhostShell.Core.csproj",
                 "GhostShell.Docking.csproj",
-            }));
+            ], StringComparer.Ordinal));
         Assert.DoesNotContain(references, reference =>
             reference.Contains("Terminal", StringComparison.Ordinal)
             || reference.Contains("Browser", StringComparison.Ordinal)
@@ -93,7 +92,10 @@ public sealed class ProjectDependencyTests
             reference => reference.EndsWith(
                 "vendor/exclr8cef/src/Exclr8Cef.WebView/Exclr8Cef.WebView.csproj",
                 StringComparison.Ordinal));
-        Assert.Empty(project.Descendants("PackageReference"));
+        Assert.Equal(
+            ["FluentIcons.Avalonia"],
+            References(project, "PackageReference"),
+            StringComparer.Ordinal);
     }
 
     [Fact]
@@ -107,8 +109,8 @@ public sealed class ProjectDependencyTests
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.Equal(
-            new[] { "GhostShell.Application.csproj", "GhostShell.Core.csproj" },
-            references.Order(StringComparer.Ordinal));
+            ["GhostShell.Application.csproj", "GhostShell.Core.csproj"],
+            references.Order(StringComparer.Ordinal), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -123,7 +125,7 @@ public sealed class ProjectDependencyTests
 
         Assert.All(references, reference => Assert.Contains(
             reference,
-            new[] { "GhostShell.Application.csproj", "GhostShell.Core.csproj" }));
+            ["GhostShell.Application.csproj", "GhostShell.Core.csproj"], StringComparer.Ordinal));
 
         var sourceRoot = Path.Combine(RepositoryRoot, "src/GhostShell.Files");
         var banned = new[]
@@ -282,9 +284,9 @@ public sealed class ProjectDependencyTests
                 && !IndependentlyReleasedAvaloniaPackages.Contains(
                     (string?)element.Attribute("Include"),
                     StringComparer.Ordinal))
-            .Select(element => (string?)element.Attribute("Version"))
-            .Where(version => version is not null)
-            .Cast<string>()
+            .Select(element => CentralPackageVersion(
+                (string?)element.Attribute("Include")
+                ?? throw new InvalidDataException("PackageReference is missing Include.")))
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
@@ -330,7 +332,8 @@ public sealed class ProjectDependencyTests
                 "Tmds.DBus.Protocol",
                 StringComparison.Ordinal));
 
-        Assert.Equal("0.92.0", (string?)reference.Attribute("Version"));
+        Assert.Null(reference.Attribute("Version"));
+        Assert.Equal("0.92.0", CentralPackageVersion("Tmds.DBus.Protocol"));
     }
 
     [Fact]
@@ -349,12 +352,23 @@ public sealed class ProjectDependencyTests
     private static XDocument LoadProject(string relativePath) =>
         XDocument.Load(Path.Combine(RepositoryRoot, relativePath));
 
+    private static string CentralPackageVersion(string packageId)
+    {
+        var package = Assert.Single(
+            LoadProject("Directory.Packages.props").Descendants("PackageVersion"),
+            element => string.Equals(
+                (string?)element.Attribute("Include"),
+                packageId,
+                StringComparison.Ordinal));
+        return (string?)package.Attribute("Version")
+            ?? throw new InvalidDataException($"Central version is missing for {packageId}.");
+    }
+
     private static IReadOnlyList<string> References(XDocument project, string elementName) =>
-        project.Descendants(elementName)
+        [.. project.Descendants(elementName)
             .Select(element => (string?)element.Attribute("Include"))
             .Where(value => value is not null)
-            .Cast<string>()
-            .ToArray();
+            .Cast<string>()];
 
     private static bool HasPathSegment(string path, string segment) =>
         path.Split(Path.DirectorySeparatorChar).Contains(segment, StringComparer.Ordinal);

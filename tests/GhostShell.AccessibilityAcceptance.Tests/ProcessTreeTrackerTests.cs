@@ -337,7 +337,7 @@ public sealed class ProcessTreeTrackerTests
         {
             lock (_sync)
             {
-                _descendants = descendants.ToArray();
+                _descendants = [.. descendants];
             }
         }
     }

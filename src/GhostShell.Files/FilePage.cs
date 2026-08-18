@@ -7,7 +7,7 @@ public sealed record FilePage
     public FilePage(IEnumerable<FileEntry> items, FilePageToken? continuationToken)
     {
         ArgumentNullException.ThrowIfNull(items);
-        Items = items.ToImmutableArray();
+        Items = [.. items];
         ContinuationToken = continuationToken;
     }
 

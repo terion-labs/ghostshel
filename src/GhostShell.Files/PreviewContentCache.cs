@@ -65,15 +65,9 @@ public sealed class PreviewContentCache : IPreviewCacheControl, IDisposable
         Directory.CreateDirectory(_directory);
         SweepLegacyPlaintextCache();
         SweepDeadSessions();
-        if (_preferences is not null)
-        {
-            _preferences.Changed += OnPreferencesChanged;
-        }
+        _preferences?.Changed += OnPreferencesChanged;
 
-        if (_encryption is not null)
-        {
-            _encryption.Changed += OnEncryptionChanged;
-        }
+        _encryption?.Changed += OnEncryptionChanged;
 
         if (Keep is false)
         {
@@ -644,15 +638,9 @@ public sealed class PreviewContentCache : IPreviewCacheControl, IDisposable
             }
 
             _disposed = true;
-            if (_preferences is not null)
-            {
-                _preferences.Changed -= OnPreferencesChanged;
-            }
+            _preferences?.Changed -= OnPreferencesChanged;
 
-            if (_encryption is not null)
-            {
-                _encryption.Changed -= OnEncryptionChanged;
-            }
+            _encryption?.Changed -= OnEncryptionChanged;
 
             _memory.Clear();
             _memoryOrder.Clear();

@@ -14,7 +14,7 @@ public sealed class AgentApprovalCardViewContractTests
         var workspace = LoadView("AgentWorkspaceView");
         var approval = Assert.Single(
             workspace.Descendants(),
-            element => element.Name.LocalName == "AgentApprovalCardView");
+            element => string.Equals(element.Name.LocalName, "AgentApprovalCardView", StringComparison.Ordinal));
 
         Assert.Equal(
             "{Binding AgentChat.HasPendingApproval, FallbackValue=False}",
@@ -28,8 +28,8 @@ public sealed class AgentApprovalCardViewContractTests
 
         Assert.DoesNotContain(
             workspace.Descendants(),
-            element => element.Name.LocalName == "Button"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Content"),
                     "Approve once",
                     StringComparison.Ordinal));
@@ -42,7 +42,7 @@ public sealed class AgentApprovalCardViewContractTests
         var root = Assert.IsType<XElement>(document.Root);
         var card = Assert.Single(
             root.Elements(),
-            element => element.Name.LocalName == "SurfaceCard");
+            element => string.Equals(element.Name.LocalName, "SurfaceCard", StringComparison.Ordinal));
 
         Assert.Null(AttributeValue(root, "DataContext"));
         Assert.Equal("True", AttributeValue(card, "Focusable"));
@@ -87,8 +87,8 @@ public sealed class AgentApprovalCardViewContractTests
     private static XElement FindButton(XDocument document, string content) =>
         Assert.Single(
             document.Descendants(),
-            element => element.Name.LocalName == "Button"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Button"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Content"),
                     content,
                     StringComparison.Ordinal));
@@ -112,6 +112,6 @@ public sealed class AgentApprovalCardViewContractTests
 
     private static string? AttributeValue(XElement element, string name) =>
         element.Attributes()
-            .FirstOrDefault(attribute => attribute.Name.LocalName == name)
+            .FirstOrDefault(attribute => string.Equals(attribute.Name.LocalName, name, StringComparison.Ordinal))
             ?.Value;
 }

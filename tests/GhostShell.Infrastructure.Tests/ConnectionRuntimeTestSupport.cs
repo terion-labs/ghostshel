@@ -175,7 +175,7 @@ internal sealed class RecordingSecretVault : ISecretVault
                 SecretVaultError.Create(SecretVaultErrorCode.AccessDenied)));
         }
 
-        var now = DateTimeOffset.Parse("2026-07-22T12:00:00Z");
+        var now = DateTimeOffset.Parse("2026-07-22T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
         return ValueTask.FromResult(SecretVaultResult<SecretMetadata>.Succeed(
             new SecretMetadata(
                 request.Reference,

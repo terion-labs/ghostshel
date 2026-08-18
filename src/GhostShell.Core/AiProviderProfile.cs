@@ -216,7 +216,7 @@ public sealed record AiProviderProfile : IDurableDefinition
                 nameof(endpoint));
         }
 
-        if (endpoint.Scheme == "http" && !IsLoopback(endpoint))
+        if (string.Equals(endpoint.Scheme, "http", StringComparison.Ordinal) && !IsLoopback(endpoint))
         {
             throw new ArgumentException(
                 "Plain HTTP is allowed only for an exact loopback endpoint.",
@@ -225,7 +225,7 @@ public sealed record AiProviderProfile : IDurableDefinition
 
         var builder = new UriBuilder(endpoint)
         {
-            Path = endpoint.AbsolutePath.EndsWith("/", StringComparison.Ordinal)
+            Path = endpoint.AbsolutePath.EndsWith('/')
                 ? endpoint.AbsolutePath
                 : $"{endpoint.AbsolutePath}/",
         };

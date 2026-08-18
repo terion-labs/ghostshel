@@ -12,8 +12,8 @@ public sealed class TerminalProfileEditorViewModelTests
             DefaultProfile("Unavailable custom family"),
             expectedRevision: 1);
 
-        Assert.Contains("JetBrains Mono", editor.FontFamilies);
-        Assert.Contains("Unavailable custom family", editor.FontFamilies);
+        Assert.Contains("JetBrains Mono", editor.FontFamilies, StringComparer.Ordinal);
+        Assert.Contains("Unavailable custom family", editor.FontFamilies, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -111,7 +111,7 @@ public sealed class TerminalProfileEditorViewModelTests
             expectedRevision: 3,
             [replacement, application, selected]);
 
-        Assert.Equal(["Replacement", "Selected"], editor.TerminalKeymaps.Select(option => option.Name));
+        Assert.Equal(["Replacement", "Selected"], editor.TerminalKeymaps.Select(option => option.Name), StringComparer.Ordinal);
         Assert.Equal(selected.Id, editor.SelectedKeymap.Id);
         Assert.True(editor.MatchesTerminalKeymaps([selected, replacement, application]));
         Assert.False(editor.MatchesTerminalKeymaps([selected]));

@@ -869,6 +869,7 @@ public sealed class SqliteRecentSessionStore :
         }
 
         public RecentSessionStoreErrorCode ErrorCode { get; }
+
     }
 
     private sealed class RecentSessionRetentionDataException : RecentSessionDataException
@@ -882,6 +883,7 @@ public sealed class SqliteRecentSessionStore :
                 innerException)
         {
         }
+
     }
 
     private sealed class RecentSessionRecordDataException : RecentSessionDataException
@@ -895,5 +897,6 @@ public sealed class SqliteRecentSessionStore :
                 innerException)
         {
         }
+
     }
 }

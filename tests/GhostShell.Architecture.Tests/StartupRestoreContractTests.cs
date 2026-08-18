@@ -72,7 +72,9 @@ public sealed class StartupRestoreContractTests
     {
         var match = Regex.Match(
             source,
-            $@"(private|public|internal|protected)[^\n;]*?\b{Regex.Escape(methodName)}\s*\([^)]*\)");
+            $@"(private|public|internal|protected)[^\n;]*?\b{Regex.Escape(methodName)}\s*\([^)]*\)",
+            RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture,
+            TimeSpan.FromSeconds(1));
         if (!match.Success)
         {
             return null;

@@ -30,7 +30,7 @@ public sealed class FilePanelActionsThroughTheShellTests
             deferInitialization: true);
 
         await panel.StartInitialization();
-        panel.SelectedEntry = panel.Entries.Single(entry => entry.Name == "notes.md");
+        panel.SelectedEntry = panel.Entries.Single(entry => string.Equals(entry.Name, "notes.md", StringComparison.Ordinal));
         panel.SetSelectedEntries([panel.SelectedEntry.Entry]);
 
         // Refresh asks nothing of the selection and nothing of the connection.
@@ -71,7 +71,7 @@ public sealed class FilePanelActionsThroughTheShellTests
 
         await panel.StartInitialization();
         await panel.SelectProfileAsync(panel.Profiles[0]);
-        panel.SelectedEntry = panel.Entries.Single(entry => entry.Name == "notes.md");
+        panel.SelectedEntry = panel.Entries.Single(entry => string.Equals(entry.Name, "notes.md", StringComparison.Ordinal));
 
         Assert.True(panel.IsActionEnabled(FilePanelAction.Refresh));
         Assert.True(panel.IsActionEnabled(FilePanelAction.Rename));

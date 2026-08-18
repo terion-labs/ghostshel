@@ -52,7 +52,7 @@ public sealed class LocalConnectionRuntimeAdapterTests
         Assert.Empty(plan.Launch.Arguments);
         Assert.Equal("npm run dev", plan.Launch.InitialCommand);
         Assert.Equal("amber value", Assert.Single(plan.Launch.Environment).Value);
-        Assert.DoesNotContain("SECRET_VALUE", plan.Launch.Environment.Keys);
+        Assert.DoesNotContain("SECRET_VALUE", plan.Launch.Environment.Keys, StringComparer.Ordinal);
         var requirement = Assert.Single(plan.SecretRequirements);
         Assert.Equal(ConnectionSecretRole.EnvironmentVariable, requirement.Role);
         Assert.Equal(secret, requirement.Reference);

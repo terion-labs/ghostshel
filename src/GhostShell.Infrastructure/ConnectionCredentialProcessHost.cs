@@ -343,8 +343,7 @@ public static class ConnectionCredentialProcessHost
             || string.IsNullOrWhiteSpace(token)
             || !Enum.TryParse<ConnectionCredentialAskpassRole>(roleText, out var role)
             || !Enum.IsDefined(role)
-            || !int.TryParse(timeoutText, out var timeoutMilliseconds)
-            || timeoutMilliseconds is <= 0 or > 60_000
+            || !int.TryParse(timeoutText, System.Globalization.CultureInfo.InvariantCulture, out var timeoutMilliseconds) || timeoutMilliseconds is <= 0 or > 60_000
             || !PromptMatches(role, arguments[0]))
         {
             return InvalidInvocationExitCode;
@@ -422,7 +421,7 @@ public static class ConnectionCredentialProcessHost
         startInfo.Environment.TryGetValue("WSLENV", out var existing);
         var segments = string.IsNullOrWhiteSpace(existing)
             ? new List<string>()
-            : existing.Split(':', StringSplitOptions.RemoveEmptyEntries).ToList();
+            : [.. existing.Split(':', StringSplitOptions.RemoveEmptyEntries)];
         var forwarded = segments
             .Select(segment => segment.Split('/', 2)[0])
             .ToHashSet(StringComparer.Ordinal);

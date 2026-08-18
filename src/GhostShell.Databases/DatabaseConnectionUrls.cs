@@ -154,8 +154,7 @@ internal sealed record ConnectionUrl(
         }
 
         var colon = hosts.LastIndexOf(':');
-        return colon >= 0 && int.TryParse(hosts[(colon + 1)..], out var port)
-            ? (Decode(hosts[..colon]), port)
+        return colon >= 0 && int.TryParse(hosts[(colon + 1)..], System.Globalization.CultureInfo.InvariantCulture, out var port) ? (Decode(hosts[..colon]), port)
             : (Decode(hosts), null);
     }
 

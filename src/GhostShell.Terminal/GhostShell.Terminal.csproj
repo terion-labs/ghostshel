@@ -6,7 +6,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Porta.Pty" Version="1.0.7" />
+    <PackageReference Include="Porta.Pty" />
   </ItemGroup>
 
   <PropertyGroup>

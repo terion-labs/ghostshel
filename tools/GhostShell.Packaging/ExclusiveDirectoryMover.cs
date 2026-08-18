@@ -136,23 +136,25 @@ internal static class ExclusiveDirectoryMover
             new Win32Exception(error));
     }
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
     [DllImport(
         "libSystem.B.dylib",
         EntryPoint = "renamex_np",
         SetLastError = true)]
     private static extern int RenameMacOs(
-        string sourcePath,
-        string destinationPath,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string sourcePath,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string destinationPath,
         uint flags);
 
+    [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
     [DllImport(
         "libc",
         EntryPoint = "renameat2",
         SetLastError = true)]
     private static extern int RenameAt2(
         int sourceDirectory,
-        string sourcePath,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string sourcePath,
         int destinationDirectory,
-        string destinationPath,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string destinationPath,
         uint flags);
 }

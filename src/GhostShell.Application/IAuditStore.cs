@@ -37,5 +37,5 @@ public interface IAuditStore
         ListIncompleteAgentActionsAsync(CancellationToken cancellationToken) =>
         ValueTask.FromResult(
             AuditStoreResult<IReadOnlyList<AuditEventRecord>>.Success(
-                Array.Empty<AuditEventRecord>()));
+                []));
 }

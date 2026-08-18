@@ -1,6 +1,6 @@
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
-using System.Runtime.CompilerServices;
 using GhostShell.Agent;
 using GhostShell.Application;
 using GhostShell.Core;
@@ -30,7 +30,7 @@ public sealed class DatabaseAgentToolContractTests
                 BuiltInAgentTools.DatabaseReadTable,
                 BuiltInAgentTools.DatabaseSchemaGraph,
             ],
-            tools.Select(tool => tool.Name));
+            tools.Select(tool => tool.Name), StringComparer.Ordinal);
         Assert.All(tools, tool =>
         {
             Assert.False(tool.InputSchema
@@ -46,8 +46,7 @@ public sealed class DatabaseAgentToolContractTests
                 StringComparison.OrdinalIgnoreCase);
         });
 
-        var table = tools.Single(tool =>
-            tool.Name == BuiltInAgentTools.DatabaseReadTable);
+        var table = tools.Single(tool => string.Equals(tool.Name, BuiltInAgentTools.DatabaseReadTable, StringComparison.Ordinal));
         var properties = table.InputSchema.GetProperty("properties");
         Assert.Equal(
             [
@@ -60,7 +59,7 @@ public sealed class DatabaseAgentToolContractTests
                 "filters",
                 "sorts",
             ],
-            properties.EnumerateObject().Select(property => property.Name));
+            properties.EnumerateObject().Select(property => property.Name), StringComparer.Ordinal);
         Assert.False(properties.GetProperty("filters")
             .GetProperty("items")
             .GetProperty("additionalProperties")
@@ -89,13 +88,13 @@ public sealed class DatabaseAgentToolContractTests
                 BuiltInAgentTools.RedisScan,
                 BuiltInAgentTools.RedisRead,
             ],
-            DatabaseAgentToolSet.For(withoutSearch).Select(tool => tool.Name));
+            DatabaseAgentToolSet.For(withoutSearch).Select(tool => tool.Name), StringComparer.Ordinal);
         Assert.Contains(
             DatabaseAgentToolSet.For(withSearch),
-            tool => tool.Name == BuiltInAgentTools.RedisSearch);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.RedisSearch, StringComparison.Ordinal));
         var listIndexes = Assert.Single(
             DatabaseAgentToolSet.For(withSearch),
-            tool => tool.Name == BuiltInAgentTools.RedisListIndexes);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.RedisListIndexes, StringComparison.Ordinal));
         Assert.True(listIndexes.InputSchema
             .GetProperty("properties")
             .TryGetProperty("maximum_indexes", out _));
@@ -103,22 +102,22 @@ public sealed class DatabaseAgentToolContractTests
         var broad = DatabaseAgentToolSet.For([withoutSearch, withSearch]);
         Assert.Equal(
             [withSearch.PanelId.Value],
-            broad.Single(tool => tool.Name == BuiltInAgentTools.RedisSearch)
+            broad.Single(tool => string.Equals(tool.Name, BuiltInAgentTools.RedisSearch, StringComparison.Ordinal))
                 .InputSchema
                 .GetProperty("properties")
                 .GetProperty("panel_id")
                 .GetProperty("enum")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
         Assert.Equal(
             [withSearch.PanelId.Value],
-            broad.Single(tool => tool.Name == BuiltInAgentTools.RedisListIndexes)
+            broad.Single(tool => string.Equals(tool.Name, BuiltInAgentTools.RedisListIndexes, StringComparison.Ordinal))
                 .InputSchema
                 .GetProperty("properties")
                 .GetProperty("panel_id")
                 .GetProperty("enum")
                 .EnumerateArray()
-                .Select(value => value.GetString()));
+                .Select(value => value.GetString()), StringComparer.Ordinal);
     }
 
     [Fact]

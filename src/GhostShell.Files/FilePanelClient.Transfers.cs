@@ -186,7 +186,7 @@ public sealed partial class FilePanelClient
         TransferRecord[] records;
         lock (_transferGate)
         {
-            records = _transfers.Values.ToArray();
+            records = [.. _transfers.Values];
         }
 
         foreach (var record in records)

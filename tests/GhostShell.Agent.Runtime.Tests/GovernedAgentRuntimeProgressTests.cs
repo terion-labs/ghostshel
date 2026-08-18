@@ -21,8 +21,8 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.True(result.IsSuccess);
         var tool = Assert.Single(
             Assert.Single(provider.Requests).Tools,
-            candidate => candidate.Name
-                == IntrinsicAgentTools.ReportProgress);
+            candidate => string.Equals(candidate.Name
+, IntrinsicAgentTools.ReportProgress, StringComparison.Ordinal));
         Assert.Contains(
             "Never include credentials",
             tool.Description,
@@ -34,12 +34,12 @@ public sealed partial class GovernedAgentRuntimeTests
             ["message"],
             schema.GetProperty("required")
                 .EnumerateArray()
-                .Select(item => item.GetString()));
+                .Select(item => item.GetString()), StringComparer.Ordinal);
 
         var properties = schema.GetProperty("properties");
         Assert.Equal(
             ["message", "percent"],
-            properties.EnumerateObject().Select(property => property.Name));
+            properties.EnumerateObject().Select(property => property.Name), StringComparer.Ordinal);
         var message = properties.GetProperty("message");
         Assert.Equal("string", message.GetProperty("type").GetString());
         Assert.Equal(1, message.GetProperty("minLength").GetInt32());
@@ -178,7 +178,7 @@ public sealed partial class GovernedAgentRuntimeTests
                 message.ToolResult?.Value.Content));
         Assert.Equal(
             ["Check the deployment.", "The deployment is healthy."],
-            fixture.Runtime.Snapshot.Messages.Select(message => message.Content));
+            fixture.Runtime.Snapshot.Messages.Select(message => message.Content), StringComparer.Ordinal);
         Assert.DoesNotContain(
             fixture.Runtime.Snapshot.Messages,
             message => message.Content.Contains(
@@ -220,8 +220,8 @@ public sealed partial class GovernedAgentRuntimeTests
             fixture.Runtime.Snapshot.CurrentProgress);
         var invalidResult = Assert.Single(
             provider.Requests.ToArray()[2].Messages,
-            message => message.ToolResult?.ProviderCallId
-                == "progress-invalid").ToolResult;
+            message => string.Equals(message.ToolResult?.ProviderCallId
+, "progress-invalid", StringComparison.Ordinal)).ToolResult;
         Assert.NotNull(invalidResult);
         Assert.Equal(
             AgentToolResultStatus.Failed,

@@ -115,13 +115,11 @@ public sealed record DatabaseQueryPage(
     /// text projection for lightweight clients and older saved test fixtures.
     /// </summary>
     public IReadOnlyList<IReadOnlyList<DatabaseValue>> ValueRows => TypedRows
-        ?? Rows
-            .Select(row => (IReadOnlyList<DatabaseValue>)row
+        ?? [.. Rows
+            .Select(row => (IReadOnlyList<DatabaseValue>)[.. row
                 .Select((value, index) => DatabaseValue.FromDisplay(
                     value,
-                    index < Columns.Count ? Columns[index].ValueKind : DatabaseValueKind.Text))
-                .ToArray())
-            .ToArray();
+                    index < Columns.Count ? Columns[index].ValueKind : DatabaseValueKind.Text))])];
 }
 
 /// <summary>
@@ -263,19 +261,17 @@ public interface IDatabasePanelClient : IDatabaseConnectionCatalog
             driverId,
             DefaultCatalog: null,
             DefaultSchema: null,
-            graph.Tables
+            [.. graph.Tables
                 .Select(table => new SqlCatalogObject(
                     table.Object.Id,
                     table.Object.Kind,
-                    table.Columns
+                    [.. table.Columns
                         .OrderBy(column => column.Ordinal)
                         .Select(column => new SqlCatalogColumn(
                             column.Name,
                             column.DataTypeName,
                             column.ValueKind,
-                            column.IsNullable))
-                        .ToArray()))
-                .ToArray());
+                            column.IsNullable))]))]);
     }
 
     Task<DatabaseTablePage> ReadTableAsync(
@@ -314,7 +310,10 @@ public interface IDatabasePanelClient : IDatabaseConnectionCatalog
     string BuildTablePreviewQuery(string driverId, string tableName, int limit);
 
     /// <summary>A driver-quoted preview statement preserving qualification.</summary>
-    string BuildTablePreviewQuery(string driverId, DatabaseObjectId table, int limit) =>
-        BuildTablePreviewQuery(driverId, table.Name, limit);
+    string BuildTablePreviewQuery(string driverId, DatabaseObjectId table, int limit)
+    {
+        ArgumentNullException.ThrowIfNull(table);
+        return BuildTablePreviewQuery(driverId, table.Name, limit);
+    }
 
 }

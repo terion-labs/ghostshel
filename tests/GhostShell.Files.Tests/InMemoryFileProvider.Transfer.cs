@@ -84,13 +84,12 @@ internal sealed partial class InMemoryFileProvider
                     return FileProviderResult<FileTransferReceipt>.Failure(preconditionError);
                 }
 
-                snapshot = _nodes
+                snapshot = [.. _nodes
                     .Where(pair => pair.Key.Equals(request.Source.Path)
                         || pair.Key.IsDescendantOf(request.Source.Path))
                     .Select(pair => new KeyValuePair<FilePath, MemoryNode>(
                         pair.Key,
-                        new MemoryNode(pair.Value.Kind, [.. pair.Value.Content], pair.Value.Revision)))
-                    .ToArray();
+                        new MemoryNode(pair.Value.Kind, [.. pair.Value.Content], pair.Value.Revision)))];
                 sourceEntry = ToEntry(request.Source.Path, source);
             }
 

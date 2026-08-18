@@ -80,18 +80,20 @@ internal sealed class SftpMetadataCache(
 
     private void RemoveDirectChildren(string directory)
     {
-        foreach (var path in _entries.Keys.Where(path => Parent(path) == directory).ToArray())
+        foreach (var path in _entries.Keys.Where(path => string.Equals(Parent(path), directory, StringComparison.Ordinal)).ToArray())
         {
             _entries.Remove(path);
         }
     }
 
     private static string Child(string parent, string name) =>
-        parent == "/" ? $"/{name}" : $"{parent}/{name}";
+        string.Equals(parent, "/", StringComparison.Ordinal)
+            ? $"/{name}"
+            : $"{parent}/{name}";
 
     private static string Parent(string path)
     {
-        if (path == "/")
+        if (string.Equals(path, "/", StringComparison.Ordinal))
         {
             return "/";
         }

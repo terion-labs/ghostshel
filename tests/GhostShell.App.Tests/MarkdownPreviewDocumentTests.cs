@@ -47,12 +47,12 @@ public sealed class MarkdownPreviewDocumentTests
             "Plain **bold** *italic* `code` [link](https://example.com).");
 
         var runs = Assert.Single(blocks).Runs;
-        Assert.Contains(runs, run => run.Text == "bold" && run.Style == MarkdownRunStyle.Bold);
-        Assert.Contains(runs, run => run.Text == "italic" && run.Style == MarkdownRunStyle.Italic);
-        Assert.Contains(runs, run => run.Text == "code" && run.Style == MarkdownRunStyle.Code);
+        Assert.Contains(runs, run => string.Equals(run.Text, "bold", StringComparison.Ordinal) && run.Style == MarkdownRunStyle.Bold);
+        Assert.Contains(runs, run => string.Equals(run.Text, "italic", StringComparison.Ordinal) && run.Style == MarkdownRunStyle.Italic);
+        Assert.Contains(runs, run => string.Equals(run.Text, "code", StringComparison.Ordinal) && run.Style == MarkdownRunStyle.Code);
         Assert.Contains(
             runs,
-            run => run.Text == "link" && run.LinkTarget == "https://example.com");
+            run => string.Equals(run.Text, "link", StringComparison.Ordinal) && string.Equals(run.LinkTarget, "https://example.com", StringComparison.Ordinal));
         // Adjacent plain text is one run, not one per parsed literal.
         Assert.Equal("Plain ", runs[0].Text);
     }
@@ -101,7 +101,7 @@ public sealed class MarkdownPreviewDocumentTests
 
         var table = Assert.Single(blocks);
         Assert.Equal(MarkdownBlockKind.Table, table.Kind);
-        Assert.Equal(["Name", "Size"], table.HeaderCells.Select(cell => cell[0].Text));
+        Assert.Equal(["Name", "Size"], table.HeaderCells.Select(cell => cell[0].Text), StringComparer.Ordinal);
         Assert.Equal(2, table.Rows.Length);
         Assert.Equal("b.txt", table.Rows[1][0][0].Text);
     }
@@ -143,8 +143,8 @@ public sealed class MarkdownPreviewDocumentTests
                 Assert.Equal(MarkdownBlockKind.Paragraph, paragraph.Kind);
                 Assert.Contains(
                     paragraph.Runs,
-                    run => run.Text == "B"
-                        && run.Style.HasFlag(MarkdownRunStyle.Math));
+                    run => string.Equals(run.Text, "B"
+, StringComparison.Ordinal) && run.Style.HasFlag(MarkdownRunStyle.Math));
             },
             display =>
             {

@@ -181,14 +181,14 @@ internal static class AuditDetailsJson
             return false;
         }
 
-        if (kind == EmptyKind && root.GetPropertyCount() == 2)
+        if (string.Equals(kind, EmptyKind, StringComparison.Ordinal) && root.GetPropertyCount() == 2)
         {
             details = AuditDetails.None;
             return true;
         }
 
-        if (kind == SecretAccessKind
-            && root.GetPropertyCount() == 4
+        if (string.Equals(kind, SecretAccessKind
+, StringComparison.Ordinal) && root.GetPropertyCount() == 4
             && TryReadEnum(root, "purposeKind", out SecretUseKind purposeKind)
             && TryReadNullableEnum(root, "errorCode", out SecretVaultErrorCode? errorCode))
         {
@@ -196,18 +196,18 @@ internal static class AuditDetailsJson
             return true;
         }
 
-        if (kind == AgentActionKind)
+        if (string.Equals(kind, AgentActionKind, StringComparison.Ordinal))
         {
             return TryReadAgentAction(root, schemaVersion, out details);
         }
 
-        if (kind == AgentRunPolicyTransitionKind)
+        if (string.Equals(kind, AgentRunPolicyTransitionKind, StringComparison.Ordinal))
         {
             return TryReadAgentRunPolicyTransition(root, schemaVersion, out details);
         }
 
-        if (kind != TerminalStartupCommandsKind
-            || root.GetPropertyCount() != 4
+        if (!string.Equals(kind, TerminalStartupCommandsKind
+, StringComparison.Ordinal) || root.GetPropertyCount() != 4
             || !TryReadPositiveInt(root, "commandCount", out var commandCount)
             || !TryReadNullableEnum(
                 root,

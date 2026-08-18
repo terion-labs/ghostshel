@@ -165,7 +165,7 @@ internal sealed partial class RelationalDatabasePanelSession
             if (remainingBytes < 0)
             {
                 truncated = true;
-                rows = rows.Take(rowIndex).ToArray();
+                rows = [.. rows.Take(rowIndex)];
                 break;
             }
 

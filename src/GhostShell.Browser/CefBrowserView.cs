@@ -299,6 +299,7 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         _semanticAdapter?.InvalidateDocument();
         _semanticAdapter = null;
         _automationAdapter = null;
+        _humanizedInput?.Dispose();
         _humanizedInput = null;
         _agentCursorOverlay.SetAgentActivity(isActive: false);
         _networkActivity?.Dispose();
@@ -325,6 +326,7 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
             _browser = browser;
             _semanticAdapter?.InvalidateDocument();
             _networkActivity?.Dispose();
+            _humanizedInput?.Dispose();
             var transport = new CefDevToolsTransport(browser);
             var humanizedInput = new CefHumanizedInput(
                 transport,

@@ -126,7 +126,7 @@ public sealed partial class RedisRuntimePanelView : UserControl
     private void OnRemoveNewKeyEntryClick(object? sender, RoutedEventArgs e)
     {
         _ = e;
-        if (Panel is { } panel && (sender as Control)?.DataContext is RedisEntryDraft entry)
+        if (Panel is { } panel && sender is Control { DataContext: RedisEntryDraft entry })
         {
             panel.RemoveNewKeyEntry(entry);
         }
@@ -142,7 +142,7 @@ public sealed partial class RedisRuntimePanelView : UserControl
     private void OnRemoveMutationEntryClick(object? sender, RoutedEventArgs e)
     {
         _ = e;
-        if (Panel is { } panel && (sender as Control)?.DataContext is RedisEntryDraft entry)
+        if (Panel is { } panel && sender is Control { DataContext: RedisEntryDraft entry })
         {
             panel.RemoveMutationEntry(entry);
         }

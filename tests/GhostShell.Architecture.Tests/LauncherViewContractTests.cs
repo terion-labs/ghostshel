@@ -8,40 +8,6 @@ public sealed class LauncherViewContractTests
     private static readonly ApplicationViewCatalog ApplicationViews =
         ApplicationViewCatalog.Load();
 
-    private static readonly IReadOnlyDictionary<string, string> ShellInteractions =
-        new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            ["AddConnectionRequested"] = "OnAddConnectionClick",
-            ["ActivateTabRequested"] = "OnActivateTabClick",
-            ["CancelHistoryExportRequested"] = "OnCancelHistoryExportClick",
-            ["ClearRecentSessionsRequested"] = "OnClearRecentSessionsClick",
-            ["CloseRuntimeTabRequested"] = "OnCloseRuntimeTabClick",
-            ["DeleteConnectionRequested"] = "OnDeleteConnectionClick",
-            ["EditConnectionRequested"] = "OnEditConnectionClick",
-            ["EditScreenRequested"] = "OnEditScreenClick",
-            ["ExportAllHistoryRequested"] = "OnExportAllHistoryClick",
-            ["ExportFilteredHistoryRequested"] = "OnExportFilteredHistoryClick",
-            ["FinishOnboardingRequested"] = "OnFinishOnboardingClick",
-            ["HistorySearchKeyDownRequested"] = "OnHistorySearchKeyDown",
-            ["ImportDefinitionsRequested"] = "OnImportDefinitionsClick",
-            ["LauncherConnectionsRequested"] = "OnLauncherConnectionsClick",
-            ["LauncherHistoryRequested"] = "OnLauncherHistoryClick",
-            ["LauncherHomeRequested"] = "OnLauncherHomeClick",
-            ["LauncherScreensRequested"] = "OnLauncherScreensClick",
-            ["OpenConnectionRequested"] = "OnOpenConnectionClick",
-            ["OpenRecentSessionRequested"] = "OnOpenRecentSessionClick",
-            ["OpenScreenRequested"] = "OnOpenScreenClick",
-            ["OpenSelectedHistorySessionRequested"] = "OnOpenSelectedHistorySessionClick",
-            ["ResetRecentSessionHistoryRequested"] = "OnResetRecentSessionHistoryClick",
-            ["RetryOnboardingRequested"] = "OnRetryOnboardingClick",
-            ["RetryRecentSessionHistoryRequested"] = "OnRetryRecentSessionHistoryClick",
-            ["ReviewHistoryPrivacyRequested"] = "OnReviewHistoryPrivacyClick",
-            ["SaveHistoryRetentionRequested"] = "OnSaveHistoryRetentionClick",
-            ["ShowCommandPaletteRequested"] = "OnShowCommandPaletteClick",
-            ["ShowNewItemRequested"] = "OnShowNewItemClick",
-            ["ShowSettingsRequested"] = "OnShowSettingsClick",
-        };
-
     /// <summary>
     /// A saved target is one row, whichever way it can be opened. Listing it
     /// once per supported adapter said the same host four times and buried the
@@ -55,32 +21,32 @@ public sealed class LauncherViewContractTests
         var root = Assert.IsType<XElement>(shortcut.Root);
         Assert.DoesNotContain(
             root.Descendants(),
-            element => element.Name.LocalName == "SplitButton");
+            element => string.Equals(element.Name.LocalName, "SplitButton", StringComparison.Ordinal));
 
         var buttons = root.Descendants()
-            .Where(element => element.Name.LocalName == "Button")
+            .Where(element => string.Equals(element.Name.LocalName, "Button", StringComparison.Ordinal))
             .ToArray();
         var row = Assert.Single(
             buttons,
-            element => AttributeValue(element, "Classes") == "ListRow LauncherListRow");
+            element => string.Equals(AttributeValue(element, "Classes"), "ListRow LauncherListRow", StringComparison.Ordinal));
         Assert.Equal("OnPrimaryClick", AttributeValue(row, "Click"));
 
         var chevron = Assert.Single(
             buttons,
-            element => AttributeValue(element, "Name") == "ShortcutMenuButton");
+            element => string.Equals(AttributeValue(element, "Name"), "ShortcutMenuButton", StringComparison.Ordinal));
         Assert.Equal("{Binding HasAlternatives}", AttributeValue(chevron, "IsVisible"));
 
         var flyout = Assert.Single(
             root.Descendants(),
-            element => element.Name.LocalName == "Flyout");
+            element => string.Equals(element.Name.LocalName, "Flyout", StringComparison.Ordinal));
         Assert.Equal(
             "SavedConnectionMenu",
             AttributeValue(flyout, "FlyoutPresenterClasses"));
         Assert.DoesNotContain(
             flyout.Elements(),
-            element => element.Name.LocalName == "Border");
+            element => string.Equals(element.Name.LocalName, "Border", StringComparison.Ordinal));
         Assert.All(
-            flyout.Descendants().Where(element => element.Name.LocalName == "Button"),
+            flyout.Descendants().Where(element => string.Equals(element.Name.LocalName, "Button", StringComparison.Ordinal)),
             element => Assert.Equal(
                 "FlyoutMenuItem",
                 AttributeValue(element, "Classes")));
@@ -97,11 +63,11 @@ public sealed class LauncherViewContractTests
         var launcher = LoadComponent("LauncherView");
         Assert.Single(
             Assert.IsType<XElement>(launcher.Root).Descendants(),
-            element => element.Name.LocalName == "SavedConnectionShortcutView");
+            element => string.Equals(element.Name.LocalName, "SavedConnectionShortcutView", StringComparison.Ordinal));
 
         Assert.DoesNotContain(
             Assert.IsType<XElement>(LoadView("WorkspaceView").Root).Descendants(),
-            element => element.Name.LocalName == "SavedConnectionShortcutView");
+            element => string.Equals(element.Name.LocalName, "SavedConnectionShortcutView", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -125,8 +91,8 @@ public sealed class LauncherViewContractTests
         {
             Assert.Single(
                 theme.Descendants(),
-                element => element.Name.LocalName == "Style"
-                    && string.Equals(
+                element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && string.Equals(
                         AttributeValue(element, "Selector"),
                         selector,
                         StringComparison.Ordinal));
@@ -144,8 +110,8 @@ public sealed class LauncherViewContractTests
             "GhostShellTheme.axaml"));
         var sidebarStyle = Assert.Single(
             theme.Descendants(),
-            element => element.Name.LocalName == "Style"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Selector"),
                     "Border.FloatingSidebar",
                     StringComparison.Ordinal));
@@ -285,7 +251,7 @@ public sealed class LauncherViewContractTests
         var launcher = LoadComponent("LauncherView");
         var root = Assert.IsType<XElement>(launcher.Root);
         var countPills = root.Descendants()
-            .Where(element => element.Name.LocalName == "CountPill")
+            .Where(element => string.Equals(element.Name.LocalName, "CountPill", StringComparison.Ordinal))
             .ToArray();
 
         // The assertion is on which counts exist rather than how many pills
@@ -328,8 +294,8 @@ public sealed class LauncherViewContractTests
             "DesignSystem.axaml"));
         var statusChipTheme = Assert.Single(
             designSystem.Descendants(),
-            element => element.Name.LocalName == "ControlTheme"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "ControlTheme"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "TargetType"),
                     "controls:StatusChip",
                     StringComparison.Ordinal));
@@ -346,8 +312,8 @@ public sealed class LauncherViewContractTests
             "GhostShellTheme.axaml"));
         var interactiveChipStyle = Assert.Single(
             shellTheme.Descendants(),
-            element => element.Name.LocalName == "Style"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Selector"),
                     "Button.Chip, ComboBox.Chip",
                     StringComparison.Ordinal));
@@ -380,8 +346,8 @@ public sealed class LauncherViewContractTests
             "GhostShellTheme.axaml"));
         var navigationStyle = Assert.Single(
             theme.Descendants(),
-            element => element.Name.LocalName == "Style"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Selector"),
                     "Button.NavButton",
                     StringComparison.Ordinal));
@@ -402,8 +368,8 @@ public sealed class LauncherViewContractTests
 
         var activeNavigationStyle = Assert.Single(
             theme.Descendants(),
-            element => element.Name.LocalName == "Style"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Selector"),
                     "Button.NavButton.active",
                     StringComparison.Ordinal));
@@ -423,8 +389,8 @@ public sealed class LauncherViewContractTests
 
         var activeLabelStyle = Assert.Single(
             theme.Descendants(),
-            element => element.Name.LocalName == "Style"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Style"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Selector"),
                     "Button.NavButton.active TextBlock",
                     StringComparison.Ordinal));
@@ -433,21 +399,6 @@ public sealed class LauncherViewContractTests
             "Foreground",
             "{DynamicResource ShellAccentBrush}");
     }
-
-    private static readonly string[] ExtractedControlNames =
-    [
-        "LauncherHomeButton",
-        "LauncherHistoryButton",
-        "LauncherScrollViewer",
-        "LauncherHomeSection",
-        "LauncherOnboardingCard",
-        "OnboardingFinishButton",
-        "LauncherConnectionsSection",
-        "LauncherScreensSection",
-        "LauncherHistorySection",
-        "HistorySearchBox",
-        "HistorySessionList",
-    ];
 
     private static XElement FindNamedElement(XElement root, string name) =>
         Assert.Single(
@@ -473,8 +424,8 @@ public sealed class LauncherViewContractTests
         string value) =>
         Assert.Contains(
             style.Elements(),
-            element => element.Name.LocalName == "Setter"
-                && string.Equals(
+            element => string.Equals(element.Name.LocalName, "Setter"
+, StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Property"),
                     property,
                     StringComparison.Ordinal)
@@ -502,6 +453,6 @@ public sealed class LauncherViewContractTests
 
     private static string? AttributeValue(XElement element, string name) =>
         element.Attributes()
-            .FirstOrDefault(attribute => attribute.Name.LocalName == name)
+            .FirstOrDefault(attribute => string.Equals(attribute.Name.LocalName, name, StringComparison.Ordinal))
             ?.Value;
 }

@@ -17,8 +17,8 @@ internal static class Program
 
     private static async Task RunServerAsync(string mode, string[] hostArguments)
     {
-        if (mode == "lifecycle-marker"
-            && hostArguments is [var startedPath, _, _])
+        if (string.Equals(mode, "lifecycle-marker"
+, StringComparison.Ordinal) && hostArguments is [var startedPath, _, _])
         {
             await File.WriteAllTextAsync(
                     startedPath,
@@ -28,7 +28,7 @@ internal static class Program
         }
 
         string? delayedListId = null;
-        var unsupportedRequestAnswered = mode != "server-request";
+        var unsupportedRequestAnswered = !string.Equals(mode, "server-request", StringComparison.Ordinal);
         while (await Console.In.ReadLineAsync().ConfigureAwait(false) is { } line)
         {
             using var request = JsonDocument.Parse(line);
@@ -36,7 +36,7 @@ internal static class Program
             if (root.TryGetProperty("method", out var methodProperty))
             {
                 var method = methodProperty.GetString();
-                if (method == "initialize")
+                if (string.Equals(method, "initialize", StringComparison.Ordinal))
                 {
                     await WriteAsync(new
                     {
@@ -50,15 +50,15 @@ internal static class Program
                                 tools = new { listChanged = true },
                             },
                             serverInfo = new { name = "ghostshell-test", version = "1.0.0" },
-                            instructions = mode == "oversized-instructions"
-                                ? new string('i', 5 * 1024)
+                            instructions = string.Equals(mode, "oversized-instructions"
+, StringComparison.Ordinal) ? new string('i', 5 * 1024)
                                 : null,
                         },
                     }).ConfigureAwait(false);
                 }
-                else if (method == "notifications/initialized")
+                else if (string.Equals(method, "notifications/initialized", StringComparison.Ordinal))
                 {
-                    if (mode == "server-request")
+                    if (string.Equals(mode, "server-request", StringComparison.Ordinal))
                     {
                         await WriteAsync(new
                         {
@@ -69,7 +69,7 @@ internal static class Program
                         }).ConfigureAwait(false);
                     }
 
-                    if (mode == "stderr")
+                    if (string.Equals(mode, "stderr", StringComparison.Ordinal))
                     {
                         await Console.Error.WriteAsync(
                                 "LEAK-ME-NOT:" + new string('s', 2048) + "\n")
@@ -77,10 +77,10 @@ internal static class Program
                         await Console.Error.FlushAsync().ConfigureAwait(false);
                     }
                 }
-                else if (method == "tools/list")
+                else if (string.Equals(method, "tools/list", StringComparison.Ordinal))
                 {
                     var id = root.GetProperty("id").GetRawText();
-                    if (mode == "control-message-flood")
+                    if (string.Equals(mode, "control-message-flood", StringComparison.Ordinal))
                     {
                         for (var index = 0; index < 64; index++)
                         {
@@ -91,7 +91,7 @@ internal static class Program
                             }).ConfigureAwait(false);
                         }
                     }
-                    else if (mode == "hang-list")
+                    else if (string.Equals(mode, "hang-list", StringComparison.Ordinal))
                     {
                         continue;
                     }
@@ -104,7 +104,7 @@ internal static class Program
                         await WriteToolListAsync(mode, id).ConfigureAwait(false);
                     }
                 }
-                else if (method == "tools/call")
+                else if (string.Equals(method, "tools/call", StringComparison.Ordinal))
                 {
                     await WriteToolCallAsync(
                             mode,
@@ -114,10 +114,10 @@ internal static class Program
                         .ConfigureAwait(false);
                 }
             }
-            else if (mode == "server-request"
-                && root.TryGetProperty("id", out var responseId)
-                && responseId.GetString() == "unsupported-server-request"
-                && root.TryGetProperty("error", out var error)
+            else if (string.Equals(mode, "server-request"
+, StringComparison.Ordinal) && root.TryGetProperty("id", out var responseId)
+                && string.Equals(responseId.GetString(), "unsupported-server-request"
+, StringComparison.Ordinal) && root.TryGetProperty("error", out var error)
                 && error.GetProperty("code").GetInt32() == -32601)
             {
                 unsupportedRequestAnswered = true;
@@ -129,8 +129,8 @@ internal static class Program
             }
         }
 
-        if (mode == "lifecycle-marker"
-            && hostArguments is [_, var closedPath, _])
+        if (string.Equals(mode, "lifecycle-marker"
+, StringComparison.Ordinal) && hostArguments is [_, var closedPath, _])
         {
             await File.WriteAllTextAsync(
                     closedPath,
@@ -143,7 +143,7 @@ internal static class Program
     {
         using var idDocument = JsonDocument.Parse(rawId);
         var id = idDocument.RootElement.Clone();
-        if (mode == "oversized-message")
+        if (string.Equals(mode, "oversized-message", StringComparison.Ordinal))
         {
             await WriteAsync(new
             {
@@ -165,7 +165,7 @@ internal static class Program
             return;
         }
 
-        if (mode == "duplicate-property")
+        if (string.Equals(mode, "duplicate-property", StringComparison.Ordinal))
         {
             await WriteRawAsync(
                     "{\"jsonrpc\":\"2.0\",\"id\":" + rawId
@@ -174,15 +174,15 @@ internal static class Program
             return;
         }
 
-        var schema = new Dictionary<string, object?>
+        var schema = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["type"] = "object",
         };
-        if (mode == "oversized-schema")
+        if (string.Equals(mode, "oversized-schema", StringComparison.Ordinal))
         {
             schema.Add("description", new string('x', 512));
         }
-        else if (mode == "aggregate-schema-limit")
+        else if (string.Equals(mode, "aggregate-schema-limit", StringComparison.Ordinal))
         {
             schema.Add(
                 "properties",
@@ -204,16 +204,16 @@ internal static class Program
             new
             {
                 name = "control",
-                title = mode == "oversized-title"
-                    ? new string('t', 2 * 1024)
+                title = string.Equals(mode, "oversized-title"
+, StringComparison.Ordinal) ? new string('t', 2 * 1024)
                     : "Control",
-                description = mode == "oversized-description"
-                    ? new string('d', 5 * 1024)
+                description = string.Equals(mode, "oversized-description"
+, StringComparison.Ordinal) ? new string('d', 5 * 1024)
                     : "Test tool",
                 inputSchema = schema,
             },
         };
-        if (mode == "many-tools")
+        if (string.Equals(mode, "many-tools", StringComparison.Ordinal))
         {
             tools.Add(new
             {
@@ -223,7 +223,7 @@ internal static class Program
                 inputSchema = schema,
             });
         }
-        else if (mode == "many-unselected-tools")
+        else if (string.Equals(mode, "many-unselected-tools", StringComparison.Ordinal))
         {
             for (var index = 1; index < 65; index++)
             {
@@ -236,7 +236,7 @@ internal static class Program
                 });
             }
         }
-        else if (mode == "aggregate-schema-limit")
+        else if (string.Equals(mode, "aggregate-schema-limit", StringComparison.Ordinal))
         {
             for (var index = 1; index < 10; index++)
             {
@@ -249,7 +249,7 @@ internal static class Program
                 });
             }
         }
-        else if (mode == "secret-tool-name")
+        else if (string.Equals(mode, "secret-tool-name", StringComparison.Ordinal))
         {
             tools.Add(new
             {
@@ -275,15 +275,15 @@ internal static class Program
         string rawId,
         JsonElement requestParams)
     {
-        if (mode == "call-marker" && hostArguments is [var markerPath])
+        if (string.Equals(mode, "call-marker", StringComparison.Ordinal) && hostArguments is [var markerPath])
         {
             await File.WriteAllTextAsync(
                     markerPath,
                     "tool-called")
                 .ConfigureAwait(false);
         }
-        else if (mode == "lifecycle-marker"
-            && hostArguments is [_, _, var calledPath])
+        else if (string.Equals(mode, "lifecycle-marker"
+, StringComparison.Ordinal) && hostArguments is [_, _, var calledPath])
         {
             await File.WriteAllTextAsync(
                     calledPath,
@@ -322,8 +322,8 @@ internal static class Program
                     new
                     {
                         type = "text",
-                        text = mode == "oversized-result"
-                            ? new string('r', 2048)
+                        text = string.Equals(mode, "oversized-result"
+, StringComparison.Ordinal) ? new string('r', 2048)
                             : "ok",
                     },
                 },

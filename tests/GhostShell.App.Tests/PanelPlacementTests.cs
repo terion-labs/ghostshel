@@ -88,7 +88,7 @@ public sealed class PanelPlacementTests
             "unavailable"));
 
         Assert.DoesNotContain(tab.Panels, panel => panel is PanelPlaceholderViewModel);
-        var chosen = Assert.Single(tab.Panels, panel => panel.Id.Value == "chosen");
+        var chosen = Assert.Single(tab.Panels, panel => string.Equals(panel.Id.Value, "chosen", StringComparison.Ordinal));
         Assert.Equal(column, chosen.LayoutColumn);
         Assert.Equal(row, chosen.LayoutRow);
         Assert.Null(tab.ReplaceTarget);

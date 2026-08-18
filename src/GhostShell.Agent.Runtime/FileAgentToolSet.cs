@@ -202,7 +202,7 @@ internal static class FileAgentToolSet
                 Has(panel, SessionCapabilities.FilesReadAccessControl)
                 && (metadata.Capabilities & (
                     FilePanelCapability.Permissions
-                    | FilePanelCapability.AccessControlLists)) != 0,
+                    | FilePanelCapability.AccessControlLists)) != FilePanelCapability.None,
             BuiltInAgentTools.FilesTransfers =>
                 Has(panel, SessionCapabilities.FilesTransfersRead),
             BuiltInAgentTools.FilesCreateDirectory =>

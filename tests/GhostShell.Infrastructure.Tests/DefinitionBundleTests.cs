@@ -111,7 +111,7 @@ public sealed class DefinitionBundleTests
         Assert.Equal(1, committed.Value!.Inserted);
         Assert.True(exported.IsSuccess, exported.Error?.Message);
         var exportedProfile = Assert.Single(exported.Value!.Definitions);
-        Assert.NotEqual(document.PayloadJson, exportedProfile.PayloadJson);
+        Assert.NotEqual(document.PayloadJson, exportedProfile.PayloadJson, StringComparer.Ordinal);
         Assert.Contains(
             "\"isEnabled\":false",
             exportedProfile.PayloadJson,
@@ -375,7 +375,7 @@ public sealed class DefinitionBundleTests
             ",\"textScaleOverride\":null",
             string.Empty,
             StringComparison.Ordinal);
-        Assert.NotEqual(document.PayloadJson, legacyPayload);
+        Assert.NotEqual(document.PayloadJson, legacyPayload, StringComparer.Ordinal);
 
         var preflight = await bundles.PreflightImportAsync(
             Bundle(document with { PayloadJson = legacyPayload }),
@@ -410,7 +410,7 @@ public sealed class DefinitionBundleTests
                 FailedSequenceBehavior.DiscardAndShowHint));
         var document = DurableDefinitionFixtures.Document(keymap);
         var payload = JsonNode.Parse(document.PayloadJson)!.AsObject();
-        if (missingValue == "commandId")
+        if (string.Equals(missingValue, "commandId", StringComparison.Ordinal))
         {
             var binding = payload["bindings"]!.AsArray()[0]!.AsObject();
             Assert.True(
@@ -664,10 +664,9 @@ public sealed class DefinitionBundleTests
         var stored = await providers.ListAsync(CancellationToken.None);
         Assert.Equal(
             [("ai-secondary", 0), ("ai-primary", 1)],
-            stored.Value!
+            [.. stored.Value!
                 .Select(item => (item.Value.Id.Value, item.Value.Order))
-                .OrderBy(item => item.Order)
-                .ToArray());
+                .OrderBy(item => item.Order)]);
     }
 
     [Fact]

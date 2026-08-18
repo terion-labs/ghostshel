@@ -101,10 +101,9 @@ public sealed class TerminalSessionPortContractsTests
         }
     }
 
-    private static string[] OperationNames(Type port) => port
+    private static string[] OperationNames(Type port) => [.. port
         .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
         .Where(method => !method.IsSpecialName)
         .Select(method => method.Name)
-        .Order(StringComparer.Ordinal)
-        .ToArray();
+        .Order(StringComparer.Ordinal)];
 }

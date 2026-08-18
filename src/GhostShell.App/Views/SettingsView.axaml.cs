@@ -1,8 +1,8 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using GhostShell.App.Views.SettingsPages;
 using GhostShell.App.ViewModels;
+using GhostShell.App.Views.SettingsPages;
 using GhostShell.Application;
 using GhostShell.Core;
 

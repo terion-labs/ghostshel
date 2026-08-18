@@ -170,7 +170,7 @@ internal sealed class SqliteDatabaseDriver : IDatabaseDriver
         }
 
         var builder = ConnectionDetailKeys.TryCreateBuilder(details.Options)
-            ?? new System.Data.Common.DbConnectionStringBuilder();
+            ?? [];
         ConnectionDetailKeys.Set(builder, ["Data Source", "DataSource"], details.FilePath?.Trim());
         return builder.ConnectionString;
     }
@@ -612,7 +612,7 @@ internal sealed class SqlServerDatabaseDriver : IDatabaseDriver
         var parts = source.Split(',', 2);
         return new DatabaseEndpoint(
             parts[0].Trim(),
-            parts.Length == 2 && int.TryParse(parts[1], out var port) ? port : 1433);
+            parts.Length == 2 && int.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture, out var port) ? port : 1433);
     }
 
     public string RewriteEndpoint(string connectionString, string host, int port) =>
@@ -637,8 +637,7 @@ internal sealed class SqlServerDatabaseDriver : IDatabaseDriver
             details = details with
             {
                 Host = parts[0].Trim(),
-                Port = parts.Length == 2 && int.TryParse(parts[1], out var port)
-                    ? port
+                Port = parts.Length == 2 && int.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture, out var port) ? port
                     : details.Port,
             };
         }
@@ -746,7 +745,7 @@ internal sealed class DuckDbDatabaseDriver : IDatabaseDriver
         }
 
         var builder = ConnectionDetailKeys.TryCreateBuilder(details.Options)
-            ?? new System.Data.Common.DbConnectionStringBuilder();
+            ?? [];
         ConnectionDetailKeys.Set(builder, ["Data Source", "DataSource"], details.FilePath?.Trim());
         return builder.ConnectionString;
     }
@@ -905,7 +904,7 @@ internal sealed class OracleDatabaseDriver : IDatabaseDriver
             ? new DatabaseEndpoint(address.Trim(), 1521)
             : new DatabaseEndpoint(
                 address[..colon].Trim(),
-                int.TryParse(address[(colon + 1)..], out var port) ? port : 1521);
+                int.TryParse(address[(colon + 1)..], System.Globalization.CultureInfo.InvariantCulture, out var port) ? port : 1521);
     }
 
     public string RewriteEndpoint(string connectionString, string host, int port)
@@ -938,8 +937,7 @@ internal sealed class OracleDatabaseDriver : IDatabaseDriver
             details = details with
             {
                 Host = colon < 0 ? address.Trim() : address[..colon].Trim(),
-                Port = colon >= 0 && int.TryParse(address[(colon + 1)..], out var port)
-                    ? port
+                Port = colon >= 0 && int.TryParse(address[(colon + 1)..], System.Globalization.CultureInfo.InvariantCulture, out var port) ? port
                     : null,
                 Database = slash < 0 ? null : packed[(slash + 1)..].Trim(),
             };
@@ -1227,8 +1225,7 @@ internal sealed class ClickHouseDatabaseDriver : IDatabaseDriver
         }
 
         var port = builder.TryGetValue("Port", out var value)
-            && int.TryParse(value as string, out var parsed)
-                ? parsed
+            && int.TryParse(value as string, System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? parsed
                 : 8123;
         return new DatabaseEndpoint((string)host, port);
     }

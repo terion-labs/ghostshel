@@ -63,32 +63,31 @@ public sealed class TerminalAgentChordContractTests
                 "eligible",
                 SessionCapabilities.TerminalAgentInputBarrier,
                 SessionCapabilities.TerminalSendChord)),
-            candidate =>
-                candidate.Name == BuiltInAgentTools.TerminalSendChord);
+            candidate => string.Equals(candidate.Name, BuiltInAgentTools.TerminalSendChord, StringComparison.Ordinal));
         var schema = tool.InputSchema;
         var properties = schema.GetProperty("properties");
 
         Assert.False(schema.GetProperty("additionalProperties").GetBoolean());
         Assert.Equal(
             ["character", "modifier"],
-            properties.EnumerateObject().Select(property => property.Name));
+            properties.EnumerateObject().Select(property => property.Name), StringComparer.Ordinal);
         Assert.Equal(
             Enumerable.Range('a', 26).Select(value => ((char)value).ToString()),
             properties.GetProperty("character")
                 .GetProperty("enum")
                 .EnumerateArray()
-                .Select(item => item.GetString()));
+                .Select(item => item.GetString()), StringComparer.Ordinal);
         Assert.Equal(
             ["control", "alt"],
             properties.GetProperty("modifier")
                 .GetProperty("enum")
                 .EnumerateArray()
-                .Select(item => item.GetString()));
+                .Select(item => item.GetString()), StringComparer.Ordinal);
         Assert.Equal(
             ["character", "modifier"],
             schema.GetProperty("required")
                 .EnumerateArray()
-                .Select(item => item.GetString()));
+                .Select(item => item.GetString()), StringComparer.Ordinal);
         Assert.DoesNotContain(
             "session",
             schema.GetRawText(),
@@ -127,10 +126,10 @@ public sealed class TerminalAgentChordContractTests
         Assert.True(TerminalAgentToolSet.SupportsMutations(eligible));
         Assert.DoesNotContain(
             TerminalAgentToolSet.For(noBarrier),
-            tool => tool.Name == BuiltInAgentTools.TerminalSendChord);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalSendChord, StringComparison.Ordinal));
         Assert.DoesNotContain(
             TerminalAgentToolSet.For(noChord),
-            tool => tool.Name == BuiltInAgentTools.TerminalSendChord);
+            tool => string.Equals(tool.Name, BuiltInAgentTools.TerminalSendChord, StringComparison.Ordinal));
         Assert.False(TerminalAgentToolSet.SupportsMutations(noBarrier));
         Assert.False(TerminalAgentToolSet.SupportsMutations(noChord));
     }
@@ -148,8 +147,7 @@ public sealed class TerminalAgentChordContractTests
         var panels = new[] { eligible, noBarrier };
         var tool = Assert.Single(
             TerminalAgentToolSet.For(panels),
-            candidate =>
-                candidate.Name == BuiltInAgentTools.TerminalSendChord);
+            candidate => string.Equals(candidate.Name, BuiltInAgentTools.TerminalSendChord, StringComparison.Ordinal));
 
         Assert.Equal(
             [eligible.PanelId.Value],
@@ -158,7 +156,7 @@ public sealed class TerminalAgentChordContractTests
                 .GetProperty("panel_id")
                 .GetProperty("enum")
                 .EnumerateArray()
-                .Select(item => item.GetString()));
+                .Select(item => item.GetString()), StringComparer.Ordinal);
 
         var acceptedProposal = await ProposalAsync(
             JsonSerializer.Serialize(new
@@ -196,12 +194,10 @@ public sealed class TerminalAgentChordContractTests
             SessionCapabilities.TerminalSendChord);
         var exactTool = Assert.Single(
             TerminalAgentToolSet.For(panel),
-            candidate =>
-                candidate.Name == BuiltInAgentTools.TerminalSendChord);
+            candidate => string.Equals(candidate.Name, BuiltInAgentTools.TerminalSendChord, StringComparison.Ordinal));
         var broadTool = Assert.Single(
             TerminalAgentToolSet.For([panel]),
-            candidate =>
-                candidate.Name == BuiltInAgentTools.TerminalSendChord);
+            candidate => string.Equals(candidate.Name, BuiltInAgentTools.TerminalSendChord, StringComparison.Ordinal));
 
         Assert.DoesNotContain(
             "panel_id",
@@ -214,13 +210,13 @@ public sealed class TerminalAgentChordContractTests
                 .GetProperty("panel_id")
                 .GetProperty("enum")
                 .EnumerateArray()
-                .Select(item => item.GetString()));
+                .Select(item => item.GetString()), StringComparer.Ordinal);
         Assert.Equal(
             ["character", "modifier", "panel_id"],
             broadTool.InputSchema
                 .GetProperty("required")
                 .EnumerateArray()
-                .Select(item => item.GetString()));
+                .Select(item => item.GetString()), StringComparer.Ordinal);
 
         var exactProposal = await ProposalAsync(
             """

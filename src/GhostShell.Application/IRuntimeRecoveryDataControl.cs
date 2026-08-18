@@ -96,7 +96,7 @@ public sealed record RuntimeRecoveryInventory
                 nameof(runs));
         }
 
-        Runs = runs.ToArray();
+        Runs = [.. runs];
         HasAdditionalRuns = hasAdditionalRuns;
         ListedSnapshotCount = checked(Runs.Sum(item => item.SnapshotCount));
         ListedPayloadBytes = checked(Runs.Sum(item => item.PayloadBytes));

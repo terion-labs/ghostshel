@@ -524,12 +524,9 @@ public sealed class FileSystemLocalArtifactControlTests
 
     private static void CreateFifo(string path)
     {
-        var executable = OperatingSystem.IsMacOS()
-            ? "/usr/bin/mkfifo"
-            : "/usr/bin/mkfifo";
         using var process = Process.Start(new ProcessStartInfo
         {
-            FileName = executable,
+            FileName = "/usr/bin/mkfifo",
             UseShellExecute = false,
             ArgumentList = { path },
         });

@@ -184,10 +184,7 @@ public sealed partial class McpServerProfileEditorDialog : Window
     private void HideValidationError()
     {
         var error = this.FindControl<TextBlock>("ValidationError");
-        if (error is not null)
-        {
-            error.IsVisible = false;
-        }
+        error?.IsVisible = false;
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);

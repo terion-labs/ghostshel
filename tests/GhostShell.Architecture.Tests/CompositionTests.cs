@@ -1,6 +1,6 @@
+using GhostShell.Agent.Providers;
 using GhostShell.App;
 using GhostShell.App.ViewModels;
-using GhostShell.Agent.Providers;
 using GhostShell.Application;
 using GhostShell.Browser;
 using GhostShell.Core;
@@ -117,19 +117,17 @@ public sealed class CompositionTests
         Assert.Same(vault.Availability, vaultDiagnostic.Availability);
         Assert.Same(filePanel, transferQueue);
         Assert.Same(filePanel, fileProfiles);
-        Assert.Contains(filePanel.Profiles, profile => profile.Id == "builtin.files.home");
+        Assert.Contains(filePanel.Profiles, profile => string.Equals(profile.Id, "builtin.files.home", StringComparison.Ordinal));
         Assert.Equal(
             "GhostShell.Browser.BrowserPanelSessionFactory",
             browserSessionFactory.GetType().FullName);
         Assert.Equal(
             BrowserCapabilityProfile.Production.Capabilities.Values,
             browserSessionFactory.Capabilities.Values);
-        using (var browserView = browserViewFactory.Create())
-        {
-            Assert.Same(
-                browserSessionFactory.Capabilities,
-                browserView.Renderer.Capabilities);
-        }
+        Assert.Same(browserViewFactory, viewModel.BrowserRendererViewFactory);
+        Assert.Equal(
+            "GhostShell.Desktop.DesktopBrowserRendererViewFactory",
+            browserViewFactory.GetType().FullName);
 
         var hostHello = Assert.IsType<HostResult<HostHello>.Success>(
             await firstClient.NegotiateAsync(

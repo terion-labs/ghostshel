@@ -51,10 +51,9 @@ internal static class DockerAgentToolSet
             return [];
         }
 
-        return Specifications
+        return [.. Specifications
             .Where(specification => Supports(panel, specification.Capability))
-            .Select(specification => Tool(specification, panelIds: null))
-            .ToImmutableArray();
+            .Select(specification => Tool(specification, panelIds: null))];
     }
 
     public static ImmutableArray<AgentToolDefinition> For(
@@ -83,10 +82,9 @@ internal static class DockerAgentToolSet
     }
 
     public static ImmutableArray<AgentToolDefinition> ForWorkspace() =>
-        Specifications
+        [.. Specifications
             .Select(specification => AgentToolScopeSchema.WithRequiredPanelId(
-                Tool(specification, panelIds: null)))
-            .ToImmutableArray();
+                Tool(specification, panelIds: null)))];
 
     internal static ImmutableArray<AgentContextPanel> ActiveDockerPanels(
         IReadOnlyList<AgentContextPanel> panels)
@@ -100,7 +98,7 @@ internal static class DockerAgentToolSet
                 nameof(panels));
         }
 
-        return panels.Where(SupportsDockerPanel).ToImmutableArray();
+        return [.. panels.Where(SupportsDockerPanel)];
     }
 
     internal static bool Supports(AgentContextPanel panel, string capability) =>

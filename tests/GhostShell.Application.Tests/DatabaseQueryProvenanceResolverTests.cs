@@ -155,13 +155,12 @@ public sealed class DatabaseQueryProvenanceResolverTests
         var page = Page(Column("id", PeopleTable.Id), Column("name", PeopleTable.Id));
         var keyless = PeopleDetails with
         {
-            Columns = PeopleDetails.Columns
+            Columns = [.. PeopleDetails.Columns
                 .Select(column => column with
                 {
                     IsPrimaryKey = false,
                     PrimaryKeyOrdinal = null,
-                })
-                .ToArray(),
+                })],
         };
         var view = PeopleTable with { Kind = DatabaseTableKind.View };
         var otherDetails = PeopleDetails with

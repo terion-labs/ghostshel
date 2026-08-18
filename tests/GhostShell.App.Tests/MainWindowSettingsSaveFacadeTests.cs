@@ -737,7 +737,7 @@ public sealed class MainWindowSettingsSaveFacadeTests
             CancellationToken cancellationToken) =>
             ValueTask.FromResult(
                 SecretVaultResult<IReadOnlyList<SecretMetadata>>.Succeed(
-                    _entries.Values.Select(entry => entry.Metadata).ToArray()));
+                    [.. _entries.Values.Select(entry => entry.Metadata)]));
     }
 
     private sealed class EmptyFileClients

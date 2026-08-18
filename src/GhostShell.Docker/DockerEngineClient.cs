@@ -428,10 +428,10 @@ public sealed class DockerEngineClient(
         var lease = ((DockerResult<FileContainerLease>.Success)leaseResult).Value;
         try
         {
-            var sourcePath = lease.RootPath == "/"
-                ? normalizedPath
-                : normalizedPath == "/"
-                    ? lease.RootPath
+            var sourcePath = string.Equals(lease.RootPath, "/"
+, StringComparison.Ordinal) ? normalizedPath
+                : string.Equals(normalizedPath, "/"
+, StringComparison.Ordinal) ? lease.RootPath
                     : $"{lease.RootPath}{normalizedPath}";
             ConnectionStreamingCommandResult<DockerFileContent?> copy;
             try
@@ -567,8 +567,8 @@ public sealed class DockerEngineClient(
                 request.ContextLines.ToString(CultureInfo.InvariantCulture),
                 request.SearchText!.Trim(),
             }
-            : new[]
-            {
+            :
+            [
                 "-c",
                 script,
                 "ghostshell-docker-logs",
@@ -576,7 +576,7 @@ public sealed class DockerEngineClient(
                 request.ContainerId,
                 cursor,
                 requestedRows.ToString(CultureInfo.InvariantCulture),
-            };
+            ];
         var result = await executor.ExecuteAsync(
             new ConnectionCommand(
                 connection,
@@ -610,7 +610,7 @@ public sealed class DockerEngineClient(
                 continue;
             }
 
-            if (line == "--")
+            if (string.Equals(line, "--", StringComparison.Ordinal))
             {
                 startsContextBlock = true;
                 continue;
@@ -701,10 +701,10 @@ public sealed class DockerEngineClient(
         var targets = ((DockerResult<IReadOnlyList<FileExecTarget>>.Success)targetsResult).Value;
         foreach (var target in targets)
         {
-            var effectivePath = target.RootPath == "/"
-                ? path
-                : path == "/"
-                    ? target.RootPath
+            var effectivePath = string.Equals(target.RootPath, "/"
+, StringComparison.Ordinal) ? path
+                : string.Equals(path, "/"
+, StringComparison.Ordinal) ? target.RootPath
                     : $"{target.RootPath}{path}";
             foreach (var shellPath in DockerFileExecProtocol.ShellPaths)
             {
@@ -1272,19 +1272,19 @@ public sealed class DockerEngineClient(
                 "Config.Image", "Config.Hostname", "Config.WorkingDir",
                 "HostConfig.NetworkMode", "NetworkSettings.IPAddress",
             },
-            DockerResourceKind.Image => new[]
-            {
+            DockerResourceKind.Image =>
+            [
                 "Id", "Created", "Os", "Architecture", "Size", "Config.WorkingDir",
                 "Config.Entrypoint", "Config.Cmd",
-            },
-            DockerResourceKind.Volume => new[]
-            {
+            ],
+            DockerResourceKind.Volume =>
+            [
                 "Name", "Driver", "Mountpoint", "Scope", "CreatedAt", "Labels",
-            },
-            DockerResourceKind.Network => new[]
-            {
+            ],
+            DockerResourceKind.Network =>
+            [
                 "Name", "Id", "Created", "Driver", "Scope", "Internal", "IPAM.Config",
-            },
+            ],
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
         };
         return Array.AsReadOnly(paths

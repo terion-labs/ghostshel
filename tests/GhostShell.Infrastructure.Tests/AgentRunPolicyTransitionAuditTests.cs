@@ -44,7 +44,7 @@ public sealed class AgentRunPolicyTransitionAuditTests
                 "targetIdentityDigest",
                 "yoloExpiresAtUtc",
             ],
-            document.RootElement.EnumerateObject().Select(property => property.Name));
+            document.RootElement.EnumerateObject().Select(property => property.Name), StringComparer.Ordinal);
     }
 
     [Fact]
