@@ -185,7 +185,7 @@ public sealed class SystemMonitorRuntimePanelViewModelTests
     }
 
     [Fact]
-    public void ProcessSortExposesTheActiveHeaderAndDirection()
+    public void ProcessSortHeadersExposeAndToggleTheActiveDirection()
     {
         var (client, _) = CreateHost();
         using var panel = CreateProcessPanel(client);
@@ -198,11 +198,26 @@ public sealed class SystemMonitorRuntimePanelViewModelTests
 
         List<string?> changed = [];
         panel.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
-        panel.Sort = ProcessMonitorSort.NameAscending;
+        panel.ChangeSort(ProcessMonitorSort.CpuDescending);
 
+        Assert.Equal(ProcessMonitorSort.CpuAscending, panel.Sort);
+        Assert.True(panel.IsSortingByCpu);
+        Assert.False(panel.IsSortDescending);
+
+        panel.ChangeSort(ProcessMonitorSort.CpuDescending);
+        Assert.Equal(ProcessMonitorSort.CpuDescending, panel.Sort);
+        Assert.True(panel.IsSortDescending);
+
+        panel.ChangeSort(ProcessMonitorSort.NameAscending);
+        Assert.Equal(ProcessMonitorSort.NameAscending, panel.Sort);
         Assert.False(panel.IsSortingByCpu);
         Assert.True(panel.IsSortingByName);
         Assert.False(panel.IsSortDescending);
+
+        panel.ChangeSort(ProcessMonitorSort.NameAscending);
+        Assert.Equal(ProcessMonitorSort.NameDescending, panel.Sort);
+        Assert.True(panel.IsSortingByName);
+        Assert.True(panel.IsSortDescending);
         Assert.Contains(
             nameof(ProcessMonitorRuntimePanelViewModel.IsSortingByCpu),
             changed,
@@ -215,6 +230,26 @@ public sealed class SystemMonitorRuntimePanelViewModelTests
             nameof(ProcessMonitorRuntimePanelViewModel.IsSortDescending),
             changed,
             StringComparer.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(ProcessMonitorSort.CpuDescending, ProcessMonitorSort.CpuAscending)]
+    [InlineData(ProcessMonitorSort.MemoryDescending, ProcessMonitorSort.MemoryAscending)]
+    [InlineData(ProcessMonitorSort.NameAscending, ProcessMonitorSort.NameDescending)]
+    [InlineData(ProcessMonitorSort.ProcessIdAscending, ProcessMonitorSort.ProcessIdDescending)]
+    public void EachProcessSortHeaderTogglesBothWays(
+        ProcessMonitorSort defaultSort,
+        ProcessMonitorSort reverseSort)
+    {
+        var (client, _) = CreateHost();
+        using var panel = CreateProcessPanel(client);
+        panel.Sort = defaultSort;
+
+        panel.ChangeSort(defaultSort);
+        Assert.Equal(reverseSort, panel.Sort);
+
+        panel.ChangeSort(defaultSort);
+        Assert.Equal(defaultSort, panel.Sort);
     }
 
     [Fact]

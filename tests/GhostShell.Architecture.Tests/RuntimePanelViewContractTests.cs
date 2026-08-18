@@ -1918,16 +1918,16 @@ public sealed class RuntimePanelViewContractTests
         var sortHeaders = new Dictionary<string, (string Handler, string StateBinding)>(
             StringComparer.Ordinal)
         {
-            ["Sort processes by PID ascending"] = (
+            ["Sort processes by PID"] = (
                 "OnSortProcessIdClick",
                 "{Binding IsSortingByProcessId}"),
-            ["Sort processes by name ascending"] = (
+            ["Sort processes by name"] = (
                 "OnSortNameClick",
                 "{Binding IsSortingByName}"),
-            ["Sort processes by CPU descending"] = (
+            ["Sort processes by CPU"] = (
                 "OnSortCpuClick",
                 "{Binding IsSortingByCpu}"),
-            ["Sort processes by memory descending"] = (
+            ["Sort processes by memory"] = (
                 "OnSortMemoryClick",
                 "{Binding IsSortingByMemory}"),
         };
@@ -1950,6 +1950,9 @@ public sealed class RuntimePanelViewContractTests
             Assert.Equal(
                 "{Binding IsSortDescending}",
                 AttributeValue(button, "Classes.descending"));
+            Assert.Equal(
+                "{controls:Inset Horizontal=Sm}",
+                AttributeValue(button, "Padding"));
             Assert.Contains(
                 button.Descendants(),
                 element => string.Equals(

@@ -33,7 +33,11 @@ public sealed record AgentProcessListRequest
                 "An agent process list limit must be 16, 32, or 64.");
         }
 
-        if (!Enum.IsDefined(sort))
+        if (sort is not (
+            ProcessMonitorSort.CpuDescending
+            or ProcessMonitorSort.MemoryDescending
+            or ProcessMonitorSort.NameAscending
+            or ProcessMonitorSort.ProcessIdAscending))
         {
             throw new ArgumentOutOfRangeException(nameof(sort));
         }

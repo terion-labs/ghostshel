@@ -51,6 +51,18 @@ public sealed class AgentProcessListActionComposerTests
     }
 
     [Theory]
+    [InlineData(ProcessMonitorSort.CpuAscending)]
+    [InlineData(ProcessMonitorSort.MemoryAscending)]
+    [InlineData(ProcessMonitorSort.NameDescending)]
+    [InlineData(ProcessMonitorSort.ProcessIdDescending)]
+    public void Request_keeps_human_only_reverse_sorts_out_of_the_agent_contract(
+        ProcessMonitorSort sort)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new AgentProcessListRequest(ProcessPanel(), sort: sort));
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void Preparation_narrows_tab_and_workspace_scopes_to_one_exact_panel(

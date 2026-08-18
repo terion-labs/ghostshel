@@ -724,16 +724,33 @@ public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
         }
     }
 
-    public bool IsSortingByCpu => Sort == ProcessMonitorSort.CpuDescending;
+    public bool IsSortingByCpu =>
+        Sort is ProcessMonitorSort.CpuDescending or ProcessMonitorSort.CpuAscending;
 
-    public bool IsSortingByMemory => Sort == ProcessMonitorSort.MemoryDescending;
+    public bool IsSortingByMemory =>
+        Sort is ProcessMonitorSort.MemoryDescending or ProcessMonitorSort.MemoryAscending;
 
-    public bool IsSortingByName => Sort == ProcessMonitorSort.NameAscending;
+    public bool IsSortingByName =>
+        Sort is ProcessMonitorSort.NameAscending or ProcessMonitorSort.NameDescending;
 
-    public bool IsSortingByProcessId => Sort == ProcessMonitorSort.ProcessIdAscending;
+    public bool IsSortingByProcessId =>
+        Sort is ProcessMonitorSort.ProcessIdAscending or ProcessMonitorSort.ProcessIdDescending;
 
     public bool IsSortDescending =>
-        Sort is ProcessMonitorSort.CpuDescending or ProcessMonitorSort.MemoryDescending;
+        Sort is ProcessMonitorSort.CpuDescending
+            or ProcessMonitorSort.MemoryDescending
+            or ProcessMonitorSort.NameDescending
+            or ProcessMonitorSort.ProcessIdDescending;
+
+    public void ChangeSort(ProcessMonitorSort sort)
+    {
+        if (!Enum.IsDefined(sort))
+        {
+            throw new ArgumentOutOfRangeException(nameof(sort), sort, null);
+        }
+
+        Sort = Sort == sort ? ReverseSort(sort) : sort;
+    }
 
     public string Filter
     {
@@ -1144,6 +1161,20 @@ public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
         OnPropertyChanged(nameof(IsSortingByProcessId));
         OnPropertyChanged(nameof(IsSortDescending));
     }
+
+    private static ProcessMonitorSort ReverseSort(ProcessMonitorSort sort) =>
+        sort switch
+        {
+            ProcessMonitorSort.CpuDescending => ProcessMonitorSort.CpuAscending,
+            ProcessMonitorSort.CpuAscending => ProcessMonitorSort.CpuDescending,
+            ProcessMonitorSort.MemoryDescending => ProcessMonitorSort.MemoryAscending,
+            ProcessMonitorSort.MemoryAscending => ProcessMonitorSort.MemoryDescending,
+            ProcessMonitorSort.NameAscending => ProcessMonitorSort.NameDescending,
+            ProcessMonitorSort.NameDescending => ProcessMonitorSort.NameAscending,
+            ProcessMonitorSort.ProcessIdAscending => ProcessMonitorSort.ProcessIdDescending,
+            ProcessMonitorSort.ProcessIdDescending => ProcessMonitorSort.ProcessIdAscending,
+            _ => throw new ArgumentOutOfRangeException(nameof(sort), sort, null),
+        };
 }
 
 internal static class MonitorPanelPresentation

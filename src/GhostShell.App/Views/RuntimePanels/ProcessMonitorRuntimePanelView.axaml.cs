@@ -56,7 +56,7 @@ public sealed partial class ProcessMonitorRuntimePanelView : UserControl
     {
         if (DataContext is ProcessMonitorRuntimePanelViewModel panel)
         {
-            panel.Sort = sort;
+            panel.ChangeSort(sort);
         }
     }
 }

@@ -126,9 +126,9 @@
               Classes.descending="{Binding IsSortDescending}"
               HorizontalContentAlignment="Left"
               VerticalContentAlignment="Center"
-              Padding="0"
+              Padding="{controls:Inset Horizontal=Sm}"
               Click="OnSortProcessIdClick"
-              AutomationProperties.Name="Sort processes by PID ascending">
+              AutomationProperties.Name="Sort processes by PID">
             <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
               <TextBlock Classes="Eyebrow" Text="PID" />
               <icons:SymbolIcon Classes="ProcessSortIndicator ProcessSortAscending" FontSize="10" IsHitTestVisible="False" Symbol="ArrowUp" AutomationProperties.Name="Sorted ascending" />
@@ -145,9 +145,9 @@
               Classes.descending="{Binding IsSortDescending}"
               HorizontalContentAlignment="Left"
               VerticalContentAlignment="Center"
-              Padding="0"
+              Padding="{controls:Inset Horizontal=Sm}"
               Click="OnSortMemoryClick"
-              AutomationProperties.Name="Sort processes by memory descending">
+              AutomationProperties.Name="Sort processes by memory">
             <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
               <TextBlock Classes="Eyebrow" Text="Memory" />
               <icons:SymbolIcon Classes="ProcessSortIndicator ProcessSortAscending" FontSize="10" IsHitTestVisible="False" Symbol="ArrowUp" AutomationProperties.Name="Sorted ascending" />
@@ -163,9 +163,9 @@
               Classes.descending="{Binding IsSortDescending}"
               HorizontalContentAlignment="Left"
               VerticalContentAlignment="Center"
-              Padding="0"
+              Padding="{controls:Inset Horizontal=Sm}"
               Click="OnSortCpuClick"
-              AutomationProperties.Name="Sort processes by CPU descending">
+              AutomationProperties.Name="Sort processes by CPU">
             <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
               <TextBlock Classes="Eyebrow" Text="CPU" />
               <icons:SymbolIcon Classes="ProcessSortIndicator ProcessSortAscending" FontSize="10" IsHitTestVisible="False" Symbol="ArrowUp" AutomationProperties.Name="Sorted ascending" />
@@ -179,9 +179,9 @@
               Classes.descending="{Binding IsSortDescending}"
               HorizontalContentAlignment="Left"
               VerticalContentAlignment="Center"
-              Padding="0"
+              Padding="{controls:Inset Horizontal=Sm}"
               Click="OnSortNameClick"
-              AutomationProperties.Name="Sort processes by name ascending">
+              AutomationProperties.Name="Sort processes by name">
             <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
               <TextBlock Classes="Eyebrow" Text="Name" />
               <icons:SymbolIcon Classes="ProcessSortIndicator ProcessSortAscending" FontSize="10" IsHitTestVisible="False" Symbol="ArrowUp" AutomationProperties.Name="Sorted ascending" />

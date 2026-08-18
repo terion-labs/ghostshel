@@ -20,7 +20,11 @@ internal sealed record ProcessAgentIntent
         ArgumentOutOfRangeException.ThrowIfNegative(offset);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(offset, 1_000_000);
 
-        if (!Enum.IsDefined(sort))
+        if (sort is not (
+            ProcessMonitorSort.CpuDescending
+            or ProcessMonitorSort.MemoryDescending
+            or ProcessMonitorSort.NameAscending
+            or ProcessMonitorSort.ProcessIdAscending))
         {
             throw new ArgumentOutOfRangeException(nameof(sort));
         }

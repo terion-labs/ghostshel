@@ -110,16 +110,31 @@ internal sealed class ProcessMonitorPanelSession : IProcessMonitorPanelSession
                 .ThenByDescending(process => process.CpuPercent)
                 .ThenBy(process => process.Name, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(process => process.ProcessId),
+            ProcessMonitorSort.CpuAscending => processes
+                .OrderByDescending(process => process.CpuPercent.HasValue)
+                .ThenBy(process => process.CpuPercent)
+                .ThenBy(process => process.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(process => process.ProcessId),
             ProcessMonitorSort.MemoryDescending => processes
                 .OrderByDescending(process => process.WorkingSetBytes.HasValue)
                 .ThenByDescending(process => process.WorkingSetBytes)
                 .ThenBy(process => process.Name, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(process => process.ProcessId),
+            ProcessMonitorSort.MemoryAscending => processes
+                .OrderByDescending(process => process.WorkingSetBytes.HasValue)
+                .ThenBy(process => process.WorkingSetBytes)
+                .ThenBy(process => process.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(process => process.ProcessId),
             ProcessMonitorSort.NameAscending => processes
                 .OrderBy(process => process.Name, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(process => process.ProcessId),
+            ProcessMonitorSort.NameDescending => processes
+                .OrderByDescending(process => process.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(process => process.ProcessId),
             ProcessMonitorSort.ProcessIdAscending => processes
                 .OrderBy(process => process.ProcessId),
+            ProcessMonitorSort.ProcessIdDescending => processes
+                .OrderByDescending(process => process.ProcessId),
             _ => throw new ArgumentOutOfRangeException(nameof(sort), sort, null),
         };
 

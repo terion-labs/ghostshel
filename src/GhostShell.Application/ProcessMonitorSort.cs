@@ -6,4 +6,8 @@ public enum ProcessMonitorSort
     MemoryDescending,
     NameAscending,
     ProcessIdAscending,
+    CpuAscending,
+    MemoryAscending,
+    NameDescending,
+    ProcessIdDescending,
 }

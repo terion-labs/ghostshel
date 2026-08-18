@@ -27,6 +27,61 @@ public sealed class MonitorPanelSessionTests
         Assert.Equal(3, result.Value.MatchingProcessCount);
     }
 
+    [Theory]
+    [InlineData(ProcessMonitorSort.MemoryAscending, 2, 7, 5)]
+    [InlineData(ProcessMonitorSort.NameDescending, 5, 2, 7)]
+    [InlineData(ProcessMonitorSort.ProcessIdDescending, 7, 5, 2)]
+    public async Task ProcessQuerySupportsReverseSortOrders(
+        ProcessMonitorSort sort,
+        int first,
+        int second,
+        int third)
+    {
+        var source = new SequenceProcessSnapshotSource();
+        source.Enqueue(Capture(
+            Process(7, "alpha", 100),
+            Process(2, "middle", 10),
+            Process(5, "zulu", 1_000)));
+        await using var session = ProcessSession(source);
+
+        var result = await session.ListProcessesAsync(
+            new ProcessMonitorQuery(3, sort),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.Message);
+        Assert.Equal(
+            [first, second, third],
+            result.Value!.Processes.Select(process => process.ProcessId));
+    }
+
+    [Fact]
+    public async Task ProcessQuerySortsAscendingCpuBeforeApplyingTheLimit()
+    {
+        var source = new SequenceProcessSnapshotSource();
+        source.Enqueue(Capture(
+            Process(1, "lower", 10, TimeSpan.FromSeconds(1)),
+            Process(2, "higher", 20, TimeSpan.FromSeconds(1))));
+        source.Enqueue(Capture(
+            Process(1, "lower", 10, TimeSpan.FromSeconds(2)),
+            Process(2, "higher", 20, TimeSpan.FromSeconds(4))));
+        var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        await using var session = ProcessSession(source, clock);
+
+        _ = await session.ListProcessesAsync(
+            new ProcessMonitorQuery(2, ProcessMonitorSort.ProcessIdAscending),
+            CancellationToken.None);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        var result = await session.ListProcessesAsync(
+            new ProcessMonitorQuery(1, ProcessMonitorSort.CpuAscending),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.Message);
+        Assert.Equal(
+            [1],
+            result.Value!.Processes.Select(process => process.ProcessId));
+        Assert.True(result.Value.IsTruncated);
+    }
+
     [Fact]
     public async Task ProcessQueryFiltersAndPagesBeforeApplyingTheLimit()
     {
@@ -232,18 +287,22 @@ public sealed class MonitorPanelSessionTests
     }
 
     private static ProcessMonitorPanelSession ProcessSession(
-        IProcessSnapshotSource source) =>
-        new(
+        IProcessSnapshotSource source,
+        TimeProvider? timeProvider = null)
+    {
+        var clock = timeProvider ?? new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        return new ProcessMonitorPanelSession(
             new SessionId("process-monitor-1"),
             new ProcessResourceSampler(
                 source,
-                new ManualTimeProvider(DateTimeOffset.UnixEpoch)),
+                clock),
             new CapabilitySet(
             [
                 SessionCapabilities.AttachRead,
                 SessionCapabilities.ProcessesList,
             ]),
-            new ManualTimeProvider(DateTimeOffset.UnixEpoch));
+            clock);
+    }
 
     private static RawProcessCapture Capture(params RawProcessObservation[] processes) =>
         new(
@@ -256,11 +315,22 @@ public sealed class MonitorPanelSessionTests
         int processId,
         string name,
         long workingSetBytes) =>
+        Process(
+            processId,
+            name,
+            workingSetBytes,
+            TimeSpan.FromSeconds(processId));
+
+    private static RawProcessObservation Process(
+        int processId,
+        string name,
+        long workingSetBytes,
+        TimeSpan totalProcessorTime) =>
         new(
             processId,
             name,
             workingSetBytes,
-            TimeSpan.FromSeconds(processId),
+            totalProcessorTime,
             DateTimeOffset.UnixEpoch.AddSeconds(processId),
             false);
 }

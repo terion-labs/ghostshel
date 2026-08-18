@@ -61,6 +61,17 @@ public sealed class ProcessAgentToolContractTests
         }
     }
 
+    [Theory]
+    [InlineData(ProcessMonitorSort.CpuAscending)]
+    [InlineData(ProcessMonitorSort.MemoryAscending)]
+    [InlineData(ProcessMonitorSort.NameDescending)]
+    [InlineData(ProcessMonitorSort.ProcessIdDescending)]
+    public void IntentRejectsHumanOnlyReverseSorts(ProcessMonitorSort sort)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new ProcessAgentIntent(ProcessAgentToolSet.DefaultLimit, sort));
+    }
+
     [Fact]
     public void BroadSchemaAlwaysRequiresAndEnumeratesOnlyEligiblePanels()
     {
