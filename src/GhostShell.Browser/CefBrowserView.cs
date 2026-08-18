@@ -86,6 +86,8 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
 
     public event EventHandler? RenderProcessFailed;
 
+    public event EventHandler<BrowserNewTabRequestedEventArgs>? NewTabRequested;
+
     public void Navigate(BrowserAddress address)
     {
         ArgumentNullException.ThrowIfNull(address);
@@ -424,7 +426,7 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         // CEF has no host UI for these prompts in OSR mode. Every privileged
         // or filesystem-affecting operation therefore defaults closed until a
         // future typed product contract owns the corresponding user decision.
-        browser.BeforePopup += BlockPopup;
+        browser.BeforePopup += OnBeforePopup;
         browser.JsDialog += BlockJavaScriptDialog;
         browser.FileDialog += BlockFileDialog;
         browser.DownloadStarting += BlockDownload;
@@ -444,7 +446,7 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         browser.LoadEnd -= OnLoadEnd;
         browser.LoadError -= OnLoadError;
         browser.RenderProcessGone -= OnRenderProcessGone;
-        browser.BeforePopup -= BlockPopup;
+        browser.BeforePopup -= OnBeforePopup;
         browser.JsDialog -= BlockJavaScriptDialog;
         browser.FileDialog -= BlockFileDialog;
         browser.DownloadStarting -= BlockDownload;
@@ -1155,9 +1157,27 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
     private void ThrowIfDisposed() =>
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-    private static void BlockPopup(object? sender, BeforePopupEventArgs args)
+    private void OnBeforePopup(object? sender, BeforePopupEventArgs args)
     {
-        // Subscribing is the cancellation signal in Exclr8CEF.
+        // Subscribing is the cancellation signal in Exclr8CEF. Only addresses
+        // accepted by GhostSHELL's normal navigation boundary are promoted to
+        // a shell tab; unsupported popup schemes stay closed.
+        if (!BrowserAddress.TryParse(args.TargetUrl, out var address))
+        {
+            return;
+        }
+
+        RunOnUiThread(() =>
+        {
+            if (!_disposed)
+            {
+                NewTabRequested?.Invoke(
+                    this,
+                    new BrowserNewTabRequestedEventArgs(
+                        address,
+                        args.UserGesture));
+            }
+        });
     }
 
     private static void BlockJavaScriptDialog(

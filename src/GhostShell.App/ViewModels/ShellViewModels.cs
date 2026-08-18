@@ -110,6 +110,7 @@ public enum SettingsPage
     Workspaces,
     Keybindings,
     Files,
+    Browser,
     Terminal,
     QuickTerminal,
     Secrets,

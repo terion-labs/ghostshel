@@ -15,6 +15,7 @@ namespace GhostShell.Browser;
 public sealed partial class BrowserSurface :
     ContentControl,
     IBrowserRenderer,
+    IBrowserNewTabRequestSource,
     IBrowserElementReferenceRegistry,
     IBrowserPhysicalInputBarrier,
     IDisposable
@@ -52,6 +53,8 @@ public sealed partial class BrowserSurface :
     private bool _isAgentActive;
     private bool _disposed;
 
+    public event EventHandler<BrowserNewTabRequestedEventArgs>? NewTabRequested;
+
     public BrowserSurface()
         : this(BrowserCapabilityProfile.Production)
     {
@@ -64,6 +67,28 @@ public sealed partial class BrowserSurface :
             static () => new CefBrowserView(),
             timeProvider: TimeProvider.System,
             capabilityProfile: capabilityProfile)
+    {
+    }
+
+    public BrowserSurface(
+        BrowserCapabilityProfile capabilityProfile,
+        CefBrowserProfileLease profileLease)
+        : this(
+            profileLease ?? throw new ArgumentNullException(nameof(profileLease)),
+            capabilityProfile)
+    {
+    }
+
+    private BrowserSurface(
+        CefBrowserProfileLease profileLease,
+        BrowserCapabilityProfile capabilityProfile)
+        : this(
+            profileLease.CreateView(),
+            AvaloniaBrowserUiDispatcher.Instance,
+            profileLease.CreateView,
+            timeProvider: TimeProvider.System,
+            capabilityProfile: capabilityProfile,
+            networkLifetime: profileLease)
     {
     }
 
@@ -128,6 +153,7 @@ public sealed partial class BrowserSurface :
         _nativeView.AddressChanged += OnAddressChanged;
         _nativeView.NavigationRejected += OnNavigationRejected;
         _nativeView.RenderProcessFailed += OnRenderProcessFailed;
+        _nativeView.NewTabRequested += OnNativeNewTabRequested;
 
         Focusable = true;
         HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Stretch;
@@ -223,6 +249,7 @@ public sealed partial class BrowserSurface :
         nativeView.NavigationStarted -= OnNavigationStarted;
         nativeView.NavigationCompleted -= OnNavigationCompleted;
         nativeView.AddressChanged -= OnAddressChanged;
+        nativeView.NewTabRequested -= OnNativeNewTabRequested;
         nativeView.NavigationRejected -= OnNavigationRejected;
         nativeView.RenderProcessFailed -= OnRenderProcessFailed;
         Content = null;
@@ -3029,6 +3056,16 @@ public sealed partial class BrowserSurface :
             State.InputEpoch));
     }
 
+    private void OnNativeNewTabRequested(
+        object? sender,
+        BrowserNewTabRequestedEventArgs args)
+    {
+        if (ReferenceEquals(sender, _nativeView) && !_disposed)
+        {
+            NewTabRequested?.Invoke(this, args);
+        }
+    }
+
     private void OnNavigationRejected(
         object? sender,
         NativeBrowserNavigationRejectedEventArgs args)
@@ -3307,6 +3344,7 @@ public sealed partial class BrowserSurface :
         quarantined.NavigationStarted -= OnNavigationStarted;
         quarantined.NavigationCompleted -= OnNavigationCompleted;
         quarantined.AddressChanged -= OnAddressChanged;
+        quarantined.NewTabRequested -= OnNativeNewTabRequested;
         quarantined.NavigationRejected -= OnNavigationRejected;
         quarantined.RenderProcessFailed -= OnRenderProcessFailed;
         _nativeView = replacement;
@@ -3328,6 +3366,7 @@ public sealed partial class BrowserSurface :
             quarantined.NavigationStarted += OnNavigationStarted;
             quarantined.NavigationCompleted += OnNavigationCompleted;
             quarantined.AddressChanged += OnAddressChanged;
+            quarantined.NewTabRequested += OnNativeNewTabRequested;
             quarantined.NavigationRejected += OnNavigationRejected;
             quarantined.RenderProcessFailed += OnRenderProcessFailed;
             replacement.Dispose();
@@ -3337,6 +3376,7 @@ public sealed partial class BrowserSurface :
         _nativeView.NavigationStarted += OnNavigationStarted;
         _nativeView.NavigationCompleted += OnNavigationCompleted;
         _nativeView.AddressChanged += OnAddressChanged;
+        _nativeView.NewTabRequested += OnNativeNewTabRequested;
         _nativeView.NavigationRejected += OnNavigationRejected;
         _nativeView.RenderProcessFailed += OnRenderProcessFailed;
         quarantined.Dispose();

@@ -288,6 +288,43 @@ public sealed class BrowserRuntimePanelViewModelTests
         Assert.Equal(1, lifetime.DisposeCount);
     }
 
+    [Fact]
+    public async Task ProfileAndPopupRequestsFlowAcrossThePanelBoundary()
+    {
+        var renderer = new RecordingBrowserRenderer();
+        var rendererView = new BrowserRendererView(new Border(), renderer);
+        var factory = new RecordingBrowserRendererViewFactory(rendererView);
+        var profile = BrowserProfileKey.ForWorkspace("workspace-saved");
+        var panel = new BrowserRuntimePanelViewModel(
+            new PanelInstanceId("browser-panel"),
+            "Documentation",
+            new SessionOwner(
+                HostMode.Desktop,
+                new WindowInstanceId("window"),
+                new WorkspaceInstanceId("workspace"),
+                new TabInstanceId("tab"),
+                new PanelInstanceId("browser-panel")),
+            BrowserAddress.Blank,
+            DispatchProxy.Create<ISessionHostClient, NoopSessionClient>(),
+            new ClientId("client"),
+            BuiltInConnections.Local,
+            profile,
+            factory);
+        BrowserNewTabRequestedEventArgs? requested = null;
+        panel.NewTabRequested += (_, args) => requested = args;
+
+        await panel.StartInitialization();
+        var popup = Address("https://docs.example.test/popup");
+        renderer.RaiseNewTabRequested(popup);
+
+        Assert.Equal(profile, factory.LastProfile);
+        Assert.Equal(popup, requested?.Address);
+
+        panel.Dispose();
+        renderer.RaiseNewTabRequested(Address("https://docs.example.test/late"));
+        Assert.Equal(popup, requested?.Address);
+    }
+
     private static BrowserAddress Address(string value)
     {
         Assert.True(BrowserAddress.TryParse(value, out var address));
@@ -304,6 +341,8 @@ public sealed class BrowserRuntimePanelViewModelTests
     private sealed class RecordingBrowserRendererViewFactory(
         BrowserRendererView rendererView) : IBrowserRendererViewFactory
     {
+        public BrowserProfileKey? LastProfile { get; private set; }
+
         public BrowserRendererView Create() => rendererView;
 
         public ValueTask<BrowserRendererView> CreateAsync(
@@ -313,11 +352,22 @@ public sealed class BrowserRuntimePanelViewModelTests
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.FromResult(rendererView);
         }
+
+        public ValueTask<BrowserRendererView> CreateAsync(
+            ConnectionProfile connection,
+            BrowserProfileKey profile,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            LastProfile = profile;
+            return ValueTask.FromResult(rendererView);
+        }
     }
 
     private sealed class RecordingBrowserRenderer :
         IBrowserRenderer,
-        IBrowserPhysicalInputBarrier
+        IBrowserPhysicalInputBarrier,
+        IBrowserNewTabRequestSource
     {
         public BrowserSessionState State { get; } =
             BrowserSessionState.Initial(BrowserAddress.Blank);
@@ -343,6 +393,13 @@ public sealed class BrowserRuntimePanelViewModelTests
             add { }
             remove { }
         }
+
+        public event EventHandler<BrowserNewTabRequestedEventArgs>? NewTabRequested;
+
+        public void RaiseNewTabRequested(BrowserAddress address) =>
+            NewTabRequested?.Invoke(
+                this,
+                new BrowserNewTabRequestedEventArgs(address, userGesture: true));
 
         public void BindPhysicalInputGate(
             Func<NativeRendererPhysicalInput, bool>? physicalInputGate)

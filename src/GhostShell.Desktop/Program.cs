@@ -289,6 +289,8 @@ internal static class Program
         // defaults, never a startup error.
         await services.GetRequiredService<SqliteFilePreviewPreferences>()
             .InitializeAsync(CancellationToken.None);
+        await services.GetRequiredService<SqliteBrowserProfilePreferences>()
+            .InitializeAsync(CancellationToken.None);
         await services.GetRequiredService<AgentPolicyCoordinator>()
             .InitializeAsync(CancellationToken.None);
         startupState.MarkProfileInitialized();

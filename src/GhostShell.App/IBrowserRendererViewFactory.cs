@@ -17,6 +17,12 @@ public interface IBrowserRendererViewFactory
     ValueTask<BrowserRendererView> CreateAsync(
         ConnectionProfile connection,
         CancellationToken cancellationToken);
+
+    ValueTask<BrowserRendererView> CreateAsync(
+        ConnectionProfile connection,
+        BrowserProfileKey profile,
+        CancellationToken cancellationToken) =>
+        CreateAsync(connection, cancellationToken);
 }
 
 /// <summary>

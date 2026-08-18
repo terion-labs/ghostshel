@@ -92,6 +92,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     public FileTransferClipboard FileTransferClipboard { get; } = new();
     private readonly IBrowserRendererViewFactory? _browserRendererViewFactory;
+    private readonly IBrowserProfilePreferences _browserProfilePreferences;
     private readonly IDatabasePanelClient? _databasePanelClient;
     private readonly IDatabaseConnectionCatalog? _databaseConnectionCatalog;
     private readonly IRedisPanelSessionFactory? _redisPanelSessionFactory;
@@ -254,7 +255,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         TerminalMultiplexerCoordinator? terminalMultiplexerCoordinator = null,
         IAgentModelFavoriteStore? agentModelFavoriteStore = null,
         AgentPolicyCoordinator? agentPolicyCoordinator = null,
-        IAgentWorkspaceRuntimeFactory? agentRuntimeFactory = null)
+        IAgentWorkspaceRuntimeFactory? agentRuntimeFactory = null,
+        IBrowserProfilePreferences? browserProfilePreferences = null,
+        IBrowserProfileDataControl? browserProfileDataControl = null)
     {
         SessionClient = sessionClient ?? throw new ArgumentNullException(nameof(sessionClient));
         OpenWorkspaces = new(_openWorkspaces);
@@ -270,6 +273,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _fileTransferQueue = fileTransferQueue
             ?? throw new ArgumentNullException(nameof(fileTransferQueue));
         _browserRendererViewFactory = browserRendererViewFactory;
+        _browserProfilePreferences = browserProfilePreferences
+            ?? new InMemoryBrowserProfilePreferences();
         _databasePanelClient = databasePanelClient;
         _databaseConnectionCatalog = databaseConnectionCatalog ?? databasePanelClient;
         _redisPanelSessionFactory = redisPanelSessionFactory;
@@ -283,6 +288,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         FilePreviewSettingsEditor = new FilePreviewSettingsEditorViewModel(
             _filePreviewPreferences,
             previewCacheControl);
+        BrowserProfileSettingsEditor = new BrowserProfileSettingsEditorViewModel(
+            _browserProfilePreferences,
+            browserProfileDataControl);
         ApplicationSecurityEditor = new ApplicationSecurityEditorViewModel(
             applicationEncryption,
             startupProtection,
@@ -385,6 +393,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// page behaves the same everywhere it renders.
     /// </summary>
     public FilePreviewSettingsEditorViewModel FilePreviewSettingsEditor { get; }
+
+    public BrowserProfileSettingsEditorViewModel BrowserProfileSettingsEditor { get; }
 
     /// <summary>
     /// The application-security controls on the Security &amp; secrets page.
@@ -1021,6 +1031,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(IsWorkspaceSettingsVisible));
                 OnPropertyChanged(nameof(IsKeybindingSettingsVisible));
                 OnPropertyChanged(nameof(IsFilesSettingsVisible));
+                OnPropertyChanged(nameof(IsBrowserSettingsVisible));
                 OnPropertyChanged(nameof(IsTerminalSettingsVisible));
                 OnPropertyChanged(nameof(IsQuickTerminalSettingsVisible));
                 OnPropertyChanged(nameof(IsSecretsSettingsVisible));
@@ -1716,6 +1727,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     public bool IsFilesSettingsVisible => SettingsPage == SettingsPage.Files;
 
+    public bool IsBrowserSettingsVisible => SettingsPage == SettingsPage.Browser;
+
     public bool IsTerminalSettingsVisible => SettingsPage == SettingsPage.Terminal;
 
     public bool IsQuickTerminalSettingsVisible => SettingsPage == SettingsPage.QuickTerminal;
@@ -2129,6 +2142,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             // The usage figure is read when the page is opened, not on a
             // timer: a settings page is looked at, not watched.
             FilePreviewSettingsEditor.RefreshCacheUsage();
+        }
+
+        if (page == SettingsPage.Browser)
+        {
+            BrowserProfileSettingsEditor.RefreshUsage();
         }
     }
 
@@ -2569,7 +2587,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             current.Icon,
             current.AutoSave,
             current.Color,
-            docked);
+            docked,
+            current.TerminalMultiplexingOverride,
+            current.BrowserProfileOverride);
         var saved = await _catalog.SaveWorkspaceAsync(updated, stored.Revision, cancellationToken);
         ApplyError(saved.Error);
     }
@@ -2640,6 +2660,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 workspace.Key,
                 storedWorkspace.Revision),
             workspace.TerminalMultiplexingOverride);
+        _runtimeSources[runtime.Id] = new RuntimeHistorySource(
+            workspace.Key,
+            workspace.Name);
         if (runtime.TerminalMultiplexingMode is { } workspaceMultiplexingOverride)
         {
             _workspaceTerminalMultiplexingModes[runtime.Id] = workspaceMultiplexingOverride;
@@ -4803,7 +4826,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 current.AutoSave,
                 current.Color,
                 current.AgentPanelPinned,
-                current.TerminalMultiplexingOverride);
+                current.TerminalMultiplexingOverride,
+                current.BrowserProfileOverride);
             var saved = await _catalog.SaveWorkspaceAsync(updated, revision, cancellationToken);
             ApplyError(saved.Error);
             if (saved.IsSuccess)
@@ -8027,7 +8051,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             autoSave: true,
             storedDefinition.Color,
             storedDefinition.AgentPanelPinned,
-            storedDefinition.TerminalMultiplexingOverride);
+            storedDefinition.TerminalMultiplexingOverride,
+            storedDefinition.BrowserProfileOverride);
         var unchanged = DefinitionPayloadEquals(definition, storedDefinition)
             && layouts.All(item =>
                 storedLayouts.TryGetValue(item.Definition.Id.Value, out var existing)
@@ -8820,6 +8845,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         if (!ReferenceEquals(RuntimeWorkspace, runtime))
         {
+            _runtimeSources.Remove(runtime.Id);
             _workspaceTerminalMultiplexingModes.Remove(runtime.Id);
             runtime.DisposePanels();
         }
@@ -11946,6 +11972,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             recovered.AgentPolicy?.ToProvenance()
                 ?? RuntimeAgentPolicyProvenance.Unconfigured,
             ResolveRecoveredTerminalMultiplexingOverride(recovered));
+        if (recovered.HistorySource?.ToHistorySource() is { } recoveredSource)
+        {
+            _runtimeSources[runtime.Id] = recoveredSource;
+        }
         if (runtime.TerminalMultiplexingMode is { } recoveredMultiplexingOverride)
         {
             _workspaceTerminalMultiplexingModes[runtime.Id] = recoveredMultiplexingOverride;
@@ -12623,7 +12653,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         PanelInstanceId panelId,
         string title,
         BrowserAddress initialAddress,
-        ConnectionProfile? connection = null)
+        ConnectionProfile? connection = null,
+        BrowserProfileKey? profile = null)
     {
         if (_browserRendererViewFactory is null)
         {
@@ -12646,7 +12677,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 "This browser route is not a local or SSH connection.");
         }
 
-        return new BrowserRuntimePanelViewModel(
+        var browser = new BrowserRuntimePanelViewModel(
             panelId,
             title,
             new SessionOwner(
@@ -12659,7 +12690,137 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             SessionClient,
             ClientId,
             connection,
+            profile ?? ResolveBrowserProfile(workspaceId),
             _browserRendererViewFactory);
+        browser.NewTabRequested += OnBrowserNewTabRequested;
+        return browser;
+    }
+
+    private BrowserProfileKey ResolveBrowserProfile(
+        WorkspaceInstanceId workspaceId)
+    {
+        WorkspaceDefinition? definition = null;
+        if (_runtimeSources.TryGetValue(workspaceId, out var source)
+            && source.SourceDefinition.Kind == WorkspaceDefinition.Kind)
+        {
+            definition = _catalog.Snapshot.Workspaces
+                .Select(item => item.Value)
+                .FirstOrDefault(item =>
+                    item.Id.Value == source.SourceDefinition.Value);
+        }
+
+        var isolated = definition?.BrowserProfileOverride switch
+        {
+            WorkspaceBrowserProfileMode.Shared => false,
+            WorkspaceBrowserProfileMode.Isolated => true,
+            null => _browserProfilePreferences.Current.Sharing
+                == BrowserProfileSharing.PerWorkspace,
+            _ => throw new ArgumentOutOfRangeException(),
+        };
+        if (!isolated)
+        {
+            return BrowserProfileKey.Global;
+        }
+
+        return BrowserProfileKey.ForWorkspace(
+            definition?.Id.Value ?? workspaceId.Value);
+    }
+
+    private async void OnBrowserNewTabRequested(
+        object? sender,
+        BrowserNewTabRequestedEventArgs args)
+    {
+        if (_shutdownStarted || sender is not BrowserRuntimePanelViewModel source)
+        {
+            return;
+        }
+
+        try
+        {
+            await OpenBrowserPopupInNewTabAsync(
+                source,
+                args.Address,
+                _runtimeGraphLifetime.Token);
+        }
+        catch (OperationCanceledException) when (
+            _shutdownStarted || _runtimeGraphLifetime.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            SetError($"The browser could not open a new tab: {exception.Message}");
+        }
+    }
+
+    private Task<bool> OpenBrowserPopupInNewTabAsync(
+        BrowserRuntimePanelViewModel source,
+        BrowserAddress address,
+        CancellationToken cancellationToken)
+    {
+        var workspace = _openWorkspaces
+            .Append(RuntimeWorkspace)
+            .OfType<RuntimeWorkspaceViewModel>()
+            .Distinct()
+            .FirstOrDefault(item => item.Tabs.Any(tab =>
+                tab.Panels.Contains(source)));
+        if (workspace is null)
+        {
+            return Task.FromResult(false);
+        }
+
+        var connection = FindConnection(source.ConnectionId)
+            ?? (source.ConnectionId == BuiltInConnections.Local.Id
+                ? BuiltInConnections.Local
+                : null);
+        if (connection is null)
+        {
+            SetError("The browser route used by this page is no longer available.");
+            return Task.FromResult(false);
+        }
+
+        return AppendRuntimeTabAsync(
+            workspace,
+            runtime => CreateBrowserTab(
+                runtime.Id,
+                address,
+                connection,
+                source.Profile),
+            "browser new-tab creation",
+            cancellationToken);
+    }
+
+    private RuntimeTabViewModel CreateBrowserTab(
+        WorkspaceInstanceId workspaceId,
+        BrowserAddress address,
+        ConnectionProfile connection,
+        BrowserProfileKey profile)
+    {
+        var title = "Browser";
+        var tab = new RuntimeTabViewModel(
+            TabInstanceId.New(),
+            title,
+            connection.Endpoint is ConnectionEndpoint.Local
+                ? "Local"
+                : connection.Name);
+        try
+        {
+            AddPanelOrDispose(
+                tab,
+                CreateBrowserPanel(
+                    workspaceId,
+                    tab.Id,
+                    PanelInstanceId.New(),
+                    title,
+                    address,
+                    connection,
+                    profile));
+            return tab;
+        }
+        catch
+        {
+            tab.DisposePanels();
+            throw;
+        }
     }
 
     private RuntimePanelViewModel CreateMonitorPanel(

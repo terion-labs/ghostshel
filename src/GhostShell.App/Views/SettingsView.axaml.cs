@@ -107,6 +107,8 @@ public sealed partial class SettingsView : UserControl
 
     public event EventHandler<RoutedEventArgs>? FilesSettingsRequested;
 
+    public event EventHandler<RoutedEventArgs>? BrowserSettingsRequested;
+
     public event EventHandler<RoutedEventArgs>? LockNowRequested;
 
     public event EventHandler<RoutedEventArgs>? ImportDefinitionsRequested;
@@ -398,6 +400,9 @@ public sealed partial class SettingsView : UserControl
 
     private void OnFilesSettingsClick(object? sender, RoutedEventArgs e) =>
         FilesSettingsRequested?.Invoke(sender, e);
+
+    private void OnBrowserSettingsClick(object? sender, RoutedEventArgs e) =>
+        BrowserSettingsRequested?.Invoke(sender, e);
 
     private void OnLockNowClick(object? sender, RoutedEventArgs e) =>
         LockNowRequested?.Invoke(sender, e);

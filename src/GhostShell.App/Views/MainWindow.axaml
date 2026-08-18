@@ -303,6 +303,7 @@
         DisableStartupProtectionRequested="OnDisableStartupProtectionClick"
         EnableStartupProtectionRequested="OnEnableStartupProtectionClick"
         FilesSettingsRequested="OnFilesSettingsClick"
+        BrowserSettingsRequested="OnBrowserSettingsClick"
         LockNowRequested="OnLockNowClick"
         ImportDefinitionsRequested="OnImportDefinitionsClick"
         IsVisible="{Binding IsSettingsVisible}"

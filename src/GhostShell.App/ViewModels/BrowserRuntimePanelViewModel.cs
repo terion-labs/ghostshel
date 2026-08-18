@@ -9,6 +9,7 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
     private readonly CancellationTokenSource _lifetime = new();
     private readonly IBrowserRendererViewFactory _rendererViewFactory;
     private readonly ConnectionProfile _connection;
+    private readonly BrowserProfileKey _profile;
     private BrowserRendererView? _rendererView;
     private BrowserAddress _currentAddress;
     private Task _initialization = Task.CompletedTask;
@@ -25,6 +26,29 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
         ClientId clientId,
         ConnectionProfile connection,
         IBrowserRendererViewFactory rendererViewFactory)
+        : this(
+            id,
+            title,
+            owner,
+            initialAddress,
+            sessionClient,
+            clientId,
+            connection,
+            BrowserProfileKey.Global,
+            rendererViewFactory)
+    {
+    }
+
+    public BrowserRuntimePanelViewModel(
+        PanelInstanceId id,
+        string title,
+        SessionOwner owner,
+        BrowserAddress initialAddress,
+        ISessionHostClient sessionClient,
+        ClientId clientId,
+        ConnectionProfile connection,
+        BrowserProfileKey profile,
+        IBrowserRendererViewFactory rendererViewFactory)
         : base(id, PanelKind.Browser, title, "Browser")
     {
         ArgumentNullException.ThrowIfNull(owner);
@@ -33,6 +57,7 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
             ?? throw new ArgumentNullException(nameof(sessionClient));
         ClientId = clientId;
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
+        _profile = profile;
         if (connection.Endpoint is not (ConnectionEndpoint.Local or ConnectionEndpoint.Ssh))
         {
             throw new ArgumentException(
@@ -58,6 +83,8 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
 
     public ConnectionId ConnectionId => _connection.Id;
 
+    public BrowserProfileKey Profile => _profile;
+
     public string ConnectionDisplayName => _connection.Endpoint is ConnectionEndpoint.Local
         ? "Local"
         : _connection.Name;
@@ -67,6 +94,8 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
         get => _rendererView;
         private set => SetProperty(ref _rendererView, value);
     }
+
+    public event EventHandler<BrowserNewTabRequestedEventArgs>? NewTabRequested;
 
     public string? RouteErrorMessage
     {
@@ -138,14 +167,22 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
         try
         {
             var renderer = await _rendererViewFactory
-                .CreateAsync(_connection, _lifetime.Token);
-            if (_disposed)
+                .CreateAsync(_connection, _profile, _lifetime.Token);
+            lock (_initializationGate)
             {
-                renderer.Dispose();
-                return;
-            }
+                if (_disposed)
+                {
+                    renderer.Dispose();
+                    return;
+                }
 
-            RendererView = renderer;
+                if (renderer.Renderer is IBrowserNewTabRequestSource newTabSource)
+                {
+                    newTabSource.NewTabRequested += OnRendererNewTabRequested;
+                }
+
+                RendererView = renderer;
+            }
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
         {
@@ -154,6 +191,16 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
         {
             RouteErrorMessage = exception.Message;
             throw;
+        }
+    }
+
+    private void OnRendererNewTabRequested(
+        object? sender,
+        BrowserNewTabRequestedEventArgs args)
+    {
+        if (!_disposed)
+        {
+            NewTabRequested?.Invoke(this, args);
         }
     }
 
@@ -170,9 +217,18 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
         }
 
         _lifetime.Cancel();
-        _lifetime.Dispose();
+        // Keep the cancelled source valid until this panel is collected.
+        // Initialization/attachment work may already hold its token on another
+        // continuation; disposing here turns an ordinary shutdown race into an
+        // ObjectDisposedException instead of cancellation.
+        if (RendererView?.Renderer is IBrowserNewTabRequestSource newTabSource)
+        {
+            newTabSource.NewTabRequested -= OnRendererNewTabRequested;
+        }
+
         RendererView?.Dispose();
         RendererView = null;
+        NewTabRequested = null;
         base.Dispose();
     }
 }

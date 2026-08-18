@@ -54,4 +54,34 @@ public sealed class BrowserEngineRuntimeTests
         Assert.True(Path.IsPathFullyQualified(options.LogFilePath));
         Assert.Equal("1.0.0", options.ProductVersion);
     }
+
+    [Fact]
+    public void LegacySharedProfileMovesToTheExactRequestContextCachePath()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "ghostshell-cef-layout-tests",
+            Guid.NewGuid().ToString("N"));
+        var legacy = Path.Combine(root, "Default");
+        Directory.CreateDirectory(legacy);
+        File.WriteAllText(Path.Combine(legacy, "Cookies"), "existing-cookie-db");
+        try
+        {
+            BrowserEngineRuntime.PrepareProfileLayout(root);
+
+            var current = Path.Combine(root, "profiles", "global", "local");
+            Assert.False(Directory.Exists(legacy));
+            Assert.Equal(
+                "existing-cookie-db",
+                File.ReadAllText(Path.Combine(current, "Cookies")));
+            Assert.False(Directory.Exists(Path.Combine(current, "Default")));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
 }

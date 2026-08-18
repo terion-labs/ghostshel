@@ -40,7 +40,8 @@ public sealed record WorkspaceDefinition : IDurableDefinition
         bool autoSave = false,
         string? color = null,
         bool agentPanelPinned = false,
-        TerminalMultiplexingMode? terminalMultiplexingOverride = null)
+        TerminalMultiplexingMode? terminalMultiplexingOverride = null,
+        WorkspaceBrowserProfileMode? browserProfileOverride = null)
     {
         Id = id;
         SchemaVersion = schemaVersion;
@@ -60,6 +61,13 @@ public sealed record WorkspaceDefinition : IDurableDefinition
         }
 
         TerminalMultiplexingOverride = terminalMultiplexingOverride;
+        if (browserProfileOverride is not null
+            && !Enum.IsDefined(browserProfileOverride.Value))
+        {
+            throw new ArgumentOutOfRangeException(nameof(browserProfileOverride));
+        }
+
+        BrowserProfileOverride = browserProfileOverride;
     }
 
     public static DefinitionKind Kind => DefinitionKind.Workspace;
@@ -121,6 +129,12 @@ public sealed record WorkspaceDefinition : IDurableDefinition
     /// </summary>
     public TerminalMultiplexingMode? TerminalMultiplexingOverride { get; }
 
+    /// <summary>
+    /// Null inherits the application browser setting. Shared uses the global
+    /// profile; Isolated uses this durable workspace id as the profile key.
+    /// </summary>
+    public WorkspaceBrowserProfileMode? BrowserProfileOverride { get; }
+
     public WorkspaceDefinition MoveEntry(WorkspaceEntryId entryId, int destinationIndex)
     {
         if (destinationIndex < 0 || destinationIndex >= Entries.Count)
@@ -155,7 +169,8 @@ public sealed record WorkspaceDefinition : IDurableDefinition
             AutoSave,
             Color,
             AgentPanelPinned,
-            TerminalMultiplexingOverride);
+            TerminalMultiplexingOverride,
+            BrowserProfileOverride);
     }
 
     public static bool IsValidIcon(string? icon)

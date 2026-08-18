@@ -126,6 +126,9 @@ public sealed partial class MainWindow
     private void OnFilesSettingsClick(object? sender, RoutedEventArgs e) =>
         SetSettingsPage(SettingsPage.Files);
 
+    private void OnBrowserSettingsClick(object? sender, RoutedEventArgs e) =>
+        SetSettingsPage(SettingsPage.Browser);
+
     private void OnEnableStartupProtectionClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;

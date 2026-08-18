@@ -62,6 +62,22 @@ public sealed class BrowserSurfaceTests
     }
 
     [Fact]
+    public void NativePopupRequestIsPromotedToANewShellTabRequest()
+    {
+        var nativeView = new RecordingEmbeddedBrowserView();
+        var surface = Surface(nativeView);
+        var address = Address("https://docs.example.test/popup");
+        BrowserNewTabRequestedEventArgs? requested = null;
+        surface.NewTabRequested += (_, args) => requested = args;
+
+        nativeView.RaiseNewTabRequested(address, userGesture: true);
+
+        Assert.NotNull(requested);
+        Assert.Equal(address, requested!.Address);
+        Assert.True(requested.UserGesture);
+    }
+
+    [Fact]
     public async Task NetworkObservationLifetimeReachesTheNativeBrowserView()
     {
         var nativeView = new RecordingEmbeddedBrowserView();

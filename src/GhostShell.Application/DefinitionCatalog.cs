@@ -1354,7 +1354,8 @@ public sealed class DefinitionCatalog : IDefinitionCatalog
                     workspace.AutoSave,
                     workspace.Color,
                     workspace.AgentPanelPinned,
-                    workspace.TerminalMultiplexingOverride),
+                    workspace.TerminalMultiplexingOverride,
+                    workspace.BrowserProfileOverride),
                 stored.Revision,
                 cancellationToken)
             .ConfigureAwait(false);

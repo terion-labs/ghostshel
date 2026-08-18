@@ -731,6 +731,130 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     }
 
     [Fact]
+    public async Task BrowserPopupOpensARealGhostShellTabWithTheSameRouteAndProfile()
+    {
+        var preferences = new InMemoryBrowserProfilePreferences();
+        var browserFactory = new RecordingBrowserRendererViewFactory();
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            browserRendererFactory: browserFactory,
+            browserProfilePreferences: preferences);
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        var runtime = Assert.IsType<RuntimeWorkspaceViewModel>(
+            viewModel.RuntimeWorkspace);
+        var originalTabs = runtime.Tabs.Count;
+        var originalBrowser = Assert.IsType<BrowserRuntimePanelViewModel>(
+            Assert.Single(
+                runtime.ActiveTab!.Panels,
+                panel => panel.Kind == PanelKind.Browser));
+        var popup = new BrowserAddress(
+            new Uri("https://docs.example.test/popup"));
+        await preferences.ApplyAsync(
+            new BrowserProfileSettings(BrowserProfileSharing.PerWorkspace),
+            CancellationToken.None);
+
+        Assert.Single(browserFactory.Renderers).RaiseNewTabRequested(popup);
+
+        await WaitForAsync(() => runtime.Tabs.Count == originalTabs + 1);
+        var popupBrowser = Assert.IsType<BrowserRuntimePanelViewModel>(
+            Assert.Single(runtime.ActiveTab!.Panels));
+        Assert.NotSame(originalBrowser, popupBrowser);
+        Assert.Equal(popup, popupBrowser.CurrentAddress);
+        Assert.Equal(originalBrowser.ConnectionId, popupBrowser.ConnectionId);
+        Assert.Equal(
+            [BrowserProfileKey.Global, BrowserProfileKey.Global],
+            browserFactory.CreatedProfiles);
+    }
+
+    [Fact]
+    public async Task PerWorkspaceBrowserSettingUsesTheDurableWorkspaceIdentity()
+    {
+        var preferences = new InMemoryBrowserProfilePreferences();
+        await preferences.ApplyAsync(
+            new BrowserProfileSettings(BrowserProfileSharing.PerWorkspace),
+            CancellationToken.None);
+        var browserFactory = new RecordingBrowserRendererViewFactory();
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            browserRendererFactory: browserFactory,
+            browserProfilePreferences: preferences);
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+
+        Assert.Equal(
+            BrowserProfileKey.ForWorkspace(WorkspaceId.Value),
+            Assert.Single(browserFactory.CreatedProfiles));
+    }
+
+    [Theory]
+    [InlineData(
+        BrowserProfileSharing.Shared,
+        WorkspaceBrowserProfileMode.Isolated,
+        BrowserProfileKind.Workspace)]
+    [InlineData(
+        BrowserProfileSharing.PerWorkspace,
+        WorkspaceBrowserProfileMode.Shared,
+        BrowserProfileKind.Global)]
+    public async Task WorkspaceBrowserProfileOverrideWinsOverTheApplicationDefault(
+        BrowserProfileSharing applicationDefault,
+        WorkspaceBrowserProfileMode workspaceOverride,
+        BrowserProfileKind expectedKind)
+    {
+        var preferences = new InMemoryBrowserProfilePreferences();
+        await preferences.ApplyAsync(
+            new BrowserProfileSettings(applicationDefault),
+            CancellationToken.None);
+        var snapshot = CreateCatalogSnapshot();
+        var stored = Assert.Single(
+            snapshot.Workspaces,
+            item => item.Value.Id == WorkspaceId);
+        var current = stored.Value;
+        var updated = new WorkspaceDefinition(
+            current.Id,
+            current.SchemaVersion,
+            current.Name,
+            current.Description,
+            current.Accent,
+            current.Entries,
+            current.AgentPolicyOverride,
+            current.Icon,
+            current.AutoSave,
+            current.Color,
+            current.AgentPanelPinned,
+            current.TerminalMultiplexingOverride,
+            workspaceOverride);
+        snapshot = snapshot with
+        {
+            Workspaces = snapshot.Workspaces
+                .Select(item => item.Value.Id == WorkspaceId
+                    ? item with { Value = updated }
+                    : item)
+                .ToArray(),
+        };
+        var browserFactory = new RecordingBrowserRendererViewFactory();
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            snapshot,
+            browserRendererFactory: browserFactory,
+            browserProfilePreferences: preferences);
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+
+        var profile = Assert.Single(browserFactory.CreatedProfiles);
+        Assert.Equal(expectedKind, profile.Kind);
+        Assert.Equal(
+            expectedKind == BrowserProfileKind.Workspace
+                ? WorkspaceId.Value
+                : string.Empty,
+            profile.Identity);
+    }
+
+    [Fact]
     public async Task Browser_selector_offers_local_and_ssh_routes_and_switch_preserves_address()
     {
         var ssh = new ConnectionProfile(
@@ -4922,6 +5046,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             viewModel.IsWorkspaceSettingsVisible,
             viewModel.IsKeybindingSettingsVisible,
             viewModel.IsFilesSettingsVisible,
+            viewModel.IsBrowserSettingsVisible,
             viewModel.IsTerminalSettingsVisible,
             viewModel.IsQuickTerminalSettingsVisible,
             viewModel.IsSecretsSettingsVisible,
@@ -4955,7 +5080,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         IDatabasePanelClient? databasePanelClient = null,
         IDatabaseConnectionCatalog? databaseConnectionCatalog = null,
         IRedisPanelSessionFactory? redisPanelSessionFactory = null,
-        AgentPolicyCoordinator? agentPolicyCoordinator = null) =>
+        AgentPolicyCoordinator? agentPolicyCoordinator = null,
+        IBrowserProfilePreferences? browserProfilePreferences = null) =>
         CreateViewModel(
             sessionClient,
             CreateFixedCatalog(snapshot),
@@ -4972,7 +5098,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             databasePanelClient,
             databaseConnectionCatalog,
             redisPanelSessionFactory,
-            agentPolicyCoordinator);
+            agentPolicyCoordinator,
+            browserProfilePreferences);
 
     private static MainWindowViewModel CreateViewModel(
         ISessionHostClient sessionClient,
@@ -4990,7 +5117,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         IDatabasePanelClient? databasePanelClient = null,
         IDatabaseConnectionCatalog? databaseConnectionCatalog = null,
         IRedisPanelSessionFactory? redisPanelSessionFactory = null,
-        AgentPolicyCoordinator? agentPolicyCoordinator = null)
+        AgentPolicyCoordinator? agentPolicyCoordinator = null,
+        IBrowserProfilePreferences? browserProfilePreferences = null)
     {
         var files = new EmptyFileClients();
         agentPolicyCoordinator ??= CreateConfiguredPolicyCoordinator(aiProfiles);
@@ -5012,7 +5140,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             redisPanelSessionFactory: redisPanelSessionFactory,
             dockerEngineClient: dockerEngineClient,
             agentRuntimeFactory: agentRuntimeFactory,
-            agentPolicyCoordinator: agentPolicyCoordinator);
+            agentPolicyCoordinator: agentPolicyCoordinator,
+            browserProfilePreferences: browserProfilePreferences);
     }
 
     private static AgentPolicyCoordinator? CreateConfiguredPolicyCoordinator(
@@ -5737,6 +5866,10 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
         public List<ConnectionId> CreatedConnections { get; } = [];
 
+        public List<BrowserProfileKey> CreatedProfiles { get; } = [];
+
+        public List<RecordingBrowserRenderer> Renderers { get; } = [];
+
         public int CreateCount { get; private set; }
 
         public int DisposeCount => _lifetimes.Sum(lifetime => lifetime.DisposeCount);
@@ -5745,19 +5878,31 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         {
             CreateCount++;
             var lifetime = new RecordingBrowserRendererLifetime();
+            var renderer = new RecordingBrowserRenderer();
             _lifetimes.Add(lifetime);
+            Renderers.Add(renderer);
             return new BrowserRendererView(
                 new Border(),
-                new RecordingBrowserRenderer(),
+                renderer,
                 lifetime);
         }
 
         public ValueTask<BrowserRendererView> CreateAsync(
             ConnectionProfile connection,
             CancellationToken cancellationToken)
+            => CreateAsync(
+                connection,
+                BrowserProfileKey.Global,
+                cancellationToken);
+
+        public ValueTask<BrowserRendererView> CreateAsync(
+            ConnectionProfile connection,
+            BrowserProfileKey profile,
+            CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             CreatedConnections.Add(connection.Id);
+            CreatedProfiles.Add(profile);
             return ValueTask.FromResult(Create());
         }
     }
@@ -5771,7 +5916,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
     private sealed class RecordingBrowserRenderer :
         IBrowserRenderer,
-        IBrowserPhysicalInputBarrier
+        IBrowserPhysicalInputBarrier,
+        IBrowserNewTabRequestSource
     {
         public BrowserSessionState State { get; private set; } =
             BrowserSessionState.Initial(BrowserAddress.Blank);
@@ -5793,6 +5939,13 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         ]);
 
         public event EventHandler<BrowserStateChangedEventArgs>? StateChanged;
+
+        public event EventHandler<BrowserNewTabRequestedEventArgs>? NewTabRequested;
+
+        public void RaiseNewTabRequested(BrowserAddress address) =>
+            NewTabRequested?.Invoke(
+                this,
+                new BrowserNewTabRequestedEventArgs(address, userGesture: true));
 
         public void BindPhysicalInputGate(
             Func<NativeRendererPhysicalInput, bool>? physicalInputGate)

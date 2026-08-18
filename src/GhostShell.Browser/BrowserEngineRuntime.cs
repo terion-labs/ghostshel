@@ -53,6 +53,7 @@ public static class BrowserEngineRuntime
             }
 
             PreparePrivateDirectory(options.ProfileDirectory);
+            PrepareProfileLayout(options.ProfileDirectory);
             PreparePrivateDirectory(
                 Path.GetDirectoryName(options.LogFilePath)
                 ?? throw new ArgumentException(
@@ -72,7 +73,10 @@ public static class BrowserEngineRuntime
             ValidateVersions(versions);
             Cef.SetInitSettings(new Cef.CefSettings
             {
-                CachePath = options.ProfileDirectory,
+                // GhostSHELL browsers always receive an explicit profile
+                // context. Keep CEF's otherwise-unused global context apart so
+                // every user-visible partition can be released and cleared.
+                CachePath = Path.Combine(options.ProfileDirectory, "runtime"),
                 RootCachePath = options.ProfileDirectory,
                 UserAgentProduct = $"GhostSHELL/{options.ProductVersion}",
                 LogFile = options.LogFilePath,
@@ -177,6 +181,33 @@ public static class BrowserEngineRuntime
                 | UnixFileMode.UserExecute);
         }
     }
+
+    internal static void PrepareProfileLayout(string rootDirectory)
+    {
+        var runtimeDirectory = Path.Combine(rootDirectory, "runtime");
+        var globalProfilesDirectory = Path.Combine(
+            rootDirectory,
+            "profiles",
+            "global");
+        var globalDirectory = Path.Combine(
+            globalProfilesDirectory,
+            "local");
+        PreparePrivateDirectory(runtimeDirectory);
+        PreparePrivateDirectory(globalProfilesDirectory);
+
+        // Builds before browser profiles stored the shared Chromium profile
+        // in the Default child of the CEF root. The explicit request context
+        // uses its cache path itself as the profile directory, so move Default
+        // to that exact path (not below it) exactly once.
+        var legacyDefault = Path.Combine(rootDirectory, "Default");
+        if (Directory.Exists(legacyDefault)
+            && !Directory.Exists(globalDirectory))
+        {
+            Directory.Move(legacyDefault, globalDirectory);
+        }
+
+        PreparePrivateDirectory(globalDirectory);
+    }
 }
 
 public sealed record BrowserEngineRuntimeOptions
@@ -199,4 +230,8 @@ public sealed record BrowserEngineRuntimeOptions
     public string LogFilePath { get; }
 
     public string ProductVersion { get; }
+
+    public string BrowserProfilesDirectory => Path.Combine(
+        ProfileDirectory,
+        "profiles");
 }

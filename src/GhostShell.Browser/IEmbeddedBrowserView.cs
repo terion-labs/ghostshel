@@ -37,6 +37,8 @@ internal interface IEmbeddedBrowserView : IDisposable
     /// </summary>
     event EventHandler? RenderProcessFailed;
 
+    event EventHandler<BrowserNewTabRequestedEventArgs>? NewTabRequested;
+
     void Navigate(BrowserAddress address);
 
     bool GoBack();

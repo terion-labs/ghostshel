@@ -569,10 +569,37 @@ public sealed class WorkspaceEditorViewModelTests
         Assert.False(editor.IsDirty);
     }
 
+    [Fact]
+    public void Browser_profile_override_can_be_selected_saved_and_reset()
+    {
+        using var editor = new WorkspaceEditorViewModel(
+            Workspace([], browserProfile: WorkspaceBrowserProfileMode.Shared),
+            4,
+            [],
+            [],
+            []);
+        editor.SelectedBrowserProfile = Assert.Single(
+            editor.BrowserProfileOptions,
+            option => option.Mode == WorkspaceBrowserProfileMode.Isolated);
+
+        Assert.True(editor.IsDirty);
+        Assert.Equal(
+            WorkspaceBrowserProfileMode.Isolated,
+            editor.CreateSaveRequest().Definition.BrowserProfileOverride);
+
+        editor.Reset();
+
+        Assert.False(editor.IsDirty);
+        Assert.Equal(
+            WorkspaceBrowserProfileMode.Shared,
+            editor.SelectedBrowserProfile.Mode);
+    }
+
     private static WorkspaceDefinition Workspace(
         IReadOnlyList<WorkspaceEntry> entries,
         AgentPolicy? policy = null,
-        string icon = WorkspaceDefinition.DefaultIcon) => new(
+        string icon = WorkspaceDefinition.DefaultIcon,
+        WorkspaceBrowserProfileMode? browserProfile = null) => new(
         new WorkspaceId("workspace"),
         WorkspaceDefinition.CurrentSchemaVersion,
         "Workspace",
@@ -580,7 +607,8 @@ public sealed class WorkspaceEditorViewModelTests
         "#B8793A",
         entries,
         policy,
-        icon);
+        icon,
+        browserProfileOverride: browserProfile);
 
     private static ConnectionProfile LocalConnection(string id) => new(
         new ConnectionId(id),

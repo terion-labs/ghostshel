@@ -78,6 +78,10 @@ internal static class HistoricalDatabaseFixture
                 "workspace-scoped-agent-checkpoints",
                 "7ECE2A9184D3EC0A189C45F4C405669B1730BEB80204CADE4E27A8E6DC620334",
                 IsDestructive: false),
+            [15] = new(
+                "browser-profile-preference",
+                "F1E0DBBA2A536B0B23F7177DFB8A9A9AF0EE37E079F87DF972B6DD47B585B3C3",
+                IsDestructive: false),
         };
 
     public static readonly DateTimeOffset ReferenceTime =
@@ -345,6 +349,7 @@ internal static class HistoricalDatabaseFixture
             11 => "agent_model_favorites",
             12 => "agent_policy_preference",
             13 => "agent_session_checkpoints_workspace_updated_idx",
+            14 => "browser_profile_preference",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(currentVersion),
                 currentVersion,

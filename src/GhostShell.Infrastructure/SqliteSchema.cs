@@ -369,5 +369,17 @@ internal static class SqliteSchema
                     updated_utc DESC,
                     run_id);
             """),
+        new(
+            15,
+            "browser-profile-preference",
+            """
+            CREATE TABLE browser_profile_preference (
+                singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+                sharing INTEGER NOT NULL CHECK (sharing IN (0, 1))
+            );
+
+            INSERT INTO browser_profile_preference(singleton_id, sharing)
+            VALUES (1, 0);
+            """),
     ];
 }

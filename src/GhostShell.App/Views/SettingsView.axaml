@@ -87,6 +87,12 @@
                     IsActive="{Binding IsFilesSettingsVisible}"
                     Label="Files &amp; transfers" />
                 <components:ShellNavigationItem
+                    AutomationName="Browser settings"
+                    Click="OnBrowserSettingsClick"
+                    Icon="Globe"
+                    IsActive="{Binding IsBrowserSettingsVisible}"
+                    Label="Browser" />
+                <components:ShellNavigationItem
                     AutomationName="Terminal settings"
                     Click="OnTerminalSettingsClick"
                     Icon="WindowConsole"
@@ -497,6 +503,59 @@
                   </controls:Callout.Action>
                 </controls:Callout>
               </StackPanel>
+            </StackPanel>
+
+            <StackPanel Spacing="{DynamicResource ShellSpaceLg}" IsVisible="{Binding IsBrowserSettingsVisible}">
+              <components:SettingsPageHeader
+                  Heading="Browser"
+                  Description="Choose where websites keep cookies and site data, and clear those profiles deliberately." />
+              <controls:SettingsGroup Heading="Profiles" ControlWidth="280">
+                <controls:SettingRow
+                    Label="Default profile sharing"
+                    Description="Applies to new browser tabs. A workspace can override it in that workspace's settings."
+                    IsLast="True">
+                  <ComboBox
+                      Width="260"
+                      ItemsSource="{Binding BrowserProfileSettingsEditor.SharingOptions}"
+                      SelectedItem="{Binding BrowserProfileSettingsEditor.SelectedSharing, Mode=TwoWay}"
+                      AutomationProperties.Name="Default browser profile sharing">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding DisplayName}" />
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                </controls:SettingRow>
+              </controls:SettingsGroup>
+              <controls:SurfaceCard Padding="{DynamicResource ShellCardPaddingCompact}">
+                <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+                  <TextBlock Classes="SectionHeading" Text="Stored browser data" />
+                  <TextBlock Classes="Muted" Text="{Binding BrowserProfileSettingsEditor.UsageText}" TextWrapping="Wrap" />
+                  <TextBlock
+                      Classes="Muted"
+                      Text="Cookies, cache, local storage, IndexedDB, and service-worker data are removed together. Close tabs using a profile before clearing it."
+                      TextWrapping="Wrap" />
+                  <WrapPanel Orientation="Horizontal" ItemSpacing="{DynamicResource ShellSpaceSm}" LineSpacing="{DynamicResource ShellSpaceSm}">
+                    <Button Classes="SecondaryButton"
+                        Command="{Binding BrowserProfileSettingsEditor.ClearGlobalCommand}"
+                        Content="Clear shared profile"
+                        AutomationProperties.Name="Clear shared browser profile" />
+                    <Button Classes="SecondaryButton"
+                        Command="{Binding BrowserProfileSettingsEditor.ClearWorkspacesCommand}"
+                        Content="Clear workspace profiles"
+                        AutomationProperties.Name="Clear workspace browser profiles" />
+                    <Button Classes="DestructiveButton"
+                        Command="{Binding BrowserProfileSettingsEditor.ClearAllCommand}"
+                        Content="Clear all browser data"
+                        AutomationProperties.Name="Clear all browser profile data" />
+                  </WrapPanel>
+                  <controls:Callout
+                      Tone="Notice"
+                      ShowsGlyph="False"
+                      Text="{Binding BrowserProfileSettingsEditor.OperationStatus}"
+                      IsVisible="{Binding BrowserProfileSettingsEditor.HasOperationStatus}" />
+                </StackPanel>
+              </controls:SurfaceCard>
             </StackPanel>
 
             <StackPanel Spacing="{DynamicResource ShellSpaceLg}" IsVisible="{Binding IsTerminalSettingsVisible}">

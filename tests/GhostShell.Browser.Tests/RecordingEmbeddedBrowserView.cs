@@ -149,6 +149,8 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
 
     public event EventHandler? RenderProcessFailed;
 
+    public event EventHandler<BrowserNewTabRequestedEventArgs>? NewTabRequested;
+
     public void SetAgentActivity(bool isActive) => IsAgentActive = isActive;
 
     public void Dispose() => IsDisposed = true;
@@ -377,6 +379,13 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
 
     public void RaiseRenderProcessFailed() =>
         RenderProcessFailed?.Invoke(this, EventArgs.Empty);
+
+    public void RaiseNewTabRequested(
+        BrowserAddress address,
+        bool userGesture = true) =>
+        NewTabRequested?.Invoke(
+            this,
+            new BrowserNewTabRequestedEventArgs(address, userGesture));
 
     public void RaiseAddressChanged(BrowserAddress address) =>
         AddressChanged?.Invoke(

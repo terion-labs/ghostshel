@@ -25,6 +25,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
     private string _icon;
     private bool _autoSave;
     private WorkspaceTerminalMultiplexingOption _selectedTerminalMultiplexing;
+    private WorkspaceBrowserProfileOption _selectedBrowserProfile;
     private string _iconSearch = string.Empty;
     private bool _showAllIcons;
     private bool _isDirty;
@@ -101,6 +102,14 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         ];
         _selectedTerminalMultiplexing = TerminalMultiplexingOptions.Single(option =>
             option.Mode == workspace.TerminalMultiplexingOverride);
+        BrowserProfileOptions =
+        [
+            new(null, "Use application setting"),
+            new(WorkspaceBrowserProfileMode.Shared, "Share the global profile"),
+            new(WorkspaceBrowserProfileMode.Isolated, "Isolate this workspace"),
+        ];
+        _selectedBrowserProfile = BrowserProfileOptions.Single(option =>
+            option.Mode == workspace.BrowserProfileOverride);
         _screens = screens.ToDictionary(screen => screen.Id);
         _readOnlyEntries = new(_entries);
 
@@ -151,6 +160,8 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
 
     public IReadOnlyList<WorkspaceTerminalMultiplexingOption> TerminalMultiplexingOptions { get; }
 
+    public IReadOnlyList<WorkspaceBrowserProfileOption> BrowserProfileOptions { get; }
+
     public SavedScreenAgentPolicyEditorViewModel AgentPolicy { get; private set; }
 
     public WorkspaceTerminalMultiplexingOption SelectedTerminalMultiplexing
@@ -160,6 +171,19 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         {
             ArgumentNullException.ThrowIfNull(value);
             if (SetProperty(ref _selectedTerminalMultiplexing, value))
+            {
+                Changed();
+            }
+        }
+    }
+
+    public WorkspaceBrowserProfileOption SelectedBrowserProfile
+    {
+        get => _selectedBrowserProfile;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            if (SetProperty(ref _selectedBrowserProfile, value))
             {
                 Changed();
             }
@@ -618,6 +642,9 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         var multiplexing = TerminalMultiplexingOptions.Single(option =>
             option.Mode == _original.TerminalMultiplexingOverride);
         var multiplexingChanged = _selectedTerminalMultiplexing != multiplexing;
+        var browserProfile = BrowserProfileOptions.Single(option =>
+            option.Mode == _original.BrowserProfileOverride);
+        var browserProfileChanged = _selectedBrowserProfile != browserProfile;
         _name = _original.Name;
         _description = description;
         _accent = accent;
@@ -625,6 +652,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         _icon = _original.Icon;
         _autoSave = _original.AutoSave;
         _selectedTerminalMultiplexing = multiplexing;
+        _selectedBrowserProfile = browserProfile;
         if (nameChanged)
         {
             OnPropertyChanged(nameof(Name));
@@ -668,6 +696,12 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         if (multiplexingChanged)
         {
             OnPropertyChanged(nameof(SelectedTerminalMultiplexing));
+        }
+
+
+        if (browserProfileChanged)
+        {
+            OnPropertyChanged(nameof(SelectedBrowserProfile));
         }
 
         AgentPolicy.Changed -= OnAgentPolicyChanged;
@@ -765,7 +799,8 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         AutoSave,
         Color,
         _original.AgentPanelPinned,
-        SelectedTerminalMultiplexing.Mode);
+        SelectedTerminalMultiplexing.Mode,
+        SelectedBrowserProfile.Mode);
 
     private IReadOnlyList<DefinitionValidationIssue> Validate()
     {

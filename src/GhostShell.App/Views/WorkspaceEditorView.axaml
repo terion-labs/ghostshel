@@ -589,13 +589,28 @@
             </controls:SettingRow>
             <controls:SettingRow
                 Label="Terminal continuity"
-                Description="Choose whether SSH terminals in this workspace use app-managed tmux with GNU Screen as a fallback."
-                IsLast="True">
+                Description="Choose whether SSH terminals in this workspace use app-managed tmux with GNU Screen as a fallback.">
               <ComboBox
                   Width="250"
                   ItemsSource="{Binding TerminalMultiplexingOptions}"
                   SelectedItem="{Binding SelectedTerminalMultiplexing, Mode=TwoWay}"
                   AutomationProperties.Name="Workspace terminal continuity">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate>
+                    <TextBlock Text="{Binding DisplayName}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </controls:SettingRow>
+            <controls:SettingRow
+                Label="Browser profile"
+                Description="Share cookies and site storage with other workspaces, or keep this workspace isolated."
+                IsLast="True">
+              <ComboBox
+                  Width="250"
+                  ItemsSource="{Binding BrowserProfileOptions}"
+                  SelectedItem="{Binding SelectedBrowserProfile, Mode=TwoWay}"
+                  AutomationProperties.Name="Workspace browser profile">
                 <ComboBox.ItemTemplate>
                   <DataTemplate>
                     <TextBlock Text="{Binding DisplayName}" />
