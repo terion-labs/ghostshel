@@ -1303,9 +1303,15 @@ internal sealed class QaProcessMonitorPreview
 
     public string Filter => string.Empty;
 
-    public IReadOnlyList<string> SortOptions { get; } = ["Cpu descending"];
+    public bool IsSortingByCpu => true;
 
-    public string Sort => "Cpu descending";
+    public bool IsSortingByMemory => false;
+
+    public bool IsSortingByName => false;
+
+    public bool IsSortingByProcessId => false;
+
+    public bool IsSortDescending => true;
 
     public string IssueTitle => string.Empty;
 

@@ -3,6 +3,7 @@ using Avalonia.Interactivity;
 
 using GhostShell.App.ViewModels;
 using GhostShell.App.Views.Components;
+using GhostShell.Application;
 
 namespace GhostShell.App.Views.RuntimePanels;
 
@@ -36,6 +37,26 @@ public sealed partial class ProcessMonitorRuntimePanelView : UserControl
     private void OnNewConnectionRequested(object? sender, RoutedEventArgs e) =>
         NewConnectionRequested?.Invoke(this, e);
 
+    private void OnSortCpuClick(object? sender, RoutedEventArgs e) =>
+        ApplySort(ProcessMonitorSort.CpuDescending);
+
+    private void OnSortMemoryClick(object? sender, RoutedEventArgs e) =>
+        ApplySort(ProcessMonitorSort.MemoryDescending);
+
+    private void OnSortNameClick(object? sender, RoutedEventArgs e) =>
+        ApplySort(ProcessMonitorSort.NameAscending);
+
+    private void OnSortProcessIdClick(object? sender, RoutedEventArgs e) =>
+        ApplySort(ProcessMonitorSort.ProcessIdAscending);
+
     private void OnSplitRequested(object? sender, PanelSplitOrientation orientation) =>
         SplitRequested?.Invoke(sender, orientation);
+
+    private void ApplySort(ProcessMonitorSort sort)
+    {
+        if (DataContext is ProcessMonitorRuntimePanelViewModel panel)
+        {
+            panel.Sort = sort;
+        }
+    }
 }

@@ -185,6 +185,39 @@ public sealed class SystemMonitorRuntimePanelViewModelTests
     }
 
     [Fact]
+    public void ProcessSortExposesTheActiveHeaderAndDirection()
+    {
+        var (client, _) = CreateHost();
+        using var panel = CreateProcessPanel(client);
+
+        Assert.True(panel.IsSortingByCpu);
+        Assert.True(panel.IsSortDescending);
+        Assert.False(panel.IsSortingByMemory);
+        Assert.False(panel.IsSortingByName);
+        Assert.False(panel.IsSortingByProcessId);
+
+        List<string?> changed = [];
+        panel.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        panel.Sort = ProcessMonitorSort.NameAscending;
+
+        Assert.False(panel.IsSortingByCpu);
+        Assert.True(panel.IsSortingByName);
+        Assert.False(panel.IsSortDescending);
+        Assert.Contains(
+            nameof(ProcessMonitorRuntimePanelViewModel.IsSortingByCpu),
+            changed,
+            StringComparer.Ordinal);
+        Assert.Contains(
+            nameof(ProcessMonitorRuntimePanelViewModel.IsSortingByName),
+            changed,
+            StringComparer.Ordinal);
+        Assert.Contains(
+            nameof(ProcessMonitorRuntimePanelViewModel.IsSortDescending),
+            changed,
+            StringComparer.Ordinal);
+    }
+
+    [Fact]
     public async Task StatisticsRecoverableFailureKeepsTheLastGoodSampleVisible()
     {
         var (client, host) = CreateHost();

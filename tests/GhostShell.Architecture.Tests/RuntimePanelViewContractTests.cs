@@ -1911,6 +1911,95 @@ public sealed class RuntimePanelViewContractTests
     }
 
     [Fact]
+    public void Process_monitor_sort_is_owned_by_clickable_column_headers()
+    {
+        var document = LoadRuntimePanelView("ProcessMonitorRuntimePanelView");
+        var root = Assert.IsType<XElement>(document.Root);
+        var sortHeaders = new Dictionary<string, (string Handler, string StateBinding)>(
+            StringComparer.Ordinal)
+        {
+            ["Sort processes by PID ascending"] = (
+                "OnSortProcessIdClick",
+                "{Binding IsSortingByProcessId}"),
+            ["Sort processes by name ascending"] = (
+                "OnSortNameClick",
+                "{Binding IsSortingByName}"),
+            ["Sort processes by CPU descending"] = (
+                "OnSortCpuClick",
+                "{Binding IsSortingByCpu}"),
+            ["Sort processes by memory descending"] = (
+                "OnSortMemoryClick",
+                "{Binding IsSortingByMemory}"),
+        };
+
+        Assert.DoesNotContain(
+            root.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "AutomationProperties.Name"),
+                "Process sort order",
+                StringComparison.Ordinal));
+        foreach (var (accessibleName, sortHeader) in sortHeaders)
+        {
+            var button = FindUniqueAccessibleElement(root, accessibleName);
+            Assert.Equal("Button", button.Name.LocalName);
+            Assert.Equal(sortHeader.Handler, AttributeValue(button, "Click"));
+            Assert.True(HasClass(button, "ProcessColumnHeader"));
+            Assert.Equal(
+                sortHeader.StateBinding,
+                AttributeValue(button, "Classes.sorted"));
+            Assert.Equal(
+                "{Binding IsSortDescending}",
+                AttributeValue(button, "Classes.descending"));
+            Assert.Contains(
+                button.Descendants(),
+                element => string.Equals(
+                    AttributeValue(element, "Symbol"),
+                    "ArrowUp",
+                    StringComparison.Ordinal));
+            Assert.Contains(
+                button.Descendants(),
+                element => string.Equals(
+                    AttributeValue(element, "Symbol"),
+                    "ArrowDown",
+                    StringComparison.Ordinal));
+        }
+
+        var startedHeader = Assert.Single(
+            root.Descendants(),
+            element => string.Equals(element.Name.LocalName, "TextBlock", StringComparison.Ordinal)
+                && string.Equals(
+                    AttributeValue(element, "Text"),
+                    "Started",
+                    StringComparison.Ordinal));
+        Assert.True(HasClass(startedHeader, "StartedCell"));
+
+        var headerStyle = Assert.Single(
+            root.Descendants(),
+            element => string.Equals(element.Name.LocalName, "Style", StringComparison.Ordinal)
+                && string.Equals(
+                    AttributeValue(element, "Selector"),
+                    "Button.ProcessColumnHeader",
+                    StringComparison.Ordinal));
+        Assert.Contains(
+            headerStyle.Elements(),
+            setter => string.Equals(
+                    AttributeValue(setter, "Property"),
+                    "HorizontalAlignment",
+                    StringComparison.Ordinal)
+                && string.Equals(
+                    AttributeValue(setter, "Value"),
+                    "Stretch",
+                    StringComparison.Ordinal));
+        Assert.Contains(
+            root.Descendants(),
+            element => string.Equals(element.Name.LocalName, "Style", StringComparison.Ordinal)
+                && string.Equals(
+                    AttributeValue(element, "Selector"),
+                    "Button.ProcessColumnHeader:pointerover /template/ ContentPresenter",
+                    StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Statistics_panel_presents_host_metrics_with_bounded_history_charts()
     {
         var document = LoadRuntimePanelView("StatisticsRuntimePanelView");

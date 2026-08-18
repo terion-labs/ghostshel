@@ -667,9 +667,6 @@ public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
 
     public ObservableCollection<ProcessMonitorEntryViewModel> Processes { get; } = [];
 
-    public IReadOnlyList<ProcessMonitorSort> SortOptions { get; } =
-        Enum.GetValues<ProcessMonitorSort>();
-
     public SessionId SessionId { get; }
 
     public ConnectionId ConnectionId => _connection.Id;
@@ -714,12 +711,29 @@ public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
                 throw new ArgumentOutOfRangeException(nameof(value), value, null);
             }
 
-            if (SetProperty(ref _sort, value) && _started)
+            if (!SetProperty(ref _sort, value))
+            {
+                return;
+            }
+
+            NotifySortChanged();
+            if (_started)
             {
                 _ = RefreshAsync();
             }
         }
     }
+
+    public bool IsSortingByCpu => Sort == ProcessMonitorSort.CpuDescending;
+
+    public bool IsSortingByMemory => Sort == ProcessMonitorSort.MemoryDescending;
+
+    public bool IsSortingByName => Sort == ProcessMonitorSort.NameAscending;
+
+    public bool IsSortingByProcessId => Sort == ProcessMonitorSort.ProcessIdAscending;
+
+    public bool IsSortDescending =>
+        Sort is ProcessMonitorSort.CpuDescending or ProcessMonitorSort.MemoryDescending;
 
     public string Filter
     {
@@ -1120,6 +1134,15 @@ public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
                 && process.Entry.StartedAtUtc == selectedIdentity.StartedAtUtc)
             : null;
         OnPropertyChanged(nameof(ShowingText));
+    }
+
+    private void NotifySortChanged()
+    {
+        OnPropertyChanged(nameof(IsSortingByCpu));
+        OnPropertyChanged(nameof(IsSortingByMemory));
+        OnPropertyChanged(nameof(IsSortingByName));
+        OnPropertyChanged(nameof(IsSortingByProcessId));
+        OnPropertyChanged(nameof(IsSortDescending));
     }
 }
 

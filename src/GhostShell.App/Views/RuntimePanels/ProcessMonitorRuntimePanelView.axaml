@@ -24,6 +24,39 @@
         <Setter Property="IsVisible" Value="False" />
       </Style>
     </ContainerQuery>
+    <Style Selector="Button.ProcessColumnHeader">
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="VerticalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="0" />
+    </Style>
+    <Style Selector="Button.ProcessColumnHeader /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="0" />
+    </Style>
+    <Style Selector="Button.ProcessColumnHeader:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+    </Style>
+    <Style Selector="icons|SymbolIcon.ProcessSortIndicator">
+      <Setter Property="IsVisible" Value="False" />
+      <Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}" />
+    </Style>
+    <Style Selector="Button.ProcessColumnHeader.sorted TextBlock.Eyebrow">
+      <Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}" />
+    </Style>
+    <Style Selector="Button.ProcessColumnHeader.sorted icons|SymbolIcon.ProcessSortAscending">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="Button.ProcessColumnHeader.sorted.descending icons|SymbolIcon.ProcessSortAscending">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="Button.ProcessColumnHeader.sorted.descending icons|SymbolIcon.ProcessSortDescending">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
   </UserControl.Styles>
   <controls:PanelChrome
       CloseLabel="Close Process Monitor panel"
@@ -75,9 +108,8 @@
 
     <Grid RowDefinitions="46,28,*">
       <Border Grid.Row="0" Classes="PanelToolbar">
-        <Grid Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}" ColumnDefinitions="*,190" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+        <Grid Margin="{controls:Inset Horizontal=Sm, Vertical=Xs}">
           <TextBox VerticalAlignment="Center" Text="{Binding Filter}" PlaceholderText="Filter by process name or PID" AutomationProperties.Name="Filter processes" />
-          <ComboBox Grid.Column="1" VerticalAlignment="Center" ItemsSource="{Binding SortOptions}" SelectedItem="{Binding Sort}" AutomationProperties.Name="Process sort order" />
         </Grid>
       </Border>
 
@@ -86,11 +118,76 @@
              hiding a docked cell reclaims its width, so the Started column can
              fold away on narrow panels while every row stays aligned. -->
         <DockPanel Height="28" Margin="{controls:Inset Horizontal=Md}" LastChildFill="True">
-          <TextBlock DockPanel.Dock="Left" Width="70" VerticalAlignment="Center" Classes="Eyebrow" Text="PID" />
+          <Button
+              DockPanel.Dock="Left"
+              Width="70"
+              Classes="ProcessColumnHeader"
+              Classes.sorted="{Binding IsSortingByProcessId}"
+              Classes.descending="{Binding IsSortDescending}"
+              HorizontalContentAlignment="Left"
+              VerticalContentAlignment="Center"
+              Padding="0"
+              Click="OnSortProcessIdClick"
+              AutomationProperties.Name="Sort processes by PID ascending">
+            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+              <TextBlock Classes="Eyebrow" Text="PID" />
+              <icons:SymbolIcon Classes="ProcessSortIndicator ProcessSortAscending" FontSize="10" IsHitTestVisible="False" Symbol="ArrowUp" AutomationProperties.Name="Sorted ascending" />
+              <icons:SymbolIcon Classes="ProcessSortIndicator ProcessSortDescending" FontSize="10" IsHitTestVisible="False" Symbol="ArrowDown" AutomationProperties.Name="Sorted descending" />
+            </StackPanel>
+          </Button>
           <TextBlock DockPanel.Dock="Right" Width="137" Margin="{controls:Inset Left=Sm}" VerticalAlignment="Center" Classes="Eyebrow StartedCell" Text="Started" />
-          <TextBlock DockPanel.Dock="Right" Width="102" Margin="{controls:Inset Left=Sm}" VerticalAlignment="Center" Classes="Eyebrow" Text="Memory" />
-          <TextBlock DockPanel.Dock="Right" Width="82" Margin="{controls:Inset Left=Sm}" VerticalAlignment="Center" Classes="Eyebrow" Text="CPU" />
-          <TextBlock Margin="{controls:Inset Left=Sm}" VerticalAlignment="Center" Classes="Eyebrow" Text="Name" />
+          <Button
+              DockPanel.Dock="Right"
+              Width="102"
+              Margin="{controls:Inset Left=Sm}"
+              Classes="ProcessColumnHeader"
+              Classes.sorted="{Binding IsSortingByMemory}"
+              Classes.descending="{Binding IsSortDescending}"
+              HorizontalContentAlignment="Left"
+              VerticalContentAlignment="Center"
+              Padding="0"
+              Click="OnSortMemoryClick"
+              AutomationProperties.Name="Sort processes by memory descending">
+            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+              <TextBlock Classes="Eyebrow" Text="Memory" />
+              <icons:SymbolIcon Classes="ProcessSortIndicator ProcessSortAscending" FontSize="10" IsHitTestVisible="False" Symbol="ArrowUp" AutomationProperties.Name="Sorted ascending" />
+              <icons:SymbolIcon Classes="ProcessSortIndicator ProcessSortDescending" FontSize="10" IsHitTestVisible="False" Symbol="ArrowDown" AutomationProperties.Name="Sorted descending" />
+            </StackPanel>
+          </Button>
+          <Button
+              DockPanel.Dock="Right"
+              Width="82"
+              Margin="{controls:Inset Left=Sm}"
+              Classes="ProcessColumnHeader"
+              Classes.sorted="{Binding IsSortingByCpu}"
+              Classes.descending="{Binding IsSortDescending}"
+              HorizontalContentAlignment="Left"
+              VerticalContentAlignment="Center"
+              Padding="0"
+              Click="OnSortCpuClick"
+              AutomationProperties.Name="Sort processes by CPU descending">
+            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+              <TextBlock Classes="Eyebrow" Text="CPU" />
+              <icons:SymbolIcon Classes="ProcessSortIndicator ProcessSortAscending" FontSize="10" IsHitTestVisible="False" Symbol="ArrowUp" AutomationProperties.Name="Sorted ascending" />
+              <icons:SymbolIcon Classes="ProcessSortIndicator ProcessSortDescending" FontSize="10" IsHitTestVisible="False" Symbol="ArrowDown" AutomationProperties.Name="Sorted descending" />
+            </StackPanel>
+          </Button>
+          <Button
+              Margin="{controls:Inset Left=Sm}"
+              Classes="ProcessColumnHeader"
+              Classes.sorted="{Binding IsSortingByName}"
+              Classes.descending="{Binding IsSortDescending}"
+              HorizontalContentAlignment="Left"
+              VerticalContentAlignment="Center"
+              Padding="0"
+              Click="OnSortNameClick"
+              AutomationProperties.Name="Sort processes by name ascending">
+            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+              <TextBlock Classes="Eyebrow" Text="Name" />
+              <icons:SymbolIcon Classes="ProcessSortIndicator ProcessSortAscending" FontSize="10" IsHitTestVisible="False" Symbol="ArrowUp" AutomationProperties.Name="Sorted ascending" />
+              <icons:SymbolIcon Classes="ProcessSortIndicator ProcessSortDescending" FontSize="10" IsHitTestVisible="False" Symbol="ArrowDown" AutomationProperties.Name="Sorted descending" />
+            </StackPanel>
+          </Button>
         </DockPanel>
       </Border>
 
