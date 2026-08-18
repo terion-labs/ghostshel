@@ -509,6 +509,29 @@ public sealed partial class RepositoryConventionTests
     }
 
     [Fact]
+    public void RuntimeTabIconIsOpticallyAlignedWithTitle()
+    {
+        var tabStrip = ApplicationViews.FindUniqueNamedElement("TabScrollViewer").Element;
+        var title = Assert.Single(
+            tabStrip.Descendants(),
+            element => string.Equals(element.Name.LocalName, "TextBlock"
+, StringComparison.Ordinal) && HasClass(element, "RuntimeTabTitle"));
+        var icon = Assert.Single(
+            tabStrip.Descendants(),
+            element => string.Equals(element.Name.LocalName, "SymbolIcon"
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Symbol")
+, "{Binding IconSymbol}", StringComparison.Ordinal));
+        var opticalOffset = Assert.Single(
+            icon.Descendants(),
+            element => string.Equals(element.Name.LocalName, "TranslateTransform"
+, StringComparison.Ordinal));
+
+        Assert.Equal("Center", AttributeValue(title, "VerticalAlignment"));
+        Assert.Equal("Center", AttributeValue(icon, "VerticalAlignment"));
+        Assert.Equal("-1", AttributeValue(opticalOffset, "Y"));
+    }
+
+    [Fact]
     public void RuntimeTabReorderingHasPointerFeedbackAndKeyboardParity()
     {
         // The strip is one reusable control hosted at whichever edge the profile

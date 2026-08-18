@@ -136,7 +136,13 @@
                     DoubleTapped="OnIconDoubleTapped"
                     ToolTip.Tip="Double-click to change icon"
                     AutomationProperties.Name="{Binding Title, StringFormat={}Change icon for tab {0}}">
-                  <icons:SymbolIcon VerticalAlignment="Center" Symbol="{Binding IconSymbol}" FontSize="11" />
+                  <!-- Fluent's visible glyph sits one DIP below Inter's optical
+                       centre even though both controls are geometrically centred. -->
+                  <icons:SymbolIcon VerticalAlignment="Center" Symbol="{Binding IconSymbol}" FontSize="11">
+                    <icons:SymbolIcon.RenderTransform>
+                      <TranslateTransform Y="-1" />
+                    </icons:SymbolIcon.RenderTransform>
+                  </icons:SymbolIcon>
                   <FlyoutBase.AttachedFlyout>
                     <Flyout Opened="OnIconFlyoutOpened">
                       <components:IconPicker
