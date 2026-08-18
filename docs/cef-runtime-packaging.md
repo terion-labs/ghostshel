@@ -43,7 +43,7 @@ Every root retains:
 
 The receipt binds the reviewed catalog bytes, CEF version, RID/platform,
 official archive SHA-1, locally computed archive SHA-256, upstream binding
-commit, patched shim identity `0.8.0-ghostshell.3`, complete vendored-source
+commit, patched shim identity `0.8.0-ghostshell.4`, complete vendored-source
 snapshot SHA-256, GhostSHELL patch-set SHA-256, successful build result, and
 every staged regular file's normalized path, length, SHA-256, and Unix mode
 where applicable. Symlinks, special files,

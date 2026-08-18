@@ -108,7 +108,7 @@ bool JavascriptBridgeEnabled() {
 
 namespace {
 
-constexpr const char kShimVersion[] = "0.8.0-ghostshell.3";
+constexpr const char kShimVersion[] = "0.8.0-ghostshell.4";
 
 void copy_to(char* dst, size_t dst_size, const char* src) {
     if (!dst || dst_size == 0) return;

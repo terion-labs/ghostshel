@@ -33,6 +33,8 @@
 
 namespace exclr8cef {
 
+constexpr int kOpenLinkInNewTabCommandId = MENU_ID_USER_FIRST;
+
 namespace {
 
 std::atomic<int> g_next_id{1};
@@ -141,6 +143,7 @@ struct PendingFileDialog {
 struct PendingContextMenu {
     int browser_id;
     CefRefPtr<CefRunContextMenuCallback> callback;
+    std::string link_url;
 };
 struct PendingDownloadStart {
     int browser_id;
@@ -1524,6 +1527,16 @@ void Exclr8CefOsrHandler::OnBeforeContextMenu(
         }
     };
 
+    const CefString link_url = params->GetLinkUrl();
+    if (!link_url.empty() &&
+        model->GetIndexOf(kOpenLinkInNewTabCommandId) < 0) {
+        model->InsertItemAt(
+            0,
+            kOpenLinkInNewTabCommandId,
+            CefString("Open Link in New Tab"));
+        ensure_separator_after(1);
+    }
+
     if (params->IsEditable()) {
         const auto flags = params->GetEditStateFlags();
         struct EditCommand {
@@ -1589,7 +1602,8 @@ bool Exclr8CefOsrHandler::RunContextMenu(CefRefPtr<CefBrowser> /*browser*/,
     uint64_t token = g_next_token.fetch_add(1, std::memory_order_relaxed);
     {
         std::lock_guard<std::mutex> lock(g_context_menu_mu);
-        g_context_menu_pending[token] = PendingContextMenu{id_, callback};
+        g_context_menu_pending[token] = PendingContextMenu{
+            id_, callback, params->GetLinkUrl().ToString()};
     }
 
     // Serialize the complete menu hierarchy. Format:
@@ -1715,13 +1729,52 @@ bool Exclr8CefOsrHandler::OnBeforePopup(
         CefRefPtr<CefDictionaryValue>& extra_info,
         bool* /*no_javascript_access*/) {
     extra_info = CreateBrowserExtraInfo();
-    if (!g_before_popup_cb) return false;  // default — allow popup creation
+    return ForwardNewTabRequest(
+        target_url,
+        target_frame_name,
+        target_disposition,
+        user_gesture);
+}
+
+bool Exclr8CefOsrHandler::OnOpenURLFromTab(
+        CefRefPtr<CefBrowser> /*browser*/,
+        CefRefPtr<CefFrame> /*frame*/,
+        const CefString& target_url,
+        WindowOpenDisposition target_disposition,
+        bool user_gesture) {
+    switch (target_disposition) {
+        case CEF_WOD_NEW_FOREGROUND_TAB:
+        case CEF_WOD_NEW_BACKGROUND_TAB:
+        case CEF_WOD_NEW_POPUP:
+        case CEF_WOD_NEW_WINDOW:
+            return ForwardNewTabRequest(
+                target_url,
+                CefString(),
+                target_disposition,
+                user_gesture);
+        default:
+            return false;
+    }
+}
+
+bool Exclr8CefOsrHandler::ForwardNewTabRequest(
+        const CefString& target_url,
+        const CefString& target_frame_name,
+        cef_window_open_disposition_t target_disposition,
+        bool user_gesture) {
+    if (!g_before_popup_cb || target_url.empty()) {
+        return false;
+    }
+
     std::string url = target_url.ToString();
     std::string frame_name = target_frame_name.ToString();
-    g_before_popup_cb(id_, url.c_str(), frame_name.c_str(),
-                       static_cast<int>(target_disposition),
-                       user_gesture ? 1 : 0);
-    return true;  // cancel — host took ownership of the URL
+    g_before_popup_cb(
+        id_,
+        url.c_str(),
+        frame_name.c_str(),
+        static_cast<int>(target_disposition),
+        user_gesture ? 1 : 0);
+    return true;
 }
 
 void Exclr8CefOsrHandler::OnBeforeClose(CefRefPtr<CefBrowser> /*browser*/) {
@@ -3854,17 +3907,52 @@ private:
     IMPLEMENT_REFCOUNTING(FileDialogResolveTask);
 };
 
+void CompleteContextMenu(
+        CefRefPtr<CefRunContextMenuCallback> callback,
+        int browser_id,
+        const std::string& link_url,
+        int command_id) {
+    if (!callback) return;
+    if (command_id == exclr8cef::kOpenLinkInNewTabCommandId) {
+        callback->Cancel();
+        if (exclr8cef::g_before_popup_cb && !link_url.empty()) {
+            exclr8cef::g_before_popup_cb(
+                browser_id,
+                link_url.c_str(),
+                "",
+                CEF_WOD_NEW_FOREGROUND_TAB,
+                1);
+        }
+        return;
+    }
+
+    if (command_id < 0) {
+        callback->Cancel();
+        return;
+    }
+
+    callback->Continue(command_id, EVENTFLAG_NONE);
+}
+
 class ContextMenuResolveTask : public CefTask {
 public:
-    ContextMenuResolveTask(CefRefPtr<CefRunContextMenuCallback> cb, int command_id)
-        : cb_(std::move(cb)), command_id_(command_id) {}
+    ContextMenuResolveTask(
+            CefRefPtr<CefRunContextMenuCallback> cb,
+            int browser_id,
+            std::string link_url,
+            int command_id)
+        : cb_(std::move(cb)),
+          browser_id_(browser_id),
+          link_url_(std::move(link_url)),
+          command_id_(command_id) {}
     void Execute() override {
-        if (!cb_) return;
-        if (command_id_ < 0) cb_->Cancel();
-        else cb_->Continue(command_id_, EVENTFLAG_NONE);
+        CompleteContextMenu(
+            cb_, browser_id_, link_url_, command_id_);
     }
 private:
     CefRefPtr<CefRunContextMenuCallback> cb_;
+    int browser_id_;
+    std::string link_url_;
     int command_id_;
     IMPLEMENT_REFCOUNTING(ContextMenuResolveTask);
 };
@@ -3913,21 +4001,28 @@ extern "C" void excef_resolve_file_dialog(uint64_t token, const char* paths) {
 // Resolve a pending context menu. -1 = cancel; otherwise the chosen
 // command id (must be one of the items we surfaced via the menu callback).
 extern "C" void excef_resolve_context_menu(uint64_t token, int command_id) {
-    CefRefPtr<CefRunContextMenuCallback> callback;
+    exclr8cef::PendingContextMenu pending{};
     {
         std::lock_guard<std::mutex> lock(exclr8cef::g_context_menu_mu);
         auto it = exclr8cef::g_context_menu_pending.find(token);
         if (it == exclr8cef::g_context_menu_pending.end()) return;
-        callback = it->second.callback;
+        pending = std::move(it->second);
         exclr8cef::g_context_menu_pending.erase(it);
     }
-    if (!callback) return;
+    if (!pending.callback) return;
     if (CefCurrentlyOn(TID_UI)) {
-        if (command_id < 0) callback->Cancel();
-        else callback->Continue(command_id, EVENTFLAG_NONE);
+        CompleteContextMenu(
+            pending.callback,
+            pending.browser_id,
+            pending.link_url,
+            command_id);
     } else {
         CefPostTask(TID_UI, CefRefPtr<CefTask>(
-            new ContextMenuResolveTask(callback, command_id)));
+            new ContextMenuResolveTask(
+                pending.callback,
+                pending.browser_id,
+                std::move(pending.link_url),
+                command_id)));
     }
 }
 

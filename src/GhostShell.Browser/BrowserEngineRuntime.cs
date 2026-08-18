@@ -12,7 +12,7 @@ public static class BrowserEngineRuntime
 {
     private const string ExpectedCefVersion = "150.0.9";
     private const string ExpectedChromiumVersion = "150.0.7871.46";
-    private const string ExpectedShimVersion = "0.8.0-ghostshell.3";
+    private const string ExpectedShimVersion = "0.8.0-ghostshell.4";
     private static readonly object StateGate = new();
     private static bool _initialized;
     private static bool _shutdown;

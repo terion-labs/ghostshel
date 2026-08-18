@@ -171,6 +171,12 @@ public:
                             CefRefPtr<CefDownloadItemCallback> callback) override;
 
     // CefRequestHandler
+    bool OnOpenURLFromTab(CefRefPtr<CefBrowser> browser,
+                           CefRefPtr<CefFrame> frame,
+                           const CefString& target_url,
+                           WindowOpenDisposition target_disposition,
+                           bool user_gesture) override;
+
     bool OnBeforeBrowse(CefRefPtr<CefBrowser> browser,
                         CefRefPtr<CefFrame> frame,
                         CefRefPtr<CefRequest> request,
@@ -423,6 +429,11 @@ public:
     }
 
 private:
+    bool ForwardNewTabRequest(const CefString& target_url,
+                               const CefString& target_frame_name,
+                               cef_window_open_disposition_t target_disposition,
+                               bool user_gesture);
+
     void QueuePendingSizeOnUi();
     void QueueSettledSizeOnUi();
     bool PostSettledSizeTask(uint64_t generation);
