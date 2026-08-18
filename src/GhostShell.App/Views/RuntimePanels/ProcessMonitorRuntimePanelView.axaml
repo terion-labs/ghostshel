@@ -126,7 +126,7 @@
               Classes.descending="{Binding IsSortDescending}"
               HorizontalContentAlignment="Left"
               VerticalContentAlignment="Center"
-              Padding="{controls:Inset Horizontal=Sm}"
+              Padding="0"
               Click="OnSortProcessIdClick"
               AutomationProperties.Name="Sort processes by PID">
             <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
@@ -138,8 +138,7 @@
           <TextBlock DockPanel.Dock="Right" Width="137" Margin="{controls:Inset Left=Sm}" VerticalAlignment="Center" Classes="Eyebrow StartedCell" Text="Started" />
           <Button
               DockPanel.Dock="Right"
-              Width="102"
-              Margin="{controls:Inset Left=Sm}"
+              Width="110"
               Classes="ProcessColumnHeader"
               Classes.sorted="{Binding IsSortingByMemory}"
               Classes.descending="{Binding IsSortDescending}"
@@ -156,8 +155,7 @@
           </Button>
           <Button
               DockPanel.Dock="Right"
-              Width="82"
-              Margin="{controls:Inset Left=Sm}"
+              Width="90"
               Classes="ProcessColumnHeader"
               Classes.sorted="{Binding IsSortingByCpu}"
               Classes.descending="{Binding IsSortDescending}"
@@ -173,7 +171,6 @@
             </StackPanel>
           </Button>
           <Button
-              Margin="{controls:Inset Left=Sm}"
               Classes="ProcessColumnHeader"
               Classes.sorted="{Binding IsSortingByName}"
               Classes.descending="{Binding IsSortDescending}"

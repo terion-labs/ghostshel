@@ -1915,21 +1915,30 @@ public sealed class RuntimePanelViewContractTests
     {
         var document = LoadRuntimePanelView("ProcessMonitorRuntimePanelView");
         var root = Assert.IsType<XElement>(document.Root);
-        var sortHeaders = new Dictionary<string, (string Handler, string StateBinding)>(
-            StringComparer.Ordinal)
+        var sortHeaders = new Dictionary<
+            string,
+            (string Handler, string StateBinding, string Padding, string? Width)>(StringComparer.Ordinal)
         {
             ["Sort processes by PID"] = (
                 "OnSortProcessIdClick",
-                "{Binding IsSortingByProcessId}"),
+                "{Binding IsSortingByProcessId}",
+                "0",
+                "70"),
             ["Sort processes by name"] = (
                 "OnSortNameClick",
-                "{Binding IsSortingByName}"),
+                "{Binding IsSortingByName}",
+                "{controls:Inset Horizontal=Sm}",
+                null),
             ["Sort processes by CPU"] = (
                 "OnSortCpuClick",
-                "{Binding IsSortingByCpu}"),
+                "{Binding IsSortingByCpu}",
+                "{controls:Inset Horizontal=Sm}",
+                "90"),
             ["Sort processes by memory"] = (
                 "OnSortMemoryClick",
-                "{Binding IsSortingByMemory}"),
+                "{Binding IsSortingByMemory}",
+                "{controls:Inset Horizontal=Sm}",
+                "110"),
         };
 
         Assert.DoesNotContain(
@@ -1951,8 +1960,10 @@ public sealed class RuntimePanelViewContractTests
                 "{Binding IsSortDescending}",
                 AttributeValue(button, "Classes.descending"));
             Assert.Equal(
-                "{controls:Inset Horizontal=Sm}",
+                sortHeader.Padding,
                 AttributeValue(button, "Padding"));
+            Assert.Equal(sortHeader.Width, AttributeValue(button, "Width"));
+            Assert.Null(AttributeValue(button, "Margin"));
             Assert.Contains(
                 button.Descendants(),
                 element => string.Equals(
