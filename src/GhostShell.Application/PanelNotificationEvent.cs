@@ -1,6 +1,6 @@
 namespace GhostShell.Application;
 
-/// <summary>What a panel asked for attention with.</summary>
+/// <summary>What produced a request for the user's attention.</summary>
 public enum PanelNotificationKind
 {
     /// <summary>
@@ -15,10 +15,34 @@ public enum PanelNotificationKind
     /// tends to send.
     /// </summary>
     Bell,
+
+    /// <summary>An AI-agent turn completed successfully.</summary>
+    AgentCompleted,
+
+    /// <summary>An AI-agent turn ended in failure.</summary>
+    AgentFailed,
+
+    /// <summary>A file transfer completed successfully.</summary>
+    FileTransferCompleted,
+
+    /// <summary>A file transfer failed.</summary>
+    FileTransferFailed,
 }
 
 /// <summary>
-/// A panel asking to be noticed.
+/// Independent effects requested by a notification producer. A system-only
+/// terminal bell, for example, must not leave a visual unread mark behind.
+/// </summary>
+[Flags]
+public enum PanelNotificationEffects
+{
+    None = 0,
+    Visual = 1,
+    System = 2,
+}
+
+/// <summary>
+/// A panel or workspace-owned activity asking to be noticed.
 ///
 /// Deliberately not a <see cref="PanelSessionEvent"/>: those describe where a
 /// session is in its lifecycle, and every consumer of them treats an event as a
@@ -26,8 +50,7 @@ public enum PanelNotificationKind
 /// and a consumer that misses it has missed it.
 /// </summary>
 /// <param name="Sequence">
-/// Monotonic per session, so a watcher that reconnects can say what it has
-/// already seen.
+/// Monotonic per producer, so a watcher can discard a duplicate observation.
 /// </param>
 /// <param name="Title">
 /// What the notification called itself. Empty when the protocol carried only a
@@ -39,4 +62,13 @@ public sealed record PanelNotificationEvent(
     PanelNotificationKind Kind,
     string Title,
     string Body,
-    DateTimeOffset TimestampUtc);
+    DateTimeOffset TimestampUtc)
+{
+    /// <summary>
+    /// Visual is the compatibility default for existing panel producers. A
+    /// producer opts into native delivery explicitly so ordinary state events
+    /// can never begin interrupting the user by accident.
+    /// </summary>
+    public PanelNotificationEffects Effects { get; init; } =
+        PanelNotificationEffects.Visual;
+}

@@ -63,6 +63,17 @@ internal sealed class PanelChrome : ContentControl
     public static readonly StyledProperty<bool> IsAgentActiveProperty =
         AvaloniaProperty.Register<PanelChrome, bool>(nameof(IsAgentActive));
 
+    /// <summary>Whether this exact panel has an unread notification.</summary>
+    public static readonly StyledProperty<bool> HasAttentionProperty =
+        AvaloniaProperty.Register<PanelChrome, bool>(nameof(HasAttention));
+
+    /// <summary>
+    /// Whether the exact visible panel should briefly acknowledge a
+    /// notification that arrived while the user was already looking at it.
+    /// </summary>
+    public static readonly StyledProperty<bool> IsNotificationPulseActiveProperty =
+        AvaloniaProperty.Register<PanelChrome, bool>(nameof(IsNotificationPulseActive));
+
     /// <summary>
     /// The panel's liveness, drawn at the far left of the header. A dot for most,
     /// but the shape is the panel's to choose — what "live" means differs.
@@ -225,6 +236,9 @@ internal sealed class PanelChrome : ContentControl
             slot.Changed.AddClassHandler<PanelChrome>(
                 (chrome, _) => chrome.UpdateSlotVisibility());
         }
+
+        IsNotificationPulseActiveProperty.Changed.AddClassHandler<PanelChrome>(
+            (chrome, _) => chrome.UpdateNotificationPulseClass());
     }
 
     /// <summary>Raised when the user asks for this panel to be closed.</summary>
@@ -270,6 +284,18 @@ internal sealed class PanelChrome : ContentControl
     {
         get => GetValue(IsAgentActiveProperty);
         set => SetValue(IsAgentActiveProperty, value);
+    }
+
+    public bool HasAttention
+    {
+        get => GetValue(HasAttentionProperty);
+        set => SetValue(HasAttentionProperty, value);
+    }
+
+    public bool IsNotificationPulseActive
+    {
+        get => GetValue(IsNotificationPulseActiveProperty);
+        set => SetValue(IsNotificationPulseActiveProperty, value);
     }
 
     public object? Status
@@ -404,6 +430,7 @@ internal sealed class PanelChrome : ContentControl
         Attach(_splitTopBottom, OnSplitTopBottomClick);
         Attach(_close, OnCloseClick);
         UpdateDockState();
+        UpdateNotificationPulseClass();
     }
 
     private static void Attach(Button? button, EventHandler<RoutedEventArgs> handler)
@@ -493,6 +520,9 @@ internal sealed class PanelChrome : ContentControl
     }
 
     private void UpdateSlotVisibility() => UpdateSlotVisibility(Bounds.Width);
+
+    private void UpdateNotificationPulseClass() =>
+        PseudoClasses.Set(":notification-pulse", IsNotificationPulseActive);
 
     private void UpdateSlotVisibility(double width)
     {

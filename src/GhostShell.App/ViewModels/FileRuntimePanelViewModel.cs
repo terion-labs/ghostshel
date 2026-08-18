@@ -45,7 +45,7 @@ public sealed class FileEntryViewModel
     }
 }
 
-public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
+public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel, IPanelNotificationSource
 {
     private static readonly TimeSpan SearchDebounce = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan ObservationInterval = TimeSpan.FromSeconds(2);
@@ -57,6 +57,9 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     private readonly ConnectionProfile _connection;
     private readonly IHostedFilePanelClient? _hostedClient;
     private readonly IFileTransferQueueClient? _transferQueue;
+    private readonly object _transferNotificationGate = new();
+    private readonly HashSet<FilePanelTransferId> _notifiedTransfers = [];
+    private long _notificationSequence;
     private readonly IFileProviderProfileRuntime? _profileRuntime;
     private readonly string? _initialProfileId;
     private readonly FilePanelLocation? _initialLocation;
@@ -97,8 +100,8 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     private bool _isPreviewLoading;
     private bool _isMetadataLoading;
     private bool _isPreviewVisible = true;
-    private FileEntrySortField _sortField = FileEntrySortField.Name;
-    private FileEntrySortDirection _sortDirection = FileEntrySortDirection.Ascending;
+    private FileEntrySortField _sortField = FileEntrySortField.Modified;
+    private FileEntrySortDirection _sortDirection = FileEntrySortDirection.Descending;
     private FileBrowserViewMode _viewMode = FileBrowserViewMode.Details;
     private GridLength _fileNameColumnWidth = new(1, GridUnitType.Star);
     private GridLength _fileSizeColumnWidth = new(90);
@@ -244,6 +247,11 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             _profileRuntime.ProfilesChanged += OnProfilesChanged;
         }
 
+        if (_transferQueue is not null)
+        {
+            _transferQueue.TransfersChanged += OnTransfersChanged;
+        }
+
         RebuildActions();
         if (!deferInitialization)
         {
@@ -283,6 +291,13 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     }
 
     public IHostedFilePanelClient? HostedClient => _hostedClient;
+
+    /// <summary>
+    /// Raised when one of this panel's transfers completes or fails. Like the
+    /// terminal notification source, this event is raised on the queue's
+    /// delivery thread; the shell owns UI-thread marshalling.
+    /// </summary>
+    public event EventHandler<PanelNotificationEvent>? NotificationReceived;
 
     public ConnectionId ConnectionId => _connection.Id;
 
@@ -418,6 +433,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
             if (SetProperty(ref _sortField, value))
             {
+                NotifySortFieldChanged();
                 ApplyFilter();
             }
         }
@@ -438,6 +454,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
             if (SetProperty(ref _sortDirection, value))
             {
+                OnPropertyChanged(nameof(IsSortDescending));
                 ApplyFilter();
             }
         }
@@ -445,6 +462,14 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
 
     public IReadOnlyList<FileEntrySortDirection> SortDirections { get; } =
         Enum.GetValues<FileEntrySortDirection>();
+
+    public bool IsSortingByName => SortField == FileEntrySortField.Name;
+
+    public bool IsSortingBySize => SortField == FileEntrySortField.Size;
+
+    public bool IsSortingByModified => SortField == FileEntrySortField.Modified;
+
+    public bool IsSortDescending => SortDirection == FileEntrySortDirection.Descending;
 
     public FileBrowserViewMode ViewMode
     {
@@ -536,12 +561,29 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
             return;
         }
 
-        _ = SetProperty(
+        var directionChanged = SetProperty(
             ref _sortDirection,
             FileEntrySortDirection.Ascending,
             nameof(SortDirection));
-        _ = SetProperty(ref _sortField, field, nameof(SortField));
+        var fieldChanged = SetProperty(ref _sortField, field, nameof(SortField));
+        if (directionChanged)
+        {
+            OnPropertyChanged(nameof(IsSortDescending));
+        }
+
+        if (fieldChanged)
+        {
+            NotifySortFieldChanged();
+        }
+
         ApplyFilter();
+    }
+
+    private void NotifySortFieldChanged()
+    {
+        OnPropertyChanged(nameof(IsSortingByName));
+        OnPropertyChanged(nameof(IsSortingBySize));
+        OnPropertyChanged(nameof(IsSortingByModified));
     }
 
     public bool ShowHidden
@@ -1832,6 +1874,58 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
     public void ReportValidationError(string message) =>
         SetOperationIssue(FileOperationIssue.Validation(message));
 
+    private void OnTransfersChanged(object? sender, EventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        if (_disposed || _transferQueue is null)
+        {
+            return;
+        }
+
+        List<PanelNotificationEvent> notifications = [];
+        lock (_transferNotificationGate)
+        {
+            foreach (var transfer in _transferQueue.Transfers)
+            {
+                if (transfer.State is not (FilePanelTransferState.Completed
+                    or FilePanelTransferState.Failed)
+                    || !_notifiedTransfers.Add(transfer.Id))
+                {
+                    continue;
+                }
+
+                var route = $"{FileLocationPresentation.Display(transfer.Request.Source)} → "
+                    + FileLocationPresentation.Display(transfer.EffectiveDestination);
+                var body = transfer.State == FilePanelTransferState.Failed
+                    && !string.IsNullOrWhiteSpace(transfer.Error?.Message)
+                        ? $"{route}\n{transfer.Error.Message}"
+                        : route;
+                notifications.Add(new PanelNotificationEvent(
+                    notifications.Count + _notificationSequence + 1,
+                    transfer.State == FilePanelTransferState.Completed
+                        ? PanelNotificationKind.FileTransferCompleted
+                        : PanelNotificationKind.FileTransferFailed,
+                    transfer.State == FilePanelTransferState.Completed
+                        ? "File transfer completed"
+                        : "File transfer failed",
+                    body,
+                    transfer.CompletedAt ?? transfer.QueuedAt)
+                {
+                    Effects = PanelNotificationEffects.Visual
+                        | PanelNotificationEffects.System,
+                });
+            }
+
+            _notificationSequence += notifications.Count;
+        }
+
+        foreach (var notification in notifications)
+        {
+            NotificationReceived?.Invoke(this, notification);
+        }
+    }
+
     public override void Dispose()
     {
         lock (_initializationGate)
@@ -1861,6 +1955,11 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel
         if (_clipboard is not null)
         {
             _clipboard.Changed -= OnTransferClipboardChanged;
+        }
+
+        if (_transferQueue is not null)
+        {
+            _transferQueue.TransfersChanged -= OnTransfersChanged;
         }
 
         _lifetime.Cancel();

@@ -41,6 +41,42 @@
     <Style Selector="ListBoxItem.transferDropTarget /template/ ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource ShellAccentSoftBrush}" />
     </Style>
+    <!-- Column headers are table cells, not content-sized push buttons. Keep
+         their hit target and hover wash flush with the full column while the
+         active header alone carries the current direction. -->
+    <Style Selector="Button.FileColumnHeader">
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="VerticalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="0" />
+    </Style>
+    <Style Selector="Button.FileColumnHeader /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="0" />
+    </Style>
+    <Style Selector="Button.FileColumnHeader:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource ShellSurfaceHoverBrush}" />
+    </Style>
+    <Style Selector="icons|SymbolIcon.FileSortIndicator">
+      <Setter Property="IsVisible" Value="False" />
+      <Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}" />
+    </Style>
+    <Style Selector="Button.FileColumnHeader.sorted TextBlock.Eyebrow">
+      <Setter Property="Foreground" Value="{DynamicResource ShellTextBrush}" />
+    </Style>
+    <Style Selector="Button.FileColumnHeader.sorted icons|SymbolIcon.FileSortAscending">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="Button.FileColumnHeader.sorted.descending icons|SymbolIcon.FileSortAscending">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="Button.FileColumnHeader.sorted.descending icons|SymbolIcon.FileSortDescending">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
     <!-- The Docker panel hosts this exact view inside its own panel chrome. In
          embedded mode only that outer chrome disappears; the toolbar, layouts,
          listing, preview, states, menus, and interaction code remain this same
@@ -61,8 +97,10 @@
       Classes.embedded="{Binding IsEmbedded, ElementName=FileRuntimePanelRoot}"
       CloseLabel="Close File Viewer panel"
       CloseRequested="OnCloseClick"
+      HasAttention="{Binding HasAttention}"
       IsActive="{Binding IsActive}"
       IsAgentActive="{Binding IsAgentActive}"
+      IsNotificationPulseActive="{Binding IsNotificationPulseActive}"
       IsZoomed="{Binding IsZoomed}"
       SplitRequested="OnSplitRequested"
       Title="{Binding Title}">
@@ -264,14 +302,29 @@
                   <ColumnDefinition Width="{Binding FileModifiedColumnWidth, Mode=TwoWay}" MinWidth="112" />
                 </Grid.ColumnDefinitions>
                 <Button
+                    Classes="FileColumnHeader"
+                    Classes.sorted="{Binding IsSortingByName}"
+                    Classes.descending="{Binding IsSortDescending}"
                     HorizontalContentAlignment="Left"
                     VerticalContentAlignment="Center"
-                    Background="Transparent"
-                    BorderThickness="0"
                     Padding="0"
                     Click="OnSortNameClick"
                     AutomationProperties.Name="Sort files by name">
-                  <TextBlock Classes="Eyebrow" Text="Name" />
+                  <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+                    <TextBlock Classes="Eyebrow" Text="Name" />
+                    <icons:SymbolIcon
+                        Classes="FileSortIndicator FileSortAscending"
+                        FontSize="10"
+                        IsHitTestVisible="False"
+                        Symbol="ArrowUp"
+                        AutomationProperties.Name="Sorted ascending" />
+                    <icons:SymbolIcon
+                        Classes="FileSortIndicator FileSortDescending"
+                        FontSize="10"
+                        IsHitTestVisible="False"
+                        Symbol="ArrowDown"
+                        AutomationProperties.Name="Sorted descending" />
+                  </StackPanel>
                 </Button>
                 <Border Grid.Column="1" Width="1" HorizontalAlignment="Center" Background="{DynamicResource ShellBorderBrush}" IsHitTestVisible="False" />
                 <GridSplitter
@@ -284,15 +337,29 @@
                     AutomationProperties.Name="Resize file name and size columns" />
                 <Button
                     Grid.Column="2"
+                    Classes="FileColumnHeader"
+                    Classes.sorted="{Binding IsSortingBySize}"
+                    Classes.descending="{Binding IsSortDescending}"
                     HorizontalContentAlignment="Left"
                     VerticalContentAlignment="Center"
-                    Margin="{controls:Inset Horizontal=Sm}"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    Padding="0"
+                    Padding="{controls:Inset Horizontal=Sm}"
                     Click="OnSortSizeClick"
                     AutomationProperties.Name="Sort files by size">
-                  <TextBlock Classes="Eyebrow" Text="Size" />
+                  <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+                    <TextBlock Classes="Eyebrow" Text="Size" />
+                    <icons:SymbolIcon
+                        Classes="FileSortIndicator FileSortAscending"
+                        FontSize="10"
+                        IsHitTestVisible="False"
+                        Symbol="ArrowUp"
+                        AutomationProperties.Name="Sorted ascending" />
+                    <icons:SymbolIcon
+                        Classes="FileSortIndicator FileSortDescending"
+                        FontSize="10"
+                        IsHitTestVisible="False"
+                        Symbol="ArrowDown"
+                        AutomationProperties.Name="Sorted descending" />
+                  </StackPanel>
                 </Button>
                 <Border Grid.Column="3" Width="1" HorizontalAlignment="Center" Background="{DynamicResource ShellBorderBrush}" IsHitTestVisible="False" />
                 <GridSplitter
@@ -305,15 +372,29 @@
                     AutomationProperties.Name="Resize file size and modified columns" />
                 <Button
                     Grid.Column="4"
+                    Classes="FileColumnHeader"
+                    Classes.sorted="{Binding IsSortingByModified}"
+                    Classes.descending="{Binding IsSortDescending}"
                     HorizontalContentAlignment="Left"
                     VerticalContentAlignment="Center"
-                    Margin="{controls:Inset Horizontal=Sm}"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    Padding="0"
+                    Padding="{controls:Inset Horizontal=Sm}"
                     Click="OnSortModifiedClick"
                     AutomationProperties.Name="Sort files by modified date">
-                  <TextBlock Classes="Eyebrow" Text="Modified" />
+                  <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
+                    <TextBlock Classes="Eyebrow" Text="Modified" />
+                    <icons:SymbolIcon
+                        Classes="FileSortIndicator FileSortAscending"
+                        FontSize="10"
+                        IsHitTestVisible="False"
+                        Symbol="ArrowUp"
+                        AutomationProperties.Name="Sorted ascending" />
+                    <icons:SymbolIcon
+                        Classes="FileSortIndicator FileSortDescending"
+                        FontSize="10"
+                        IsHitTestVisible="False"
+                        Symbol="ArrowDown"
+                        AutomationProperties.Name="Sorted descending" />
+                  </StackPanel>
                 </Button>
               </Grid>
             </Border>

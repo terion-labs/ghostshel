@@ -808,7 +808,7 @@ public sealed partial class App : Avalonia.Application
         Publish(
             "ShellPanelHeaderHeight",
             Math.Round(resources.ControlMinHeight * 1.3));
-        Publish("ShellSignalDotSize", Math.Round(resources.ControlMinHeight * 0.28));
+        Publish("ShellSignalDotSize", Math.Round(resources.ControlMinHeight * 0.42));
         Publish("ShellSignalDotRing", new Thickness(
             Math.Max(1, Math.Round(resources.ControlMinHeight * 0.06))));
         // The window's own corners, so the outermost surface inside it can be

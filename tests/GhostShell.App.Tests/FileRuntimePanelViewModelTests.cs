@@ -12,6 +12,38 @@ namespace GhostShell.App.Tests;
 public sealed class FileRuntimePanelViewModelTests
 {
     [Fact]
+    public void DetailsDefaultToNewestModifiedAndExposeHeaderSortState()
+    {
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            new StubFilePanelClient(),
+            deferInitialization: true);
+
+        Assert.Equal(FileEntrySortField.Modified, panel.SortField);
+        Assert.Equal(FileEntrySortDirection.Descending, panel.SortDirection);
+        Assert.True(panel.IsSortingByModified);
+        Assert.True(panel.IsSortDescending);
+        Assert.False(panel.IsSortingByName);
+        Assert.False(panel.IsSortingBySize);
+
+        List<string?> changed = [];
+        panel.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        panel.ChangeSort(FileEntrySortField.Name);
+
+        Assert.True(panel.IsSortingByName);
+        Assert.False(panel.IsSortingByModified);
+        Assert.False(panel.IsSortDescending);
+        Assert.Contains(nameof(FileRuntimePanelViewModel.IsSortingByName), changed);
+        Assert.Contains(nameof(FileRuntimePanelViewModel.IsSortingByModified), changed);
+        Assert.Contains(nameof(FileRuntimePanelViewModel.IsSortDescending), changed);
+
+        panel.ChangeSort(FileEntrySortField.Name);
+
+        Assert.True(panel.IsSortDescending);
+    }
+
+    [Fact]
     public void DetailsColumnsExposeAdjustableSharedWidths()
     {
         using var panel = new FileRuntimePanelViewModel(
@@ -801,6 +833,113 @@ public sealed class FileRuntimePanelViewModelTests
         Assert.Equal(FileOperationIssueKind.Offline, panel.OperationIssue?.Kind);
         Assert.Null(panel.ContentIssue);
         Assert.Single(panel.Entries);
+    }
+
+    [Fact]
+    public async Task CompletedAndFailedTransfersNotifyExactlyOnce()
+    {
+        var client = new StubFilePanelClient();
+        var queue = new StubTransferQueue();
+        using var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            client,
+            queue,
+            deferInitialization: true);
+        List<PanelNotificationEvent> notifications = [];
+        panel.NotificationReceived += (_, notification) => notifications.Add(notification);
+        var source = client.Root.Child(new FilePanelPathSegment("source.txt"));
+        var completedDestination = client.Root.Child(new FilePanelPathSegment("copy.txt"));
+        var failedDestination = client.Root.Child(new FilePanelPathSegment("backup.txt"));
+
+        await panel.QueueTransferAsync(new FilePanelTransferRequest(
+            source,
+            completedDestination,
+            FilePanelTransferOperation.Copy,
+            FilePanelConflictPolicy.Fail));
+        var completedId = Assert.Single(queue.Transfers).Id;
+        queue.Transition(completedId, FilePanelTransferState.Running);
+
+        Assert.Empty(notifications);
+
+        var completedAt = DateTimeOffset.Parse("2026-08-18T10:30:00Z");
+        queue.Transition(completedId, FilePanelTransferState.Completed, completedAt);
+        queue.SignalChanged();
+
+        await panel.QueueTransferAsync(new FilePanelTransferRequest(
+            source,
+            failedDestination,
+            FilePanelTransferOperation.Copy,
+            FilePanelConflictPolicy.Fail));
+        var failedId = queue.Transfers.Single(transfer => transfer.Id != completedId).Id;
+        var failedAt = completedAt.AddMinutes(1);
+        queue.Transition(
+            failedId,
+            FilePanelTransferState.Failed,
+            failedAt,
+            new FilePanelError(
+                FilePanelErrorCode.Offline,
+                "transfer_offline",
+                "The remote provider went offline.",
+                Retryable: true));
+        queue.SignalChanged();
+
+        Assert.Collection(
+            notifications,
+            completed =>
+            {
+                Assert.Equal(1, completed.Sequence);
+                Assert.Equal(PanelNotificationKind.FileTransferCompleted, completed.Kind);
+                Assert.Equal(
+                    PanelNotificationEffects.Visual | PanelNotificationEffects.System,
+                    completed.Effects);
+                Assert.Equal("File transfer completed", completed.Title);
+                Assert.Equal("/source.txt → /copy.txt", completed.Body);
+                Assert.Equal(completedAt, completed.TimestampUtc);
+            },
+            failed =>
+            {
+                Assert.Equal(2, failed.Sequence);
+                Assert.Equal(PanelNotificationKind.FileTransferFailed, failed.Kind);
+                Assert.Equal(
+                    PanelNotificationEffects.Visual | PanelNotificationEffects.System,
+                    failed.Effects);
+                Assert.Equal("File transfer failed", failed.Title);
+                Assert.Contains("/source.txt → /backup.txt", failed.Body);
+                Assert.Contains("went offline", failed.Body);
+                Assert.Equal(failedAt, failed.TimestampUtc);
+            });
+    }
+
+    [Fact]
+    public async Task DisposingAFilePanelStopsTransferNotifications()
+    {
+        var client = new StubFilePanelClient();
+        var queue = new StubTransferQueue();
+        var panel = new FileRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Files",
+            client,
+            queue,
+            deferInitialization: true);
+        var notificationCount = 0;
+        panel.NotificationReceived += (_, _) => notificationCount++;
+        var source = client.Root.Child(new FilePanelPathSegment("source.txt"));
+        var destination = client.Root.Child(new FilePanelPathSegment("copy.txt"));
+        await panel.QueueTransferAsync(new FilePanelTransferRequest(
+            source,
+            destination,
+            FilePanelTransferOperation.Copy,
+            FilePanelConflictPolicy.Fail));
+        var transferId = Assert.Single(queue.Transfers).Id;
+
+        Assert.Equal(1, queue.SubscriberCount);
+
+        panel.Dispose();
+        queue.Transition(transferId, FilePanelTransferState.Completed);
+
+        Assert.Equal(0, queue.SubscriberCount);
+        Assert.Equal(0, notificationCount);
     }
 
     [Fact]
@@ -2384,32 +2523,62 @@ public sealed class FileRuntimePanelViewModelTests
     private sealed class StubTransferQueue(FilePanelError? enqueueError = null)
         : IFileTransferQueueClient
     {
-        public IReadOnlyList<FilePanelTransferSnapshot> Transfers => [];
+        private readonly List<FilePanelTransferSnapshot> _transfers = [];
 
-        public event EventHandler? TransfersChanged
-        {
-            add { }
-            remove { }
-        }
+        public IReadOnlyList<FilePanelTransferSnapshot> Transfers => _transfers.ToArray();
+
+        public event EventHandler? TransfersChanged;
+
+        public int SubscriberCount =>
+            TransfersChanged?.GetInvocationList().Length ?? 0;
 
         public ValueTask<FilePanelResult<FilePanelTransferSnapshot>> EnqueueAsync(
             FilePanelTransferRequest request,
-            CancellationToken cancellationToken) => ValueTask.FromResult(
-                enqueueError is null
-                    ? FilePanelResult<FilePanelTransferSnapshot>.Success(
-                        new FilePanelTransferSnapshot(
-                            FilePanelTransferId.New(),
-                            request,
-                            request.Destination,
-                            FilePanelTransferState.Queued,
-                            "Queued",
-                            0,
-                            null,
-                            null,
-                            DateTimeOffset.UnixEpoch,
-                            null,
-                            null))
-                    : FilePanelResult<FilePanelTransferSnapshot>.Failure(enqueueError));
+            CancellationToken cancellationToken)
+        {
+            if (enqueueError is not null)
+            {
+                return ValueTask.FromResult(
+                    FilePanelResult<FilePanelTransferSnapshot>.Failure(enqueueError));
+            }
+
+            var transfer = new FilePanelTransferSnapshot(
+                FilePanelTransferId.New(),
+                request,
+                request.Destination,
+                FilePanelTransferState.Queued,
+                "Queued",
+                0,
+                null,
+                null,
+                DateTimeOffset.UnixEpoch,
+                null,
+                null);
+            _transfers.Insert(0, transfer);
+            TransfersChanged?.Invoke(this, EventArgs.Empty);
+            return ValueTask.FromResult(
+                FilePanelResult<FilePanelTransferSnapshot>.Success(transfer));
+        }
+
+        public void Transition(
+            FilePanelTransferId id,
+            FilePanelTransferState state,
+            DateTimeOffset? completedAt = null,
+            FilePanelError? error = null)
+        {
+            var index = _transfers.FindIndex(transfer => transfer.Id == id);
+            Assert.True(index >= 0, "The test transfer must exist before it can transition.");
+            _transfers[index] = _transfers[index] with
+            {
+                State = state,
+                Stage = state.ToString(),
+                Error = error,
+                CompletedAt = completedAt,
+            };
+            TransfersChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        public void SignalChanged() => TransfersChanged?.Invoke(this, EventArgs.Empty);
 
         public ValueTask<FilePanelResult<Unit>> CancelAsync(
             FilePanelTransferId id,

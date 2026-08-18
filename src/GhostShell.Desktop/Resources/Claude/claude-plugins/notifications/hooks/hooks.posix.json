@@ -1,0 +1,31 @@
+{
+  "description": "GhostSHELL terminal completion notifications",
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/../../GhostShell",
+            "args": ["--claude-hook-terminal-notification"],
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/../../GhostShell",
+            "args": ["--claude-hook-terminal-notification"],
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -27,13 +27,30 @@
     <PackageReference Include="Tmds.DBus.SourceGenerator" Version="0.0.22" PrivateAssets="all" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(GhostShellWindowsBuild)' == 'true'">
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260804001" />
+  </ItemGroup>
+
   <ItemGroup>
+    <AdditionalFiles Include="DBusXml/org.freedesktop.portal.Notification.xml" DBusGeneratorMode="Proxy" />
     <AdditionalFiles Include="DBusXml/org.freedesktop.portal.Settings.xml" DBusGeneratorMode="Proxy" />
   </ItemGroup>
 
   <ItemGroup>
     <Content Include="../../licenses/THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../../native/artifacts/common/fonts/JetBrainsMono/OFL.txt" Link="JETBRAINS-MONO-OFL.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Resources/Claude/claude-plugins/notifications/.claude-plugin/plugin.json" Link="claude-plugins/notifications/.claude-plugin/plugin.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Resources/Claude/terminal-shell-integration/**/*" Link="terminal-shell-integration/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(GhostShellWindowsBuild)' == 'true'">
+    <Content Include="Resources/Claude/claude-plugins/notifications/hooks/hooks.windows.json" Link="claude-plugins/notifications/hooks/hooks.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Resources/Claude/ghostshell-cli-shims/claude.cmd" Link="ghostshell-cli-shims/claude.cmd" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(GhostShellWindowsBuild)' != 'true'">
+    <Content Include="Resources/Claude/claude-plugins/notifications/hooks/hooks.posix.json" Link="claude-plugins/notifications/hooks/hooks.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Resources/Claude/ghostshell-cli-shims/claude" Link="ghostshell-cli-shims/claude" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -44,6 +61,11 @@
     <TargetFramework Condition="'$(GhostShellWindowsBuild)' != 'true'">net10.0</TargetFramework>
     <SupportedOSPlatformVersion Condition="'$(GhostShellWindowsBuild)' == 'true'">10.0.19041.0</SupportedOSPlatformVersion>
     <EnableWindowsTargeting Condition="'$(GhostShellWindowsBuild)' == 'true'">true</EnableWindowsTargeting>
+    <WindowsPackageType Condition="'$(GhostShellWindowsBuild)' == 'true'">None</WindowsPackageType>
+    <!-- GhostSHELL uses Avalonia resources, not WinUI/MRT resources. The App SDK
+         metapackage imports PRI tooling by default even for unpackaged apps. -->
+    <EnablePriGenTooling Condition="'$(GhostShellWindowsBuild)' == 'true'">false</EnablePriGenTooling>
+    <AppxGeneratePriEnabled Condition="'$(GhostShellWindowsBuild)' == 'true'">false</AppxGeneratePriEnabled>
     <AssemblyName>GhostShell</AssemblyName>
     <GhostShellEffectiveRuntimeIdentifier Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</GhostShellEffectiveRuntimeIdentifier>
     <GhostShellEffectiveRuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">$(NETCoreSdkRuntimeIdentifier)</GhostShellEffectiveRuntimeIdentifier>

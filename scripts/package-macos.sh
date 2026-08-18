@@ -432,6 +432,12 @@ required_publish=(
     "${publish_dir}/ghostty/shell-integration/zsh/.zshenv"
     "${publish_dir}/ghostty/shell-integration/zsh/ghostty-integration"
     "${publish_dir}/ghostty/shell-integration/SHELL-INTEGRATION-NOTICE.md"
+    "${publish_dir}/claude-plugins/notifications/.claude-plugin/plugin.json"
+    "${publish_dir}/claude-plugins/notifications/hooks/hooks.json"
+    "${publish_dir}/ghostshell-cli-shims/claude"
+    "${publish_dir}/terminal-shell-integration/bash/ghostshell-claude.bash"
+    "${publish_dir}/terminal-shell-integration/zsh/.zshenv"
+    "${publish_dir}/terminal-shell-integration/fish/vendor_conf.d/ghostshell-claude.fish"
 )
 for required in "${required_publish[@]}"; do
     if [[ ! -e "${required}" ]]; then

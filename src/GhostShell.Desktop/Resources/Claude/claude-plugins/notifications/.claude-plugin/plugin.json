@@ -1,0 +1,8 @@
+{
+  "name": "ghostshell-notifications",
+  "version": "1.0.0",
+  "description": "Routes Claude Code completion events through the originating GhostSHELL terminal.",
+  "author": {
+    "name": "GhostSHELL"
+  }
+}

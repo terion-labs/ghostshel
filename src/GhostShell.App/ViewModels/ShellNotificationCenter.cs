@@ -3,19 +3,6 @@ using GhostShell.Application;
 namespace GhostShell.App.ViewModels;
 
 /// <summary>
-/// A panel that can ask to be noticed.
-///
-/// Separate from <see cref="RuntimePanelViewModel"/> because most panel kinds
-/// cannot: a file browser has nothing to interrupt anyone about. The shell's
-/// notification centre subscribes to the panels that implement this and
-/// ignores the rest.
-/// </summary>
-public interface IPanelNotificationSource
-{
-    event EventHandler<PanelNotificationEvent>? NotificationReceived;
-}
-
-/// <summary>
 /// Decides what a panel asking to be noticed does to the shell.
 ///
 /// The rule it enforces is one sentence: a request to be noticed leaves a mark
@@ -31,13 +18,28 @@ public interface IPanelNotificationSource
 /// subscription to its children to answer a question the shell already knows
 /// the answer to would be a web of listeners for no gain.
 /// </summary>
-internal sealed class ShellNotificationCenter
+internal sealed partial class ShellNotificationCenter
 {
+    private const int HistoryCapacity = 256;
+    private static readonly TimeSpan VisiblePanelPulseDuration =
+        TimeSpan.FromMilliseconds(900);
+
     private readonly Dictionary<RuntimePanelViewModel, PanelAttachment> _watched = [];
+    private readonly Dictionary<RuntimePanelViewModel, PanelPulse> _panelPulses = [];
     private readonly HashSet<RuntimeWorkspaceViewModel> _workspaceNotifications = [];
+    private readonly HashSet<RuntimeWorkspaceViewModel> _workspaceSourceNotifications = [];
+    private readonly List<ShellNotificationRecord> _history = [];
     private readonly Func<RuntimeWorkspaceViewModel?> _frontWorkspace;
     private readonly Func<bool> _isWindowFocused;
+    private readonly Func<bool> _isWorkspaceSurfaceVisible;
     private readonly Action _flagsChanged;
+    private readonly IUiThreadDispatcher _dispatcher;
+    private readonly INativeNotificationService? _nativeNotifications;
+    private readonly Action<NativeNotificationRoute, PanelNotificationKind>?
+        _notificationActivated;
+    private readonly TimeProvider _timeProvider;
+    private readonly CancellationTokenSource _lifetime = new();
+    private bool _isStopped;
 
     /// <param name="frontWorkspace">The workspace on screen, or null at the launcher.</param>
     /// <param name="isWindowFocused">
@@ -49,31 +51,84 @@ internal sealed class ShellNotificationCenter
     /// <param name="flagsChanged">
     /// Called after any flag moves, so the workspace rails can be re-derived.
     /// </param>
+    /// <param name="isWorkspaceSurfaceVisible">
+    /// Whether the workspace canvas is actually exposed rather than covered by
+    /// Settings or a shell overlay. Defaults to visible for focused unit seams.
+    /// </param>
     public ShellNotificationCenter(
         Func<RuntimeWorkspaceViewModel?> frontWorkspace,
         Func<bool> isWindowFocused,
-        Action flagsChanged)
+        Action flagsChanged,
+        IUiThreadDispatcher? dispatcher = null,
+        INativeNotificationService? nativeNotifications = null,
+        Action<NativeNotificationRoute, PanelNotificationKind>?
+            notificationActivated = null,
+        Func<bool>? isWorkspaceSurfaceVisible = null,
+        TimeProvider? timeProvider = null)
     {
         _frontWorkspace = frontWorkspace ?? throw new ArgumentNullException(nameof(frontWorkspace));
         _isWindowFocused = isWindowFocused ?? throw new ArgumentNullException(nameof(isWindowFocused));
+        _isWorkspaceSurfaceVisible = isWorkspaceSurfaceVisible ?? (static () => true);
         _flagsChanged = flagsChanged ?? throw new ArgumentNullException(nameof(flagsChanged));
+        _dispatcher = dispatcher ?? AvaloniaUiThreadDispatcher.Instance;
+        _nativeNotifications = nativeNotifications;
+        _notificationActivated = notificationActivated;
+        _timeProvider = timeProvider ?? TimeProvider.System;
+        if (_nativeNotifications is not null)
+        {
+            _nativeNotifications.Activated += OnNativeNotificationActivated;
+        }
     }
 
+    public IReadOnlyList<ShellNotificationRecord> History => _history;
+
     /// <summary>
-    /// Starts listening to every panel in a workspace. Safe to call again for a
-    /// workspace already being listened to — reopening one that was never
-    /// closed must not double up.
+    /// Reconciles listeners with the workspace's current topology. Safe to call
+    /// after every accepted graph mutation: removed panels are detached, moved
+    /// panels are rebound to their new tab, and new producers are attached.
     /// </summary>
     public void Watch(RuntimeWorkspaceViewModel workspace)
     {
         ArgumentNullException.ThrowIfNull(workspace);
+
+        var markedPanelIds = _watched
+            .Where(entry => ReferenceEquals(entry.Value.Workspace, workspace))
+            .Where(entry => entry.Key.HasAttention)
+            .Select(entry => entry.Key.Id)
+            .ToHashSet();
+        var desired = workspace.Tabs
+            .SelectMany(tab => tab.Panels.Select(panel => (Tab: tab, Panel: panel)))
+            .ToDictionary(item => item.Panel, item => item.Tab);
+        foreach (var (panel, attachment) in _watched
+            .Where(entry => ReferenceEquals(entry.Value.Workspace, workspace))
+            .ToArray())
+        {
+            if (desired.TryGetValue(panel, out var tab)
+                && ReferenceEquals(attachment.Tab, tab))
+            {
+                continue;
+            }
+
+            Detach(panel, attachment);
+        }
+
         foreach (var tab in workspace.Tabs)
         {
             foreach (var panel in tab.Panels)
             {
+                if (markedPanelIds.Contains(panel.Id))
+                {
+                    panel.HasAttention = true;
+                }
+
                 Watch(workspace, tab, panel);
+                RebindUnreadHistory(workspace.Id, tab.Id, panel.Id);
             }
+
+            tab.HasAttention = tab.Panels.Any(panel => panel.HasAttention);
         }
+
+        Reaggregate(workspace);
     }
 
     public void Watch(
@@ -84,16 +139,26 @@ internal sealed class ShellNotificationCenter
         ArgumentNullException.ThrowIfNull(workspace);
         ArgumentNullException.ThrowIfNull(tab);
         ArgumentNullException.ThrowIfNull(panel);
-        if (_watched.ContainsKey(panel) || panel is not IPanelNotificationSource source)
+        if (panel is not IPanelNotificationSource source)
         {
             return;
+        }
+
+        if (_watched.TryGetValue(panel, out var current))
+        {
+            if (ReferenceEquals(current.Workspace, workspace)
+                && ReferenceEquals(current.Tab, tab))
+            {
+                return;
+            }
+
+            Detach(panel, current);
         }
 
         void Handler(object? sender, PanelNotificationEvent notification)
         {
             _ = sender;
-            _ = notification;
-            OnNotification(workspace, tab, panel);
+            Dispatch(() => OnNotification(workspace, panel, notification));
         }
 
         _watched[panel] = new PanelAttachment(workspace, tab, source, Handler);
@@ -108,86 +173,65 @@ internal sealed class ShellNotificationCenter
             .Where(entry => ReferenceEquals(entry.Value.Workspace, workspace))
             .ToArray())
         {
-            attachment.Source.NotificationReceived -= attachment.Handler;
-            _watched.Remove(panel);
+            Detach(panel, attachment);
         }
 
         _workspaceNotifications.Remove(workspace);
+        _workspaceSourceNotifications.Remove(workspace);
+        _history.RemoveAll(record => record.Route.WorkspaceId == workspace.Id);
+        foreach (var tab in workspace.Tabs)
+        {
+            foreach (var panel in tab.Panels)
+            {
+                panel.HasAttention = false;
+            }
+
+            tab.HasAttention = false;
+        }
+
         workspace.HasAttention = false;
         _flagsChanged();
     }
 
     public void ForgetAll()
     {
+        if (_isStopped)
+        {
+            return;
+        }
+
+        _isStopped = true;
         foreach (var attachment in _watched.Values)
         {
             attachment.Source.NotificationReceived -= attachment.Handler;
         }
 
         _watched.Clear();
+        foreach (var pulse in _panelPulses.Values)
+        {
+            pulse.Timer?.Dispose();
+            pulse.Panel.IsNotificationPulseActive = false;
+        }
+
+        _panelPulses.Clear();
         _workspaceNotifications.Clear();
+        _workspaceSourceNotifications.Clear();
+        _history.Clear();
+        if (_nativeNotifications is not null)
+        {
+            _nativeNotifications.Activated -= OnNativeNotificationActivated;
+        }
+
+        _lifetime.Cancel();
     }
 
-    /// <summary>
-    /// Leaves a workspace-level mark for work that has no originating panel,
-    /// such as an agent run finishing after its workspace was sent behind the
-    /// current one. The mark uses the same rail/menu aggregation as panel
-    /// notifications and is suppressed when the workspace is already visible.
-    /// </summary>
-    public void NotifyWorkspace(RuntimeWorkspaceViewModel workspace)
+    private void Detach(
+        RuntimePanelViewModel panel,
+        PanelAttachment attachment)
     {
-        ArgumentNullException.ThrowIfNull(workspace);
-        if (_isWindowFocused() && ReferenceEquals(_frontWorkspace(), workspace))
-        {
-            return;
-        }
-
-        if (_workspaceNotifications.Add(workspace))
-        {
-            Reaggregate(workspace);
-        }
-    }
-
-    /// <summary>
-    /// Clears whatever the user can currently see. Called wherever the front
-    /// workspace, its active tab, its active panel, or the window's focus
-    /// changes — those are the four ways "being looked at" can become true.
-    /// </summary>
-    public void MarkVisibleSeen()
-    {
-        if (!_isWindowFocused() || _frontWorkspace() is not { } workspace)
-        {
-            return;
-        }
-
-        var changed = _workspaceNotifications.Remove(workspace);
-        if (workspace.ActiveTab is { ActivePanel: { } panel } tab
-            && panel.HasAttention)
-        {
-            panel.HasAttention = false;
-            tab.HasAttention = tab.Panels.Any(candidate => candidate.HasAttention);
-            changed = true;
-        }
-
-        if (changed)
-        {
-            Reaggregate(workspace);
-        }
-    }
-
-    private void OnNotification(
-        RuntimeWorkspaceViewModel workspace,
-        RuntimeTabViewModel tab,
-        RuntimePanelViewModel panel)
-    {
-        if (IsBeingLookedAt(workspace, tab, panel))
-        {
-            return;
-        }
-
-        panel.HasAttention = true;
-        tab.HasAttention = true;
-        Reaggregate(workspace);
+        attachment.Source.NotificationReceived -= attachment.Handler;
+        _watched.Remove(panel);
+        ClearPanelPulse(panel);
     }
 
     private bool IsBeingLookedAt(
@@ -195,6 +239,7 @@ internal sealed class ShellNotificationCenter
         RuntimeTabViewModel tab,
         RuntimePanelViewModel panel) =>
         _isWindowFocused()
+        && _isWorkspaceSurfaceVisible()
         && ReferenceEquals(_frontWorkspace(), workspace)
         && ReferenceEquals(workspace.ActiveTab, tab)
         && ReferenceEquals(tab.ActivePanel, panel);
@@ -207,6 +252,7 @@ internal sealed class ShellNotificationCenter
     private void Reaggregate(RuntimeWorkspaceViewModel workspace)
     {
         workspace.HasAttention = _workspaceNotifications.Contains(workspace)
+            || _workspaceSourceNotifications.Contains(workspace)
             || workspace.Tabs.Any(candidate => candidate.HasAttention);
         _flagsChanged();
     }
@@ -216,4 +262,15 @@ internal sealed class ShellNotificationCenter
         RuntimeTabViewModel Tab,
         IPanelNotificationSource Source,
         EventHandler<PanelNotificationEvent> Handler);
+
+    private sealed class PanelPulse(RuntimePanelViewModel panel)
+    {
+        public RuntimePanelViewModel Panel { get; } = panel;
+
+        public ITimer? Timer { get; set; }
+    }
+
+    private sealed record PanelPulseCallback(
+        ShellNotificationCenter Center,
+        PanelPulse Pulse);
 }

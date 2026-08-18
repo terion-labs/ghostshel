@@ -10,6 +10,7 @@ using GhostShell.Application;
 using GhostShell.Browser;
 using GhostShell.Infrastructure;
 using GhostShell.SessionHost;
+using GhostShell.Terminal;
 using Microsoft.Extensions.DependencyInjection;
 using GhostShellApplication = GhostShell.App.App;
 
@@ -20,6 +21,28 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        if (args.Length == 1
+            && string.Equals(
+                args[0],
+                ClaudeHookTerminalNotificationAdapter.CommandLineSwitch,
+                StringComparison.Ordinal))
+        {
+            Environment.ExitCode = ClaudeHookTerminalNotificationAdapter.Run(
+                Console.In,
+                Console.Out);
+            return;
+        }
+
+        if (args.Length > 0
+            && string.Equals(
+                args[0],
+                ClaudeCodeWrapperProcessHost.CommandLineSwitch,
+                StringComparison.Ordinal))
+        {
+            Environment.ExitCode = ClaudeCodeWrapperProcessHost.Run(args[1..]);
+            return;
+        }
+
         if (ConnectionCredentialProcessHost.IsPrivateHelperInvocation(args))
         {
             Environment.ExitCode = ConnectionCredentialProcessHost
@@ -73,6 +96,7 @@ internal static class Program
         var (services, instanceCoordinator) = prepared.Value;
         var cefInitialized = false;
         MainWindowViewModel? mainWindowViewModel = null;
+        INativeNotificationService? nativeNotifications = null;
         try
         {
             try
@@ -85,6 +109,9 @@ internal static class Program
                 };
                 BrowserEngineRuntime.Configure(BuildAvaloniaApp(services))
                     .SetupWithLifetime(lifetime);
+                nativeNotifications =
+                    services.GetRequiredService<INativeNotificationService>();
+                nativeNotifications.Activated += OnNativeNotificationActivated;
                 mainWindowViewModel = services.GetRequiredService<MainWindowViewModel>();
                 lifetime.Exit += (_, _) =>
                     TeardownPresentationOrReport(mainWindowViewModel);
@@ -119,6 +146,11 @@ internal static class Program
             finally
             {
                 instanceCoordinator.StopAcceptingActivations();
+                if (nativeNotifications is not null)
+                {
+                    nativeNotifications.Activated -= OnNativeNotificationActivated;
+                }
+
                 // Startup and finalization failures also converge here before
                 // CEF closes browsers and stops its message pump.
                 TeardownPresentationOrReport(mainWindowViewModel);
@@ -410,6 +442,15 @@ internal static class Program
 
             mainWindow.Activate();
         });
+    }
+
+    private static void OnNativeNotificationActivated(
+        object? sender,
+        NativeNotificationActivatedEventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        RequestMainWindowActivation();
     }
 
     private static async Task QuiescePresentationAsync(

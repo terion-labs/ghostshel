@@ -67,8 +67,17 @@ internal sealed class PortaPtyFactory : IPortablePtyFactory
         IReadOnlyDictionary<string, string> configured)
     {
         var environment = new Dictionary<string, string>(configured, StringComparer.Ordinal);
-        environment.TryAdd("TERM", "xterm-256color");
-        environment.TryAdd("COLORTERM", "truecolor");
+        // These describe the emulator, not the app that happened to launch
+        // GhostSHELL. Inheriting (for example) Warp's TERM_PROGRAM makes
+        // terminal-aware tools choose escape sequences for the wrong host.
+        // We intentionally advertise Ghostty compatibility because the parser,
+        // shell integration, and notification protocols come from Ghostty.
+        environment["TERM"] = "xterm-256color";
+        environment["COLORTERM"] = "truecolor";
+        environment["TERM_PROGRAM"] = "ghostty";
+        // Do not pair the managed program name with a stale version inherited
+        // from a different terminal (for example WarpTerminal).
+        environment.Remove("TERM_PROGRAM_VERSION");
         // This advertises parser support only. Applications still own the state
         // they emit, and GhostSHELL continues to treat every payload as untrusted.
         environment[TerminalInteractiveStateProtocol.CapabilityEnvironmentVariable] =

@@ -64,6 +64,34 @@ public sealed class MacOsAppBundleBuilder
         TerminalFontLicenseFileName,
     ];
 
+    private static readonly string[] RequiredClaudeNotificationFiles =
+    [
+        Path.Combine(
+            "claude-plugins",
+            "notifications",
+            ".claude-plugin",
+            "plugin.json"),
+        Path.Combine(
+            "claude-plugins",
+            "notifications",
+            "hooks",
+            "hooks.json"),
+        Path.Combine("ghostshell-cli-shims", "claude"),
+        Path.Combine(
+            "terminal-shell-integration",
+            "bash",
+            "ghostshell-claude.bash"),
+        Path.Combine(
+            "terminal-shell-integration",
+            "zsh",
+            ".zshenv"),
+        Path.Combine(
+            "terminal-shell-integration",
+            "fish",
+            "vendor_conf.d",
+            "ghostshell-claude.fish"),
+    ];
+
     private static readonly IReadOnlyDictionary<string, string>
         LicenseDestinations = new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -369,6 +397,19 @@ public sealed class MacOsAppBundleBuilder
                     $"The publish payload is missing required file {requiredFile}.");
             }
         }
+
+        var payloadFiles = entries
+            .Where(entry => !entry.IsDirectory)
+            .ToDictionary(entry => entry.RelativePath, StringComparer.Ordinal);
+        foreach (var requiredFile in RequiredClaudeNotificationFiles)
+        {
+            if (!payloadFiles.ContainsKey(requiredFile))
+            {
+                throw new InvalidDataException(
+                    $"The publish payload is missing required file {requiredFile}.");
+            }
+        }
+
         if (!OperatingSystem.IsWindows())
         {
             const UnixFileMode executeBits =
@@ -379,6 +420,15 @@ public sealed class MacOsAppBundleBuilder
             {
                 throw new InvalidDataException(
                     "The published GhostShell executable lacks an execute bit.");
+            }
+
+            var claudeShim = payloadFiles[Path.Combine(
+                "ghostshell-cli-shims",
+                "claude")];
+            if ((claudeShim.UnixMode & executeBits) == 0)
+            {
+                throw new InvalidDataException(
+                    "The published Claude shim lacks an execute bit.");
             }
         }
     }

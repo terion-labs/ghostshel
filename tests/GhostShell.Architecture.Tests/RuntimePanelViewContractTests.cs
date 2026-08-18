@@ -1500,13 +1500,16 @@ public sealed class RuntimePanelViewContractTests
                     AttributeValue(element, "AutomationProperties.Name"),
                     "File provider profile",
                     StringComparison.Ordinal));
-        var sortHeaders = new Dictionary<string, string>(StringComparer.Ordinal)
+        var sortHeaders = new Dictionary<string, (string Handler, string StateBinding)>(
+            StringComparer.Ordinal)
         {
-            ["Sort files by name"] = "OnSortNameClick",
-            ["Sort files by size"] = "OnSortSizeClick",
-            ["Sort files by modified date"] = "OnSortModifiedClick",
+            ["Sort files by name"] = ("OnSortNameClick", "{Binding IsSortingByName}"),
+            ["Sort files by size"] = ("OnSortSizeClick", "{Binding IsSortingBySize}"),
+            ["Sort files by modified date"] = (
+                "OnSortModifiedClick",
+                "{Binding IsSortingByModified}"),
         };
-        foreach (var (accessibleName, handler) in sortHeaders)
+        foreach (var (accessibleName, sortHeader) in sortHeaders)
         {
             var button = Assert.Single(
                 root.Descendants(),
@@ -1515,8 +1518,45 @@ public sealed class RuntimePanelViewContractTests
                         AttributeValue(element, "AutomationProperties.Name"),
                         accessibleName,
                         StringComparison.Ordinal));
-            Assert.Equal(handler, AttributeValue(button, "Click"));
+            Assert.Equal(sortHeader.Handler, AttributeValue(button, "Click"));
+            Assert.True(HasClass(button, "FileColumnHeader"));
+            Assert.Equal(
+                sortHeader.StateBinding,
+                AttributeValue(button, "Classes.sorted"));
+            Assert.Equal(
+                "{Binding IsSortDescending}",
+                AttributeValue(button, "Classes.descending"));
+            Assert.Contains(
+                button.Descendants(),
+                element => element.Name.LocalName == "SymbolIcon"
+                    && AttributeValue(element, "Symbol") == "ArrowUp");
+            Assert.Contains(
+                button.Descendants(),
+                element => element.Name.LocalName == "SymbolIcon"
+                    && AttributeValue(element, "Symbol") == "ArrowDown");
         }
+        var headerStyle = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && AttributeValue(element, "Selector") == "Button.FileColumnHeader");
+        Assert.Contains(
+            headerStyle.Elements(),
+            setter => AttributeValue(setter, "Property") == "HorizontalAlignment"
+                && AttributeValue(setter, "Value") == "Stretch");
+        Assert.Contains(
+            headerStyle.Elements(),
+            setter => AttributeValue(setter, "Property") == "CornerRadius"
+                && AttributeValue(setter, "Value") == "0");
+        var headerHoverStyle = Assert.Single(
+            root.Descendants(),
+            element => element.Name.LocalName == "Style"
+                && AttributeValue(element, "Selector")
+                    == "Button.FileColumnHeader:pointerover /template/ ContentPresenter");
+        Assert.Contains(
+            headerHoverStyle.Elements(),
+            setter => AttributeValue(setter, "Property") == "Background"
+                && AttributeValue(setter, "Value")
+                    == "{DynamicResource ShellSurfaceHoverBrush}");
         Assert.Equal(
             3,
             root.Descendants().Count(element =>

@@ -70,9 +70,14 @@ public sealed partial class RepositoryConventionTests
             declarationScript,
             StringComparison.Ordinal);
         Assert.Contains(
-            "codesign --force --sign -",
+            "signing_identifier=\"app.ghostshell\"",
             declarationScript,
             StringComparison.Ordinal);
+        Assert.Equal(
+            2,
+            declarationScript.Split(
+                "--identifier \"${signing_identifier}\"",
+                StringSplitOptions.None).Length - 1);
         Assert.Contains(
             "declared_sdk",
             declarationScript,

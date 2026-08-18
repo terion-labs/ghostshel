@@ -20,8 +20,10 @@
   <controls:PanelChrome
       CloseLabel="Close new panel"
       CloseRequested="OnCloseClick"
+      HasAttention="{Binding HasAttention}"
       IsActive="{Binding IsActive}"
       IsAgentActive="{Binding IsAgentActive}"
+      IsNotificationPulseActive="{Binding IsNotificationPulseActive}"
       IsZoomed="{Binding IsZoomed}"
       SplitRequested="OnSplitRequested"
       Title="{Binding KindLabel}">

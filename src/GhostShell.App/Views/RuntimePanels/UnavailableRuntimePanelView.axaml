@@ -11,8 +11,10 @@
     IsVisible="{Binding IsVisibleInLayout}">
   <controls:PanelChrome
       CloseRequested="OnCloseClick"
+      HasAttention="{Binding HasAttention}"
       IsActive="{Binding IsActive}"
       IsAgentActive="{Binding IsAgentActive}"
+      IsNotificationPulseActive="{Binding IsNotificationPulseActive}"
       IsZoomed="{Binding IsZoomed}"
       SplitRequested="OnSplitRequested"
       Title="{Binding Title}">

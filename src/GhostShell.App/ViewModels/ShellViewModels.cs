@@ -2038,6 +2038,7 @@ public sealed class RuntimeTabViewModel : ObservableObject
                 current.LayoutMinimumWidth,
                 current.LayoutMinimumHeight));
         replacement.IsActive = current.IsActive;
+        replacement.HasAttention = current.HasAttention;
         replacement.SetAgentActivity(current.AgentActivity);
         replacement.IsVisibleInLayout = current.IsVisibleInLayout;
         replacement.IsZoomed = current.IsZoomed;
@@ -2640,6 +2641,7 @@ public abstract class RuntimePanelViewModel(
 {
     private bool _isActive;
     private bool _hasAttention;
+    private bool _isNotificationPulseActive;
     private string _agentActivity = string.Empty;
     private bool _isVisibleInLayout = true;
     private bool _isZoomed;
@@ -2670,6 +2672,17 @@ public abstract class RuntimePanelViewModel(
     {
         get => _hasAttention;
         internal set => SetProperty(ref _hasAttention, value);
+    }
+
+    /// <summary>
+    /// Whether the shell is briefly acknowledging a notification the user saw
+    /// arrive in this exact panel. Unlike <see cref="HasAttention"/>, this is
+    /// transient feedback rather than unread state and never bubbles upward.
+    /// </summary>
+    public bool IsNotificationPulseActive
+    {
+        get => _isNotificationPulseActive;
+        internal set => SetProperty(ref _isNotificationPulseActive, value);
     }
 
     /// <summary>
@@ -2777,6 +2790,9 @@ public enum ConnectionPanelState
 
 public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPanelNotificationSource
 {
+    private static readonly TimeSpan NotificationWatchRetryDelay =
+        TimeSpan.FromMilliseconds(250);
+
     private readonly IConnectionRuntime _connectionRuntime;
     private readonly IConnectionSecurityRuntime? _connectionSecurityRuntime;
     private readonly ConnectionProfile _connection;
@@ -2790,6 +2806,7 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
     private CancellationTokenSource? _attempt;
     private EnsureTerminalSessionRequest? _sessionRequest;
     private CancellationTokenSource? _notificationWatch;
+    private SessionId? _notificationWatchSessionId;
     private bool _hasObservedActiveSession;
     private ConnectionPanelState _connectionState;
     private ConnectionRuntimeError? _connectionError;
@@ -2901,7 +2918,7 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
                 _sessionRequest = value;
                 IsContinuityActive = false;
                 HasObservedActiveSession = false;
-                WatchNotifications(value?.SessionId);
+                StopWatchingNotifications();
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(HasConnectionOverlay));
             }
@@ -2922,48 +2939,120 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
     /// watch only runs for the workspace on screen, and a notification from a
     /// workspace nobody is looking at is the entire point of the feature.
     /// </summary>
-    private void WatchNotifications(SessionId? sessionId)
+    private void EnsureNotificationWatch(SessionId sessionId)
     {
-        var previous = Interlocked.Exchange(ref _notificationWatch, null);
-        previous?.Cancel();
-        previous?.Dispose();
-        if (sessionId is not { } id || _disposed)
+        var currentWatch = Volatile.Read(ref _notificationWatch);
+        if (_disposed
+            || (currentWatch is not null
+                && _notificationWatchSessionId == sessionId))
         {
             return;
         }
 
+        StopWatchingNotifications();
         var watch = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
-        _notificationWatch = watch;
-        _ = WatchNotificationsAsync(id, watch.Token);
+        _notificationWatchSessionId = sessionId;
+        Volatile.Write(ref _notificationWatch, watch);
+        _ = WatchNotificationsAsync(sessionId, watch);
     }
 
-    private async Task WatchNotificationsAsync(SessionId sessionId, CancellationToken cancellationToken)
+    private void StopWatchingNotifications()
     {
+        _notificationWatchSessionId = null;
+        var previous = Interlocked.Exchange(ref _notificationWatch, null);
+        previous?.Cancel();
+        previous?.Dispose();
+    }
+
+    private async Task WatchNotificationsAsync(
+        SessionId sessionId,
+        CancellationTokenSource watch)
+    {
+        var afterSequence = 0L;
         try
         {
-            await foreach (var notification in SessionClient
-                .WatchNotificationsAsync(
-                    new WatchSessionRequest(sessionId, 0),
-                    OperationContext.ForHuman(ClientId, idempotencyKey: IdempotencyKey.New()),
-                    cancellationToken)
-                .ConfigureAwait(false))
+            while (!watch.IsCancellationRequested)
             {
-                if (ShouldRaise(notification))
+                try
                 {
-                    NotificationReceived?.Invoke(this, notification);
+                    await foreach (var notification in SessionClient
+                        .WatchNotificationsAsync(
+                            new WatchSessionRequest(sessionId, afterSequence),
+                            OperationContext.ForHuman(
+                                ClientId,
+                                idempotencyKey: IdempotencyKey.New()),
+                            watch.Token)
+                        .ConfigureAwait(false))
+                    {
+                        if (watch.IsCancellationRequested
+                            || !ReferenceEquals(
+                                Volatile.Read(ref _notificationWatch),
+                                watch))
+                        {
+                            break;
+                        }
+
+                        afterSequence = Math.Max(afterSequence, notification.Sequence);
+                        var configured = ConfigureEffects(notification);
+                        if (configured.Effects != PanelNotificationEffects.None)
+                        {
+                            PublishNotification(configured);
+                        }
+                    }
                 }
+                catch (OperationCanceledException) when (watch.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception exception) when (exception is not OutOfMemoryException)
+                {
+                    // A transient transport failure must not permanently mute an
+                    // otherwise healthy terminal. The cursor makes a resumed
+                    // replay idempotent when the host retains recent events.
+                    Console.Error.WriteLine(
+                        $"[ghostshell:notifications] Watch for {sessionId} ended: {exception.Message}");
+                }
+
+                await Task.Delay(NotificationWatchRetryDelay, watch.Token)
+                    .ConfigureAwait(false);
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (watch.IsCancellationRequested)
         {
             // The panel closed or its session was replaced.
         }
-        catch (Exception exception) when (exception is not OutOfMemoryException)
+        finally
         {
-            // A notification stream that dies must not take the panel with it:
-            // the terminal itself is unaffected by nobody listening for bells.
-            Console.Error.WriteLine(
-                $"[ghostshell:notifications] Watch for {sessionId} ended: {exception.Message}");
+            if (Interlocked.CompareExchange(ref _notificationWatch, null, watch) == watch)
+            {
+                watch.Dispose();
+            }
+        }
+    }
+
+    private void PublishNotification(PanelNotificationEvent notification)
+    {
+        var subscribers = NotificationReceived;
+        if (subscribers is null)
+        {
+            return;
+        }
+
+        foreach (EventHandler<PanelNotificationEvent> subscriber
+                 in subscribers.GetInvocationList())
+        {
+            try
+            {
+                subscriber(this, notification);
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                // A producer event has no host-side replay. One observer must
+                // never consume it on behalf of every later shell observer.
+                Console.Error.WriteLine(
+                    "[ghostshell:notifications] Terminal subscriber failed: "
+                    + exception.Message);
+            }
         }
     }
 
@@ -2975,10 +3064,22 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
     /// and read by nothing. A mode that asks only for a system alert is not
     /// asking for a mark on the tab.
     /// </summary>
-    private bool ShouldRaise(PanelNotificationEvent notification) =>
-        notification.Kind != PanelNotificationKind.Bell
-        || (RenderProfile?.BellMode ?? TerminalBellMode.Visual) is
-            TerminalBellMode.Visual or TerminalBellMode.SystemAndVisual;
+    private PanelNotificationEvent ConfigureEffects(
+        PanelNotificationEvent notification)
+    {
+        var effects = notification.Kind == PanelNotificationKind.Bell
+            ? (RenderProfile?.BellMode ?? TerminalBellMode.Visual) switch
+            {
+                TerminalBellMode.Visual => PanelNotificationEffects.Visual,
+                TerminalBellMode.System => PanelNotificationEffects.System,
+                TerminalBellMode.SystemAndVisual =>
+                    PanelNotificationEffects.System | PanelNotificationEffects.Visual,
+                TerminalBellMode.Disabled => PanelNotificationEffects.None,
+                _ => PanelNotificationEffects.Visual,
+            }
+            : PanelNotificationEffects.System | PanelNotificationEffects.Visual;
+        return notification with { Effects = effects };
+    }
 
     public bool HasObservedActiveSession
     {
@@ -3371,11 +3472,26 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
             return;
         }
 
-        var isExactActiveSession =
+        var isExactSession =
             snapshot.Descriptor.Kind == PanelKind.Terminal
-            && snapshot.Descriptor.Owner == _owner
+            && snapshot.Descriptor.Owner == _owner;
+        var isExactActiveSession = isExactSession
             && snapshot.Descriptor.Lifecycle == SessionLifecycle.Active;
         HasObservedActiveSession = isExactActiveSession;
+        if (isExactSession
+            && snapshot.Descriptor.Lifecycle is
+                SessionLifecycle.Starting or SessionLifecycle.Active)
+        {
+            // The host only exposes a notification stream after it has accepted
+            // the session. Subscribing when the launch request is merely planned
+            // races EnsureTerminalSessionAsync and leaves a permanently closed
+            // watcher behind.
+            EnsureNotificationWatch(snapshot.Descriptor.Id);
+        }
+        else if (isExactSession)
+        {
+            StopWatchingNotifications();
+        }
         if (isExactActiveSession
             && snapshot.Descriptor.Health == SessionHealth.Healthy)
         {

@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using GhostShell.Application;
 using GhostShell.Core;
 
@@ -11,6 +12,8 @@ internal sealed class FakeTerminalSession(
     PanelCloseOutcome? closeOutcomeOverride,
     bool throwWhenClosing) : ITerminalPanelSession
 {
+    private readonly Channel<PanelNotificationEvent> _notifications =
+        Channel.CreateUnbounded<PanelNotificationEvent>();
     private bool _closed;
     private bool _rendererAttached;
 
@@ -184,6 +187,17 @@ internal sealed class FakeTerminalSession(
     public bool SupportsShellIntegrationEvents { get; set; } = true;
 
     public int? SemanticWaitExitCode { get; set; } = 17;
+
+    public TaskCompletionSource NotificationWatchStarted { get; } = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public void PublishNotification(PanelNotificationEvent notification)
+    {
+        if (!_notifications.Writer.TryWrite(notification))
+        {
+            throw new InvalidOperationException("The notification stream is closed.");
+        }
+    }
 
     public ValueTask AttachRendererAsync(
         NativeRendererHost rendererHost,
@@ -691,6 +705,21 @@ internal sealed class FakeTerminalSession(
         yield break;
     }
 
+    public async IAsyncEnumerable<PanelNotificationEvent> WatchNotificationsAsync(
+        long afterSequence,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        NotificationWatchStarted.TrySetResult();
+        await foreach (var notification in _notifications.Reader
+            .ReadAllAsync(cancellationToken))
+        {
+            if (notification.Sequence > afterSequence)
+            {
+                yield return notification;
+            }
+        }
+    }
+
     public ValueTask<PanelCloseOutcome> CloseAsync(
         PanelCloseMode mode,
         CancellationToken cancellationToken)
@@ -729,6 +758,7 @@ internal sealed class FakeTerminalSession(
     {
         _closed = true;
         _rendererAttached = false;
+        _notifications.Writer.TryComplete();
         return ValueTask.CompletedTask;
     }
 }

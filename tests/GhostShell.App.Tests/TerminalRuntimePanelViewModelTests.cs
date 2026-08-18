@@ -1,4 +1,6 @@
 using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using GhostShell.App.ViewModels;
 using GhostShell.Application;
 using GhostShell.Core;
@@ -123,6 +125,200 @@ public sealed class TerminalRuntimePanelViewModelTests
 
         Assert.False(panel.HasObservedActiveSession);
         Assert.Null(panel.SessionRequest);
+    }
+
+    [Fact]
+    public async Task NotificationWatchStartsWhenHostAcceptsAStartingSession()
+    {
+        var connection = LocalConnection();
+        var runtime = new QueueConnectionRuntime(
+            ConnectionRuntimeResult<ConnectionOpenPlan>.Succeed(
+                new ConnectionOpenPlan(
+                    connection.Id,
+                    ConnectionKind.Local,
+                    new TerminalLaunchRequest(null, "/bin/zsh"),
+                    ConnectionAuthenticationMode.None,
+                    SshHostKeyPolicy.NotApplicable,
+                    ConnectionReconnectMode.NotApplicable)));
+        var sessionClient = DispatchProxy.Create<
+            ISessionHostClient,
+            NotificationSessionHostClientProxy>();
+        var notificationClient =
+            (NotificationSessionHostClientProxy)(object)sessionClient;
+        using var panel = CreatePanel(
+            runtime,
+            connection,
+            PanelStartupBehavior.None,
+            sessionClient: sessionClient);
+
+        await panel.Initialization;
+
+        var request = Assert.IsType<EnsureTerminalSessionRequest>(panel.SessionRequest);
+        Assert.Equal(0, notificationClient.WatchStartCount);
+
+        notificationClient.SessionExists = true;
+        var received = new TaskCompletionSource<PanelNotificationEvent>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        panel.NotificationReceived += (_, notification) => received.TrySetResult(notification);
+
+        panel.ObserveSessionSnapshot(Snapshot(
+            request,
+            SessionLifecycle.Starting,
+            SessionHealth.Healthy));
+        notificationClient.Publish(new PanelNotificationEvent(
+            1,
+            PanelNotificationKind.Notification,
+            "Claude Code",
+            "Work complete",
+            DateTimeOffset.UtcNow));
+
+        var notification = await received.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(1, notificationClient.WatchStartCount);
+        Assert.False(panel.HasObservedActiveSession);
+        Assert.Equal("Work complete", notification.Body);
+        Assert.Equal(
+            PanelNotificationEffects.Visual | PanelNotificationEffects.System,
+            notification.Effects);
+    }
+
+    [Fact]
+    public async Task ThrowingNotificationSubscriberDoesNotStarveLaterShellSubscriber()
+    {
+        var connection = LocalConnection();
+        var runtime = new QueueConnectionRuntime(
+            ConnectionRuntimeResult<ConnectionOpenPlan>.Succeed(
+                new ConnectionOpenPlan(
+                    connection.Id,
+                    ConnectionKind.Local,
+                    new TerminalLaunchRequest(null, "/bin/zsh"),
+                    ConnectionAuthenticationMode.None,
+                    SshHostKeyPolicy.NotApplicable,
+                    ConnectionReconnectMode.NotApplicable)));
+        var sessionClient = DispatchProxy.Create<
+            ISessionHostClient,
+            NotificationSessionHostClientProxy>();
+        var notificationClient =
+            (NotificationSessionHostClientProxy)(object)sessionClient;
+        using var panel = CreatePanel(
+            runtime,
+            connection,
+            PanelStartupBehavior.None,
+            sessionClient: sessionClient);
+        await panel.Initialization;
+        var request = Assert.IsType<EnsureTerminalSessionRequest>(panel.SessionRequest);
+        notificationClient.SessionExists = true;
+        var received = new TaskCompletionSource<PanelNotificationEvent>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        panel.NotificationReceived += (_, _) =>
+            throw new InvalidOperationException("Synthetic observer failure.");
+        panel.NotificationReceived += (_, notification) =>
+            received.TrySetResult(notification);
+
+        panel.ObserveSessionSnapshot(Snapshot(
+            request,
+            SessionLifecycle.Starting,
+            SessionHealth.Healthy));
+        notificationClient.Publish(new PanelNotificationEvent(
+            1,
+            PanelNotificationKind.Notification,
+            "Claude Code",
+            "Still delivered",
+            DateTimeOffset.UtcNow));
+
+        var notification = await received.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal("Still delivered", notification.Body);
+        Assert.Equal(1, notificationClient.WatchStartCount);
+    }
+
+    [Fact]
+    public async Task LateNotificationFromCancelledWatchIsNotPublished()
+    {
+        var connection = LocalConnection();
+        var runtime = new QueueConnectionRuntime(
+            ConnectionRuntimeResult<ConnectionOpenPlan>.Succeed(
+                new ConnectionOpenPlan(
+                    connection.Id,
+                    ConnectionKind.Local,
+                    new TerminalLaunchRequest(null, "/bin/zsh"),
+                    ConnectionAuthenticationMode.None,
+                    SshHostKeyPolicy.NotApplicable,
+                    ConnectionReconnectMode.NotApplicable)));
+        var sessionClient = DispatchProxy.Create<
+            ISessionHostClient,
+            LateNotificationSessionHostClientProxy>();
+        var notificationClient =
+            (LateNotificationSessionHostClientProxy)(object)sessionClient;
+        using var panel = CreatePanel(
+            runtime,
+            connection,
+            PanelStartupBehavior.None,
+            sessionClient: sessionClient);
+        await panel.Initialization;
+        var request = Assert.IsType<EnsureTerminalSessionRequest>(panel.SessionRequest);
+        var received = 0;
+        panel.NotificationReceived += (_, _) => Interlocked.Increment(ref received);
+
+        panel.ObserveSessionSnapshot(Snapshot(
+            request,
+            SessionLifecycle.Starting,
+            SessionHealth.Healthy));
+        await notificationClient.WatchStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        panel.Dispose();
+        notificationClient.Release.TrySetResult();
+        await notificationClient.StreamDisposed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(0, Volatile.Read(ref received));
+    }
+
+    [Fact]
+    public async Task NotificationWatchRestartsAfterAnAcceptedStreamEnds()
+    {
+        var connection = LocalConnection();
+        var runtime = new QueueConnectionRuntime(
+            ConnectionRuntimeResult<ConnectionOpenPlan>.Succeed(
+                new ConnectionOpenPlan(
+                    connection.Id,
+                    ConnectionKind.Local,
+                    new TerminalLaunchRequest(null, "/bin/zsh"),
+                    ConnectionAuthenticationMode.None,
+                    SshHostKeyPolicy.NotApplicable,
+                    ConnectionReconnectMode.NotApplicable)));
+        var sessionClient = DispatchProxy.Create<
+            ISessionHostClient,
+            RestartingNotificationSessionHostClientProxy>();
+        var notificationClient =
+            (RestartingNotificationSessionHostClientProxy)(object)sessionClient;
+        using var panel = CreatePanel(
+            runtime,
+            connection,
+            PanelStartupBehavior.None,
+            sessionClient: sessionClient);
+
+        await panel.Initialization;
+
+        var request = Assert.IsType<EnsureTerminalSessionRequest>(panel.SessionRequest);
+        var received = new TaskCompletionSource<PanelNotificationEvent>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        panel.NotificationReceived += (_, notification) => received.TrySetResult(notification);
+
+        panel.ObserveSessionSnapshot(Snapshot(
+            request,
+            SessionLifecycle.Starting,
+            SessionHealth.Healthy));
+        await notificationClient.SecondWatchStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        notificationClient.Publish(new PanelNotificationEvent(
+            2,
+            PanelNotificationKind.Notification,
+            "Claude Code",
+            "Retry delivered",
+            DateTimeOffset.UtcNow));
+
+        var notification = await received.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(2, notificationClient.WatchStartCount);
+        Assert.Equal("Retry delivered", notification.Body);
     }
 
     [Fact]
@@ -740,7 +936,8 @@ public sealed class TerminalRuntimePanelViewModelTests
         IConnectionSecurityRuntime? security = null,
         Func<TimeSpan, CancellationToken, Task>? reconnectDelay = null,
         TerminalKeymapSnapshot? keymap = null,
-        TerminalMultiplexerSession? multiplexerSession = null)
+        TerminalMultiplexerSession? multiplexerSession = null,
+        ISessionHostClient? sessionClient = null)
     {
         var panelId = PanelInstanceId.New();
         return new TerminalRuntimePanelViewModel(
@@ -756,7 +953,8 @@ public sealed class TerminalRuntimePanelViewModelTests
                 panelId),
             startup,
             render,
-            DispatchProxy.Create<ISessionHostClient, NullSessionHostClientProxy>(),
+            sessionClient
+                ?? DispatchProxy.Create<ISessionHostClient, NullSessionHostClientProxy>(),
             ClientId.New(),
             new TerminalStartupCommandDispatcher(new SuccessfulAuditStore(), TimeProvider.System),
             security,
@@ -822,6 +1020,137 @@ public sealed class TerminalRuntimePanelViewModelTests
     {
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) =>
             throw new NotSupportedException(targetMethod?.Name);
+    }
+
+    public class NotificationSessionHostClientProxy : DispatchProxy
+    {
+        private readonly Channel<PanelNotificationEvent> _notifications =
+            Channel.CreateUnbounded<PanelNotificationEvent>();
+
+        public bool SessionExists { get; set; }
+
+        public int WatchStartCount { get; private set; }
+
+        public void Publish(PanelNotificationEvent notification) =>
+            _notifications.Writer.TryWrite(notification);
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) =>
+            targetMethod?.Name switch
+            {
+                nameof(ISessionHostClient.WatchNotificationsAsync)
+                    when args is
+                    [
+                        WatchSessionRequest,
+                        OperationContext,
+                        CancellationToken cancellationToken,
+                    ] => WatchNotifications(cancellationToken),
+                _ => throw new NotSupportedException(targetMethod?.Name),
+            };
+
+        private async IAsyncEnumerable<PanelNotificationEvent> WatchNotifications(
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            WatchStartCount++;
+            if (!SessionExists)
+            {
+                yield break;
+            }
+
+            await foreach (var notification in _notifications.Reader
+                .ReadAllAsync(cancellationToken))
+            {
+                yield return notification;
+            }
+        }
+    }
+
+    public class RestartingNotificationSessionHostClientProxy : DispatchProxy
+    {
+        private readonly Channel<PanelNotificationEvent> _notifications =
+            Channel.CreateUnbounded<PanelNotificationEvent>();
+
+        public int WatchStartCount { get; private set; }
+
+        public TaskCompletionSource SecondWatchStarted { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void Publish(PanelNotificationEvent notification) =>
+            _notifications.Writer.TryWrite(notification);
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) =>
+            targetMethod?.Name switch
+            {
+                nameof(ISessionHostClient.WatchNotificationsAsync)
+                    when args is
+                    [
+                        WatchSessionRequest,
+                        OperationContext,
+                        CancellationToken cancellationToken,
+                    ] => WatchNotifications(cancellationToken),
+                _ => throw new NotSupportedException(targetMethod?.Name),
+            };
+
+        private async IAsyncEnumerable<PanelNotificationEvent> WatchNotifications(
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            WatchStartCount++;
+            if (WatchStartCount == 1)
+            {
+                await Task.Yield();
+                yield break;
+            }
+
+            SecondWatchStarted.TrySetResult();
+            await foreach (var notification in _notifications.Reader
+                .ReadAllAsync(cancellationToken))
+            {
+                yield return notification;
+            }
+        }
+    }
+
+    public class LateNotificationSessionHostClientProxy : DispatchProxy
+    {
+        public TaskCompletionSource WatchStarted { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Release { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource StreamDisposed { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) =>
+            targetMethod?.Name switch
+            {
+                nameof(ISessionHostClient.WatchNotificationsAsync)
+                    when args is
+                    [
+                        WatchSessionRequest,
+                        OperationContext,
+                        CancellationToken,
+                    ] => WatchNotifications(),
+                _ => throw new NotSupportedException(targetMethod?.Name),
+            };
+
+        private async IAsyncEnumerable<PanelNotificationEvent> WatchNotifications()
+        {
+            WatchStarted.TrySetResult();
+            try
+            {
+                await Release.Task;
+                yield return new PanelNotificationEvent(
+                    1,
+                    PanelNotificationKind.Notification,
+                    "Old session",
+                    "Late notification",
+                    DateTimeOffset.UtcNow);
+            }
+            finally
+            {
+                StreamDisposed.TrySetResult();
+            }
+        }
     }
 
     private sealed class SuccessfulAuditStore : IAuditStore

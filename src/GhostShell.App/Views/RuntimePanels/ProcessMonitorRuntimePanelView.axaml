@@ -28,8 +28,10 @@
   <controls:PanelChrome
       CloseLabel="Close Process Monitor panel"
       CloseRequested="OnCloseClick"
+      HasAttention="{Binding HasAttention}"
       IsActive="{Binding IsActive}"
       IsAgentActive="{Binding IsAgentActive}"
+      IsNotificationPulseActive="{Binding IsNotificationPulseActive}"
       IsZoomed="{Binding IsZoomed}"
       SplitRequested="OnSplitRequested"
       Title="{Binding Title}">

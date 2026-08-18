@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json;
 using GhostShell.Application;
 using GhostShell.Core;
 using GhostShell.Terminal.GhosttyVt;
@@ -604,6 +605,36 @@ public sealed class GhosttyVtTerminalSessionTests
         Assert.Equal("Waiting for input", notifications[1].Body);
         Assert.Equal(string.Empty, notifications[2].Body);
         Assert.Equal([1L, 2L, 3L], notifications.Select(notification => notification.Sequence));
+    }
+
+    [Fact]
+    public async Task Claude_stop_hook_response_reaches_the_terminal_notification_stream()
+    {
+        using var hookOutput = new StringWriter();
+        Assert.Equal(
+            0,
+            ClaudeHookTerminalNotificationAdapter.Run(
+                new StringReader("{\"hook_event_name\":\"Stop\"}"),
+                hookOutput));
+        using var hookResponse = JsonDocument.Parse(hookOutput.ToString());
+        var terminalSequence = Assert.IsType<string>(hookResponse.RootElement
+            .GetProperty("terminalSequence")
+            .GetString());
+
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var notifications = session
+            .WatchNotificationsAsync(0, lifetime.Token)
+            .GetAsyncEnumerator(lifetime.Token);
+        var received = notifications.MoveNextAsync().AsTask();
+
+        await harness.Pty.WriteOutputAsync(terminalSequence);
+
+        Assert.True(await received.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal(PanelNotificationKind.Notification, notifications.Current.Kind);
+        Assert.Equal("Claude Code", notifications.Current.Title);
+        Assert.Equal("Work complete", notifications.Current.Body);
     }
 
     [Fact]

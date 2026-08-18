@@ -954,6 +954,7 @@ public sealed partial class MainWindow
 
         if (tab.IsPanelFloating(panel.Id) ? tab.DockPanel(panel.Id) : tab.FloatPanel(panel.Id))
         {
+            ViewModel.MarkVisibleNotificationsSeen();
             FocusActivePanel();
         }
     }
@@ -1960,7 +1961,10 @@ public sealed partial class MainWindow
                     entry,
                     payload.Operation,
                     destinationFolder);
-                queuedAll &= await ViewModel.QueueFileTransferAsync(
+                // Queue through the destination panel's owner-scoped client so
+                // completion can be routed back to this exact panel. The shell
+                // still observes the shared projection for its transfer list.
+                queuedAll &= await destination.QueueTransferAsync(
                     request,
                     _lifetime.Token);
             }

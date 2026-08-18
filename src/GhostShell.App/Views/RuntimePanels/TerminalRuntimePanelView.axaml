@@ -13,8 +13,10 @@
     IsVisible="{Binding IsVisibleInLayout}">
   <controls:PanelChrome
       CloseRequested="OnCloseClick"
+      HasAttention="{Binding HasAttention}"
       IsActive="{Binding IsActive}"
       IsAgentActive="{Binding IsAgentActive}"
+      IsNotificationPulseActive="{Binding IsNotificationPulseActive}"
       IsTitleAdornmentVisible="{Binding IsContinuityActive}"
       IsZoomed="{Binding IsZoomed}"
       SplitRequested="OnSplitRequested"
@@ -157,14 +159,6 @@
           ConnectionSelected="OnConnectionSelected"
           NewConnectionRequested="OnNewConnectionRequested" />
     </controls:PanelChrome.Leading>
-
-    <controls:PanelChrome.Actions>
-      <!-- The panel that actually asked. The tab and the rail aggregate
-           it, so this is where the trail ends. -->
-      <controls:SignalDot
-          IsVisible="{Binding HasAttention}"
-          ToolTip.Tip="This panel asked for attention" />
-    </controls:PanelChrome.Actions>
 
     <Grid>
         <controls:TerminalPresentationHost

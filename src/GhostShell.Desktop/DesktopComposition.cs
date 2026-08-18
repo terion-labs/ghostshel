@@ -25,6 +25,8 @@ public static class DesktopComposition
     {
         var services = new ServiceCollection();
         services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<INativeNotificationService>(_ =>
+            NativeNotificationServiceSelector.CreateForCurrentPlatform());
         services.AddSingleton<IHostAccessibilityPreferencesSource>(_ =>
             HostAccessibilityPreferencesSourceSelector.CreateForCurrentPlatform());
         services.AddSingleton<IActiveWindowBoundsSource>(_ =>

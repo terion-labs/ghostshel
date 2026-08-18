@@ -1080,6 +1080,16 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
         Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
         Assert.Same(firstChat, viewModel.AgentChat);
+        Assert.True(firstWorkspace.HasAttention);
+        Assert.True(Assert.Single(
+            viewModel.Workspaces,
+            workspace => workspace.Id == WorkspaceId).HasAttention);
+
+        viewModel.IsWindowFocused = false;
+        viewModel.IsAgentPanelVisible = true;
+        Assert.True(firstWorkspace.HasAttention);
+
+        viewModel.IsWindowFocused = true;
         Assert.False(firstWorkspace.HasAttention);
         Assert.False(Assert.Single(
             viewModel.Workspaces,

@@ -163,6 +163,10 @@
                       DockPanel.Dock="Right"
                       VerticalAlignment="Center"
                       Orientation="Horizontal">
+                    <controls:SignalDot
+                        Margin="{controls:Inset Right=Xs}"
+                        IsVisible="{TemplateBinding HasAttention}"
+                        ToolTip.Tip="This panel has an unread notification" />
                     <Button
                         Name="PART_Float"
                         AutomationProperties.Name="Move this panel to its own window"
@@ -290,9 +294,34 @@
                 CornerRadius="{Binding CornerRadius, ElementName=PART_PanelSurface}"
                 IsHitTestVisible="False"
                 IsVisible="{TemplateBinding IsAgentActive}" />
+            <Border
+                Name="PART_NotificationPulse"
+                Background="{DynamicResource ShellAccentSoftBrush}"
+                BorderBrush="{DynamicResource ShellAccentBrush}"
+                BorderThickness="2"
+                Classes="PanelNotificationPulse"
+                CornerRadius="{Binding CornerRadius, ElementName=PART_PanelSurface}"
+                IsHitTestVisible="False"
+                IsVisible="False" />
           </Grid>
         </ControlTemplate>
       </Setter>
+      <Style Selector="^:notification-pulse /template/ Border#PART_NotificationPulse">
+        <Setter Property="IsVisible" Value="True" />
+        <Style.Animations>
+          <Animation Duration="0:0:0.9" IterationCount="1">
+            <KeyFrame Cue="0%">
+              <Setter Property="Opacity" Value="0" />
+            </KeyFrame>
+            <KeyFrame Cue="18%">
+              <Setter Property="Opacity" Value="0.72" />
+            </KeyFrame>
+            <KeyFrame Cue="100%">
+              <Setter Property="Opacity" Value="0" />
+            </KeyFrame>
+          </Animation>
+        </Style.Animations>
+      </Style>
     </ControlTheme>
     <!--
       A floated panel: placed by its own coordinates over the workspace, wearing

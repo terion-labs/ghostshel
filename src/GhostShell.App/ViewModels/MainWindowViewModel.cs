@@ -257,14 +257,20 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         AgentPolicyCoordinator? agentPolicyCoordinator = null,
         IAgentWorkspaceRuntimeFactory? agentRuntimeFactory = null,
         IBrowserProfilePreferences? browserProfilePreferences = null,
-        IBrowserProfileDataControl? browserProfileDataControl = null)
+        IBrowserProfileDataControl? browserProfileDataControl = null,
+        INativeNotificationService? nativeNotificationService = null)
     {
         SessionClient = sessionClient ?? throw new ArgumentNullException(nameof(sessionClient));
+        _uiThreadDispatcher = uiThreadDispatcher ?? AvaloniaUiThreadDispatcher.Instance;
         OpenWorkspaces = new(_openWorkspaces);
         Notifications = new ShellNotificationCenter(
             () => RuntimeWorkspace,
             () => IsWindowFocused,
-            RefreshWorkspaceRuntimeFlags);
+            RefreshWorkspaceRuntimeFlags,
+            _uiThreadDispatcher,
+            nativeNotificationService,
+            ActivateNativeNotification,
+            () => IsWorkspaceCanvasVisible);
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         SavedScreenDeleteUndo = new SavedScreenDeleteUndoViewModel(_catalog);
         _connectionRuntime = connectionRuntime ?? throw new ArgumentNullException(nameof(connectionRuntime));
@@ -322,7 +328,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
         _recentSessionHistory = recentSessionHistory;
         _timeProvider = timeProvider ?? TimeProvider.System;
-        _uiThreadDispatcher = uiThreadDispatcher ?? AvaloniaUiThreadDispatcher.Instance;
         ClientId = agentApprovalPrincipal is null
             ? ClientId.New()
             : RequireDesktopClientId(agentApprovalPrincipal);
@@ -1015,6 +1020,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(IsWorkspaceVisible));
                 OnPropertyChanged(nameof(IsSettingsVisible));
                 OnPropertyChanged(nameof(IsWorkspaceCanvasVisible));
+                if (value == ShellRoute.Workspace)
+                {
+                    MarkVisibleNotificationsSeen();
+                }
             }
         }
     }
@@ -1061,6 +1070,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(IsLayoutDesignerVisible));
                 OnPropertyChanged(nameof(IsDefinitionEditorVisible));
                 OnPropertyChanged(nameof(IsWorkspaceCanvasVisible));
+                if (value == ShellOverlay.None)
+                {
+                    MarkVisibleNotificationsSeen();
+                }
             }
         }
     }
@@ -1088,7 +1101,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _isWindowFocused, value) && value)
             {
-                Notifications.MarkVisibleSeen();
+                MarkVisibleNotificationsSeen();
             }
         }
     }
@@ -1137,6 +1150,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 // and its place in the open set.
                 if (previous is not null && !_openWorkspaces.Contains(previous))
                 {
+                    Notifications.Forget(previous);
                     QueueRemainingRecentSessionCompletions(RecentSessionOutcome.GracefullyClosed);
                     previous.DisposePanels();
                 }
@@ -1162,6 +1176,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     public bool HasRuntimeWorkspace => RuntimeWorkspace is not null;
+
+    internal void MarkVisibleNotificationsSeen()
+    {
+        Notifications.MarkVisibleSeen();
+        if (IsAgentPanelVisible && IsWorkspaceCanvasVisible)
+        {
+            Notifications.MarkWorkspaceSourceSeen(RuntimeWorkspace);
+        }
+    }
 
     private void ActivateWorkspaceAgentChat(WorkspaceInstanceId? workspaceId)
     {
@@ -1223,10 +1246,100 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private void NotifyAgentRunFinished(WorkspaceInstanceId workspaceId)
     {
         if (_openWorkspaces.FirstOrDefault(workspace => workspace.Id == workspaceId)
-            is { } workspace)
+                is not { } workspace
+            || !_workspaceAgentChats.TryGetValue(workspaceId, out var owned)
+            || owned.ViewModel.State == GovernedAgentState.Cancelled)
         {
-            Notifications.NotifyWorkspace(workspace);
+            return;
         }
+
+        var failed = owned.ViewModel.State == GovernedAgentState.Failed;
+        Notifications.NotifyWorkspaceSource(
+            workspace,
+            new PanelNotificationEvent(
+                0,
+                failed
+                    ? PanelNotificationKind.AgentFailed
+                    : PanelNotificationKind.AgentCompleted,
+                failed ? "Agent run failed" : "Agent finished",
+                workspace.Name,
+                _timeProvider.GetUtcNow())
+            {
+                Effects = PanelNotificationEffects.Visual
+                    | PanelNotificationEffects.System,
+            },
+            sourceIsVisible: IsAgentPanelVisible);
+    }
+
+    private void ActivateNativeNotification(
+        NativeNotificationRoute route,
+        PanelNotificationKind kind) =>
+        _ = ActivateNativeNotificationAsync(route, kind);
+
+    private async Task ActivateNativeNotificationAsync(
+        NativeNotificationRoute route,
+        PanelNotificationKind kind)
+    {
+        try
+        {
+            await ActivateNativeNotificationCoreAsync(route, kind);
+        }
+        catch (OperationCanceledException) when (
+            _disposed || _runtimeGraphLifetime.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            Console.Error.WriteLine(
+                "[ghostshell:notifications] Activation failed: "
+                + exception.Message);
+        }
+    }
+
+    private async Task ActivateNativeNotificationCoreAsync(
+        NativeNotificationRoute route,
+        PanelNotificationKind kind)
+    {
+        if (_disposed
+            || _openWorkspaces.FirstOrDefault(workspace => workspace.Id == route.WorkspaceId)
+                is not { } workspace)
+        {
+            return;
+        }
+
+        if (!ReferenceEquals(RuntimeWorkspace, workspace))
+        {
+            await FlushWorkspaceAutoSaveAsync();
+            if (_disposed || !_openWorkspaces.Contains(workspace))
+            {
+                return;
+            }
+
+            ReactivateRuntimeWorkspace(workspace);
+        }
+
+        Route = ShellRoute.Workspace;
+        if (kind is PanelNotificationKind.AgentCompleted
+            or PanelNotificationKind.AgentFailed)
+        {
+            IsAgentPanelVisible = true;
+        }
+
+        if (route.PanelId is { } panelId
+            && workspace.Tabs.Any(tab => tab.Panels.Any(panel => panel.Id == panelId)))
+        {
+            await ActivatePanelAsync(panelId, _runtimeGraphLifetime.Token);
+            return;
+        }
+
+        if (route.TabId is { } tabId
+            && workspace.Tabs.Any(tab => tab.Id == tabId))
+        {
+            await ActivateTabAsync(tabId, _runtimeGraphLifetime.Token);
+            return;
+        }
+
+        MarkVisibleNotificationsSeen();
     }
 
     private void NotifyAgentRunningStateChanged() =>
@@ -1783,6 +1896,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _isAgentPanelVisible, value))
             {
                 OnPropertyChanged(nameof(IsAgentPanelDockedVisible));
+                if (value)
+                {
+                    Notifications.MarkWorkspaceSourceSeen(RuntimeWorkspace);
+                }
             }
         }
     }
@@ -5842,6 +5959,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             return false;
         }
 
+        Notifications.Watch(workspace);
         workspace.AddConnections(Connections.Where(item => item.Id == connection.Id));
         StartTrackingRecovery(replacement);
         TrackRecentSession(replacement);
@@ -5971,6 +6089,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             return false;
         }
 
+        Notifications.Watch(workspace);
         workspace.AddConnections(Connections.Where(item => item.Id == connection.Id));
         StartTrackingRecovery(replacement);
         StartAcceptedRuntimePanel(replacement);
@@ -6031,6 +6150,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             return false;
         }
 
+        Notifications.Watch(workspace);
         StartTrackingRecovery(replacement);
         StartAcceptedRuntimePanel(replacement);
         QueueRuntimeRecoverySnapshot();
@@ -8681,7 +8801,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         TrackRecentSessions(runtime.Tabs.SelectMany(tab => tab.Panels));
         StartRuntimeGraphWatch(runtime);
         RefreshWorkspaceRuntimeFlags();
-        Notifications.MarkVisibleSeen();
+        MarkVisibleNotificationsSeen();
     }
 
     /// <summary>
@@ -8696,11 +8816,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             BringToFrontOfOpenSet(runtime);
             RuntimeWorkspace = runtime;
+            Notifications.Watch(runtime);
             StartRuntimeGraphWatch(runtime);
             activation.Mark("graph watch");
             RefreshWorkspaceRuntimeFlags();
             activation.Mark("rail flags");
-            Notifications.MarkVisibleSeen();
+            MarkVisibleNotificationsSeen();
             activation.Mark("seen marks");
         }
         finally
@@ -9318,6 +9439,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         commit();
+        Notifications.Watch(runtime);
         var applied = reconciledAfterAmbiguousReceipt
             ? TryApplyRuntimeWorkspaceProjection(
                 runtime,
@@ -9335,6 +9457,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             throw new InvalidOperationException(
                 $"The host-approved {operation} could not be applied to the runtime view.");
         }
+
+        MarkVisibleNotificationsSeen();
 
         if (!reconciledAfterAmbiguousReceipt)
         {
@@ -9625,6 +9749,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             return false;
         }
 
+        MarkVisibleNotificationsSeen();
         QueueRuntimeRecoverySnapshot();
         return true;
     }
@@ -9667,7 +9792,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // Every activation the host confirms — a tab, a panel, a drag that moved
         // one — lands here, which makes this the one place that reliably knows
         // what the user is now looking at.
-        Notifications.MarkVisibleSeen();
+        MarkVisibleNotificationsSeen();
         QueueRuntimeRecoverySnapshot();
         return true;
     }
@@ -13406,6 +13531,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             return false;
         }
 
+        Notifications.Watch(workspace);
         StartTrackingRecovery(replacement);
         StartAcceptedRuntimePanel(replacement);
         QueueRuntimeRecoverySnapshot();
@@ -13947,7 +14073,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                     || success.Value.Descriptor.Id != request.SessionId
                     || success.Value.Descriptor.Owner != owner
                     || success.Value.Descriptor.Kind != PanelKind.Terminal
-                    || success.Value.Descriptor.Lifecycle != SessionLifecycle.Active)
+                    || success.Value.Descriptor.Lifecycle is not (
+                        SessionLifecycle.Starting or SessionLifecycle.Active))
                 {
                     return;
                 }
@@ -14393,6 +14520,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         QueueRemainingRecentSessionCompletions(RecentSessionOutcome.GracefullyClosed);
 
         var openWorkspaces = _openWorkspaces.ToArray();
+        Notifications.ForgetAll();
         foreach (var workspace in openWorkspaces)
         {
             workspace.DisposePanels();
