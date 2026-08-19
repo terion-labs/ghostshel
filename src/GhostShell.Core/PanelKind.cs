@@ -20,4 +20,7 @@ public enum PanelKind
 
     /// <summary>Appended so persisted session history keeps every existing numeric value.</summary>
     Docker,
+
+    /// <summary>Appended so persisted session history keeps every existing numeric value.</summary>
+    Git,
 }

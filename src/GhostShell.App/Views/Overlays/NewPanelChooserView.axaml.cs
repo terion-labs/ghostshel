@@ -23,6 +23,8 @@ public sealed partial class NewPanelChooserView : UserControl
 
     public event EventHandler<RoutedEventArgs>? AddDockerPanelRequested;
 
+    public event EventHandler<RoutedEventArgs>? AddGitPanelRequested;
+
     public event EventHandler<RoutedEventArgs>? AddTerminalPanelRequested;
 
     /// <summary>Raised with the chosen connection row as the sender.</summary>
@@ -56,6 +58,9 @@ public sealed partial class NewPanelChooserView : UserControl
 
     private void OnAddDockerPanelClick(object? sender, RoutedEventArgs e) =>
         AddDockerPanelRequested?.Invoke(sender, e);
+
+    private void OnAddGitPanelClick(object? sender, RoutedEventArgs e) =>
+        AddGitPanelRequested?.Invoke(sender, e);
 
     private void OnAddTerminalPanelClick(object? sender, RoutedEventArgs e) =>
         AddTerminalPanelRequested?.Invoke(sender, e);

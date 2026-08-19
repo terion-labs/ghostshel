@@ -15,6 +15,7 @@ public sealed class RuntimeTabIdentityTests
     [InlineData(PanelKind.ProcessMonitor, "gauge", Symbol.Gauge)]
     [InlineData(PanelKind.DatabaseViewer, "database", Symbol.Database)]
     [InlineData(PanelKind.Docker, "box", Symbol.Box)]
+    [InlineData(PanelKind.Git, "branch", Symbol.Branch)]
     public void First_real_panel_sets_the_initial_tab_icon(
         PanelKind kind,
         string icon,

@@ -129,7 +129,7 @@
           SessionRequest="{Binding SessionRequest}" />
       <Border
           Margin="{DynamicResource ShellHairline}"
-          Background="{DynamicResource ShellBackgroundBrush}"
+          Background="{DynamicResource ShellSurfaceBrush}"
           IsVisible="{Binding ShowFallback, ElementName=RuntimeBrowser}">
         <controls:StateOverlay
             Glyph="Globe"
@@ -137,7 +137,7 @@
       </Border>
       <Border
           Margin="{DynamicResource ShellHairline}"
-          Background="{DynamicResource ShellBackgroundBrush}"
+          Background="{DynamicResource ShellSurfaceBrush}"
           IsVisible="{Binding HasRouteError}">
         <controls:StateOverlay
             Kind="Error"

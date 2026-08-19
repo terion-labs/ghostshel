@@ -51,6 +51,7 @@ public sealed class WorkspaceIconCatalogTests
     [InlineData("prod", "rocket")]
     [InlineData("db", "database")]
     [InlineData("Docker", "box")]
+    [InlineData("Git", "branch")]
     public void Search_finds_an_icon_by_name_or_purpose(string query, string expectedId)
     {
         Assert.Contains(WorkspaceIcons.Search(query), icon => string.Equals(icon.Id, expectedId, StringComparison.Ordinal));

@@ -497,7 +497,7 @@
           </Grid>
 
           <Border
-              Background="{DynamicResource ShellSidebarBrush}"
+              Background="{DynamicResource ShellSurfaceBrush}"
               IsVisible="{Binding ShowLoadingState}"
               AutomationProperties.LiveSetting="Polite"
               AutomationProperties.Name="File Viewer loading">

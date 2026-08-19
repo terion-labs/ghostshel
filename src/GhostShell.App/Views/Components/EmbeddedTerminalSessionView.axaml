@@ -7,7 +7,10 @@
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch"
     AutomationProperties.Name="Container shell">
-  <Grid Background="{DynamicResource ShellBackgroundBrush}">
+  <!-- The panel material behind this view is the chrome's translucent surface;
+       painting the shell background here made every embedded terminal opaque
+       regardless of the appearance settings. -->
+  <Grid>
     <controls:TerminalPresentationHost
         x:Name="EmbeddedTerminal"
         Margin="0"
@@ -24,7 +27,7 @@
     <Border
         Margin="0"
         Padding="{controls:Inset Xl}"
-        Background="{DynamicResource ShellBackgroundBrush}"
+        Background="{DynamicResource ShellSurfaceBrush}"
         IsHitTestVisible="False"
         IsVisible="{Binding ShowFallback, ElementName=EmbeddedTerminal}">
       <StackPanel MaxWidth="440" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
@@ -73,7 +76,7 @@
     <Border
         Margin="0"
         Padding="{controls:Inset Xl}"
-        Background="{DynamicResource ShellBackgroundBrush}"
+        Background="{DynamicResource ShellSurfaceBrush}"
         IsVisible="{Binding HasConnectionOverlay}">
       <StackPanel MaxWidth="460" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
         <icons:SymbolIcon Symbol="WindowConsole" FontSize="25" Foreground="{DynamicResource ShellWarningBrush}" />

@@ -343,6 +343,7 @@
                     <Button Classes="TextButton Accent" Click="OnAddProcessMonitorPanelClick" Content="+ Processes" IsEnabled="{Binding CanAddPanel}" />
                     <Button Classes="TextButton Accent" Click="OnAddDatabasePanelClick" Content="+ Database" IsEnabled="{Binding CanAddPanel}" />
                     <Button Classes="TextButton Accent" Click="OnAddDockerPanelClick" Content="+ Docker" IsEnabled="{Binding CanAddPanel}" />
+                    <Button Classes="TextButton Accent" Click="OnAddGitPanelClick" Content="+ Git" IsEnabled="{Binding CanAddPanel}" />
                   </WrapPanel>
                 </Grid>
 

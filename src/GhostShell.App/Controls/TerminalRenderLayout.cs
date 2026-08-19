@@ -121,6 +121,10 @@ internal static class TerminalRenderLayout
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         var palette = profile?.Palette ?? TerminalPalette.GhostShellDark;
+        var defaultBackground = TerminalCellColors.Resolve(
+            TerminalCellColor.Default,
+            palette,
+            foreground: false);
         var cells = new List<TerminalDrawCell>(
             Math.Min(metrics.Rows * metrics.Columns, 32_768));
 
@@ -153,7 +157,7 @@ internal static class TerminalRenderLayout
                     cell.Text,
                     colors.Foreground,
                     colors.Background,
-                    UsesDefaultBackground(cell),
+                    UsesDefaultBackground(cell) || colors.Background == defaultBackground,
                     ConvertStyle(cell.Style),
                     cell.Style.HasFlag(TerminalCellStyle.Underline)
                         ? TerminalUnderlineKind.Single
@@ -192,6 +196,10 @@ internal static class TerminalRenderLayout
     {
         ArgumentNullException.ThrowIfNull(frame);
         var palette = profile?.Palette ?? TerminalPalette.GhostShellDark;
+        var defaultBackground = TerminalCellColors.Resolve(
+            TerminalCellColor.Default,
+            palette,
+            foreground: false);
         var cells = new List<TerminalDrawCell>(
             Math.Min(frame.Rows * frame.Columns, 32_768));
         var visibleRows = Math.Min(frame.Rows, metrics.Rows);
@@ -216,7 +224,7 @@ internal static class TerminalRenderLayout
                     cell.HasText ? cell.Text : string.Empty,
                     colors.Foreground,
                     colors.Background,
-                    UsesDefaultBackground(cell),
+                    UsesDefaultBackground(cell) || colors.Background == defaultBackground,
                     cell.Style,
                     cell.Underline,
                     underlineColor,
@@ -272,6 +280,16 @@ internal static class TerminalRenderLayout
             frame.KittyGraphics);
     }
 
+    // A cell whose resolved background matches the palette's default background
+    // is treated as default even when the application painted it explicitly.
+    // Multiplexed sessions (the SSH continuity path attaches through tmux or
+    // Screen) and full-screen programs clear regions with an explicit
+    // background-color-erase in the theme's own background, and the emulator
+    // reports those cells as concrete RGB. Without the color comparison every
+    // such cell is painted at full alpha and the panel silently stops following
+    // the translucency setting, which is why remote terminals read opaque while
+    // local ones follow the glass. Desktop terminals with background opacity
+    // treat default-colored cells the same way.
     private static bool UsesDefaultBackground(TerminalScreenCell cell) =>
         cell.Background.Mode == TerminalColorMode.Default
         && !cell.IsSelected

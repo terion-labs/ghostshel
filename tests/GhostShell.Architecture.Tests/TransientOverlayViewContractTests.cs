@@ -276,7 +276,7 @@ public sealed class TransientOverlayViewContractTests
         var choices = catalogRoot.Descendants()
             .Where(element => string.Equals(element.Name.LocalName, "ChooserTile", StringComparison.Ordinal))
             .ToArray();
-        Assert.Equal(7, choices.Length);
+        Assert.Equal(8, choices.Length);
 
         var initialAction = FindNamedElement(catalogRoot, "NewTerminalButton");
         Assert.Equal(
@@ -390,7 +390,7 @@ public sealed class TransientOverlayViewContractTests
         var choices = root.Descendants()
             .Where(element => string.Equals(element.Name.LocalName, "ChooserTile", StringComparison.Ordinal))
             .ToArray();
-        Assert.Equal(7, choices.Length);
+        Assert.Equal(8, choices.Length);
 
         var initialAction = FindNamedElement(root, "NewPanelTerminalButton");
         Assert.Equal(

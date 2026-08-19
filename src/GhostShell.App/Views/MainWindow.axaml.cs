@@ -906,6 +906,13 @@ public sealed partial class MainWindow : Window
         await RequestNewAdapterTabAsync(PanelKind.Docker);
     }
 
+    private async void OnNewGitClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        await RequestNewAdapterTabAsync(PanelKind.Git);
+    }
+
     private async void OnAddConnectionClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
@@ -1657,6 +1664,9 @@ public sealed partial class MainWindow : Window
                 break;
             case PanelKind.Docker:
                 await RequestNewDockerAsync();
+                break;
+            case PanelKind.Git:
+                await RequestNewGitAsync();
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(kind), kind, null);

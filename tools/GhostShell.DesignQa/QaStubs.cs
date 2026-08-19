@@ -5,6 +5,7 @@ using GhostShell.App;
 using GhostShell.Application;
 using GhostShell.Core;
 using GhostShell.Docker;
+using GhostShell.Git;
 
 namespace GhostShell.DesignQa;
 
@@ -1507,4 +1508,366 @@ internal sealed class QaRedisConnectionCatalog : IDatabaseConnectionCatalog
 
     public string BuildConnectionString(string driverId, DatabaseConnectionDetails details) =>
         "cache.internal:6379";
+}
+
+internal sealed class QaGitRepositoryClient : IGitRepositoryClient
+{
+    private const string Root = "/Users/qa/projects/ghostshell";
+
+    // A believable ancestry: one feature branch merging back in, so the
+    // history graph shows a real second lane converging at the branch point.
+    private static readonly GitCommitItem[] History =
+    [
+        Commit("8bfacd85", "browser new tab", 42_50, "dev", "4ff4a98a"),
+        Commit("4ff4a98a", "ui improvements", 3_60_00, "origin/dev", "2861c1b0"),
+        Commit("2861c1b0", "terminal and browser improvements", 13 * 3600, null, "3b684070"),
+        Commit("3b684070", "Merge agent tooling", 14 * 3600, null, "67ceef20", "1f3e1870"),
+        Commit("67ceef20", "Implement provider-neutral file discovery", 26 * 3600, null, "e49f1870"),
+        Commit("1f3e1870", "somewhat working agent", 27 * 3600, null, "e49f1870"),
+        Commit("e49f1870", "redis support", 49 * 3600, null, "3edc27e0"),
+        Commit("3edc27e0", "macOS wake/display-scale repair", 50 * 3600, null, "55cb86c0"),
+        Commit("55cb86c0", "better tabs", 52 * 3600, null, "4b3c6b50"),
+        Commit("4b3c6b50", "quick terminal improvements", 74 * 3600, null, "bcf5eec0"),
+        Commit("bcf5eec0", "quick terminal properly working", 75 * 3600, null, "c13459e0"),
+        Commit("c13459e0", "multiplexed terminals", 76 * 3600, "v0.8.0"),
+    ];
+
+    public ValueTask<GitResult<GitRepositoryHandle>> OpenRepositoryAsync(
+        ConnectionProfile connection,
+        string path,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult<GitResult<GitRepositoryHandle>>(
+            new GitResult<GitRepositoryHandle>.Success(new GitRepositoryHandle(connection, Root)));
+
+    public ValueTask<GitResult<GitUnit>> TrustRepositoryAsync(
+        ConnectionProfile connection,
+        string path,
+        CancellationToken cancellationToken) => Record($"trust {path}");
+
+    public ValueTask<GitResult<GitTreeListing>> ReadTreeAsync(
+        GitRepositoryHandle repository,
+        string sha,
+        string path,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult<GitResult<GitTreeListing>>(
+            new GitResult<GitTreeListing>.Success(new GitTreeListing(
+                path,
+                path.Length == 0
+                    ?
+                    [
+                        new GitTreeEntry("docs", IsTree: true, Size: null),
+                        new GitTreeEntry("src", IsTree: true, Size: null),
+                        new GitTreeEntry("tests", IsTree: true, Size: null),
+                        new GitTreeEntry("GhostShell.slnx", IsTree: false, Size: 4210),
+                        new GitTreeEntry("README.md", IsTree: false, Size: 1832),
+                        new GitTreeEntry("design-qa.md", IsTree: false, Size: 20714),
+                    ]
+                    :
+                    [
+                        new GitTreeEntry("cef-runtime-packaging.md", IsTree: false, Size: 6113),
+                        new GitTreeEntry("notifications.md", IsTree: false, Size: 2450),
+                    ])));
+
+    public ValueTask<GitResult<GitBlobSnapshot>> ReadBlobAsync(
+        GitRepositoryHandle repository,
+        string sha,
+        string path,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult<GitResult<GitBlobSnapshot>>(
+            new GitResult<GitBlobSnapshot>.Success(new GitBlobSnapshot(
+                path,
+                "# GhostSHELL\n\nA connection-first shell: terminals, files, browsers,\ndatabases, Docker, and Git panels over one process boundary.\n",
+                IsBinary: false,
+                IsTruncated: false)));
+
+    public ValueTask<GitResult<GitDirectoryListing>> ListDirectoriesAsync(
+        ConnectionProfile connection,
+        string path,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult<GitResult<GitDirectoryListing>>(
+            new GitResult<GitDirectoryListing>.Success(new GitDirectoryListing(
+                "/Users/qa/projects",
+                [
+                    new GitDirectoryEntry("ghostshell", IsRepository: true),
+                    new GitDirectoryEntry("ghostshell-wt", IsRepository: true),
+                    new GitDirectoryEntry("archive", IsRepository: false),
+                    new GitDirectoryEntry("designs", IsRepository: false),
+                    new GitDirectoryEntry("experiments", IsRepository: false),
+                ])));
+
+    public ValueTask<GitResult<GitRepositorySnapshot>> ReadSnapshotAsync(
+        GitRepositoryHandle repository,
+        long generation,
+        CancellationToken cancellationToken)
+    {
+        var snapshot = new GitRepositorySnapshot(
+            generation,
+            new GitHeadState("dev", History[0].Sha, "origin/dev", Ahead: 1, Behind: 0, IsDetached: false),
+            [
+                new GitFileChange("src/GhostShell.App/ViewModels/GitRuntimePanelViewModel.cs", null, GitChangeKind.Modified, GitChangeArea.Unstaged),
+                new GitFileChange("src/GhostShell.App/Views/RuntimePanels/GitRuntimePanelView.axaml", null, GitChangeKind.Modified, GitChangeArea.Unstaged),
+                new GitFileChange("docs/git-panel.md", null, GitChangeKind.Untracked, GitChangeArea.Unstaged),
+            ],
+            [
+                new GitFileChange("src/GhostShell.Application/GitRepositoryModels.cs", null, GitChangeKind.Added, GitChangeArea.Staged),
+                new GitFileChange("src/GhostShell.Git/GitRepositoryClient.cs", "src/GhostShell.Git/GitCliRepository.cs", GitChangeKind.Renamed, GitChangeArea.Staged),
+            ],
+            [
+                new GitRefItem("refs/heads/dev", "dev", GitRefKind.LocalBranch, History[0].Sha, IsCurrent: true, "origin/dev", Ahead: 1, Behind: 0),
+                new GitRefItem("refs/heads/main", "main", GitRefKind.LocalBranch, History[2].Sha, IsCurrent: false, "origin/main", Ahead: 0, Behind: 0),
+                new GitRefItem("refs/heads/codex/cef-osr-migration", "codex/cef-osr-migration", GitRefKind.LocalBranch, History[3].Sha, IsCurrent: false),
+                new GitRefItem("refs/remotes/origin/dev", "origin/dev", GitRefKind.RemoteBranch, History[1].Sha, IsCurrent: false),
+                new GitRefItem("refs/remotes/origin/main", "origin/main", GitRefKind.RemoteBranch, History[2].Sha, IsCurrent: false),
+                new GitRefItem("refs/tags/v0.8.0", "v0.8.0", GitRefKind.Tag, History[^1].Sha, IsCurrent: false),
+            ],
+            [new GitRemoteItem("origin", "git@github.com:terion/ghostshell.git")],
+            [new GitStashItem("stash@{0}", "WIP on dev: diff viewer polish")],
+            [
+                new GitWorktreeItem(Root, "dev", History[0].Sha, IsMain: true),
+                new GitWorktreeItem("/Users/qa/projects/ghostshell-wt", "codex/cef-osr-migration", History[3].Sha, IsMain: false),
+            ],
+            [],
+            new DateTimeOffset(2026, 8, 18, 11, 42, 0, TimeSpan.Zero));
+        return ValueTask.FromResult<GitResult<GitRepositorySnapshot>>(
+            new GitResult<GitRepositorySnapshot>.Success(snapshot));
+    }
+
+    public ValueTask<GitResult<GitWorkingSet>> ReadWorkingSetAsync(
+        GitRepositoryHandle repository,
+        long generation,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult<GitResult<GitWorkingSet>>(
+            new GitResult<GitWorkingSet>.Success(new GitWorkingSet(
+                generation,
+                new GitHeadState("dev", History[0].Sha, "origin/dev", Ahead: 1, Behind: 0, IsDetached: false),
+                [
+                    new GitFileChange("src/GhostShell.App/ViewModels/GitRuntimePanelViewModel.cs", null, GitChangeKind.Modified, GitChangeArea.Unstaged),
+                    new GitFileChange("src/GhostShell.App/Views/RuntimePanels/GitRuntimePanelView.axaml", null, GitChangeKind.Modified, GitChangeArea.Unstaged),
+                    new GitFileChange("docs/git-panel.md", null, GitChangeKind.Untracked, GitChangeArea.Unstaged),
+                ],
+                [
+                    new GitFileChange("src/GhostShell.Application/GitRepositoryModels.cs", null, GitChangeKind.Added, GitChangeArea.Staged),
+                    new GitFileChange("src/GhostShell.Git/GitRepositoryClient.cs", "src/GhostShell.Git/GitCliRepository.cs", GitChangeKind.Renamed, GitChangeArea.Staged),
+                ])));
+
+    public ValueTask<GitResult<GitCommitPage>> ReadCommitPageAsync(
+        GitRepositoryHandle repository,
+        int offset,
+        int count,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult<GitResult<GitCommitPage>>(
+            new GitResult<GitCommitPage>.Success(new GitCommitPage(History, offset, HasMore: false)));
+
+    public ValueTask<GitResult<GitCommitDetail>> ReadCommitDetailAsync(
+        GitRepositoryHandle repository,
+        string sha,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult<GitResult<GitCommitDetail>>(
+            new GitResult<GitCommitDetail>.Success(new GitCommitDetail(
+                History[0],
+                "The browser panel now opens fresh tabs beside the active one and keeps\nthe session alive across layout changes.",
+                "terion",
+                History[0].AuthoredAt,
+                [
+                    new GitFileChange("src/GhostShell.Browser/BrowserEngineRuntime.cs", null, GitChangeKind.Modified, GitChangeArea.Staged),
+                    new GitFileChange("docs/cef-runtime-packaging.md", null, GitChangeKind.Modified, GitChangeArea.Staged),
+                    new GitFileChange("tests/GhostShell.Browser.Tests/BrowserEngineRuntimeTests.cs", null, GitChangeKind.Modified, GitChangeArea.Staged),
+                ])));
+
+    public ValueTask<GitResult<GitDiffDocument>> ReadDiffAsync(
+        GitRepositoryHandle repository,
+        GitDiffRequest request,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult<GitResult<GitDiffDocument>>(
+            new GitResult<GitDiffDocument>.Success(new GitDiffDocument(
+                request.Path,
+                request.OriginalPath,
+                IsBinary: false,
+                IsTruncated: false,
+                [
+                    new GitDiffHunk(
+                        "@@ -12,7 +12,7 @@ public static class BrowserEngineRuntime",
+                        [
+                            new GitDiffLine(GitDiffLineKind.Context, "{", 12, 12),
+                            new GitDiffLine(GitDiffLineKind.Context, "    private const string ExpectedCefVersion = \"150.0.9\";", 13, 13),
+                            new GitDiffLine(GitDiffLineKind.Removed, "    private const string ExpectedShimVersion = \"0.8.0-ghostshell.3\";", 14, null),
+                            new GitDiffLine(GitDiffLineKind.Added, "    private const string ExpectedShimVersion = \"0.8.0-ghostshell.4\";", null, 14),
+                            new GitDiffLine(GitDiffLineKind.Context, "    private static readonly object StateGate = new();", 15, 15),
+                        ]),
+                    new GitDiffHunk(
+                        "@@ -40,6 +40,9 @@ public static class BrowserEngineRuntime",
+                        [
+                            new GitDiffLine(GitDiffLineKind.Context, "    public static void Initialize()", 40, 40),
+                            new GitDiffLine(GitDiffLineKind.Context, "    {", 41, 41),
+                            new GitDiffLine(GitDiffLineKind.Added, "        // A fresh tab adopts the active session's profile before", null, 42),
+                            new GitDiffLine(GitDiffLineKind.Added, "        // the renderer spawns, so cookies follow the workspace.", null, 43),
+                            new GitDiffLine(GitDiffLineKind.Added, "        AdoptActiveProfile();", null, 44),
+                            new GitDiffLine(GitDiffLineKind.Context, "        EnsureRuntime();", 42, 45),
+                        ]),
+                ])));
+
+    public ValueTask<GitResult<GitUnit>> StageAsync(
+        GitRepositoryHandle repository,
+        IReadOnlyList<string> paths,
+        CancellationToken cancellationToken) => Success();
+
+    public ValueTask<GitResult<GitUnit>> UnstageAsync(
+        GitRepositoryHandle repository,
+        IReadOnlyList<string> paths,
+        CancellationToken cancellationToken) => Success();
+
+    public ValueTask<GitResult<GitUnit>> DiscardAsync(
+        GitRepositoryHandle repository,
+        IReadOnlyList<GitFileChange> changes,
+        CancellationToken cancellationToken) => Success();
+
+    public ValueTask<GitResult<GitUnit>> CommitAsync(
+        GitRepositoryHandle repository,
+        GitCommitRequest request,
+        CancellationToken cancellationToken) => Success();
+
+    public ValueTask<GitResult<GitUnit>> CheckoutBranchAsync(
+        GitRepositoryHandle repository,
+        string name,
+        CancellationToken cancellationToken) => Record($"checkout {name}");
+
+    public ValueTask<GitResult<GitUnit>> CreateBranchAsync(
+        GitRepositoryHandle repository,
+        string name,
+        CancellationToken cancellationToken) => Record($"create-branch {name}");
+
+    public ValueTask<GitResult<GitUnit>> RenameBranchAsync(
+        GitRepositoryHandle repository,
+        string oldName,
+        string newName,
+        CancellationToken cancellationToken) => Record($"rename-branch {oldName} {newName}");
+
+    public ValueTask<GitResult<GitUnit>> DeleteBranchAsync(
+        GitRepositoryHandle repository,
+        string name,
+        CancellationToken cancellationToken) => Record($"delete-branch {name}");
+
+    public ValueTask<GitResult<GitUnit>> MergeBranchAsync(
+        GitRepositoryHandle repository,
+        string name,
+        CancellationToken cancellationToken) => Record($"merge {name}");
+
+    public ValueTask<GitResult<GitUnit>> CreateTagAsync(
+        GitRepositoryHandle repository,
+        string name,
+        string? message,
+        string? revision,
+        CancellationToken cancellationToken) => Record($"create-tag {name}");
+
+    public ValueTask<GitResult<GitUnit>> DeleteTagAsync(
+        GitRepositoryHandle repository,
+        string name,
+        IReadOnlyList<string> alsoOnRemotes,
+        CancellationToken cancellationToken) => Record($"delete-tag {name}");
+
+    public ValueTask<GitResult<GitUnit>> AddRemoteAsync(
+        GitRepositoryHandle repository,
+        string name,
+        string url,
+        CancellationToken cancellationToken) => Record($"add-remote {name}");
+
+    public ValueTask<GitResult<GitUnit>> EditRemoteAsync(
+        GitRepositoryHandle repository,
+        string oldName,
+        string newName,
+        string url,
+        CancellationToken cancellationToken) => Record($"edit-remote {oldName} {newName}");
+
+    public ValueTask<GitResult<GitUnit>> RemoveRemoteAsync(
+        GitRepositoryHandle repository,
+        string name,
+        CancellationToken cancellationToken) => Record($"remove-remote {name}");
+
+    public ValueTask<GitResult<GitUnit>> FetchRemoteAsync(
+        GitRepositoryHandle repository,
+        string name,
+        CancellationToken cancellationToken) => Record($"fetch {name}");
+
+    public ValueTask<GitResult<GitUnit>> WorktreeAddAsync(
+        GitRepositoryHandle repository,
+        string path,
+        string branch,
+        CancellationToken cancellationToken) => Record($"worktree-add {path} {branch}");
+
+    public ValueTask<GitResult<GitUnit>> FastForwardAsync(
+        GitRepositoryHandle repository,
+        string branch,
+        string upstream,
+        bool isCurrent,
+        CancellationToken cancellationToken) => Record($"fast-forward {branch} {upstream}");
+
+    public ValueTask<GitResult<GitUnit>> PushBranchAsync(
+        GitRepositoryHandle repository,
+        string remote,
+        string branch,
+        CancellationToken cancellationToken) => Record($"push-branch {remote} {branch}");
+
+    public ValueTask<GitResult<GitUnit>> RebaseAsync(
+        GitRepositoryHandle repository,
+        string onto,
+        CancellationToken cancellationToken) => Record($"rebase {onto}");
+
+    public ValueTask<GitResult<GitUnit>> PullAsync(
+        GitRepositoryHandle repository,
+        CancellationToken cancellationToken) => Record("pull");
+
+    public ValueTask<GitResult<GitUnit>> PushAsync(
+        GitRepositoryHandle repository,
+        CancellationToken cancellationToken) => Record("push");
+
+    public ValueTask<GitResult<GitUnit>> StashPushAsync(
+        GitRepositoryHandle repository,
+        string? message,
+        CancellationToken cancellationToken) => Record("stash-push");
+
+    public ValueTask<GitResult<GitUnit>> StashApplyAsync(
+        GitRepositoryHandle repository,
+        string reference,
+        CancellationToken cancellationToken) => Record($"stash-apply {reference}");
+
+    public ValueTask<GitResult<GitUnit>> StashPopAsync(
+        GitRepositoryHandle repository,
+        string reference,
+        CancellationToken cancellationToken) => Record($"stash-pop {reference}");
+
+    public ValueTask<GitResult<GitUnit>> StashDropAsync(
+        GitRepositoryHandle repository,
+        string reference,
+        CancellationToken cancellationToken) => Record($"stash-drop {reference}");
+
+    /// <summary>The ref operations the harness has been asked to run.</summary>
+    public List<string> RefOperations { get; } = [];
+
+    private ValueTask<GitResult<GitUnit>> Record(string operation)
+    {
+        RefOperations.Add(operation);
+        return Success();
+    }
+
+    private static GitCommitItem Commit(
+        string shortSha,
+        string subject,
+        long ageSeconds,
+        string? refName,
+        params string[] parentShortShas) =>
+        new(
+            FullSha(shortSha),
+            shortSha,
+            [.. parentShortShas.Select(FullSha)],
+            "terion",
+            "mail@terion.name",
+            new DateTimeOffset(2026, 8, 18, 11, 42, 0, TimeSpan.Zero) - TimeSpan.FromSeconds(ageSeconds),
+            subject,
+            refName is null ? [] : [refName]);
+
+    private static string FullSha(string shortSha) =>
+        shortSha + "00000000000000000000000000000000";
+
+    private static ValueTask<GitResult<GitUnit>> Success() =>
+        ValueTask.FromResult<GitResult<GitUnit>>(new GitResult<GitUnit>.Success(GitUnit.Value));
 }

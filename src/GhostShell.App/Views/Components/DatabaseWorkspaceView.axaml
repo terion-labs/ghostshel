@@ -65,9 +65,10 @@
         <ColumnDefinition Width="*" MinWidth="240" />
       </Grid.ColumnDefinitions>
 
-      <Border
-          x:Name="ObjectsSidebar"
-          Background="{DynamicResource ShellSidebarBrush}">
+      <!-- The rail idiom: transparent over the panel material with a single
+           hairline at the boundary, so the object list reads at the same
+           density as every other panel surface. -->
+      <Border x:Name="ObjectsSidebar">
         <Grid RowDefinitions="Auto,Auto,*">
           <!-- The database itself heads its objects; selecting it opens the
                catalog overview. -->
@@ -176,16 +177,16 @@
           Grid.Column="1"
           Width="5"
           HorizontalAlignment="Stretch"
-          Background="{DynamicResource ShellSidebarBrush}"
+          Background="Transparent"
           ResizeDirection="Columns"
           ResizeBehavior="PreviousAndNext"
           AutomationProperties.Name="Resize the database objects list" />
-      <!-- The boundary is one line at the content's edge, drawn over the
-           splitter so sidebar and grip read as a single slab. -->
+      <!-- The boundary is one hairline centered in the transparent grip, the
+           same idiom as the file viewer's preview splitter. -->
       <Border
           Grid.Column="1"
           Width="1"
-          HorizontalAlignment="Right"
+          HorizontalAlignment="Center"
           Background="{DynamicResource ShellBorderBrush}"
           IsHitTestVisible="False" />
 

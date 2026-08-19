@@ -82,6 +82,10 @@ internal static class HistoricalDatabaseFixture
                 "browser-profile-preference",
                 "F1E0DBBA2A536B0B23F7177DFB8A9A9AF0EE37E079F87DF972B6DD47B585B3C3",
                 IsDestructive: false),
+            [16] = new(
+                "git-panel-preference",
+                "AE0074C7A043DD94596610E86285AAA5A19B927C96ADA184AD8B9342F6D95B64",
+                IsDestructive: false),
         };
 
     public static readonly DateTimeOffset ReferenceTime =
@@ -350,6 +354,7 @@ internal static class HistoricalDatabaseFixture
             12 => "agent_policy_preference",
             13 => "agent_session_checkpoints_workspace_updated_idx",
             14 => "browser_profile_preference",
+            15 => "git_panel_preference",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(currentVersion),
                 currentVersion,

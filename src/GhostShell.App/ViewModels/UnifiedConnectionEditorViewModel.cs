@@ -15,7 +15,9 @@ public enum SavedConnectionFamily
 
 /// <summary>
 /// One entry in the unified connection-type selector. Exactly one of the
-/// family-specific payloads is set.
+/// family-specific payloads is set. The Git group belongs to the terminal
+/// family: it reuses the Local and SSH endpoint editors, adds a repository
+/// path, and saves a profile whose preferred panel is Git.
 /// </summary>
 public sealed record UnifiedConnectionTypeOption(
     SavedConnectionFamily Family,
@@ -23,7 +25,8 @@ public sealed record UnifiedConnectionTypeOption(
     string Label,
     ConnectionKind? TerminalKind = null,
     FileProviderKind? FileKind = null,
-    string? DatabaseDriverId = null)
+    string? DatabaseDriverId = null,
+    bool GitRepository = false)
 {
     public string DisplayName => $"{Group} · {Label}";
 }
@@ -262,6 +265,7 @@ public sealed class UnifiedConnectionEditorViewModel : ObservableObject
         {
             case SavedConnectionFamily.Terminal when option.TerminalKind is { } kind:
                 Terminal.Kind = kind;
+                Terminal.OpensGitRepository = option.GitRepository;
                 break;
             case SavedConnectionFamily.Files when Files is not null
                 && option.FileKind is { } kind:
@@ -309,7 +313,8 @@ public sealed class UnifiedConnectionEditorViewModel : ObservableObject
         return family switch
         {
             SavedConnectionFamily.Terminal => candidates
-                .FirstOrDefault(item => item.TerminalKind == Terminal.Kind)
+                .FirstOrDefault(item => item.TerminalKind == Terminal.Kind
+                    && item.GitRepository == Terminal.OpensGitRepository)
                 ?? candidates[0],
             SavedConnectionFamily.Files => candidates
                 .FirstOrDefault(item => item.FileKind == Files!.Kind)
@@ -333,6 +338,8 @@ public sealed class UnifiedConnectionEditorViewModel : ObservableObject
                 new(SavedConnectionFamily.Terminal, "Terminal", "SSH", ConnectionKind.Ssh),
                 new(SavedConnectionFamily.Terminal, "Terminal", "Docker", ConnectionKind.Docker),
                 new(SavedConnectionFamily.Terminal, "Terminal", "WSL", ConnectionKind.Wsl),
+                new(SavedConnectionFamily.Terminal, "Git", "Local repository", ConnectionKind.Local, GitRepository: true),
+                new(SavedConnectionFamily.Terminal, "Git", "SSH", ConnectionKind.Ssh, GitRepository: true),
             ]);
         }
 

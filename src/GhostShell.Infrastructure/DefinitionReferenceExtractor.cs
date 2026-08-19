@@ -36,6 +36,15 @@ internal static class DefinitionReferenceExtractor
                     new DefinitionKey(DefinitionKind.Connection, tunnelId.Value),
                     "database-tunnel"),
             ],
+            // A Git connection that delegates its endpoint to a saved SSH
+            // connection: the edge protects the referenced connection from
+            // deletion while this profile points at it.
+            ConnectionProfile { HostConnectionId: { } hostId } =>
+            [
+                new(
+                    new DefinitionKey(DefinitionKind.Connection, hostId.Value),
+                    "host-connection"),
+            ],
             // Vault references are not durable definitions and deliberately do
             // not create rows in the definition dependency graph.
             McpServerProfile => [],

@@ -156,6 +156,16 @@
           PointerPressed="OnRuntimePanelPointerPressed" />
     </DataTemplate>
 
+    <DataTemplate DataType="vm:GitRuntimePanelViewModel">
+      <panelViews:GitRuntimePanelView
+          CloseRequested="OnCloseRuntimePanelClick"
+          ConnectionSelected="OnPanelConnectionSelected"
+          NewConnectionRequested="OnPanelNewConnectionRequested"
+          SplitRequested="OnSplitRuntimePanelRequested"
+          GotFocus="OnRuntimePanelGotFocus"
+          PointerPressed="OnRuntimePanelPointerPressed" />
+    </DataTemplate>
+
     <DataTemplate DataType="vm:UnavailableRuntimePanelViewModel">
       <panelViews:UnavailableRuntimePanelView
           CloseRequested="OnCloseRuntimePanelClick"
@@ -171,6 +181,7 @@
           DatabaseRequested="OnPlaceholderDatabaseClick"
           DockerRequested="OnPlaceholderDockerClick"
           FileViewerRequested="OnPlaceholderFileViewerClick"
+          GitRequested="OnPlaceholderGitClick"
           GotFocus="OnRuntimePanelGotFocus"
           ConnectionLaunchRequested="OnPlaceholderConnectionLaunchRequested"
           DeleteConnectionRequested="OnDeleteSavedConnectionRequested"
@@ -364,6 +375,7 @@
           AddDatabasePanelRequested="OnAddDatabasePanelClick"
           AddDockerPanelRequested="OnAddDockerPanelClick"
           AddFilePanelRequested="OnAddFilePanelClick"
+          AddGitPanelRequested="OnAddGitPanelClick"
           AddProcessMonitorPanelRequested="OnAddProcessMonitorPanelClick"
           AddStatisticsPanelRequested="OnAddStatisticsPanelClick"
           AddTerminalPanelRequested="OnAddTerminalPanelClick"

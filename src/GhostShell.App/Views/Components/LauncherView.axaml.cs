@@ -27,6 +27,7 @@ public sealed partial class LauncherView : UserControl
     public event EventHandler<RoutedEventArgs>? NewDatabaseRequested;
     public event EventHandler<RoutedEventArgs>? NewDockerRequested;
     public event EventHandler<RoutedEventArgs>? NewFileViewerRequested;
+    public event EventHandler<RoutedEventArgs>? NewGitRequested;
     public event EventHandler<RoutedEventArgs>? NewLocalTerminalRequested;
     public event EventHandler<RoutedEventArgs>? NewProcessMonitorRequested;
     public event EventHandler<RoutedEventArgs>? NewStatisticsRequested;
@@ -74,6 +75,9 @@ public sealed partial class LauncherView : UserControl
 
     private void OnNewFileViewerClick(object? sender, RoutedEventArgs e) =>
         NewFileViewerRequested?.Invoke(sender, e);
+
+    private void OnNewGitClick(object? sender, RoutedEventArgs e) =>
+        NewGitRequested?.Invoke(sender, e);
 
     private void OnNewLocalTerminalClick(object? sender, RoutedEventArgs e) =>
         NewLocalTerminalRequested?.Invoke(sender, e);

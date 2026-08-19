@@ -9,6 +9,7 @@ using GhostShell.App.ViewModels;
 using GhostShell.Application;
 using GhostShell.Core;
 using GhostShell.Docker;
+using GhostShell.Git;
 
 namespace GhostShell.App.Tests;
 
@@ -3127,7 +3128,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                 && target.Id == sshId);
         Assert.Equal(PanelKind.Terminal, sshShortcut.DefaultLaunch.Panel);
         Assert.Equal(
-            [PanelKind.FileViewer, PanelKind.Statistics, PanelKind.ProcessMonitor, PanelKind.Docker],
+            [PanelKind.FileViewer, PanelKind.Statistics, PanelKind.ProcessMonitor, PanelKind.Docker, PanelKind.Git],
             sshShortcut.AlternativeLaunches.Select(launch => launch.Panel));
         Assert.True(sshShortcut.HasAlternatives);
 
@@ -3140,6 +3141,154 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         Assert.Empty(s3Shortcut.AlternativeLaunches);
         Assert.False(s3Shortcut.HasAlternatives);
         Assert.True(s3Shortcut.CanOpen);
+    }
+
+    /// <summary>
+    /// A Git connection is a Local or SSH profile whose preferred panel is
+    /// Git and whose startup directory is the repository path. Opening it
+    /// from the saved-connection surfaces lands directly in that repository,
+    /// while the terminal stays available as an alternative launch.
+    /// </summary>
+    [Fact]
+    public async Task Saved_git_connection_opens_its_repository_in_a_git_panel()
+    {
+        var gitId = new ConnectionId("connections.ghostshell-repo");
+        var gitConnection = new ConnectionProfile(
+            gitId,
+            ConnectionProfile.CurrentSchemaVersion,
+            "GhostSHELL repo",
+            new ConnectionEndpoint.Local(),
+            new ConnectionAuthentication.None(),
+            new ConnectionStartup("/repo/ghostshell"),
+            ConnectionKeepAlive.Disabled,
+            SshHostKeyPolicy.NotApplicable,
+            preferredPanel: PanelKind.Git);
+        var snapshot = CreateCatalogSnapshot() with
+        {
+            Connections = [.. CreateCatalogSnapshot().Connections, Store(gitConnection)],
+        };
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            snapshot,
+            gitRepositoryClient: new FakeGitRepositoryClient());
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+
+        var shortcut = Assert.Single(
+            viewModel.SavedConnectionShortcuts,
+            candidate => candidate.Target
+                is PanelConnectionOptionViewModel.Target.Connection target
+                && target.Id == gitId);
+        Assert.Equal(PanelKind.Git, shortcut.DefaultLaunch.Panel);
+        Assert.Contains(
+            PanelKind.Terminal,
+            shortcut.AlternativeLaunches.Select(launch => launch.Panel));
+
+        Assert.True(await viewModel.AddSavedConnectionPanelAsync(shortcut.DefaultLaunch));
+
+        var panel = Assert.IsType<GitRuntimePanelViewModel>(
+            viewModel.RuntimeWorkspace!.ActiveTab!.ActivePanel);
+        // The saved repository path pre-opens; once the fake client resolves
+        // it, the input reflects the reported working-tree root.
+        Assert.StartsWith("/repo", panel.RepositoryPathInput, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_git_connection_referencing_a_saved_ssh_connection_resolves_it_live()
+    {
+        var sshId = new ConnectionId("connections.build-bastion");
+        ConnectionProfile Bastion(string host, int port, string username) => new(
+            sshId,
+            ConnectionProfile.CurrentSchemaVersion,
+            "Build bastion",
+            new ConnectionEndpoint.Ssh(host, port, username),
+            new ConnectionAuthentication.SshAgent(),
+            ConnectionStartup.Default,
+            ConnectionKeepAlive.Disabled,
+            SshHostKeyPolicy.AcceptNew);
+        var gitId = new ConnectionId("connections.ghostshell-repo-reference");
+        var gitConnection = new ConnectionProfile(
+            gitId,
+            ConnectionProfile.CurrentSchemaVersion,
+            "GhostSHELL repo",
+            ConnectionProfile.DelegatedSshEndpoint,
+            new ConnectionAuthentication.None(),
+            new ConnectionStartup("/repo/ghostshell"),
+            ConnectionKeepAlive.Disabled,
+            SshHostKeyPolicy.Strict,
+            preferredPanel: PanelKind.Git,
+            hostConnectionId: sshId);
+        var snapshot = CreateCatalogSnapshot() with
+        {
+            Connections =
+            [
+                .. CreateCatalogSnapshot().Connections,
+                Store(Bastion("bastion.example", 2202, "ops")),
+                Store(gitConnection),
+            ],
+        };
+        var catalog = CreateFixedCatalog(snapshot);
+        var catalogProxy = (FixedCatalogProxy)(object)catalog;
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            catalog,
+            gitRepositoryClient: new FakeGitRepositoryClient());
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+
+        var shortcut = Assert.Single(
+            viewModel.SavedConnectionShortcuts,
+            candidate => candidate.Target
+                is PanelConnectionOptionViewModel.Target.Connection target
+                && target.Id == gitId);
+        Assert.Equal(PanelKind.Git, shortcut.DefaultLaunch.Panel);
+        Assert.True(await viewModel.AddSavedConnectionPanelAsync(shortcut.DefaultLaunch));
+
+        // The panel runs on the REFERENCED connection's endpoint and
+        // credentials, under the Git profile's identity and repository path.
+        var panel = Assert.IsType<GitRuntimePanelViewModel>(
+            viewModel.RuntimeWorkspace!.ActiveTab!.ActivePanel);
+        Assert.Equal(gitId, panel.Connection.Id);
+        var endpoint = Assert.IsType<ConnectionEndpoint.Ssh>(panel.Connection.Endpoint);
+        Assert.Equal("bastion.example", endpoint.Host);
+        Assert.Equal(2202, endpoint.Port);
+        Assert.IsType<ConnectionAuthentication.SshAgent>(panel.Connection.Authentication);
+        Assert.StartsWith("/repo", panel.RepositoryPathInput, StringComparison.Ordinal);
+
+        // Editing the referenced SSH connection applies on the next open —
+        // the Git profile stores a reference, not a copy.
+        catalogProxy.Snapshot = catalogProxy.Snapshot with
+        {
+            Connections =
+            [
+                .. catalogProxy.Snapshot.Connections.Select(item =>
+                    item.Value.Id == sshId
+                        ? Store(Bastion("bastion-2.example", 22, "deploy"), revision: 2)
+                        : item),
+            ],
+        };
+        Assert.True(await viewModel.AddSavedConnectionPanelAsync(shortcut.DefaultLaunch));
+        var reopened = Assert.IsType<GitRuntimePanelViewModel>(
+            viewModel.RuntimeWorkspace!.ActiveTab!.ActivePanel);
+        var movedEndpoint = Assert.IsType<ConnectionEndpoint.Ssh>(
+            reopened.Connection.Endpoint);
+        Assert.Equal("bastion-2.example", movedEndpoint.Host);
+        Assert.Equal("deploy", movedEndpoint.Username);
+
+        // A vanished referenced connection fails the open with its own
+        // message instead of crashing or connecting to the stand-in.
+        catalogProxy.Snapshot = catalogProxy.Snapshot with
+        {
+            Connections =
+            [
+                .. catalogProxy.Snapshot.Connections.Where(item => item.Value.Id != sshId),
+            ],
+        };
+        Assert.False(await viewModel.AddSavedConnectionPanelAsync(shortcut.DefaultLaunch));
+        Assert.Contains(
+            "references no longer exists",
+            viewModel.OperationError,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -5086,7 +5235,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         IDatabaseConnectionCatalog? databaseConnectionCatalog = null,
         IRedisPanelSessionFactory? redisPanelSessionFactory = null,
         AgentPolicyCoordinator? agentPolicyCoordinator = null,
-        IBrowserProfilePreferences? browserProfilePreferences = null) =>
+        IBrowserProfilePreferences? browserProfilePreferences = null,
+        IGitRepositoryClient? gitRepositoryClient = null) =>
         CreateViewModel(
             sessionClient,
             CreateFixedCatalog(snapshot),
@@ -5104,7 +5254,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             databaseConnectionCatalog,
             redisPanelSessionFactory,
             agentPolicyCoordinator,
-            browserProfilePreferences);
+            browserProfilePreferences,
+            gitRepositoryClient);
 
     private static MainWindowViewModel CreateViewModel(
         ISessionHostClient sessionClient,
@@ -5123,7 +5274,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         IDatabaseConnectionCatalog? databaseConnectionCatalog = null,
         IRedisPanelSessionFactory? redisPanelSessionFactory = null,
         AgentPolicyCoordinator? agentPolicyCoordinator = null,
-        IBrowserProfilePreferences? browserProfilePreferences = null)
+        IBrowserProfilePreferences? browserProfilePreferences = null,
+        IGitRepositoryClient? gitRepositoryClient = null)
     {
         var files = new EmptyFileClients();
         agentPolicyCoordinator ??= CreateConfiguredPolicyCoordinator(aiProfiles);
@@ -5146,7 +5298,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             dockerEngineClient: dockerEngineClient,
             agentRuntimeFactory: agentRuntimeFactory,
             agentPolicyCoordinator: agentPolicyCoordinator,
-            browserProfilePreferences: browserProfilePreferences);
+            browserProfilePreferences: browserProfilePreferences,
+            gitRepositoryClient: gitRepositoryClient);
     }
 
     private static AgentPolicyCoordinator? CreateConfiguredPolicyCoordinator(

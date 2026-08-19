@@ -228,8 +228,45 @@ internal sealed class SqliteDefinitionGraphValidator
                 await ValidateKeymapAsync(keymap, cancellationToken).ConfigureAwait(false),
             FileProviderProfile fileProvider =>
                 await ValidateFileProviderAsync(fileProvider, cancellationToken).ConfigureAwait(false),
+            ConnectionProfile connection =>
+                await ValidateConnectionAsync(connection, cancellationToken).ConfigureAwait(false),
             _ => null,
         };
+    }
+
+    /// <summary>
+    /// A connection that delegates its endpoint must point at a standalone SSH
+    /// connection: a non-SSH target cannot host the delegated endpoint, and a
+    /// delegating target would create reference chains the runtime refuses.
+    /// </summary>
+    private async Task<DefinitionProblem?> ValidateConnectionAsync(
+        ConnectionProfile connection,
+        CancellationToken cancellationToken)
+    {
+        if (connection.HostConnectionId is not { } hostId)
+        {
+            return null;
+        }
+
+        var resolved = await ResolveAsync(
+                new DefinitionKey(DefinitionKind.Connection, hostId.Value),
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (resolved.Problem is not null)
+        {
+            return resolved.Problem;
+        }
+
+        return resolved.Definition is ConnectionProfile
+        {
+            Endpoint: ConnectionEndpoint.Ssh,
+            HostConnectionId: null,
+        }
+            ? null
+            : new(
+                DefinitionProblemKind.DependencyConflict,
+                $"Connection '{connection.Key}' requires a standalone SSH connection as its host connection.",
+                connection.Key);
     }
 
     private async Task<DefinitionProblem?> ValidateFileProviderAsync(

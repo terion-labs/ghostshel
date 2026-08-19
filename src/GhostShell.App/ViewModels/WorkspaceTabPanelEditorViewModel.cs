@@ -67,20 +67,22 @@ public sealed class WorkspaceTabPanelEditorViewModel : ObservableObject
     public bool SupportsLocation => Kind is ScreenPanelKind.Terminal
         or ScreenPanelKind.Browser
         or ScreenPanelKind.FileViewer
-        or ScreenPanelKind.DatabaseViewer;
+        or ScreenPanelKind.DatabaseViewer
+        or ScreenPanelKind.Git;
 
     /// <summary>Browsers use local or SSH routes; databases keep an optional SSH tunnel.</summary>
     public bool SupportsConnection => Kind is ScreenPanelKind.Terminal
         or ScreenPanelKind.Browser
         or ScreenPanelKind.DatabaseViewer
-        or ScreenPanelKind.Docker;
+        or ScreenPanelKind.Docker
+        or ScreenPanelKind.Git;
 
     public IReadOnlyList<WorkspaceLayoutSlotOption> SlotOptions => _slotOptions;
 
     public IReadOnlyList<ScreenConnectionOption> ConnectionOptions { get; }
 
     public IReadOnlyList<ScreenConnectionOption> ApplicableConnectionOptions =>
-        Kind is ScreenPanelKind.Browser or ScreenPanelKind.Docker
+        Kind is ScreenPanelKind.Browser or ScreenPanelKind.Docker or ScreenPanelKind.Git
             ? [.. ConnectionOptions
                 .Where(option => option.ConnectionKind is ConnectionKind.Local or ConnectionKind.Ssh
                     || !option.IsAvailable && option.Id == _original.ConnectionId)]
@@ -162,9 +164,12 @@ public sealed class WorkspaceTabPanelEditorViewModel : ObservableObject
     public bool HasMissingSlot => SelectedSlot?.IsAvailable != true;
 
     public bool HasMissingConnection =>
-        (Kind is ScreenPanelKind.Terminal or ScreenPanelKind.Browser or ScreenPanelKind.Docker)
+        (Kind is ScreenPanelKind.Terminal
+            or ScreenPanelKind.Browser
+            or ScreenPanelKind.Docker
+            or ScreenPanelKind.Git)
         && (SelectedConnection?.IsAvailable != true
-            || Kind is ScreenPanelKind.Browser or ScreenPanelKind.Docker
+            || Kind is ScreenPanelKind.Browser or ScreenPanelKind.Docker or ScreenPanelKind.Git
                 && SelectedConnection.ConnectionKind is not (
                     ConnectionKind.Local or ConnectionKind.Ssh));
 

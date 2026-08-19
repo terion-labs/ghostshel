@@ -43,7 +43,7 @@
       <!-- Terminal family -->
       <StackPanel IsVisible="{Binding IsTerminal}" Spacing="{DynamicResource ShellSpaceMd}">
         <StackPanel DataContext="{Binding Terminal}" Spacing="{DynamicResource ShellSpaceMd}">
-          <controls:SurfaceCard IsVisible="{Binding IsLocal}">
+          <controls:SurfaceCard IsVisible="{Binding ShowsLocalShell}">
             <controls:LabeledField Label="Shell executable" Hint="Leave blank to use the host default shell.">
               <TextBox Text="{Binding LocalShell}" PlaceholderText="/bin/zsh" />
             </controls:LabeledField>
@@ -51,24 +51,55 @@
 
           <controls:SurfaceCard IsVisible="{Binding IsSsh}">
             <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
-              <Grid ColumnDefinitions="*,110,180" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                <controls:LabeledField Label="Host"><TextBox Text="{Binding Host}" PlaceholderText="server.example.com" /></controls:LabeledField>
-                <controls:LabeledField Grid.Column="1" Label="Port"><NumericUpDown Minimum="1" Maximum="65535" Value="{Binding Port}" /></controls:LabeledField>
-                <controls:LabeledField Grid.Column="2" Label="Username"><TextBox Text="{Binding Username}" PlaceholderText="Current local user" /></controls:LabeledField>
-              </Grid>
-              <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                <controls:LabeledField Label="Authentication"><ComboBox ItemsSource="{Binding AuthenticationChoices}" SelectedItem="{Binding Authentication}" /></controls:LabeledField>
-                <controls:LabeledField Grid.Column="1" Label="Host-key policy"><ComboBox ItemsSource="{Binding HostKeyPolicies}" SelectedItem="{Binding HostKeyPolicy}" /></controls:LabeledField>
-              </Grid>
+              <!-- Git · SSH only: the Git connection references a saved SSH
+                   connection and uses its endpoint and credentials live —
+                   later edits to the saved connection apply here too. -->
               <controls:LabeledField
-                  Label="Credential secret reference"
-                  Hint="Diagnostics authenticate inside the secure adapter boundary. A terminal claims the stored credential through a one-use, lifetime-bound helper when it starts."
-                  IsVisible="{Binding UsesSecretReference}">
-                <TextBox Text="{Binding SecretReference}" PlaceholderText="Saved credential ID" />
+                  Label="From saved connection"
+                  Hint="Uses the saved connection for host and credentials; changes to it apply here."
+                  IsVisible="{Binding ShowsSavedSshSources}">
+                <ComboBox
+                    HorizontalAlignment="Stretch"
+                    ItemsSource="{Binding SavedSshSources}"
+                    SelectedItem="{Binding SelectedSavedSshSource}"
+                    AutomationProperties.Name="Use a saved SSH connection">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                      <TextBlock Text="{Binding DisplayName}" />
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
               </controls:LabeledField>
-              <controls:LabeledField Label="Passphrase secret reference (optional)" IsVisible="{Binding UsesPassphraseReference}">
-                <TextBox Text="{Binding PassphraseSecretReference}" />
-              </controls:LabeledField>
+
+              <!-- A chosen saved connection speaks for the endpoint: the
+                   fields fold away behind a one-line summary of what the
+                   reference currently resolves to, and come back untouched
+                   on "Enter manually". -->
+              <TextBlock
+                  Classes="Muted"
+                  Text="{Binding SavedSshSourceSummary}"
+                  IsVisible="{Binding !ShowsSshEndpointFields}" />
+
+              <StackPanel Spacing="{DynamicResource ShellSpaceMd}" IsVisible="{Binding ShowsSshEndpointFields}">
+                <Grid ColumnDefinitions="*,110,180" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                  <controls:LabeledField Label="Host"><TextBox Text="{Binding Host}" PlaceholderText="server.example.com" /></controls:LabeledField>
+                  <controls:LabeledField Grid.Column="1" Label="Port"><NumericUpDown Minimum="1" Maximum="65535" Value="{Binding Port}" /></controls:LabeledField>
+                  <controls:LabeledField Grid.Column="2" Label="Username"><TextBox Text="{Binding Username}" PlaceholderText="Current local user" /></controls:LabeledField>
+                </Grid>
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                  <controls:LabeledField Label="Authentication"><ComboBox ItemsSource="{Binding AuthenticationChoices}" SelectedItem="{Binding Authentication}" /></controls:LabeledField>
+                  <controls:LabeledField Grid.Column="1" Label="Host-key policy"><ComboBox ItemsSource="{Binding HostKeyPolicies}" SelectedItem="{Binding HostKeyPolicy}" /></controls:LabeledField>
+                </Grid>
+                <controls:LabeledField
+                    Label="Credential secret reference"
+                    Hint="Diagnostics authenticate inside the secure adapter boundary. A terminal claims the stored credential through a one-use, lifetime-bound helper when it starts."
+                    IsVisible="{Binding UsesSecretReference}">
+                  <TextBox Text="{Binding SecretReference}" PlaceholderText="Saved credential ID" />
+                </controls:LabeledField>
+                <controls:LabeledField Label="Passphrase secret reference (optional)" IsVisible="{Binding UsesPassphraseReference}">
+                  <TextBox Text="{Binding PassphraseSecretReference}" />
+                </controls:LabeledField>
+              </StackPanel>
             </StackPanel>
           </controls:SurfaceCard>
 
@@ -86,7 +117,30 @@
             </Grid>
           </controls:SurfaceCard>
 
-          <controls:SurfaceCard>
+          <!-- Git types: the repository the connection opens into. Browsing
+               lists directories on the connection target itself, never
+               through the system picker that only sees this machine. -->
+          <controls:SurfaceCard IsVisible="{Binding OpensGitRepository}">
+            <controls:LabeledField
+                Label="Repository path"
+                Hint="Opening the connection lands in this repository on the target.">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                <TextBox
+                    Text="{Binding RepositoryPath}"
+                    PlaceholderText="/home/user/project"
+                    AutomationProperties.Name="Git repository path" />
+                <Button
+                    Grid.Column="1"
+                    VerticalAlignment="Stretch"
+                    Classes="SecondaryButton"
+                    Click="OnBrowseRepositoryClick"
+                    Content="Browse…"
+                    IsVisible="{Binding CanBrowseRepository}" />
+              </Grid>
+            </controls:LabeledField>
+          </controls:SurfaceCard>
+
+          <controls:SurfaceCard IsVisible="{Binding ShowsStartupOptions}">
             <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
               <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                 <controls:LabeledField Label="Startup directory">

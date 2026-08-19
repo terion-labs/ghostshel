@@ -81,6 +81,33 @@ public sealed partial class ConnectionEditorDialog : Window
         }
     }
 
+    private async void OnBrowseRepositoryClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        HideValidationError();
+        GitRepositoryPickerViewModel picker;
+        try
+        {
+            // The picker connects with the endpoint typed so far, so an SSH
+            // repository browses on its host. Incomplete endpoint fields
+            // surface as the same validation callout a save would show.
+            picker = ViewModel.Terminal.CreateRepositoryPicker();
+        }
+        catch (Exception exception)
+            when (exception is ArgumentException or InvalidOperationException)
+        {
+            ShowValidationError(exception.Message);
+            return;
+        }
+
+        var path = await new GitRepositoryPickerDialog(picker).ShowDialog<string?>(this);
+        if (path is not null)
+        {
+            ViewModel.Terminal.RepositoryPath = path;
+        }
+    }
+
     private async void OnTrustHostKeyClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
@@ -129,12 +156,17 @@ public sealed partial class ConnectionEditorDialog : Window
         catch (Exception exception) when (exception
             is ArgumentException or OverflowException or UriFormatException or FormatException)
         {
-            var error = this.FindControl<Callout>("ValidationError");
-            if (error is not null)
-            {
-                error.Text = exception.Message;
-                error.IsVisible = true;
-            }
+            ShowValidationError(exception.Message);
+        }
+    }
+
+    private void ShowValidationError(string message)
+    {
+        var error = this.FindControl<Callout>("ValidationError");
+        if (error is not null)
+        {
+            error.Text = message;
+            error.IsVisible = true;
         }
     }
 

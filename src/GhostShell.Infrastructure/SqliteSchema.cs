@@ -381,5 +381,23 @@ internal static class SqliteSchema
             INSERT INTO browser_profile_preference(singleton_id, sharing)
             VALUES (1, 0);
             """),
+        new(
+            16,
+            "git-panel-preference",
+            """
+            CREATE TABLE git_panel_preference (
+                singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+                unstaged_view_is_tree INTEGER NOT NULL CHECK (
+                    unstaged_view_is_tree IN (0, 1)),
+                staged_view_is_tree INTEGER NOT NULL CHECK (
+                    staged_view_is_tree IN (0, 1))
+            );
+
+            INSERT INTO git_panel_preference(
+                singleton_id,
+                unstaged_view_is_tree,
+                staged_view_is_tree)
+            VALUES (1, 1, 1);
+            """),
     ];
 }

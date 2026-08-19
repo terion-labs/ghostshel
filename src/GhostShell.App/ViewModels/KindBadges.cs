@@ -17,12 +17,23 @@ internal static class KindBadges
         _ => kind.ToString(),
     };
 
+    /// <summary>
+    /// A profile whose preferred panel is Git reads as a Git connection —
+    /// matching the "Git · …" group it was created under — rather than as
+    /// the terminal endpoint it happens to run on.
+    /// </summary>
+    public static string Connection(ConnectionProfile profile) =>
+        profile.PreferredPanel == PanelKind.Git
+            ? profile.ConnectionKind == ConnectionKind.Ssh ? "Git · SSH" : "Git"
+            : Connection(profile.ConnectionKind);
+
     public static string Panel(PanelKind kind) => kind switch
     {
         PanelKind.FileViewer => "Files",
         PanelKind.ProcessMonitor => "Process monitor",
         PanelKind.DatabaseViewer => "Database",
         PanelKind.Docker => "Docker",
+        PanelKind.Git => "Git",
         _ => kind.ToString(),
     };
 
@@ -32,6 +43,7 @@ internal static class KindBadges
         ScreenPanelKind.ProcessMonitor => "Process monitor",
         ScreenPanelKind.DatabaseViewer => "Database",
         ScreenPanelKind.Docker => "Docker",
+        ScreenPanelKind.Git => "Git",
         _ => kind.ToString(),
     };
 

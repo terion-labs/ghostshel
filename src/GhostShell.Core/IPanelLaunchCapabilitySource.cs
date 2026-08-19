@@ -66,7 +66,8 @@ public static class BuiltInPanelLaunchCapabilities
         PanelKind.FileViewer,
         PanelKind.Statistics,
         PanelKind.ProcessMonitor,
-        PanelKind.Docker);
+        PanelKind.Docker,
+        PanelKind.Git);
 
     public static PanelLaunchCapabilities ShellAndMonitoring { get; } = new(
         PanelKind.Terminal,

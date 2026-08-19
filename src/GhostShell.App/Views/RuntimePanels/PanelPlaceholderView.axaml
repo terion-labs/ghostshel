@@ -39,6 +39,7 @@
             NewDatabaseRequested="OnChooseDatabaseClick"
             NewDockerRequested="OnChooseDockerClick"
             NewFileViewerRequested="OnChooseFileViewerClick"
+            NewGitRequested="OnChooseGitClick"
             NewLocalTerminalRequested="OnChooseTerminalClick"
             NewProcessMonitorRequested="OnChooseProcessMonitorClick"
             NewStatisticsRequested="OnChooseStatisticsClick"

@@ -177,7 +177,7 @@
             SessionInitializationFailed="OnSessionInitializationFailed" />
         <Border
             Margin="{DynamicResource ShellHairline}"
-            Background="{DynamicResource ShellBackgroundBrush}"
+            Background="{DynamicResource ShellSurfaceBrush}"
             IsHitTestVisible="False"
             IsVisible="{Binding ShowFallback, ElementName=RuntimeTerminal}">
           <controls:StateOverlay
@@ -229,7 +229,7 @@
         </Border>
         <Border
             Margin="{DynamicResource ShellHairline}"
-            Background="{DynamicResource ShellBackgroundBrush}"
+            Background="{DynamicResource ShellSurfaceBrush}"
             IsVisible="{Binding HasConnectionOverlay}">
           <controls:StateOverlay
               Glyph="WindowConsole"

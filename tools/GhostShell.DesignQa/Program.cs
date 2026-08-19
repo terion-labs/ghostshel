@@ -196,6 +196,7 @@ internal sealed class QaApplication : Avalonia.Application
     private static readonly EmptyFileClients Files = new();
 
     private static readonly QaDockerEngineClient Docker = new();
+    private static readonly QaGitRepositoryClient Git = new();
 
     private static readonly RouteCapture[] Routes =
     [
@@ -366,6 +367,60 @@ internal sealed class QaApplication : Avalonia.Application
             vm.ShowWorkspace();
             AddSampleDockerPanel(vm).SelectSection(DockerPanelSection.Containers);
         }, Width: 1080),
+        // The Git panel over a stub repository: working set, staged set, the
+        // commit composer, and the structured diff with semantic line bands.
+        new("workspace-git", vm =>
+        {
+            vm.ShowWorkspace();
+            AddSampleGitPanel(vm);
+        }),
+        new("workspace-git-history", vm =>
+        {
+            vm.ShowWorkspace();
+            // The stub client answers synchronously, so the history detail
+            // and its diff are already loaded when the capture happens.
+            var panel = AddSampleGitPanel(vm);
+            panel.Section = GitPanelSection.AllCommits;
+            panel.DetailTab = GitCommitDetailTab.Changes;
+        }),
+        new("workspace-git-commit-tab", vm =>
+        {
+            vm.ShowWorkspace();
+            var panel = AddSampleGitPanel(vm);
+            panel.Section = GitPanelSection.AllCommits;
+            panel.DetailTab = GitCommitDetailTab.Commit;
+        }),
+        new("workspace-git-file-tree", vm =>
+        {
+            vm.ShowWorkspace();
+            var panel = AddSampleGitPanel(vm);
+            panel.Section = GitPanelSection.AllCommits;
+            panel.DetailTab = GitCommitDetailTab.FileTree;
+            panel.SelectedTreeNode = panel.CommitTreeRoots
+                .FirstOrDefault(node => !node.IsDirectory);
+        }),
+        new("workspace-git-narrow", vm =>
+        {
+            vm.ShowWorkspace();
+            AddSampleGitPanel(vm);
+        }, Width: 1080),
+        new("workspace-git-open", vm =>
+        {
+            vm.ShowWorkspace();
+            AddSampleGitPanel(vm, repositoryPath: null);
+        }),
+        new(
+            "git-repository-picker",
+            vm =>
+            {
+                vm.ShowWorkspace();
+                AddSampleGitPanel(vm, repositoryPath: null);
+            },
+            Dialog: vm =>
+            {
+                var panel = AddSampleGitPanel(vm, repositoryPath: null);
+                return new GitRepositoryPickerDialog(panel.CreateRepositoryPicker());
+            }),
         // The database viewer with a connected stub: table list, query editor,
         // and a populated result grid. Last workspace route, because the added
         // panel stays in the shared fixture.
@@ -788,6 +843,30 @@ internal sealed class QaApplication : Avalonia.Application
                 connections),
             lockedFamily: existingTerminal ? SavedConnectionFamily.Terminal : null,
             initialFamily: initialFamily);
+    }
+
+    /// <summary>
+    /// The unified editor on the Git · SSH type: SSH endpoint fields plus the
+    /// repository path that the saved connection opens into.
+    /// </summary>
+    private static UnifiedConnectionEditorViewModel CreateQaGitConnectionEditor()
+    {
+        var terminal = new ConnectionEditorViewModel(
+            new UnusedConnectionRuntime(),
+            gitClient: new QaGitRepositoryClient(),
+            savedConnections: [.. QaData.Connections.Select(item => item.Value)]);
+        var editor = new UnifiedConnectionEditorViewModel(
+            terminal,
+            files: null,
+            database: null,
+            lockedFamily: SavedConnectionFamily.Terminal);
+        editor.SelectedType = editor.TypeOptions.Single(option =>
+            string.Equals(option.DisplayName, "Git · SSH", StringComparison.Ordinal));
+        editor.Name = "GhostSHELL repo";
+        editor.Terminal.Host = "bastion.example";
+        editor.Terminal.Username = "ops";
+        editor.Terminal.RepositoryPath = "/srv/ghostshell";
+        return editor;
     }
 
     /// <summary>
@@ -1650,6 +1729,16 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
         ("dialog-connection-editor-database", () => new ConnectionEditorDialog(
             CreateQaConnectionEditor(
                 initialFamily: SavedConnectionFamily.Database)), null),
+        ("dialog-connection-editor-git", () => new ConnectionEditorDialog(
+            CreateQaGitConnectionEditor()), null),
+        // The same editor with a saved SSH connection chosen: the endpoint
+        // fields fold behind the one-line summary.
+        ("dialog-connection-editor-git-linked", () =>
+        {
+            var editor = CreateQaGitConnectionEditor();
+            editor.Terminal.SelectedSavedSshSource = editor.Terminal.SavedSshSources[1];
+            return new ConnectionEditorDialog(editor);
+        }, null),
         ("dialog-ai-provider-editor", () => new AiProviderProfileEditorDialog(
             new AiProviderProfileEditorViewModel(new QaAiProfileRuntime(), [])), null),
         // The chrome glyphs at cell size and at proof size, side by side: if a
@@ -1879,7 +1968,8 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
             aiProviderRuntime: AgentProfiles,
             agentChatRuntime: AgentRuntime,
             databasePanelClient: new QaDatabasePanelClient(),
-            dockerEngineClient: Docker);
+            dockerEngineClient: Docker,
+            gitRepositoryClient: Git);
 
         // Real connection pills, so the row that carries them is reviewable
         // rather than rendering empty.
@@ -2114,6 +2204,54 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
         return tab.ActivePanel as DockerRuntimePanelViewModel
             ?? throw new InvalidOperationException(
                 "The Docker route did not activate its Docker panel.");
+    }
+
+    private static GitRuntimePanelViewModel AddSampleGitPanel(
+        MainWindowViewModel viewModel,
+        string? repositoryPath = "/Users/qa/projects/ghostshell")
+    {
+        if (viewModel.RuntimeWorkspace is not { } workspace)
+        {
+            throw new InvalidOperationException(
+                "The Git route needs a runtime workspace.");
+        }
+
+        var tab = workspace.Tabs.FirstOrDefault(candidate =>
+            candidate.Panels.Any(panel => panel is GitRuntimePanelViewModel));
+        if (tab is null)
+        {
+            tab = new RuntimeTabViewModel(
+                new TabInstanceId("qa-tab-git"),
+                "Git",
+                "Local");
+
+            // The stub client resolves synchronously, so the constructor's
+            // initial open completes before the capture.
+            var panel = new GitRuntimePanelViewModel(
+                new PanelInstanceId("qa-panel-git"),
+                "Git",
+                Git,
+                BuiltInConnections.Local,
+                repositoryPath);
+            tab.AddPanel(panel);
+            _ = tab.ActivatePanel(panel.Id);
+            tab.NotifyPanelLayoutChanged();
+            workspace.Tabs.Add(tab);
+        }
+
+        foreach (var candidate in workspace.Tabs)
+        {
+            candidate.IsActive = ReferenceEquals(candidate, tab);
+        }
+
+        typeof(RuntimeWorkspaceViewModel)
+            .GetProperty(nameof(RuntimeWorkspaceViewModel.ActiveTab))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(workspace, [tab]);
+
+        return tab.ActivePanel as GitRuntimePanelViewModel
+            ?? throw new InvalidOperationException(
+                "The Git route did not activate its Git panel.");
     }
 
     private static void OpenRedisNewKeySheet(MainWindow window)

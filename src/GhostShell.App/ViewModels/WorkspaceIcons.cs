@@ -110,6 +110,7 @@ internal static class WorkspaceIcons
         PanelKind.ProcessMonitor => "gauge",
         PanelKind.DatabaseViewer => "database",
         PanelKind.Docker => "box",
+        PanelKind.Git => "branch",
         PanelKind.Placeholder => WorkspaceDefinition.DefaultIcon,
         _ => WorkspaceDefinition.DefaultIcon,
     };

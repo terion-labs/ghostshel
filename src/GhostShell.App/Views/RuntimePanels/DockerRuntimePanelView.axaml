@@ -276,7 +276,7 @@
       </Grid>
     </controls:PanelChrome.Footer>
 
-    <Grid Name="DockerBody" ColumnDefinitions="Auto,Auto,*" Background="{DynamicResource ShellBackgroundBrush}">
+    <Grid Name="DockerBody" ColumnDefinitions="Auto,Auto,*">
       <!-- Resource families follow the compact left navigation of the reference,
            while keeping Ghostshell's own spacing, typography, and colors. -->
       <Border Grid.Column="0" Classes="DockerFamilyRail" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,1,0">

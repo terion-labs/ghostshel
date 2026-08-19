@@ -30,6 +30,7 @@
         <controls:ChooserTile Icon="Gauge" Title="Processes" Description="Running processes" Click="OnAddProcessMonitorPanelClick" AutomationProperties.Name="Add Process Monitor panel" />
         <controls:ChooserTile Icon="Database" Title="Database" Description="SQL viewer" Click="OnAddDatabasePanelClick" AutomationProperties.Name="Add database panel" />
         <controls:ChooserTile Icon="Box" Title="Docker" Description="Containers &amp; images" Click="OnAddDockerPanelClick" AutomationProperties.Name="Add Docker panel" />
+        <controls:ChooserTile Icon="BranchFork" Title="Git" Description="Stage, commit &amp; history" Click="OnAddGitPanelClick" AutomationProperties.Name="Add Git panel" />
       </controls:CardGridPanel>
       <!-- A new panel is not only a blank adapter: a saved connection or screen
            is just as likely to be what belongs here, so both are offered

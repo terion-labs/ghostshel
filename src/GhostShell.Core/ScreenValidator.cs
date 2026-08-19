@@ -145,11 +145,13 @@ public static class ScreenValidator
                 panel.Id.Value));
         }
 
-        // A database viewer's location is its saved target: "driverId:connection string".
+        // A database viewer's location is its saved target: "driverId:connection
+        // string". A Git panel's location is the repository path to open.
         var supportsLocation = panel.Kind is ScreenPanelKind.Terminal
             or ScreenPanelKind.Browser
             or ScreenPanelKind.FileViewer
-            or ScreenPanelKind.DatabaseViewer;
+            or ScreenPanelKind.DatabaseViewer
+            or ScreenPanelKind.Git;
         if (!supportsLocation && panel.Startup.Location is not null)
         {
             issues.Add(new(

@@ -827,6 +827,7 @@
           "GhostShell.Databases": "[1.0.0, )",
           "GhostShell.Docker": "[1.0.0, )",
           "GhostShell.Files": "[1.0.0, )",
+          "GhostShell.Git": "[1.0.0, )",
           "GhostShell.Infrastructure": "[1.0.0, )",
           "GhostShell.Mcp": "[1.0.0, )",
           "GhostShell.Monitoring": "[1.0.0, )",
@@ -944,6 +945,13 @@
           "SMBLibrary": "[1.5.7.1, )",
           "SSH.NET": "[2026.0.0, )",
           "SshNet.Agent": "[2026.0.0, )"
+        }
+      },
+      "ghostshell.git": {
+        "type": "Project",
+        "dependencies": {
+          "GhostShell.Application": "[1.0.0, )",
+          "GhostShell.Core": "[1.0.0, )"
         }
       },
       "ghostshell.infrastructure": {

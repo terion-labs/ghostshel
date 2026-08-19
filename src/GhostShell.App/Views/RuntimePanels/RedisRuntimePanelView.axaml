@@ -201,8 +201,10 @@
         <!-- Browser: SCAN navigation at left, bounded type-aware value inspection at right. -->
         <Grid IsVisible="{Binding ShowBrowser}" ColumnDefinitions="320,5,*">
           <!-- A workspace sidebar is flush with the panel shell. Rounded cards
-               here created competing corners inside PanelChrome. -->
-          <Border Background="{DynamicResource ShellSidebarBrush}">
+               here created competing corners inside PanelChrome, and a sidebar
+               fill read denser than every other panel surface — the rail is
+               transparent over the panel material with one hairline boundary. -->
+          <Border>
             <Grid RowDefinitions="Auto,*,Auto">
               <Grid Margin="{controls:Inset Sm}" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceXs}">
                 <TextBox
@@ -281,16 +283,16 @@
               Grid.Column="1"
               Width="5"
               HorizontalAlignment="Stretch"
-              Background="{DynamicResource ShellSidebarBrush}"
+              Background="Transparent"
               ResizeDirection="Columns"
               ResizeBehavior="PreviousAndNext"
               AutomationProperties.Name="Resize the Redis keys list" />
-          <!-- The boundary is one line at the content's edge, drawn over the
-               splitter so sidebar and grip read as a single slab. -->
+          <!-- The boundary is one hairline centered in the transparent grip,
+               the same idiom as the file viewer's preview splitter. -->
           <Border
               Grid.Column="1"
               Width="1"
-              HorizontalAlignment="Right"
+              HorizontalAlignment="Center"
               Background="{DynamicResource ShellBorderBrush}"
               IsHitTestVisible="False" />
 

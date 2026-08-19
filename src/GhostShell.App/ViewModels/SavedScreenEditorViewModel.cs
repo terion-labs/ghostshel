@@ -710,6 +710,7 @@ public sealed class SavedScreenPanelEditorViewModel : ObservableObject
         new(ScreenPanelKind.ProcessMonitor, "Process monitor"),
         new(ScreenPanelKind.DatabaseViewer, "Database"),
         new(ScreenPanelKind.Docker, "Docker"),
+        new(ScreenPanelKind.Git, "Git"),
     ];
 
     private readonly ScreenPanelDefinition _original;
@@ -887,12 +888,14 @@ public sealed class SavedScreenPanelEditorViewModel : ObservableObject
 
     public bool SupportsConnection => Kind is ScreenPanelKind.Terminal
         or ScreenPanelKind.Browser
-        or ScreenPanelKind.Docker;
+        or ScreenPanelKind.Docker
+        or ScreenPanelKind.Git;
 
     public bool SupportsLocation => Kind is ScreenPanelKind.Terminal
         or ScreenPanelKind.Browser
         or ScreenPanelKind.FileViewer
-        or ScreenPanelKind.DatabaseViewer;
+        or ScreenPanelKind.DatabaseViewer
+        or ScreenPanelKind.Git;
 
     public ScreenPanelDefinition Build()
     {
@@ -996,7 +999,7 @@ public sealed class SavedScreenPanelEditorViewModel : ObservableObject
 
     private bool IsApplicableConnection(ScreenConnectionOption? option) =>
         option is null
-        || Kind is not (ScreenPanelKind.Browser or ScreenPanelKind.Docker)
+        || Kind is not (ScreenPanelKind.Browser or ScreenPanelKind.Docker or ScreenPanelKind.Git)
         || option.ConnectionKind is ConnectionKind.Local or ConnectionKind.Ssh
         || !option.IsAvailable && option.Id == _original.ConnectionId;
 }

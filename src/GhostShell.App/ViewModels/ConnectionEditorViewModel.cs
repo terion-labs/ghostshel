@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using GhostShell.Application;
 using GhostShell.Core;
+using GhostShell.Git;
 
 namespace GhostShell.App.ViewModels;
 
@@ -16,11 +17,24 @@ public sealed record ConnectionEditorSaveRequest(
     ConnectionProfile Profile,
     long? ExpectedRevision);
 
+/// <summary>
+/// One entry in the Git · SSH "From saved connection" selector. The first
+/// entry is always "Enter manually" with no profile; the rest carry a saved
+/// SSH profile the Git connection can reference for its endpoint and
+/// credentials.
+/// </summary>
+public sealed record SavedSshSourceOption(string DisplayName, ConnectionProfile? Profile)
+{
+    public static SavedSshSourceOption Manual { get; } = new("Enter manually", null);
+}
+
 public sealed class ConnectionEditorViewModel : ObservableObject
 {
     private readonly IConnectionRuntime _runtime;
     private readonly IConnectionSecurityRuntime? _securityRuntime;
+    private readonly IGitRepositoryClient? _gitClient;
     private readonly ConnectionId _id;
+    private readonly IReadOnlyList<ConnectionProfile> _savedConnections;
     private readonly int _schemaVersion;
     private readonly IReadOnlyList<ConnectionEnvironmentVariable> _environment;
     private readonly IReadOnlyList<string> _tags;
@@ -42,6 +56,8 @@ public sealed class ConnectionEditorViewModel : ObservableObject
     private bool _keepAliveEnabled;
     private int _keepAliveSeconds = 30;
     private int _keepAliveFailures = 3;
+    private bool _opensGitRepository;
+    private SavedSshSourceOption _selectedSavedSshSource = SavedSshSourceOption.Manual;
     private bool _isTesting;
     private string _testStatus = "Not tested";
     private string _testDetail = "Save is allowed without a test; opening validates the profile again.";
@@ -51,10 +67,13 @@ public sealed class ConnectionEditorViewModel : ObservableObject
         IConnectionRuntime runtime,
         ConnectionProfile? existing = null,
         long? expectedRevision = null,
-        IConnectionSecurityRuntime? securityRuntime = null)
+        IConnectionSecurityRuntime? securityRuntime = null,
+        IGitRepositoryClient? gitClient = null,
+        IReadOnlyList<ConnectionProfile>? savedConnections = null)
     {
         _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         _securityRuntime = securityRuntime;
+        _gitClient = gitClient;
         ExpectedRevision = expectedRevision;
         ConnectionKinds = Enum.GetValues<ConnectionKind>();
         AuthenticationChoices = Enum.GetValues<ConnectionAuthenticationChoice>();
@@ -65,21 +84,25 @@ public sealed class ConnectionEditorViewModel : ObservableObject
             SshHostKeyPolicy.InsecureIgnore,
         ];
 
+        _savedConnections = savedConnections ?? [];
         if (existing is null)
         {
             _id = ConnectionId.New();
             _schemaVersion = ConnectionProfile.CurrentSchemaVersion;
             _environment = [];
             _tags = [];
+            SavedSshSources = BuildSavedSshSources(savedConnections);
             return;
         }
 
         _id = existing.Id;
+        SavedSshSources = BuildSavedSshSources(savedConnections);
         _schemaVersion = existing.SchemaVersion;
         _environment = existing.Startup.Environment;
         _tags = existing.Tags;
         _name = existing.Name;
         _kind = existing.ConnectionKind;
+        _opensGitRepository = existing.PreferredPanel == PanelKind.Git;
         _startupDirectory = existing.Startup.Directory ?? string.Empty;
         _startupCommand = existing.Startup.Command ?? string.Empty;
         _keepAliveEnabled = existing.KeepAlive.Enabled;
@@ -92,6 +115,26 @@ public sealed class ConnectionEditorViewModel : ObservableObject
         _hostKeyPolicy = existing.HostKeyPolicy == SshHostKeyPolicy.NotApplicable
             ? SshHostKeyPolicy.Strict
             : existing.HostKeyPolicy;
+        if (existing.HostConnectionId is { } hostId)
+        {
+            // The profile delegates its endpoint: the stored endpoint and
+            // authentication are stand-ins, so the fields stay empty and the
+            // selector points at the referenced connection instead.
+            var referenced = SavedSshSources
+                .FirstOrDefault(option => option.Profile?.Id == hostId);
+            if (referenced is not null)
+            {
+                _selectedSavedSshSource = referenced;
+                return;
+            }
+
+            _testStatus = "Referenced connection missing";
+            _testDetail =
+                "The saved SSH connection this profile referenced no longer exists. "
+                + "Enter the endpoint manually or choose another saved connection.";
+            return;
+        }
+
         LoadEndpoint(existing.Endpoint);
         LoadAuthentication(existing.Authentication);
     }
@@ -107,6 +150,60 @@ public sealed class ConnectionEditorViewModel : ObservableObject
     public IReadOnlyList<ConnectionAuthenticationChoice> AuthenticationChoices { get; }
 
     public IReadOnlyList<SshHostKeyPolicy> HostKeyPolicies { get; }
+
+    /// <summary>
+    /// "Enter manually" plus every saved SSH connection this Git · SSH profile
+    /// can reference for its endpoint. The profile being edited never offers
+    /// itself, and delegating profiles are excluded so references never chain.
+    /// </summary>
+    public IReadOnlyList<SavedSshSourceOption> SavedSshSources { get; }
+
+    /// <summary>
+    /// Selecting a saved connection makes the profile a reference: the saved
+    /// profile stays the live source of the endpoint and credentials, so later
+    /// edits to it apply to this connection. Nothing is copied into the fields;
+    /// "Enter manually" returns to a standalone profile built from them.
+    /// </summary>
+    public SavedSshSourceOption SelectedSavedSshSource
+    {
+        get => _selectedSavedSshSource;
+        set
+        {
+            if (SetProperty(ref _selectedSavedSshSource, value))
+            {
+                OnPropertyChanged(nameof(ShowsSshEndpointFields));
+                OnPropertyChanged(nameof(SavedSshSourceSummary));
+            }
+        }
+    }
+
+    /// <summary>
+    /// The selector belongs to the Git · SSH type only, and only when there is
+    /// at least one saved SSH connection to reference.
+    /// </summary>
+    public bool ShowsSavedSshSources => OpensGitRepository && IsSsh && SavedSshSources.Count > 1;
+
+    /// <summary>
+    /// With a saved connection chosen the referenced endpoint speaks for
+    /// itself; the fields fold away and return on "Enter manually", untouched.
+    /// </summary>
+    public bool ShowsSshEndpointFields =>
+        !ShowsSavedSshSources || SelectedSavedSshSource.Profile is null;
+
+    /// <summary>
+    /// The referenced connection's current endpoint — the options carry the
+    /// saved profiles from the catalog at editor-open time, so the summary
+    /// always shows what the reference resolves to, not a stored copy.
+    /// </summary>
+    public string SavedSshSourceSummary =>
+        SelectedSavedSshSource.Profile is { Endpoint: ConnectionEndpoint.Ssh ssh }
+            ? EndpointSummary(ssh.Username ?? string.Empty, ssh.Host, ssh.Port)
+            : EndpointSummary(Username.Trim(), Host.Trim(), Port);
+
+    private static string EndpointSummary(string username, string host, int port) =>
+        username.Length > 0
+            ? $"{username}@{host} · port {port}"
+            : $"{host} · port {port}";
 
     public ObservableCollection<ConnectionDiagnosticItemViewModel> Diagnostics { get; } = [];
 
@@ -127,6 +224,31 @@ public sealed class ConnectionEditorViewModel : ObservableObject
                 OnPropertyChanged(nameof(IsSsh));
                 OnPropertyChanged(nameof(IsDocker));
                 OnPropertyChanged(nameof(IsWsl));
+                OnPropertyChanged(nameof(ShowsLocalShell));
+                OnPropertyChanged(nameof(CanBrowseRepository));
+                OnPropertyChanged(nameof(ShowsSavedSshSources));
+                OnPropertyChanged(nameof(ShowsSshEndpointFields));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Git connection types reuse the Local and SSH endpoints but save a
+    /// profile whose preferred panel is Git and whose startup directory is
+    /// the repository path.
+    /// </summary>
+    public bool OpensGitRepository
+    {
+        get => _opensGitRepository;
+        set
+        {
+            if (SetProperty(ref _opensGitRepository, value))
+            {
+                OnPropertyChanged(nameof(ShowsLocalShell));
+                OnPropertyChanged(nameof(ShowsStartupOptions));
+                OnPropertyChanged(nameof(CanBrowseRepository));
+                OnPropertyChanged(nameof(ShowsSavedSshSources));
+                OnPropertyChanged(nameof(ShowsSshEndpointFields));
             }
         }
     }
@@ -176,7 +298,24 @@ public sealed class ConnectionEditorViewModel : ObservableObject
     public string StartupDirectory
     {
         get => _startupDirectory;
-        set => SetProperty(ref _startupDirectory, value);
+        set
+        {
+            if (SetProperty(ref _startupDirectory, value))
+            {
+                OnPropertyChanged(nameof(RepositoryPath));
+            }
+        }
+    }
+
+    /// <summary>
+    /// The Git types label the startup directory as the repository path: one
+    /// stored field, so switching between a Git and a plain terminal type
+    /// keeps the directory the user typed.
+    /// </summary>
+    public string RepositoryPath
+    {
+        get => StartupDirectory;
+        set => StartupDirectory = value;
     }
 
     public string StartupCommand
@@ -276,6 +415,21 @@ public sealed class ConnectionEditorViewModel : ObservableObject
 
     public bool IsWsl => Kind == ConnectionKind.Wsl;
 
+    /// <summary>A Git · Local repository needs only the repository path.</summary>
+    public bool ShowsLocalShell => IsLocal && !OpensGitRepository;
+
+    /// <summary>
+    /// Git types replace the startup card with the repository-path card. The
+    /// hidden startup command and keep-alive values still round-trip.
+    /// </summary>
+    public bool ShowsStartupOptions => !OpensGitRepository;
+
+    /// <summary>
+    /// Browsing lists directories over the connection target itself, so it
+    /// needs the Git client and an endpoint the Git panel supports.
+    /// </summary>
+    public bool CanBrowseRepository => _gitClient is not null && (IsLocal || IsSsh);
+
     public bool UsesSecretReference => Authentication is
         ConnectionAuthenticationChoice.Password or ConnectionAuthenticationChoice.PrivateKey;
 
@@ -324,6 +478,22 @@ public sealed class ConnectionEditorViewModel : ObservableObject
             return;
         }
 
+        // Diagnostics run against what opening will use: a reference profile
+        // resolves to the referenced connection's endpoint and credentials.
+        if (profile.HostConnectionId is not null)
+        {
+            var resolved = profile.ResolveHostConnection(
+                id => _savedConnections.FirstOrDefault(saved => saved.Id == id));
+            if (resolved is null)
+            {
+                TestStatus = "Validation failed";
+                TestDetail = "The referenced connection no longer exists.";
+                return;
+            }
+
+            profile = resolved;
+        }
+
         IsTesting = true;
         OnPropertyChanged(nameof(CanTrustHostKey));
         TestStatus = "Testing connection";
@@ -367,6 +537,7 @@ public sealed class ConnectionEditorViewModel : ObservableObject
                             "The WSL distribution is reachable.",
                         _ => throw new ArgumentOutOfRangeException(nameof(result)),
                     };
+                    await ProbeGitRepositoryAsync(profile, cancellationToken);
                     break;
                 case ConnectionRuntimeResult<ConnectionTestReport>.Failure failure:
                     TestStatus = "Test failed";
@@ -488,26 +659,27 @@ public sealed class ConnectionEditorViewModel : ObservableObject
             null => "All completed diagnostics passed.",
             _ => throw new ArgumentOutOfRangeException(nameof(report.Verification)),
         };
+        await ProbeGitRepositoryAsync(profile, cancellationToken);
     }
+
+    /// <summary>
+    /// The saved connection a Git · SSH profile references, when one is
+    /// chosen. The selection is honored even while the selector is hidden by a
+    /// type switch only if the current type is still Git · SSH.
+    /// </summary>
+    private ConnectionProfile? ReferencedSshSource =>
+        OpensGitRepository && IsSsh ? SelectedSavedSshSource.Profile : null;
 
     private ConnectionProfile BuildProfile()
     {
-        ConnectionEndpoint endpoint = Kind switch
-        {
-            ConnectionKind.Local => new ConnectionEndpoint.Local(Optional(LocalShell)),
-            ConnectionKind.Ssh => new ConnectionEndpoint.Ssh(
-                Required(Host, "SSH host"),
-                Port,
-                Optional(Username)),
-            ConnectionKind.Docker => new ConnectionEndpoint.Docker(
-                Required(Container, "Docker container"),
-                Optional(DockerContext)),
-            ConnectionKind.Wsl => new ConnectionEndpoint.Wsl(
-                Required(Distribution, "WSL distribution"),
-                Optional(Username)),
-            _ => throw new ArgumentOutOfRangeException(nameof(Kind), Kind, null),
-        };
-        var authentication = Kind == ConnectionKind.Ssh
+        // A reference profile stores no endpoint or credentials of its own:
+        // the stand-in endpoint satisfies the schema, and resolution swaps in
+        // the referenced connection's endpoint at every use.
+        var reference = ReferencedSshSource;
+        var endpoint = reference is null
+            ? BuildEndpoint()
+            : ConnectionProfile.DelegatedSshEndpoint;
+        var authentication = reference is null && Kind == ConnectionKind.Ssh
             ? BuildAuthentication()
             : new ConnectionAuthentication.None();
         var keepAlive = KeepAliveEnabled
@@ -515,16 +687,104 @@ public sealed class ConnectionEditorViewModel : ObservableObject
                 TimeSpan.FromSeconds(KeepAliveSeconds),
                 KeepAliveFailures)
             : ConnectionKeepAlive.Disabled;
+        var directory = OpensGitRepository
+            ? Required(RepositoryPath, "Repository path")
+            : Optional(StartupDirectory);
         return new ConnectionProfile(
             _id,
             _schemaVersion,
             Required(Name, "Connection name"),
             endpoint,
             authentication,
-            new ConnectionStartup(Optional(StartupDirectory), _environment, Optional(StartupCommand)),
+            new ConnectionStartup(directory, _environment, Optional(StartupCommand)),
             keepAlive,
-            Kind == ConnectionKind.Ssh ? HostKeyPolicy : SshHostKeyPolicy.NotApplicable,
-            _tags);
+            reference is not null
+                ? SshHostKeyPolicy.Strict
+                : Kind == ConnectionKind.Ssh
+                    ? HostKeyPolicy
+                    : SshHostKeyPolicy.NotApplicable,
+            _tags,
+            OpensGitRepository ? PanelKind.Git : null,
+            reference?.Id);
+    }
+
+    private ConnectionEndpoint BuildEndpoint() => Kind switch
+    {
+        ConnectionKind.Local => new ConnectionEndpoint.Local(Optional(LocalShell)),
+        ConnectionKind.Ssh => new ConnectionEndpoint.Ssh(
+            Required(Host, "SSH host"),
+            Port,
+            Optional(Username)),
+        ConnectionKind.Docker => new ConnectionEndpoint.Docker(
+            Required(Container, "Docker container"),
+            Optional(DockerContext)),
+        ConnectionKind.Wsl => new ConnectionEndpoint.Wsl(
+            Required(Distribution, "WSL distribution"),
+            Optional(Username)),
+        _ => throw new ArgumentOutOfRangeException(nameof(Kind), Kind, null),
+    };
+
+    /// <summary>
+    /// A picker over the connection described by the current fields, so the
+    /// repository is browsed where it lives — the target host, not this
+    /// machine. The probe profile needs only the endpoint and credentials;
+    /// the connection name may still be blank while browsing.
+    /// </summary>
+    public GitRepositoryPickerViewModel CreateRepositoryPicker()
+    {
+        if (_gitClient is null)
+        {
+            throw new InvalidOperationException("Git support is unavailable in this build.");
+        }
+
+        // A chosen saved connection is the endpoint: the browse probe uses it
+        // directly, the same resolution every other use of the reference gets.
+        var reference = ReferencedSshSource;
+        var probe = new ConnectionProfile(
+            _id,
+            _schemaVersion,
+            "Repository browse",
+            reference?.Endpoint ?? BuildEndpoint(),
+            reference is not null
+                ? reference.Authentication
+                : Kind == ConnectionKind.Ssh
+                    ? BuildAuthentication()
+                    : new ConnectionAuthentication.None(),
+            ConnectionStartup.Default,
+            ConnectionKeepAlive.Disabled,
+            reference?.HostKeyPolicy
+                ?? (Kind == ConnectionKind.Ssh ? HostKeyPolicy : SshHostKeyPolicy.NotApplicable));
+        return new GitRepositoryPickerViewModel(_gitClient, probe, Optional(RepositoryPath));
+    }
+
+    /// <summary>
+    /// After the endpoint diagnostics pass, a Git type also proves the
+    /// repository itself opens on the target.
+    /// </summary>
+    private async Task ProbeGitRepositoryAsync(
+        ConnectionProfile profile,
+        CancellationToken cancellationToken)
+    {
+        if (!OpensGitRepository
+            || _gitClient is null
+            || profile.Startup.Directory is not { } path)
+        {
+            return;
+        }
+
+        TestStatus = "Opening repository";
+        TestDetail = $"Resolving {path} on the target…";
+        var result = await _gitClient.OpenRepositoryAsync(profile, path, cancellationToken);
+        if (result is GitResult<GitRepositoryHandle>.Failure failure)
+        {
+            TestStatus = "Repository not opened";
+            TestDetail = failure.Error.Message;
+            return;
+        }
+
+        var handle = ((GitResult<GitRepositoryHandle>.Success)result).Value;
+        TestStatus = "Repository opened";
+        TestDetail = $"Git repository at {handle.WorkingTreeRoot}.";
     }
 
     private ConnectionAuthentication BuildAuthentication() => Authentication switch
@@ -565,6 +825,22 @@ public sealed class ConnectionEditorViewModel : ObservableObject
             default:
                 throw new ArgumentOutOfRangeException(nameof(endpoint));
         }
+    }
+
+    private IReadOnlyList<SavedSshSourceOption> BuildSavedSshSources(
+        IReadOnlyList<ConnectionProfile>? savedConnections)
+    {
+        var options = new List<SavedSshSourceOption> { SavedSshSourceOption.Manual };
+        if (savedConnections is not null)
+        {
+            options.AddRange(savedConnections
+                .Where(profile => profile.ConnectionKind == ConnectionKind.Ssh
+                    && profile.Id != _id
+                    && profile.HostConnectionId is null)
+                .Select(profile => new SavedSshSourceOption(profile.Name, profile)));
+        }
+
+        return options.AsReadOnly();
     }
 
     private void LoadAuthentication(ConnectionAuthentication authentication)

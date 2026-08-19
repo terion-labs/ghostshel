@@ -12,6 +12,7 @@ using GhostShell.Application;
 using GhostShell.Application.Previews;
 using GhostShell.Core;
 using GhostShell.Docker;
+using GhostShell.Git;
 
 namespace GhostShell.App.ViewModels;
 
@@ -98,6 +99,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private readonly IDatabaseConnectionCatalog? _databaseConnectionCatalog;
     private readonly IRedisPanelSessionFactory? _redisPanelSessionFactory;
     private readonly IDockerEngineClient? _dockerEngineClient;
+    private readonly IGitRepositoryClient? _gitRepositoryClient;
+    private readonly IGitPanelPreferences? _gitPanelPreferences;
     private readonly ISqlLanguageService? _sqlLanguageService;
     private readonly IImagePreviewDecoder? _imagePreviewDecoder;
     private readonly IPdfPreviewRenderer? _pdfPreviewRenderer;
@@ -253,6 +256,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         SessionRestoreCoordinator? sessionRestoreCoordinator = null,
         ISqlLanguageService? sqlLanguageService = null,
         IDockerEngineClient? dockerEngineClient = null,
+        IGitRepositoryClient? gitRepositoryClient = null,
+        IGitPanelPreferences? gitPanelPreferences = null,
         TerminalMultiplexerCoordinator? terminalMultiplexerCoordinator = null,
         IAgentModelFavoriteStore? agentModelFavoriteStore = null,
         AgentPolicyCoordinator? agentPolicyCoordinator = null,
@@ -286,6 +291,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _databaseConnectionCatalog = databaseConnectionCatalog ?? databasePanelClient;
         _redisPanelSessionFactory = redisPanelSessionFactory;
         _dockerEngineClient = dockerEngineClient;
+        _gitRepositoryClient = gitRepositoryClient;
+        _gitPanelPreferences = gitPanelPreferences;
         _sqlLanguageService = sqlLanguageService;
         _imagePreviewDecoder = imagePreviewDecoder;
         _pdfPreviewRenderer = pdfPreviewRenderer;
@@ -2878,7 +2885,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var connection = FindConnection(connectionId);
         if (connection is null)
         {
-            SetError("That connection no longer exists.");
+            SetError(ConnectionUnavailableMessage(connectionId));
             return false;
         }
 
@@ -2897,7 +2904,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             CurrentAgentPolicyProvenance());
         try
         {
-            runtime.Tabs.Add(CreateConnectionTab(runtime.Id, connection));
+            var defaultPanel = connection.PanelLaunchCapabilities.DefaultPanel;
+            runtime.Tabs.Add(defaultPanel == PanelKind.Terminal
+                ? CreateConnectionTab(runtime.Id, connection)
+                : CreateConnectionPanelTab(
+                    runtime.Id,
+                    connection,
+                    defaultPanel,
+                    runtime.AgentPolicy));
             runtime.ActiveTab = runtime.Tabs[0];
             if (!await RegisterRuntimeWorkspaceAsync(runtime, cancellationToken))
             {
@@ -2968,10 +2982,19 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     public Task<bool> LaunchConnectionAsync(
         ConnectionId connectionId,
-        CancellationToken cancellationToken = default) =>
-        RuntimeWorkspace is null
-            ? OpenConnectionAsync(connectionId, cancellationToken)
-            : AddConnectionTabAsync(connectionId, cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        if (RuntimeWorkspace is null)
+        {
+            return OpenConnectionAsync(connectionId, cancellationToken);
+        }
+
+        // A Git connection opens its Git panel by default; every other
+        // connection still opens a terminal tab.
+        var panel = FindConnection(connectionId)?.PanelLaunchCapabilities.DefaultPanel
+            ?? PanelKind.Terminal;
+        return AddConnectionPanelTabAsync(connectionId, panel, cancellationToken);
+    }
 
     /// <summary>
     /// A saved screen brings its own tab. Asked for from a tab that is nothing
@@ -3792,11 +3815,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     public ConnectionEditorViewModel CreateConnectionEditor(ConnectionId? connectionId = null)
     {
+        var savedConnections = _catalog.Snapshot.Connections
+            .Select(item => item.Value)
+            .ToArray();
         if (connectionId is null)
         {
             return new ConnectionEditorViewModel(
                 _connectionRuntime,
-                securityRuntime: _connectionSecurityRuntime);
+                securityRuntime: _connectionSecurityRuntime,
+                gitClient: _gitRepositoryClient,
+                savedConnections: savedConnections);
         }
 
         var stored = _catalog.Snapshot.Connections
@@ -3805,7 +3833,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             _connectionRuntime,
             stored.Value,
             stored.Revision,
-            _connectionSecurityRuntime);
+            _connectionSecurityRuntime,
+            _gitRepositoryClient,
+            savedConnections);
     }
 
     public async ValueTask<DefinitionStoreResult<StoredDefinition<ConnectionProfile>>> SaveConnectionAsync(
@@ -5595,7 +5625,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         if (connection is null)
         {
-            SetError("That connection no longer exists.");
+            SetError(ConnectionUnavailableMessage(id));
             return false;
         }
 
@@ -5766,11 +5796,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         if (connection is null)
         {
-            SetError("That connection no longer exists.");
+            SetError(ConnectionUnavailableMessage(id));
             return false;
         }
 
-        if (!connection.Endpoint.PanelLaunchCapabilities.Supports(kind))
+        if (!connection.PanelLaunchCapabilities.Supports(kind))
         {
             SetError($"{connection.Name} cannot open {PanelTitle(kind)}.");
             return false;
@@ -5797,6 +5827,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 kind,
                 connection),
             PanelKind.Docker => CreateDockerPanel(
+                PanelInstanceId.New(),
+                title,
+                connection),
+            PanelKind.Git => CreateGitPanel(
                 PanelInstanceId.New(),
                 title,
                 connection),
@@ -5933,7 +5967,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var connection = FindConnection(connectionId);
         if (connection is null)
         {
-            SetError("That connection no longer exists.");
+            SetError(ConnectionUnavailableMessage(connectionId));
             return false;
         }
 
@@ -6034,6 +6068,19 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 livePanel.Title,
                 connection);
         }
+        else if (livePanel is GitRuntimePanelViewModel)
+        {
+            if (connection.Endpoint is not (ConnectionEndpoint.Local or ConnectionEndpoint.Ssh))
+            {
+                SetError("A Git panel can use only a local or SSH connection.");
+                return false;
+            }
+
+            replacement = CreateGitPanel(
+                livePanel.Id,
+                livePanel.Title,
+                connection);
+        }
         else
         {
             SetError("This panel type does not support connection switching.");
@@ -6062,7 +6109,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var connection = FindConnection(connectionId);
         if (connection is null)
         {
-            SetError("That connection no longer exists.");
+            SetError(ConnectionUnavailableMessage(connectionId));
             return false;
         }
 
@@ -6252,6 +6299,32 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             cancellationToken);
     }
 
+    public async Task<bool> AddGitPanelAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var workspace = RuntimeWorkspace;
+        var tab = workspace?.ActiveTab;
+        if (workspace is null || tab is null)
+        {
+            SetError("Open a workspace tab before adding a Git panel.");
+            return false;
+        }
+
+        var panel = CreateGitPanel(PanelInstanceId.New(), "Git");
+        return await AddRuntimePanelUnderReceiptAsync(
+            workspace,
+            tab,
+            panel,
+            "Git panel creation",
+            () =>
+            {
+                tab.AddPanel(panel);
+                StartTrackingRecovery(panel);
+                _ = tab.ActivatePanel(panel.Id);
+            },
+            cancellationToken);
+    }
+
     private async Task<bool> AddMonitorPanelAsync(
         PanelKind kind,
         CancellationToken cancellationToken)
@@ -6409,7 +6482,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         if (connection is null)
         {
-            SetError("That connection no longer exists.");
+            SetError(ConnectionUnavailableMessage(connectionId));
             return Task.FromResult(false);
         }
 
@@ -6425,16 +6498,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             {
                 var currentStored = _catalog.Snapshot.Connections.SingleOrDefault(
                     item => item.Value.Id == connectionId);
-                if (currentStored is null)
+                var currentConnection = currentStored?.Value
+                    .ResolveHostConnection(FindStoredConnection);
+                if (currentConnection is null)
                 {
-                    SetError("That connection no longer exists.");
+                    SetError(ConnectionUnavailableMessage(connectionId));
                     return null;
                 }
 
-                var currentConnection = currentStored.Value;
                 var currentLaunchItem = ToConnectionItem(
                     currentConnection,
-                    currentStored.Revision);
+                    currentStored!.Revision);
                 if (currentLaunchItem is not { CanOpen: true })
                 {
                     SetError(
@@ -6503,7 +6577,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         if (connection is null)
         {
-            SetError("That connection no longer exists.");
+            SetError(ConnectionUnavailableMessage(connectionId));
             return Task.FromResult(false);
         }
 
@@ -6513,7 +6587,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             return Task.FromResult(false);
         }
 
-        if (!connection.Endpoint.PanelLaunchCapabilities.Supports(panel))
+        if (!connection.PanelLaunchCapabilities.Supports(panel))
         {
             SetError($"{connection.Name} cannot open {PanelTitle(panel)}.");
             return Task.FromResult(false);
@@ -6526,11 +6600,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 var currentConnection = FindConnection(connectionId);
                 if (currentConnection is null)
                 {
-                    SetError("That connection no longer exists.");
+                    SetError(ConnectionUnavailableMessage(connectionId));
                     return null;
                 }
 
-                if (!currentConnection.Endpoint.PanelLaunchCapabilities.Supports(panel))
+                if (!currentConnection.PanelLaunchCapabilities.Supports(panel))
                 {
                     SetError($"{currentConnection.Name} cannot open {PanelTitle(panel)}.");
                     return null;
@@ -6737,6 +6811,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         CancellationToken cancellationToken = default) =>
         AddSinglePanelTabAsync(PanelKind.Docker, cancellationToken);
 
+    public Task<bool> AddGitTabAsync(
+        CancellationToken cancellationToken = default) =>
+        AddSinglePanelTabAsync(PanelKind.Git, cancellationToken);
+
     public Task<bool> AddProcessMonitorTabAsync(
         CancellationToken cancellationToken = default) =>
         AddSinglePanelTabAsync(PanelKind.ProcessMonitor, cancellationToken);
@@ -6755,7 +6833,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             or PanelKind.Statistics
             or PanelKind.ProcessMonitor
             or PanelKind.DatabaseViewer
-            or PanelKind.Docker))
+            or PanelKind.Docker
+            or PanelKind.Git))
         {
             throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
         }
@@ -6825,6 +6904,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 PanelKind.Docker => CreateDockerPanel(
                     PanelInstanceId.New(),
                     title),
+                PanelKind.Git => CreateGitPanel(
+                    PanelInstanceId.New(),
+                    title),
                 _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
             };
             if (kind == PanelKind.Browser
@@ -6853,6 +6935,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         PanelKind.ProcessMonitor => "Process Monitor",
         PanelKind.DatabaseViewer => "Database",
         PanelKind.Docker => "Docker",
+        PanelKind.Git => "Git",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
@@ -8164,6 +8247,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 PanelKind.ProcessMonitor => ScreenPanelKind.ProcessMonitor,
                 PanelKind.DatabaseViewer => ScreenPanelKind.DatabaseViewer,
                 PanelKind.Docker => ScreenPanelKind.Docker,
+                PanelKind.Git => ScreenPanelKind.Git,
                 _ => null,
             };
 
@@ -8184,6 +8268,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             DatabaseRuntimePanelViewModel database => database.TunnelConnectionId,
             RedisRuntimePanelViewModel redis => redis.TunnelConnectionId,
             DockerRuntimePanelViewModel docker => docker.ConnectionId,
+            GitRuntimePanelViewModel git => git.ConnectionId,
             _ => null,
         };
         var stored = storedTab?.Panels.FirstOrDefault(candidate =>
@@ -8213,6 +8298,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                     database.RecoveryTarget ?? stored?.Startup.Location,
                 RedisRuntimePanelViewModel redis =>
                     redis.RecoveryTarget ?? stored?.Startup.Location,
+                GitRuntimePanelViewModel { IsRepositoryOpen: true } git =>
+                    git.RepositoryRoot,
                 _ => stored?.Startup.Location,
             };
         }
@@ -10655,7 +10742,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             Connections,
             [.. snapshot.Connections
                 .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(item => ToConnectionItem(item.Value, item.Revision))],
+                .Select(item => ToConnectionItem(
+                    ResolveForDisplay(snapshot, item.Value),
+                    item.Revision))],
             static (a, b) => a.PresentsSameAs(b));
         ReplaceIfChanged(
             FileConnections,
@@ -10914,10 +11003,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 return CreateSavedConnectionShortcut(
                     new PanelConnectionOptionViewModel.Target.Connection(item.Value.Id),
                     item.Value.Name,
-                    KindBadges.Connection(item.Value.ConnectionKind),
+                    KindBadges.Connection(item.Value),
                     launchItem?.Detail ?? string.Empty,
                     launchItem is { CanOpen: true },
-                    item.Value.Endpoint.PanelLaunchCapabilities);
+                    item.Value.PanelLaunchCapabilities);
             })
             .ToList();
 
@@ -10972,6 +11061,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         PanelKind.Statistics => "Open statistics",
         PanelKind.ProcessMonitor => "Open processes",
         PanelKind.Docker => "Open Docker",
+        PanelKind.Git => "Open Git",
         _ => throw new ArgumentOutOfRangeException(nameof(panel), panel, null),
     };
 
@@ -10982,6 +11072,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         PanelKind.Statistics => Symbol.PulseSquare,
         PanelKind.ProcessMonitor => Symbol.Gauge,
         PanelKind.Docker => Symbol.Box,
+        PanelKind.Git => Symbol.BranchFork,
         _ => throw new ArgumentOutOfRangeException(nameof(panel), panel, null),
     };
 
@@ -11613,6 +11704,18 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                     ? "Docker support is unavailable in this build."
                     : null,
                 ["create", "new", "docker", "container", "image", "volume", "network", "panel"]),
+            new LauncherSearchResultViewModel(
+                new LauncherSearchTarget.CreatePanel(PanelKind.Git),
+                Symbol.BranchFork,
+                "Create · Git",
+                "New Git panel",
+                "Stage, commit, and browse history locally or over SSH.",
+                _gitRepositoryClient is null ? "Unavailable" : "Open",
+                _gitRepositoryClient is not null,
+                _gitRepositoryClient is null
+                    ? "Git support is unavailable in this build."
+                    : null,
+                ["create", "new", "git", "repository", "commit", "branch", "diff", "panel"]),
         ]);
 
         foreach (var command in BuiltInCommands.Registry.Commands)
@@ -11954,6 +12057,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                     PanelInstanceId.New(),
                     title,
                     connection),
+                PanelKind.Git => CreateGitPanel(
+                    PanelInstanceId.New(),
+                    title,
+                    connection),
                 _ => throw new ArgumentOutOfRangeException(nameof(panel), panel, null),
             };
             AddPanelOrDispose(tab, runtimePanel);
@@ -12274,6 +12381,25 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                     connection);
         }
 
+        if (recovered.Kind == RuntimePanelRecoveryKind.Git)
+        {
+            var connection = recovered.ConnectionId is { } gitConnectionId
+                ? FindConnection(new ConnectionId(gitConnectionId))
+                : LocalConnection();
+            return connection is null
+                ? new UnavailableRuntimePanelViewModel(
+                    PanelInstanceId.New(),
+                    PanelKind.Git,
+                    recovered.Title,
+                    "Git",
+                    "The recovered Git connection is no longer available.")
+                : CreateGitPanel(
+                    PanelInstanceId.New(),
+                    recovered.Title,
+                    connection,
+                    recovered.StartupLocation);
+        }
+
         if (recovered.Kind == RuntimePanelRecoveryKind.Statistics)
         {
             var connection = recovered.ConnectionId is { } processConnectionId
@@ -12544,6 +12670,28 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 PanelInstanceId.New(),
                 title,
                 dockerConnection);
+        }
+
+        if (panel.Kind == ScreenPanelKind.Git)
+        {
+            var gitConnection = panel.ConnectionId is { } gitConnectionId
+                ? FindConnection(gitConnectionId)
+                : LocalConnection();
+            if (gitConnection is null)
+            {
+                return new UnavailableRuntimePanelViewModel(
+                    PanelInstanceId.New(),
+                    PanelKind.Git,
+                    title,
+                    "Git",
+                    "The Git panel connection is no longer available.");
+            }
+
+            return CreateGitPanel(
+                PanelInstanceId.New(),
+                title,
+                gitConnection,
+                panel.Startup.Location);
         }
 
         if (panel.Kind != ScreenPanelKind.Terminal)
@@ -13031,6 +13179,47 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             title,
             _dockerEngineClient,
             connection);
+    }
+
+    private RuntimePanelViewModel CreateGitPanel(
+        PanelInstanceId panelId,
+        string title,
+        ConnectionProfile? connection = null,
+        string? repositoryPath = null)
+    {
+        if (_gitRepositoryClient is null)
+        {
+            return new UnavailableRuntimePanelViewModel(
+                panelId,
+                PanelKind.Git,
+                title,
+                "Git",
+                "Git support is unavailable in this build.");
+        }
+
+        connection ??= LocalConnection() ?? BuiltInConnections.Local;
+        if (connection.Endpoint is not (ConnectionEndpoint.Local or ConnectionEndpoint.Ssh))
+        {
+            return new UnavailableRuntimePanelViewModel(
+                panelId,
+                PanelKind.Git,
+                title,
+                "Git",
+                "Git panels can use only a local or SSH connection.");
+        }
+
+        // A Git connection's startup directory is its repository path, so
+        // opening the saved connection lands directly in that repository.
+        repositoryPath ??= connection.PreferredPanel == PanelKind.Git
+            ? connection.Startup.Directory
+            : null;
+        return new GitRuntimePanelViewModel(
+            panelId,
+            title,
+            _gitRepositoryClient,
+            connection,
+            repositoryPath,
+            _gitPanelPreferences);
     }
 
     /// <summary>
@@ -14220,9 +14409,37 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             .Where(item => ids.Contains(item.Id));
     }
 
-    private ConnectionProfile? FindConnection(ConnectionId id) => _catalog.Snapshot.Connections
+    /// <summary>
+    /// The one place a saved connection becomes usable. Contract: a profile
+    /// with a host-connection reference is resolved against the CURRENT
+    /// catalog snapshot at this moment — the referenced connection's endpoint,
+    /// authentication, keep-alive, and host-key policy with this profile's
+    /// name, preferred panel, and startup (repository path) — so later edits
+    /// to the referenced connection apply on the next open. Returns null when
+    /// the connection is missing OR its reference cannot be resolved; use
+    /// <see cref="ConnectionUnavailableMessage"/> to tell those apart.
+    /// </summary>
+    private ConnectionProfile? FindConnection(ConnectionId id) =>
+        FindStoredConnection(id)?.ResolveHostConnection(FindStoredConnection);
+
+    /// <summary>
+    /// The stored profile exactly as saved — a reference profile still carries
+    /// its stand-in endpoint. Only for editing, display fallbacks, and
+    /// resolving references; every launch path goes through
+    /// <see cref="FindConnection"/>.
+    /// </summary>
+    private ConnectionProfile? FindStoredConnection(ConnectionId id) => _catalog.Snapshot.Connections
         .Select(item => item.Value)
         .SingleOrDefault(item => item.Id == id);
+
+    /// <summary>
+    /// The failure text for a <see cref="FindConnection"/> null: a stored
+    /// profile whose reference broke fails differently from a deleted one.
+    /// </summary>
+    private string ConnectionUnavailableMessage(ConnectionId id) =>
+        FindStoredConnection(id) is { HostConnectionId: not null }
+            ? "The saved connection this Git connection references no longer exists. Edit the Git connection and choose its SSH connection again."
+            : "That connection no longer exists.";
 
     private ConnectionProfile? LocalConnection() => _catalog.Snapshot.Connections
         .Select(item => item.Value)
@@ -14278,6 +14495,19 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             : $"{panels} · {shown}";
     }
 
+    /// <summary>
+    /// The launcher card shows what a reference profile resolves to right now;
+    /// a broken reference falls back to the stored stand-in, and opening it
+    /// reports the missing referenced connection.
+    /// </summary>
+    private static ConnectionProfile ResolveForDisplay(
+        DefinitionCatalogSnapshot snapshot,
+        ConnectionProfile profile) =>
+        profile.ResolveHostConnection(id => snapshot.Connections
+            .Select(item => item.Value)
+            .SingleOrDefault(item => item.Id == id))
+        ?? profile;
+
     private static LauncherConnectionViewModel ToConnectionItem(
         ConnectionProfile connection,
         long revision)
@@ -14299,7 +14529,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             connection.Id,
             revision,
             connection.Name,
-            KindBadges.Connection(connection.ConnectionKind),
+            KindBadges.Connection(connection),
             detail,
             canOpen ? "Validated on open" : "Unavailable on this platform",
             canOpen,
@@ -14704,6 +14934,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         ScreenPanelKind.ProcessMonitor => "Processes",
         ScreenPanelKind.DatabaseViewer => "Database",
         ScreenPanelKind.Docker => "Docker",
+        ScreenPanelKind.Git => "Git",
         _ => "Panel",
     };
 
@@ -14716,6 +14947,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         PanelKind.ProcessMonitor => "Process Monitor",
         PanelKind.DatabaseViewer => "Database",
         PanelKind.Docker => "Docker",
+        PanelKind.Git => "Git",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
@@ -14728,6 +14960,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         ScreenPanelKind.ProcessMonitor => PanelKind.ProcessMonitor,
         ScreenPanelKind.DatabaseViewer => PanelKind.DatabaseViewer,
         ScreenPanelKind.Docker => PanelKind.Docker,
+        ScreenPanelKind.Git => PanelKind.Git,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
@@ -14741,6 +14974,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             "PROCESSMONITOR" => PanelKind.ProcessMonitor,
             "DATABASE" or "DATABASEVIEWER" => PanelKind.DatabaseViewer,
             "DOCKER" => PanelKind.Docker,
+            "GIT" => PanelKind.Git,
             _ => throw new InvalidOperationException(
                 "The recovered panel kind is not supported by this build."),
         };

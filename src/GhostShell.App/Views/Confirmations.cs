@@ -65,6 +65,113 @@ internal static class Confirmations
             CancelAutomationName = "Keep editing",
         });
 
+    public static ConfirmationDialog GitDiscardChange(int count, string firstPath)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);
+        ArgumentException.ThrowIfNullOrWhiteSpace(firstPath);
+        return new ConfirmationDialog(new ConfirmationDialogOptions
+        {
+            Title = count == 1 ? "Discard change?" : "Discard changes?",
+            Heading = count == 1 ? "Discard this change?" : $"Discard {count} changes?",
+            Detail = count == 1
+                ? $"“{firstPath}” returns to its last staged or committed content; an untracked file is deleted."
+                : $"“{firstPath}” and {count - 1} more return to their last staged or committed content; untracked files are deleted.",
+            Notice = "GhostShell cannot undo a discarded working-tree change.",
+            ConfirmLabel = count == 1 ? "Discard change" : "Discard changes",
+            ConfirmAutomationName = "Confirm discard change",
+            CancelAutomationName = "Cancel discard change",
+        });
+    }
+
+    public static ConfirmationDialog GitMergeBranch(string sourceBranch, string targetBranch) =>
+        new(new ConfirmationDialogOptions
+        {
+            Title = "Merge branch",
+            Heading = $"Merge “{sourceBranch}” into “{targetBranch}”?",
+            Detail = "The merge commits into the current branch and rewrites the working tree.",
+            Notice = "Conflicting files stay in the working set marked as conflicts until they are resolved and committed.",
+            ConfirmLabel = "Merge",
+            ConfirmAutomationName = "Confirm merge branch",
+            CancelAutomationName = "Cancel merge branch",
+        });
+
+    public static ConfirmationDialog GitPushBranch(string branch, string remote) =>
+        new(new ConfirmationDialogOptions
+        {
+            Title = "Push branch",
+            Heading = $"Push “{branch}” to “{remote}”?",
+            Detail = "The branch's local commits upload to the remote and its remote-tracking ref moves with them.",
+            ConfirmLabel = "Push",
+            ConfirmAutomationName = "Confirm push branch",
+            CancelAutomationName = "Cancel push branch",
+        });
+
+    public static ConfirmationDialog GitRebaseBranch(string currentBranch, string ontoBranch) =>
+        new(new ConfirmationDialogOptions
+        {
+            Title = "Rebase branch",
+            Heading = $"Rebase “{currentBranch}” on “{ontoBranch}”?",
+            Detail = $"The commits unique to “{currentBranch}” are replayed on top of “{ontoBranch}”, rewriting their identities.",
+            Notice = "A rebase that hits conflicts is aborted automatically, leaving the branch as it was.",
+            ConfirmLabel = "Rebase",
+            ConfirmAutomationName = "Confirm rebase branch",
+            CancelAutomationName = "Cancel rebase branch",
+        });
+
+    public static ConfirmationDialog GitDropStash(string subject) =>
+        new(new ConfirmationDialogOptions
+        {
+            Title = "Drop stash",
+            Heading = "Drop this stash?",
+            Detail = $"“{subject}” is removed from the stash list without being applied.",
+            Notice = "GhostShell cannot undo a dropped stash; its record survives only until Git prunes it.",
+            ConfirmLabel = "Drop stash",
+            ConfirmAutomationName = "Confirm drop stash",
+            CancelAutomationName = "Cancel drop stash",
+        });
+
+    public static ConfirmationDialog GitDeleteBranch(string name) =>
+        new(new ConfirmationDialogOptions
+        {
+            Title = "Delete branch",
+            Heading = $"Delete branch “{name}”?",
+            Detail = "The branch is deleted even when unmerged, so commits reachable only from it are left behind.",
+            Notice = "GhostShell cannot undo this deletion; an unmerged tip survives only in the reflog until Git prunes it.",
+            ConfirmLabel = "Delete branch",
+            ConfirmAutomationName = "Confirm delete branch",
+            CancelAutomationName = "Cancel delete branch",
+        });
+
+    public static ConfirmationDialog GitTrustRepository(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        return new ConfirmationDialog(new ConfirmationDialogOptions
+        {
+            Title = "Trust repository?",
+            Heading = "Trust this repository?",
+            Detail = $"“{path}” belongs to a different user than this connection signs in as, "
+                + "so Git refuses to open it. Confirming runs Git's own remedy for the "
+                + $"signed-in user on that machine: git config --global --add safe.directory {path}",
+            Notice = "This tells Git to trust the repository's local configuration, "
+                + "so only confirm for repositories you control.",
+            ConfirmLabel = "Trust repository",
+            ConfirmAutomationName = "Confirm trust repository",
+            CancelAutomationName = "Cancel trust repository",
+        });
+    }
+
+    public static ConfirmationDialog GitRemoveRemote(string name) =>
+        new(new ConfirmationDialogOptions
+        {
+            Title = "Remove remote",
+            Heading = $"Remove remote “{name}”?",
+            Detail = "The remote and its remote-tracking branches are removed from this repository.",
+            Notice = "Nothing on the remote server itself is touched; adding the remote again restores it.",
+            ConfirmLabel = "Remove remote",
+            ConfirmAutomationName = "Confirm remove remote",
+            CancelAutomationName = "Cancel remove remote",
+        });
+
     public static ConfirmationDialog HistoryClear() =>
         new(new ConfirmationDialogOptions
         {

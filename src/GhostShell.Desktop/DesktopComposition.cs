@@ -8,6 +8,7 @@ using GhostShell.Browser;
 using GhostShell.Databases;
 using GhostShell.Docker;
 using GhostShell.Files;
+using GhostShell.Git;
 using GhostShell.Infrastructure;
 using GhostShell.Mcp;
 using GhostShell.Monitoring;
@@ -122,6 +123,7 @@ public static class DesktopComposition
         services.AddSingleton<IConnectionRuntime, ConnectionRuntime>();
         services.AddSingleton<IConnectionCommandExecutor, ConnectionCommandExecutor>();
         services.AddSingleton<IDockerEngineClient, DockerEngineClient>();
+        services.AddSingleton<IGitRepositoryClient, GitRepositoryClient>();
         services.AddSingleton<SshKnownHostStore>();
         services.AddSingleton<ISshHostKeyTrustStore>(provider =>
             provider.GetRequiredService<SshKnownHostStore>());
@@ -129,6 +131,7 @@ public static class DesktopComposition
         services.AddSingleton<SqliteFilePreviewPreferences>();
         services.AddSingleton<IFilePreviewPreferences>(provider =>
             provider.GetRequiredService<SqliteFilePreviewPreferences>());
+        services.AddSingleton<IGitPanelPreferences, SqliteGitPanelPreferences>();
         services.AddSingleton<SqliteBrowserProfilePreferences>();
         services.AddSingleton<IBrowserProfilePreferences>(provider =>
             provider.GetRequiredService<SqliteBrowserProfilePreferences>());

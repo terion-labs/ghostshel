@@ -32,6 +32,8 @@ public sealed partial class PanelPlaceholderView : UserControl
 
     public event EventHandler<RoutedEventArgs>? DockerRequested;
 
+    public event EventHandler<RoutedEventArgs>? GitRequested;
+
     public event EventHandler<RoutedEventArgs>? FileViewerRequested;
 
     public event EventHandler<RoutedEventArgs>? ProcessMonitorRequested;
@@ -78,6 +80,9 @@ public sealed partial class PanelPlaceholderView : UserControl
 
     private void OnChooseDockerClick(object? sender, RoutedEventArgs e) =>
         DockerRequested?.Invoke(sender, e);
+
+    private void OnChooseGitClick(object? sender, RoutedEventArgs e) =>
+        GitRequested?.Invoke(sender, e);
 
     private void OnChooseFileViewerClick(object? sender, RoutedEventArgs e) =>
         FileViewerRequested?.Invoke(sender, e);

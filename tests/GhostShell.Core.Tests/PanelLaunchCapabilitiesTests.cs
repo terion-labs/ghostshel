@@ -5,7 +5,7 @@ namespace GhostShell.Core.Tests;
 public sealed class PanelLaunchCapabilitiesTests
 {
     [Fact]
-    public void Local_and_ssh_connections_declare_shell_file_monitor_and_docker_panels()
+    public void Local_and_ssh_connections_declare_shell_file_monitor_docker_and_git_panels()
     {
         var expected = new[]
         {
@@ -14,6 +14,7 @@ public sealed class PanelLaunchCapabilitiesTests
             PanelKind.Statistics,
             PanelKind.ProcessMonitor,
             PanelKind.Docker,
+            PanelKind.Git,
         };
 
         AssertCapabilities(new ConnectionEndpoint.Local(), PanelKind.Terminal, expected);

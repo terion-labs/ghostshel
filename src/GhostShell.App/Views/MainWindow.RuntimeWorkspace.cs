@@ -190,6 +190,38 @@ public sealed partial class MainWindow
         }
     }
 
+    public async Task RequestNewGitAsync()
+    {
+        if (ViewModel.HasOverlay && !await TryCloseOverlayAsync())
+        {
+            return;
+        }
+
+        if (!ViewModel.HasRuntimeWorkspace)
+        {
+            if (ViewModel.Workspaces.FirstOrDefault() is { } workspace)
+            {
+                await OpenRuntimeWorkspaceAsync(token =>
+                    ViewModel.OpenWorkspaceAsync(workspace.Id, token));
+            }
+            else
+            {
+                await OpenDefaultLocalTerminalAsync();
+            }
+        }
+
+        if (ViewModel.RuntimeWorkspace?.ActiveTab is null)
+        {
+            ViewModel.SetError("Open a workspace before adding a Git panel.");
+            return;
+        }
+
+        if (await ViewModel.AddGitPanelAsync(_lifetime.Token))
+        {
+            FocusActivePanel();
+        }
+    }
+
     public Task RequestNewStatisticsAsync() =>
         RequestNewMonitorAsync(PanelKind.Statistics);
 
@@ -203,7 +235,8 @@ public sealed partial class MainWindow
             or PanelKind.Statistics
             or PanelKind.ProcessMonitor
             or PanelKind.DatabaseViewer
-            or PanelKind.Docker))
+            or PanelKind.Docker
+            or PanelKind.Git))
         {
             throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
         }
@@ -237,6 +270,8 @@ public sealed partial class MainWindow
                 await ViewModel.AddDatabaseTabAsync(_lifetime.Token),
             PanelKind.Docker =>
                 await ViewModel.AddDockerTabAsync(_lifetime.Token),
+            PanelKind.Git =>
+                await ViewModel.AddGitTabAsync(_lifetime.Token),
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
         };
         if (added)
@@ -253,6 +288,7 @@ public sealed partial class MainWindow
         PanelKind.ProcessMonitor => RequestNewProcessMonitorAsync(),
         PanelKind.DatabaseViewer => RequestNewDatabaseAsync(),
         PanelKind.Docker => RequestNewDockerAsync(),
+        PanelKind.Git => RequestNewGitAsync(),
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
@@ -1078,6 +1114,14 @@ public sealed partial class MainWindow
         await ChoosePlaceholderAsync(
             sender,
             () => ViewModel.AddDockerPanelAsync(_lifetime.Token));
+    }
+
+    private async void OnPlaceholderGitClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        await ChoosePlaceholderAsync(
+            sender,
+            () => ViewModel.AddGitPanelAsync(_lifetime.Token));
     }
 
     private async void OnDockerShellRequested(
@@ -2279,6 +2323,16 @@ public sealed partial class MainWindow
         _ = sender;
         _ = e;
         if (await ViewModel.AddDockerPanelAsync(_lifetime.Token))
+        {
+            FocusActivePanel();
+        }
+    }
+
+    private async void OnAddGitPanelClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (await ViewModel.AddGitPanelAsync(_lifetime.Token))
         {
             FocusActivePanel();
         }

@@ -12,6 +12,7 @@
     <Project Path="src/GhostShell.Desktop/GhostShell.Desktop.csproj" />
     <Project Path="src/GhostShell.Docking/GhostShell.Docking.csproj" />
     <Project Path="src/GhostShell.Files/GhostShell.Files.csproj" />
+    <Project Path="src/GhostShell.Git/GhostShell.Git.csproj" />
     <Project Path="src/GhostShell.Infrastructure/GhostShell.Infrastructure.csproj" />
     <Project Path="src/GhostShell.Mcp/GhostShell.Mcp.csproj" />
     <Project Path="src/GhostShell.Monitoring/GhostShell.Monitoring.csproj" />
@@ -35,6 +36,7 @@
     <Project Path="tests/GhostShell.Databases.IntegrationTests/GhostShell.Databases.IntegrationTests.csproj" />
     <Project Path="tests/GhostShell.Docker.Tests/GhostShell.Docker.Tests.csproj" />
     <Project Path="tests/GhostShell.Files.Tests/GhostShell.Files.Tests.csproj" />
+    <Project Path="tests/GhostShell.Git.Tests/GhostShell.Git.Tests.csproj" />
     <Project Path="tests/GhostShell.Infrastructure.Tests/GhostShell.Infrastructure.Tests.csproj" />
     <Project Path="tests/GhostShell.Mcp.Tests/GhostShell.Mcp.Tests.csproj" />
     <Project Path="tests/GhostShell.Monitoring.Tests/GhostShell.Monitoring.Tests.csproj" />

@@ -106,6 +106,7 @@
         <controls:ChooserTile Icon="Gauge" Title="Process monitor" Description="Watch running processes" Click="OnNewProcessMonitorClick" AutomationProperties.Name="Open local process monitor" />
         <controls:ChooserTile Icon="Database" Title="Database" Description="Query SQLite, Postgres, MySQL" Click="OnNewDatabaseClick" AutomationProperties.Name="Open a new database viewer" />
         <controls:ChooserTile Icon="Box" Title="Docker" Description="Manage local or remote engines" Click="OnNewDockerClick" AutomationProperties.Name="Open a Docker panel" />
+        <controls:ChooserTile Icon="BranchFork" Title="Git" Description="Stage, commit, and browse history" Click="OnNewGitClick" AutomationProperties.Name="Open a Git panel" />
       </controls:CardGridPanel>
     </StackPanel>
 

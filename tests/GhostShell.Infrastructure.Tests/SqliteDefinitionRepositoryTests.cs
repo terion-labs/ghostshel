@@ -865,6 +865,90 @@ public sealed class SqliteDefinitionRepositoryTests
     }
 
     [Fact]
+    public async Task HostConnectionReferenceProtectsItsSshConnectionDependency()
+    {
+        await using var temporary = TemporaryDatabase.Create();
+        var connections = new SqliteDefinitionRepository<ConnectionProfile>(
+            temporary.Database,
+            TimeProvider.System);
+        var ssh = new ConnectionProfile(
+            new ConnectionId("ssh-bastion"),
+            ConnectionProfile.CurrentSchemaVersion,
+            "Build bastion",
+            new ConnectionEndpoint.Ssh("bastion.example.test", username: "operator"),
+            new ConnectionAuthentication.SshAgent(),
+            ConnectionStartup.Default,
+            ConnectionKeepAlive.Disabled,
+            SshHostKeyPolicy.Strict);
+        Assert.True((await connections.SaveAsync(
+            ssh,
+            expectedRevision: null,
+            CancellationToken.None)).IsSuccess);
+        static ConnectionProfile GitReference(string id, ConnectionId hostId) => new(
+            new ConnectionId(id),
+            ConnectionProfile.CurrentSchemaVersion,
+            $"Repo {id}",
+            ConnectionProfile.DelegatedSshEndpoint,
+            new ConnectionAuthentication.None(),
+            new ConnectionStartup("/repo/app"),
+            ConnectionKeepAlive.Disabled,
+            SshHostKeyPolicy.Strict,
+            preferredPanel: PanelKind.Git,
+            hostConnectionId: hostId);
+        var git = GitReference("git-repo", ssh.Id);
+        Assert.True((await connections.SaveAsync(
+            git,
+            expectedRevision: null,
+            CancellationToken.None)).IsSuccess);
+
+        // A reference to a connection that does not exist is refused outright.
+        var dangling = await connections.SaveAsync(
+            GitReference("git-dangling", new ConnectionId("ssh-vanished")),
+            expectedRevision: null,
+            CancellationToken.None);
+        // A reference to a delegating connection would chain; also refused.
+        var chained = await connections.SaveAsync(
+            GitReference("git-chained", git.Id),
+            expectedRevision: null,
+            CancellationToken.None);
+        // Turning the referenced connection non-SSH would break its dependents.
+        var changedToLocal = await connections.SaveAsync(
+            new ConnectionProfile(
+                ssh.Id,
+                ConnectionProfile.CurrentSchemaVersion,
+                ssh.Name,
+                new ConnectionEndpoint.Local(),
+                new ConnectionAuthentication.None(),
+                ConnectionStartup.Default,
+                ConnectionKeepAlive.Disabled,
+                SshHostKeyPolicy.NotApplicable),
+            expectedRevision: 1,
+            CancellationToken.None);
+        // The referenced connection is protected from deletion.
+        var deletion = await connections.DeleteAsync(
+            ssh.Key,
+            expectedRevision: 1,
+            CancellationToken.None);
+
+        Assert.Equal(DefinitionStoreErrorCode.DependencyConflict, dangling.Error!.Code);
+        Assert.Equal(DefinitionStoreErrorCode.DependencyConflict, chained.Error!.Code);
+        Assert.Equal(DefinitionStoreErrorCode.DependencyConflict, changedToLocal.Error!.Code);
+        Assert.Equal(DefinitionStoreErrorCode.DependencyConflict, deletion.Error!.Code);
+        Assert.IsType<ConnectionEndpoint.Ssh>(
+            (await connections.GetAsync(ssh.Key, CancellationToken.None)).Value!.Value.Endpoint);
+
+        // Deleting the referencing profile first releases the protection.
+        Assert.True((await connections.DeleteAsync(
+            git.Key,
+            expectedRevision: 1,
+            CancellationToken.None)).IsSuccess);
+        Assert.True((await connections.DeleteAsync(
+            ssh.Key,
+            expectedRevision: 1,
+            CancellationToken.None)).IsSuccess);
+    }
+
+    [Fact]
     public async Task AiProviderFallbackOrderIsUniqueAcrossDirectRepositorySaves()
     {
         await using var temporary = TemporaryDatabase.Create();

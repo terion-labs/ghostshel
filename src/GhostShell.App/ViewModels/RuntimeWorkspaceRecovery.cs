@@ -124,6 +124,7 @@ internal static class RuntimeWorkspaceRecoveryCodec
             DatabaseRuntimePanelViewModel or RedisRuntimePanelViewModel =>
                 RuntimePanelRecoveryKind.DatabaseViewer,
             DockerRuntimePanelViewModel => RuntimePanelRecoveryKind.Docker,
+            GitRuntimePanelViewModel => RuntimePanelRecoveryKind.Git,
             PanelPlaceholderViewModel => RuntimePanelRecoveryKind.Placeholder,
             _ => RuntimePanelRecoveryKind.Unavailable,
         };
@@ -135,6 +136,7 @@ internal static class RuntimeWorkspaceRecoveryCodec
         var statistics = panel as StatisticsRuntimePanelViewModel;
         var processes = panel as ProcessMonitorRuntimePanelViewModel;
         var docker = panel as DockerRuntimePanelViewModel;
+        var git = panel as GitRuntimePanelViewModel;
         return new RuntimePanelRecoveryPayload(
             panel.Id.Value,
             kind,
@@ -146,12 +148,14 @@ internal static class RuntimeWorkspaceRecoveryCodec
                 ?? statistics?.ConnectionId.Value
                 ?? processes?.ConnectionId.Value
                 ?? docker?.ConnectionId.Value
+                ?? git?.ConnectionId.Value
                 ?? database?.TunnelConnectionId?.Value
                 ?? redis?.TunnelConnectionId?.Value,
             terminal?.RecoveryStartupLocation
                 ?? browser?.CurrentAddress.ToString()
                 ?? database?.RecoveryTarget
-                ?? redis?.RecoveryTarget,
+                ?? redis?.RecoveryTarget
+                ?? (git is { IsRepositoryOpen: true } ? git.RepositoryRoot : null),
             file?.SelectedProfile?.Id ?? file?.CurrentLocation?.ProviderProfileId,
             file?.CurrentLocation is { } location
                 ? RuntimeFileLocationRecoveryPayload.Capture(location)
@@ -410,6 +414,15 @@ internal static class RuntimeWorkspaceRecoveryCodec
                 && panel.FileLocation is null
                 && !panel.ShowHidden
                 && panel.Filter is null,
+            RuntimePanelRecoveryKind.Git =>
+                panel.Multiplexer is null
+                && panel.KindLabel is null
+                && IsIdentifier(panel.ConnectionId)
+                && IsOptionalText(panel.StartupLocation, 4_096)
+                && panel.FileProviderProfileId is null
+                && panel.FileLocation is null
+                && !panel.ShowHidden
+                && panel.Filter is null,
             _ => false,
         };
         if (!IsIdentifier(panel.Key)
@@ -644,6 +657,7 @@ internal enum RuntimePanelRecoveryKind
     Placeholder = 6,
     DatabaseViewer = 7,
     Docker = 8,
+    Git = 9,
 }
 
 internal sealed record RuntimePanelRecoveryPayload(

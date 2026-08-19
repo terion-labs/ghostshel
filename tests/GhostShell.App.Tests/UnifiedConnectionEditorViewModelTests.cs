@@ -99,6 +99,412 @@ public sealed class UnifiedConnectionEditorViewModelTests
     }
 
     [Fact]
+    public void Git_types_join_the_terminal_family_as_their_own_group()
+    {
+        var editor = CreateEditor();
+
+        Assert.Contains(editor.TypeOptions, option => string.Equals(option.DisplayName, "Git · Local repository", StringComparison.Ordinal));
+        Assert.Contains(editor.TypeOptions, option => string.Equals(option.DisplayName, "Git · SSH", StringComparison.Ordinal));
+
+        editor.SelectedType = editor.TypeOptions
+            .Single(option => string.Equals(option.DisplayName, "Git · SSH", StringComparison.Ordinal));
+
+        Assert.True(editor.IsTerminal);
+        Assert.Equal(ConnectionKind.Ssh, editor.Terminal.Kind);
+        Assert.True(editor.Terminal.OpensGitRepository);
+        Assert.True(editor.Terminal.IsSsh);
+        Assert.False(editor.Terminal.ShowsStartupOptions);
+        Assert.Equal("Run diagnostics", editor.TestLabel);
+
+        // Leaving the Git group clears the repository mode again.
+        editor.SelectedType = editor.TypeOptions
+            .Single(option => string.Equals(option.DisplayName, "Terminal · SSH", StringComparison.Ordinal));
+
+        Assert.False(editor.Terminal.OpensGitRepository);
+        Assert.True(editor.Terminal.ShowsStartupOptions);
+    }
+
+    [Fact]
+    public void A_git_type_saves_a_profile_that_opens_its_repository()
+    {
+        var editor = CreateEditor();
+        editor.Name = "GhostSHELL repo";
+        editor.SelectedType = editor.TypeOptions
+            .Single(option => string.Equals(option.DisplayName, "Git · Local repository", StringComparison.Ordinal));
+
+        // The repository path is required before the profile can be built.
+        Assert.Throws<ArgumentException>(() => editor.CreateSaveResult());
+
+        editor.Terminal.RepositoryPath = "  /repo/ghostshell  ";
+        var result = Assert.IsType<UnifiedConnectionEditorResult.Terminal>(
+            editor.CreateSaveResult());
+        var profile = result.Request.Profile;
+
+        Assert.Equal(ConnectionKind.Local, profile.ConnectionKind);
+        Assert.Equal(PanelKind.Git, profile.PreferredPanel);
+        Assert.Equal("/repo/ghostshell", profile.Startup.Directory);
+        Assert.Equal(PanelKind.Git, profile.PanelLaunchCapabilities.DefaultPanel);
+        Assert.Contains(PanelKind.Terminal, profile.PanelLaunchCapabilities.SupportedPanels);
+    }
+
+    [Fact]
+    public void A_git_ssh_type_validates_the_host_like_a_terminal_ssh_type()
+    {
+        var editor = CreateEditor();
+        editor.Name = "Repo over SSH";
+        editor.SelectedType = editor.TypeOptions
+            .Single(option => string.Equals(option.DisplayName, "Git · SSH", StringComparison.Ordinal));
+        editor.Terminal.RepositoryPath = "/srv/repo";
+
+        Assert.Throws<ArgumentException>(() => editor.CreateSaveResult());
+
+        editor.Terminal.Host = "bastion.example";
+        var profile = Assert.IsType<UnifiedConnectionEditorResult.Terminal>(
+            editor.CreateSaveResult()).Request.Profile;
+
+        Assert.Equal(PanelKind.Git, profile.PreferredPanel);
+        Assert.Equal("/srv/repo", profile.Startup.Directory);
+        var ssh = Assert.IsType<ConnectionEndpoint.Ssh>(profile.Endpoint);
+        Assert.Equal("bastion.example", ssh.Host);
+    }
+
+    [Fact]
+    public void An_existing_git_connection_round_trips_through_the_editor()
+    {
+        var existing = new ConnectionProfile(
+            ConnectionId.New(),
+            ConnectionProfile.CurrentSchemaVersion,
+            "Repo over SSH",
+            new ConnectionEndpoint.Ssh("bastion.example", 2202, "ops"),
+            new ConnectionAuthentication.SshAgent(),
+            new ConnectionStartup("/srv/repo"),
+            ConnectionKeepAlive.Disabled,
+            SshHostKeyPolicy.AcceptNew,
+            preferredPanel: PanelKind.Git);
+        var terminal = new ConnectionEditorViewModel(
+            new StubConnectionRuntime(),
+            existing,
+            expectedRevision: 3);
+        var editor = new UnifiedConnectionEditorViewModel(
+            terminal,
+            files: null,
+            database: null,
+            lockedFamily: SavedConnectionFamily.Terminal);
+
+        Assert.Equal("Git · SSH", editor.SelectedType.DisplayName);
+        Assert.True(terminal.OpensGitRepository);
+        Assert.Equal("/srv/repo", terminal.RepositoryPath);
+        Assert.Equal("bastion.example", terminal.Host);
+        Assert.Equal(2202, terminal.Port);
+        Assert.Equal("ops", terminal.Username);
+
+        var saved = Assert.IsType<UnifiedConnectionEditorResult.Terminal>(
+            editor.CreateSaveResult());
+        Assert.Equal(existing.Id, saved.Request.Profile.Id);
+        Assert.Equal(PanelKind.Git, saved.Request.Profile.PreferredPanel);
+        Assert.Equal("/srv/repo", saved.Request.Profile.Startup.Directory);
+        Assert.Equal(3, saved.Request.ExpectedRevision!.Value);
+    }
+
+    [Fact]
+    public void Repository_browsing_needs_the_git_client_and_a_supported_endpoint()
+    {
+        var withoutClient = new ConnectionEditorViewModel(new StubConnectionRuntime())
+        {
+            OpensGitRepository = true,
+        };
+        Assert.False(withoutClient.CanBrowseRepository);
+        Assert.Throws<InvalidOperationException>(() => withoutClient.CreateRepositoryPicker());
+
+        var terminal = new ConnectionEditorViewModel(
+            new StubConnectionRuntime(),
+            gitClient: new FakeGitRepositoryClient())
+        {
+            OpensGitRepository = true,
+            RepositoryPath = "/repo/ghostshell",
+        };
+        Assert.True(terminal.CanBrowseRepository);
+        Assert.NotNull(terminal.CreateRepositoryPicker());
+
+        terminal.Kind = ConnectionKind.Docker;
+        Assert.False(terminal.CanBrowseRepository);
+    }
+
+    [Fact]
+    public async Task Git_diagnostics_also_prove_the_repository_opens()
+    {
+        var client = new FakeGitRepositoryClient();
+        var terminal = new ConnectionEditorViewModel(
+            new StubConnectionRuntime(),
+            gitClient: client)
+        {
+            Name = "GhostSHELL repo",
+            OpensGitRepository = true,
+            RepositoryPath = "/repo/ghostshell",
+        };
+
+        await terminal.TestAsync(CancellationToken.None);
+
+        Assert.Equal("Repository opened", terminal.TestStatus);
+        Assert.Contains("/repo", terminal.TestDetail, StringComparison.Ordinal);
+
+        client.FailNextOpen = true;
+        await terminal.TestAsync(CancellationToken.None);
+
+        Assert.Equal("Repository not opened", terminal.TestStatus);
+        Assert.Contains("refusal", terminal.TestDetail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Saved_ssh_connections_offer_a_reference_source_for_git_ssh_only()
+    {
+        var bastion = SshConnection("bastion");
+        var terminal = new ConnectionEditorViewModel(
+            new StubConnectionRuntime(),
+            savedConnections:
+            [
+                bastion,
+                LocalConnection("local shell"),
+                GitReferenceConnection(bastion.Id, "already a reference"),
+            ]);
+
+        // Only standalone SSH-kind saved connections appear, after "Enter
+        // manually": a profile that already delegates cannot be a source, so
+        // references never chain.
+        Assert.Equal(
+            ["Enter manually", "bastion"],
+            [.. terminal.SavedSshSources.Select(option => option.DisplayName)]);
+        Assert.Equal(SavedSshSourceOption.Manual, terminal.SelectedSavedSshSource);
+
+        // The selector belongs to the Git · SSH type alone.
+        Assert.False(terminal.ShowsSavedSshSources);
+        terminal.Kind = ConnectionKind.Ssh;
+        Assert.False(terminal.ShowsSavedSshSources);
+        terminal.OpensGitRepository = true;
+        Assert.True(terminal.ShowsSavedSshSources);
+        terminal.Kind = ConnectionKind.Local;
+        Assert.False(terminal.ShowsSavedSshSources);
+    }
+
+    [Fact]
+    public void Choosing_a_saved_connection_folds_the_endpoint_fields_behind_a_summary()
+    {
+        var terminal = new ConnectionEditorViewModel(
+            new StubConnectionRuntime(),
+            savedConnections: [SshConnection("bastion")])
+        {
+            Kind = ConnectionKind.Ssh,
+            OpensGitRepository = true,
+        };
+
+        // Manual entry shows the fields; a chosen source speaks for them, and
+        // the summary reads the referenced connection's endpoint, not the
+        // fields, which stay untouched.
+        Assert.True(terminal.ShowsSshEndpointFields);
+        terminal.SelectedSavedSshSource = terminal.SavedSshSources[1];
+        Assert.False(terminal.ShowsSshEndpointFields);
+        Assert.Equal("ops@bastion.example · port 22", terminal.SavedSshSourceSummary);
+        Assert.Equal(string.Empty, terminal.Host);
+
+        // Returning to manual entry brings the fields back, still untouched.
+        terminal.SelectedSavedSshSource = SavedSshSourceOption.Manual;
+        Assert.True(terminal.ShowsSshEndpointFields);
+        Assert.Equal(string.Empty, terminal.Host);
+    }
+
+    [Fact]
+    public void Selecting_a_saved_connection_stores_a_reference_not_a_copy()
+    {
+        var source = new ConnectionProfile(
+            ConnectionId.New(),
+            ConnectionProfile.CurrentSchemaVersion,
+            "bastion",
+            new ConnectionEndpoint.Ssh("bastion.example", 2202, "ops"),
+            new ConnectionAuthentication.PrivateKey(
+                new SecretRef("key-ref"),
+                new SecretRef("phrase-ref")),
+            ConnectionStartup.Default,
+            ConnectionKeepAlive.Disabled,
+            SshHostKeyPolicy.AcceptNew);
+        var terminal = new ConnectionEditorViewModel(
+            new StubConnectionRuntime(),
+            savedConnections: [source])
+        {
+            Name = "Repo over SSH",
+            Kind = ConnectionKind.Ssh,
+            OpensGitRepository = true,
+            RepositoryPath = "/srv/repo",
+        };
+
+        terminal.SelectedSavedSshSource = terminal.SavedSshSources[1];
+
+        // The profile references the source and stores no endpoint or
+        // credentials of its own — only the stand-in the schema requires.
+        var profile = terminal.CreateSaveRequest().Profile;
+        Assert.Equal(source.Id, profile.HostConnectionId);
+        Assert.NotEqual(source.Id, profile.Id);
+        Assert.Equal(ConnectionProfile.DelegatedSshEndpoint, profile.Endpoint);
+        Assert.IsType<ConnectionAuthentication.None>(profile.Authentication);
+        Assert.Equal("/srv/repo", profile.Startup.Directory);
+        Assert.Equal(PanelKind.Git, profile.PreferredPanel);
+
+        // Selecting never wrote into the endpoint fields.
+        Assert.Equal(string.Empty, terminal.Host);
+        Assert.Equal(string.Empty, terminal.Username);
+
+        // Resolution at use hands back the source's current endpoint and
+        // credentials under this profile's identity and repository path.
+        var resolved = profile.ResolveHostConnection(
+            id => id == source.Id ? source : null);
+        Assert.NotNull(resolved);
+        Assert.Equal(profile.Id, resolved!.Id);
+        var ssh = Assert.IsType<ConnectionEndpoint.Ssh>(resolved.Endpoint);
+        Assert.Equal("bastion.example", ssh.Host);
+        Assert.Equal(2202, ssh.Port);
+        Assert.Equal(source.Authentication, resolved.Authentication);
+        Assert.Equal(SshHostKeyPolicy.AcceptNew, resolved.HostKeyPolicy);
+        Assert.Equal("/srv/repo", resolved.Startup.Directory);
+    }
+
+    [Fact]
+    public void Returning_to_manual_entry_builds_a_standalone_profile_from_the_fields()
+    {
+        var terminal = new ConnectionEditorViewModel(
+            new StubConnectionRuntime(),
+            savedConnections: [SshConnection("bastion")])
+        {
+            Name = "Repo over SSH",
+            Kind = ConnectionKind.Ssh,
+            OpensGitRepository = true,
+            RepositoryPath = "/srv/repo",
+        };
+
+        terminal.SelectedSavedSshSource = terminal.SavedSshSources[1];
+        terminal.SelectedSavedSshSource = SavedSshSourceOption.Manual;
+        terminal.Host = "edited.example";
+
+        var profile = terminal.CreateSaveRequest().Profile;
+        Assert.Null(profile.HostConnectionId);
+        var ssh = Assert.IsType<ConnectionEndpoint.Ssh>(profile.Endpoint);
+        Assert.Equal("edited.example", ssh.Host);
+    }
+
+    [Fact]
+    public void A_reference_profile_reopens_with_the_selector_on_its_source()
+    {
+        var source = SshConnection("bastion");
+        var existing = GitReferenceConnection(source.Id);
+        var terminal = new ConnectionEditorViewModel(
+            new StubConnectionRuntime(),
+            existing,
+            expectedRevision: 3,
+            savedConnections: [source, existing]);
+
+        Assert.Equal("bastion", terminal.SelectedSavedSshSource.DisplayName);
+        Assert.False(terminal.ShowsSshEndpointFields);
+        // The summary reflects the source's CURRENT endpoint, and the stored
+        // stand-in endpoint never leaks into the fields.
+        Assert.Equal("ops@bastion.example · port 22", terminal.SavedSshSourceSummary);
+        Assert.Equal(string.Empty, terminal.Host);
+
+        var saved = terminal.CreateSaveRequest().Profile;
+        Assert.Equal(existing.Id, saved.Id);
+        Assert.Equal(source.Id, saved.HostConnectionId);
+    }
+
+    [Fact]
+    public void A_reference_profile_with_a_missing_source_falls_back_to_manual_entry()
+    {
+        var existing = GitReferenceConnection(ConnectionId.New());
+        var terminal = new ConnectionEditorViewModel(
+            new StubConnectionRuntime(),
+            existing,
+            expectedRevision: 3,
+            savedConnections: [existing, SshConnection("bastion")]);
+
+        Assert.Equal(SavedSshSourceOption.Manual, terminal.SelectedSavedSshSource);
+        Assert.True(terminal.ShowsSshEndpointFields);
+        Assert.Equal(string.Empty, terminal.Host);
+        Assert.Equal("Referenced connection missing", terminal.TestStatus);
+        Assert.Contains("no longer exists", terminal.TestDetail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Git_diagnostics_resolve_the_referenced_connection()
+    {
+        var runtime = new StubConnectionRuntime();
+        var client = new FakeGitRepositoryClient();
+        var terminal = new ConnectionEditorViewModel(
+            runtime,
+            gitClient: client,
+            savedConnections: [SshConnection("bastion")])
+        {
+            Name = "Repo over SSH",
+            Kind = ConnectionKind.Ssh,
+            OpensGitRepository = true,
+            RepositoryPath = "/srv/repo",
+        };
+        terminal.SelectedSavedSshSource = terminal.SavedSshSources[1];
+
+        await terminal.TestAsync(CancellationToken.None);
+
+        // The test ran against the referenced endpoint, not the stand-in, and
+        // the repository probe still proved the path opens on that target.
+        var tested = Assert.IsType<ConnectionEndpoint.Ssh>(
+            runtime.LastTestedProfile!.Endpoint);
+        Assert.Equal("bastion.example", tested.Host);
+        Assert.IsType<ConnectionAuthentication.SshAgent>(
+            runtime.LastTestedProfile.Authentication);
+        Assert.Equal("Repository opened", terminal.TestStatus);
+    }
+
+    [Fact]
+    public void The_saved_connection_selector_hides_without_ssh_connections()
+    {
+        var terminal = new ConnectionEditorViewModel(
+            new StubConnectionRuntime(),
+            savedConnections: [LocalConnection("local shell")])
+        {
+            Kind = ConnectionKind.Ssh,
+            OpensGitRepository = true,
+        };
+
+        Assert.Equal(
+            ["Enter manually"],
+            [.. terminal.SavedSshSources.Select(option => option.DisplayName)]);
+        Assert.False(terminal.ShowsSavedSshSources);
+    }
+
+    [Fact]
+    public void Editing_an_existing_git_ssh_profile_defaults_to_manual_entry()
+    {
+        var existing = new ConnectionProfile(
+            ConnectionId.New(),
+            ConnectionProfile.CurrentSchemaVersion,
+            "Repo over SSH",
+            new ConnectionEndpoint.Ssh("bastion.example", 2202, "ops"),
+            new ConnectionAuthentication.SshAgent(),
+            new ConnectionStartup("/srv/repo"),
+            ConnectionKeepAlive.Disabled,
+            SshHostKeyPolicy.AcceptNew,
+            preferredPanel: PanelKind.Git);
+        var terminal = new ConnectionEditorViewModel(
+            new StubConnectionRuntime(),
+            existing,
+            expectedRevision: 3,
+            savedConnections: [existing, SshConnection("bastion")]);
+
+        // The fields already hold the profile; nothing was copied over them,
+        // and the profile never offers itself as a source.
+        Assert.Equal(SavedSshSourceOption.Manual, terminal.SelectedSavedSshSource);
+        Assert.Equal(
+            ["Enter manually", "bastion"],
+            [.. terminal.SavedSshSources.Select(option => option.DisplayName)]);
+        Assert.Equal("bastion.example", terminal.Host);
+        Assert.Equal(2202, terminal.Port);
+    }
+
+    [Fact]
     public void Database_editor_round_trips_an_existing_profile()
     {
         var tunnel = SshConnection("bastion");
@@ -417,8 +823,28 @@ public sealed class UnifiedConnectionEditorViewModelTests
         ConnectionKeepAlive.Disabled,
         SshHostKeyPolicy.NotApplicable);
 
+    /// <summary>
+    /// A Git · SSH profile that delegates its endpoint to a saved connection:
+    /// stand-in endpoint, no credentials of its own, repository path kept.
+    /// </summary>
+    private static ConnectionProfile GitReferenceConnection(
+        ConnectionId hostConnectionId,
+        string name = "Repo over SSH") => new(
+        ConnectionId.New(),
+        ConnectionProfile.CurrentSchemaVersion,
+        name,
+        ConnectionProfile.DelegatedSshEndpoint,
+        new ConnectionAuthentication.None(),
+        new ConnectionStartup("/srv/repo"),
+        ConnectionKeepAlive.Disabled,
+        SshHostKeyPolicy.Strict,
+        preferredPanel: PanelKind.Git,
+        hostConnectionId: hostConnectionId);
+
     private sealed class StubConnectionRuntime : IConnectionRuntime
     {
+        public ConnectionProfile? LastTestedProfile { get; private set; }
+
         public ValueTask<ConnectionRuntimeResult<ConnectionOpenPlan>> PlanOpenAsync(
             ConnectionProfile profile,
             IProgress<ConnectionProgress>? progress,
@@ -428,13 +854,16 @@ public sealed class UnifiedConnectionEditorViewModelTests
         public ValueTask<ConnectionRuntimeResult<ConnectionTestReport>> TestAsync(
             ConnectionProfile profile,
             IProgress<ConnectionProgress>? progress,
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult(ConnectionRuntimeResult<ConnectionTestReport>.Succeed(
+            CancellationToken cancellationToken)
+        {
+            LastTestedProfile = profile;
+            return ValueTask.FromResult(ConnectionRuntimeResult<ConnectionTestReport>.Succeed(
                 new ConnectionTestReport(
                     profile.Id,
                     profile.ConnectionKind,
                     ConnectionTestVerification.RuntimeAvailable,
                     false)));
+        }
     }
 
     private sealed class StubProviderRuntime : IFileProviderProfileRuntime
