@@ -1246,7 +1246,17 @@ internal sealed class QaDatabasePanelClient : IDatabasePanelClient
 /// </summary>
 internal sealed class QaStatisticsPreview
 {
-    public bool IsActive => false;
+    public string Title => "Statistics";
+
+    public bool IsActive => true;
+
+    public bool HasAttention => false;
+
+    public bool IsAgentActive => false;
+
+    public bool IsNotificationPulseActive => false;
+
+    public bool IsZoomed => false;
 
     public bool ShowContent => true;
 
@@ -1261,6 +1271,10 @@ internal sealed class QaStatisticsPreview
     public string CpuText => "3.8%";
 
     public string MemoryText => "101.9 GiB";
+
+    public string NetworkReceivedText => "4.6 MiB/s";
+
+    public string NetworkSentText => "2.3 MiB/s";
 
     public string ProcessCountText => "1 180";
 
@@ -1282,11 +1296,17 @@ internal sealed class QaStatisticsPreview
 
     public string IssueMessage => string.Empty;
 
-    public IReadOnlyList<double> CpuHistory { get; } =
+    public IReadOnlyList<double?> CpuHistory { get; } =
         [4.1, 3.6, 5.2, 3.9, 4.4, 3.2, 3.8, 4.9, 3.5, 3.8];
 
-    public IReadOnlyList<double> MemoryHistory { get; } =
+    public IReadOnlyList<double?> MemoryHistory { get; } =
         [101.2, 101.4, 101.3, 101.6, 101.5, 101.8, 101.7, 101.9];
+
+    public IReadOnlyList<double?> NetworkReceivedHistory { get; } =
+        [1.8, 2.1, 3.4, 2.7, 4.1, 2.9, 3.6, 5.2, 3.8, 4.6];
+
+    public IReadOnlyList<double?> NetworkSentHistory { get; } =
+        [0.9, 1.1, 1.7, 1.3, 2.2, 1.5, 1.8, 2.6, 1.9, 2.3];
 }
 
 /// <summary>
@@ -1307,7 +1327,17 @@ internal sealed class QaProcessMonitorPreview
             $"PID {ProcessId}, {Name}, CPU {Cpu}, memory {Memory}, started {Started}.";
     }
 
-    public bool IsActive => false;
+    public string Title => "Process Monitor";
+
+    public bool IsActive => true;
+
+    public bool HasAttention => false;
+
+    public bool IsAgentActive => false;
+
+    public bool IsNotificationPulseActive => false;
+
+    public bool IsZoomed => false;
 
     public bool IsVisibleInLayout => true;
 

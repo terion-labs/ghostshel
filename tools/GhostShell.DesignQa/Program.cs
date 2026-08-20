@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Controls.Templates;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -337,6 +338,24 @@ internal sealed class QaApplication : Avalonia.Application
             vm.ToggleAgentPanel();
             AgentProfiles.PublishSampleProfile();
             AgentRuntime.PublishSampleCapabilityRequest();
+        }),
+        // The local utility panels against deterministic data. These are full
+        // workspace routes rather than component probes so the website receives
+        // the tab strip, rail, panel chrome, and product content together.
+        new("workspace-file-viewer", vm =>
+        {
+            vm.ShowWorkspace();
+            AddSampleFilePanel(vm);
+        }, PrepareCapture: SelectFileViewerPreview),
+        new("workspace-statistics", vm =>
+        {
+            vm.ShowWorkspace();
+            AddSampleStatisticsPanel(vm);
+        }),
+        new("workspace-process-monitor", vm =>
+        {
+            vm.ShowWorkspace();
+            AddSampleProcessMonitorPanel(vm);
         }),
         // The Docker browser with realistic engine data: navigation, selected
         // container, lifecycle affordances, inspection rows, and live metrics.
@@ -811,7 +830,8 @@ internal sealed class QaApplication : Avalonia.Application
         {
             foreach (var sampleTab in workspace.Tabs
                          .Where(tab => tab.Id.Value is
-                             "qa-tab-database" or "qa-tab-docker" or "qa-tab-git"
+                             "qa-tab-database" or "qa-tab-docker" or "qa-tab-file-viewer"
+                             or "qa-tab-git" or "qa-tab-process-monitor" or "qa-tab-statistics"
                              || tab.Id.Value.StartsWith("qa-tab-redis-", StringComparison.Ordinal))
                          .ToArray())
             {
@@ -2038,6 +2058,12 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
             WindowStartupLocation = WindowStartupLocation.Manual,
             Position = new PixelPoint(40, 40),
         };
+        window.DataTemplates.Add(
+            new FuncDataTemplate<WebsiteMonitoringRuntimePanelViewModel>(
+                static (panel, _) => new WebsiteMonitoringRuntimePanelView
+                {
+                    DataContext = panel,
+                }));
         if (Program.IsWebsiteExport)
         {
             WebsiteScreenshotExport.PrepareWindow(window);
@@ -2296,6 +2322,90 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
             .Invoke(workspace, [tab]);
     }
 
+    private static void AddSampleFilePanel(MainWindowViewModel viewModel)
+    {
+        if (viewModel.RuntimeWorkspace is not { } workspace)
+        {
+            throw new InvalidOperationException(
+                "The File Viewer route needs a runtime workspace.");
+        }
+
+        var tab = new RuntimeTabViewModel(
+            new TabInstanceId("qa-tab-file-viewer"),
+            "File Viewer",
+            "Local");
+        var panel = CreateSampleFilePanel();
+        tab.AddPanel(panel);
+        _ = tab.ActivatePanel(panel.Id);
+        tab.NotifyPanelLayoutChanged();
+        workspace.Tabs.Add(tab);
+
+        ActivateTab(workspace, tab);
+    }
+
+    private static void AddSampleStatisticsPanel(MainWindowViewModel viewModel)
+    {
+        if (viewModel.RuntimeWorkspace is not { } workspace)
+        {
+            throw new InvalidOperationException(
+                "The Statistics route needs a runtime workspace.");
+        }
+
+        var tab = new RuntimeTabViewModel(
+            new TabInstanceId("qa-tab-statistics"),
+            "Statistics",
+            "Local");
+        var panel = new WebsiteMonitoringRuntimePanelViewModel(
+            new PanelInstanceId("qa-panel-statistics"),
+            PanelKind.Statistics,
+            "Statistics",
+            "Statistics");
+        tab.AddPanel(panel);
+        _ = tab.ActivatePanel(panel.Id);
+        tab.NotifyPanelLayoutChanged();
+        workspace.Tabs.Add(tab);
+        ActivateTab(workspace, tab);
+    }
+
+    private static void AddSampleProcessMonitorPanel(MainWindowViewModel viewModel)
+    {
+        if (viewModel.RuntimeWorkspace is not { } workspace)
+        {
+            throw new InvalidOperationException(
+                "The Process Monitor route needs a runtime workspace.");
+        }
+
+        var tab = new RuntimeTabViewModel(
+            new TabInstanceId("qa-tab-process-monitor"),
+            "Process Monitor",
+            "Local");
+        var panel = new WebsiteMonitoringRuntimePanelViewModel(
+            new PanelInstanceId("qa-panel-process-monitor"),
+            PanelKind.ProcessMonitor,
+            "Process Monitor",
+            "Process monitor");
+        tab.AddPanel(panel);
+        _ = tab.ActivatePanel(panel.Id);
+        tab.NotifyPanelLayoutChanged();
+        workspace.Tabs.Add(tab);
+        ActivateTab(workspace, tab);
+    }
+
+    private static void ActivateTab(
+        RuntimeWorkspaceViewModel workspace,
+        RuntimeTabViewModel tab)
+    {
+        foreach (var candidate in workspace.Tabs)
+        {
+            candidate.IsActive = ReferenceEquals(candidate, tab);
+        }
+
+        typeof(RuntimeWorkspaceViewModel)
+            .GetProperty(nameof(RuntimeWorkspaceViewModel.ActiveTab))!
+            .GetSetMethod(nonPublic: true)!
+            .Invoke(workspace, [tab]);
+    }
+
     private static DockerRuntimePanelViewModel AddSampleDockerPanel(
         MainWindowViewModel viewModel)
     {
@@ -2416,6 +2526,27 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
             files.SelectedEntry = readme;
             _ = files.PreviewSelectedAsync();
         }
+    }
+
+    private static void SelectFileViewerPreview(MainWindow window)
+    {
+        var panel = (window.DataContext as MainWindowViewModel)?
+            .RuntimeWorkspace?
+            .Tabs
+            .SelectMany(tab => tab.Panels)
+            .OfType<FileRuntimePanelViewModel>()
+            .FirstOrDefault();
+        if (panel?.Entries.FirstOrDefault(entry => string.Equals(
+                entry.Name,
+                "notes.md",
+                StringComparison.Ordinal)) is not { } notes)
+        {
+            throw new InvalidOperationException(
+                "The File Viewer route could not select its sample document.");
+        }
+
+        panel.SelectedEntry = notes;
+        Settle(panel.PreviewSelectedAsync());
     }
 
     /// <summary>
@@ -3018,10 +3149,7 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
     /// the disk, the previewers claim by name, and the archive is listed by the
     /// same reader the product uses.
     /// </summary>
-    private static Window CreateFilePanelProbe(
-        string fileName,
-        string? toggleId = null,
-        double width = 900)
+    private static FileRuntimePanelViewModel CreateSampleFilePanel()
     {
         var root = Path.Combine(Program.OutputDirectory, "preview-samples");
         Directory.CreateDirectory(root);
@@ -3066,6 +3194,12 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
             }
         }
 
+        var sampleTimestamp = new DateTime(2026, 8, 20, 18, 15, 0, DateTimeKind.Utc);
+        foreach (var samplePath in Directory.EnumerateFiles(root))
+        {
+            File.SetLastWriteTimeUtc(samplePath, sampleTimestamp);
+        }
+
         var provider = GhostShell.Files.LocalFileProvider.CreateForCurrentPlatform(
             new GhostShell.Files.LocalFileProviderOptions(
                 new GhostShell.Files.FileProviderProfileId("qa.files"),
@@ -3085,12 +3219,21 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
 
         var panel = new FileRuntimePanelViewModel(
             PanelInstanceId.New(),
-            "Files",
+            "File Viewer",
             client,
             archiveReader: new GhostShell.Previews.ArchiveTableOfContents());
         // Pumped rather than blocked on: the panel finishes its work on this
         // very thread, so waiting on it here would wait forever.
         Settle(panel.Initialization);
+        return panel;
+    }
+
+    private static Window CreateFilePanelProbe(
+        string fileName,
+        string? toggleId = null,
+        double width = 900)
+    {
+        var panel = CreateSampleFilePanel();
 
         var view = new GhostShell.App.Views.RuntimePanels.FileRuntimePanelView
         {
