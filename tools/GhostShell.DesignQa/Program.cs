@@ -138,8 +138,9 @@ internal static class Program
             + $"({comparison.Width}x{comparison.Height})");
     }
 
-    private static AppBuilder BuildAvaloniaApp() =>
-        AppBuilder.Configure<QaApplication>()
+    private static AppBuilder BuildAvaloniaApp()
+    {
+        var builder = AppBuilder.Configure<QaApplication>()
             // Headless with real Skia drawing: every capture already renders
             // offscreen through RenderTargetBitmap, so the on-screen windows
             // only ever existed to pump layout — and stole focus doing it.
@@ -147,11 +148,21 @@ internal static class Program
             .UseHeadless(new AvaloniaHeadlessPlatformOptions
             {
                 UseHeadlessDrawing = false,
-            })
-            .WithInterFont()
+            });
+        if (!IsWebsiteExport)
+        {
+            builder = builder.WithInterFont();
+        }
+
+        // Website artwork is generated on macOS and must inherit the same native
+        // default UI font as the real app. WithInterFont replaces that default;
+        // matching density tokens then still look roomier because Inter's text
+        // metrics are wider and taller than the system UI face.
+        return builder
             .ConfigureFonts(fontManager =>
                 fontManager.AddFontCollection(new GhostShellTerminalFontCollection()))
             .LogToTrace();
+    }
 
     private static void VerifyTerminalFont()
     {
@@ -2098,21 +2109,37 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
         // Real panels, so the panel card and its header are actually rendered. The
         // harness cannot run a PTY, but the chrome around one is Avalonia's and is
         // exactly where the rounded corner is either clipped or not.
-        var panels = new[]
-        {
-            new UnavailableRuntimePanelViewModel(
-                new PanelInstanceId("qa-panel-terminal"),
-                PanelKind.Terminal,
-                "production-api",
-                "LOCAL",
-                "This harness renders panel chrome without a live session."),
-            new UnavailableRuntimePanelViewModel(
-                new PanelInstanceId("qa-panel-browser"),
-                PanelKind.Browser,
-                "Browser",
-                "BROWSER",
-                "This harness renders panel chrome without a live session."),
-        };
+        RuntimePanelViewModel[] panels = Program.IsWebsiteExport
+            ?
+            [
+                new WebsiteDummyRuntimePanelViewModel(
+                    new PanelInstanceId("qa-panel-terminal"),
+                    PanelKind.Terminal,
+                    "production-api",
+                    "LOCAL",
+                    WebsiteDummyPanelContent.Terminal),
+                new WebsiteDummyRuntimePanelViewModel(
+                    new PanelInstanceId("qa-panel-browser"),
+                    PanelKind.Browser,
+                    "Browser",
+                    "BROWSER",
+                    WebsiteDummyPanelContent.Browser),
+            ]
+            :
+            [
+                new UnavailableRuntimePanelViewModel(
+                    new PanelInstanceId("qa-panel-terminal"),
+                    PanelKind.Terminal,
+                    "production-api",
+                    "LOCAL",
+                    "This harness renders panel chrome without a live session."),
+                new UnavailableRuntimePanelViewModel(
+                    new PanelInstanceId("qa-panel-browser"),
+                    PanelKind.Browser,
+                    "Browser",
+                    "BROWSER",
+                    "This harness renders panel chrome without a live session."),
+            ];
         foreach (var panel in panels)
         {
             workspace.Tabs[0].AddPanel(panel);

@@ -1,0 +1,103 @@
+<UserControl
+    x:Class="GhostShell.DesignQa.WebsiteDummyRuntimePanelView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GhostShell.App.Controls"
+    xmlns:icons="using:FluentIcons.Avalonia"
+    xmlns:local="using:GhostShell.DesignQa"
+    x:DataType="local:WebsiteDummyRuntimePanelViewModel"
+    Focusable="False"
+    HorizontalContentAlignment="Stretch"
+    VerticalContentAlignment="Stretch"
+    IsVisible="{Binding IsVisibleInLayout}">
+  <controls:PanelChrome
+      HasAttention="{Binding HasAttention}"
+      IsActive="{Binding IsActive}"
+      IsAgentActive="{Binding IsAgentActive}"
+      IsNotificationPulseActive="{Binding IsNotificationPulseActive}"
+      IsZoomed="{Binding IsZoomed}"
+      Title="{Binding Title}">
+    <controls:PanelChrome.Status>
+      <Border Classes="StatusDot" Background="{DynamicResource ShellSuccessBrush}" />
+    </controls:PanelChrome.Status>
+
+    <Grid Background="{DynamicResource ShellBackgroundBrush}">
+      <Grid IsVisible="{Binding ShowsTerminal}" RowDefinitions="*,Auto">
+        <StackPanel Margin="{controls:Inset Xl}" Spacing="{DynamicResource ShellSpaceSm}">
+          <TextBlock FontFamily="{DynamicResource ShellDataFontFamily}" Foreground="{DynamicResource ShellMutedBrush}" Text="Last login: Thu Aug 20 22:38:14 on ttys004" />
+          <TextBlock FontFamily="{DynamicResource ShellDataFontFamily}" Text="deploy@production-api:~$ systemctl status ghostshell-api" />
+          <TextBlock FontFamily="{DynamicResource ShellDataFontFamily}" Foreground="{DynamicResource ShellSuccessBrush}" Text="● ghostshell-api.service — GhostSHELL production API" />
+          <TextBlock FontFamily="{DynamicResource ShellDataFontFamily}" Text="     Loaded: loaded (/etc/systemd/system/ghostshell-api.service; enabled)" />
+          <TextBlock FontFamily="{DynamicResource ShellDataFontFamily}" Text="     Active: active (running) since Thu 2026-08-20 21:04:18 UTC" />
+          <TextBlock FontFamily="{DynamicResource ShellDataFontFamily}" Foreground="{DynamicResource ShellMutedBrush}" Text="   Main PID: 1842 (dotnet) · Tasks: 24 · Memory: 186.4M" />
+          <TextBlock Margin="{controls:Inset Top=Md}" FontFamily="{DynamicResource ShellDataFontFamily}" Text="deploy@production-api:~$ tail -n 4 /var/log/ghostshell/api.log" />
+          <TextBlock FontFamily="{DynamicResource ShellDataFontFamily}" Foreground="{DynamicResource ShellMutedBrush}" Text="22:41:03 INF request completed  GET /health             200  12ms" />
+          <TextBlock FontFamily="{DynamicResource ShellDataFontFamily}" Foreground="{DynamicResource ShellMutedBrush}" Text="22:41:07 INF deployment healthy  release=2026.08.20.4" />
+          <TextBlock FontFamily="{DynamicResource ShellDataFontFamily}" Foreground="{DynamicResource ShellMutedBrush}" Text="22:41:12 INF request completed  GET /api/workspaces     200  31ms" />
+          <TextBlock FontFamily="{DynamicResource ShellDataFontFamily}" Text="deploy@production-api:~$ _" />
+        </StackPanel>
+        <Border Grid.Row="1" Padding="{controls:Inset Horizontal=Md, Vertical=Sm}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Classes="Muted" FontFamily="{DynamicResource ShellDataFontFamily}" FontSize="{DynamicResource ShellFontSize9}" Text="SSH · deploy@10.0.1.42" />
+            <TextBlock Grid.Column="1" Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Connected · UTF-8" />
+          </Grid>
+        </Border>
+      </Grid>
+
+      <Grid IsVisible="{Binding ShowsBrowser}" RowDefinitions="Auto,*">
+        <Border Padding="{controls:Inset Sm}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,0,0,1">
+          <Grid ColumnDefinitions="Auto,Auto,Auto,*" ColumnSpacing="{DynamicResource ShellSpaceXs}">
+            <Button Classes="IconButton Compact" IsHitTestVisible="False"><icons:SymbolIcon FontSize="{DynamicResource ShellFontSize12}" Symbol="ArrowLeft" /></Button>
+            <Button Grid.Column="1" Classes="IconButton Compact" IsHitTestVisible="False"><icons:SymbolIcon FontSize="{DynamicResource ShellFontSize12}" Symbol="ArrowRight" /></Button>
+            <Button Grid.Column="2" Classes="IconButton Compact" IsHitTestVisible="False"><icons:SymbolIcon FontSize="{DynamicResource ShellFontSize12}" Symbol="ArrowClockwise" /></Button>
+            <Border Grid.Column="3" Margin="{controls:Inset Left=Sm}" Padding="{controls:Inset Horizontal=Md, Vertical=Xs}" Background="{DynamicResource ShellSurfaceRaisedBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="1" CornerRadius="{DynamicResource ShellPillCornerRadius}">
+              <TextBlock VerticalAlignment="Center" Classes="Muted" Text="https://status.ghostshell.dev/releases/2026.08.20" />
+            </Border>
+          </Grid>
+        </Border>
+        <ScrollViewer Grid.Row="1">
+          <StackPanel Margin="{controls:Inset Xl}" Spacing="{DynamicResource ShellSpaceLg}">
+            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+              <TextBlock FontSize="{DynamicResource ShellFontSize24}" FontWeight="SemiBold" Text="Production overview" />
+              <TextBlock Classes="Muted" Text="All systems operational · release 2026.08.20.4" />
+            </StackPanel>
+            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+              <Border Padding="{DynamicResource ShellCardPadding}" Background="{DynamicResource ShellSurfaceRaisedBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="1" CornerRadius="{DynamicResource ShellCardCornerRadius}">
+                <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+                  <Border Width="10" Height="10" HorizontalAlignment="Left" Background="{DynamicResource ShellSuccessBrush}" CornerRadius="99" />
+                  <TextBlock FontWeight="SemiBold" Text="API" />
+                  <TextBlock Classes="Muted" Text="Healthy · 38 ms" />
+                </StackPanel>
+              </Border>
+              <Border Grid.Column="1" Padding="{DynamicResource ShellCardPadding}" Background="{DynamicResource ShellSurfaceRaisedBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="1" CornerRadius="{DynamicResource ShellCardCornerRadius}">
+                <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+                  <Border Width="10" Height="10" HorizontalAlignment="Left" Background="{DynamicResource ShellSuccessBrush}" CornerRadius="99" />
+                  <TextBlock FontWeight="SemiBold" Text="Web" />
+                  <TextBlock Classes="Muted" Text="Healthy · 52 ms" />
+                </StackPanel>
+              </Border>
+              <Border Grid.Column="2" Padding="{DynamicResource ShellCardPadding}" Background="{DynamicResource ShellSurfaceRaisedBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="1" CornerRadius="{DynamicResource ShellCardCornerRadius}">
+                <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+                  <Border Width="10" Height="10" HorizontalAlignment="Left" Background="{DynamicResource ShellSuccessBrush}" CornerRadius="99" />
+                  <TextBlock FontWeight="SemiBold" Text="Database" />
+                  <TextBlock Classes="Muted" Text="Healthy · 14 ms" />
+                </StackPanel>
+              </Border>
+            </Grid>
+            <Border Padding="{DynamicResource ShellCardPadding}" Background="{DynamicResource ShellSurfaceBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="1" CornerRadius="{DynamicResource ShellCardCornerRadius}">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+                  <TextBlock FontWeight="SemiBold" Text="Latest deployment" />
+                  <TextBlock Classes="Muted" Text="production-api · eu-central-1 · 12 minutes ago" />
+                </StackPanel>
+                <Border Grid.Column="1" Padding="{DynamicResource ShellPillPadding}" Background="{DynamicResource ShellSuccessSoftBrush}" CornerRadius="{DynamicResource ShellPillCornerRadius}">
+                  <TextBlock FontSize="{DynamicResource ShellPillFontSize}" Foreground="{DynamicResource ShellSuccessBrush}" Text="Succeeded" />
+                </Border>
+              </Grid>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+    </Grid>
+  </controls:PanelChrome>
+</UserControl>

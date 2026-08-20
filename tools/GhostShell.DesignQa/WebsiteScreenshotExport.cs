@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -26,10 +27,11 @@ internal static class WebsiteScreenshotExport
     public const int PixelHeight = LogicalHeight * Scale;
     private const int RasterDpi = 96;
 
-    // The product enum calls the middle density "Cozy" (the UI calls it
-    // "Normal"). Website artwork always uses that middle/comfortable mode,
-    // never the 1.22x Spacious setting.
-    private const InterfaceDensity ComfortableDensity = InterfaceDensity.Cozy;
+    // The product enum calls the middle density "Cozy"; the UI calls it
+    // "Normal". Website artwork always uses that exact setting, never the
+    // 1.22x Spacious setting.
+    private const InterfaceDensity NormalDensity = InterfaceDensity.Cozy;
+    private const double NormalTextScale = 1;
 
     private const double TrafficLightDiameter = 12;
     private const double TrafficLightTop = 16;
@@ -38,7 +40,7 @@ internal static class WebsiteScreenshotExport
     private const int DialogInset = 72;
 
     private static readonly double CornerRadius =
-        DensityCornerScale.WindowRadius(ComfortableDensity);
+        DensityCornerScale.WindowRadius(NormalDensity);
 
     public static ThemePreference NormalizeTheme(ThemePreference source)
     {
@@ -49,8 +51,8 @@ internal static class WebsiteScreenshotExport
             source.Appearance,
             source.PlatformProfile,
             AccentPreference.GhostShellBronze,
-            source.TextScaleOverride,
-            ComfortableDensity,
+            NormalTextScale,
+            NormalDensity,
             showTabBar: true,
             source.ShowWorkspacesPanel,
             TabStripPlacement.Top,
@@ -78,6 +80,12 @@ internal static class WebsiteScreenshotExport
     public static void PrepareWindow(MainWindow window)
     {
         ArgumentNullException.ThrowIfNull(window);
+        window.DataTemplates.Add(
+            new FuncDataTemplate<WebsiteDummyRuntimePanelViewModel>(
+                static (panel, _) => new WebsiteDummyRuntimePanelView
+                {
+                    DataContext = panel,
+                }));
         window.Background = Brushes.Transparent;
         window.Width = LogicalWidth;
         window.Height = LogicalHeight;

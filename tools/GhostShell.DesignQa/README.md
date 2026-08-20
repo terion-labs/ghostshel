@@ -29,14 +29,20 @@ Pass route names to capture a subset:
 ## Website assets
 
 Website mode exports every coherent app screen at a 1440 × 900 CSS size into a
-Retina 2880 × 1800 PNG. It locks the interface to the middle/comfortable
-spacing mode (not Spacious), forces the runtime tabs to the top, and uses
-GhostSHELL bronze instead of the host accent.
+Retina 2880 × 1800 PNG. It locks the interface to Normal density and 100% text
+scale (not Spacious), forces the runtime tabs to the top, and uses GhostSHELL
+bronze instead of the host accent. On macOS the website path keeps the native
+system UI font instead of replacing it with the headless Inter default, so the
+same density tokens have the same text metrics as the real application.
 Low-level component probes and alternate-density QA comparisons are omitted.
 The shell backdrop keeps its PNG alpha so a site can place its own blurred
 background underneath it. Because the headless platform has no native
 decorations, this mode adds the standard macOS traffic lights and applies the
 same rounded window silhouette to every frame.
+
+Default workspace panels use deterministic terminal and browser previews in
+website mode. The general QA set keeps the real unavailable-adapter state, but
+marketing artwork never substitutes a harness warning for product content.
 
 The Retina pass scales the laid-out visual tree onto a 2× surface. Do not render
 the 1× tree directly at 192 DPI: centered overlays and dialogs receive doubled
