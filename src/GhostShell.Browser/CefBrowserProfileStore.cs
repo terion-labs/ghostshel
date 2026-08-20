@@ -329,43 +329,24 @@ public sealed class CefBrowserProfileStore : IBrowserProfileDataControl, IDispos
 
     internal static void DeleteOwnedDirectory(string directory)
     {
-        if (!Directory.Exists(directory))
+        var root = new DirectoryInfo(directory);
+        if (root.LinkTarget is not null
+            || (root.Exists
+                && root.Attributes.HasFlag(FileAttributes.ReparsePoint)))
+        {
+            throw new IOException(
+                "Browser profile storage root is an unexpected filesystem link.");
+        }
+
+        if (!root.Exists)
         {
             return;
         }
 
-        var root = new DirectoryInfo(directory);
-        if (root.Attributes.HasFlag(FileAttributes.ReparsePoint)
-            || ContainsFileSystemLink(root))
-        {
-            throw new IOException(
-                "Browser profile storage contains an unexpected filesystem link.");
-        }
-
-        Directory.Delete(directory, recursive: true);
-    }
-
-    private static bool ContainsFileSystemLink(DirectoryInfo root)
-    {
-        var pending = new Stack<DirectoryInfo>();
-        pending.Push(root);
-        while (pending.TryPop(out var current))
-        {
-            foreach (var item in current.EnumerateFileSystemInfos())
-            {
-                if (item.Attributes.HasFlag(FileAttributes.ReparsePoint))
-                {
-                    return true;
-                }
-
-                if (item is DirectoryInfo child)
-                {
-                    pending.Push(child);
-                }
-            }
-        }
-
-        return false;
+        // Chromium creates singleton and version symlinks inside its profile.
+        // Recursive Directory.Delete removes those directory entries without
+        // following their targets. Only the root itself must never be a link.
+        root.Delete(recursive: true);
     }
 
     internal readonly record struct ContextKey(

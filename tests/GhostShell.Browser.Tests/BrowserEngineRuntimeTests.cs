@@ -71,6 +71,34 @@ public sealed class BrowserEngineRuntimeTests
     }
 
     [Fact]
+    public void MacRuntimeUsesMockSafeStorageOnlyForEphemeralContexts()
+    {
+        var options = new BrowserEngineRuntimeOptions(
+            Path.Combine("relative", "profile"),
+            Path.Combine("relative", "logs", "cef.log"),
+            "1.0.0");
+        var settings = BrowserEngineRuntime.CreateSettings(options);
+
+        Assert.Equal(
+            "use-mock-keychain",
+            BrowserEngineRuntime.GetMacOsSafeStorageSwitch(
+                isMacOs: true,
+                settings));
+        Assert.Null(BrowserEngineRuntime.GetMacOsSafeStorageSwitch(
+            isMacOs: false,
+            settings));
+
+        var persistentSettings = new Cef.CefSettings
+        {
+            PersistSessionCookies = true,
+        };
+        Assert.Throws<InvalidOperationException>(() =>
+            BrowserEngineRuntime.GetMacOsSafeStorageSwitch(
+                isMacOs: true,
+                persistentSettings));
+    }
+
+    [Fact]
     public void StartupRemovesTheCompleteLegacyPersistentCefRoot()
     {
         var root = Path.Combine(
@@ -107,7 +135,7 @@ public sealed class BrowserEngineRuntimeTests
     }
 
     [Fact]
-    public void LegacyCleanupFailsClosedAtAFileSystemLink()
+    public void LegacyCleanupRemovesChildLinkWithoutFollowingItsTarget()
     {
         if (OperatingSystem.IsWindows())
         {
@@ -129,17 +157,58 @@ public sealed class BrowserEngineRuntimeTests
         Directory.CreateSymbolicLink(Path.Combine(root, "linked"), outside);
         try
         {
-            Assert.Throws<IOException>(() =>
-                BrowserEngineRuntime.PrepareProfileLayout(root));
+            BrowserEngineRuntime.PrepareProfileLayout(root);
 
             Assert.True(File.Exists(outsideFile));
             Assert.True(Directory.Exists(root));
+            Assert.Empty(Directory.EnumerateFileSystemEntries(root));
         }
         finally
         {
             if (Directory.Exists(root))
             {
                 Directory.Delete(root, recursive: true);
+            }
+
+            if (Directory.Exists(outside))
+            {
+                Directory.Delete(outside, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void LegacyCleanupFailsClosedWhenTheRootIsAFileSystemLink()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "ghostshell-cef-layout-tests",
+            Guid.NewGuid().ToString("N"));
+        var outside = Path.Combine(
+            Path.GetTempPath(),
+            "ghostshell-cef-layout-tests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(outside);
+        var outsideFile = Path.Combine(outside, "must-survive");
+        File.WriteAllText(outsideFile, "outside");
+        Directory.CreateSymbolicLink(root, outside);
+        try
+        {
+            Assert.Throws<IOException>(() =>
+                BrowserEngineRuntime.PrepareProfileLayout(root));
+
+            Assert.True(File.Exists(outsideFile));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root);
             }
 
             if (Directory.Exists(outside))

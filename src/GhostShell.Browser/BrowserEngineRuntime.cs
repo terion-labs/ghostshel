@@ -70,7 +70,15 @@ public static class BrowserEngineRuntime
 
             var versions = Cef.GetVersions();
             ValidateVersions(versions);
-            Cef.SetInitSettings(CreateSettings(options));
+            var settings = CreateSettings(options);
+            if (GetMacOsSafeStorageSwitch(
+                    OperatingSystem.IsMacOS(),
+                    settings) is { } safeStorageSwitch)
+            {
+                Cef.AddCommandLineSwitch(safeStorageSwitch);
+            }
+
+            Cef.SetInitSettings(settings);
 
             // Environment.GetCommandLineArgs includes argv[0]. This matters on
             // Linux, where --type=renderer must not accidentally become argv[0].
@@ -171,6 +179,28 @@ public static class BrowserEngineRuntime
             PersistSessionCookies = false,
             RemoteDebuggingPort = 0,
         };
+    }
+
+    internal static string? GetMacOsSafeStorageSwitch(
+        bool isMacOs,
+        Cef.CefSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        if (!isMacOs)
+        {
+            return null;
+        }
+
+        if (settings.CachePath is not null || settings.PersistSessionCookies)
+        {
+            throw new InvalidOperationException(
+                "The mock Chromium keychain is allowed only for ephemeral browser contexts.");
+        }
+
+        // Chromium's real Safe Storage key exists to encrypt durable profile
+        // credentials. GhostSHELL deliberately has no durable CEF contexts,
+        // so touching that key would add an OS prompt without protecting data.
+        return "use-mock-keychain";
     }
 
     private static void PreparePrivateDirectory(string path)

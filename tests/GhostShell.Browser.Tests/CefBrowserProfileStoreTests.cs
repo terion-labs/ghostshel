@@ -86,7 +86,7 @@ public sealed class CefBrowserProfileStoreTests
     }
 
     [Fact]
-    public async Task ClearingFailsClosedAtAnUnexpectedFilesystemLink()
+    public async Task ClearingRemovesChildLinkWithoutFollowingItsTarget()
     {
         if (OperatingSystem.IsWindows())
         {
@@ -110,11 +110,56 @@ public sealed class CefBrowserProfileStoreTests
                 BrowserProfileDataScope.Workspaces,
                 CancellationToken.None);
 
+            Assert.Equal(BrowserProfileClearStatus.Cleared, result.Status);
+            Assert.True(File.Exists(outsideCookie));
+            Assert.False(Directory.Exists(Path.Combine(root, "workspaces")));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+
+            if (Directory.Exists(outside))
+            {
+                Directory.Delete(outside, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ClearingFailsClosedWhenTheScopeRootIsAFileSystemLink()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var root = TemporaryRoot();
+        var outside = TemporaryRoot();
+        var scopeRoot = Path.Combine(root, "workspaces");
+        try
+        {
+            var outsideCookie = Path.Combine(outside, "Cookies");
+            File.WriteAllText(outsideCookie, "must-survive");
+            Directory.CreateSymbolicLink(scopeRoot, outside);
+            using var store = new CefBrowserProfileStore(root);
+
+            var result = await store.ClearAsync(
+                BrowserProfileDataScope.Workspaces,
+                CancellationToken.None);
+
             Assert.Equal(BrowserProfileClearStatus.Failed, result.Status);
             Assert.True(File.Exists(outsideCookie));
         }
         finally
         {
+            if (Directory.Exists(scopeRoot))
+            {
+                Directory.Delete(scopeRoot);
+            }
+
             if (Directory.Exists(root))
             {
                 Directory.Delete(root, recursive: true);
