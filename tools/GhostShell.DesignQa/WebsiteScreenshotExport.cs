@@ -19,8 +19,12 @@ namespace GhostShell.DesignQa;
 /// </summary>
 internal static class WebsiteScreenshotExport
 {
-    public const int Width = 1440;
-    public const int Height = 900;
+    public const int LogicalWidth = 1440;
+    public const int LogicalHeight = 900;
+    public const int Scale = 2;
+    public const int PixelWidth = LogicalWidth * Scale;
+    public const int PixelHeight = LogicalHeight * Scale;
+    public const int Dpi = 96 * Scale;
 
     private const double TrafficLightDiameter = 12;
     private const double TrafficLightTop = 16;
@@ -41,7 +45,7 @@ internal static class WebsiteScreenshotExport
             source.PlatformProfile,
             AccentPreference.GhostShellBronze,
             source.TextScaleOverride,
-            source.Density,
+            InterfaceDensity.Cozy,
             showTabBar: true,
             source.ShowWorkspacesPanel,
             TabStripPlacement.Top,
@@ -70,8 +74,8 @@ internal static class WebsiteScreenshotExport
     {
         ArgumentNullException.ThrowIfNull(window);
         window.Background = Brushes.Transparent;
-        window.Width = Width;
-        window.Height = Height;
+        window.Width = LogicalWidth;
+        window.Height = LogicalHeight;
 
         if (window.Content is not Panel shell)
         {
@@ -106,8 +110,7 @@ internal static class WebsiteScreenshotExport
     public static void WriteDialogFrame(
         MainWindow backdrop,
         Control dialog,
-        PixelSize dialogSize,
-        Vector dialogDpi,
+        PixelSize logicalDialogSize,
         string path)
     {
         ArgumentNullException.ThrowIfNull(backdrop);
@@ -116,9 +119,14 @@ internal static class WebsiteScreenshotExport
 
         using var backdropBytes = Render(
             backdrop,
-            new PixelSize(Width, Height),
-            new Vector(96, 96));
-        using var dialogBytes = Render(dialog, dialogSize, dialogDpi);
+            new PixelSize(PixelWidth, PixelHeight),
+            new Vector(Dpi, Dpi));
+        using var dialogBytes = Render(
+            dialog,
+            new PixelSize(
+                logicalDialogSize.Width * Scale,
+                logicalDialogSize.Height * Scale),
+            new Vector(Dpi, Dpi));
         using var frame = new MagickImage(backdropBytes);
         using var dialogImage = new MagickImage(dialogBytes);
 
@@ -138,8 +146,25 @@ internal static class WebsiteScreenshotExport
         mask.Format = MagickFormat.Png;
         var path = Path.Combine(outputDirectory, "window-chrome-mask.png");
         mask.Write(path);
-        Console.WriteLine($"MASK window chrome -> {path} ({Width}x{Height})");
+        Console.WriteLine($"MASK window chrome -> {path} ({PixelWidth}x{PixelHeight})");
     }
+
+    public static bool IncludesRoute(string name) => name switch
+    {
+        // These are QA comparisons of alternate sizes, densities, focus, or
+        // chrome. They are useful to the product suite but are not app screens.
+        "settings-security" or
+        "workspace-docker-narrow" or
+        "workspace-git-narrow" or
+        "settings-appearance-focused" or
+        "settings-appearance-density-compact" or
+        "settings-appearance-full" or
+        "settings-terminal-full" or
+        "appearance-corners-tight" or
+        "appearance-corners-round" or
+        "workspace-tabs-side" => false,
+        _ => true,
+    };
 
     private static Ellipse TrafficLight(string color, int index)
     {
@@ -168,8 +193,8 @@ internal static class WebsiteScreenshotExport
 
     private static void FitDialog(MagickImage dialog)
     {
-        var maximumWidth = (uint)(Width - (DialogInset * 2));
-        var maximumHeight = (uint)(Height - (DialogInset * 2));
+        var maximumWidth = (uint)(PixelWidth - (DialogInset * Scale * 2));
+        var maximumHeight = (uint)(PixelHeight - (DialogInset * Scale * 2));
         if (dialog.Width <= maximumWidth && dialog.Height <= maximumHeight)
         {
             return;
@@ -184,10 +209,10 @@ internal static class WebsiteScreenshotExport
 
     private static void ApplyWindowShape(MagickImage image)
     {
-        if (image.Width != Width || image.Height != Height)
+        if (image.Width != PixelWidth || image.Height != PixelHeight)
         {
             throw new InvalidOperationException(
-                $"Website frames must be {Width}x{Height}; got {image.Width}x{image.Height}.");
+                $"Website frames must be {PixelWidth}x{PixelHeight}; got {image.Width}x{image.Height}.");
         }
 
         using var mask = CreateWindowMask();
@@ -197,11 +222,17 @@ internal static class WebsiteScreenshotExport
 
     private static MagickImage CreateWindowMask()
     {
-        var mask = new MagickImage(MagickColors.Transparent, Width, Height);
+        var mask = new MagickImage(MagickColors.Transparent, PixelWidth, PixelHeight);
         new Drawables()
             .FillColor(MagickColors.White)
             .StrokeColor(MagickColors.Transparent)
-            .RoundRectangle(0, 0, Width - 1, Height - 1, CornerRadius, CornerRadius)
+            .RoundRectangle(
+                0,
+                0,
+                PixelWidth - 1,
+                PixelHeight - 1,
+                CornerRadius * Scale,
+                CornerRadius * Scale)
             .Draw(mask);
         return mask;
     }

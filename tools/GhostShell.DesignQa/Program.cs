@@ -765,6 +765,79 @@ internal sealed class QaApplication : Avalonia.Application
         }
     }
 
+    private static async Task ResetWebsiteRouteStateAsync(
+        MainWindowViewModel viewModel,
+        MainWindow window)
+    {
+        window.HideDragGhost();
+        viewModel.IsAgentPanelVisible = false;
+        if (viewModel.IsAgentPanelDocked)
+        {
+            await viewModel.ToggleAgentPanelPinAsync(CancellationToken.None);
+            viewModel.IsAgentPanelVisible = false;
+        }
+
+        if (window.GetVisualDescendants()
+                .OfType<Control>()
+                .FirstOrDefault(control => string.Equals(
+                    control.Name,
+                    "FileTransferManager",
+                    StringComparison.Ordinal)) is { } transferManager)
+        {
+            transferManager.IsVisible = false;
+        }
+
+        foreach (var element in window.GetVisualDescendants().OfType<StyledElement>())
+        {
+            var pseudoClasses = typeof(StyledElement).GetProperty(
+                    "PseudoClasses",
+                    BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.GetValue(element) as IPseudoClasses;
+            pseudoClasses?.Remove(":pointerover");
+        }
+
+        if (viewModel.RuntimeWorkspace is { } workspace)
+        {
+            foreach (var sampleTab in workspace.Tabs
+                         .Where(tab => tab.Id.Value is
+                             "qa-tab-database" or "qa-tab-docker" or "qa-tab-git"
+                             || tab.Id.Value.StartsWith("qa-tab-redis-", StringComparison.Ordinal))
+                         .ToArray())
+            {
+                sampleTab.DisposePanels();
+                workspace.Tabs.Remove(sampleTab);
+            }
+
+            if (workspace.Tabs.FirstOrDefault() is { } activeTab)
+            {
+                foreach (var tab in workspace.Tabs)
+                {
+                    tab.IsActive = ReferenceEquals(tab, activeTab);
+                    tab.HasAttention = false;
+                    foreach (var panel in tab.Panels)
+                    {
+                        panel.HasAttention = false;
+                    }
+                }
+
+                typeof(RuntimeWorkspaceViewModel)
+                    .GetProperty(nameof(RuntimeWorkspaceViewModel.ActiveTab))!
+                    .GetSetMethod(nonPublic: true)!
+                    .Invoke(workspace, [activeTab]);
+            }
+
+            workspace.HasAttention = false;
+        }
+
+        for (var index = 0; index < viewModel.Workspaces.Count; index++)
+        {
+            var item = viewModel.Workspaces[index];
+            item.HasAttention = false;
+            item.IsOpen = index == 0;
+            item.IsInFront = index == 0;
+        }
+    }
+
     private static void ForcePointerOver(StyledElement element)
     {
         var pseudoClasses = typeof(StyledElement).GetProperty(
@@ -3279,10 +3352,7 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
         image.Write(Program.JpegProbePath);
     }
 
-    private static async Task CaptureDialogAsync(
-        string name,
-        Window dialog,
-        MainWindow? websiteBackdrop = null)
+    private static async Task CaptureDialogAsync(string name, Window dialog)
     {
         dialog.WindowStartupLocation = WindowStartupLocation.Manual;
         dialog.Position = new PixelPoint(-4000, -4000);
@@ -3300,8 +3370,7 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
 
         // A "-2x" suffix renders at Retina density, so glyph-placement issues
         // that only appear under fractional-scale pixel snapping are capturable.
-        var scale = !Program.IsWebsiteExport
-            && name.EndsWith("-2x", StringComparison.Ordinal)
+        var scale = name.EndsWith("-2x", StringComparison.Ordinal)
                 ? 2
                 : 1;
         Control captureTarget = dialog;
@@ -3327,29 +3396,11 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
         var width = (int)Math.Ceiling(Math.Max(captureTarget.Bounds.Width, 1)) * scale;
         var height = (int)Math.Ceiling(Math.Max(captureTarget.Bounds.Height, 1)) * scale;
         var path = Path.Combine(Program.OutputDirectory, $"{name}.png");
-        if (Program.IsWebsiteExport)
-        {
-            if (websiteBackdrop is null)
-            {
-                throw new InvalidOperationException(
-                    "Website dialog captures require the shell backdrop.");
-            }
-
-            WebsiteScreenshotExport.WriteDialogFrame(
-                websiteBackdrop,
-                captureTarget,
-                new PixelSize(width, height),
-                new Vector(96 * scale, 96 * scale),
-                path);
-        }
-        else
-        {
-            using var bitmap = new RenderTargetBitmap(
-                new PixelSize(width, height),
-                new Vector(96 * scale, 96 * scale));
-            bitmap.Render(captureTarget);
-            bitmap.Save(path);
-        }
+        using var bitmap = new RenderTargetBitmap(
+            new PixelSize(width, height),
+            new Vector(96 * scale, 96 * scale));
+        bitmap.Render(captureTarget);
+        bitmap.Save(path);
 
         contextMenu?.Close();
         dialog.Close();
@@ -3369,23 +3420,34 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
             {
                 WebsiteScreenshotExport.WriteChromeMask(Program.OutputDirectory);
             }
-            WriteSqliteProbe();
-            WriteTiffProbe();
-            WritePdfProbe();
-            WriteJpegProbe();
+            if (!Program.IsWebsiteExport)
+            {
+                WriteSqliteProbe();
+                WriteTiffProbe();
+                WritePdfProbe();
+                WriteJpegProbe();
+            }
             await Task.Delay(800);
 
             var requested = Program.RequestedRoutes;
+            var availableRoutes = Program.IsWebsiteExport
+                ? [.. Routes.Where(route => WebsiteScreenshotExport.IncludesRoute(route.Name))]
+                : Routes;
             var selected = requested.Length == 0
-                ? Routes
-                : [.. Routes.Where(route => requested.Contains(route.Name))];
-            var selectedDialogs = requested.Length == 0
-                ? Dialogs
-                : [.. Dialogs.Where(dialog => requested.Contains(dialog.Name))];
+                ? availableRoutes
+                : [.. availableRoutes.Where(route => requested.Contains(route.Name))];
+            var selectedDialogs = Program.IsWebsiteExport
+                ? []
+                : requested.Length == 0
+                    ? Dialogs
+                    : [.. Dialogs.Where(dialog => requested.Contains(dialog.Name))];
 
             if (selected.Length == 0 && selectedDialogs.Length == 0)
             {
-                var known = Routes.Select(r => r.Name).Concat(Dialogs.Select(d => d.Name));
+                var known = availableRoutes.Select(route => route.Name).Concat(
+                    Program.IsWebsiteExport
+                        ? []
+                        : Dialogs.Select(dialog => dialog.Name));
                 throw new InvalidOperationException(
                     $"No route matched. Known routes: {string.Join(", ", known)}");
             }
@@ -3396,6 +3458,10 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
                 ApplyTheme(Program.IsWebsiteExport
                     ? WebsiteScreenshotExport.NormalizeTheme(routeTheme)
                     : routeTheme);
+                if (Program.IsWebsiteExport)
+                {
+                    await ResetWebsiteRouteStateAsync(viewModel, window);
+                }
                 // The sample agent conversation belongs to the one route that asks
                 // for it. Resetting first keeps that route from leaking a connected
                 // agent into whatever is captured after it, whatever the order.
@@ -3404,11 +3470,7 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
                 Files.Reset();
                 // The sample drag ghost belongs to the one route that shows it;
                 // without this it floats over every capture that follows.
-                typeof(MainWindow)
-                    .GetMethod(
-                        "HideDragGhost",
-                        BindingFlags.Instance | BindingFlags.NonPublic)
-                    ?.Invoke(window, []);
+                window.HideDragGhost();
                 // Likewise flyouts a route clicked open — the transfer manager
                 // otherwise floats over every capture after its own.
                 foreach (var popup in window.GetVisualDescendants()
@@ -3434,6 +3496,16 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
                 viewModel.DismissWorkspaceEditor();
 
                 route.Apply(viewModel);
+                if (Program.IsWebsiteExport
+                    && route.Name.StartsWith("workspace-agent", StringComparison.Ordinal)
+                    && viewModel.IsAgentPanelVisible
+                    && !viewModel.IsAgentPanelDocked)
+                {
+                    // Floating panels use a separate platform surface, which a
+                    // window-only bitmap cannot capture. Dock the same live
+                    // panel for website artwork so its actual state is visible.
+                    await viewModel.ToggleAgentPanelPinAsync(CancellationToken.None);
+                }
                 await Task.Delay(220);
                 Dispatcher.UIThread.RunJobs();
                 window.UpdateLayout();
@@ -3472,10 +3544,10 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
                 }
 
                 var captureWidth = Program.IsWebsiteExport
-                    ? WebsiteScreenshotExport.Width
+                    ? WebsiteScreenshotExport.LogicalWidth
                     : route.Width;
                 var captureHeight = Program.IsWebsiteExport
-                    ? WebsiteScreenshotExport.Height
+                    ? WebsiteScreenshotExport.LogicalHeight
                     : route.Height;
                 if (window.Width != captureWidth || window.Height != captureHeight)
                 {
@@ -3514,7 +3586,6 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
                             window,
                             dialog,
                             new PixelSize((int)dialog.Width, (int)dialog.Height),
-                            new Vector(96, 96),
                             path);
                     }
                     else
@@ -3532,9 +3603,15 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
                     continue;
                 }
 
-                using (var bitmap = new RenderTargetBitmap(
-                           new PixelSize(captureWidth, captureHeight),
-                           new Vector(96, 96)))
+                var bitmapSize = Program.IsWebsiteExport
+                    ? new PixelSize(
+                        WebsiteScreenshotExport.PixelWidth,
+                        WebsiteScreenshotExport.PixelHeight)
+                    : new PixelSize(captureWidth, captureHeight);
+                var bitmapDpi = Program.IsWebsiteExport
+                    ? new Vector(WebsiteScreenshotExport.Dpi, WebsiteScreenshotExport.Dpi)
+                    : new Vector(96, 96);
+                using (var bitmap = new RenderTargetBitmap(bitmapSize, bitmapDpi))
                 {
                     bitmap.Render(window);
                     bitmap.Save(path);
@@ -3568,7 +3645,7 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
                 ApplyTheme(Program.IsWebsiteExport
                     ? WebsiteScreenshotExport.NormalizeTheme(dialogTheme)
                     : dialogTheme);
-                await CaptureDialogAsync(dialog.Name, dialog.Create(), window);
+                await CaptureDialogAsync(dialog.Name, dialog.Create());
             }
 
             ApplyTheme(ThemePreference.Default);

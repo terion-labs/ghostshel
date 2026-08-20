@@ -28,10 +28,12 @@ Pass route names to capture a subset:
 
 ## Website assets
 
-Website mode exports every route and dialog on the same 1440 × 900 canvas,
-forces the runtime tabs to the top, and uses GhostSHELL bronze instead of the
-host accent. The shell backdrop keeps its PNG alpha so a site can place its own
-blurred background underneath it. Because the headless platform has no native
+Website mode exports every coherent app screen at a 1440 × 900 CSS size into a
+Retina 2880 × 1800 PNG. It locks the interface to medium spacing, forces the
+runtime tabs to the top, and uses GhostSHELL bronze instead of the host accent.
+Low-level component probes and alternate-density QA comparisons are omitted.
+The shell backdrop keeps its PNG alpha so a site can place its own blurred
+background underneath it. Because the headless platform has no native
 decorations, this mode adds the standard macOS traffic lights and applies the
 same rounded window silhouette to every frame.
 
