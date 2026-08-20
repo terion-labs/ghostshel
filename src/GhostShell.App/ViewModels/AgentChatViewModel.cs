@@ -350,7 +350,6 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
     private bool _isDiscoveringModels;
     private string _modelDiscoveryStatus = string.Empty;
     private long? _contextTokensUsed;
-    private readonly HashSet<AiProviderProfileId> _discoveredProviderIds = [];
     private readonly HashSet<AgentModelFavorite> _favoriteModels = [];
     private IReadOnlyList<AgentReasoningEffortOption> _reasoningEfforts =
         Array.AsReadOnly([AllReasoningEffortOptions[0]]);
@@ -704,10 +703,9 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
                 _modelSelectionExplicit = false;
                 UpdateModels(value, value?.DefaultModel);
 
-                if (value is not null && _discoveredProviderIds.Add(value.Id))
-                {
-                    _ = DiscoverModelsAsync(value.Id, _lifetime.Token);
-                }
+                // Provider selection also runs during construction and restore.
+                // Keep it side-effect-free: credential-backed network discovery
+                // starts only from the explicit Refresh models action.
 
                 OnPropertyChanged(nameof(CanAttachImages));
                 NotifyAvailabilityChanged();

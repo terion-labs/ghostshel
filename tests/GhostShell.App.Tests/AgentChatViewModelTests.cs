@@ -45,6 +45,32 @@ public sealed partial class AgentChatViewModelTests
         Assert.Equal("Capability check", viewModel.CapabilityLabel);
         Assert.False(viewModel.TerminalMutationAvailable);
         Assert.Contains("verified", viewModel.CapabilityNotice);
+        Assert.Equal(0, profiles.DiscoverModelsCount);
+    }
+
+    [Fact]
+    public async Task Model_discovery_starts_only_after_explicit_refresh()
+    {
+        var provider = Provider("provider", "OpenAI", order: 0);
+        using var runtime = new StubGovernedRuntime
+        {
+            Snapshot = Snapshot(providerId: provider.Id),
+        };
+        using var profiles = new StubProfileRuntime
+        {
+            Profiles = [provider],
+        };
+        using var viewModel = new AgentChatViewModel(
+            runtime,
+            profiles,
+            ImmediateUiThreadDispatcher.Instance);
+
+        Assert.Equal(0, profiles.DiscoverModelsCount);
+
+        await viewModel.RefreshModelsAsync(CancellationToken.None);
+
+        Assert.Equal(1, profiles.DiscoverModelsCount);
+        Assert.Equal(provider.Id, profiles.LastDiscoveredProviderId);
     }
 
     [Fact]
@@ -4287,6 +4313,10 @@ public sealed partial class AgentChatViewModelTests
 
         public int DisposeCount { get; private set; }
 
+        public int DiscoverModelsCount { get; private set; }
+
+        public AiProviderProfileId? LastDiscoveredProviderId { get; private set; }
+
         public ValueTask<AiProviderTestResult> TestAsync(
             AiProviderProfile profile,
             CancellationToken cancellationToken)
@@ -4306,6 +4336,20 @@ public sealed partial class AgentChatViewModelTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.CompletedTask;
+        }
+
+        public ValueTask<AiProviderModelDiscoveryResult> DiscoverModelsAsync(
+            AiProviderProfileId profileId,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            DiscoverModelsCount++;
+            LastDiscoveredProviderId = profileId;
+            return ValueTask.FromResult(new AiProviderModelDiscoveryResult(
+                true,
+                "ai_provider_models_discovered",
+                "Models refreshed.",
+                []));
         }
 
         public void RaiseProfilesChanged() =>

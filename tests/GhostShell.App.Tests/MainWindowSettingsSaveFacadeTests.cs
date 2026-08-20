@@ -9,6 +9,26 @@ namespace GhostShell.App.Tests;
 
 public sealed class MainWindowSettingsSaveFacadeTests
 {
+    [Theory]
+    [InlineData(SettingsPage.Secrets)]
+    [InlineData(SettingsPage.Mcp)]
+    public void Secret_metadata_is_deferred_until_explicit_settings_navigation(
+        SettingsPage page)
+    {
+        var vault = new EmptySecretVault();
+        using var viewModel = CreateViewModel(
+            new RecordingDefinitionCatalog(SettingsSnapshot()),
+            vault);
+
+        Assert.Equal(0, vault.ListMetadataCount);
+        viewModel.SettingsPage = page;
+        Assert.Equal(0, vault.ListMetadataCount);
+
+        viewModel.ShowSettings(page);
+
+        Assert.Equal(1, vault.ListMetadataCount);
+    }
+
     [Fact]
     public async Task Theme_save_forwards_the_complete_preference_and_current_revision()
     {
@@ -597,6 +617,8 @@ public sealed class MainWindowSettingsSaveFacadeTests
             "test_vault",
             "Test vault");
 
+        public int ListMetadataCount { get; private set; }
+
         public void Dispose()
         {
         }
@@ -604,9 +626,13 @@ public sealed class MainWindowSettingsSaveFacadeTests
         public ValueTask<SecretVaultResult<IReadOnlyList<SecretMetadata>>>
             ListMetadataAsync(
                 ListSecretMetadataRequest request,
-                CancellationToken cancellationToken) =>
-            ValueTask.FromResult(
+                CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ListMetadataCount++;
+            return ValueTask.FromResult(
                 SecretVaultResult<IReadOnlyList<SecretMetadata>>.Succeed([]));
+        }
 
         public ValueTask<SecretVaultResult<SecretMetadata>> CreateAsync(
             CreateSecretRequest request,

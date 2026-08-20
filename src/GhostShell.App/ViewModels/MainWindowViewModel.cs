@@ -360,7 +360,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _runtimeRecoveryWriter?.WriteFailed += OnRuntimeRecoveryWriteFailed;
         RefreshCatalog(_catalog.Snapshot);
         RefreshFileTransfers();
-        _ = RefreshSecretsAsync(CancellationToken.None);
         Onboarding?.Start();
         if (_recentSessionHistory is not null)
         {
@@ -1043,10 +1042,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(IsAgentSettingsVisible));
                 OnPropertyChanged(nameof(IsMcpSettingsVisible));
                 OnPropertyChanged(nameof(IsAboutSettingsVisible));
-                if (value is SettingsPage.Secrets or SettingsPage.Mcp)
-                {
-                    _ = RefreshSecretsAsync(CancellationToken.None);
-                }
             }
         }
     }
@@ -2240,6 +2235,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         SettingsPage = page;
         Route = ShellRoute.Settings;
+        if (page is SettingsPage.Secrets or SettingsPage.Mcp)
+        {
+            // Listing the native credential store may show an OS authorization
+            // prompt. Cross that boundary only after explicit user navigation.
+            _ = RefreshSecretsAsync(CancellationToken.None);
+        }
+
         if (page == SettingsPage.Keybindings)
         {
             EnsureKeybindingEditor();

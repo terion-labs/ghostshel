@@ -1027,6 +1027,7 @@ public sealed class McpServerProfileEditorViewModelTests
                 TimeProvider.System),
             mcpServerDiagnostics: diagnostics,
             mcpCredentialSessionInvalidator: invalidator);
+        viewModel.ShowSettings(SettingsPage.Mcp);
         var mcpSecret = Secret(
             mcpReference,
             "MCP token",
