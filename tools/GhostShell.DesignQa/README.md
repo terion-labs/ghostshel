@@ -29,13 +29,18 @@ Pass route names to capture a subset:
 ## Website assets
 
 Website mode exports every coherent app screen at a 1440 × 900 CSS size into a
-Retina 2880 × 1800 PNG. It locks the interface to medium spacing, forces the
-runtime tabs to the top, and uses GhostSHELL bronze instead of the host accent.
+Retina 2880 × 1800 PNG. It locks the interface to the middle/comfortable
+spacing mode (not Spacious), forces the runtime tabs to the top, and uses
+GhostSHELL bronze instead of the host accent.
 Low-level component probes and alternate-density QA comparisons are omitted.
 The shell backdrop keeps its PNG alpha so a site can place its own blurred
 background underneath it. Because the headless platform has no native
 decorations, this mode adds the standard macOS traffic lights and applies the
 same rounded window silhouette to every frame.
+
+The Retina pass scales the laid-out visual tree onto a 2× surface. Do not render
+the 1× tree directly at 192 DPI: centered overlays and dialogs receive doubled
+offsets in Avalonia's headless renderer and produce clipped, oversized artwork.
 
 ```sh
 ./.dotnet/dotnet run --project tools/GhostShell.DesignQa -- --website artifacts/design-qa/website

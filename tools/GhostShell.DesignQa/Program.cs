@@ -3603,22 +3603,19 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
                     continue;
                 }
 
-                var bitmapSize = Program.IsWebsiteExport
-                    ? new PixelSize(
-                        WebsiteScreenshotExport.PixelWidth,
-                        WebsiteScreenshotExport.PixelHeight)
-                    : new PixelSize(captureWidth, captureHeight);
-                var bitmapDpi = Program.IsWebsiteExport
-                    ? new Vector(WebsiteScreenshotExport.Dpi, WebsiteScreenshotExport.Dpi)
-                    : new Vector(96, 96);
+                if (Program.IsWebsiteExport)
+                {
+                    WebsiteScreenshotExport.WriteFrame(window, path);
+                    Console.WriteLine($"CAPTURE {route.Name} -> {path}");
+                    continue;
+                }
+
+                var bitmapSize = new PixelSize(captureWidth, captureHeight);
+                var bitmapDpi = new Vector(96, 96);
                 using (var bitmap = new RenderTargetBitmap(bitmapSize, bitmapDpi))
                 {
                     bitmap.Render(window);
                     bitmap.Save(path);
-                }
-                if (Program.IsWebsiteExport)
-                {
-                    WebsiteScreenshotExport.FinishFrame(path);
                 }
 
                 Console.WriteLine($"CAPTURE {route.Name} -> {path}");

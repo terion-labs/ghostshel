@@ -24,7 +24,12 @@ internal static class WebsiteScreenshotExport
     public const int Scale = 2;
     public const int PixelWidth = LogicalWidth * Scale;
     public const int PixelHeight = LogicalHeight * Scale;
-    public const int Dpi = 96 * Scale;
+    private const int RasterDpi = 96;
+
+    // The product enum calls the middle density "Cozy" (the UI calls it
+    // "Normal"). Website artwork always uses that middle/comfortable mode,
+    // never the 1.22x Spacious setting.
+    private const InterfaceDensity ComfortableDensity = InterfaceDensity.Cozy;
 
     private const double TrafficLightDiameter = 12;
     private const double TrafficLightTop = 16;
@@ -33,7 +38,7 @@ internal static class WebsiteScreenshotExport
     private const int DialogInset = 72;
 
     private static readonly double CornerRadius =
-        DensityCornerScale.WindowRadius(InterfaceDensity.Cozy);
+        DensityCornerScale.WindowRadius(ComfortableDensity);
 
     public static ThemePreference NormalizeTheme(ThemePreference source)
     {
@@ -45,7 +50,7 @@ internal static class WebsiteScreenshotExport
             source.PlatformProfile,
             AccentPreference.GhostShellBronze,
             source.TextScaleOverride,
-            InterfaceDensity.Cozy,
+            ComfortableDensity,
             showTabBar: true,
             source.ShowWorkspacesPanel,
             TabStripPlacement.Top,
@@ -98,13 +103,18 @@ internal static class WebsiteScreenshotExport
         shell.Children.Add(trafficLights);
     }
 
-    public static void FinishFrame(string path)
+    public static void WriteFrame(Control target, string path)
     {
+        ArgumentNullException.ThrowIfNull(target);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        using var image = new MagickImage(path);
-        ApplyWindowShape(image);
-        image.Format = MagickFormat.Png;
-        image.Write(path);
+
+        using var bytes = RenderScaled(
+            target,
+            new PixelSize(LogicalWidth, LogicalHeight));
+        using var frame = new MagickImage(bytes);
+        ApplyWindowShape(frame);
+        frame.Format = MagickFormat.Png;
+        frame.Write(path);
     }
 
     public static void WriteDialogFrame(
@@ -117,16 +127,10 @@ internal static class WebsiteScreenshotExport
         ArgumentNullException.ThrowIfNull(dialog);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-        using var backdropBytes = Render(
+        using var backdropBytes = RenderScaled(
             backdrop,
-            new PixelSize(PixelWidth, PixelHeight),
-            new Vector(Dpi, Dpi));
-        using var dialogBytes = Render(
-            dialog,
-            new PixelSize(
-                logicalDialogSize.Width * Scale,
-                logicalDialogSize.Height * Scale),
-            new Vector(Dpi, Dpi));
+            new PixelSize(LogicalWidth, LogicalHeight));
+        using var dialogBytes = RenderScaled(dialog, logicalDialogSize);
         using var frame = new MagickImage(backdropBytes);
         using var dialogImage = new MagickImage(dialogBytes);
 
@@ -189,6 +193,29 @@ internal static class WebsiteScreenshotExport
         bitmap.Save(bytes);
         bytes.Position = 0;
         return bytes;
+    }
+
+    private static MemoryStream RenderScaled(Control target, PixelSize logicalSize)
+    {
+        var pixelSize = new PixelSize(
+            logicalSize.Width * Scale,
+            logicalSize.Height * Scale);
+        // Rendering the 1x visual tree straight into a 192-DPI bitmap makes
+        // Avalonia apply some centered-child offsets twice. A VisualBrush
+        // instead redraws that already-laid-out tree onto a true 2x surface,
+        // preserving both geometry and vector-quality text and strokes.
+        var scaledFrame = new Border
+        {
+            Width = pixelSize.Width,
+            Height = pixelSize.Height,
+            Background = new VisualBrush(target)
+            {
+                Stretch = Stretch.Fill,
+            },
+        };
+        scaledFrame.Measure(new Size(pixelSize.Width, pixelSize.Height));
+        scaledFrame.Arrange(new Rect(0, 0, pixelSize.Width, pixelSize.Height));
+        return Render(scaledFrame, pixelSize, new Vector(RasterDpi, RasterDpi));
     }
 
     private static void FitDialog(MagickImage dialog)
