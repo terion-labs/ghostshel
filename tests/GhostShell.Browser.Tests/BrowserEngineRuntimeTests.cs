@@ -5,6 +5,14 @@ namespace GhostShell.Browser.Tests;
 public sealed class BrowserEngineRuntimeTests
 {
     [Fact]
+    public void RuntimeDisablesOnlyTheUnusedOnDeviceModelService()
+    {
+        Assert.Equal(
+            "OptimizationGuideOnDeviceModel",
+            BrowserEngineRuntime.DisabledChromiumFeatures);
+    }
+
+    [Fact]
     public void ExactPinnedRuntimeVersionIsAccepted()
     {
         BrowserEngineRuntime.ValidateVersions(
