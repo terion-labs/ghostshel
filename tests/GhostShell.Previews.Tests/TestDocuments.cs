@@ -9,7 +9,7 @@ namespace GhostShell.Previews.Tests;
 /// </summary>
 internal static class TestDocuments
 {
-    public static string TwoPagePdf()
+    public static string TwoPagePdf(double pageWidth = 612, double pageHeight = 792)
     {
         const string firstPage =
             "BT /F1 24 Tf 72 700 Td (GhostSHELL preview) Tj ET\n"
@@ -20,9 +20,11 @@ internal static class TestDocuments
         {
             "<< /Type /Catalog /Pages 2 0 R >>",
             "<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",
-            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            FormattableString.Invariant(
+                $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {pageWidth} {pageHeight}] ")
                 + "/Resources << /Font << /F1 5 0 R >> >> /Contents 6 0 R >>",
-            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            FormattableString.Invariant(
+                $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {pageWidth} {pageHeight}] ")
                 + "/Resources << /Font << /F1 5 0 R >> >> /Contents 7 0 R >>",
             "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
         };

@@ -12947,7 +12947,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         object? sender,
         BrowserNewTabRequestedEventArgs args)
     {
-        if (_shutdownStarted || sender is not BrowserRuntimePanelViewModel source)
+        if (_shutdownStarted
+            || !args.UserGesture
+            || sender is not BrowserRuntimePanelViewModel source)
         {
             return;
         }

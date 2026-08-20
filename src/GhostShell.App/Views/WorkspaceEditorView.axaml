@@ -605,7 +605,7 @@
             </controls:SettingRow>
             <controls:SettingRow
                 Label="Browser profile"
-                Description="Share cookies and site storage with other workspaces, or keep this workspace isolated."
+                Description="Share cookies and site storage with other workspaces for this app session, or keep this workspace isolated."
                 IsLast="True">
               <ComboBox
                   Width="250"

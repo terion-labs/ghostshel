@@ -1,3 +1,4 @@
+using System.Net;
 using GhostShell.Application;
 
 namespace GhostShell.Browser.Tests;
@@ -101,6 +102,7 @@ public sealed class BrowserSurfaceTests
         };
         var surface = new BrowserSurface(
             nativeView,
+            BrowserTestDestinationPolicy.Public,
             InlineBrowserUiDispatcher.Instance);
         var document = BrowserDocumentBinding.FromState(surface.State);
 
@@ -481,6 +483,7 @@ public sealed class BrowserSurfaceTests
         var replacement = new RecordingEmbeddedBrowserView();
         var surface = new BrowserSurface(
             nativeView,
+            BrowserTestDestinationPolicy.Public,
             InlineBrowserUiDispatcher.Instance,
             () => replacement,
             static _ => { },
@@ -873,6 +876,7 @@ public sealed class BrowserSurfaceTests
         var replacement = new RecordingEmbeddedBrowserView();
         var surface = new BrowserSurface(
             nativeView,
+            BrowserTestDestinationPolicy.Public,
             InlineBrowserUiDispatcher.Instance,
             () => replacement,
             static _ => { },
@@ -1022,6 +1026,7 @@ public sealed class BrowserSurfaceTests
         var dispatcher = new FailingBrowserUiDispatcher();
         var surface = new BrowserSurface(
             nativeView,
+            BrowserTestDestinationPolicy.Public,
             dispatcher,
             () => new RecordingEmbeddedBrowserView(),
             static _ => { },
@@ -1370,6 +1375,7 @@ public sealed class BrowserSurfaceTests
         var dispatcher = new QueuedBrowserUiDispatcher();
         var surface = new BrowserSurface(
             nativeView,
+            BrowserTestDestinationPolicy.Public,
             dispatcher,
             () => replacement,
             static _ => { },
@@ -1415,6 +1421,7 @@ public sealed class BrowserSurfaceTests
         var replacement = new RecordingEmbeddedBrowserView();
         var surface = new BrowserSurface(
             nativeView,
+            BrowserTestDestinationPolicy.Public,
             InlineBrowserUiDispatcher.Instance,
             () => replacement,
             static _ => { },
@@ -1464,6 +1471,7 @@ public sealed class BrowserSurfaceTests
         var replacementCount = 0;
         var surface = new BrowserSurface(
             nativeView,
+            BrowserTestDestinationPolicy.Public,
             dispatcher,
             () =>
             {
@@ -1552,6 +1560,7 @@ public sealed class BrowserSurfaceTests
         var dispatcher = new FailingBrowserUiDispatcher();
         var surface = new BrowserSurface(
             nativeView,
+            BrowserTestDestinationPolicy.Public,
             dispatcher,
             () => new RecordingEmbeddedBrowserView(),
             static _ => { },
@@ -1719,6 +1728,7 @@ public sealed class BrowserSurfaceTests
         BrowserSurface? surface = null;
         surface = new BrowserSurface(
             nativeView,
+            BrowserTestDestinationPolicy.Public,
             InlineBrowserUiDispatcher.Instance,
             () =>
             {
@@ -1822,6 +1832,7 @@ public sealed class BrowserSurfaceTests
         var replacementCount = 0;
         var surface = new BrowserSurface(
             nativeView,
+            BrowserTestDestinationPolicy.Public,
             dispatcher,
             () =>
             {
@@ -1876,6 +1887,7 @@ public sealed class BrowserSurfaceTests
             TaskCreationOptions.RunContinuationsAsynchronously);
         var surface = new BrowserSurface(
             nativeView,
+            BrowserTestDestinationPolicy.Public,
             InlineBrowserUiDispatcher.Instance,
             () => replacement,
             _ =>
@@ -2233,6 +2245,102 @@ public sealed class BrowserSurfaceTests
     }
 
     [Fact]
+    public async Task GovernedNavigationRejectsResolvedPrivateTargetBeforeDispatch()
+    {
+        var nativeView = new RecordingEmbeddedBrowserView();
+        var policy = BrowserDestinationPolicy.CreateLocal(
+            static (_, _) => ValueTask.FromResult<IPAddress[]>(
+                [IPAddress.Parse("10.0.0.1")]));
+        var surface = new BrowserSurface(
+            nativeView,
+            policy,
+            InlineBrowserUiDispatcher.Instance,
+            capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
+        var requested = Address("https://private.example.test/start");
+
+        var result = await surface.NavigateWithinOriginAsync(
+            new BrowserOriginConstrainedNavigationRequest.Navigate(requested),
+            BrowserNavigationOrigin.FromAddress(requested),
+            BrowserNavigationStartBinding.FromState(surface.State),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.NavigationPolicyDenied,
+            result.Error?.Code);
+        Assert.Equal(0, nativeView.NavigateCount);
+    }
+
+    [Fact]
+    public async Task GovernedNavigationRejectsOriginBeforeResolvingItsHost()
+    {
+        var resolutionCount = 0;
+        var policy = BrowserDestinationPolicy.CreateLocal(
+            (_, _) =>
+            {
+                resolutionCount++;
+                return ValueTask.FromResult<IPAddress[]>(
+                    [IPAddress.Parse("93.184.216.34")]);
+            });
+        var nativeView = new RecordingEmbeddedBrowserView();
+        var surface = new BrowserSurface(
+            nativeView,
+            policy,
+            InlineBrowserUiDispatcher.Instance,
+            capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
+        var requested = Address("https://outside.example.test/start");
+        var approved = Address("https://approved.example.test/start");
+
+        var result = await surface.NavigateWithinOriginAsync(
+            new BrowserOriginConstrainedNavigationRequest.Navigate(requested),
+            BrowserNavigationOrigin.FromAddress(approved),
+            BrowserNavigationStartBinding.FromState(surface.State),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(0, resolutionCount);
+        Assert.Equal(0, nativeView.NavigateCount);
+    }
+
+    [Fact]
+    public async Task GovernedRequestGateRechecksEverySameOriginRedirectLeg()
+    {
+        var answers = new Queue<IPAddress[]>();
+        answers.Enqueue([IPAddress.Parse("93.184.216.34")]);
+        answers.Enqueue([IPAddress.Parse("93.184.216.34")]);
+        answers.Enqueue([IPAddress.Parse("10.0.0.1")]);
+        var policy = BrowserDestinationPolicy.CreateLocal(
+            (_, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return ValueTask.FromResult(answers.Dequeue());
+            });
+        var nativeView = new RecordingEmbeddedBrowserView();
+        var surface = new BrowserSurface(
+            nativeView,
+            policy,
+            InlineBrowserUiDispatcher.Instance,
+            capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
+        var requested = Address("https://rebind.example.test/start");
+        var redirected = Address("https://rebind.example.test/final");
+        using var cancellation = new CancellationTokenSource();
+        var operation = surface.NavigateWithinOriginAsync(
+            new BrowserOriginConstrainedNavigationRequest.Navigate(requested),
+            BrowserNavigationOrigin.FromAddress(requested),
+            BrowserNavigationStartBinding.FromState(surface.State),
+            cancellation.Token).AsTask();
+
+        Assert.False(nativeView.RaiseNavigationStarted(requested));
+        Assert.True(await nativeView.AllowsActiveNavigationRequestAsync(requested));
+        Assert.False(nativeView.RaiseNavigationStarted(redirected));
+        Assert.False(await nativeView.AllowsActiveNavigationRequestAsync(redirected));
+
+        cancellation.Cancel();
+        var result = await operation;
+        Assert.False(result.IsSuccess);
+    }
+
+    [Fact]
     public async Task UnrestrictedGovernedNavigationAllowsCrossOriginRedirects()
     {
         var nativeView = new RecordingEmbeddedBrowserView();
@@ -2528,6 +2636,7 @@ public sealed class BrowserSurfaceTests
         var replacementCount = 0;
         var surface = new BrowserSurface(
             nativeView,
+            BrowserTestDestinationPolicy.Public,
             InlineBrowserUiDispatcher.Instance,
             () =>
             {
@@ -2724,6 +2833,7 @@ public sealed class BrowserSurfaceTests
         var networkLifetime = new CountingDisposable();
         var surface = new BrowserSurface(
             nativeView,
+            BrowserTestDestinationPolicy.Public,
             networkLifetime: networkLifetime);
 
         surface.Dispose();
@@ -2763,6 +2873,7 @@ public sealed class BrowserSurfaceTests
         var replacement = new RecordingEmbeddedBrowserView();
         var surface = new BrowserSurface(
             nativeView,
+            BrowserTestDestinationPolicy.Public,
             InlineBrowserUiDispatcher.Instance,
             () => replacement);
 
@@ -2909,6 +3020,7 @@ public sealed class BrowserSurfaceTests
     private static BrowserSurface Surface(IEmbeddedBrowserView nativeView) =>
         new(
             nativeView,
+            BrowserTestDestinationPolicy.Public,
             InlineBrowserUiDispatcher.Instance,
             capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
 
@@ -2917,6 +3029,7 @@ public sealed class BrowserSurfaceTests
         TimeProvider timeProvider) =>
         new(
             nativeView,
+            BrowserTestDestinationPolicy.Public,
             InlineBrowserUiDispatcher.Instance,
             timeProvider: timeProvider,
             capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
@@ -2926,6 +3039,7 @@ public sealed class BrowserSurfaceTests
         IEmbeddedBrowserView replacement) =>
         new(
             nativeView,
+            BrowserTestDestinationPolicy.Public,
             InlineBrowserUiDispatcher.Instance,
             () => replacement,
             static _ => { },

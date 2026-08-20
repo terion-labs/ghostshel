@@ -1,8 +1,8 @@
 namespace GhostShell.Application;
 
 /// <summary>
-/// Chooses whether ordinary browser panels share one application profile or
-/// use the durable workspace identity as their storage boundary.
+/// Chooses whether ordinary browser panels share one in-memory application
+/// profile or use the durable workspace identity as their partition key.
 /// </summary>
 public enum BrowserProfileSharing
 {
@@ -44,9 +44,9 @@ public interface IBrowserProfilePreferences
 }
 
 /// <summary>
-/// A persistent Chromium storage partition. The route is deliberately not
-/// part of this product identity: the CEF host may shard one profile by route
-/// because proxy preferences belong to a request context.
+/// A logical Chromium context partition. Browser state is process-memory only;
+/// the route is deliberately not part of this product identity because the CEF
+/// host may shard one profile by route for its proxy preferences.
 /// </summary>
 public readonly record struct BrowserProfileKey
 {
@@ -158,8 +158,8 @@ public sealed record BrowserProfileClearResult
 }
 
 /// <summary>
-/// Reports and deliberately erases browser cookies, cache, local storage, and
-/// other state held below a profile partition.
+/// Reports legacy on-disk browser data and deliberately erases cookies, cache,
+/// local storage, and other state held by a profile partition.
 /// </summary>
 public interface IBrowserProfileDataControl
 {

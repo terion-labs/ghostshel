@@ -38,10 +38,23 @@ find "$source_root" -type f \
 source_digest=$(tr -d '\n' <"$output_directory/source-snapshot.sha256")
 
 set +e
+dotnet restore "$source_root/src/GhostShell.Desktop/GhostShell.Desktop.csproj" \
+  --runtime linux-arm64 \
+  --locked-mode \
+  --disable-build-servers \
+  >"$output_directory/restore.log" 2>&1
+restore_status=$?
+if ((restore_status != 0)); then
+  set -e
+  echo "linux-arm64 locked restore failed; see $output_directory/restore.log" >&2
+  exit "$restore_status"
+fi
 dotnet publish "$source_root/src/GhostShell.Desktop/GhostShell.Desktop.csproj" \
   --configuration Release \
   --runtime linux-arm64 \
   --self-contained true \
+  --no-restore \
+  -p:RestoreLockedMode=true \
   --output "$package_directory" \
   --disable-build-servers \
   >"$output_directory/publish.log" 2>&1

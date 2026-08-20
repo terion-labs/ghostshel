@@ -768,6 +768,31 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     }
 
     [Fact]
+    public async Task BrowserPopupWithoutAUserGestureDoesNotOpenATab()
+    {
+        var browserFactory = new RecordingBrowserRendererViewFactory();
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            browserRendererFactory: browserFactory);
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        var runtime = Assert.IsType<RuntimeWorkspaceViewModel>(
+            viewModel.RuntimeWorkspace);
+        var originalTabs = runtime.Tabs.Count;
+        var popup = new BrowserAddress(
+            new Uri("https://docs.example.test/scripted-popup"));
+
+        Assert.Single(browserFactory.Renderers).RaiseNewTabRequested(
+            popup,
+            userGesture: false);
+
+        await Task.Yield();
+        Assert.Equal(originalTabs, runtime.Tabs.Count);
+        Assert.Single(browserFactory.Renderers);
+    }
+
+    [Fact]
     public async Task PerWorkspaceBrowserSettingUsesTheDurableWorkspaceIdentity()
     {
         var preferences = new InMemoryBrowserProfilePreferences();
@@ -6045,6 +6070,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                 lifetime);
         }
 
+        public BrowserRendererView CreateIsolatedHtmlPreview() => Create();
+
         public ValueTask<BrowserRendererView> CreateAsync(
             ConnectionProfile connection,
             CancellationToken cancellationToken)
@@ -6100,10 +6127,12 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
         public event EventHandler<BrowserNewTabRequestedEventArgs>? NewTabRequested;
 
-        public void RaiseNewTabRequested(BrowserAddress address) =>
+        public void RaiseNewTabRequested(
+            BrowserAddress address,
+            bool userGesture = true) =>
             NewTabRequested?.Invoke(
                 this,
-                new BrowserNewTabRequestedEventArgs(address, userGesture: true));
+                new BrowserNewTabRequestedEventArgs(address, userGesture));
 
         public void BindPhysicalInputGate(
             Func<NativeRendererPhysicalInput, bool>? physicalInputGate)

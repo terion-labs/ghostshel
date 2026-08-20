@@ -24,15 +24,7 @@ namespace GhostShell.Files;
 /// </summary>
 public sealed class PreviewContentCache : IPreviewCacheControl, IDisposable
 {
-    private const string DirectoryName = "ghostshell-preview-cache";
     private const string PersistentFileName = "store.db";
-
-    /// <summary>
-    /// The previous design's directory of plaintext downloaded copies. Swept
-    /// on every start so no machine keeps remote file contents in the clear
-    /// from before this cache existed.
-    /// </summary>
-    private const string LegacyPlaintextDirectoryName = "ghostshell-file-cache";
 
     /// <summary>
     /// The most memory the in-memory tier may hold across entries. Small next
@@ -60,10 +52,22 @@ public sealed class PreviewContentCache : IPreviewCacheControl, IDisposable
     {
         _preferences = preferences;
         _encryption = encryption;
-        _directory = directory
-            ?? Path.Combine(Path.GetTempPath(), DirectoryName);
-        Directory.CreateDirectory(_directory);
-        SweepLegacyPlaintextCache();
+        ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+        _directory = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
+        if (string.Equals(
+                _directory,
+                Path.GetPathRoot(_directory),
+                OperatingSystem.IsWindows()
+                    ? StringComparison.OrdinalIgnoreCase
+                    : StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                "The preview cache cannot use a filesystem root.",
+                nameof(directory));
+        }
+
+        PreviewCachePathGuard.EnsurePrivateDirectory(_directory);
+        ValidateExistingEntries();
         SweepDeadSessions();
         _preferences?.Changed += OnPreferencesChanged;
 
@@ -295,6 +299,8 @@ public sealed class PreviewContentCache : IPreviewCacheControl, IDisposable
                     _cache.PruneToBudgetIfPersistent(_container);
                 }
 
+                _cache.HardenGeneratedFiles();
+
                 return new ContainerContent(_cache, _container, _blobId!, length);
             }
             catch (LiteException exception)
@@ -438,17 +444,18 @@ public sealed class PreviewContentCache : IPreviewCacheControl, IDisposable
         // bytes whose only copy is this string. The session id in the file
         // name is a label for the sweep, not key material.
         var key = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
-        _sessionLock ??= new FileStream(
+        _sessionLock ??= PreviewCachePathGuard.CreatePrivateFile(
             SessionLockPath,
-            FileMode.Create,
-            FileAccess.ReadWrite,
             FileShare.None);
+        PreviewCachePathGuard.EnsurePrivateFile(SessionPath);
+        PreviewCachePathGuard.ValidateOptionalPrivateFile(LogPathFor(SessionPath));
         _session = new LiteDatabase(new ConnectionString
         {
             Filename = SessionPath,
             Password = key,
             Connection = ConnectionType.Direct,
         });
+        HardenGeneratedFiles();
         return _session;
     }
 
@@ -469,9 +476,14 @@ public sealed class PreviewContentCache : IPreviewCacheControl, IDisposable
             connection.Password = password;
         }
 
+        PreviewCachePathGuard.EnsurePrivateFile(PersistentPath);
+        PreviewCachePathGuard.ValidateOptionalPrivateFile(LogPathFor(PersistentPath));
+
         try
         {
-            return _persistent = new LiteDatabase(connection);
+            _persistent = new LiteDatabase(connection);
+            HardenGeneratedFiles();
+            return _persistent;
         }
         catch (LiteException)
         {
@@ -480,7 +492,10 @@ public sealed class PreviewContentCache : IPreviewCacheControl, IDisposable
             // it costs a re-download, keeping it costs the feature.
             TryDelete(PersistentPath);
             TryDelete(LogPathFor(PersistentPath));
-            return _persistent = new LiteDatabase(connection);
+            PreviewCachePathGuard.EnsurePrivateFile(PersistentPath);
+            _persistent = new LiteDatabase(connection);
+            HardenGeneratedFiles();
+            return _persistent;
         }
     }
 
@@ -562,6 +577,7 @@ public sealed class PreviewContentCache : IPreviewCacheControl, IDisposable
         {
             try
             {
+                PreviewCachePathGuard.ValidatePrivateFile(lockPath);
                 // Taking the lock proves its owner is gone; a live owner holds
                 // it exclusively and this open fails.
                 using (new FileStream(
@@ -598,21 +614,61 @@ public sealed class PreviewContentCache : IPreviewCacheControl, IDisposable
         }
     }
 
-    private static void SweepLegacyPlaintextCache()
+    private void ValidateExistingEntries()
     {
-        var legacy = Path.Combine(Path.GetTempPath(), LegacyPlaintextDirectoryName);
-        try
+        foreach (var path in Directory.EnumerateFileSystemEntries(_directory))
         {
-            if (Directory.Exists(legacy))
+            if (!IsOwnedCacheFileName(Path.GetFileName(path)))
             {
-                Directory.Delete(legacy, recursive: true);
+                throw new InvalidDataException(
+                    "The preview-cache directory contains an unexpected entry.");
+            }
+
+            if (OperatingSystem.IsWindows())
+            {
+                PreviewCachePathGuard.HardenGeneratedFile(path);
+            }
+            else
+            {
+                PreviewCachePathGuard.ValidatePrivateFile(path);
             }
         }
-        catch (Exception exception)
-            when (exception is IOException or UnauthorizedAccessException)
+    }
+
+    private static bool IsOwnedCacheFileName(string name)
+    {
+        if (string.Equals(name, PersistentFileName, StringComparison.Ordinal)
+            || string.Equals(name, LogPathFor(PersistentFileName), StringComparison.Ordinal))
         {
-            // Another instance may still be serving from it; its own exit or
-            // the next start finishes the job.
+            return true;
+        }
+
+        const string prefix = "session-";
+        var identifier = name.StartsWith(prefix, StringComparison.Ordinal)
+            ? name[prefix.Length..]
+            : string.Empty;
+        identifier = identifier.EndsWith("-log.db", StringComparison.Ordinal)
+            ? identifier[..^"-log.db".Length]
+            : identifier.EndsWith(".lock", StringComparison.Ordinal)
+                ? identifier[..^".lock".Length]
+                : identifier.EndsWith(".db", StringComparison.Ordinal)
+                    ? identifier[..^".db".Length]
+                    : string.Empty;
+        return identifier.Length == 32
+            && identifier.All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f');
+    }
+
+    private void HardenGeneratedFiles()
+    {
+        foreach (var path in new[]
+                 {
+                     SessionPath,
+                     LogPathFor(SessionPath),
+                     PersistentPath,
+                     LogPathFor(PersistentPath),
+                 })
+        {
+            PreviewCachePathGuard.HardenGeneratedFile(path);
         }
     }
 
@@ -620,6 +676,11 @@ public sealed class PreviewContentCache : IPreviewCacheControl, IDisposable
     {
         try
         {
+            if (File.Exists(path))
+            {
+                PreviewCachePathGuard.ValidatePrivateFile(path);
+            }
+
             File.Delete(path);
         }
         catch (Exception exception)

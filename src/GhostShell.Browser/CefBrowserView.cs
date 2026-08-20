@@ -18,8 +18,11 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
     private const string LoadStringHost = "loadstring.exclr8cef.internal";
     private const int HeadlessViewportWidth = 1280;
     private const int HeadlessViewportHeight = 720;
+    private static readonly TimeSpan DestinationResolutionDeadline =
+        TimeSpan.FromSeconds(5);
 
     private readonly CefWebView _webView;
+    private readonly CefBrowserContentPolicy _contentPolicy;
     private readonly Grid _view;
     private readonly CefAgentCursorOverlay _agentCursorOverlay;
     private readonly TaskCompletionSource<bool> _rendererReady = new(
@@ -29,7 +32,7 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
     private CefBrowserAutomationAdapter? _automationAdapter;
     private CefHumanizedInput? _humanizedInput;
     private CefBrowserNetworkActivityTracker? _networkActivity;
-    private ActiveNativeNavigation? _activeNavigation;
+    private volatile ActiveNativeNavigation? _activeNavigation;
     private BrowserAddress? _queuedAddress;
     private CefLocalDocumentAccessPolicy _localDocumentAccess =
         CefLocalDocumentAccessPolicy.None;
@@ -38,8 +41,11 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
     private bool _isAgentActive;
     private bool _disposed;
 
-    public CefBrowserView(CefRequestContext? requestContext = null)
+    public CefBrowserView(
+        CefRequestContext? requestContext = null,
+        CefBrowserContentPolicy contentPolicy = CefBrowserContentPolicy.Ordinary)
     {
+        _contentPolicy = contentPolicy;
         _webView = new CefWebView
         {
             Url = BrowserAddress.Blank.Value.AbsoluteUri,
@@ -71,6 +77,23 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         {
             _ = EnsureAgentCursorAsync(humanizedInput);
         }
+    }
+
+    public void SetActiveNavigationRequestPolicy(
+        Func<BrowserAddress, CancellationToken, ValueTask<bool>> policy)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+        ThrowIfDisposed();
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            throw new InvalidOperationException(
+                "The active browser navigation policy must be set on the UI thread.");
+        }
+
+        var navigation = _activeNavigation
+            ?? throw new InvalidOperationException(
+                "The browser has no active navigation to protect.");
+        navigation.SetRequestPolicy(policy);
     }
 
     public event EventHandler<NativeBrowserNavigationEventArgs>? NavigationStarted;
@@ -528,20 +551,77 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
                 return;
             }
 
+            var permittedPage = Volatile.Read(
+                ref _localDocumentAccess).PermittedPage;
+            if (_contentPolicy is CefBrowserContentPolicy.RestrictedLocalPreview)
+            {
+                if (IsPermittedRestrictedHtmlPreviewRequest(
+                        args.Url,
+                        args.Method,
+                        args.Type,
+                        permittedPage))
+                {
+                    args.Continue();
+                }
+                else
+                {
+                    args.Cancel();
+                }
+
+                return;
+            }
+
             if (args.Type is not Cef.ResourceType.MainFrame)
             {
                 ResolveSubresource(args);
                 return;
             }
 
-            // Top-level policy has already run synchronously in BeforeBrowse.
-            // ResourceRequest remains subscribed to constrain subresources.
-            args.Continue();
+            var requestPolicy = _activeNavigation?.ReadRequestPolicy();
+            if (requestPolicy is null)
+            {
+                args.Continue();
+                return;
+            }
+
+            if (!BrowserAddress.TryParse(args.Url, out var address))
+            {
+                args.Cancel();
+                return;
+            }
+
+            _ = ResolveMainFrameRequestAsync(args, address, requestPolicy);
         }
         catch
         {
             // Every ResourceRequest token must be resolved. Host or dispatcher
             // failures deny the request instead of hanging or bypassing policy.
+            args.Cancel();
+        }
+    }
+
+    private static async Task ResolveMainFrameRequestAsync(
+        ResourceRequestEventArgs args,
+        BrowserAddress address,
+        Func<BrowserAddress, CancellationToken, ValueTask<bool>> requestPolicy)
+    {
+        try
+        {
+            using var deadline = new CancellationTokenSource(
+                DestinationResolutionDeadline);
+            if (await requestPolicy(address, deadline.Token).ConfigureAwait(false))
+            {
+                args.Continue();
+            }
+            else
+            {
+                args.Cancel();
+            }
+        }
+        catch
+        {
+            // DNS failure, timeout, cancellation, and host policy failures are
+            // all denials at this pre-request boundary.
             args.Cancel();
         }
     }
@@ -573,6 +653,16 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
 
             if (_ignoreInitialBlank && IsBlank(args.Url))
             {
+                return;
+            }
+
+            // The host creates the only allowed top-level navigation. Links,
+            // forms, refresh directives, and other document-initiated attempts
+            // arrive with no active explicit generation and fail closed.
+            if (_contentPolicy is CefBrowserContentPolicy.RestrictedLocalPreview
+                && _activeNavigation is null)
+            {
+                args.Cancel = true;
                 return;
             }
 
@@ -1102,6 +1192,56 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         }
     }
 
+    internal static bool IsPermittedRestrictedHtmlPreviewRequest(
+        string? requestUrl,
+        string? method,
+        Cef.ResourceType resourceType,
+        BrowserAddress? permittedLocalPage)
+    {
+        if (!string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase)
+            || !Uri.TryCreate(requestUrl, UriKind.Absolute, out var request))
+        {
+            return false;
+        }
+
+        if (resourceType is Cef.ResourceType.MainFrame)
+        {
+            return IsPermittedTopLevelLocalPage(request, permittedLocalPage);
+        }
+
+        if (!IsPermittedLocalSubresource(request, permittedLocalPage))
+        {
+            return false;
+        }
+
+        var extension = Path.GetExtension(request.LocalPath);
+        return resourceType switch
+        {
+            Cef.ResourceType.Stylesheet => HasExtension(extension, ".css"),
+            Cef.ResourceType.Image or Cef.ResourceType.Favicon =>
+                HasExtension(
+                    extension,
+                    ".png",
+                    ".jpg",
+                    ".jpeg",
+                    ".gif",
+                    ".webp",
+                    ".bmp",
+                    ".ico",
+                    ".avif"),
+            Cef.ResourceType.Font => HasExtension(
+                extension,
+                ".woff",
+                ".woff2",
+                ".ttf",
+                ".otf"),
+            _ => false,
+        };
+    }
+
+    private static bool HasExtension(string value, params string[] allowed) =>
+        allowed.Contains(value, StringComparer.OrdinalIgnoreCase);
+
     private static bool IsLoadStringAddress(string? value)
     {
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri))
@@ -1214,6 +1354,10 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         long generation,
         BrowserAddress? pendingAddress)
     {
+        private Func<
+            BrowserAddress,
+            CancellationToken,
+            ValueTask<bool>>? _requestPolicy;
         private HashSet<string>? _supersededLegs;
         private string? _currentLeg;
 
@@ -1233,6 +1377,15 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
 
         public bool MayDispatchQueuedNavigation =>
             !StopRequested && !WasRejected;
+
+        public void SetRequestPolicy(
+            Func<BrowserAddress, CancellationToken, ValueTask<bool>> policy) =>
+            Volatile.Write(
+                ref _requestPolicy,
+                policy ?? throw new ArgumentNullException(nameof(policy)));
+
+        public Func<BrowserAddress, CancellationToken, ValueTask<bool>>?
+            ReadRequestPolicy() => Volatile.Read(ref _requestPolicy);
 
         public void AdmitLeg(string? url, bool isRedirect)
         {
@@ -1275,6 +1428,12 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
                 : value;
         }
     }
+}
+
+internal enum CefBrowserContentPolicy
+{
+    Ordinary,
+    RestrictedLocalPreview,
 }
 
 /// <summary>

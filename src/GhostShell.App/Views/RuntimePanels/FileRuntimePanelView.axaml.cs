@@ -246,7 +246,7 @@ public sealed partial class FileRuntimePanelView : UserControl
                 return;
             }
 
-            _htmlPreview = factory.Create();
+            _htmlPreview = factory.CreateIsolatedHtmlPreview();
             HtmlPreviewHost.Content = _htmlPreview.View;
         }
 

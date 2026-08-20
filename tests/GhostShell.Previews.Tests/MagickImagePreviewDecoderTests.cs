@@ -61,28 +61,14 @@ public sealed class MagickImagePreviewDecoderTests : IDisposable
     }
 
     [Fact]
-    public async Task A_large_image_is_scaled_down_to_the_pixel_ceiling()
+    public async Task An_over_budget_image_is_rejected_before_full_raster_decode()
     {
         var path = Path.Combine(_root, "big.tiff");
         await File.WriteAllBytesAsync(path, TestImages.Tiff(400, 300));
 
         var decoded = await _decoder.DecodeAsync(Content(path), maximumPixels: 10_000, CancellationToken.None);
 
-        Assert.NotNull(decoded);
-        // The reported size stays the file's own — the preview says what the
-        // image is, not what it was shrunk to.
-        Assert.Equal(400, decoded!.Width);
-        Assert.Equal(300, decoded.Height);
-        var rendered = TestImages.PngSize(decoded.PngBytes.Span);
-        Assert.True(
-            (long)rendered.Width * rendered.Height <= 10_000,
-            $"rendered {rendered.Width}x{rendered.Height} exceeds the ceiling");
-        // Proportional: a preview that reframes the picture is worse than a
-        // smaller one.
-        Assert.InRange(
-            (double)rendered.Width / rendered.Height,
-            400d / 300 * 0.9,
-            400d / 300 * 1.1);
+        Assert.Null(decoded);
     }
 
     [Fact]

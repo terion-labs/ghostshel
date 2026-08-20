@@ -17,6 +17,13 @@ internal interface IEmbeddedBrowserView : IDisposable
 
     void SetAgentActivity(bool isActive);
 
+    /// <summary>
+    /// Applies an asynchronous destination check to the currently active
+    /// main-frame navigation before its network request is released.
+    /// </summary>
+    void SetActiveNavigationRequestPolicy(
+        Func<BrowserAddress, CancellationToken, ValueTask<bool>> policy);
+
     event EventHandler<NativeBrowserNavigationEventArgs>? NavigationStarted;
 
     event EventHandler<NativeBrowserNavigationCompletedEventArgs>? NavigationCompleted;

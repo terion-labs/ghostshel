@@ -113,6 +113,11 @@ public static class GitRefsParser
             }
 
             var name = line[..tab];
+            if (name.StartsWith('-'))
+            {
+                continue;
+            }
+
             if (seen.Add(name))
             {
                 remotes.Add(new GitRemoteItem(name, line[(tab + 1)..^" (fetch)".Length]));

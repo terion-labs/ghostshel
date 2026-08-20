@@ -7,6 +7,249 @@ namespace GhostShell.SessionHost.Tests;
 public sealed class TerminalOperationTests
 {
     [Fact]
+    public async Task CancellationDuringTerminalSessionCreationRetainsUncertainReplay()
+    {
+        await using var harness = new SessionHostTestHarness();
+        var creationEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Factory.AfterCreateAsync = async (_, cancellationToken) =>
+        {
+            creationEntered.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken)
+                .ConfigureAwait(false);
+        };
+        var request = TerminalOpenRequest(harness);
+        var context = harness.HumanContext(
+            idempotencyKey: new IdempotencyKey("terminal-create-cancelled"));
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = harness.Client.EnsureTerminalSessionAsync(
+            request,
+            context,
+            cancellation.Token).AsTask();
+        await creationEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+
+        var uncertain = await pending;
+        var replay = await harness.Client.EnsureTerminalSessionAsync(
+            request,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            uncertain.Error().Code);
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            replay.Error().Code);
+        Assert.Equal(1, harness.Factory.CreateCount);
+    }
+
+    [Fact]
+    public async Task TerminalSessionSnapshotFailureDisposesEngineAndRetainsUncertainReplay()
+    {
+        await using var harness = new SessionHostTestHarness();
+        harness.Factory.BeforeSnapshotForNewSessions = static _ =>
+            ValueTask.FromException(new IOException("fake snapshot failure"));
+        var request = TerminalOpenRequest(harness);
+        var context = harness.HumanContext(
+            idempotencyKey: new IdempotencyKey("terminal-create-failed"));
+
+        var uncertain = await harness.Client.EnsureTerminalSessionAsync(
+            request,
+            context,
+            CancellationToken.None);
+        var replay = await harness.Client.EnsureTerminalSessionAsync(
+            request,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            uncertain.Error().Code);
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            replay.Error().Code);
+        Assert.True(harness.Factory[harness.SessionId].IsClosed);
+        Assert.Equal(1, harness.Factory.CreateCount);
+    }
+
+    [Fact]
+    public async Task ConcurrentTerminalCreationCompletesKnownSuccessAfterCallerCancellation()
+    {
+        await using var harness = new SessionHostTestHarness();
+        var snapshotEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSnapshot = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var snapshotToken = CancellationToken.None;
+        harness.Factory.BeforeSnapshotForNewSessions = async cancellationToken =>
+        {
+            snapshotToken = cancellationToken;
+            snapshotEntered.TrySetResult();
+            await releaseSnapshot.Task.ConfigureAwait(false);
+        };
+        var request = TerminalOpenRequest(harness);
+        var context = harness.HumanContext(
+            idempotencyKey: new IdempotencyKey("terminal-create-known"));
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = harness.Client.EnsureTerminalSessionAsync(
+            request,
+            context,
+            cancellation.Token).AsTask();
+        await snapshotEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+        var concurrentReplay = await harness.Client.EnsureTerminalSessionAsync(
+            request,
+            context,
+            CancellationToken.None);
+        releaseSnapshot.TrySetResult();
+
+        var completed = await pending;
+        var completedReplay = await harness.Client.EnsureTerminalSessionAsync(
+            request,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            concurrentReplay.Error().Code);
+        Assert.IsType<HostResult<SessionSnapshot>.Success>(completed);
+        Assert.IsType<HostResult<SessionSnapshot>.Success>(completedReplay);
+        Assert.False(snapshotToken.CanBeCanceled);
+        Assert.Equal(1, harness.Factory.CreateCount);
+    }
+
+    [Fact]
+    public async Task CancellationBeforeTerminalSessionCreationLeavesKeyFresh()
+    {
+        await using var harness = new SessionHostTestHarness();
+        var request = TerminalOpenRequest(harness);
+        var context = harness.HumanContext(
+            idempotencyKey: new IdempotencyKey("terminal-create-pre-cancelled"));
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        var cancelled = await harness.Client.EnsureTerminalSessionAsync(
+            request,
+            context,
+            cancellation.Token);
+        var retry = await harness.Client.EnsureTerminalSessionAsync(
+            request,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(HostErrorCode.Cancelled, cancelled.Error().Code);
+        Assert.IsType<HostResult<SessionSnapshot>.Success>(retry);
+        Assert.Equal(1, harness.Factory.CreateCount);
+    }
+
+    [Fact]
+    public async Task ConcurrentExistingTerminalOpensEnforceStoredFingerprintInsideGate()
+    {
+        await using var harness = new SessionHostTestHarness();
+        await harness.OpenAsync();
+        var blockerEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseBlocker = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.FileFactory.AfterCreateAsync = async (_, _) =>
+        {
+            blockerEntered.TrySetResult();
+            await releaseBlocker.Task.ConfigureAwait(false);
+        };
+        var blocker = harness.Client.EnsureFilePanelSessionAsync(
+            new EnsureFilePanelSessionRequest(
+                new SessionId("terminal-gate-blocker"),
+                new SessionOwner(
+                    HostMode.Desktop,
+                    harness.WindowId,
+                    harness.WorkspaceId,
+                    harness.TabId,
+                    new PanelInstanceId("terminal-gate-blocker-panel")),
+                "Files",
+                new FilePanelLocation(
+                    "profile-1",
+                    "test",
+                    new FilePanelAddress.Hierarchical(FilePanelPath.Root))),
+            harness.HumanContext(),
+            CancellationToken.None).AsTask();
+        await blockerEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var context = harness.HumanContext(
+            idempotencyKey: new IdempotencyKey("existing-terminal-race"));
+        var original = TerminalOpenRequest(harness);
+        var changed = original with
+        {
+            Launch = new TerminalLaunchRequest("/different"),
+        };
+        var first = harness.Client.EnsureTerminalSessionAsync(
+            original,
+            context,
+            CancellationToken.None).AsTask();
+        var competing = harness.Client.EnsureTerminalSessionAsync(
+            changed,
+            context,
+            CancellationToken.None).AsTask();
+
+        releaseBlocker.TrySetResult();
+        _ = (await blocker).Value();
+        var results = await Task.WhenAll(first, competing);
+
+        Assert.Single(results, result => result is HostResult<SessionSnapshot>.Success);
+        var rejected = Assert.Single(
+            results.OfType<HostResult<SessionSnapshot>.Failure>());
+        Assert.Equal(HostErrorCode.IdempotencyKeyReused, rejected.Error.Code);
+        Assert.Equal(1, harness.Factory.CreateCount);
+    }
+
+    [Fact]
+    public async Task TerminalOpenReservationRejectsCrossFamilyFileOpen()
+    {
+        await using var harness = new SessionHostTestHarness();
+        var snapshotEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSnapshot = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Factory.BeforeSnapshotForNewSessions = async _ =>
+        {
+            snapshotEntered.TrySetResult();
+            await releaseSnapshot.Task.ConfigureAwait(false);
+        };
+        var context = harness.HumanContext(
+            idempotencyKey: new IdempotencyKey("terminal-cross-family"));
+
+        var terminal = harness.Client.EnsureTerminalSessionAsync(
+            TerminalOpenRequest(harness),
+            context,
+            CancellationToken.None).AsTask();
+        await snapshotEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var rejected = await harness.Client.EnsureFilePanelSessionAsync(
+            new EnsureFilePanelSessionRequest(
+                new SessionId("terminal-cross-family-file"),
+                new SessionOwner(
+                    HostMode.Desktop,
+                    harness.WindowId,
+                    harness.WorkspaceId,
+                    harness.TabId,
+                    new PanelInstanceId("terminal-cross-family-file-panel")),
+                "Files",
+                new FilePanelLocation(
+                    "profile-1",
+                    "test",
+                    new FilePanelAddress.Hierarchical(FilePanelPath.Root))),
+            context,
+            CancellationToken.None);
+        releaseSnapshot.TrySetResult();
+
+        Assert.Equal(HostErrorCode.IdempotencyKeyReused, rejected.Error().Code);
+        Assert.IsType<HostResult<SessionSnapshot>.Success>(await terminal);
+        Assert.Equal(1, harness.Factory.CreateCount);
+        Assert.Equal(0, harness.FileFactory.CreateCount);
+    }
+
+    [Fact]
     public async Task TerminalWriteRequiresCurrentLease()
     {
         await using var harness = new SessionHostTestHarness();
@@ -121,6 +364,139 @@ public sealed class TerminalOperationTests
 
         Assert.Equal(1, terminal.WriteCount);
         Assert.All(results, result => Assert.IsType<HostResult<Unit>.Success>(result));
+    }
+
+    [Fact]
+    public async Task ReservedTerminalKeyCannotRaceAFileMutationForTheSameActor()
+    {
+        await using var harness = new SessionHostTestHarness();
+        await harness.OpenAsync();
+        var lease = (await harness.Client.AcquireInputLeaseAsync(
+            new AcquireInputLeaseRequest(harness.SessionId, null, TimeSpan.FromMinutes(5)),
+            harness.HumanContext(),
+            CancellationToken.None)).Value().Lease!;
+        var terminal = harness.Factory[harness.SessionId];
+        terminal.BlockWrites = true;
+        var key = new IdempotencyKey("cross-family-reservation");
+        var terminalContext = harness.HumanContext(idempotencyKey: key);
+        var terminalRequest = new TerminalWriteRequest(
+            harness.SessionId,
+            lease.Id,
+            "deploy\n");
+        var terminalWrite = harness.Client.WriteTerminalAsync(
+            terminalRequest,
+            terminalContext,
+            CancellationToken.None).AsTask();
+        await terminal.WriteStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var fileSessionId = new SessionId("files-1");
+        var root = new FilePanelLocation(
+            "profile-1",
+            "test",
+            new FilePanelAddress.Hierarchical(FilePanelPath.Root));
+        var opened = (await harness.Client.EnsureFilePanelSessionAsync(
+            new EnsureFilePanelSessionRequest(
+                fileSessionId,
+                new SessionOwner(
+                    HostMode.Desktop,
+                    harness.WindowId,
+                    harness.WorkspaceId,
+                    harness.TabId,
+                    new PanelInstanceId("file-panel")),
+                "Files",
+                root),
+            harness.HumanContext(),
+            CancellationToken.None)).Value();
+        var fileResult = await harness.Client.CreateFileDirectoryAsync(
+            new FilePanelCreateDirectoryHostRequest(
+                fileSessionId,
+                new FilePanelCreateDirectoryRequest(
+                    root.Child(new FilePanelPathSegment("new-directory")),
+                    FilePanelMutationPrecondition.MustNotExist)),
+            harness.HumanContext(
+                expectedRevision: opened.Descriptor.Revision,
+                idempotencyKey: key),
+            CancellationToken.None);
+
+        Assert.Equal(HostErrorCode.IdempotencyKeyReused, fileResult.Error().Code);
+        Assert.Equal(0, harness.FileFactory[fileSessionId].CreateDirectoryCount);
+        Assert.Equal(1, terminal.WriteCount);
+
+        terminal.ReleaseWrite.TrySetResult();
+        Assert.IsType<HostResult<Unit>.Success>(await terminalWrite);
+    }
+
+    [Fact]
+    public async Task CancellationAfterTerminalDispatchLeavesAnUncertainReplay()
+    {
+        await using var harness = new SessionHostTestHarness();
+        await harness.OpenAsync();
+        var lease = (await harness.Client.AcquireInputLeaseAsync(
+            new AcquireInputLeaseRequest(harness.SessionId, null, TimeSpan.FromMinutes(5)),
+            harness.HumanContext(),
+            CancellationToken.None)).Value().Lease!;
+        var terminal = harness.Factory[harness.SessionId];
+        terminal.BlockWrites = true;
+        var context = harness.HumanContext(
+            idempotencyKey: new IdempotencyKey("cancelled-after-terminal-dispatch"));
+        var request = new TerminalWriteRequest(
+            harness.SessionId,
+            lease.Id,
+            "deploy\n");
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = harness.Client.WriteTerminalAsync(
+            request,
+            context,
+            cancellation.Token).AsTask();
+        await terminal.WriteStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+
+        var uncertain = await pending;
+        var replay = await harness.Client.WriteTerminalAsync(
+            request,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            uncertain.Error().Code);
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            replay.Error().Code);
+        Assert.Equal(1, terminal.WriteCount);
+    }
+
+    [Fact]
+    public async Task CancellationBeforeTerminalDispatchDoesNotReserveTheKey()
+    {
+        await using var harness = new SessionHostTestHarness();
+        await harness.OpenAsync();
+        var lease = (await harness.Client.AcquireInputLeaseAsync(
+            new AcquireInputLeaseRequest(harness.SessionId, null, TimeSpan.FromMinutes(5)),
+            harness.HumanContext(),
+            CancellationToken.None)).Value().Lease!;
+        var context = harness.HumanContext(
+            idempotencyKey: new IdempotencyKey("cancelled-before-terminal-dispatch"));
+        var request = new TerminalWriteRequest(
+            harness.SessionId,
+            lease.Id,
+            "deploy\n");
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        var cancelled = await harness.Client.WriteTerminalAsync(
+            request,
+            context,
+            cancellation.Token);
+        var retry = await harness.Client.WriteTerminalAsync(
+            request,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(HostErrorCode.Cancelled, cancelled.Error().Code);
+        Assert.IsType<HostResult<Unit>.Success>(retry);
+        Assert.Equal(1, harness.Factory[harness.SessionId].WriteCount);
     }
 
     [Fact]
@@ -544,4 +920,16 @@ public sealed class TerminalOperationTests
         Assert.True(harness.Factory[harness.SessionId].RendererAttached);
         Assert.Equal(1, harness.Factory[harness.SessionId].DetachRendererCount);
     }
+
+    private static EnsureTerminalSessionRequest TerminalOpenRequest(
+        SessionHostTestHarness harness) => new(
+        harness.SessionId,
+        new SessionOwner(
+            HostMode.Desktop,
+            harness.WindowId,
+            harness.WorkspaceId,
+            harness.TabId,
+            harness.PanelId),
+        "test terminal",
+        new TerminalLaunchRequest("/tmp"));
 }

@@ -1248,10 +1248,11 @@ public sealed class AgentBrowserSessionHostTests
 
     [Theory]
     [InlineData("http://initial.example.test/")]
+    [InlineData("http://localhost:4312/")]
     [InlineData("https://other.example.test/")]
     [InlineData("https://initial.example.test:444/")]
     [InlineData("about:blank")]
-    public async Task Authorized_navigation_is_not_restricted_to_the_current_origin(
+    public async Task Authorized_navigation_is_restricted_to_the_approved_origin(
         string destination)
     {
         await using var fixture = await AgentBrowserHostFixture.CreateAsync();
@@ -1268,7 +1269,7 @@ public sealed class AgentBrowserSessionHostTests
         Assert.IsType<AgentBrowserActionResult.Completed>(result.Value());
         Assert.Equal(1, fixture.Renderer.NavigateCount);
         Assert.Equal(
-            BrowserNavigationOrigin.Unrestricted,
+            BrowserNavigationOrigin.FromAddress(Address(destination)),
             fixture.Renderer.LastNavigationOrigin);
         AssertCompletion(
             Assert.Single(fixture.Authorization.Completions),

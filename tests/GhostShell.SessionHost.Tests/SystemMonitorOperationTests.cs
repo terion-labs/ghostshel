@@ -15,6 +15,219 @@ public sealed class SystemMonitorOperationTests
     private static readonly SessionId StatisticsSessionId = new("statistics-session");
     private static readonly SessionId ProcessSessionId = new("process-session");
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CancellationDuringMonitorSessionCreationRetainsUncertainReplay(
+        bool processMonitor)
+    {
+        var factory = new FakeSystemMonitorPanelSessionFactory();
+        var creationEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        factory.AfterCreateAsync = async (_, cancellationToken) =>
+        {
+            creationEntered.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken)
+                .ConfigureAwait(false);
+        };
+        await using var host = CreateHost(factory);
+        var context = Context(
+            idempotencyKey: new IdempotencyKey(
+                $"monitor-create-cancelled-{processMonitor}"));
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = EnsureMonitorAsync(
+            host,
+            processMonitor,
+            context,
+            cancellation.Token).AsTask();
+        await creationEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+
+        var uncertain = await pending;
+        var replay = await EnsureMonitorAsync(
+            host,
+            processMonitor,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            uncertain.Error().Code);
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            replay.Error().Code);
+        Assert.Equal(1, MonitorCreateCount(factory, processMonitor));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MonitorSessionSnapshotFailureDisposesEngineAndRetainsUncertainReplay(
+        bool processMonitor)
+    {
+        var factory = new FakeSystemMonitorPanelSessionFactory
+        {
+            BeforeSnapshotForNewSessions = static _ =>
+                ValueTask.FromException(new IOException("fake snapshot failure")),
+        };
+        await using var host = CreateHost(factory);
+        var context = Context(
+            idempotencyKey: new IdempotencyKey(
+                $"monitor-create-failed-{processMonitor}"));
+
+        var uncertain = await EnsureMonitorAsync(
+            host,
+            processMonitor,
+            context,
+            CancellationToken.None);
+        var replay = await EnsureMonitorAsync(
+            host,
+            processMonitor,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            uncertain.Error().Code);
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            replay.Error().Code);
+        Assert.Equal(1, CreatedMonitor(factory, processMonitor).DisposeCount);
+        Assert.Equal(1, MonitorCreateCount(factory, processMonitor));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ConcurrentMonitorCreationCompletesKnownSuccessAfterCallerCancellation(
+        bool processMonitor)
+    {
+        var factory = new FakeSystemMonitorPanelSessionFactory();
+        var snapshotEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSnapshot = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var snapshotToken = CancellationToken.None;
+        factory.BeforeSnapshotForNewSessions = async cancellationToken =>
+        {
+            snapshotToken = cancellationToken;
+            snapshotEntered.TrySetResult();
+            await releaseSnapshot.Task.ConfigureAwait(false);
+        };
+        await using var host = CreateHost(factory);
+        var context = Context(
+            idempotencyKey: new IdempotencyKey(
+                $"monitor-create-known-{processMonitor}"));
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = EnsureMonitorAsync(
+            host,
+            processMonitor,
+            context,
+            cancellation.Token).AsTask();
+        await snapshotEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+        var concurrentReplay = await EnsureMonitorAsync(
+            host,
+            processMonitor,
+            context,
+            CancellationToken.None);
+        releaseSnapshot.TrySetResult();
+
+        var completed = await pending;
+        var completedReplay = await EnsureMonitorAsync(
+            host,
+            processMonitor,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            concurrentReplay.Error().Code);
+        Assert.IsType<HostResult<SessionSnapshot>.Success>(completed);
+        Assert.IsType<HostResult<SessionSnapshot>.Success>(completedReplay);
+        Assert.False(snapshotToken.CanBeCanceled);
+        Assert.Equal(1, MonitorCreateCount(factory, processMonitor));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CancellationBeforeMonitorSessionCreationLeavesKeyFresh(
+        bool processMonitor)
+    {
+        var factory = new FakeSystemMonitorPanelSessionFactory();
+        await using var host = CreateHost(factory);
+        var context = Context(
+            idempotencyKey: new IdempotencyKey(
+                $"monitor-create-pre-cancelled-{processMonitor}"));
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        var cancelled = await EnsureMonitorAsync(
+            host,
+            processMonitor,
+            context,
+            cancellation.Token);
+        var retry = await EnsureMonitorAsync(
+            host,
+            processMonitor,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(HostErrorCode.Cancelled, cancelled.Error().Code);
+        Assert.IsType<HostResult<SessionSnapshot>.Success>(retry);
+        Assert.Equal(1, MonitorCreateCount(factory, processMonitor));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MonitorOpenReservationRejectsCrossFamilyTerminalOpen(
+        bool processMonitor)
+    {
+        var factory = new FakeSystemMonitorPanelSessionFactory();
+        var terminals = new FakeTerminalSessionFactory();
+        var snapshotEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSnapshot = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        factory.BeforeSnapshotForNewSessions = async _ =>
+        {
+            snapshotEntered.TrySetResult();
+            await releaseSnapshot.Task.ConfigureAwait(false);
+        };
+        await using var host = CreateHost(
+            factory,
+            terminalFactory: terminals);
+        var context = Context(
+            idempotencyKey: new IdempotencyKey(
+                $"monitor-cross-family-{processMonitor}"));
+
+        var monitor = EnsureMonitorAsync(
+            host,
+            processMonitor,
+            context,
+            CancellationToken.None).AsTask();
+        await snapshotEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var rejected = await host.EnsureTerminalSessionAsync(
+            new EnsureTerminalSessionRequest(
+                new SessionId($"monitor-cross-family-terminal-{processMonitor}"),
+                Owner(new PanelInstanceId(
+                    $"monitor-cross-family-terminal-panel-{processMonitor}")),
+                "Terminal",
+                new TerminalLaunchRequest("/tmp")),
+            context,
+            CancellationToken.None);
+        releaseSnapshot.TrySetResult();
+
+        Assert.Equal(HostErrorCode.IdempotencyKeyReused, rejected.Error().Code);
+        Assert.IsType<HostResult<SessionSnapshot>.Success>(await monitor);
+        Assert.Equal(1, MonitorCreateCount(factory, processMonitor));
+        Assert.Equal(0, terminals.CreateCount);
+    }
+
     [Fact]
     public async Task NegotiationAndMissingFactoryReflectConfiguredCapabilities()
     {
@@ -302,12 +515,39 @@ public sealed class SystemMonitorOperationTests
 
     private static InMemorySessionHostClient CreateHost(
         ISystemMonitorPanelSessionFactory? monitorFactory,
-        TimeProvider? timeProvider = null) =>
+        TimeProvider? timeProvider = null,
+        ITerminalSessionFactory? terminalFactory = null) =>
         new(
-            new FakeTerminalSessionFactory(),
+            terminalFactory ?? new FakeTerminalSessionFactory(),
             new DesktopLifecyclePolicy(),
             timeProvider ?? new ManualTimeProvider(DateTimeOffset.UnixEpoch),
             systemMonitorFactory: monitorFactory);
+
+    private static ValueTask<HostResult<SessionSnapshot>> EnsureMonitorAsync(
+        InMemorySessionHostClient host,
+        bool processMonitor,
+        OperationContext context,
+        CancellationToken cancellationToken) => processMonitor
+        ? host.EnsureProcessMonitorSessionAsync(
+            ProcessRequest(),
+            context,
+            cancellationToken)
+        : host.EnsureStatisticsSessionAsync(
+            StatisticsRequest(),
+            context,
+            cancellationToken);
+
+    private static int MonitorCreateCount(
+        FakeSystemMonitorPanelSessionFactory factory,
+        bool processMonitor) => processMonitor
+        ? factory.ProcessMonitorCreateCount
+        : factory.StatisticsCreateCount;
+
+    private static FakeMonitorPanelSession CreatedMonitor(
+        FakeSystemMonitorPanelSessionFactory factory,
+        bool processMonitor) => processMonitor
+        ? factory.Processes(ProcessSessionId)
+        : factory.Statistics(StatisticsSessionId);
 
     private static EnsureStatisticsSessionRequest StatisticsRequest() =>
         new(StatisticsSessionId, Owner(StatisticsPanelId), "Statistics");

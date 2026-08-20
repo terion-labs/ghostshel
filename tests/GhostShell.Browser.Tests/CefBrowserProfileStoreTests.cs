@@ -5,6 +5,24 @@ namespace GhostShell.Browser.Tests;
 public sealed class CefBrowserProfileStoreTests
 {
     [Fact]
+    public void ConstructionDoesNotCreatePersistentProfileStorage()
+    {
+        var parent = TemporaryRoot();
+        var root = Path.Combine(parent, "profiles");
+        try
+        {
+            using var store = new CefBrowserProfileStore(root);
+
+            Assert.False(Directory.Exists(root));
+            Assert.Equal(new BrowserProfileStorageUsage(0, 0, 0), store.ReadUsage());
+        }
+        finally
+        {
+            Directory.Delete(parent, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task ClearingWorkspaceProfilesPreservesGlobalAndWebAppData()
     {
         var root = TemporaryRoot();

@@ -5,6 +5,22 @@ namespace GhostShell.Browser.Tests;
 public sealed class CefBrowserNetworkContextTests
 {
     [Fact]
+    public void Html_preview_context_disables_javascript_and_popups()
+    {
+        var preferences = CefBrowserNetworkContext.HtmlPreviewPreferences();
+
+        Assert.Equal(
+            2,
+            JsonSerializer.Deserialize<int>(
+                preferences["profile.default_content_setting_values.javascript"]));
+        Assert.Equal(
+            2,
+            JsonSerializer.Deserialize<int>(
+                preferences["profile.default_content_setting_values.popups"]));
+        Assert.DoesNotContain("proxy", preferences.Keys, StringComparer.Ordinal);
+    }
+
+    [Fact]
     public void Ssh_proxy_routes_loopback_and_blocks_non_proxied_webrtc_udp()
     {
         var preferences = CefBrowserNetworkContext.RequiredPreferences(45001);

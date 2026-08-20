@@ -20,7 +20,7 @@ public sealed class FilePreviewCatalogTests
     [InlineData("bundle.zip", typeof(ArchivePreviewRendering))]
     [InlineData("bundle.tar.gz", typeof(ArchivePreviewRendering))]
     [InlineData("settings.json", typeof(SourcePreviewRendering))]
-    [InlineData("page.html", typeof(WebPagePreviewRendering))]
+    [InlineData("page.html", typeof(SourcePreviewRendering))]
     public void A_file_is_read_by_the_previewer_its_name_names(string name, Type rendering)
     {
         var outcome = Catalog.Create(Source(name, "a,b\n1,2\n"));
@@ -104,14 +104,17 @@ public sealed class FilePreviewCatalogTests
     }
 
     [Fact]
-    public void A_web_page_can_be_shown_as_its_markup()
+    public void A_web_page_is_inert_by_default_and_live_rendering_is_explicit()
     {
         var source = Source("page.html", "<h1>hi</h1>");
 
-        Assert.IsType<WebPagePreviewRendering>(Catalog.Create(source).Rendering);
-        Assert.IsType<SourcePreviewRendering>(Catalog.Create(
+        Assert.IsType<SourcePreviewRendering>(Catalog.Create(source).Rendering);
+        Assert.IsType<WebPagePreviewRendering>(Catalog.Create(
             source,
-            new Dictionary<string, bool>(StringComparer.Ordinal) { [WebPagePreviewer.RawToggle] = true }).Rendering);
+            new Dictionary<string, bool>(StringComparer.Ordinal) { [WebPagePreviewer.RawToggle] = false }).Rendering);
+        var toggle = Assert.Single(Catalog.Create(source).Toggles);
+        Assert.Equal("Show source", toggle.Label);
+        Assert.True(toggle.IsOn);
     }
 
     [Fact]

@@ -136,6 +136,26 @@ public sealed partial class InMemorySessionHostClient
                 return ownerFailure;
             }
 
+            if (TryReplay(
+                    context,
+                    fingerprint,
+                    0,
+                    out HostResult<SessionSnapshot>? inGateReplay))
+            {
+                return inGateReplay;
+            }
+
+            using var operationCancellation = MonitorOperationCancellation.Create(
+                context,
+                cancellationToken,
+                _timeProvider);
+            if (operationCancellation.Token.IsCancellationRequested)
+            {
+                return operationCancellation.DeadlineElapsed
+                    ? DeadlineExceeded<SessionSnapshot>(0)
+                    : Cancelled<SessionSnapshot>(0);
+            }
+
             if (TryGetSession(sessionId, out var existing))
             {
                 var existingSnapshot = existing.Snapshot();
@@ -156,84 +176,110 @@ public sealed partial class InMemorySessionHostClient
                         existingSnapshot.Descriptor.Revision);
                 }
 
+                var existingReservation = ReserveReplay<SessionSnapshot>(
+                    context,
+                    fingerprint,
+                    existingSnapshot.Descriptor.Revision,
+                    out var existingOutcomeReserved);
+                if (existingReservation is not null)
+                {
+                    return existingReservation;
+                }
+
                 if (WorkspaceGraphFailure<SessionSnapshot>(
                         _workspaceGraphs.LinkSession(owner, kind, sessionId)) is { } linkFailure)
                 {
-                    return linkFailure;
+                    return existingOutcomeReserved
+                        ? OutcomeUncertain<SessionSnapshot>(
+                            existingSnapshot.Descriptor.Revision)
+                        : linkFailure;
                 }
 
                 var existingResult = HostResult<SessionSnapshot>.Succeed(
                     existingSnapshot,
                     existingSnapshot.Descriptor.Revision);
-                StoreReplay(context, fingerprint, existingResult);
+                CompleteReplay(context, fingerprint, existingResult);
                 return existingResult;
             }
 
-            IPanelSession? createdEngine = null;
-            PanelSessionSnapshot engineSnapshot;
-            using var operationCancellation = MonitorOperationCancellation.Create(
+            var reservationReplay = ReserveReplay<SessionSnapshot>(
                 context,
-                cancellationToken,
-                _timeProvider);
+                fingerprint,
+                currentRevision: 0,
+                out var outcomeReserved);
+            if (reservationReplay is not null)
+            {
+                return reservationReplay;
+            }
+
+            IPanelSession? createdEngine = null;
+            HostedSession hosted;
             try
             {
                 createdEngine = await createEngine(operationCancellation.Token).ConfigureAwait(false);
                 if (createdEngine.Kind != kind || createdEngine.Id != sessionId)
                 {
-                    await createdEngine.DisposeAsync().ConfigureAwait(false);
-                    return HostResult<SessionSnapshot>.Fail(
+                    await DisposeUnownedSessionAsync(createdEngine).ConfigureAwait(false);
+                    createdEngine = null;
+                    var mismatch = HostResult<SessionSnapshot>.Fail(
                         HostError.Create(
                             HostErrorCode.EngineFailed,
                             "The monitoring engine returned an invalid session."),
                         0);
+                    return outcomeReserved
+                        ? OutcomeUncertain<SessionSnapshot>(0)
+                        : mismatch;
                 }
 
-                engineSnapshot = await createdEngine
-                    .SnapshotAsync(operationCancellation.Token)
+                var engineSnapshot = await createdEngine
+                    .SnapshotAsync(CancellationToken.None)
                     .ConfigureAwait(false);
-                if (operationCancellation.DeadlineElapsed)
+                hosted = new HostedSession(
+                    createdEngine,
+                    owner,
+                    title,
+                    engineSnapshot,
+                    _eventRetention,
+                    _timeProvider);
+                lock (_gate)
                 {
-                    await createdEngine.DisposeAsync().ConfigureAwait(false);
-                    return DeadlineExceeded<SessionSnapshot>(0);
+                    _sessions.Add(sessionId, hosted);
                 }
+
+                createdEngine = null;
             }
             catch (OperationCanceledException)
             {
-                await DisposeRejectedMonitorAsync(createdEngine).ConfigureAwait(false);
-                return operationCancellation.DeadlineElapsed
-                    ? DeadlineExceeded<SessionSnapshot>(0)
-                    : Cancelled<SessionSnapshot>(0);
+                await DisposeUnownedSessionAsync(createdEngine).ConfigureAwait(false);
+                return outcomeReserved
+                    ? OutcomeUncertain<SessionSnapshot>(0)
+                    : operationCancellation.DeadlineElapsed
+                        ? DeadlineExceeded<SessionSnapshot>(0)
+                        : Cancelled<SessionSnapshot>(0);
             }
             catch (Exception)
             {
-                await DisposeRejectedMonitorAsync(createdEngine).ConfigureAwait(false);
-                return MonitoringEngineFailure<SessionSnapshot>(0);
-            }
-
-            var engine = createdEngine;
-            var hosted = new HostedSession(
-                engine,
-                owner,
-                title,
-                engineSnapshot,
-                _eventRetention,
-                _timeProvider);
-            lock (_gate)
-            {
-                _sessions.Add(sessionId, hosted);
+                await DisposeUnownedSessionAsync(createdEngine).ConfigureAwait(false);
+                return outcomeReserved
+                    ? OutcomeUncertain<SessionSnapshot>(0)
+                    : MonitoringEngineFailure<SessionSnapshot>(0);
             }
 
             if (WorkspaceGraphFailure<SessionSnapshot>(
                     _workspaceGraphs.LinkSession(owner, kind, sessionId)) is { } rejected)
             {
-                return await RemoveRejectedSessionAsync(hosted, rejected).ConfigureAwait(false);
+                var removed = await RemoveRejectedSessionAsync(hosted, rejected)
+                    .ConfigureAwait(false);
+                return outcomeReserved
+                    ? OutcomeUncertain<SessionSnapshot>(0)
+                    : removed;
             }
 
             var snapshot = hosted.Snapshot();
             var result = HostResult<SessionSnapshot>.Succeed(
                 snapshot,
                 snapshot.Descriptor.Revision);
-            StoreReplay(context, fingerprint, result);
+            CompleteReplay(context, fingerprint, result);
             return result;
         }
         finally
@@ -371,24 +417,6 @@ public sealed partial class InMemorySessionHostClient
                 HostErrorCode.EngineFailed,
                 "The system monitor could not complete the operation."),
             revision);
-
-    private static async ValueTask DisposeRejectedMonitorAsync(IPanelSession? engine)
-    {
-        if (engine is null)
-        {
-            return;
-        }
-
-        try
-        {
-            await engine.DisposeAsync().ConfigureAwait(false);
-        }
-        catch (Exception)
-        {
-            // The original startup failure remains the stable result. Disposal is best-effort
-            // because no hosted reference survives this path.
-        }
-    }
 
     private sealed class MonitorOperationCancellation : IDisposable
     {

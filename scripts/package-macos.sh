@@ -13,6 +13,7 @@ cef_runtime_root=""
 sign_identity=""
 notary_profile=""
 component_catalog="${repository_dir}/licenses/managed-components.json"
+desktop_project="${repository_dir}/src/GhostShell.Desktop/GhostShell.Desktop.csproj"
 cef_runtime_catalog="${repository_dir}/licenses/cef-runtime-components.json"
 native_component_catalog="${repository_dir}/licenses/native-terminal-components.json"
 font_assets_catalog="${repository_dir}/licenses/terminal-font-assets.json"
@@ -25,6 +26,7 @@ nuget_packages="${NUGET_PACKAGES:-${HOME}/.nuget/packages}"
 sql_language_artifact_directory="${repository_dir}/native/artifacts/osx-arm64"
 sql_language_worker="${sql_language_artifact_directory}/ghostshell-sql-language"
 sql_language_receipt="${sql_language_artifact_directory}/build-receipt.json"
+maven_content_lock="${repository_dir}/native/sql-language-worker/maven-content-lock.json"
 maximum_sql_language_macos_version="13.0"
 
 normalize_macos_version() {
@@ -156,6 +158,11 @@ if [[ "${runtime_identifier}" != "osx-arm64" ]]; then
     exit 64
 fi
 expected_macho_architecture="arm64"
+runtime_lock="${repository_dir}/src/GhostShell.Desktop/packages.${runtime_identifier}.lock.json"
+if [[ ! -f "${runtime_lock}" ]]; then
+    echo "The reviewed ${runtime_identifier} dependency lock is missing: ${runtime_lock}." >&2
+    exit 1
+fi
 
 native_artifact_directory="${repository_dir}/native/artifacts/${runtime_identifier}"
 native_build_receipt="${native_artifact_directory}/native-terminal-build-receipt.json"
@@ -213,6 +220,7 @@ required_native=(
     "${sql_language_artifact_directory}/THIRD-PARTY-NOTICES.md"
     "${sql_language_artifact_directory}/runtime-dependencies.txt"
     "${sql_language_receipt}"
+    "${maven_content_lock}"
     "${native_component_catalog}"
     "${native_build_receipt}"
     "${font_assets_catalog}"
@@ -243,9 +251,11 @@ sql_language_legal_review_required_count="$(/usr/bin/plutil -extract legalReview
 sql_language_runtime_dependency_count="$(/usr/bin/plutil -extract runtimeDependencyCount raw -expect integer -o - "${sql_language_receipt}")"
 sql_language_expected_dependencies_sha="$(/usr/bin/plutil -extract runtimeDependenciesSha256 raw -expect string -o - "${sql_language_receipt}")"
 sql_language_expected_notices_sha="$(/usr/bin/plutil -extract thirdPartyNoticesSha256 raw -expect string -o - "${sql_language_receipt}")"
+sql_language_expected_maven_lock_sha="$(/usr/bin/plutil -extract mavenContentLockSha256 raw -expect string -o - "${sql_language_receipt}")"
 sql_language_actual_sha="$(/usr/bin/shasum -a 256 "${sql_language_worker}" | /usr/bin/awk '{print $1}')"
 sql_language_actual_dependencies_sha="$(/usr/bin/shasum -a 256 "${sql_language_artifact_directory}/runtime-dependencies.txt" | /usr/bin/awk '{print $1}')"
 sql_language_actual_notices_sha="$(/usr/bin/shasum -a 256 "${sql_language_artifact_directory}/THIRD-PARTY-NOTICES.md" | /usr/bin/awk '{print $1}')"
+sql_language_actual_maven_lock_sha="$(/usr/bin/shasum -a 256 "${maven_content_lock}" | /usr/bin/awk '{print $1}')"
 sql_language_file_type="$(/usr/bin/file -b "${sql_language_worker}")"
 if [[ "${sql_language_receipt_rid}" != "osx-arm64" \
     || "${sql_language_receipt_protocol}" != "1" \
@@ -267,8 +277,9 @@ if [[ ! "${sql_language_legal_closure_format}" =~ ^[0-9]+$ \
     exit 1
 fi
 if [[ "${sql_language_expected_dependencies_sha}" != "${sql_language_actual_dependencies_sha}" \
-    || "${sql_language_expected_notices_sha}" != "${sql_language_actual_notices_sha}" ]]; then
-    echo "The SQL language worker legal files do not match its build receipt." >&2
+    || "${sql_language_expected_notices_sha}" != "${sql_language_actual_notices_sha}" \
+    || "${sql_language_expected_maven_lock_sha}" != "${sql_language_actual_maven_lock_sha}" ]]; then
+    echo "The SQL language worker legal or Maven-lock inputs do not match its build receipt." >&2
     exit 1
 fi
 
@@ -365,12 +376,18 @@ cleanup() {
 trap cleanup EXIT
 
 publish_dir="${working_dir}/publish"
+"${dotnet}" restore \
+    "${desktop_project}" \
+    --runtime "${runtime_identifier}" \
+    --locked-mode
 "${dotnet}" publish \
-    "${repository_dir}/src/GhostShell.Desktop/GhostShell.Desktop.csproj" \
+    "${desktop_project}" \
     --configuration "${configuration}" \
     --runtime "${runtime_identifier}" \
     --self-contained true \
+    --no-restore \
     --output "${publish_dir}" \
+    -p:RestoreLockedMode=true \
     -p:GhostShellProductVersion="${version}" \
     -p:GhostShellCefRuntimeArtifactDirectory="${cef_runtime_root}" \
     -p:DebugType=None \

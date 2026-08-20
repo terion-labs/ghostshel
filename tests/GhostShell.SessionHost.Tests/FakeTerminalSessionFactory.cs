@@ -42,6 +42,18 @@ internal sealed class FakeTerminalSessionFactory : ITerminalSessionFactory
 
     public bool BlockCreation { get; set; }
 
+    public Func<FakeTerminalSession, CancellationToken, ValueTask>? AfterCreateAsync
+    {
+        get;
+        set;
+    }
+
+    public Func<CancellationToken, ValueTask>? BeforeSnapshotForNewSessions
+    {
+        get;
+        set;
+    }
+
     public string? ExcludedCapabilityForNewSessions { get; set; }
 
     public TaskCompletionSource CreationStarted { get; } =
@@ -71,13 +83,21 @@ internal sealed class FakeTerminalSessionFactory : ITerminalSessionFactory
             launch,
             NewSessionsHaveActiveWork,
             CloseOutcomeOverride,
-            ThrowWhenClosing);
+            ThrowWhenClosing)
+        {
+            BeforeSnapshotAsync = BeforeSnapshotForNewSessions,
+        };
         if (ExcludedCapabilityForNewSessions is { } excludedCapability)
         {
             session.RemoveCapability(excludedCapability);
         }
 
         _sessions.Add(sessionId, session);
+        if (AfterCreateAsync is { } afterCreate)
+        {
+            await afterCreate(session, cancellationToken).ConfigureAwait(false);
+        }
+
         return session;
     }
 }

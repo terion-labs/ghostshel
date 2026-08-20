@@ -345,6 +345,8 @@ public sealed class BrowserRuntimePanelViewModelTests
 
         public BrowserRendererView Create() => rendererView;
 
+        public BrowserRendererView CreateIsolatedHtmlPreview() => rendererView;
+
         public ValueTask<BrowserRendererView> CreateAsync(
             ConnectionProfile connection,
             CancellationToken cancellationToken)

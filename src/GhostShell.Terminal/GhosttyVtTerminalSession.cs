@@ -38,18 +38,20 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
     /// <summary>
     /// Requests to be noticed, kept apart from <see cref="_events"/>.
     ///
-    /// Dropping the oldest is right here in a way it would not be for
-    /// lifecycle: under a flood of bells the newest is the one worth showing,
-    /// and no consumer reconstructs anything from the sequence.
+    /// Both item count and retained UTF-8 bytes are bounded. Wait mode is used
+    /// with non-blocking TryWrite so a rejected item is observable to the byte
+    /// accounting instead of being invisibly evicted by the channel.
     /// </summary>
-    private readonly Channel<PanelNotificationEvent> _notifications =
-        Channel.CreateBounded<PanelNotificationEvent>(
+    private readonly Channel<QueuedPanelNotification> _notifications =
+        Channel.CreateBounded<QueuedPanelNotification>(
             new BoundedChannelOptions(64)
             {
-                FullMode = BoundedChannelFullMode.DropOldest,
+                FullMode = BoundedChannelFullMode.Wait,
                 SingleReader = false,
                 SingleWriter = false,
             });
+    internal const long MaximumQueuedNotificationUtf8Bytes = 256 * 1024;
+    private long _queuedNotificationUtf8Bytes;
     private long _notificationSequence;
     private readonly TaskCompletionSource _stopped =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -482,10 +484,14 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
         long afterSequence,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        await foreach (var notification in _notifications.Reader
+        await foreach (var queued in _notifications.Reader
                            .ReadAllAsync(cancellationToken)
                            .ConfigureAwait(false))
         {
+            Interlocked.Add(
+                ref _queuedNotificationUtf8Bytes,
+                -queued.Utf8Bytes);
+            var notification = queued.Notification;
             if (notification.Sequence > afterSequence)
             {
                 yield return notification;
@@ -498,13 +504,51 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
     /// only ever writes to a channel — anything that could block or throw
     /// belongs to the reader.
     /// </summary>
-    internal void PublishNotification(PanelNotificationKind kind, string title, string body) =>
-        _notifications.Writer.TryWrite(new PanelNotificationEvent(
-            Interlocked.Increment(ref _notificationSequence),
-            kind,
-            title,
-            body,
-            DateTimeOffset.UtcNow));
+    internal void PublishNotification(PanelNotificationKind kind, string title, string body)
+    {
+        var notification = PanelNotificationTextBudget.Clamp(
+            new PanelNotificationEvent(
+                Interlocked.Increment(ref _notificationSequence),
+                kind,
+                title,
+                body,
+                DateTimeOffset.UtcNow));
+        var utf8Bytes = PanelNotificationTextBudget.Measure(notification);
+        if (!TryReserveNotificationBytes(utf8Bytes))
+        {
+            return;
+        }
+
+        if (!_notifications.Writer.TryWrite(
+                new QueuedPanelNotification(notification, utf8Bytes)))
+        {
+            Interlocked.Add(ref _queuedNotificationUtf8Bytes, -utf8Bytes);
+        }
+    }
+
+    internal long RetainedNotificationUtf8Bytes =>
+        Volatile.Read(ref _queuedNotificationUtf8Bytes);
+
+    private bool TryReserveNotificationBytes(int utf8Bytes)
+    {
+        while (true)
+        {
+            var current = Volatile.Read(ref _queuedNotificationUtf8Bytes);
+            var next = current + utf8Bytes;
+            if (next > MaximumQueuedNotificationUtf8Bytes)
+            {
+                return false;
+            }
+
+            if (Interlocked.CompareExchange(
+                    ref _queuedNotificationUtf8Bytes,
+                    next,
+                    current) == current)
+            {
+                return true;
+            }
+        }
+    }
 
     internal bool TryCaptureInteractiveStateNotification(
         string title,
@@ -533,6 +577,10 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
         // malformed one is consumed and ignored instead of becoming UI noise.
         return true;
     }
+
+    private sealed record QueuedPanelNotification(
+        PanelNotificationEvent Notification,
+        int Utf8Bytes);
 
     public async ValueTask<PanelCloseOutcome> CloseAsync(
         PanelCloseMode mode,

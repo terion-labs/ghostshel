@@ -380,8 +380,8 @@ public sealed class DatabasePanelSessionFactoryTests : IAsyncLifetime
         public Task<bool> DeleteKeyAsync(RedisKeyReference key, CancellationToken cancellationToken) =>
             Task.FromResult(false);
 
-        public Task RemoveEntryAsync(RedisKeyReference key, string type, RedisValueEntry entry, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
+        public Task<RedisEntryRemovalOutcome> RemoveEntryAsync(RedisKeyReference key, string type, RedisValueEntry entry, CancellationToken cancellationToken) =>
+            Task.FromResult(RedisEntryRemovalOutcome.Removed);
 
         public Task SetExpiryAsync(RedisKeyReference key, TimeSpan? expiry, CancellationToken cancellationToken) =>
             Task.CompletedTask;

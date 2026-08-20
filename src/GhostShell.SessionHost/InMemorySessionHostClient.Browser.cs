@@ -58,6 +58,26 @@ public sealed partial class InMemorySessionHostClient
                 return ownerFailure;
             }
 
+            if (TryReplay(
+                    context,
+                    fingerprint,
+                    0,
+                    out HostResult<SessionSnapshot>? inGateReplay))
+            {
+                return inGateReplay;
+            }
+
+            using var operationCancellation = HostedOperationCancellation.Create(
+                context,
+                cancellationToken,
+                _timeProvider);
+            if (operationCancellation.Token.IsCancellationRequested)
+            {
+                return operationCancellation.DeadlineElapsed
+                    ? DeadlineExceeded<SessionSnapshot>(0)
+                    : Cancelled<SessionSnapshot>(0);
+            }
+
             if (TryGetSession(request.SessionId, out var existing))
             {
                 var existingSnapshot = existing.Snapshot();
@@ -78,78 +98,106 @@ public sealed partial class InMemorySessionHostClient
                         existingSnapshot.Descriptor.Revision);
                 }
 
+                var existingReservation = ReserveReplay<SessionSnapshot>(
+                    context,
+                    fingerprint,
+                    existingSnapshot.Descriptor.Revision,
+                    out var existingOutcomeReserved);
+                if (existingReservation is not null)
+                {
+                    return existingReservation;
+                }
+
                 if (WorkspaceGraphFailure<SessionSnapshot>(
                         _workspaceGraphs.LinkSession(
                             request.Owner,
                             PanelKind.Browser,
                             request.SessionId)) is { } existingLinkFailure)
                 {
-                    return existingLinkFailure;
+                    return existingOutcomeReserved
+                        ? OutcomeUncertain<SessionSnapshot>(
+                            existingSnapshot.Descriptor.Revision)
+                        : existingLinkFailure;
                 }
 
                 var existingResult = HostResult<SessionSnapshot>.Succeed(
                     existingSnapshot,
                     existingSnapshot.Descriptor.Revision);
-                StoreReplay(context, fingerprint, existingResult);
+                CompleteReplay(context, fingerprint, existingResult);
                 return existingResult;
             }
 
-            IBrowserPanelSession engine;
-            PanelSessionSnapshot engineSnapshot;
-            using var operationCancellation = HostedOperationCancellation.Create(
+            var reservationReplay = ReserveReplay<SessionSnapshot>(
                 context,
-                cancellationToken,
-                _timeProvider);
+                fingerprint,
+                currentRevision: 0,
+                out var outcomeReserved);
+            if (reservationReplay is not null)
+            {
+                return reservationReplay;
+            }
+
+            IBrowserPanelSession? createdEngine = null;
+            HostedSession hosted;
             try
             {
-                engine = await _browserPanelFactory
+                createdEngine = await _browserPanelFactory
                     .CreateAsync(
                         request.SessionId,
                         request.InitialAddress,
                         operationCancellation.Token)
                     .ConfigureAwait(false);
                 if (!_browserPanelCapabilities.Values.SequenceEqual(
-                        engine.Capabilities.Values,
+                        createdEngine.Capabilities.Values,
                         StringComparer.Ordinal))
                 {
-                    await engine.DisposeAsync().ConfigureAwait(false);
-                    return HostResult<SessionSnapshot>.Fail(
+                    await DisposeUnownedSessionAsync(createdEngine)
+                        .ConfigureAwait(false);
+                    createdEngine = null;
+                    var mismatch = HostResult<SessionSnapshot>.Fail(
                         HostError.Create(
                             HostErrorCode.EngineFailed,
                             "The browser session capability profile does not match its factory."),
                         0);
+                    return outcomeReserved
+                        ? OutcomeUncertain<SessionSnapshot>(0)
+                        : mismatch;
                 }
 
-                engineSnapshot = await engine
-                    .SnapshotAsync(operationCancellation.Token)
+                var engineSnapshot = await createdEngine
+                    .SnapshotAsync(CancellationToken.None)
                     .ConfigureAwait(false);
-                if (operationCancellation.DeadlineElapsed)
+                hosted = new HostedSession(
+                    createdEngine,
+                    request.Owner,
+                    request.Title,
+                    engineSnapshot,
+                    _eventRetention,
+                    _timeProvider);
+                lock (_gate)
                 {
-                    await engine.DisposeAsync().ConfigureAwait(false);
-                    return DeadlineExceeded<SessionSnapshot>(0);
+                    _sessions.Add(request.SessionId, hosted);
                 }
+
+                // Ownership transferred to the host graph. Later rejection
+                // removes and disposes through RemoveRejectedSessionAsync.
+                createdEngine = null;
             }
             catch (OperationCanceledException)
             {
-                return operationCancellation.DeadlineElapsed
-                    ? DeadlineExceeded<SessionSnapshot>(0)
-                    : Cancelled<SessionSnapshot>(0);
+                await DisposeUnownedSessionAsync(createdEngine).ConfigureAwait(false);
+                return outcomeReserved
+                    ? OutcomeUncertain<SessionSnapshot>(0)
+                    : operationCancellation.DeadlineElapsed
+                        ? DeadlineExceeded<SessionSnapshot>(0)
+                        : Cancelled<SessionSnapshot>(0);
             }
             catch (Exception exception)
             {
-                return EngineFailure<SessionSnapshot>(exception, 0);
-            }
-
-            var hosted = new HostedSession(
-                engine,
-                request.Owner,
-                request.Title,
-                engineSnapshot,
-                _eventRetention,
-                _timeProvider);
-            lock (_gate)
-            {
-                _sessions.Add(request.SessionId, hosted);
+                await DisposeUnownedSessionAsync(createdEngine).ConfigureAwait(false);
+                return outcomeReserved
+                    ? OutcomeUncertain<SessionSnapshot>(0)
+                    : EngineFailure<SessionSnapshot>(exception, 0);
             }
 
             if (WorkspaceGraphFailure<SessionSnapshot>(
@@ -158,15 +206,18 @@ public sealed partial class InMemorySessionHostClient
                         PanelKind.Browser,
                         request.SessionId)) is { } linkFailure)
             {
-                return await RemoveRejectedSessionAsync(hosted, linkFailure)
+                var rejected = await RemoveRejectedSessionAsync(hosted, linkFailure)
                     .ConfigureAwait(false);
+                return outcomeReserved
+                    ? OutcomeUncertain<SessionSnapshot>(0)
+                    : rejected;
             }
 
             var snapshot = hosted.Snapshot();
             var result = HostResult<SessionSnapshot>.Succeed(
                 snapshot,
                 snapshot.Descriptor.Revision);
-            StoreReplay(context, fingerprint, result);
+            CompleteReplay(context, fingerprint, result);
             return result;
         }
         finally
@@ -455,6 +506,39 @@ public sealed partial class InMemorySessionHostClient
                 context,
                 attachmentCancellation.Token,
                 _timeProvider);
+            if (operationCancellation.Token.IsCancellationRequested)
+            {
+                if (attachmentAuthority.IsCancellationRequested)
+                {
+                    return HostResult<BrowserResult<BrowserSessionState>>.Fail(
+                        new HostError(
+                            HostErrorCode.Cancelled,
+                            "attachment_revoked",
+                            "The interactive browser attachment was revoked."),
+                        revision);
+                }
+
+                return operationCancellation.DeadlineElapsed
+                    ? DeadlineExceeded<BrowserResult<BrowserSessionState>>(revision)
+                    : Cancelled<BrowserResult<BrowserSessionState>>(revision);
+            }
+
+            HostResult<BrowserResult<BrowserSessionState>>? reservationReplay = null;
+            var outcomeReserved = false;
+            if (changesState)
+            {
+                reservationReplay = ReserveReplay<BrowserResult<BrowserSessionState>>(
+                    context,
+                    fingerprint,
+                    revision,
+                    out outcomeReserved);
+            }
+
+            if (reservationReplay is not null)
+            {
+                return reservationReplay;
+            }
+
             try
             {
                 var browserResult = await operation(browser, operationCancellation.Token)
@@ -462,6 +546,11 @@ public sealed partial class InMemorySessionHostClient
                 if (!browserResult.IsSuccess
                     && attachmentAuthority.IsCancellationRequested)
                 {
+                    if (outcomeReserved)
+                    {
+                        return OutcomeUncertain<BrowserResult<BrowserSessionState>>(revision);
+                    }
+
                     return HostResult<BrowserResult<BrowserSessionState>>.Fail(
                         new HostError(
                             HostErrorCode.Cancelled,
@@ -473,13 +562,17 @@ public sealed partial class InMemorySessionHostClient
                 if (!browserResult.IsSuccess
                     && cancellationToken.IsCancellationRequested)
                 {
-                    return Cancelled<BrowserResult<BrowserSessionState>>(revision);
+                    return outcomeReserved
+                        ? OutcomeUncertain<BrowserResult<BrowserSessionState>>(revision)
+                        : Cancelled<BrowserResult<BrowserSessionState>>(revision);
                 }
 
                 if (!browserResult.IsSuccess
                     && operationCancellation.DeadlineElapsed)
                 {
-                    return DeadlineExceeded<BrowserResult<BrowserSessionState>>(revision);
+                    return outcomeReserved
+                        ? OutcomeUncertain<BrowserResult<BrowserSessionState>>(revision)
+                        : DeadlineExceeded<BrowserResult<BrowserSessionState>>(revision);
                 }
 
                 if (changesState && browserResult.IsSuccess)
@@ -500,13 +593,18 @@ public sealed partial class InMemorySessionHostClient
                         resultingRevision);
                 if (changesState)
                 {
-                    StoreReplay(context, fingerprint, result);
+                    CompleteReplay(context, fingerprint, result);
                 }
 
                 return result;
             }
             catch (OperationCanceledException)
             {
+                if (outcomeReserved)
+                {
+                    return OutcomeUncertain<BrowserResult<BrowserSessionState>>(revision);
+                }
+
                 if (attachmentAuthority.IsCancellationRequested)
                 {
                     return HostResult<BrowserResult<BrowserSessionState>>.Fail(
@@ -523,9 +621,11 @@ public sealed partial class InMemorySessionHostClient
             }
             catch (Exception exception)
             {
-                return EngineFailure<BrowserResult<BrowserSessionState>>(
-                    exception,
-                    revision);
+                return outcomeReserved
+                    ? OutcomeUncertain<BrowserResult<BrowserSessionState>>(revision)
+                    : EngineFailure<BrowserResult<BrowserSessionState>>(
+                        exception,
+                        revision);
             }
         }
         finally

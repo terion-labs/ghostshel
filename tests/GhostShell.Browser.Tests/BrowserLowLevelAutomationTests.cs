@@ -397,10 +397,12 @@ public sealed class BrowserLowLevelAutomationTests
         replacement is null
             ? new BrowserSurface(
                 native,
+                BrowserTestDestinationPolicy.Public,
                 InlineBrowserUiDispatcher.Instance,
                 capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate)
             : new BrowserSurface(
                 native,
+                BrowserTestDestinationPolicy.Public,
                 InlineBrowserUiDispatcher.Instance,
                 () => replacement,
                 static _ => { },

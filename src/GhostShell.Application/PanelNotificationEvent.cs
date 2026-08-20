@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace GhostShell.Application;
 
 /// <summary>What produced a request for the user's attention.</summary>
@@ -71,4 +73,63 @@ public sealed record PanelNotificationEvent(
     /// </summary>
     public PanelNotificationEffects Effects { get; init; } =
         PanelNotificationEffects.Visual;
+}
+
+/// <summary>
+/// UTF-8 byte limits for notification text crossing the terminal, shell, and
+/// native-notification boundaries.
+/// </summary>
+public static class PanelNotificationTextBudget
+{
+    public const int MaximumTitleUtf8Bytes = 4 * 1024;
+    public const int MaximumBodyUtf8Bytes = 16 * 1024;
+
+    public static int Measure(PanelNotificationEvent notification)
+    {
+        ArgumentNullException.ThrowIfNull(notification);
+        return checked(
+            Encoding.UTF8.GetByteCount(notification.Title)
+            + Encoding.UTF8.GetByteCount(notification.Body));
+    }
+
+    public static PanelNotificationEvent Clamp(PanelNotificationEvent notification)
+    {
+        ArgumentNullException.ThrowIfNull(notification);
+        var title = Truncate(notification.Title, MaximumTitleUtf8Bytes);
+        var body = Truncate(notification.Body, MaximumBodyUtf8Bytes);
+        return ReferenceEquals(title, notification.Title)
+            && ReferenceEquals(body, notification.Body)
+                ? notification
+                : notification with { Title = title, Body = body };
+    }
+
+    public static string TruncateTitle(string value) =>
+        Truncate(value, MaximumTitleUtf8Bytes);
+
+    public static string TruncateBody(string value) =>
+        Truncate(value, MaximumBodyUtf8Bytes);
+
+    private static string Truncate(string value, int maximumUtf8Bytes)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        if (Encoding.UTF8.GetByteCount(value) <= maximumUtf8Bytes)
+        {
+            return value;
+        }
+
+        var bytes = 0;
+        var characters = 0;
+        foreach (var rune in value.EnumerateRunes())
+        {
+            if (bytes + rune.Utf8SequenceLength > maximumUtf8Bytes)
+            {
+                break;
+            }
+
+            bytes += rune.Utf8SequenceLength;
+            characters += rune.Utf16SequenceLength;
+        }
+
+        return value[..characters];
+    }
 }

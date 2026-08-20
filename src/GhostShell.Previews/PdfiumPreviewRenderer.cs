@@ -1,5 +1,6 @@
 using System.Runtime.Versioning;
 using GhostShell.Application;
+using GhostShell.Application.Previews;
 using PDFtoImage;
 using SkiaSharp;
 
@@ -70,17 +71,40 @@ public sealed class PdfiumPreviewRenderer : IPdfPreviewRenderer
 
                     stream.Position = 0;
                     cancellationToken.ThrowIfCancellationRequested();
+                    var pageSize = Conversion.GetPageSize(
+                        stream,
+                        pageIndex,
+                        leaveOpen: true,
+                        password: null);
+                    if (!PreviewRasterBudget.TryFitAspectRatio(
+                            pageSize.Width,
+                            pageSize.Height,
+                            targetWidth,
+                            out var renderSize))
+                    {
+                        return null;
+                    }
+
+                    stream.Position = 0;
+                    cancellationToken.ThrowIfCancellationRequested();
                     using var bitmap = Conversion.ToImage(
                         stream,
                         leaveOpen: true,
                         password: null,
                         page: pageIndex,
-                        // Aspect ratio is off by default: given only a width,
-                        // PDFium stretches the page to a default height, which
-                        // renders every document distorted.
                         options: new RenderOptions(
-                            Width: targetWidth,
-                            WithAspectRatio: true));
+                            Width: renderSize.Width,
+                            Height: renderSize.Height,
+                            WithAspectRatio: false));
+                    if (bitmap.Width > renderSize.Width
+                        || bitmap.Height > renderSize.Height
+                        || !PreviewRasterBudget.Contains(
+                            bitmap.Width,
+                            bitmap.Height))
+                    {
+                        return null;
+                    }
+
                     using var encoded = bitmap.Encode(SKEncodedImageFormat.Png, 100);
                     return new PdfPageImage(encoded.ToArray(), pageIndex + 1, pageCount);
                 }

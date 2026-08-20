@@ -113,6 +113,10 @@ public sealed class GitRefsParserTests
         Assert.Equal("origin", Assert.Single(remotes).Name);
         Assert.Equal("git@github.com:t/x.git", remotes[0].FetchUrl);
 
+        var guardedRemotes = GitRefsParser.ParseRemotes(
+            "--all\tfile:///attacker (fetch)\nteam/ö\tssh://example.test/repo (fetch)\n");
+        Assert.Equal("team/ö", Assert.Single(guardedRemotes).Name);
+
         var stashes = GitRefsParser.ParseStashes(
             "stash@{0}\0WIP on dev: quick fix\0stash@{1}\0On main: idea\0");
         Assert.Equal(2, stashes.Count);

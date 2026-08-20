@@ -34,9 +34,8 @@ public sealed class MarkdownPreviewer : IFilePreviewer
 }
 
 /// <summary>
-/// A web page, rendered by the embedded browser by default and available as
-/// its markup — which is often what one actually wants to see of a page found
-/// on a server.
+/// A web page, shown as inert markup by default. Live rendering is an explicit
+/// opt-in because HTML can run scripts and request network resources.
 /// </summary>
 public sealed class WebPagePreviewer : IFilePreviewer
 {
@@ -54,14 +53,14 @@ public sealed class WebPagePreviewer : IFilePreviewer
         IReadOnlyDictionary<string, bool> toggles)
     {
         ArgumentNullException.ThrowIfNull(source);
-        var raw = PreviewText.IsOn(toggles, RawToggle, byDefault: false);
+        var raw = PreviewText.IsOn(toggles, RawToggle, byDefault: true);
         return new FilePreviewOutcome(
             raw
                 ? new SourcePreviewRendering(
                     PreviewText.Utf8(source.Content.Span, source.IsTruncated),
                     source.FileName)
                 : new WebPagePreviewRendering(),
-            [new FilePreviewToggle(RawToggle, "Show raw", raw)]);
+            [new FilePreviewToggle(RawToggle, "Show source", raw)]);
     }
 }
 

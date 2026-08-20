@@ -1,4 +1,6 @@
+using System.Globalization;
 using GhostShell.Application;
+using GhostShell.Application.Previews;
 using ImageMagick;
 
 namespace GhostShell.Previews;
@@ -30,7 +32,33 @@ public sealed class MagickImagePreviewDecoder : IImagePreviewDecoder
     /// A decode is bounded work on a hostile input, so it runs with an explicit
     /// pixel and memory ceiling rather than trusting the file's own header.
     /// </summary>
-    private const int MaximumMegabytes = 256;
+    private const ulong MaximumMemoryBytes = 256UL * 1024 * 1024;
+    private const ulong MaximumMapBytes = 256UL * 1024 * 1024;
+    private const ulong MaximumDiskBytes = 64UL * 1024 * 1024;
+    private const ulong MaximumSourceDimension = 16_384;
+    private const ulong MaximumDecodeSeconds = 10;
+
+    static MagickImagePreviewDecoder()
+    {
+        // These settings are process-global in ImageMagick. Establish one
+        // immutable policy during type initialization instead of racing
+        // concurrent previews with per-call mutations.
+        MagickNET.SetEnvironmentVariable(
+            "MAGICK_MAP_LIMIT",
+            MaximumMapBytes.ToString(CultureInfo.InvariantCulture));
+        ResourceLimits.Memory = MaximumMemoryBytes;
+        ResourceLimits.MaxMemoryRequest = MaximumMemoryBytes;
+        ResourceLimits.Area = (ulong)PreviewRasterBudget.MaximumPixels;
+        ResourceLimits.Disk = MaximumDiskBytes;
+        ResourceLimits.Width = MaximumSourceDimension;
+        ResourceLimits.Height = MaximumSourceDimension;
+        // ImageMagick accounts a single TIFF frame plus an internal sentinel,
+        // so two is the smallest limit that decodes one requested frame.
+        ResourceLimits.ListLength = 2;
+        ResourceLimits.MaxProfileSize = 8UL * 1024 * 1024;
+        ResourceLimits.Thread = 2;
+        ResourceLimits.Time = MaximumDecodeSeconds;
+    }
 
     public bool Claims(string fileName)
     {
@@ -81,8 +109,27 @@ public sealed class MagickImagePreviewDecoder : IImagePreviewDecoder
             // A malformed or hostile image must not be able to spend the
             // machine's memory before it is even shown.
             Density = new Density(72),
+            FrameIndex = 0,
+            FrameCount = 1,
         };
-        ResourceLimits.Memory = (ulong)MaximumMegabytes * 1024 * 1024;
+
+        var effectiveMaximumPixels = Math.Min(
+            maximumPixels,
+            PreviewRasterBudget.MaximumPixels);
+        using (var metadataSource = content.OpenRead())
+        {
+            var info = new MagickImageInfo(metadataSource, settings);
+            var declaredWidth = (ulong)info.Width;
+            var declaredHeight = (ulong)info.Height;
+            if (declaredWidth == 0
+                || declaredHeight == 0
+                || declaredWidth > MaximumSourceDimension
+                || declaredHeight > MaximumSourceDimension
+                || declaredWidth * declaredHeight > (ulong)effectiveMaximumPixels)
+            {
+                return null;
+            }
+        }
 
         using var source = content.OpenRead();
         using var image = new MagickImage(source, settings);
@@ -92,14 +139,13 @@ public sealed class MagickImagePreviewDecoder : IImagePreviewDecoder
 
         cancellationToken.ThrowIfCancellationRequested();
         var pixels = (long)width * height;
-        if (pixels > maximumPixels)
+        if (width <= 0
+            || height <= 0
+            || (ulong)width > MaximumSourceDimension
+            || (ulong)height > MaximumSourceDimension
+            || pixels > effectiveMaximumPixels)
         {
-            // Proportional, so the preview keeps the picture's shape; a preview
-            // that reframes the image is worse than one that is merely smaller.
-            var scale = Math.Sqrt((double)maximumPixels / pixels);
-            image.Resize(
-                (uint)Math.Max(1, (int)(width * scale)),
-                (uint)Math.Max(1, (int)(height * scale)));
+            return null;
         }
 
         // Layered formats present as one flattened page, which is what a

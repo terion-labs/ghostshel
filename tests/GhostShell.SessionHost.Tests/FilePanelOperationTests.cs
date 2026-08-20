@@ -6,6 +6,201 @@ namespace GhostShell.SessionHost.Tests;
 public sealed class FilePanelOperationTests
 {
     [Fact]
+    public async Task CancellationDuringFileSessionCreationRetainsUncertainReplay()
+    {
+        var files = new FakeFilePanelSessionFactory();
+        var creationEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        files.AfterCreateAsync = async (_, cancellationToken) =>
+        {
+            creationEntered.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken)
+                .ConfigureAwait(false);
+        };
+        await using var host = CreateHost(
+            files,
+            new ManualTimeProvider(DateTimeOffset.UnixEpoch));
+        var request = OpenRequest("files-create-cancelled");
+        var context = Context(
+            idempotencyKey: new IdempotencyKey("files-create-cancelled"));
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = host.EnsureFilePanelSessionAsync(
+            request,
+            context,
+            cancellation.Token).AsTask();
+        await creationEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+
+        var uncertain = await pending;
+        var replay = await host.EnsureFilePanelSessionAsync(
+            request,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            uncertain.Error().Code);
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            replay.Error().Code);
+        Assert.Equal(1, files.CreateCount);
+    }
+
+    [Fact]
+    public async Task FileSessionSnapshotFailureDisposesEngineAndRetainsUncertainReplay()
+    {
+        var files = new FakeFilePanelSessionFactory
+        {
+            BeforeSnapshotForNewSessions = static _ =>
+                ValueTask.FromException(new IOException("fake snapshot failure")),
+        };
+        await using var host = CreateHost(
+            files,
+            new ManualTimeProvider(DateTimeOffset.UnixEpoch));
+        var request = OpenRequest("files-create-failed");
+        var context = Context(
+            idempotencyKey: new IdempotencyKey("files-create-failed"));
+
+        var uncertain = await host.EnsureFilePanelSessionAsync(
+            request,
+            context,
+            CancellationToken.None);
+        var replay = await host.EnsureFilePanelSessionAsync(
+            request,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            uncertain.Error().Code);
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            replay.Error().Code);
+        Assert.Equal(1, files[request.SessionId].DisposeCount);
+        Assert.Equal(1, files.CreateCount);
+    }
+
+    [Fact]
+    public async Task ConcurrentFileCreationCompletesKnownSuccessAfterCallerCancellation()
+    {
+        var files = new FakeFilePanelSessionFactory();
+        var snapshotEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSnapshot = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var snapshotToken = CancellationToken.None;
+        files.BeforeSnapshotForNewSessions = async cancellationToken =>
+        {
+            snapshotToken = cancellationToken;
+            snapshotEntered.TrySetResult();
+            await releaseSnapshot.Task.ConfigureAwait(false);
+        };
+        await using var host = CreateHost(
+            files,
+            new ManualTimeProvider(DateTimeOffset.UnixEpoch));
+        var request = OpenRequest("files-create-known");
+        var context = Context(
+            idempotencyKey: new IdempotencyKey("files-create-known"));
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = host.EnsureFilePanelSessionAsync(
+            request,
+            context,
+            cancellation.Token).AsTask();
+        await snapshotEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+        var concurrentReplay = await host.EnsureFilePanelSessionAsync(
+            request,
+            context,
+            CancellationToken.None);
+        releaseSnapshot.TrySetResult();
+
+        var completed = await pending;
+        var completedReplay = await host.EnsureFilePanelSessionAsync(
+            request,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            concurrentReplay.Error().Code);
+        Assert.IsType<HostResult<SessionSnapshot>.Success>(completed);
+        Assert.IsType<HostResult<SessionSnapshot>.Success>(completedReplay);
+        Assert.False(snapshotToken.CanBeCanceled);
+        Assert.Equal(1, files.CreateCount);
+    }
+
+    [Fact]
+    public async Task CancellationBeforeFileSessionCreationLeavesKeyFresh()
+    {
+        var files = new FakeFilePanelSessionFactory();
+        await using var host = CreateHost(
+            files,
+            new ManualTimeProvider(DateTimeOffset.UnixEpoch));
+        var request = OpenRequest("files-create-pre-cancelled");
+        var context = Context(
+            idempotencyKey: new IdempotencyKey("files-create-pre-cancelled"));
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        var cancelled = await host.EnsureFilePanelSessionAsync(
+            request,
+            context,
+            cancellation.Token);
+        var retry = await host.EnsureFilePanelSessionAsync(
+            request,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(HostErrorCode.Cancelled, cancelled.Error().Code);
+        Assert.IsType<HostResult<SessionSnapshot>.Success>(retry);
+        Assert.Equal(1, files.CreateCount);
+    }
+
+    [Fact]
+    public async Task FileOpenReservationRejectsCrossFamilyTerminalOpen()
+    {
+        var files = new FakeFilePanelSessionFactory();
+        var terminals = new FakeTerminalSessionFactory();
+        var snapshotEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSnapshot = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        files.BeforeSnapshotForNewSessions = async _ =>
+        {
+            snapshotEntered.TrySetResult();
+            await releaseSnapshot.Task.ConfigureAwait(false);
+        };
+        await using var host = CreateHost(
+            files,
+            new ManualTimeProvider(DateTimeOffset.UnixEpoch),
+            terminals);
+        var context = Context(
+            idempotencyKey: new IdempotencyKey("file-cross-family"));
+
+        var file = host.EnsureFilePanelSessionAsync(
+            OpenRequest("file-cross-family"),
+            context,
+            CancellationToken.None).AsTask();
+        await snapshotEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var rejected = await host.EnsureTerminalSessionAsync(
+            new EnsureTerminalSessionRequest(
+                new SessionId("file-cross-family-terminal"),
+                Owner("file-cross-family-terminal-panel"),
+                "Terminal",
+                new TerminalLaunchRequest("/tmp")),
+            context,
+            CancellationToken.None);
+        releaseSnapshot.TrySetResult();
+
+        Assert.Equal(HostErrorCode.IdempotencyKeyReused, rejected.Error().Code);
+        Assert.IsType<HostResult<SessionSnapshot>.Success>(await file);
+        Assert.Equal(1, files.CreateCount);
+        Assert.Equal(0, terminals.CreateCount);
+    }
+
+    [Fact]
     public async Task HostDispatchesEveryFileOperationAndAdvancesMutationRevision()
     {
         var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
@@ -122,6 +317,191 @@ public sealed class FilePanelOperationTests
     }
 
     [Fact]
+    public async Task CancellationAfterFileDispatchLeavesAnUncertainReplay()
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var files = new FakeFilePanelSessionFactory();
+        await using var host = CreateHost(files, clock);
+        var sessionId = new SessionId("files-1");
+        var root = Root();
+        var opened = await OpenAsync(
+            host,
+            sessionId,
+            Owner("panel-1"),
+            root);
+        var entered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        files[sessionId].CreateDirectoryOperation = async (request, token) =>
+        {
+            entered.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            return SuccessfulDirectory(request);
+        };
+        var request = new FilePanelCreateDirectoryHostRequest(
+            sessionId,
+            new FilePanelCreateDirectoryRequest(
+                Child(root, "new-directory"),
+                FilePanelMutationPrecondition.MustNotExist));
+        var context = Context(
+            opened.Descriptor.Revision,
+            new IdempotencyKey("cancelled-after-file-dispatch"));
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = host.CreateFileDirectoryAsync(
+            request,
+            context,
+            cancellation.Token).AsTask();
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+
+        var uncertain = await pending;
+        var replay = await host.CreateFileDirectoryAsync(
+            request,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            uncertain.Error().Code);
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            replay.Error().Code);
+        Assert.Equal(1, files[sessionId].CreateDirectoryCount);
+    }
+
+    [Fact]
+    public async Task CancellationBeforeFileDispatchDoesNotReserveTheKey()
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var files = new FakeFilePanelSessionFactory();
+        await using var host = CreateHost(files, clock);
+        var sessionId = new SessionId("files-1");
+        var root = Root();
+        var opened = await OpenAsync(
+            host,
+            sessionId,
+            Owner("panel-1"),
+            root);
+        var request = new FilePanelCreateDirectoryHostRequest(
+            sessionId,
+            new FilePanelCreateDirectoryRequest(
+                Child(root, "new-directory"),
+                FilePanelMutationPrecondition.MustNotExist));
+        var context = Context(
+            opened.Descriptor.Revision,
+            new IdempotencyKey("cancelled-before-file-dispatch"));
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        var cancelled = await host.CreateFileDirectoryAsync(
+            request,
+            context,
+            cancellation.Token);
+        var retry = await host.CreateFileDirectoryAsync(
+            request,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(HostErrorCode.Cancelled, cancelled.Error().Code);
+        Assert.IsType<HostResult<FilePanelResult<FilePanelEntry>>.Success>(retry);
+        Assert.Equal(1, files[sessionId].CreateDirectoryCount);
+    }
+
+    [Fact]
+    public async Task KnownFileResultCompletesReplayAfterCallerCancellation()
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var files = new FakeFilePanelSessionFactory();
+        await using var host = CreateHost(files, clock);
+        var sessionId = new SessionId("files-1");
+        var root = Root();
+        var opened = await OpenAsync(
+            host,
+            sessionId,
+            Owner("panel-1"),
+            root);
+        var entered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        files[sessionId].CreateDirectoryOperation = async (request, _) =>
+        {
+            entered.TrySetResult();
+            await release.Task;
+            return SuccessfulDirectory(request);
+        };
+        var request = new FilePanelCreateDirectoryHostRequest(
+            sessionId,
+            new FilePanelCreateDirectoryRequest(
+                Child(root, "new-directory"),
+                FilePanelMutationPrecondition.MustNotExist));
+        var context = Context(
+            opened.Descriptor.Revision,
+            new IdempotencyKey("known-after-file-cancellation"));
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = host.CreateFileDirectoryAsync(
+            request,
+            context,
+            cancellation.Token).AsTask();
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+        release.TrySetResult();
+
+        var completed = await pending;
+        var replay = await host.CreateFileDirectoryAsync(
+            request,
+            context,
+            CancellationToken.None);
+
+        Assert.IsType<HostResult<FilePanelResult<FilePanelEntry>>.Success>(completed);
+        Assert.IsType<HostResult<FilePanelResult<FilePanelEntry>>.Success>(replay);
+        Assert.Equal(1, files[sessionId].CreateDirectoryCount);
+    }
+
+    [Fact]
+    public async Task ExceptionAfterFileDispatchLeavesAnUncertainReplay()
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var files = new FakeFilePanelSessionFactory();
+        await using var host = CreateHost(files, clock);
+        var sessionId = new SessionId("files-1");
+        var root = Root();
+        var opened = await OpenAsync(
+            host,
+            sessionId,
+            Owner("panel-1"),
+            root);
+        files[sessionId].CreateDirectoryOperation = (_, _) =>
+            throw new IOException("The provider outcome is unknown.");
+        var request = new FilePanelCreateDirectoryHostRequest(
+            sessionId,
+            new FilePanelCreateDirectoryRequest(
+                Child(root, "new-directory"),
+                FilePanelMutationPrecondition.MustNotExist));
+        var context = Context(
+            opened.Descriptor.Revision,
+            new IdempotencyKey("exception-after-file-dispatch"));
+
+        var uncertain = await host.CreateFileDirectoryAsync(
+            request,
+            context,
+            CancellationToken.None);
+        var replay = await host.CreateFileDirectoryAsync(
+            request,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            uncertain.Error().Code);
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            replay.Error().Code);
+        Assert.Equal(1, files[sessionId].CreateDirectoryCount);
+    }
+
+    [Fact]
     public async Task ContextCancellationDeadlineAndRevisionAreAppliedBeforeFileDispatch()
     {
         var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
@@ -206,21 +586,28 @@ public sealed class FilePanelOperationTests
 
     private static InMemorySessionHostClient CreateHost(
         IFilePanelSessionFactory fileFactory,
-        TimeProvider timeProvider) => new(
-        new FakeTerminalSessionFactory(),
+        TimeProvider timeProvider,
+        ITerminalSessionFactory? terminalFactory = null) => new(
+        terminalFactory ?? new FakeTerminalSessionFactory(),
         new DesktopLifecyclePolicy(),
         timeProvider,
         filePanelFactory: fileFactory);
 
-    private static async ValueTask OpenAsync(
+    private static async ValueTask<SessionSnapshot> OpenAsync(
         InMemorySessionHostClient host,
         SessionId sessionId,
         SessionOwner owner,
         FilePanelLocation root) =>
-        _ = (await host.EnsureFilePanelSessionAsync(
+        (await host.EnsureFilePanelSessionAsync(
             new EnsureFilePanelSessionRequest(sessionId, owner, "Files", root),
             Context(),
             CancellationToken.None)).Value();
+
+    private static EnsureFilePanelSessionRequest OpenRequest(string id) => new(
+        new SessionId(id),
+        Owner($"{id}-panel"),
+        "Files",
+        Root());
 
     private static OperationContext Context(
         long? expectedRevision = null,
@@ -264,6 +651,19 @@ public sealed class FilePanelOperationTests
 
     private static FilePanelLocation Child(FilePanelLocation root, string name) =>
         root.Child(new FilePanelPathSegment(name));
+
+    private static FilePanelResult<FilePanelEntry> SuccessfulDirectory(
+        FilePanelCreateDirectoryRequest request) =>
+        FilePanelResult<FilePanelEntry>.Success(
+            new FilePanelEntry(
+                request.Location,
+                request.Location.Address is FilePanelAddress.Hierarchical hierarchical
+                    ? hierarchical.Path.Name?.Value ?? "directory"
+                    : "directory",
+                FilePanelEntryKind.Directory,
+                null,
+                null,
+                false));
 
     private static FilePanelTransferRequest Transfer(
         FilePanelLocation root,

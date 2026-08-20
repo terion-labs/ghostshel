@@ -291,6 +291,31 @@ public sealed class GitRepositoryClientTests
     }
 
     [Fact]
+    public async Task RemoteOperationsRejectOptionShapedOperandsBeforeExecutingGit()
+    {
+        var executor = new RecordingExecutor(Exited(0));
+        var client = new GitRepositoryClient(executor, TimeProvider.System);
+        var repository = new GitRepositoryHandle(BuiltInConnections.Local, "/repo");
+
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await client.PushBranchAsync(repository, "--all", "main", CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await client.DeleteTagAsync(repository, "v1", ["--mirror"], CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await client.AddRemoteAsync(repository, "-f", "file:///repo", CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await client.EditRemoteAsync(repository, "-f", "safe", "file:///repo", CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await client.EditRemoteAsync(repository, "safe", "--add", "file:///repo", CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await client.RemoveRemoteAsync(repository, "--all", CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await client.FetchRemoteAsync(repository, "--multiple", CancellationToken.None));
+
+        Assert.Empty(executor.Commands);
+    }
+
+    [Fact]
     public async Task AConflictedRebaseIsAbortedAndTheErrorSaysSo()
     {
         var executor = new RecordingExecutor(

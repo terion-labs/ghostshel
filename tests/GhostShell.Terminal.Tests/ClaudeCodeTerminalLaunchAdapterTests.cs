@@ -87,6 +87,11 @@ public sealed class ClaudeCodeTerminalLaunchAdapterTests : IDisposable
         var userDotDirectory = Path.Combine(_resources, "user-zsh");
         WriteResource("user-zsh/.zshenv", "export GHOSTSHELL_TEST_ZSHENV=loaded\n");
         WriteResource("user-zsh/.zshrc", "export PATH=/real-claude-bin:$PATH\n");
+        const string command =
+            "(( ${precmd_functions[(I)_ghostshell_claude_after_startup]} )) || exit 91; "
+            + "_ghostshell_claude_after_startup; "
+            + "print -r -- $GHOSTSHELL_TEST_ZSHENV; "
+            + "whence -w claude";
         var launch = Launch(
             zsh,
             new Dictionary<string, string>(StringComparer.Ordinal)
@@ -95,7 +100,12 @@ public sealed class ClaudeCodeTerminalLaunchAdapterTests : IDisposable
                 ["ZDOTDIR"] = userDotDirectory,
                 ["PS1"] = string.Empty,
             },
-            arguments: ["-i"]);
+            // An inherited controlling terminal makes `zsh -i` start ZLE on
+            // that terminal instead of consuming redirected standard input.
+            // `-i -c` still loads .zshrc; invoke the registered first-prompt
+            // hook explicitly after startup so this fixture is independent of
+            // whether its test runner owns a TTY.
+            arguments: ["-i", "-c", command]);
         var preparation = new GhosttyShellIntegrationPreparation(
             launch,
             GhosttyShellIntegrationPreparationStatus.Disabled,
@@ -103,9 +113,7 @@ public sealed class ClaudeCodeTerminalLaunchAdapterTests : IDisposable
             "disabled");
 
         var prepared = Adapter().Prepare(preparation);
-        var result = RunShell(
-            prepared,
-            "print -r -- $GHOSTSHELL_TEST_ZSHENV\nwhence -w claude\nexit\n");
+        var result = RunShell(prepared);
 
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("loaded", result.StandardOutput, StringComparison.Ordinal);
@@ -354,16 +362,13 @@ public sealed class ClaudeCodeTerminalLaunchAdapterTests : IDisposable
         return path;
     }
 
-    private static ShellResult RunShell(
-        TerminalLaunchRequest launch,
-        string? standardInput = null)
+    private static ShellResult RunShell(TerminalLaunchRequest launch)
     {
         var startInfo = new ProcessStartInfo
         {
             FileName = launch.Executable,
             WorkingDirectory = launch.WorkingDirectory,
             UseShellExecute = false,
-            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
@@ -381,16 +386,14 @@ public sealed class ClaudeCodeTerminalLaunchAdapterTests : IDisposable
         Assert.NotNull(process);
         var standardOutput = process.StandardOutput.ReadToEndAsync();
         var standardError = process.StandardError.ReadToEndAsync();
-        if (standardInput is not null)
-        {
-            process.StandardInput.Write(standardInput);
-        }
-
-        process.StandardInput.Close();
         if (!process.WaitForExit(5_000))
         {
             process.Kill(entireProcessTree: true);
-            throw new TimeoutException("The shell startup acceptance fixture did not exit.");
+            process.WaitForExit();
+            throw new TimeoutException(
+                "The shell startup acceptance fixture did not exit."
+                + $" Standard output: {standardOutput.GetAwaiter().GetResult()}"
+                + $" Standard error: {standardError.GetAwaiter().GetResult()}");
         }
 
         return new ShellResult(

@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 namespace GhostShell.Architecture.Tests;
@@ -154,6 +157,18 @@ public sealed class SqlLanguageWorkerPackagingTests
             script,
             StringComparison.Ordinal);
         Assert.Contains(
+            "plutil -extract mavenContentLockSha256 raw -expect string",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "native/sql-language-worker/maven-content-lock.json",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "sql_language_actual_maven_lock_sha",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "darwin-arm64",
             script,
             StringComparison.Ordinal);
@@ -300,6 +315,383 @@ public sealed class SqlLanguageWorkerPackagingTests
             workflow,
             StringComparison.Ordinal);
         Assert.Contains("sha256sum \"$worker\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("mavenContentLockSha256", workflow, StringComparison.Ordinal);
+        Assert.Contains("mavenBuilderSource", workflow, StringComparison.Ordinal);
+        Assert.Contains("nativeImageBuilderSource", workflow, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SqlWorkerContainerBuildersArePlatformSpecificAndDigestPinned()
+    {
+        var script = File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            "scripts",
+            "build-sql-language-worker.sh"));
+        var imageDeclarations = script.Split('\n')
+            .Where(line =>
+                line.StartsWith("readonly MAVEN_IMAGE_LINUX_", StringComparison.Ordinal)
+                || line.StartsWith("readonly NATIVE_IMAGE_LINUX_", StringComparison.Ordinal))
+            .ToArray();
+
+        Assert.Equal(4, imageDeclarations.Length);
+        Assert.All(
+            imageDeclarations,
+            declaration => Assert.Matches("@sha256:[0-9a-f]{64}\\\"$", declaration));
+        var executableImageReferences = Regex.Matches(
+                script,
+                "(?:maven|container-registry\\.oracle\\.com/graalvm/native-image):[^\\s\\\"']+",
+                RegexOptions.CultureInvariant,
+                TimeSpan.FromSeconds(1))
+            .Select(match => match.Value)
+            .ToArray();
+        Assert.Equal(4, executableImageReferences.Length);
+        Assert.All(
+            executableImageReferences,
+            reference => Assert.Matches("@sha256:[0-9a-f]{64}$", reference));
+        Assert.Contains("MAVEN_IMAGE_VERSION=\"3.9.11-eclipse-temurin-21\"", script, StringComparison.Ordinal);
+        Assert.Contains("NATIVE_IMAGE_VERSION=\"25.0.4\"", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("readonly MAVEN_IMAGE=", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("readonly NATIVE_IMAGE=", script, StringComparison.Ordinal);
+        Assert.All(
+            script.Split("docker run", StringSplitOptions.None).Skip(1),
+            invocation => Assert.Contains("--network none", invocation, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void SqlWorkerMavenInputsAreCompletelyLockedBeforeOfflineExecution()
+    {
+        var script = File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            "scripts",
+            "build-sql-language-worker.sh"));
+        var preparerInvocation = script.IndexOf(
+            "\"$MAVEN_REPOSITORY_PREPARER\" \"$MAVEN_CONTENT_LOCK\"",
+            StringComparison.Ordinal);
+        var firstMavenExecution = script.IndexOf("mvn -B --offline", StringComparison.Ordinal);
+
+        Assert.True(preparerInvocation >= 0);
+        Assert.True(firstMavenExecution > preparerInvocation);
+        Assert.Contains("-Dmaven.repo.local=/locked-m2", script, StringComparison.Ordinal);
+        Assert.Contains("$locked_maven_repository:/locked-m2:ro", script, StringComparison.Ordinal);
+        Assert.Contains("mavenContentLockSha256", script, StringComparison.Ordinal);
+        var preparer = File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            "scripts",
+            "prepare-locked-maven-repository.py"));
+        Assert.Contains("MAVEN_PATH_PATTERN.fullmatch(relative)", preparer, StringComparison.Ordinal);
+        Assert.Contains("RejectRedirects()", preparer, StringComparison.Ordinal);
+        Assert.Contains("ssl.create_default_context()", preparer, StringComparison.Ordinal);
+        var repositorySeal = preparer.IndexOf("seal_repository(destination)", StringComparison.Ordinal);
+        var successfulPreparation = preparer.IndexOf(
+            "print(f\"Verified {len(artifacts)} Maven files in {destination}\")",
+            StringComparison.Ordinal);
+        Assert.True(repositorySeal >= 0);
+        Assert.True(successfulPreparation > repositorySeal);
+        Assert.Contains("make_read_only(path, READ_ONLY_FILE_MODE)", preparer, StringComparison.Ordinal);
+        Assert.Contains("make_read_only(root_path, READ_ONLY_DIRECTORY_MODE)", preparer, StringComparison.Ordinal);
+        Assert.Contains("actual_mode & WRITE_MODE_MASK", preparer, StringComparison.Ordinal);
+        Assert.Contains("WINDOWS_READ_ONLY_PRINCIPAL", preparer, StringComparison.Ordinal);
+        Assert.Contains("(OI)(CI)(W,D,DC)", preparer, StringComparison.Ordinal);
+        Assert.Contains("--unseal", preparer, StringComparison.Ordinal);
+        Assert.Contains(
+            "\"$MAVEN_REPOSITORY_PREPARER\" --unseal \"$locked_maven_repository\"",
+            script,
+            StringComparison.Ordinal);
+
+        using var lockDocument = JsonDocument.Parse(File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            "native",
+            "sql-language-worker",
+            "maven-content-lock.json")));
+        var root = lockDocument.RootElement;
+        Assert.Equal(1, root.GetProperty("formatVersion").GetInt32());
+        Assert.Equal(
+            "https://repo.maven.apache.org/maven2/",
+            root.GetProperty("repository").GetString());
+        var artifacts = root.GetProperty("artifacts").EnumerateArray().ToArray();
+        Assert.True(artifacts.Length > 100);
+        var paths = artifacts
+            .Select(artifact => artifact.GetProperty("path").GetString()!)
+            .ToArray();
+        Assert.Equal(paths.Order(StringComparer.Ordinal), paths, StringComparer.Ordinal);
+        Assert.Equal(paths.Length, paths.Distinct(StringComparer.Ordinal).Count());
+        Assert.All(
+            artifacts,
+            artifact =>
+            {
+                Assert.True(artifact.GetProperty("size").GetInt64() > 0);
+                Assert.Matches("^[0-9a-f]{64}$", artifact.GetProperty("sha256").GetString()!);
+                Assert.True(
+                    artifact.GetProperty("path").GetString()!.EndsWith(".jar", StringComparison.Ordinal)
+                    || artifact.GetProperty("path").GetString()!.EndsWith(".pom", StringComparison.Ordinal));
+            });
+        Assert.Contains(
+            "org/apache/calcite/calcite-core/1.42.0/calcite-core-1.42.0.jar",
+            paths,
+            StringComparer.Ordinal);
+        Assert.Contains(
+            "com/fasterxml/jackson/jackson-bom/2.18.6/jackson-bom-2.18.6.pom",
+            paths,
+            StringComparer.Ordinal);
+        Assert.Contains(
+            "org/apache/maven/plugins/maven-dependency-plugin/3.8.1/maven-dependency-plugin-3.8.1.jar",
+            paths,
+            StringComparer.Ordinal);
+        Assert.Contains(
+            "org/apache/maven/surefire/surefire-junit-platform/3.5.3/surefire-junit-platform-3.5.3.jar",
+            paths,
+            StringComparer.Ordinal);
+
+        var pom = XDocument.Load(Path.Combine(
+            RepositoryRoot,
+            "native",
+            "sql-language-worker",
+            "pom.xml"));
+        var xmlNamespace = pom.Root!.GetDefaultNamespace();
+        var plugins = pom.Descendants(xmlNamespace + "plugin").ToArray();
+        Assert.NotEmpty(plugins);
+        Assert.All(
+            plugins,
+            plugin => Assert.False(string.IsNullOrWhiteSpace(plugin.Element(xmlNamespace + "version")?.Value)));
+        var pluginIds = plugins
+            .Select(plugin => plugin.Element(xmlNamespace + "artifactId")!.Value)
+            .ToArray();
+        foreach (var pluginId in new[]
+                 {
+                     "maven-clean-plugin",
+                     "maven-resources-plugin",
+                     "maven-compiler-plugin",
+                     "maven-surefire-plugin",
+                     "maven-jar-plugin",
+                     "maven-shade-plugin",
+                     "maven-dependency-plugin",
+                     "maven-install-plugin",
+                     "maven-deploy-plugin",
+                     "maven-site-plugin",
+                 })
+        {
+            Assert.Contains(pluginId, pluginIds, StringComparer.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void EverySupportedSelfContainedPackageUsesTheServicedRuntimePack()
+    {
+        var project = XDocument.Load(Path.Combine(
+            RepositoryRoot,
+            "src",
+            "GhostShell.Desktop",
+            "GhostShell.Desktop.csproj"));
+        Assert.Equal("10.0.11", project.Descendants("GhostShellRuntimePackVersion").Single().Value);
+        Assert.Contains(
+            "$(GhostShellRuntimePackVersion)",
+            project.Descendants("GhostShellRuntimePackDirectory").Single().Value,
+            StringComparison.Ordinal);
+        var runtimeValidation = project.Descendants("Target")
+            .Single(target => string.Equals(
+                target.Attribute("Name")?.Value,
+                "ValidateServicedRuntimePack",
+                StringComparison.Ordinal));
+        Assert.Equal("ProcessFrameworkReferences", runtimeValidation.Attribute("AfterTargets")?.Value);
+        Assert.Contains("$(SelfContained)", runtimeValidation.Attribute("Condition")?.Value, StringComparison.Ordinal);
+        Assert.Contains(
+            "%(GhostShellSelectedRuntimePack.NuGetPackageVersion)' != '$(GhostShellRuntimePackVersion)",
+            runtimeValidation.ToString(),
+            StringComparison.Ordinal);
+        using var globalConfiguration = JsonDocument.Parse(File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            "global.json")));
+        Assert.Equal(
+            "10.0.303",
+            globalConfiguration.RootElement.GetProperty("sdk").GetProperty("version").GetString());
+        Assert.Contains(
+            "sdk_version=\"10.0.303\"",
+            File.ReadAllText(Path.Combine(RepositoryRoot, "scripts", "bootstrap.sh")),
+            StringComparison.Ordinal);
+        var canonicalGate = File.ReadAllText(Path.Combine(RepositoryRoot, "scripts", "check.sh"));
+        Assert.Contains(
+            "\"${dotnet}\" restore GhostShell.slnx --locked-mode",
+            canonicalGate,
+            StringComparison.Ordinal);
+        using var aotLock = JsonDocument.Parse(File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            "tools",
+            "GhostShell.SqlLanguageAotProbe",
+            "packages.lock.json")));
+        var linkerTasks = aotLock.RootElement
+            .GetProperty("dependencies")
+            .GetProperty("net10.0")
+            .GetProperty("Microsoft.NET.ILLink.Tasks");
+        Assert.Equal("[10.0.11, )", linkerTasks.GetProperty("requested").GetString());
+        Assert.Equal("10.0.11", linkerTasks.GetProperty("resolved").GetString());
+
+        var supportedRids = new[] { "linux-x64", "linux-arm64", "osx-x64", "osx-arm64", "win-x64" };
+        var sourceRoot = Path.Combine(RepositoryRoot, "src");
+        var referenceProjects = Directory.GetFiles(
+                sourceRoot,
+                $"packages.{supportedRids[0]}.lock.json",
+                SearchOption.AllDirectories)
+            .Select(path => Path.GetDirectoryName(path)!)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        Assert.NotEmpty(referenceProjects);
+        foreach (var rid in supportedRids)
+        {
+            var lockedProjects = Directory.GetFiles(
+                    sourceRoot,
+                    $"packages.{rid}.lock.json",
+                    SearchOption.AllDirectories)
+                .Select(path => Path.GetDirectoryName(path)!)
+                .Order(StringComparer.Ordinal)
+                .ToArray();
+            Assert.Equal(referenceProjects, lockedProjects, StringComparer.Ordinal);
+            using var lockDocument = JsonDocument.Parse(File.ReadAllText(Path.Combine(
+                RepositoryRoot,
+                "src",
+                "GhostShell.Desktop",
+                $"packages.{rid}.lock.json")));
+            Assert.Equal(2, lockDocument.RootElement.GetProperty("version").GetInt32());
+            var targetFramework = string.Equals(rid, "win-x64", StringComparison.Ordinal)
+                ? "net10.0-windows10.0.19041"
+                : "net10.0";
+            Assert.Contains(
+                $"{targetFramework}/{rid}",
+                lockDocument.RootElement.GetProperty("dependencies").EnumerateObject()
+                    .Select(dependency => dependency.Name),
+                StringComparer.Ordinal);
+        }
+
+        var buildTargets = XDocument.Load(Path.Combine(RepositoryRoot, "Directory.Build.targets"));
+        Assert.Contains(
+            "RequireExistingRuntimeLockForLockedRestore",
+            buildTargets.Root?.Attribute("InitialTargets")?.Value,
+            StringComparison.Ordinal);
+        var restoreGuard = buildTargets.Descendants("Target").Single(target => string.Equals(
+            target.Attribute("Name")?.Value,
+            "RequireExistingRuntimeLockForLockedRestore",
+            StringComparison.Ordinal));
+        Assert.Contains("_GenerateRestoreGraphProjectEntry", restoreGuard.Attribute("BeforeTargets")?.Value);
+        Assert.Contains("$(RestoreLockedMode)", restoreGuard.Attribute("Condition")?.Value);
+        Assert.Contains("$(RuntimeIdentifiers)", restoreGuard.Attribute("Condition")?.Value);
+        Assert.Contains(
+            "$(MSBuildThisFileDirectory)src/GhostShell.*/*.csproj",
+            restoreGuard.ToString(),
+            StringComparison.Ordinal);
+        Assert.Contains("GhostShellExpectedRuntimeLock", restoreGuard.ToString(), StringComparison.Ordinal);
+        Assert.Contains("System.IO.Path", restoreGuard.ToString(), StringComparison.Ordinal);
+        Assert.Contains("packages.$(RuntimeIdentifier).lock.json", restoreGuard.ToString(), StringComparison.Ordinal);
+        Assert.Contains("packages.$(RuntimeIdentifiers).lock.json", restoreGuard.ToString(), StringComparison.Ordinal);
+        Assert.Contains("GhostShellRequiredRuntimeLock", restoreGuard.ToString(), StringComparison.Ordinal);
+        Assert.Contains(
+            restoreGuard.Descendants("Error"),
+            error => error.Attribute("Condition")?.Value.Contains(
+                "'$(NuGetLockFilePath)' == ''",
+                StringComparison.Ordinal) == true);
+        Assert.Contains(
+            restoreGuard.Descendants("Error"),
+            error => error.Attribute("Condition")?.Value.Contains(
+                "@(GhostShellSelectedRuntimeLock)' != '@(GhostShellExpectedRuntimeLock)",
+                StringComparison.Ordinal) == true);
+        Assert.DoesNotContain(
+            "%(Directory)$(NuGetLockFilePath)",
+            restoreGuard.ToString(),
+            StringComparison.Ordinal);
+        var publishGuard = buildTargets.Descendants("Target").Single(target => string.Equals(
+            target.Attribute("Name")?.Value,
+            "RequireLockedRestoreForSelfContainedDesktopPackage",
+            StringComparison.Ordinal));
+        Assert.Contains("Publish", publishGuard.Attribute("BeforeTargets")?.Value);
+        Assert.Equal(
+            "RequireExistingRuntimeLockForLockedRestore",
+            publishGuard.Attribute("DependsOnTargets")?.Value);
+        Assert.DoesNotContain(
+            "$(NuGetLockFilePath)",
+            publishGuard.Attribute("Condition")?.Value,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            publishGuard.Descendants("Error"),
+            error => error.Attribute("Condition")?.Value.Contains(
+                "'$(RuntimeIdentifier)' == ''",
+                StringComparison.Ordinal) == true);
+        Assert.Contains(
+            publishGuard.Descendants("Error"),
+            error => error.Attribute("Condition")?.Value.Contains(
+                "'$(RestoreLockedMode)' != 'true'",
+                StringComparison.Ordinal) == true);
+
+        var macPackageScript = File.ReadAllText(Path.Combine(RepositoryRoot, "scripts", "package-macos.sh"));
+        Assert.Contains("packages.${runtime_identifier}.lock.json", macPackageScript, StringComparison.Ordinal);
+        Assert.Contains("--locked-mode", macPackageScript, StringComparison.Ordinal);
+        Assert.Contains("--no-restore", macPackageScript, StringComparison.Ordinal);
+        Assert.Contains("-p:RestoreLockedMode=true", macPackageScript, StringComparison.Ordinal);
+
+        var supportedRidCondition = project.Descendants("GhostShellSqlLanguageSupported")
+            .Single()
+            .Attribute("Condition")!
+            .Value;
+        foreach (var rid in supportedRids)
+        {
+            Assert.Contains(rid, supportedRidCondition, StringComparison.Ordinal);
+        }
+
+        var releaseInputs = string.Concat(
+            project.ToString(),
+            File.ReadAllText(Path.Combine(RepositoryRoot, "scripts", "package-macos.sh")),
+            File.ReadAllText(Path.Combine(RepositoryRoot, ".github", "workflows", "repository-gate.yml")),
+            File.ReadAllText(Path.Combine(RepositoryRoot, "licenses", "managed-components.json")));
+        Assert.DoesNotContain(
+            "runtimepack.Microsoft.NETCore.App.Runtime.osx-arm64/10.0.10",
+            releaseInputs,
+            StringComparison.Ordinal);
+        using var managedCatalog = JsonDocument.Parse(File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            "licenses",
+            "managed-components.json")));
+        var runtimeEvidence = Assert.Single(
+            managedCatalog.RootElement.GetProperty("dependencies").EnumerateArray(),
+            dependency => string.Equals(
+                dependency.GetProperty("depsType").GetString(),
+                "runtimepack",
+                StringComparison.Ordinal));
+        Assert.Equal(
+            "runtimepack.Microsoft.NETCore.App.Runtime.osx-arm64/10.0.11",
+            runtimeEvidence.GetProperty("identity").GetString());
+        Assert.Equal(
+            "Microsoft.NETCore.App.Runtime.osx-arm64",
+            runtimeEvidence.GetProperty("nuGetId").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(runtimeEvidence.GetProperty("contentHash").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(runtimeEvidence.GetProperty("nupkgSha512").GetString()));
+    }
+
+    [Theory]
+    [InlineData("", "requires NuGetLockFilePath")]
+    [InlineData("packages.lock.json", "requires the reviewed runtime lock path")]
+    [InlineData("packages.linux-x64.lock.json", "requires the reviewed runtime lock path")]
+    public async Task SelfContainedLockGuardRejectsGlobalPathOverrides(
+        string lockPath,
+        string expectedError)
+    {
+        var result = await RunSelfContainedLockGuardAsync("osx-arm64", lockPath);
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains(expectedError, result.Output, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("linux-x64")]
+    [InlineData("linux-arm64")]
+    [InlineData("osx-x64")]
+    [InlineData("osx-arm64")]
+    [InlineData("win-x64")]
+    public async Task SelfContainedLockGuardAcceptsEachExactSupportedRidLock(string runtimeIdentifier)
+    {
+        var result = await RunSelfContainedLockGuardAsync(
+            runtimeIdentifier,
+            $"packages.{runtimeIdentifier}.lock.json");
+
+        Assert.True(
+            result.ExitCode == 0,
+            $"Exact {runtimeIdentifier} lock was rejected.{Environment.NewLine}{result.Output}");
     }
 
     [Fact]
@@ -363,4 +755,47 @@ public sealed class SqlLanguageWorkerPackagingTests
         throw new DirectoryNotFoundException(
             "Unable to locate the GhostSHELL repository root.");
     }
+
+    private static async Task<MsBuildResult> RunSelfContainedLockGuardAsync(
+        string runtimeIdentifier,
+        string lockPath)
+    {
+        var dotnet = Path.Combine(
+            RepositoryRoot,
+            ".dotnet",
+            OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet");
+        var project = Path.Combine(
+            RepositoryRoot,
+            "src",
+            "GhostShell.Desktop",
+            "GhostShell.Desktop.csproj");
+        var start = new ProcessStartInfo
+        {
+            FileName = dotnet,
+            WorkingDirectory = RepositoryRoot,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+        };
+        start.ArgumentList.Add("msbuild");
+        start.ArgumentList.Add(project);
+        start.ArgumentList.Add("-target:RequireLockedRestoreForSelfContainedDesktopPackage");
+        start.ArgumentList.Add($"-property:RuntimeIdentifier={runtimeIdentifier}");
+        start.ArgumentList.Add("-property:SelfContained=true");
+        start.ArgumentList.Add("-property:RestoreLockedMode=true");
+        start.ArgumentList.Add($"-property:NuGetLockFilePath={lockPath}");
+        start.ArgumentList.Add("-verbosity:quiet");
+        start.ArgumentList.Add("-nologo");
+
+        using var process = Process.Start(start)
+            ?? throw new InvalidOperationException("The MSBuild lock-policy probe did not start.");
+        var standardOutput = process.StandardOutput.ReadToEndAsync();
+        var standardError = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30));
+        return new MsBuildResult(
+            process.ExitCode,
+            string.Concat(await standardOutput, await standardError));
+    }
+
+    private sealed record MsBuildResult(int ExitCode, string Output);
 }

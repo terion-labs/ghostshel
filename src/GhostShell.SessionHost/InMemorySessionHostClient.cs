@@ -223,6 +223,26 @@ public sealed partial class InMemorySessionHostClient :
                 return ownerFailure;
             }
 
+            if (TryReplay(
+                    context,
+                    fingerprint,
+                    0,
+                    out HostResult<SessionSnapshot>? inGateReplay))
+            {
+                return inGateReplay;
+            }
+
+            using var operationCancellation = HostedOperationCancellation.Create(
+                context,
+                cancellationToken,
+                _timeProvider);
+            if (operationCancellation.Token.IsCancellationRequested)
+            {
+                return operationCancellation.DeadlineElapsed
+                    ? DeadlineExceeded<SessionSnapshot>(0)
+                    : Cancelled<SessionSnapshot>(0);
+            }
+
             if (TryGetSession(request.SessionId, out var existing))
             {
                 var existingSnapshot = existing.Snapshot();
@@ -243,6 +263,16 @@ public sealed partial class InMemorySessionHostClient :
                         existingSnapshot.Descriptor.Revision);
                 }
 
+                var existingReservation = ReserveReplay<SessionSnapshot>(
+                    context,
+                    fingerprint,
+                    existingSnapshot.Descriptor.Revision,
+                    out var existingOutcomeReserved);
+                if (existingReservation is not null)
+                {
+                    return existingReservation;
+                }
+
                 if (WorkspaceGraphFailure<SessionSnapshot>(
                         _workspaceGraphs.LinkSession(
                             request.Owner,
@@ -250,46 +280,75 @@ public sealed partial class InMemorySessionHostClient :
                             request.SessionId,
                             request.Role)) is { } existingLinkFailure)
                 {
-                    return existingLinkFailure;
+                    return existingOutcomeReserved
+                        ? OutcomeUncertain<SessionSnapshot>(
+                            existingSnapshot.Descriptor.Revision)
+                        : existingLinkFailure;
                 }
 
                 var existingResult = HostResult<SessionSnapshot>.Succeed(
                     existingSnapshot,
                     existingSnapshot.Descriptor.Revision);
-                StoreReplay(context, fingerprint, existingResult);
+                CompleteReplay(context, fingerprint, existingResult);
                 return existingResult;
             }
 
-            ITerminalPanelSession engine;
-            PanelSessionSnapshot engineSnapshot;
+            var reservationReplay = ReserveReplay<SessionSnapshot>(
+                context,
+                fingerprint,
+                currentRevision: 0,
+                out var outcomeReserved);
+            if (reservationReplay is not null)
+            {
+                return reservationReplay;
+            }
+
+            ITerminalPanelSession? createdEngine = null;
+            HostedSession hosted;
             try
             {
-                engine = await _terminalFactory
-                    .CreateAsync(request.SessionId, request.Launch, cancellationToken)
+                createdEngine = await _terminalFactory
+                    .CreateAsync(
+                        request.SessionId,
+                        request.Launch,
+                        operationCancellation.Token)
                     .ConfigureAwait(false);
-                engineSnapshot = await engine.SnapshotAsync(cancellationToken).ConfigureAwait(false);
+                var engineSnapshot = await createdEngine
+                    .SnapshotAsync(CancellationToken.None)
+                    .ConfigureAwait(false);
+                hosted = new HostedSession(
+                    createdEngine,
+                    request.Owner,
+                    request.Title,
+                    engineSnapshot,
+                    _eventRetention,
+                    _timeProvider,
+                    TerminalSessionMetadata.FromLaunch(request.Launch),
+                    role: request.Role);
+                lock (_gate)
+                {
+                    _sessions.Add(request.SessionId, hosted);
+                }
+
+                // Ownership transferred to the host graph. Later rejection
+                // removes and disposes through RemoveRejectedSessionAsync.
+                createdEngine = null;
             }
             catch (OperationCanceledException)
             {
-                return Cancelled<SessionSnapshot>(0);
+                await DisposeUnownedSessionAsync(createdEngine).ConfigureAwait(false);
+                return outcomeReserved
+                    ? OutcomeUncertain<SessionSnapshot>(0)
+                    : operationCancellation.DeadlineElapsed
+                        ? DeadlineExceeded<SessionSnapshot>(0)
+                        : Cancelled<SessionSnapshot>(0);
             }
             catch (Exception exception)
             {
-                return EngineFailure<SessionSnapshot>(exception, 0);
-            }
-
-            var hosted = new HostedSession(
-                engine,
-                request.Owner,
-                request.Title,
-                engineSnapshot,
-                _eventRetention,
-                _timeProvider,
-                TerminalSessionMetadata.FromLaunch(request.Launch),
-                role: request.Role);
-            lock (_gate)
-            {
-                _sessions.Add(request.SessionId, hosted);
+                await DisposeUnownedSessionAsync(createdEngine).ConfigureAwait(false);
+                return outcomeReserved
+                    ? OutcomeUncertain<SessionSnapshot>(0)
+                    : EngineFailure<SessionSnapshot>(exception, 0);
             }
 
             if (WorkspaceGraphFailure<SessionSnapshot>(
@@ -299,15 +358,18 @@ public sealed partial class InMemorySessionHostClient :
                         request.SessionId,
                         request.Role)) is { } linkFailure)
             {
-                return await RemoveRejectedSessionAsync(hosted, linkFailure)
+                var rejected = await RemoveRejectedSessionAsync(hosted, linkFailure)
                     .ConfigureAwait(false);
+                return outcomeReserved
+                    ? OutcomeUncertain<SessionSnapshot>(0)
+                    : rejected;
             }
 
             var snapshot = hosted.Snapshot();
             var result = HostResult<SessionSnapshot>.Succeed(
                 snapshot,
                 snapshot.Descriptor.Revision);
-            StoreReplay(context, fingerprint, result);
+            CompleteReplay(context, fingerprint, result);
             return result;
         }
         finally
@@ -359,8 +421,46 @@ public sealed partial class InMemorySessionHostClient :
             return Cancelled<AttachmentResult>(revision);
         }
 
+        var outcomeReserved = false;
         try
         {
+            var gatedRevision = session.Snapshot().Descriptor.Revision;
+            if (TryReplay(
+                    context,
+                    fingerprint,
+                    gatedRevision,
+                    out HostResult<AttachmentResult>? inGateReplay))
+            {
+                return inGateReplay;
+            }
+
+            if (RevisionConflict(
+                    context,
+                    session,
+                    out HostResult<AttachmentResult>? gatedConflict))
+            {
+                return gatedConflict;
+            }
+
+            var gatedInvalid = ValidateContext<AttachmentResult>(
+                context,
+                cancellationToken,
+                gatedRevision);
+            if (gatedInvalid is not null)
+            {
+                return gatedInvalid;
+            }
+
+            var reservationReplay = ReserveReplay<AttachmentResult>(
+                context,
+                fingerprint,
+                gatedRevision,
+                out outcomeReserved);
+            if (reservationReplay is not null)
+            {
+                return reservationReplay;
+            }
+
             if (request.Kind == AttachmentKind.Interactive)
             {
                 var replaced = session.AttachmentsForClient(request.ClientId)
@@ -368,23 +468,10 @@ public sealed partial class InMemorySessionHostClient :
                     .ToArray();
                 if (replaced.Length > 0)
                 {
-                    try
-                    {
-                        await DetachInteractiveRendererAsync(
-                                session.Engine,
-                                cancellationToken)
-                            .ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        return Cancelled<AttachmentResult>(session.Snapshot().Descriptor.Revision);
-                    }
-                    catch (Exception exception)
-                    {
-                        return EngineFailure<AttachmentResult>(
-                            exception,
-                            session.Snapshot().Descriptor.Revision);
-                    }
+                    await DetachInteractiveRendererAsync(
+                            session.Engine,
+                            CancellationToken.None)
+                        .ConfigureAwait(false);
 
                     foreach (var attachment in replaced)
                     {
@@ -394,8 +481,25 @@ public sealed partial class InMemorySessionHostClient :
             }
 
             var result = session.Attach(request, _hostCapabilities);
-            StoreReplay(context, fingerprint, result);
+            CompleteReplay(context, fingerprint, result);
             return result;
+        }
+        catch (OperationCanceledException)
+        {
+            return outcomeReserved
+                ? OutcomeUncertain<AttachmentResult>(
+                    session.Snapshot().Descriptor.Revision)
+                : Cancelled<AttachmentResult>(
+                    session.Snapshot().Descriptor.Revision);
+        }
+        catch (Exception exception)
+        {
+            return outcomeReserved
+                ? OutcomeUncertain<AttachmentResult>(
+                    session.Snapshot().Descriptor.Revision)
+                : EngineFailure<AttachmentResult>(
+                    exception,
+                    session.Snapshot().Descriptor.Revision);
         }
         finally
         {
@@ -918,20 +1022,40 @@ public sealed partial class InMemorySessionHostClient :
                 revision);
         }
 
+        invalid = ValidateContext<Unit>(context, cancellationToken, revision);
+        if (invalid is not null)
+        {
+            return invalid;
+        }
+
+        var reservationReplay = ReserveReplay<Unit>(
+            context,
+            fingerprint,
+            revision,
+            out var outcomeReserved);
+        if (reservationReplay is not null)
+        {
+            return reservationReplay;
+        }
+
         try
         {
             await terminal.WriteAsync(request.Text, cancellationToken).ConfigureAwait(false);
             var result = HostResult<Unit>.Succeed(Unit.Value, revision);
-            StoreReplay(context, fingerprint, result);
+            CompleteReplay(context, fingerprint, result);
             return result;
         }
         catch (OperationCanceledException)
         {
-            return Cancelled<Unit>(revision);
+            return outcomeReserved
+                ? OutcomeUncertain<Unit>(revision)
+                : Cancelled<Unit>(revision);
         }
         catch (Exception exception)
         {
-            return EngineFailure<Unit>(exception, revision);
+            return outcomeReserved
+                ? OutcomeUncertain<Unit>(revision)
+                : EngineFailure<Unit>(exception, revision);
         }
     }
 
@@ -1670,17 +1794,16 @@ public sealed partial class InMemorySessionHostClient :
         try
         {
             ThrowIfDisposed();
-            var targets = SessionsForScope(request);
-            if (targets.Count == 0)
+            if (TryReplay(
+                    context,
+                    fingerprint,
+                    0,
+                    out HostResult<CloseScopeResult>? inGateReplay))
             {
-                var emptyResult = HostResult<CloseScopeResult>.Succeed(
-                    new CloseScopeResult.Completed(request.Scope, request.TargetId, []),
-                    0);
-                RemoveWorkspaceGraphAfterSuccessfulClose(request, []);
-                StoreReplay(context, fingerprint, emptyResult);
-                return emptyResult;
+                return inGateReplay;
             }
 
+            var targets = SessionsForScope(request);
             foreach (var target in targets)
             {
                 var currentRevision = target.Snapshot().Descriptor.Revision;
@@ -1690,21 +1813,61 @@ public sealed partial class InMemorySessionHostClient :
                 {
                     return RevisionConflict<CloseScopeResult>(currentRevision, expected);
                 }
+            }
 
+            var reservationRevision = targets.Count == 0
+                ? 0
+                : targets.Max(target => target.Snapshot().Descriptor.Revision);
+            var gatedInvalid = ValidateContext<CloseScopeResult>(
+                context,
+                cancellationToken,
+                reservationRevision);
+            if (gatedInvalid is not null)
+            {
+                return gatedInvalid;
+            }
+
+            var reservationReplay = ReserveReplay<CloseScopeResult>(
+                context,
+                fingerprint,
+                reservationRevision,
+                out var outcomeReserved);
+            if (reservationReplay is not null)
+            {
+                return reservationReplay;
+            }
+
+            if (targets.Count == 0)
+            {
+                var emptyResult = HostResult<CloseScopeResult>.Succeed(
+                    new CloseScopeResult.Completed(request.Scope, request.TargetId, []),
+                    0);
+                RemoveWorkspaceGraphAfterSuccessfulClose(request, []);
+                CompleteReplay(context, fingerprint, emptyResult);
+                return emptyResult;
+            }
+
+            foreach (var target in targets)
+            {
+                var currentRevision = target.Snapshot().Descriptor.Revision;
                 try
                 {
                     var engineSnapshot = await target.Engine
-                        .SnapshotAsync(cancellationToken)
+                        .SnapshotAsync(CancellationToken.None)
                         .ConfigureAwait(false);
                     target.ApplyEngineSnapshot(engineSnapshot);
                 }
                 catch (OperationCanceledException)
                 {
-                    return Cancelled<CloseScopeResult>(currentRevision);
+                    return outcomeReserved
+                        ? OutcomeUncertain<CloseScopeResult>(currentRevision)
+                        : Cancelled<CloseScopeResult>(currentRevision);
                 }
                 catch (Exception exception)
                 {
-                    return EngineFailure<CloseScopeResult>(exception, currentRevision);
+                    return outcomeReserved
+                        ? OutcomeUncertain<CloseScopeResult>(currentRevision)
+                        : EngineFailure<CloseScopeResult>(exception, currentRevision);
                 }
             }
 
@@ -1716,9 +1879,11 @@ public sealed partial class InMemorySessionHostClient :
                         SessionCloseOutcome.Cancelled,
                         "Close cancelled by the user."))
                     .ToArray();
-                return HostResult<CloseScopeResult>.Succeed(
+                var cancelled = HostResult<CloseScopeResult>.Succeed(
                     new CloseScopeResult.Completed(request.Scope, request.TargetId, cancelledSessions),
                     targets.Max(target => target.Snapshot().Descriptor.Revision));
+                CompleteReplay(context, fingerprint, cancelled);
+                return cancelled;
             }
 
             var active = targets
@@ -1733,12 +1898,13 @@ public sealed partial class InMemorySessionHostClient :
                 .ToArray();
             if (request.Decision == CloseDecision.Request && active.Length > 0)
             {
-                return HostResult<CloseScopeResult>.Succeed(
+                var confirmation = HostResult<CloseScopeResult>.Succeed(
                     new CloseScopeResult.ConfirmationRequired(request.Scope, request.TargetId, active),
                     targets.Max(target => target.Snapshot().Descriptor.Revision));
+                CompleteReplay(context, fingerprint, confirmation);
+                return confirmation;
             }
 
-            cancellationToken.ThrowIfCancellationRequested();
             var closeResults = new List<SessionCloseResult>(targets.Count);
             foreach (var target in targets)
             {
@@ -1756,16 +1922,30 @@ public sealed partial class InMemorySessionHostClient :
                 string detail;
                 try
                 {
-                    outcome = await target.Engine.CloseAsync(mode, cancellationToken).ConfigureAwait(false);
+                    outcome = await target.Engine
+                        .CloseAsync(mode, CancellationToken.None)
+                        .ConfigureAwait(false);
                     detail = DetailFor(outcome);
                 }
                 catch (OperationCanceledException)
                 {
+                    if (outcomeReserved)
+                    {
+                        return OutcomeUncertain<CloseScopeResult>(
+                            targetSnapshot.Descriptor.Revision);
+                    }
+
                     outcome = PanelCloseOutcome.Cancelled;
                     detail = "Close cancelled.";
                 }
                 catch (Exception exception)
                 {
+                    if (outcomeReserved)
+                    {
+                        return OutcomeUncertain<CloseScopeResult>(
+                            targetSnapshot.Descriptor.Revision);
+                    }
+
                     outcome = PanelCloseOutcome.EngineFailed;
                     detail = exception.Message;
                 }
@@ -1787,7 +1967,7 @@ public sealed partial class InMemorySessionHostClient :
 
             if (closeResults.Any(item => item.Outcome == SessionCloseOutcome.ConfirmationRequired))
             {
-                var confirmation = targets
+                var confirmationSessions = targets
                     .Where(target => closeResults.Any(
                         result => result.SessionId == target.Id
                             && result.Outcome == SessionCloseOutcome.ConfirmationRequired))
@@ -1798,16 +1978,21 @@ public sealed partial class InMemorySessionHostClient :
                         target.Snapshot().Descriptor.StatusDetail,
                         target.Snapshot().Descriptor.Revision))
                     .ToArray();
-                return HostResult<CloseScopeResult>.Succeed(
-                    new CloseScopeResult.ConfirmationRequired(request.Scope, request.TargetId, confirmation),
+                var confirmationResult = HostResult<CloseScopeResult>.Succeed(
+                    new CloseScopeResult.ConfirmationRequired(
+                        request.Scope,
+                        request.TargetId,
+                        confirmationSessions),
                     targets.Max(target => target.Snapshot().Descriptor.Revision));
+                CompleteReplay(context, fingerprint, confirmationResult);
+                return confirmationResult;
             }
 
             var completed = HostResult<CloseScopeResult>.Succeed(
                 new CloseScopeResult.Completed(request.Scope, request.TargetId, closeResults),
                 targets.Max(target => target.Snapshot().Descriptor.Revision));
             RemoveWorkspaceGraphAfterSuccessfulClose(request, closeResults);
-            StoreReplay(context, fingerprint, completed);
+            CompleteReplay(context, fingerprint, completed);
             return completed;
         }
         finally
@@ -1999,6 +2184,24 @@ public sealed partial class InMemorySessionHostClient :
         }
     }
 
+    private static async ValueTask DisposeUnownedSessionAsync(IPanelSession? engine)
+    {
+        if (engine is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await engine.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // The reserved outcome remains uncertain even if best-effort
+            // cleanup fails; no hosted reference exists for another attempt.
+        }
+    }
+
     private bool TryGetSession(SessionId sessionId, out HostedSession session)
     {
         lock (_gate)
@@ -2103,19 +2306,74 @@ public sealed partial class InMemorySessionHostClient :
         }
     }
 
-    private void StoreReplay<T>(
+    private HostResult<T>? ReserveReplay<T>(
+        OperationContext context,
+        string fingerprint,
+        long currentRevision,
+        out bool reserved)
+    {
+        reserved = false;
+        if (context.IdempotencyKey is not { } key)
+        {
+            return null;
+        }
+
+        lock (_gate)
+        {
+            var index = (context.Actor.Id, key.Value);
+            if (_idempotency.TryGetValue(index, out var record))
+            {
+                if (string.Equals(
+                        record.Fingerprint,
+                        fingerprint,
+                        StringComparison.Ordinal)
+                    && record.Result is HostResult<T> typed)
+                {
+                    return typed;
+                }
+
+                return HostResult<T>.Fail(
+                    HostError.Create(
+                        HostErrorCode.IdempotencyKeyReused,
+                        "The idempotency key was already used for a different operation."),
+                    currentRevision);
+            }
+
+            var uncertain = OutcomeUncertain<T>(currentRevision);
+            _idempotency.Add(
+                index,
+                new IdempotencyRecord(
+                    fingerprint,
+                    uncertain,
+                    IsOutcomeUncertain: true));
+            reserved = true;
+            return null;
+        }
+    }
+
+    private void CompleteReplay<T>(
         OperationContext context,
         string fingerprint,
         HostResult<T> result)
     {
-        if (context.IdempotencyKey is not { } key || result is not HostResult<T>.Success)
+        if (context.IdempotencyKey is not { } key
+            || result is not HostResult<T>.Success)
         {
             return;
         }
 
         lock (_gate)
         {
-            _idempotency.TryAdd((context.Actor.Id, key.Value), new IdempotencyRecord(fingerprint, result));
+            var index = (context.Actor.Id, key.Value);
+            if (_idempotency.TryGetValue(index, out var record)
+                && record.IsOutcomeUncertain
+                && string.Equals(
+                    record.Fingerprint,
+                    fingerprint,
+                    StringComparison.Ordinal))
+            {
+                _idempotency[index] = new IdempotencyRecord(fingerprint, result);
+            }
         }
     }
 
@@ -2137,6 +2395,13 @@ public sealed partial class InMemorySessionHostClient :
     private static HostResult<T> Cancelled<T>(long revision) =>
         HostResult<T>.Fail(
             HostError.Create(HostErrorCode.Cancelled, "The operation was cancelled."),
+            revision);
+
+    private static HostResult<T> OutcomeUncertain<T>(long revision) =>
+        HostResult<T>.Fail(
+            HostError.Create(
+                HostErrorCode.ResynchronizationRequired,
+                "The operation was dispatched, but its outcome is uncertain."),
             revision);
 
     private static HostResult<T> ClosedSession<T>(long revision) =>

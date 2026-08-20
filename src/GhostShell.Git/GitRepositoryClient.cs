@@ -801,7 +801,7 @@ public sealed class GitRepositoryClient(IConnectionCommandExecutor executor, Tim
         string branch,
         CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(remote);
+        ValidateRemoteOperand(remote, nameof(remote));
         ArgumentException.ThrowIfNullOrWhiteSpace(branch);
         return AsRetryable(await MutateAsync(
             repository,
@@ -857,6 +857,11 @@ public sealed class GitRepositoryClient(IConnectionCommandExecutor executor, Tim
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(alsoOnRemotes);
+        foreach (var remote in alsoOnRemotes)
+        {
+            ValidateRemoteOperand(remote, nameof(alsoOnRemotes));
+        }
+
         var result = await MutateAsync(repository, ["tag", "-d", name], cancellationToken)
             .ConfigureAwait(false);
         if (result is GitResult<GitUnit>.Failure)
@@ -888,7 +893,7 @@ public sealed class GitRepositoryClient(IConnectionCommandExecutor executor, Tim
         string url,
         CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ValidateRemoteOperand(name, nameof(name));
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
         return MutateAsync(repository, ["remote", "add", name, url], cancellationToken);
     }
@@ -900,8 +905,8 @@ public sealed class GitRepositoryClient(IConnectionCommandExecutor executor, Tim
         string url,
         CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(oldName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(newName);
+        ValidateRemoteOperand(oldName, nameof(oldName));
+        ValidateRemoteOperand(newName, nameof(newName));
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
         if (!string.Equals(oldName, newName, StringComparison.Ordinal))
         {
@@ -926,7 +931,7 @@ public sealed class GitRepositoryClient(IConnectionCommandExecutor executor, Tim
         string name,
         CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ValidateRemoteOperand(name, nameof(name));
         return MutateAsync(repository, ["remote", "remove", name], cancellationToken);
     }
 
@@ -935,12 +940,23 @@ public sealed class GitRepositoryClient(IConnectionCommandExecutor executor, Tim
         string name,
         CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ValidateRemoteOperand(name, nameof(name));
         return AsRetryable(await MutateAsync(
             repository,
             ["fetch", name],
             cancellationToken,
             NetworkTimeout).ConfigureAwait(false));
+    }
+
+    private static void ValidateRemoteOperand(string remote, string parameterName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(remote, parameterName);
+        if (remote.StartsWith('-'))
+        {
+            throw new ArgumentException(
+                "A Git remote cannot begin with an option prefix.",
+                parameterName);
+        }
     }
 
     public async ValueTask<GitResult<GitUnit>> PullAsync(

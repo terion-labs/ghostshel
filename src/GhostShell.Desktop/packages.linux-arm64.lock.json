@@ -861,6 +861,13 @@
           "SshNet.Agent": "[2026.0.0, )"
         }
       },
+      "ghostshell.git": {
+        "type": "Project",
+        "dependencies": {
+          "GhostShell.Application": "[1.0.0, )",
+          "GhostShell.Core": "[1.0.0, )"
+        }
+      },
       "ghostshell.infrastructure": {
         "type": "Project",
         "dependencies": {

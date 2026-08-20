@@ -11,6 +11,7 @@ internal sealed partial class ShellNotificationCenter
         ShellNotificationVisibility visibility,
         bool isBeingLookedAt)
     {
+        notification = PanelNotificationTextBudget.Clamp(notification);
         var leavesVisualMark =
             notification.Effects.HasFlag(PanelNotificationEffects.Visual);
         var record = new ShellNotificationRecord(
@@ -20,8 +21,12 @@ internal sealed partial class ShellNotificationCenter
             visibility,
             isBeingLookedAt || !leavesVisualMark);
         _history.Add(record);
-        if (_history.Count > HistoryCapacity)
+        _historyUtf8Bytes += PanelNotificationTextBudget.Measure(notification);
+        while (_history.Count > HistoryCapacity
+               || _historyUtf8Bytes > MaximumHistoryUtf8Bytes)
         {
+            _historyUtf8Bytes -= PanelNotificationTextBudget.Measure(
+                _history[0].Notification);
             _history.RemoveAt(0);
         }
 
@@ -61,12 +66,14 @@ internal sealed partial class ShellNotificationCenter
         }
 
         var notification = record.Notification;
-        var title = string.IsNullOrWhiteSpace(notification.Title)
+        var titleSource = string.IsNullOrWhiteSpace(notification.Title)
             ? fallbackTitle ?? "GhostSHELL"
-            : notification.Title.Trim();
-        var body = string.IsNullOrWhiteSpace(notification.Body)
+            : notification.Title;
+        var bodySource = string.IsNullOrWhiteSpace(notification.Body)
             ? DefaultBody(notification.Kind)
-            : notification.Body.Trim();
+            : notification.Body;
+        var title = PanelNotificationTextBudget.TruncateTitle(titleSource).Trim();
+        var body = PanelNotificationTextBudget.TruncateBody(bodySource).Trim();
         ValueTask delivery;
         try
         {

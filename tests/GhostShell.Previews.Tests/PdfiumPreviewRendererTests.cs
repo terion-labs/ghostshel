@@ -80,6 +80,19 @@ public sealed class PdfiumPreviewRendererTests : IDisposable
     }
 
     [Fact]
+    public async Task An_extreme_page_is_rejected_before_output_raster_allocation()
+    {
+        var path = Path.Combine(_root, "extreme-page.pdf");
+        await File.WriteAllTextAsync(path, TestDocuments.TwoPagePdf(1, 100_000));
+
+        Assert.Null(await _renderer.RenderPageAsync(
+            Content(path),
+            0,
+            1_600,
+            CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Paging_past_the_end_renders_nothing_rather_than_wrapping()
     {
         var path = await WriteProbeAsync("bounds.pdf");

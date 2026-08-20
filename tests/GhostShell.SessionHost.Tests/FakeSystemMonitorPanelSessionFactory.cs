@@ -26,11 +26,23 @@ internal sealed class FakeSystemMonitorPanelSessionFactory
 
     public int ProcessMonitorCreateCount { get; private set; }
 
+    public Func<FakeMonitorPanelSession, CancellationToken, ValueTask>? AfterCreateAsync
+    {
+        get;
+        set;
+    }
+
+    public Func<CancellationToken, ValueTask>? BeforeSnapshotForNewSessions
+    {
+        get;
+        set;
+    }
+
     public FakeStatisticsPanelSession Statistics(SessionId id) => _statistics[id];
 
     public FakeProcessMonitorPanelSession Processes(SessionId id) => _processes[id];
 
-    public ValueTask<IStatisticsPanelSession> CreateStatisticsAsync(
+    public async ValueTask<IStatisticsPanelSession> CreateStatisticsAsync(
         SessionId sessionId,
         ConnectionProfile connection,
         CancellationToken cancellationToken)
@@ -39,12 +51,20 @@ internal sealed class FakeSystemMonitorPanelSessionFactory
         StatisticsCreateCount++;
         var session = new FakeStatisticsPanelSession(
             sessionId,
-            StatisticsCapabilities);
+            StatisticsCapabilities)
+        {
+            BeforeSnapshotAsync = BeforeSnapshotForNewSessions,
+        };
         _statistics.Add(sessionId, session);
-        return ValueTask.FromResult<IStatisticsPanelSession>(session);
+        if (AfterCreateAsync is { } afterCreate)
+        {
+            await afterCreate(session, cancellationToken).ConfigureAwait(false);
+        }
+
+        return session;
     }
 
-    public ValueTask<IProcessMonitorPanelSession> CreateProcessMonitorAsync(
+    public async ValueTask<IProcessMonitorPanelSession> CreateProcessMonitorAsync(
         SessionId sessionId,
         ConnectionProfile connection,
         CancellationToken cancellationToken)
@@ -53,9 +73,17 @@ internal sealed class FakeSystemMonitorPanelSessionFactory
         ProcessMonitorCreateCount++;
         var session = new FakeProcessMonitorPanelSession(
             sessionId,
-            ProcessMonitorCapabilities);
+            ProcessMonitorCapabilities)
+        {
+            BeforeSnapshotAsync = BeforeSnapshotForNewSessions,
+        };
         _processes.Add(sessionId, session);
-        return ValueTask.FromResult<IProcessMonitorPanelSession>(session);
+        if (AfterCreateAsync is { } afterCreate)
+        {
+            await afterCreate(session, cancellationToken).ConfigureAwait(false);
+        }
+
+        return session;
     }
 }
 
@@ -77,6 +105,8 @@ internal abstract class FakeMonitorPanelSession(
 
     public int DisposeCount { get; private set; }
 
+    public Func<CancellationToken, ValueTask>? BeforeSnapshotAsync { get; set; }
+
     public bool IsClosed => _closed;
 
     public PanelCloseMode? LastCloseMode { get; private set; }
@@ -92,11 +122,16 @@ internal abstract class FakeMonitorPanelSession(
                     StringComparison.Ordinal)));
     }
 
-    public ValueTask<PanelSessionSnapshot> SnapshotAsync(
+    public async ValueTask<PanelSessionSnapshot> SnapshotAsync(
         CancellationToken cancellationToken)
     {
+        if (BeforeSnapshotAsync is { } beforeSnapshot)
+        {
+            await beforeSnapshot(cancellationToken).ConfigureAwait(false);
+        }
+
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(_closed
+        return _closed
             ? new PanelSessionSnapshot(
                 SessionLifecycle.Closed,
                 SessionHealth.Ended,
@@ -106,7 +141,7 @@ internal abstract class FakeMonitorPanelSession(
                 SessionLifecycle.Active,
                 SessionHealth.Healthy,
                 false,
-                "Ready"));
+                "Ready");
     }
 
     public async IAsyncEnumerable<PanelSessionEvent> WatchAsync(

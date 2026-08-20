@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using GhostShell.Application;
 using GhostShell.Core;
+using GhostShell.Docking;
 
 namespace GhostShell.App.Tests;
 
@@ -159,6 +160,39 @@ public sealed class DefinitionBundleControllerTests
             stream.SetLength(DefinitionBundleController.MaximumImportBytes + 1);
         }
 
+        var store = new RecordingBundleStore();
+        var controller = CreateController(
+            store,
+            new RecordingPathPicker { ImportPath = path });
+
+        var result = await controller.PreflightImportAsync(
+            DefinitionImportMode.ReplaceExisting,
+            CancellationToken.None);
+
+        Assert.Equal(DefinitionStoreErrorCode.InvalidDefinition, result.Error!.Code);
+        Assert.Empty(store.PreflightCalls);
+    }
+
+    [Fact]
+    public async Task Oversized_legacy_dock_state_is_rejected_before_store_preflight()
+    {
+        using var temporary = TemporaryDirectory.Create();
+        var path = temporary.PathFor("oversized-dock.json");
+        var dockState = new string(
+            '\u00e9',
+            (DockLayoutPayloadCodec.MaximumDecodedBytes / 2) + 1);
+        var layoutPayload = JsonSerializer.Serialize(new
+        {
+            id = new { value = "layout-large-dock" },
+            schemaVersion = 1,
+            name = "Large Dock",
+            grid = new { rows = 1, columns = 1 },
+            slots = Array.Empty<object>(),
+            dockLayoutJson = dockState,
+        });
+        await WriteBundleAsync(
+            path,
+            Bundle(Document("layout-large-dock", layoutPayload)));
         var store = new RecordingBundleStore();
         var controller = CreateController(
             store,

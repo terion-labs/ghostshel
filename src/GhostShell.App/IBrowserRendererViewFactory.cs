@@ -14,6 +14,13 @@ public interface IBrowserRendererViewFactory
     /// <summary>Creates a direct local browser for lightweight embedded previews.</summary>
     BrowserRendererView Create();
 
+    /// <summary>
+    /// Creates an ephemeral browser context for explicitly enabled live HTML
+    /// previews. Its cookies, cache, and other origin state must not be shared
+    /// with ordinary browser panels.
+    /// </summary>
+    BrowserRendererView CreateIsolatedHtmlPreview();
+
     ValueTask<BrowserRendererView> CreateAsync(
         ConnectionProfile connection,
         CancellationToken cancellationToken);

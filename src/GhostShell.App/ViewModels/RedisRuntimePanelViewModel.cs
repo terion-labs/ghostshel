@@ -1419,10 +1419,19 @@ public sealed class RedisRuntimePanelViewModel : RuntimePanelViewModel
         }
 
         var key = SelectedKey.Summary.Key;
-        await _session.RemoveEntryAsync(key, SelectedKeyType, SelectedValueEntry.Entry, token)
+        var outcome = await _session.RemoveEntryAsync(
+                key,
+                SelectedKeyType,
+                SelectedValueEntry.Entry,
+                token)
             .ConfigureAwait(true);
         SelectedValueEntry = null;
         await ReadSelectedKeyCoreAsync(key, token).ConfigureAwait(true);
+        if (outcome == RedisEntryRemovalOutcome.Stale)
+        {
+            throw new InvalidOperationException(
+                "The Redis entry changed after it was displayed. The value was refreshed without deleting it.");
+        }
     });
 
     private Task DeleteSelectedKeyAsync()

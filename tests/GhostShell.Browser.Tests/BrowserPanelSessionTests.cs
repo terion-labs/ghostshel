@@ -567,6 +567,7 @@ public sealed class BrowserPanelSessionTests
         };
         var renderer = new BrowserSurface(
             nativeView,
+            BrowserTestDestinationPolicy.Public,
             InlineBrowserUiDispatcher.Instance,
             capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
         await session.AttachRendererAsync(renderer, CancellationToken.None);
@@ -739,6 +740,7 @@ public sealed class BrowserPanelSessionTests
         };
         var renderer = new BrowserSurface(
             nativeView,
+            BrowserTestDestinationPolicy.Public,
             InlineBrowserUiDispatcher.Instance,
             capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
         await session.AttachRendererAsync(renderer, CancellationToken.None);

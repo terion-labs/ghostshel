@@ -686,6 +686,37 @@ public sealed class GhosttyVtTerminalSessionTests
     }
 
     [Fact]
+    public async Task Notification_queue_enforces_field_and_aggregate_utf8_budgets()
+    {
+        var harness = await CreateAsync();
+        await using var session = harness.Session;
+        var oversizedBody = string.Concat(Enumerable.Repeat(
+            "\U0001F680",
+            PanelNotificationTextBudget.MaximumBodyUtf8Bytes / 4 + 1));
+
+        for (var index = 0; index < 100; index++)
+        {
+            session.PublishNotification(
+                PanelNotificationKind.Notification,
+                "Agent",
+                oversizedBody);
+        }
+
+        Assert.InRange(
+            session.RetainedNotificationUtf8Bytes,
+            1,
+            GhosttyVtTerminalSession.MaximumQueuedNotificationUtf8Bytes);
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var notifications = session
+            .WatchNotificationsAsync(0, lifetime.Token)
+            .GetAsyncEnumerator(lifetime.Token);
+        Assert.True(await notifications.MoveNextAsync());
+        Assert.Equal(
+            PanelNotificationTextBudget.MaximumBodyUtf8Bytes,
+            Encoding.UTF8.GetByteCount(notifications.Current.Body));
+    }
+
+    [Fact]
     public async Task Graceful_close_uses_shell_lifecycle_instead_of_treating_every_shell_as_busy()
     {
         var idleHarness = await CreateAsync();

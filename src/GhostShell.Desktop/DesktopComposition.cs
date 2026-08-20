@@ -144,7 +144,9 @@ public static class DesktopComposition
             provider.GetRequiredService<CefBrowserProfileStore>());
         services.AddSingleton(provider => new PreviewContentCache(
             provider.GetRequiredService<IFilePreviewPreferences>(),
-            directory: null,
+            Path.Combine(
+                provider.GetRequiredService<LocalArtifactPaths>().CacheDirectory,
+                "previews"),
             provider.GetRequiredService<IApplicationEncryption>()));
         services.AddSingleton<IPreviewCacheControl>(provider =>
             provider.GetRequiredService<PreviewContentCache>());
@@ -175,15 +177,14 @@ public static class DesktopComposition
         services.AddSingleton<IDockerPanelSessionFactory, DockerPanelSessionFactory>();
         services.AddSingleton<IDatabaseConnectionCatalog, RedisConnectionCatalog>();
         services.AddSingleton<ISqlLanguageService, CalciteSqlLanguageService>();
-        services.AddSingleton<IImagePreviewDecoder, MagickImagePreviewDecoder>();
+        // Keep ImageMagick previews unavailable until native decoding runs in a
+        // killable worker. Process-global limits reduce risk, but cancellation
+        // cannot interrupt an in-process coder that stops making progress.
         services.AddSingleton<IArchiveTableOfContents, ArchiveTableOfContents>();
-        // PDFium ships native binaries for the desktop platforms only, and the
-        // preview treats a missing renderer as "this build cannot open PDFs"
-        // rather than failing at the moment a user selects one.
-        if (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() || OperatingSystem.IsLinux())
-        {
-            services.AddSingleton<IPdfPreviewRenderer, PdfiumPreviewRenderer>();
-        }
+        // Keep PDF previews unavailable until PDFium runs in a killable worker.
+        // Task cancellation cannot interrupt an in-process native parse or
+        // render after it starts; the file panel already treats a missing
+        // renderer as an unsupported preview rather than a failure.
         services.AddSingleton<IFileProviderProfileRuntime>(provider =>
             provider.GetRequiredService<CatalogFileProviderRuntime>());
         services.AddSingleton<CatalogAiProviderRuntime>();

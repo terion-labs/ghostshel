@@ -706,7 +706,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             .AsArray()
             .Select(node => node!.AsObject())
             .Single(node => string.Equals(node["identity"]!.GetValue<string>()
-, "runtimepack.Microsoft.NETCore.App.Runtime.osx-arm64/10.0.10", StringComparison.Ordinal));
+, "runtimepack.Microsoft.NETCore.App.Runtime.osx-arm64/10.0.11", StringComparison.Ordinal));
         runtime["nuspecLicenseType"] = "file";
         runtime["nuspecLicense"] = "LICENSE.txt";
         File.WriteAllText(inputs.CatalogPath, catalog.ToJsonString());
@@ -1510,7 +1510,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         var runtime = CreateNuGetPackage(
             packageRoot,
             "Microsoft.NETCore.App.Runtime.osx-arm64",
-            "10.0.10",
+            "10.0.11",
             includeNotices: false);
 
         var libraries = new SortedDictionary<string, object?>(StringComparer.Ordinal);
@@ -1582,7 +1582,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         }
 
         const string runtimeIdentity =
-            "runtimepack.Microsoft.NETCore.App.Runtime.osx-arm64/10.0.10";
+            "runtimepack.Microsoft.NETCore.App.Runtime.osx-arm64/10.0.11";
         libraries.Add(
             runtimeIdentity,
             new Dictionary<string, object?>(StringComparer.Ordinal)

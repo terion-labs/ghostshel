@@ -104,6 +104,63 @@ public sealed class NativeLocalPageNavigationTests
         Assert.NotSame(permitted, address);
     }
 
+    [Theory]
+    [InlineData("report.css", Exclr8Cef.Cef.ResourceType.Stylesheet)]
+    [InlineData("diagram.png", Exclr8Cef.Cef.ResourceType.Image)]
+    [InlineData("body.woff2", Exclr8Cef.Cef.ResourceType.Font)]
+    public void Restricted_preview_allows_only_explicit_adjacent_static_assets(
+        string name,
+        Exclr8Cef.Cef.ResourceType resourceType)
+    {
+        var permitted = BrowserAddress.ForLocalFile(PagePath("report.html"));
+
+        Assert.True(CefBrowserView.IsPermittedRestrictedHtmlPreviewRequest(
+            LocalUri(name).AbsoluteUri,
+            "GET",
+            resourceType,
+            permitted));
+    }
+
+    [Theory]
+    [InlineData("https://example.test/tracker", Exclr8Cef.Cef.ResourceType.Image, "GET")]
+    [InlineData("report.js", Exclr8Cef.Cef.ResourceType.Script, "GET")]
+    [InlineData("frame.html", Exclr8Cef.Cef.ResourceType.SubFrame, "GET")]
+    [InlineData("vector.svg", Exclr8Cef.Cef.ResourceType.Image, "GET")]
+    [InlineData("report.html", Exclr8Cef.Cef.ResourceType.MainFrame, "POST")]
+    public void Restricted_preview_denies_network_active_content_and_forms(
+        string address,
+        Exclr8Cef.Cef.ResourceType resourceType,
+        string method)
+    {
+        var permitted = BrowserAddress.ForLocalFile(PagePath("report.html"));
+        var request = Uri.TryCreate(address, UriKind.Absolute, out var absolute)
+            ? absolute
+            : LocalUri(address);
+
+        Assert.False(CefBrowserView.IsPermittedRestrictedHtmlPreviewRequest(
+            request.AbsoluteUri,
+            method,
+            resourceType,
+            permitted));
+    }
+
+    [Fact]
+    public void Restricted_preview_allows_only_its_exact_main_document()
+    {
+        var permitted = BrowserAddress.ForLocalFile(PagePath("report.html"));
+
+        Assert.True(CefBrowserView.IsPermittedRestrictedHtmlPreviewRequest(
+            LocalUri("report.html").AbsoluteUri,
+            "GET",
+            Exclr8Cef.Cef.ResourceType.MainFrame,
+            permitted));
+        Assert.False(CefBrowserView.IsPermittedRestrictedHtmlPreviewRequest(
+            LocalUri("other.html").AbsoluteUri,
+            "GET",
+            Exclr8Cef.Cef.ResourceType.MainFrame,
+            permitted));
+    }
+
     private static string PagePath(string name) => PageDirectory + name;
 
     private static Uri LocalUri(string name) => new(PagePath(name));

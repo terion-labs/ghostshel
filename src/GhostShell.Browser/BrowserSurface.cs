@@ -31,6 +31,7 @@ public sealed partial class BrowserSurface :
         throwOnInvalidBytes: true);
 
     private IEmbeddedBrowserView _nativeView;
+    private readonly BrowserDestinationPolicy _destinationPolicy;
     private readonly IBrowserUiDispatcher _dispatcher;
     private readonly Func<IEmbeddedBrowserView>? _nativeViewReplacementFactory;
     private readonly Action<Control>? _nativeViewReplacementPresenter;
@@ -63,6 +64,7 @@ public sealed partial class BrowserSurface :
     public BrowserSurface(BrowserCapabilityProfile capabilityProfile)
         : this(
             new CefBrowserView(),
+            BrowserDestinationPolicy.LocalSystem,
             AvaloniaBrowserUiDispatcher.Instance,
             static () => new CefBrowserView(),
             timeProvider: TimeProvider.System,
@@ -84,6 +86,7 @@ public sealed partial class BrowserSurface :
         BrowserCapabilityProfile capabilityProfile)
         : this(
             profileLease.CreateView(),
+            BrowserDestinationPolicy.ForRoute(profileLease.RouteKind),
             AvaloniaBrowserUiDispatcher.Instance,
             profileLease.CreateView,
             timeProvider: TimeProvider.System,
@@ -102,15 +105,29 @@ public sealed partial class BrowserSurface :
         int socksProxyPort)
         : this(
             CefBrowserNetworkContext.Create(socksProxyPort),
-            capabilityProfile)
+            capabilityProfile,
+            BrowserDestinationPolicy.SshRouted)
     {
     }
 
+    /// <summary>
+    /// Creates an ephemeral local surface whose request context is never
+    /// shared with persistent browser profiles.
+    /// </summary>
+    public static BrowserSurface CreateIsolatedHtmlPreview(
+        BrowserCapabilityProfile capabilityProfile) =>
+        new(
+            CefBrowserNetworkContext.CreateIsolatedHtmlPreview(),
+            capabilityProfile,
+            BrowserDestinationPolicy.LocalSystem);
+
     private BrowserSurface(
         CefBrowserNetworkContext network,
-        BrowserCapabilityProfile capabilityProfile)
+        BrowserCapabilityProfile capabilityProfile,
+        BrowserDestinationPolicy destinationPolicy)
         : this(
             network.CreateView(),
+            destinationPolicy,
             AvaloniaBrowserUiDispatcher.Instance,
             network.CreateView,
             timeProvider: TimeProvider.System,
@@ -121,6 +138,7 @@ public sealed partial class BrowserSurface :
 
     internal BrowserSurface(
         IEmbeddedBrowserView nativeView,
+        BrowserDestinationPolicy destinationPolicy,
         IBrowserUiDispatcher? dispatcher = null,
         Func<IEmbeddedBrowserView>? nativeViewReplacementFactory = null,
         Action<Control>? nativeViewReplacementPresenter = null,
@@ -130,6 +148,8 @@ public sealed partial class BrowserSurface :
         IDisposable? networkLifetime = null)
     {
         _nativeView = nativeView ?? throw new ArgumentNullException(nameof(nativeView));
+        _destinationPolicy = destinationPolicy
+            ?? throw new ArgumentNullException(nameof(destinationPolicy));
         _dispatcher = dispatcher ?? AvaloniaBrowserUiDispatcher.Instance;
         _nativeViewReplacementFactory = nativeViewReplacementFactory;
         _nativeViewReplacementPresenter =
@@ -539,6 +559,15 @@ public sealed partial class BrowserSurface :
 
         try
         {
+            if (request is BrowserOriginConstrainedNavigationRequest.Navigate navigate
+                && (!AllowsGovernedDestination(allowedOrigin, navigate.Address)
+                    || !await _destinationPolicy
+                        .AllowsResolvedAsync(navigate.Address, cancellationToken)
+                        .ConfigureAwait(false)))
+            {
+                return PolicyDenied();
+            }
+
             Task<BrowserResult<BrowserSessionState>> completion;
             if (_dispatcher.CheckAccess())
             {
@@ -1041,7 +1070,7 @@ public sealed partial class BrowserSurface :
                     InteractionStateChanged()));
         }
 
-        if (!allowedOrigin.Allows(State.Address))
+        if (!AllowsGovernedDestination(allowedOrigin, State.Address))
         {
             return Task.FromResult(
                 BrowserResult<BrowserClickReceipt>.Failure(
@@ -1390,7 +1419,7 @@ public sealed partial class BrowserSurface :
                     FillStateChanged()));
         }
 
-        if (!allowedOrigin.Allows(State.Address))
+        if (!AllowsGovernedDestination(allowedOrigin, State.Address))
         {
             return Task.FromResult(
                 BrowserResult<BrowserFillReceipt>.Failure(
@@ -1775,7 +1804,7 @@ public sealed partial class BrowserSurface :
                     CheckStateChanged()));
         }
 
-        if (!allowedOrigin.Allows(State.Address))
+        if (!AllowsGovernedDestination(allowedOrigin, State.Address))
         {
             return Task.FromResult(
                 BrowserResult<BrowserCheckReceipt>.Failure(
@@ -2609,7 +2638,7 @@ public sealed partial class BrowserSurface :
                 request.GetType(),
                 "The constrained browser operation is unsupported."),
         };
-        if (!allowedOrigin.Allows(initialAddress))
+        if (!AllowsGovernedDestination(allowedOrigin, initialAddress))
         {
             return Task.FromResult(PolicyDenied());
         }
@@ -2837,13 +2866,17 @@ public sealed partial class BrowserSurface :
                 return;
             }
 
-            if (!interaction.AllowedOrigin.Allows(args.Address))
+            if (!AllowsGovernedDestination(
+                    interaction.AllowedOrigin,
+                    args.Address))
             {
                 interaction.NavigationError = PolicyError();
                 interaction.RequiresQuarantine = true;
                 args.Cancel = true;
                 return;
             }
+
+            ProtectActiveNavigation(interaction.AllowedOrigin);
 
             PublishLoading(args.Address);
             return;
@@ -2853,11 +2886,15 @@ public sealed partial class BrowserSurface :
         {
             if (!pending.ObserveStart(
                     args.NavigationGeneration)
-                || !pending.AllowedOrigin.Allows(args.Address))
+                || !AllowsGovernedDestination(
+                    pending.AllowedOrigin,
+                    args.Address))
             {
                 args.Cancel = true;
                 return;
             }
+
+            ProtectActiveNavigation(pending.AllowedOrigin);
 
             // Still the navigation the shell asked for, so a start inside it is
             // that navigation redirecting and the address follows it.
@@ -2929,7 +2966,9 @@ public sealed partial class BrowserSurface :
             RecordTerminalNavigation(args.NavigationGeneration);
             interaction.NavigationTerminal = true;
             if (args.Address is null
-                || !interaction.AllowedOrigin.Allows(args.Address))
+                || !AllowsGovernedDestination(
+                    interaction.AllowedOrigin,
+                    args.Address))
             {
                 interaction.NavigationError = PolicyError();
                 interaction.RequiresQuarantine = true;
@@ -3187,7 +3226,7 @@ public sealed partial class BrowserSurface :
             return;
         }
 
-        if (!pending.AllowedOrigin.Allows(args.Address))
+        if (!AllowsGovernedDestination(pending.AllowedOrigin, args.Address))
         {
             try
             {
@@ -3721,10 +3760,34 @@ public sealed partial class BrowserSurface :
     private static BrowserResult<BrowserSessionState> PolicyDenied() =>
         BrowserResult<BrowserSessionState>.Failure(PolicyError());
 
+    private bool AllowsGovernedDestination(
+        BrowserNavigationOrigin allowedOrigin,
+        BrowserAddress address) =>
+        allowedOrigin.Allows(address)
+        && _destinationPolicy.AllowsNavigationStart(address);
+
+    private void ProtectActiveNavigation(
+        BrowserNavigationOrigin allowedOrigin) =>
+        _nativeView.SetActiveNavigationRequestPolicy(
+            (address, cancellationToken) =>
+                AllowsResolvedGovernedDestinationAsync(
+                    allowedOrigin,
+                    address,
+                    cancellationToken));
+
+    private async ValueTask<bool> AllowsResolvedGovernedDestinationAsync(
+        BrowserNavigationOrigin allowedOrigin,
+        BrowserAddress address,
+        CancellationToken cancellationToken) =>
+        allowedOrigin.Allows(address)
+        && await _destinationPolicy
+            .AllowsResolvedAsync(address, cancellationToken)
+            .ConfigureAwait(false);
+
     private static BrowserError PolicyError() =>
         BrowserError.Create(
             BrowserErrorCode.NavigationPolicyDenied,
-            "The browser blocked a top-level navigation outside the approved origin.");
+            "The browser blocked a top-level navigation outside the approved destination policy.");
 
     private void Publish(BrowserSessionState state)
     {

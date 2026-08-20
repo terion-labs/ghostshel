@@ -21,6 +21,18 @@ internal sealed class DesktopBrowserRendererViewFactory(
         return CreateView(profile);
     }
 
+    public BrowserRendererView CreateIsolatedHtmlPreview()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var surface = BrowserSurface.CreateIsolatedHtmlPreview(
+            sessionFactory.CapabilityProfile);
+        return new BrowserRendererView(
+            surface,
+            surface,
+            surface,
+            surface.SetAgentActivity);
+    }
+
     public ValueTask<BrowserRendererView> CreateAsync(
         ConnectionProfile connection,
         CancellationToken cancellationToken) => CreateAsync(

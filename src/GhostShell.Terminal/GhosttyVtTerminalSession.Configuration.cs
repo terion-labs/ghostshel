@@ -317,8 +317,18 @@ internal sealed partial class GhosttyVtTerminalSession
 
         try
         {
+            if (notification->Title.Length
+                    > (nuint)PanelNotificationTextBudget.MaximumTitleUtf8Bytes
+                || notification->Body.Length
+                    > (nuint)PanelNotificationTextBudget.MaximumBodyUtf8Bytes)
+            {
+                return;
+            }
+
             // Both strings are borrowed for the length of this call, so they are
-            // copied here rather than anywhere downstream.
+            // copied here rather than anywhere downstream. Their native byte
+            // lengths are checked first so hostile OSC content is never copied
+            // into an oversized managed string.
             var title = notification->Title.CopyUtf8();
             var body = notification->Body.CopyUtf8();
             if (GCHandle.FromIntPtr(userdata).Target is GhosttyVtTerminalSession session)

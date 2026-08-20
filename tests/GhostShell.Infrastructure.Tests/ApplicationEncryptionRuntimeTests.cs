@@ -1,5 +1,6 @@
 using System.Text;
 using GhostShell.Application;
+using GhostShell.Core;
 using Microsoft.Data.Sqlite;
 
 namespace GhostShell.Infrastructure.Tests;
@@ -11,6 +12,13 @@ namespace GhostShell.Infrastructure.Tests;
 /// </summary>
 public sealed class ApplicationEncryptionRuntimeTests : IAsyncDisposable
 {
+    private const string ConfigKeyReference = "app.security.config-database-key";
+    private const string CacheKeyReference = "app.security.preview-cache-key";
+
+    private static readonly SecretUsePurpose Purpose = new(
+        SecretUseKind.PlatformMaintenance,
+        SecretUsePurpose.GlobalTargetId);
+
     private readonly string _root =
         Directory.CreateTempSubdirectory("ghostshell-app-encryption").FullName;
 
@@ -70,6 +78,25 @@ public sealed class ApplicationEncryptionRuntimeTests : IAsyncDisposable
             CancellationToken cancellationToken) =>
             _inner.ListMetadataAsync(request, cancellationToken);
 
+        public async ValueTask<string?> ReadAsync(string reference)
+        {
+            var result = await _inner.ResolveAsync(
+                new ResolveSecretRequest(
+                    new SecretRef(reference),
+                    SecretScope.Global,
+                    Purpose),
+                CancellationToken.None);
+            if (result is not SecretVaultResult<SecretMaterial>.Success success)
+            {
+                return null;
+            }
+
+            using var material = success.Value;
+            var buffer = new byte[material.Length];
+            material.CopyTo(buffer);
+            return Encoding.UTF8.GetString(buffer);
+        }
+
         public void Dispose() => _inner.Dispose();
     }
     private readonly List<GhostShellDatabase> _databases = [];
@@ -92,6 +119,130 @@ public sealed class ApplicationEncryptionRuntimeTests : IAsyncDisposable
         catch (IOException)
         {
         }
+    }
+
+    [Fact]
+    public async Task A_fresh_profile_is_encrypted_before_its_first_database_open()
+    {
+        var (runtime, database) = Compose();
+        Assert.False(File.Exists(DatabasePath));
+
+        await runtime.InitializeAsync(wrappedKeysPending: false, CancellationToken.None);
+
+        Assert.True(runtime.IsEnabled);
+        Assert.Null(runtime.StartupError);
+        Assert.NotNull(runtime.PersistentCachePassword);
+        Assert.False(
+            LooksLikePlainSqlite(),
+            "The fresh database still announces itself as plain SQLite.");
+        await WriteSentinelAsync(database);
+        Assert.Equal("sentinel-value", await ReadSentinelAsync(database));
+    }
+
+    [Fact]
+    public async Task A_fresh_profile_fails_closed_without_a_persistent_keystore()
+    {
+        using var vault = new InMemorySecretVault();
+        var runtime = new ApplicationEncryptionRuntime(
+            vault,
+            DatabasePath,
+            () => throw new InvalidOperationException(
+                "An unsupported default must not create a database."));
+
+        await runtime.InitializeAsync(wrappedKeysPending: false, CancellationToken.None);
+
+        Assert.False(runtime.IsEnabled);
+        Assert.Equal(runtime.UnsupportedReason, runtime.StartupError);
+        Assert.False(File.Exists(DatabasePath));
+    }
+
+    [Fact]
+    public async Task A_zero_byte_profile_is_initialized_encrypted()
+    {
+        await File.WriteAllBytesAsync(DatabasePath, []);
+        var (runtime, database) = Compose();
+
+        await runtime.InitializeAsync(wrappedKeysPending: false, CancellationToken.None);
+
+        Assert.True(runtime.IsEnabled);
+        Assert.Null(runtime.StartupError);
+        Assert.False(LooksLikePlainSqlite());
+        await WriteSentinelAsync(database);
+        Assert.Equal("sentinel-value", await ReadSentinelAsync(database));
+    }
+
+    [Fact]
+    public async Task A_zero_byte_profile_stays_empty_when_the_keystore_is_unavailable()
+    {
+        await File.WriteAllBytesAsync(DatabasePath, []);
+        using var vault = new InMemorySecretVault();
+        var runtime = new ApplicationEncryptionRuntime(
+            vault,
+            DatabasePath,
+            () => throw new InvalidOperationException("The database must not be opened."));
+
+        await runtime.InitializeAsync(wrappedKeysPending: false, CancellationToken.None);
+
+        Assert.False(runtime.IsEnabled);
+        Assert.Equal(runtime.UnsupportedReason, runtime.StartupError);
+        Assert.Equal(0, new FileInfo(DatabasePath).Length);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(6)]
+    [InlineData(7)]
+    [InlineData(8)]
+    [InlineData(9)]
+    [InlineData(10)]
+    [InlineData(11)]
+    [InlineData(12)]
+    [InlineData(13)]
+    [InlineData(14)]
+    [InlineData(15)]
+    public async Task A_nonempty_short_profile_fails_closed_without_modification(int length)
+    {
+        var original = Enumerable.Range(1, length).Select(value => (byte)value).ToArray();
+        await File.WriteAllBytesAsync(DatabasePath, original);
+        var (runtime, _) = Compose();
+
+        await runtime.InitializeAsync(wrappedKeysPending: false, CancellationToken.None);
+
+        Assert.False(runtime.IsEnabled);
+        Assert.Contains("truncated", runtime.StartupError, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(original, await File.ReadAllBytesAsync(DatabasePath));
+    }
+
+    [Fact]
+    public async Task An_existing_valid_plaintext_profile_preserves_the_explicit_disabled_state()
+    {
+        var (runtime, database) = Compose();
+        await WriteSentinelAsync(database);
+
+        await runtime.InitializeAsync(wrappedKeysPending: false, CancellationToken.None);
+
+        Assert.False(runtime.IsEnabled);
+        Assert.Null(runtime.StartupError);
+        Assert.True(LooksLikePlainSqlite());
+        Assert.Equal("sentinel-value", await ReadSentinelAsync(database));
+    }
+
+    [Fact]
+    public async Task A_malformed_full_header_fails_closed_without_modification()
+    {
+        var original = Enumerable.Repeat((byte)0xA5, 16).ToArray();
+        await File.WriteAllBytesAsync(DatabasePath, original);
+        var (runtime, _) = Compose();
+
+        await runtime.InitializeAsync(wrappedKeysPending: false, CancellationToken.None);
+
+        Assert.True(runtime.IsEnabled);
+        Assert.Contains("key is not in", runtime.StartupError, StringComparison.Ordinal);
+        Assert.Equal(original, await File.ReadAllBytesAsync(DatabasePath));
     }
 
     [Fact]
@@ -171,7 +322,126 @@ public sealed class ApplicationEncryptionRuntimeTests : IAsyncDisposable
         Assert.Null(runtime.PersistentCachePassword);
     }
 
-    private (ApplicationEncryptionRuntime Runtime, GhostShellDatabase Database) Compose()
+    [Theory]
+    [InlineData((int)ApplicationEncryptionRuntime.RekeyCheckpoint.AfterRekey)]
+    [InlineData((int)ApplicationEncryptionRuntime.RekeyCheckpoint.BeforeVerification)]
+    [InlineData((int)ApplicationEncryptionRuntime.RekeyCheckpoint.BeforeIntegrityCheck)]
+    public async Task An_ambiguous_post_rekey_failure_retains_keys_for_restart_recovery(
+        int faultPointValue)
+    {
+        var faultPoint = (ApplicationEncryptionRuntime.RekeyCheckpoint)faultPointValue;
+        var failAtCheckpoint = true;
+        var (runtime, database) = Compose(checkpoint =>
+        {
+            if (failAtCheckpoint && checkpoint == faultPoint)
+            {
+                failAtCheckpoint = false;
+                throw new SqliteException("injected post-rekey fault", 10);
+            }
+        });
+        await WriteSentinelAsync(database);
+
+        var error = await runtime.SetEnabledAsync(true, CancellationToken.None);
+
+        Assert.Contains("retained", error, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(await _vault.ReadAsync(ConfigKeyReference));
+        Assert.NotNull(await _vault.ReadAsync(CacheKeyReference));
+        Assert.Contains(
+            "Restart",
+            await runtime.SetEnabledAsync(true, CancellationToken.None),
+            StringComparison.OrdinalIgnoreCase);
+
+        var (restarted, restartedDatabase) = Compose();
+        await restarted.InitializeAsync(wrappedKeysPending: false, CancellationToken.None);
+        Assert.True(restarted.IsEnabled);
+        Assert.Null(restarted.StartupError);
+        Assert.Equal("sentinel-value", await ReadSentinelAsync(restartedDatabase));
+    }
+
+    [Fact]
+    public async Task An_ambiguous_disable_failure_retains_the_active_keys_until_restart()
+    {
+        var faultArmed = false;
+        var (runtime, database) = Compose(checkpoint =>
+        {
+            if (faultArmed
+                && checkpoint is ApplicationEncryptionRuntime.RekeyCheckpoint.AfterRekey)
+            {
+                faultArmed = false;
+                throw new SqliteException("injected post-decrypt fault", 10);
+            }
+        });
+        await WriteSentinelAsync(database);
+        Assert.Null(await runtime.SetEnabledAsync(true, CancellationToken.None));
+        faultArmed = true;
+
+        var error = await runtime.SetEnabledAsync(false, CancellationToken.None);
+
+        Assert.Contains("retained", error, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(await _vault.ReadAsync(ConfigKeyReference));
+        Assert.NotNull(await _vault.ReadAsync(CacheKeyReference));
+        Assert.Contains(
+            "Restart",
+            await runtime.SetEnabledAsync(false, CancellationToken.None),
+            StringComparison.OrdinalIgnoreCase);
+
+        var (restarted, restartedDatabase) = Compose();
+        await restarted.InitializeAsync(wrappedKeysPending: false, CancellationToken.None);
+        Assert.False(restarted.IsEnabled);
+        Assert.Null(restarted.StartupError);
+        Assert.True(LooksLikePlainSqlite());
+        Assert.Equal("sentinel-value", await ReadSentinelAsync(restartedDatabase));
+    }
+
+    [Fact]
+    public async Task A_definite_pre_rekey_failure_removes_unused_candidate_keys()
+    {
+        var (runtime, database) = Compose(checkpoint =>
+        {
+            if (checkpoint is ApplicationEncryptionRuntime.RekeyCheckpoint.BeforeRekey)
+            {
+                throw new SqliteException("injected pre-rekey fault", 10);
+            }
+        });
+        await WriteSentinelAsync(database);
+
+        var error = await runtime.SetEnabledAsync(true, CancellationToken.None);
+
+        Assert.DoesNotContain("retained", error, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(await _vault.ReadAsync(ConfigKeyReference));
+        Assert.Null(await _vault.ReadAsync(CacheKeyReference));
+        Assert.True(LooksLikePlainSqlite());
+        Assert.Equal("sentinel-value", await ReadSentinelAsync(database));
+    }
+
+    [Fact]
+    public async Task Disabling_retains_and_reuses_the_key_while_encrypted_backups_exist()
+    {
+        var (runtime, database) = Compose();
+        await WriteSentinelAsync(database);
+        Assert.Null(await runtime.SetEnabledAsync(true, CancellationToken.None));
+        var activeKey = Assert.IsType<string>(await _vault.ReadAsync(ConfigKeyReference));
+        var backupDirectory = Path.Combine(_root, "backups");
+        Directory.CreateDirectory(backupDirectory);
+        File.Copy(
+            DatabasePath,
+            Path.Combine(backupDirectory, "ghostshell-before-v99-retention.db"));
+
+        Assert.Null(await runtime.SetEnabledAsync(false, CancellationToken.None));
+
+        Assert.False(runtime.IsEnabled);
+        Assert.Equal(activeKey, await _vault.ReadAsync(ConfigKeyReference));
+        Assert.Null(await _vault.ReadAsync(CacheKeyReference));
+        Assert.True(LooksLikePlainSqlite());
+
+        Assert.Null(await runtime.SetEnabledAsync(true, CancellationToken.None));
+        Assert.Equal(activeKey, await _vault.ReadAsync(ConfigKeyReference));
+        Assert.True(runtime.IsEnabled);
+        Assert.Equal("sentinel-value", await ReadSentinelAsync(database));
+    }
+
+    private (ApplicationEncryptionRuntime Runtime, GhostShellDatabase Database) Compose(
+        Action<ApplicationEncryptionRuntime.RekeyCheckpoint>? rekeyCheckpoint = null)
     {
         ApplicationEncryptionRuntime? runtime = null;
         var options = new SqliteStorageOptions(
@@ -182,7 +452,13 @@ public sealed class ApplicationEncryptionRuntimeTests : IAsyncDisposable
         };
         var database = new GhostShellDatabase(options, TimeProvider.System);
         _databases.Add(database);
-        runtime = new ApplicationEncryptionRuntime(_vault, DatabasePath, () => database);
+        runtime = rekeyCheckpoint is null
+            ? new ApplicationEncryptionRuntime(_vault, DatabasePath, () => database)
+            : new ApplicationEncryptionRuntime(
+                _vault,
+                DatabasePath,
+                () => database,
+                rekeyCheckpoint);
         return (runtime, database);
     }
 

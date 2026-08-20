@@ -506,6 +506,32 @@ public sealed class ShellNotificationCenterTests
         Assert.Equal(PanelNotificationKind.AgentCompleted, activatedKind);
     }
 
+    [Fact]
+    public void History_is_bounded_by_retained_utf8_bytes_as_well_as_item_count()
+    {
+        var shell = new FakeShell();
+        var (workspace, _, panel) = shell.AddWorkspace("byte-bounded-history");
+        shell.Center.Watch(workspace);
+        var body = string.Concat(Enumerable.Repeat(
+            "\U0001F680",
+            PanelNotificationTextBudget.MaximumBodyUtf8Bytes / 4));
+
+        for (var index = 0; index < 256; index++)
+        {
+            panel.RaiseNotification(
+                PanelNotificationEffects.Visual,
+                PanelNotificationKind.Notification,
+                body);
+        }
+
+        Assert.True(shell.Center.History.Count < 256);
+        Assert.InRange(
+            shell.Center.History.Sum(record =>
+                (long)PanelNotificationTextBudget.Measure(record.Notification)),
+            1,
+            ShellNotificationCenter.MaximumHistoryUtf8Bytes);
+    }
+
     /// <summary>
     /// A panel that can be told to ask for attention, standing in for a
     /// terminal so the rule can be tested without a live session behind it.
@@ -520,14 +546,15 @@ public sealed class ShellNotificationCenterTests
 
         public void RaiseNotification(
             PanelNotificationEffects effects = PanelNotificationEffects.Visual,
-            PanelNotificationKind kind = PanelNotificationKind.Notification) =>
+            PanelNotificationKind kind = PanelNotificationKind.Notification,
+            string body = "Waiting for input") =>
             NotificationReceived?.Invoke(
                 this,
                 new PanelNotificationEvent(
                     1,
                     kind,
                     "Agent",
-                    "Waiting for input",
+                    body,
                     DateTimeOffset.UnixEpoch)
                 {
                     Effects = effects,

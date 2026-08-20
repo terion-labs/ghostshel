@@ -261,7 +261,7 @@ public sealed partial class BrowserSurface
             return Task.FromResult(AutomationStateChanged());
         }
 
-        if (!allowedOrigin.Allows(State.Address))
+        if (!AllowsGovernedDestination(allowedOrigin, State.Address))
         {
             return Task.FromResult(
                 BrowserResult<NativeAutomationCompletion>.Failure(PolicyError()));

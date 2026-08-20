@@ -185,8 +185,9 @@ internal static class AgentBrowserDomainPolicy
     {
         return request switch
         {
-            AgentBrowserRequest.Navigate
-                or AgentBrowserRequest.Click
+            AgentBrowserRequest.Navigate navigate =>
+                BrowserNavigationOrigin.FromAddress(navigate.Value.Address),
+            AgentBrowserRequest.Click
                 or AgentBrowserRequest.Fill
                 or AgentBrowserRequest.Check
                 or AgentBrowserRequest.Mouse

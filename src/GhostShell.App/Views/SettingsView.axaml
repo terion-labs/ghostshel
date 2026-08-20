@@ -508,7 +508,7 @@
             <StackPanel Spacing="{DynamicResource ShellSpaceLg}" IsVisible="{Binding IsBrowserSettingsVisible}">
               <components:SettingsPageHeader
                   Heading="Browser"
-                  Description="Choose where websites keep cookies and site data, and clear those profiles deliberately." />
+                  Description="Choose how tabs share cookies and site data for this app session, and clear legacy stored profiles deliberately." />
               <controls:SettingsGroup Heading="Profiles" ControlWidth="280">
                 <controls:SettingRow
                     Label="Default profile sharing"

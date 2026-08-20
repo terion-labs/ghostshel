@@ -104,6 +104,61 @@ public sealed class DatabaseValueMaterializerTests
     }
 
     [Fact]
+    public void Provider_binary_stream_at_limit_is_detached_with_one_byte_probe()
+    {
+        using var source = new CountingNonSeekableStream(
+            DatabaseValueMaterializer.MaximumDetachedBinaryBytes);
+
+        var materialized = DatabaseValueMaterializer.FromProviderValue(
+            source,
+            DatabaseValueKind.Binary,
+            "BLOB");
+
+        Assert.Equal(
+            DatabaseValueMaterializer.MaximumDetachedBinaryBytes,
+            Assert.IsType<byte[]>(materialized.RawValue).Length);
+        Assert.Equal(DatabaseValueMaterializer.MaximumDetachedBinaryBytes, source.BytesRead);
+        Assert.True(materialized.IsTruncated);
+    }
+
+    [Fact]
+    public void Oversized_non_seekable_stream_stops_after_one_byte_probe_and_retains_no_blob()
+    {
+        using var source = new CountingNonSeekableStream(long.MaxValue);
+
+        var materialized = DatabaseValueMaterializer.FromProviderValue(
+            source,
+            DatabaseValueKind.Binary,
+            "BLOB");
+
+        Assert.Equal(
+            DatabaseValueMaterializer.MaximumDetachedBinaryBytes + 1L,
+            source.BytesRead);
+        Assert.IsType<string>(materialized.RawValue);
+        Assert.Equal(DatabaseValueKind.Other, materialized.Kind);
+        Assert.Contains("materialization limit", materialized.DisplayText, StringComparison.Ordinal);
+        Assert.True(materialized.IsTruncated);
+    }
+
+    [Fact]
+    public void Oversized_seekable_stream_is_rejected_without_reads_and_restores_position()
+    {
+        using var source = new CountingSeekableStream(
+            DatabaseValueMaterializer.MaximumDetachedBinaryBytes + 1L);
+        source.Position = 17;
+
+        var materialized = DatabaseValueMaterializer.FromProviderValue(
+            source,
+            DatabaseValueKind.Binary,
+            "BLOB");
+
+        Assert.Equal(0, source.ReadCount);
+        Assert.Equal(17, source.Position);
+        Assert.Equal(DatabaseValueKind.Other, materialized.Kind);
+        Assert.True(materialized.IsTruncated);
+    }
+
+    [Fact]
     public void Safe_values_use_invariant_bounded_display_text()
     {
         var number = DatabaseValueMaterializer.FromProviderValue(1234.5m);
@@ -250,5 +305,75 @@ public sealed class DatabaseValueMaterializerTests
         public uint ToUInt32(IFormatProvider? provider) => throw new InvalidCastException();
 
         public ulong ToUInt64(IFormatProvider? provider) => throw new InvalidCastException();
+    }
+
+    private sealed class CountingNonSeekableStream(long length) : Stream
+    {
+        public long BytesRead { get; private set; }
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            var remaining = length - BytesRead;
+            if (remaining <= 0)
+            {
+                return 0;
+            }
+
+            var read = (int)Math.Min(remaining, count);
+            Array.Fill(buffer, (byte)0x5A, offset, read);
+            BytesRead += read;
+            return read;
+        }
+
+        public override void Flush() => throw new NotSupportedException();
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    private sealed class CountingSeekableStream(long length) : Stream
+    {
+        public int ReadCount { get; private set; }
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => true;
+
+        public override bool CanWrite => false;
+
+        public override long Length => length;
+
+        public override long Position { get; set; }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            ReadCount++;
+            return 0;
+        }
+
+        public override void Flush() => throw new NotSupportedException();
+
+        public override long Seek(long offset, SeekOrigin origin) => Position;
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 }

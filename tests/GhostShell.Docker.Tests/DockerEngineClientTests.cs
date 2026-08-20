@@ -367,6 +367,10 @@ public sealed class DockerEngineClientTests
         var request = Assert.Single(executor.Requests, item => string.Equals(item.Executable, "/bin/sh", StringComparison.Ordinal));
         Assert.Same(remote, request.Connection);
         Assert.Contains("grep -F -i -C", request.Arguments[1], StringComparison.Ordinal);
+        Assert.Contains("mktemp -d", request.Arguments[1], StringComparison.Ordinal);
+        Assert.Contains("status_dir/status", request.Arguments[1], StringComparison.Ordinal);
+        Assert.Contains("rmdir \"$status_dir\"", request.Arguments[1], StringComparison.Ordinal);
+        Assert.DoesNotContain("$$.status", request.Arguments[1], StringComparison.Ordinal);
         Assert.Equal("needle", request.Arguments[^1]);
         Assert.Equal("3", request.Arguments[^2]);
     }

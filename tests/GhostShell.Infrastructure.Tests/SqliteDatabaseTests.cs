@@ -408,6 +408,107 @@ public sealed class SqliteDatabaseTests
     }
 
     [Fact]
+    public async Task DestructiveMigrationKeepsAnEncryptedBackupRecoverableWithTheActiveKey()
+    {
+        const string password =
+            "9e312769876efb817a04ba20fa8f20ceea3df65dba6714f195fe086f5aa8fc32";
+        await using var temporary = TemporaryDatabase.Create();
+        await HistoricalDatabaseFixture.CreateAsync(
+            temporary.DatabasePath,
+            SqliteSchema.Migrations[^1].Version);
+        await EncryptDatabaseAsync(temporary.DatabasePath, password);
+        var migration = DestructiveProbeMigration();
+        var options = new SqliteStorageOptions(temporary.DatabasePath)
+        {
+            PasswordProvider = () => password,
+        };
+        await using var database = new GhostShellDatabase(
+            options,
+            TimeProvider.System,
+            [.. SqliteSchema.Migrations, migration]);
+
+        await database.EnsureInitializedAsync(CancellationToken.None);
+
+        var backupPath = Assert.Single(Directory.GetFiles(
+            options.BackupDirectory,
+            $"ghostshell-before-v{migration.Version}-*.db"));
+        var header = new byte[16];
+        await using (var image = File.OpenRead(backupPath))
+        {
+            await image.ReadExactlyAsync(header);
+        }
+
+        Assert.False(
+            string.Equals(
+                "SQLite format 3\0",
+                System.Text.Encoding.ASCII.GetString(header),
+                StringComparison.Ordinal),
+            "The encrypted backup still announces itself as plain SQLite.");
+        await Assert.ThrowsAsync<SqliteException>(async () =>
+        {
+            var unkeyedBuilder = new SqliteConnectionStringBuilder
+            {
+                DataSource = backupPath,
+                Mode = SqliteOpenMode.ReadOnly,
+                Pooling = false,
+            };
+            await using var unkeyed = new SqliteConnection(unkeyedBuilder.ConnectionString);
+            await unkeyed.OpenAsync();
+            await ScalarAsync(unkeyed, "SELECT COUNT(*) FROM schema_migrations;");
+        });
+
+        var keyedBuilder = new SqliteConnectionStringBuilder
+        {
+            DataSource = backupPath,
+            Mode = SqliteOpenMode.ReadOnly,
+            Pooling = false,
+            Password = password,
+        };
+        await using (var keyed = new SqliteConnection(keyedBuilder.ConnectionString))
+        {
+            await keyed.OpenAsync();
+            Assert.Equal(
+                SqliteSchema.Migrations[^1].Version.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture),
+                await ScalarAsync(keyed, "SELECT MAX(version) FROM schema_migrations;"));
+            Assert.Equal(
+                "1",
+                await ScalarAsync(
+                    keyed,
+                    $"SELECT COUNT(*) FROM definitions WHERE id = "
+                    + $"'{HistoricalDatabaseFixture.DefinitionId}';"));
+            await AssertDatabaseIntegrityAsync(keyed);
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Equal(
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute,
+                File.GetUnixFileMode(options.BackupDirectory));
+            Assert.Equal(
+                UnixFileMode.UserRead | UnixFileMode.UserWrite,
+                File.GetUnixFileMode(backupPath));
+        }
+
+        await database.DisposeAsync();
+        await using var restoredDatabase = new GhostShellDatabase(
+            new SqliteStorageOptions(backupPath)
+            {
+                PasswordProvider = () => password,
+            },
+            TimeProvider.System);
+        await restoredDatabase.EnsureInitializedAsync(CancellationToken.None);
+        var restoredLayouts = new SqliteDefinitionRepository<LayoutDefinition>(
+            restoredDatabase,
+            TimeProvider.System);
+        var restored = await restoredLayouts.GetAsync(
+            new DefinitionKey(LayoutDefinition.Kind, HistoricalDatabaseFixture.DefinitionId),
+            CancellationToken.None);
+        Assert.True(restored.IsSuccess, restored.Error?.Message);
+        Assert.Equal(HistoricalDatabaseFixture.DefinitionName, restored.Value!.Value.Name);
+    }
+
+    [Fact]
     public async Task BackupValidationFailurePublishesNothingAndCanRetry()
     {
         await using var temporary = TemporaryDatabase.Create();
@@ -545,6 +646,17 @@ public sealed class SqliteDatabaseTests
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
         return Convert.ToString(await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture)!;
+    }
+
+    private static async Task EncryptDatabaseAsync(string path, string password)
+    {
+        await using var connection = await HistoricalDatabaseFixture.OpenAsync(path);
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            "PRAGMA journal_mode=DELETE;"
+            + $"PRAGMA rekey='{password}';"
+            + "PRAGMA journal_mode=WAL;";
+        await command.ExecuteNonQueryAsync();
     }
 
     private static GhostShellDatabase CreateDatabase(

@@ -103,6 +103,34 @@ public sealed class ArchiveTableOfContentsTests : IDisposable
     }
 
     [Fact]
+    public async Task A_high_amplification_tar_stops_at_the_expanded_byte_budget()
+    {
+        var path = Path.Combine(_root, "amplified.tar.gz");
+        using (var file = File.Create(path))
+        using (var gzip = new GZipStream(file, CompressionLevel.SmallestSize))
+        using (var writer = new TarWriter(gzip, leaveOpen: false))
+        {
+            var entry = new PaxTarEntry(TarEntryType.RegularFile, "large-zero-file.bin")
+            {
+                DataStream = new MemoryStream(new byte[2 * 1024 * 1024], writable: false),
+            };
+            writer.WriteEntry(entry);
+            writer.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, "after-budget.txt")
+            {
+                DataStream = new MemoryStream("after"u8.ToArray(), writable: false),
+            });
+        }
+
+        var entries = await _reader.ReadAsync(
+            GhostShell.Application.FilePreviewContent.FromLocalFile(path),
+            Path.GetFileName(path),
+            100,
+            CancellationToken.None);
+
+        Assert.Null(entries);
+    }
+
+    [Fact]
     public async Task A_listing_stops_at_the_limit()
     {
         var path = WriteZip("many.zip", entryCount: 40);

@@ -31,6 +31,15 @@ public sealed class CompositionTests
     }
 
     [Fact]
+    public async Task Native_preview_decoders_without_killable_workers_are_not_composed()
+    {
+        await using var services = DesktopComposition.CreateServiceProvider();
+
+        Assert.Null(services.GetService<IImagePreviewDecoder>());
+        Assert.Null(services.GetService<IPdfPreviewRenderer>());
+    }
+
+    [Fact]
     public async Task DesktopGraphResolvesOneSessionHostClientAndPresentationRoot()
     {
         await using var services = DesktopComposition.CreateServiceProvider();

@@ -64,7 +64,14 @@ public sealed record RedisValueEntry(
     string Identity,
     string? Field,
     string Value,
-    double? Score = null);
+    double? Score = null,
+    byte[]? RawValue = null);
+
+public enum RedisEntryRemovalOutcome
+{
+    Removed,
+    Stale,
+}
 
 public sealed record RedisKeySnapshot(
     RedisKeySummary Summary,
@@ -185,7 +192,7 @@ public interface IRedisPanelSession : IAsyncDisposable
     /// differently — and a list not at all, except by rewriting the element it
     /// is at — so the type is stated rather than inferred.
     /// </summary>
-    Task RemoveEntryAsync(
+    Task<RedisEntryRemovalOutcome> RemoveEntryAsync(
         RedisKeyReference key,
         string type,
         RedisValueEntry entry,

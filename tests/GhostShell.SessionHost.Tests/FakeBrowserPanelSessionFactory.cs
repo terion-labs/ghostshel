@@ -19,20 +19,43 @@ internal sealed class FakeBrowserPanelSessionFactory : IBrowserPanelSessionFacto
 
     public CapabilitySet Capabilities { get; }
 
+    public int CreateCount { get; private set; }
+
+    public Func<FakeBrowserPanelSession, CancellationToken, ValueTask>? AfterCreateAsync
+    {
+        get;
+        set;
+    }
+
+    public Func<CancellationToken, ValueTask>? BeforeSnapshotForNewSessions
+    {
+        get;
+        set;
+    }
+
     public FakeBrowserPanelSession this[SessionId id] => _sessions[id];
 
-    public ValueTask<IBrowserPanelSession> CreateAsync(
+    public async ValueTask<IBrowserPanelSession> CreateAsync(
         SessionId sessionId,
         BrowserAddress initialAddress,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        CreateCount++;
         var session = new FakeBrowserPanelSession(
             sessionId,
             initialAddress,
-            _createdSessionCapabilities);
+            _createdSessionCapabilities)
+        {
+            BeforeSnapshotAsync = BeforeSnapshotForNewSessions,
+        };
         _sessions.Add(sessionId, session);
-        return ValueTask.FromResult<IBrowserPanelSession>(session);
+        if (AfterCreateAsync is { } afterCreate)
+        {
+            await afterCreate(session, cancellationToken).ConfigureAwait(false);
+        }
+
+        return session;
     }
 
     private static CapabilitySet DefaultCapabilities() => new(
@@ -81,6 +104,8 @@ internal sealed class FakeBrowserPanelSession(
     public int DetachCount { get; private set; }
 
     public int DisposeCount { get; private set; }
+
+    public Func<CancellationToken, ValueTask>? BeforeSnapshotAsync { get; set; }
 
     public ValueTask AttachRendererAsync(
         IBrowserRenderer renderer,
@@ -370,11 +395,16 @@ internal sealed class FakeBrowserPanelSession(
             : _renderer.ReadNetworkActivityAsync(cancellationToken);
     }
 
-    public ValueTask<PanelSessionSnapshot> SnapshotAsync(
+    public async ValueTask<PanelSessionSnapshot> SnapshotAsync(
         CancellationToken cancellationToken)
     {
+        if (BeforeSnapshotAsync is { } beforeSnapshot)
+        {
+            await beforeSnapshot(cancellationToken).ConfigureAwait(false);
+        }
+
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(_closed
+        return _closed
             ? new PanelSessionSnapshot(
                 SessionLifecycle.Closed,
                 SessionHealth.Ended,
@@ -394,7 +424,7 @@ internal sealed class FakeBrowserPanelSession(
                     : new SessionFailure(
                         State.Failure.StableCode,
                         State.Failure.Message,
-                        State.Failure.Retryable)));
+                        State.Failure.Retryable));
     }
 
     public async IAsyncEnumerable<PanelSessionEvent> WatchAsync(
@@ -494,6 +524,12 @@ internal sealed class FakeBrowserRenderer(BrowserAddress initialAddress) :
 
     public int StopCount { get; private set; }
 
+    public TaskCompletionSource? NavigateEntered { get; set; }
+
+    public TaskCompletionSource? NavigateRelease { get; set; }
+
+    public bool IgnoreNavigateCancellation { get; set; }
+
     public int SnapshotCount { get; private set; }
 
     public int ClickCount { get; private set; }
@@ -537,7 +573,7 @@ internal sealed class FakeBrowserRenderer(BrowserAddress initialAddress) :
         StateChanged?.Invoke(this, new BrowserStateChangedEventArgs(State));
     }
 
-    public ValueTask<BrowserResult<BrowserSessionState>> NavigateAsync(
+    public async ValueTask<BrowserResult<BrowserSessionState>> NavigateAsync(
         BrowserAddress address,
         CancellationToken cancellationToken)
     {
@@ -551,7 +587,23 @@ internal sealed class FakeBrowserRenderer(BrowserAddress initialAddress) :
             canGoForward: false,
             State.DocumentRevision + 1);
         StateChanged?.Invoke(this, new BrowserStateChangedEventArgs(State));
-        return Success();
+        if (NavigateEntered is not null)
+        {
+            NavigateEntered.TrySetResult();
+            var release = NavigateRelease
+                ?? throw new InvalidOperationException(
+                    "A blocked browser navigation requires a release signal.");
+            if (IgnoreNavigateCancellation)
+            {
+                await release.Task.ConfigureAwait(false);
+            }
+            else
+            {
+                await release.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        return BrowserResult<BrowserSessionState>.Success(State);
     }
 
     public ValueTask<BrowserResult<BrowserSessionState>> GoBackAsync(

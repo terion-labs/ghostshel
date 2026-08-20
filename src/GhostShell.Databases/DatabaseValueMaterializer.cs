@@ -18,6 +18,8 @@ internal static class DatabaseValueMaterializer
 {
     public const int DefaultMaxDisplayCharacters = 4_096;
 
+    internal const int MaximumDetachedBinaryBytes = 4 * 1024 * 1024;
+
     private const int BinaryPreviewByteCount = 32;
     private const int CollectionPreviewValueCount = 32;
 
@@ -86,6 +88,33 @@ internal static class DatabaseValueMaterializer
         var kind = declaredKind == DatabaseValueKind.Other
             ? DatabaseValueClassifier.Classify(value.GetType(), providerTypeName, value)
             : declaredKind;
+        if (value is Stream stream)
+        {
+            var streamCopy = CopyStreamBounded(stream);
+            if (streamCopy.Outcome == StreamCopyOutcome.Oversized)
+            {
+                var size = streamCopy.Length is { } length
+                    ? $" ({length.ToString(CultureInfo.InvariantCulture)} bytes)"
+                    : string.Empty;
+                var message = $"Binary value exceeds the {MaximumDetachedBinaryBytes.ToString(CultureInfo.InvariantCulture)} byte materialization limit{size}.";
+                return new DatabaseValue(
+                    message,
+                    DatabaseValueKind.Other,
+                    Bound(message, maxDisplayCharacters).Text,
+                    IsTruncated: true);
+            }
+
+            if (streamCopy.Outcome == StreamCopyOutcome.Success)
+            {
+                var streamDisplay = FormatDetachedValue(streamCopy.Bytes, maxDisplayCharacters);
+                return new DatabaseValue(
+                    streamCopy.Bytes,
+                    kind,
+                    streamDisplay.Text,
+                    streamDisplay.IsTruncated);
+            }
+        }
+
         if (!TryDetach(value, out var detached)
             && !TryNormalizeConvertibleDecimal(value, declaredKind, out detached))
         {
@@ -125,9 +154,6 @@ internal static class DatabaseValueMaterializer
             case ReadOnlyMemory<char> characters:
                 detached = characters.ToString();
                 return true;
-            case Stream stream when TryCopyStream(stream, out var bytes):
-                detached = bytes;
-                return true;
             case JsonDocument document:
                 detached = document.RootElement.Clone();
                 return true;
@@ -152,7 +178,7 @@ internal static class DatabaseValueMaterializer
         return false;
     }
 
-    private static bool TryCopyStream(Stream stream, out byte[] bytes)
+    private static StreamCopyResult CopyStreamBounded(Stream stream)
     {
         try
         {
@@ -162,14 +188,38 @@ internal static class DatabaseValueMaterializer
                 if (stream.CanSeek)
                 {
                     stream.Position = 0;
+                    if (stream.Length > MaximumDetachedBinaryBytes)
+                    {
+                        return new StreamCopyResult(
+                            StreamCopyOutcome.Oversized,
+                            [],
+                            stream.Length);
+                    }
                 }
 
-                using var copy = stream.CanSeek && stream.Length <= int.MaxValue
+                using var copy = stream.CanSeek
                     ? new MemoryStream((int)stream.Length)
                     : new MemoryStream();
-                stream.CopyTo(copy);
-                bytes = copy.ToArray();
-                return true;
+                var buffer = new byte[16 * 1024];
+                while (copy.Length <= MaximumDetachedBinaryBytes)
+                {
+                    var remaining = MaximumDetachedBinaryBytes - (int)copy.Length + 1;
+                    var read = stream.Read(buffer, 0, Math.Min(buffer.Length, remaining));
+                    if (read == 0)
+                    {
+                        return new StreamCopyResult(
+                            StreamCopyOutcome.Success,
+                            copy.ToArray(),
+                            copy.Length);
+                    }
+
+                    copy.Write(buffer, 0, read);
+                }
+
+                return new StreamCopyResult(
+                    StreamCopyOutcome.Oversized,
+                    [],
+                    stream.CanSeek ? stream.Length : null);
             }
             finally
             {
@@ -183,8 +233,7 @@ internal static class DatabaseValueMaterializer
             or NotSupportedException
             or ObjectDisposedException)
         {
-            bytes = [];
-            return false;
+            return new StreamCopyResult(StreamCopyOutcome.Unavailable, [], null);
         }
     }
 
@@ -320,4 +369,16 @@ internal static class DatabaseValueMaterializer
     }
 
     private readonly record struct DisplayValue(string Text, bool IsTruncated);
+
+    private readonly record struct StreamCopyResult(
+        StreamCopyOutcome Outcome,
+        byte[] Bytes,
+        long? Length);
+
+    private enum StreamCopyOutcome
+    {
+        Unavailable,
+        Success,
+        Oversized,
+    }
 }

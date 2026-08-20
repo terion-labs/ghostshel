@@ -1440,7 +1440,12 @@ internal sealed class QaRedisPanelSession : IRedisPanelSession
     public Task SetJsonAsync(RedisKeyReference key, string json, CancellationToken cancellationToken) => Task.CompletedTask;
     public Task AddTimeSeriesSampleAsync(RedisKeyReference key, double value, CancellationToken cancellationToken) => Task.CompletedTask;
     public Task<bool> DeleteKeyAsync(RedisKeyReference key, CancellationToken cancellationToken) => Task.FromResult(true);
-    public Task RemoveEntryAsync(RedisKeyReference key, string type, RedisValueEntry entry, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task<RedisEntryRemovalOutcome> RemoveEntryAsync(
+        RedisKeyReference key,
+        string type,
+        RedisValueEntry entry,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(RedisEntryRemovalOutcome.Removed);
     public Task SetExpiryAsync(RedisKeyReference key, TimeSpan? expiry, CancellationToken cancellationToken) => Task.CompletedTask;
 
     public Task SubscribeAsync(RedisSubscription subscription, CancellationToken cancellationToken)

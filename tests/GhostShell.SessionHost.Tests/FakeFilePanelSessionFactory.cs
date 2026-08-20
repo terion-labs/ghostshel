@@ -27,21 +27,44 @@ internal sealed class FakeFilePanelSessionFactory : IFilePanelSessionFactory
 
     public Func<FilePanelLocation, FileSessionMetadata>? MetadataFactory { get; set; }
 
+    public int CreateCount { get; private set; }
+
+    public Func<FakeFilePanelSession, CancellationToken, ValueTask>? AfterCreateAsync
+    {
+        get;
+        set;
+    }
+
+    public Func<CancellationToken, ValueTask>? BeforeSnapshotForNewSessions
+    {
+        get;
+        set;
+    }
+
     public FakeFilePanelSession this[SessionId id] => _sessions[id];
 
-    public ValueTask<IFilePanelSession> CreateAsync(
+    public async ValueTask<IFilePanelSession> CreateAsync(
         SessionId sessionId,
         FilePanelLocation initialLocation,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        CreateCount++;
         var session = new FakeFilePanelSession(
             sessionId,
             initialLocation,
             Capabilities,
-            MetadataFactory?.Invoke(initialLocation));
+            MetadataFactory?.Invoke(initialLocation))
+        {
+            BeforeSnapshotAsync = BeforeSnapshotForNewSessions,
+        };
         _sessions.Add(sessionId, session);
-        return ValueTask.FromResult<IFilePanelSession>(session);
+        if (AfterCreateAsync is { } afterCreate)
+        {
+            await afterCreate(session, cancellationToken).ConfigureAwait(false);
+        }
+
+        return session;
     }
 }
 
@@ -79,6 +102,12 @@ internal sealed class FakeFilePanelSession : IFilePanelSession
     public CapabilitySet Capabilities { get; private set; }
 
     public IReadOnlyList<FilePanelTransferSnapshot> Transfers => [.. _transfers];
+
+    public Func<CancellationToken, ValueTask>? BeforeSnapshotAsync { get; set; }
+
+    public int DisposeCount { get; private set; }
+
+    public bool IsClosed => _closed;
 
     public int CreateDirectoryCount { get; private set; }
 
@@ -341,11 +370,17 @@ internal sealed class FakeFilePanelSession : IFilePanelSession
         return ValueTask.FromResult(FilePanelResult<FilePanelTransferSnapshot>.Success(snapshot));
     }
 
-    public ValueTask<PanelSessionSnapshot> SnapshotAsync(CancellationToken cancellationToken)
+    public async ValueTask<PanelSessionSnapshot> SnapshotAsync(
+        CancellationToken cancellationToken)
     {
+        if (BeforeSnapshotAsync is { } beforeSnapshot)
+        {
+            await beforeSnapshot(cancellationToken).ConfigureAwait(false);
+        }
+
         cancellationToken.ThrowIfCancellationRequested();
         var active = _transfers.Count(item => item.CanCancel);
-        return ValueTask.FromResult(_closed
+        return _closed
             ? new PanelSessionSnapshot(
                 SessionLifecycle.Closed,
                 SessionHealth.Ended,
@@ -355,7 +390,7 @@ internal sealed class FakeFilePanelSession : IFilePanelSession
                 SessionLifecycle.Active,
                 SessionHealth.Healthy,
                 active > 0,
-                active > 0 ? $"{active} active transfer(s)." : "Ready"));
+                active > 0 ? $"{active} active transfer(s)." : "Ready");
     }
 
     public async IAsyncEnumerable<PanelSessionEvent> WatchAsync(
@@ -408,6 +443,7 @@ internal sealed class FakeFilePanelSession : IFilePanelSession
 
     public ValueTask DisposeAsync()
     {
+        DisposeCount++;
         _closed = true;
         return ValueTask.CompletedTask;
     }

@@ -153,8 +153,9 @@ public sealed class TerminalAutomationWaiterTests
     [Fact]
     public async Task UnchangedLongWaitUsesBoundedAdaptivePolling()
     {
+        var clock = new ManualTimerTimeProvider();
         var readCount = 0;
-        var outcome = await TerminalAutomationWaiter.WaitForTextAsync(
+        var waiting = TerminalAutomationWaiter.WaitForTextAsync(
             new TerminalWaitForTextInput(
                 "never",
                 TimeSpan.FromMilliseconds(1_200)),
@@ -165,10 +166,29 @@ public sealed class TerminalAutomationWaiterTests
                 return ValueTask.FromResult(Screen(0));
             },
             ReadHealthySession,
-            CancellationToken.None);
+            CancellationToken.None,
+            clock).AsTask();
+        using var testTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        TimeSpan[] expectedDelays =
+        [
+            TimeSpan.FromMilliseconds(20),
+            TimeSpan.FromMilliseconds(40),
+            TimeSpan.FromMilliseconds(80),
+            TimeSpan.FromMilliseconds(160),
+            TimeSpan.FromMilliseconds(320),
+            TimeSpan.FromMilliseconds(500),
+            TimeSpan.FromMilliseconds(80),
+        ];
+        foreach (var delay in expectedDelays)
+        {
+            await clock.WaitForActiveTimerAsync(delay, testTimeout.Token);
+            clock.Advance(delay);
+        }
+
+        var outcome = await waiting.WaitAsync(testTimeout.Token);
 
         Assert.Equal(TerminalWaitOutcomeKind.Timeout, outcome.Kind);
-        Assert.InRange(readCount, 2, 12);
+        Assert.Equal(8, readCount);
     }
 
     private static ValueTask<PanelSessionSnapshot> ReadHealthySession(

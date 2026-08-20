@@ -1,9 +1,122 @@
 using GhostShell.Application;
+using GhostShell.Core;
 
 namespace GhostShell.SessionHost.Tests;
 
 public sealed class CloseLifecycleTests
 {
+    [Fact]
+    public async Task ConcurrentIdempotentCloseDispatchesEngineOnce()
+    {
+        await using var harness = new SessionHostTestHarness();
+        await harness.OpenAsync();
+        var blockerEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseBlocker = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.FileFactory.AfterCreateAsync = async (_, _) =>
+        {
+            blockerEntered.TrySetResult();
+            await releaseBlocker.Task.ConfigureAwait(false);
+        };
+        var blocker = harness.Client.EnsureFilePanelSessionAsync(
+            new EnsureFilePanelSessionRequest(
+                new SessionId("close-gate-blocker"),
+                new SessionOwner(
+                    HostMode.Desktop,
+                    harness.WindowId,
+                    harness.WorkspaceId,
+                    harness.TabId,
+                    new PanelInstanceId("close-gate-blocker-panel")),
+                "Files",
+                new FilePanelLocation(
+                    "profile-1",
+                    "test",
+                    new FilePanelAddress.Hierarchical(FilePanelPath.Root))),
+            harness.HumanContext(),
+            CancellationToken.None).AsTask();
+        await blockerEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var context = harness.HumanContext(
+            idempotencyKey: new IdempotencyKey("concurrent-close"));
+        var request = CloseScopeRequest.Session(
+            harness.SessionId,
+            CloseDecision.Request);
+        var first = harness.Client.CloseAsync(
+            request,
+            context,
+            CancellationToken.None).AsTask();
+        var duplicate = harness.Client.CloseAsync(
+            request,
+            context,
+            CancellationToken.None).AsTask();
+
+        releaseBlocker.TrySetResult();
+        _ = (await blocker).Value();
+        var results = await Task.WhenAll(first, duplicate);
+
+        Assert.All(results, result => Assert.IsType<HostResult<CloseScopeResult>.Success>(result));
+        Assert.Equal(results[0].Value(), results[1].Value());
+        Assert.Equal(1, harness.Factory[harness.SessionId].CloseCount);
+    }
+
+    [Fact]
+    public async Task CloseExceptionAfterDispatchRetainsUncertainReplay()
+    {
+        await using var harness = new SessionHostTestHarness();
+        harness.Factory.ThrowWhenClosing = true;
+        await harness.OpenAsync();
+        var context = harness.HumanContext(
+            idempotencyKey: new IdempotencyKey("failed-close"));
+        var request = CloseScopeRequest.Session(
+            harness.SessionId,
+            CloseDecision.Request);
+
+        var uncertain = await harness.Client.CloseAsync(
+            request,
+            context,
+            CancellationToken.None);
+        var replay = await harness.Client.CloseAsync(
+            request,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            uncertain.Error().Code);
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            replay.Error().Code);
+        Assert.Equal(1, harness.Factory[harness.SessionId].CloseCount);
+    }
+
+    [Fact]
+    public async Task CancellationBeforeCloseDispatchLeavesKeyFresh()
+    {
+        await using var harness = new SessionHostTestHarness();
+        await harness.OpenAsync();
+        var context = harness.HumanContext(
+            idempotencyKey: new IdempotencyKey("pre-cancelled-close"));
+        var request = CloseScopeRequest.Session(
+            harness.SessionId,
+            CloseDecision.Request);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        var cancelled = await harness.Client.CloseAsync(
+            request,
+            context,
+            cancellation.Token);
+        var retry = await harness.Client.CloseAsync(
+            request,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(HostErrorCode.Cancelled, cancelled.Error().Code);
+        Assert.IsType<HostResult<CloseScopeResult>.Success>(retry);
+        Assert.Equal(1, harness.Factory[harness.SessionId].CloseCount);
+    }
+
     [Fact]
     public async Task ActivePanelRequiresConfirmationAndCancellationChangesNothing()
     {

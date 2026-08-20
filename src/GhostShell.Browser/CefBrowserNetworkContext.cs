@@ -11,18 +11,54 @@ namespace GhostShell.Browser;
 internal sealed class CefBrowserNetworkContext : IDisposable
 {
     private readonly CefRequestContext _context;
+    private readonly CefBrowserContentPolicy _contentPolicy;
 
-    private CefBrowserNetworkContext(CefRequestContext context)
+    private CefBrowserNetworkContext(
+        CefRequestContext context,
+        CefBrowserContentPolicy contentPolicy)
     {
         _context = context;
+        _contentPolicy = contentPolicy;
+    }
+
+    public static CefBrowserNetworkContext CreateIsolatedHtmlPreview()
+    {
+        return CreateConfigured(
+            HtmlPreviewPreferences(),
+            CefBrowserContentPolicy.RestrictedLocalPreview,
+            "The embedded browser could not create a restricted HTML-preview context.");
     }
 
     public static CefBrowserNetworkContext Create(int socksProxyPort)
     {
-        var preferences = RequiredPreferences(socksProxyPort);
+        return CreateConfigured(
+            RequiredPreferences(socksProxyPort),
+            CefBrowserContentPolicy.Ordinary,
+            "The embedded browser could not create an isolated network context.");
+    }
+
+    public CefBrowserView CreateView() => new(_context, _contentPolicy);
+
+    public void Dispose() => _context.Dispose();
+
+    internal static IReadOnlyDictionary<string, string> HtmlPreviewPreferences() =>
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            // Context-local content settings keep JavaScript disabled across
+            // replacement renderers without changing ordinary browser panels.
+            ["profile.default_content_setting_values.javascript"] =
+                JsonSerializer.Serialize(2),
+            ["profile.default_content_setting_values.popups"] =
+                JsonSerializer.Serialize(2),
+        };
+
+    private static CefBrowserNetworkContext CreateConfigured(
+        IReadOnlyDictionary<string, string> preferences,
+        CefBrowserContentPolicy contentPolicy,
+        string creationFailure)
+    {
         var context = Cef.CreateRequestContext()
-            ?? throw new InvalidOperationException(
-                "The embedded browser could not create an isolated network context.");
+            ?? throw new InvalidOperationException(creationFailure);
         try
         {
             foreach (var preference in preferences)
@@ -30,7 +66,7 @@ internal sealed class CefBrowserNetworkContext : IDisposable
                 SetRequiredPreferenceJson(context, preference.Key, preference.Value);
             }
 
-            return new CefBrowserNetworkContext(context);
+            return new CefBrowserNetworkContext(context, contentPolicy);
         }
         catch
         {
@@ -38,10 +74,6 @@ internal sealed class CefBrowserNetworkContext : IDisposable
             throw;
         }
     }
-
-    public CefBrowserView CreateView() => new(_context);
-
-    public void Dispose() => _context.Dispose();
 
     /// <summary>
     /// Builds the JSON values accepted by CefRequestContext.SetPreference.

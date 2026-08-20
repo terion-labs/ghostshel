@@ -56,7 +56,22 @@ public sealed class BrowserEngineRuntimeTests
     }
 
     [Fact]
-    public void LegacySharedProfileMovesToTheExactRequestContextCachePath()
+    public void RuntimeSettingsKeepTheGlobalContextEphemeral()
+    {
+        var options = new BrowserEngineRuntimeOptions(
+            Path.Combine("relative", "profile"),
+            Path.Combine("relative", "logs", "cef.log"),
+            "1.0.0");
+
+        var settings = BrowserEngineRuntime.CreateSettings(options);
+
+        Assert.Null(settings.CachePath);
+        Assert.False(settings.PersistSessionCookies);
+        Assert.Equal(options.ProfileDirectory, settings.RootCachePath);
+    }
+
+    [Fact]
+    public void StartupRemovesTheCompleteLegacyPersistentCefRoot()
     {
         var root = Path.Combine(
             Path.GetTempPath(),
@@ -65,22 +80,71 @@ public sealed class BrowserEngineRuntimeTests
         var legacy = Path.Combine(root, "Default");
         Directory.CreateDirectory(legacy);
         File.WriteAllText(Path.Combine(legacy, "Cookies"), "existing-cookie-db");
+        Directory.CreateDirectory(Path.Combine(root, "runtime"));
+        File.WriteAllText(Path.Combine(root, "runtime", "Cache"), "cache");
+        Directory.CreateDirectory(Path.Combine(root, "profiles", "global", "local"));
+        File.WriteAllText(
+            Path.Combine(root, "profiles", "global", "local", "History"),
+            "history");
+        File.WriteAllText(Path.Combine(root, "Local State"), "state");
         try
         {
             BrowserEngineRuntime.PrepareProfileLayout(root);
 
-            var current = Path.Combine(root, "profiles", "global", "local");
+            Assert.True(Directory.Exists(root));
             Assert.False(Directory.Exists(legacy));
-            Assert.Equal(
-                "existing-cookie-db",
-                File.ReadAllText(Path.Combine(current, "Cookies")));
-            Assert.False(Directory.Exists(Path.Combine(current, "Default")));
+            Assert.False(Directory.Exists(Path.Combine(root, "runtime")));
+            Assert.False(Directory.Exists(Path.Combine(root, "profiles")));
+            Assert.False(File.Exists(Path.Combine(root, "Local State")));
         }
         finally
         {
             if (Directory.Exists(root))
             {
                 Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void LegacyCleanupFailsClosedAtAFileSystemLink()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "ghostshell-cef-layout-tests",
+            Guid.NewGuid().ToString("N"));
+        var outside = Path.Combine(
+            Path.GetTempPath(),
+            "ghostshell-cef-layout-tests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(outside);
+        var outsideFile = Path.Combine(outside, "must-survive");
+        File.WriteAllText(outsideFile, "outside");
+        Directory.CreateSymbolicLink(Path.Combine(root, "linked"), outside);
+        try
+        {
+            Assert.Throws<IOException>(() =>
+                BrowserEngineRuntime.PrepareProfileLayout(root));
+
+            Assert.True(File.Exists(outsideFile));
+            Assert.True(Directory.Exists(root));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+
+            if (Directory.Exists(outside))
+            {
+                Directory.Delete(outside, recursive: true);
             }
         }
     }

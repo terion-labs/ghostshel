@@ -21,6 +21,7 @@ namespace GhostShell.App.ViewModels;
 internal sealed partial class ShellNotificationCenter
 {
     private const int HistoryCapacity = 256;
+    internal const long MaximumHistoryUtf8Bytes = 512 * 1024;
     private static readonly TimeSpan VisiblePanelPulseDuration =
         TimeSpan.FromMilliseconds(900);
 
@@ -29,6 +30,7 @@ internal sealed partial class ShellNotificationCenter
     private readonly HashSet<RuntimeWorkspaceViewModel> _workspaceNotifications = [];
     private readonly HashSet<RuntimeWorkspaceViewModel> _workspaceSourceNotifications = [];
     private readonly List<ShellNotificationRecord> _history = [];
+    private long _historyUtf8Bytes;
     private readonly Func<RuntimeWorkspaceViewModel?> _frontWorkspace;
     private readonly Func<bool> _isWindowFocused;
     private readonly Func<bool> _isWorkspaceSurfaceVisible;
@@ -176,6 +178,7 @@ internal sealed partial class ShellNotificationCenter
         _workspaceNotifications.Remove(workspace);
         _workspaceSourceNotifications.Remove(workspace);
         _history.RemoveAll(record => record.Route.WorkspaceId == workspace.Id);
+        RecountHistoryBytes();
         foreach (var tab in workspace.Tabs)
         {
             foreach (var panel in tab.Panels)
@@ -214,6 +217,7 @@ internal sealed partial class ShellNotificationCenter
         _workspaceNotifications.Clear();
         _workspaceSourceNotifications.Clear();
         _history.Clear();
+        _historyUtf8Bytes = 0;
         _nativeNotifications?.Activated -= OnNativeNotificationActivated;
 
         _lifetime.Cancel();
@@ -250,6 +254,10 @@ internal sealed partial class ShellNotificationCenter
             || workspace.Tabs.Any(candidate => candidate.HasAttention);
         _flagsChanged();
     }
+
+    private void RecountHistoryBytes() =>
+        _historyUtf8Bytes = _history.Sum(record =>
+            (long)PanelNotificationTextBudget.Measure(record.Notification));
 
     private sealed record PanelAttachment(
         RuntimeWorkspaceViewModel Workspace,

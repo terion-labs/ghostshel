@@ -17,6 +17,192 @@ public sealed class DockerSessionHostTests
     private static readonly SessionId SessionId = new("docker-session");
 
     [Fact]
+    public async Task CancellationDuringDockerSessionCreationRetainsUncertainReplay()
+    {
+        var factory = new FakeDockerPanelSessionFactory();
+        var creationEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        factory.AfterCreateAsync = async (_, cancellationToken) =>
+        {
+            creationEntered.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken)
+                .ConfigureAwait(false);
+        };
+        await using var host = CreateHost(factory);
+        var request = Request();
+        var context = Context(
+            new IdempotencyKey("docker-create-cancelled"));
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = host.EnsureDockerSessionAsync(
+            request,
+            context,
+            cancellation.Token).AsTask();
+        await creationEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+
+        var uncertain = await pending;
+        var replay = await host.EnsureDockerSessionAsync(
+            request,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            uncertain.Error().Code);
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            replay.Error().Code);
+        Assert.Equal(1, factory.CreateCount);
+    }
+
+    [Fact]
+    public async Task DockerSessionSnapshotFailureDisposesEngineAndRetainsUncertainReplay()
+    {
+        var factory = new FakeDockerPanelSessionFactory
+        {
+            BeforeSnapshotForNewSessions = static _ =>
+                ValueTask.FromException(new IOException("fake snapshot failure")),
+        };
+        await using var host = CreateHost(factory);
+        var request = Request();
+        var context = Context(new IdempotencyKey("docker-create-failed"));
+
+        var uncertain = await host.EnsureDockerSessionAsync(
+            request,
+            context,
+            CancellationToken.None);
+        var replay = await host.EnsureDockerSessionAsync(
+            request,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            uncertain.Error().Code);
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            replay.Error().Code);
+        Assert.Equal(1, factory.Session!.DisposeCount);
+        Assert.Equal(1, factory.CreateCount);
+    }
+
+    [Fact]
+    public async Task ConcurrentDockerCreationCompletesKnownSuccessAfterCallerCancellation()
+    {
+        var factory = new FakeDockerPanelSessionFactory();
+        var snapshotEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSnapshot = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var snapshotToken = CancellationToken.None;
+        factory.BeforeSnapshotForNewSessions = async cancellationToken =>
+        {
+            snapshotToken = cancellationToken;
+            snapshotEntered.TrySetResult();
+            await releaseSnapshot.Task.ConfigureAwait(false);
+        };
+        await using var host = CreateHost(factory);
+        var request = Request();
+        var context = Context(new IdempotencyKey("docker-create-known"));
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = host.EnsureDockerSessionAsync(
+            request,
+            context,
+            cancellation.Token).AsTask();
+        await snapshotEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+        var concurrentReplay = await host.EnsureDockerSessionAsync(
+            request,
+            context,
+            CancellationToken.None);
+        releaseSnapshot.TrySetResult();
+
+        var completed = await pending;
+        var completedReplay = await host.EnsureDockerSessionAsync(
+            request,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            concurrentReplay.Error().Code);
+        Assert.IsType<HostResult<SessionSnapshot>.Success>(completed);
+        Assert.IsType<HostResult<SessionSnapshot>.Success>(completedReplay);
+        Assert.False(snapshotToken.CanBeCanceled);
+        Assert.Equal(1, factory.CreateCount);
+    }
+
+    [Fact]
+    public async Task CancellationBeforeDockerSessionCreationLeavesKeyFresh()
+    {
+        var factory = new FakeDockerPanelSessionFactory();
+        await using var host = CreateHost(factory);
+        var request = Request();
+        var context = Context(
+            new IdempotencyKey("docker-create-pre-cancelled"));
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        var cancelled = await host.EnsureDockerSessionAsync(
+            request,
+            context,
+            cancellation.Token);
+        var retry = await host.EnsureDockerSessionAsync(
+            request,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(HostErrorCode.Cancelled, cancelled.Error().Code);
+        Assert.IsType<HostResult<SessionSnapshot>.Success>(retry);
+        Assert.Equal(1, factory.CreateCount);
+    }
+
+    [Fact]
+    public async Task DockerOpenReservationRejectsCrossFamilyTerminalOpen()
+    {
+        var factory = new FakeDockerPanelSessionFactory();
+        var terminals = new FakeTerminalSessionFactory();
+        var snapshotEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSnapshot = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        factory.BeforeSnapshotForNewSessions = async _ =>
+        {
+            snapshotEntered.TrySetResult();
+            await releaseSnapshot.Task.ConfigureAwait(false);
+        };
+        await using var host = CreateHost(factory, terminals);
+        var context = Context(new IdempotencyKey("docker-cross-family"));
+
+        var docker = host.EnsureDockerSessionAsync(
+            Request(),
+            context,
+            CancellationToken.None).AsTask();
+        await snapshotEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var rejected = await host.EnsureTerminalSessionAsync(
+            new EnsureTerminalSessionRequest(
+                new SessionId("docker-cross-family-terminal"),
+                new SessionOwner(
+                    HostMode.Desktop,
+                    WindowId,
+                    WorkspaceId,
+                    TabId,
+                    new PanelInstanceId("docker-cross-family-terminal-panel")),
+                "Terminal",
+                new TerminalLaunchRequest("/tmp")),
+            context,
+            CancellationToken.None);
+        releaseSnapshot.TrySetResult();
+
+        Assert.Equal(HostErrorCode.IdempotencyKeyReused, rejected.Error().Code);
+        Assert.IsType<HostResult<SessionSnapshot>.Success>(await docker);
+        Assert.Equal(1, factory.CreateCount);
+        Assert.Equal(0, terminals.CreateCount);
+    }
+
+    [Fact]
     public async Task NegotiationReflectsTheConfiguredDockerFactory()
     {
         var factory = new FakeDockerPanelSessionFactory();
@@ -167,9 +353,10 @@ public sealed class DockerSessionHostTests
     }
 
     private static InMemorySessionHostClient CreateHost(
-        IDockerPanelSessionFactory? dockerFactory) =>
+        IDockerPanelSessionFactory? dockerFactory,
+        ITerminalSessionFactory? terminalFactory = null) =>
         new(
-            new FakeTerminalSessionFactory(),
+            terminalFactory ?? new FakeTerminalSessionFactory(),
             new DesktopLifecyclePolicy(),
             new ManualTimeProvider(DateTimeOffset.UnixEpoch),
             dockerPanelFactory: dockerFactory);
@@ -235,9 +422,21 @@ public sealed class DockerSessionHostTests
 
         public bool FailOpen { get; init; }
 
+        public Func<FakeDockerPanelSession, CancellationToken, ValueTask>? AfterCreateAsync
+        {
+            get;
+            set;
+        }
+
+        public Func<CancellationToken, ValueTask>? BeforeSnapshotForNewSessions
+        {
+            get;
+            set;
+        }
+
         public FakeDockerPanelSession? Session { get; private set; }
 
-        public ValueTask<IDockerPanelSession> CreateAsync(
+        public async ValueTask<IDockerPanelSession> CreateAsync(
             SessionId sessionId,
             DockerSessionTarget target,
             CancellationToken cancellationToken)
@@ -250,11 +449,20 @@ public sealed class DockerSessionHostTests
                     "Provider included private.internal and Password=needle in its exception.");
             }
 
-            Session = new FakeDockerPanelSession(
+            var session = new FakeDockerPanelSession(
                 sessionId,
                 target.Binding,
-                Capabilities);
-            return ValueTask.FromResult<IDockerPanelSession>(Session);
+                Capabilities)
+            {
+                BeforeSnapshotAsync = BeforeSnapshotForNewSessions,
+            };
+            Session = session;
+            if (AfterCreateAsync is { } afterCreate)
+            {
+                await afterCreate(session, cancellationToken).ConfigureAwait(false);
+            }
+
+            return session;
         }
     }
 
@@ -281,6 +489,10 @@ public sealed class DockerSessionHostTests
             IsReady: true);
 
         public int ReadStateCount { get; private set; }
+
+        public Func<CancellationToken, ValueTask>? BeforeSnapshotAsync { get; set; }
+
+        public int DisposeCount { get; private set; }
 
         public ValueTask<DockerResult<DockerPanelSnapshot>> ReadStateAsync(
             int maximumResourcesPerKind,
@@ -325,11 +537,16 @@ public sealed class DockerSessionHostTests
             CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
-        public ValueTask<PanelSessionSnapshot> SnapshotAsync(
+        public async ValueTask<PanelSessionSnapshot> SnapshotAsync(
             CancellationToken cancellationToken)
         {
+            if (BeforeSnapshotAsync is { } beforeSnapshot)
+            {
+                await beforeSnapshot(cancellationToken).ConfigureAwait(false);
+            }
+
             cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult(_closed
+            return _closed
                 ? new PanelSessionSnapshot(
                     SessionLifecycle.Closed,
                     SessionHealth.Ended,
@@ -339,7 +556,7 @@ public sealed class DockerSessionHostTests
                     SessionLifecycle.Active,
                     SessionHealth.Healthy,
                     false,
-                    "Ready"));
+                    "Ready");
         }
 
         public async IAsyncEnumerable<PanelSessionEvent> WatchAsync(
@@ -369,6 +586,7 @@ public sealed class DockerSessionHostTests
 
         public ValueTask DisposeAsync()
         {
+            DisposeCount++;
             _closed = true;
             return ValueTask.CompletedTask;
         }

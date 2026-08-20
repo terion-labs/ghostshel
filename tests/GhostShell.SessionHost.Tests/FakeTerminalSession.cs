@@ -52,6 +52,8 @@ internal sealed class FakeTerminalSession(
 
     public bool IsClosed => _closed;
 
+    public Func<CancellationToken, ValueTask>? BeforeSnapshotAsync { get; set; }
+
     public bool RendererAttached => _rendererAttached;
 
     public int AttachRendererCount { get; private set; }
@@ -59,6 +61,16 @@ internal sealed class FakeTerminalSession(
     public NativeRendererHost? LastRendererHost { get; private set; }
 
     public int DetachRendererCount { get; private set; }
+
+    public bool BlockRendererDetach { get; set; }
+
+    public bool ThrowAfterRendererDetach { get; set; }
+
+    public TaskCompletionSource RendererDetachStarted { get; } = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public TaskCompletionSource ReleaseRendererDetach { get; } = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
 
     public int CloseCount { get; private set; }
 
@@ -210,12 +222,21 @@ internal sealed class FakeTerminalSession(
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask DetachRendererAsync(CancellationToken cancellationToken)
+    public async ValueTask DetachRendererAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         _rendererAttached = false;
         DetachRendererCount++;
-        return ValueTask.CompletedTask;
+        RendererDetachStarted.TrySetResult();
+        if (BlockRendererDetach)
+        {
+            await ReleaseRendererDetach.Task.ConfigureAwait(false);
+        }
+
+        if (ThrowAfterRendererDetach)
+        {
+            throw new InvalidOperationException("fake renderer detach failure");
+        }
     }
 
     public ValueTask FocusAsync(CancellationToken cancellationToken)
@@ -679,10 +700,16 @@ internal sealed class FakeTerminalSession(
                 shellEvent);
     }
 
-    public ValueTask<PanelSessionSnapshot> SnapshotAsync(CancellationToken cancellationToken)
+    public async ValueTask<PanelSessionSnapshot> SnapshotAsync(
+        CancellationToken cancellationToken)
     {
+        if (BeforeSnapshotAsync is { } beforeSnapshot)
+        {
+            await beforeSnapshot(cancellationToken).ConfigureAwait(false);
+        }
+
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(_closed
+        return _closed
             ? new PanelSessionSnapshot(
                 SessionLifecycle.Closed,
                 SessionHealth.Ended,
@@ -692,7 +719,7 @@ internal sealed class FakeTerminalSession(
                 _rendererAttached ? SessionLifecycle.Active : SessionLifecycle.Starting,
                 _rendererAttached ? SessionHealth.Healthy : SessionHealth.Starting,
                 HasActiveWork,
-                HasActiveWork ? "foreground process" : "ready"));
+                HasActiveWork ? "foreground process" : "ready");
     }
 
     public async IAsyncEnumerable<PanelSessionEvent> WatchAsync(

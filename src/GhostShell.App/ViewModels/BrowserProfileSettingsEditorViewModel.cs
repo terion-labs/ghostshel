@@ -10,13 +10,15 @@ public sealed record BrowserProfileSharingOption(
 
 /// <summary>
 /// Edits the browser profile default and exposes deliberate clearing for each
-/// persistent profile family. Open tabs retain their launch profile.
+/// in-memory profile family and any legacy stored data. Open tabs retain their
+/// launch profile.
 /// </summary>
 public sealed class BrowserProfileSettingsEditorViewModel : ObservableObject
 {
     private readonly IBrowserProfilePreferences _preferences;
     private readonly IBrowserProfileDataControl? _dataControl;
-    private string _usageText = "Open Browser settings to measure stored site data.";
+    private string _usageText =
+        "Open Browser settings to measure legacy stored site data.";
     private string? _operationStatus;
     private int _usageRefreshGeneration;
 
@@ -32,11 +34,11 @@ public sealed class BrowserProfileSettingsEditorViewModel : ObservableObject
             new(
                 BrowserProfileSharing.Shared,
                 "Shared across workspaces",
-                "Browser tabs use one global cookie jar and site-storage profile."),
+                "Browser tabs share one cookie jar and site-storage profile for this app session."),
             new(
                 BrowserProfileSharing.PerWorkspace,
                 "Separate by workspace",
-                "Each workspace uses its own cookies and site storage unless it overrides this setting."),
+                "Each workspace uses separate cookies and site storage for this app session unless it overrides this setting."),
         ];
         ClearGlobalCommand = new AsyncActionCommand(
             () => ClearAsync(BrowserProfileDataScope.Global),

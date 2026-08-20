@@ -517,7 +517,11 @@ Desktop browser panels use the pinned Chromium Embedded Framework runtime:
 | Windows | CPU OSR; flat runtime (release blocked on the CEF 150 sandbox bootstrap) |
 | Linux | CPU OSR; flat runtime plus qualified Chromium sandbox |
 
-Profiles own cookies, storage, permissions, downloads, cache, and history. Ephemeral profiles are supported. OAuth and security-sensitive authentication flows SHOULD be opened in the system browser when the identity provider disallows embedded user agents.
+Profiles partition cookies, storage, permissions, cache, and history in memory
+for the application session. Persistent CEF state is disabled until its whole
+profile can participate in the application-encryption lifecycle. OAuth and
+security-sensitive authentication flows SHOULD be opened in the system browser
+when the identity provider disallows embedded user agents.
 
 In desktop mode, a browser session and its CEF renderer follow the lifetime of
 the owning panel, independently of whether that panel's Avalonia visual is

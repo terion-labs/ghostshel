@@ -253,10 +253,16 @@ public sealed class FilePanelClientContentSourceTests : IDisposable
     public async Task A_dead_sessions_leavings_are_swept_and_a_live_ones_are_not()
     {
         // A dead session: container and lock exist, nobody holds the lock.
-        var deadDb = Path.Combine(_cacheDirectory, "session-dead.db");
-        var deadLock = Path.Combine(_cacheDirectory, "session-dead.lock");
+        var deadId = new string('d', 32);
+        var deadDb = Path.Combine(_cacheDirectory, $"session-{deadId}.db");
+        var deadLock = Path.Combine(_cacheDirectory, $"session-{deadId}.lock");
         await File.WriteAllBytesAsync(deadDb, new byte[64]);
         await File.WriteAllBytesAsync(deadLock, []);
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(deadDb, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            File.SetUnixFileMode(deadLock, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
 
         // A live session: another cache in the same directory, holding its
         // lock because it has stored something.
@@ -270,7 +276,7 @@ public sealed class FilePanelClientContentSourceTests : IDisposable
         Assert.True(stored.IsSuccess);
         var livingContainer = Assert.Single(
             Directory.GetFiles(_cacheDirectory, "session-*.db"),
-            file => !file.EndsWith("session-dead.db", StringComparison.Ordinal)
+            file => !file.EndsWith($"session-{deadId}.db", StringComparison.Ordinal)
                 // LiteDB's write-ahead log sits beside the container and
                 // matches the same pattern.
                 && !file.EndsWith("-log.db", StringComparison.Ordinal));
@@ -360,6 +366,94 @@ public sealed class FilePanelClientContentSourceTests : IDisposable
         encryption.RaiseChanged();
 
         Assert.False(File.Exists(Path.Combine(_cacheDirectory, "store.db")));
+    }
+
+    [Fact]
+    public void Cache_root_and_generated_files_are_owner_only_on_unix()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var directory = Path.Combine(_root, "owner-only-cache");
+        using var cache = new PreviewContentCache(KeepBetweenRuns(false), directory);
+        using var pending = cache.BeginPut("secure-entry", 128 * 1024);
+        pending.Destination.Write(new byte[128 * 1024]);
+        using var content = pending.Commit();
+
+        Assert.Equal(
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute,
+            File.GetUnixFileMode(directory));
+        foreach (var path in Directory.GetFiles(directory))
+        {
+            Assert.Equal(
+                UnixFileMode.UserRead | UnixFileMode.UserWrite,
+                File.GetUnixFileMode(path));
+        }
+    }
+
+    [Fact]
+    public void Permissive_unix_cache_root_is_rejected()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var directory = Path.Combine(_root, "permissive-cache");
+        Directory.CreateDirectory(directory);
+        File.SetUnixFileMode(
+            directory,
+            UnixFileMode.UserRead
+            | UnixFileMode.UserWrite
+            | UnixFileMode.UserExecute
+            | UnixFileMode.GroupRead
+            | UnixFileMode.GroupExecute);
+
+        Assert.Throws<UnauthorizedAccessException>(() =>
+            new PreviewContentCache(KeepBetweenRuns(false), directory));
+
+        File.SetUnixFileMode(
+            directory,
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+    }
+
+    [Fact]
+    public async Task Linked_persistent_entry_is_rejected_without_touching_its_target()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var directory = Path.Combine(_root, "linked-entry-cache");
+        Directory.CreateDirectory(directory, PreviewCachePathGuard.OwnerDirectoryMode);
+        var target = Path.Combine(_root, "link-target.txt");
+        await File.WriteAllTextAsync(target, "must survive");
+        File.SetUnixFileMode(target, PreviewCachePathGuard.OwnerFileMode);
+        File.CreateSymbolicLink(Path.Combine(directory, "store.db"), target);
+
+        Assert.Throws<InvalidDataException>(() =>
+            new PreviewContentCache(KeepBetweenRuns(true), directory));
+        Assert.Equal("must survive", await File.ReadAllTextAsync(target));
+    }
+
+    [Fact]
+    public void Linked_cache_root_is_rejected()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var target = Path.Combine(_root, "real-cache");
+        Directory.CreateDirectory(target, PreviewCachePathGuard.OwnerDirectoryMode);
+        var linked = Path.Combine(_root, "linked-cache");
+        Directory.CreateSymbolicLink(linked, target);
+
+        Assert.Throws<InvalidDataException>(() =>
+            new PreviewContentCache(KeepBetweenRuns(false), linked));
     }
 
     private sealed class TestApplicationEncryption : IApplicationEncryption

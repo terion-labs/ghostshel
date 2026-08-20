@@ -1,0 +1,58 @@
+<Project InitialTargets="RequireExistingRuntimeLockForLockedRestore;RequireLockedRestoreForSelfContainedDesktopPackage">
+  <!-- A missing runtime-specific lock is otherwise created even when NuGet is
+       asked for locked mode. Reject that state while each restore graph entry
+       is evaluated, before package resolution can update the source tree. -->
+  <Target
+      Name="RequireExistingRuntimeLockForLockedRestore"
+      BeforeTargets="_GenerateRestoreGraphProjectEntry;Restore"
+      Condition="('$(RuntimeIdentifier)' != '' or '$(RuntimeIdentifiers)' != '') and '$(RestoreLockedMode)' == 'true' and ('$(GhostShellFirstPartyProject)' == 'True' or '$(MSBuildProjectName)' == 'GhostShell.Desktop')">
+    <ItemGroup>
+      <GhostShellExpectedRuntimeLock
+          Include="$([System.IO.Path]::GetFullPath('packages.$(RuntimeIdentifier).lock.json', '$(MSBuildProjectDirectory)'))"
+          Condition="'$(RuntimeIdentifier)' != ''" />
+      <GhostShellExpectedRuntimeLock
+          Include="$([System.IO.Path]::GetFullPath('packages.$(RuntimeIdentifiers).lock.json', '$(MSBuildProjectDirectory)'))"
+          Condition="'$(RuntimeIdentifier)' == '' and '$(RuntimeIdentifiers)' != '' and !$([System.String]::Copy('$(RuntimeIdentifiers)').Contains(';'))" />
+      <GhostShellSelectedRuntimeLock
+          Include="$([System.IO.Path]::GetFullPath('$(NuGetLockFilePath)', '$(MSBuildProjectDirectory)'))"
+          Condition="'$(NuGetLockFilePath)' != ''" />
+    </ItemGroup>
+    <ItemGroup Condition="'$(MSBuildProjectName)' == 'GhostShell.Desktop'">
+      <GhostShellRuntimeLockProject Include="$(MSBuildThisFileDirectory)src/GhostShell.*/*.csproj" />
+      <GhostShellRequiredRuntimeLock
+          Include="@(GhostShellRuntimeLockProject->'%(RootDir)%(Directory)packages.$(RuntimeIdentifier).lock.json')"
+          Condition="'$(RuntimeIdentifier)' != ''" />
+      <GhostShellRequiredRuntimeLock
+          Include="@(GhostShellRuntimeLockProject->'%(RootDir)%(Directory)packages.$(RuntimeIdentifiers).lock.json')"
+          Condition="'$(RuntimeIdentifier)' == '' and '$(RuntimeIdentifiers)' != '' and !$([System.String]::Copy('$(RuntimeIdentifiers)').Contains(';'))" />
+    </ItemGroup>
+    <Error
+        Condition="'$(RuntimeIdentifier)' == '' and $([System.String]::Copy('$(RuntimeIdentifiers)').Contains(';'))"
+        Text="Locked restore for $(MSBuildProjectName) requires one reviewed runtime identifier at a time; received $(RuntimeIdentifiers)." />
+    <Error
+        Condition="'$(NuGetLockFilePath)' == ''"
+        Text="Locked restore for $(MSBuildProjectName) requires NuGetLockFilePath to select @(GhostShellExpectedRuntimeLock->'%(Filename)%(Extension)')." />
+    <Error
+        Condition="'$(NuGetLockFilePath)' != '' and '@(GhostShellSelectedRuntimeLock)' != '@(GhostShellExpectedRuntimeLock)'"
+        Text="Locked restore for $(MSBuildProjectName) requires the reviewed runtime lock path @(GhostShellExpectedRuntimeLock); received @(GhostShellSelectedRuntimeLock)." />
+    <Error
+        Condition="!Exists('@(GhostShellExpectedRuntimeLock)')"
+        Text="Locked restore for $(MSBuildProjectName) requires the reviewed runtime lock @(GhostShellExpectedRuntimeLock)." />
+    <Error
+        Condition="'$(MSBuildProjectName)' == 'GhostShell.Desktop' and !Exists('%(GhostShellRequiredRuntimeLock.Identity)')"
+        Text="Locked restore for GhostShell.Desktop requires the complete reviewed runtime-lock closure; missing %(GhostShellRequiredRuntimeLock.Identity)." />
+  </Target>
+
+  <Target
+      Name="RequireLockedRestoreForSelfContainedDesktopPackage"
+      DependsOnTargets="RequireExistingRuntimeLockForLockedRestore"
+      BeforeTargets="_GenerateRestoreGraphProjectEntry;Restore;PrepareForBuild;Publish"
+      Condition="'$(MSBuildProjectName)' == 'GhostShell.Desktop' and '$(SelfContained)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <Error
+        Condition="'$(RuntimeIdentifier)' == ''"
+        Text="Self-contained GhostShell.Desktop packaging requires an explicit RuntimeIdentifier and its reviewed packages.&lt;RID&gt;.lock.json closure." />
+    <Error
+        Condition="'$(RestoreLockedMode)' != 'true'"
+        Text="Self-contained GhostShell.Desktop packaging requires RestoreLockedMode=true and a prior locked restore using $(NuGetLockFilePath)." />
+  </Target>
+</Project>

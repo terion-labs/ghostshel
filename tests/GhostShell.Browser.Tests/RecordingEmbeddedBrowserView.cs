@@ -7,6 +7,10 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
 {
     private long? _activeNavigationGeneration;
     private long _lastNavigationGeneration;
+    private Func<
+        BrowserAddress,
+        CancellationToken,
+        ValueTask<bool>>? _activeNavigationRequestPolicy;
 
     public Control View { get; } = new Border();
 
@@ -152,6 +156,28 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
     public event EventHandler<BrowserNewTabRequestedEventArgs>? NewTabRequested;
 
     public void SetAgentActivity(bool isActive) => IsAgentActive = isActive;
+
+    public void SetActiveNavigationRequestPolicy(
+        Func<BrowserAddress, CancellationToken, ValueTask<bool>> policy)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+        if (_activeNavigationGeneration is null)
+        {
+            throw new InvalidOperationException(
+                "The fake browser has no active navigation to protect.");
+        }
+
+        _activeNavigationRequestPolicy = policy;
+    }
+
+    public ValueTask<bool> AllowsActiveNavigationRequestAsync(
+        BrowserAddress address,
+        CancellationToken cancellationToken = default) =>
+        (_activeNavigationRequestPolicy
+            ?? throw new InvalidOperationException(
+                "The fake browser has no active navigation request policy."))(
+            address,
+            cancellationToken);
 
     public void Dispose() => IsDisposed = true;
 
@@ -414,6 +440,7 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
                 "A native navigation generation is already active.");
         }
 
+        _activeNavigationRequestPolicy = null;
         _lastNavigationGeneration = checked(
             _lastNavigationGeneration + 1);
         _activeNavigationGeneration = _lastNavigationGeneration;

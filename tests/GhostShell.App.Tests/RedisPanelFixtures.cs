@@ -61,6 +61,11 @@ internal static class RedisPanelFixtures
 
         public TimeSpan? TimeToLive { get; set; } = timeToLive;
 
+        public RedisEntryRemovalOutcome RemovalOutcome { get; set; } =
+            RedisEntryRemovalOutcome.Removed;
+
+        public int ReadCount { get; private set; }
+
         public RedisServerFacts Facts { get; } = new(
             "7.4.1",
             "RESP3",
@@ -88,12 +93,15 @@ internal static class RedisPanelFixtures
         public Task<RedisKeySnapshot> ReadKeyAsync(
             RedisKeyReference key,
             int maximumEntries,
-            CancellationToken cancellationToken) =>
-            Task.FromResult(new RedisKeySnapshot(
+            CancellationToken cancellationToken)
+        {
+            ReadCount++;
+            return Task.FromResult(new RedisKeySnapshot(
                 Describe(),
                 1,
                 [Entry()],
                 Truncated: false));
+        }
 
         /// <summary>
         /// One entry, addressed the way the real session addresses that type:
@@ -103,7 +111,7 @@ internal static class RedisPanelFixtures
         private RedisValueEntry Entry() => type switch
         {
             "hash" => new("email", "email", "value"),
-            "list" => new("0", null, "value"),
+            "list" => new("0", null, "value", RawValue: "value"u8.ToArray()),
             "set" => new("value", null, "value"),
             "zset" => new("value", null, "value", 1),
             "stream" => new("1-0:event", "event", "value"),
@@ -160,14 +168,14 @@ internal static class RedisPanelFixtures
         /// <summary>Every entry the panel asked to have removed.</summary>
         public List<string> Removals { get; } = [];
 
-        public Task RemoveEntryAsync(
+        public Task<RedisEntryRemovalOutcome> RemoveEntryAsync(
             RedisKeyReference key,
             string type,
             RedisValueEntry entry,
             CancellationToken cancellationToken)
         {
             Removals.Add($"{type} {entry.Field ?? entry.Identity}");
-            return Task.CompletedTask;
+            return Task.FromResult(RemovalOutcome);
         }
         /// <summary>Every deadline the panel asked for, newest last.</summary>
         public List<TimeSpan?> ExpiryWrites { get; } = [];

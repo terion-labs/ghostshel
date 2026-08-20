@@ -52,7 +52,6 @@ public static class BrowserEngineRuntime
                     "CEF cannot be initialized again after shutdown.");
             }
 
-            PreparePrivateDirectory(options.ProfileDirectory);
             PrepareProfileLayout(options.ProfileDirectory);
             PreparePrivateDirectory(
                 Path.GetDirectoryName(options.LogFilePath)
@@ -71,19 +70,7 @@ public static class BrowserEngineRuntime
 
             var versions = Cef.GetVersions();
             ValidateVersions(versions);
-            Cef.SetInitSettings(new Cef.CefSettings
-            {
-                // GhostSHELL browsers always receive an explicit profile
-                // context. Keep CEF's otherwise-unused global context apart so
-                // every user-visible partition can be released and cleared.
-                CachePath = Path.Combine(options.ProfileDirectory, "runtime"),
-                RootCachePath = options.ProfileDirectory,
-                UserAgentProduct = $"GhostSHELL/{options.ProductVersion}",
-                LogFile = options.LogFilePath,
-                LogSeverity = Cef.CefLogSeverity.Warning,
-                PersistSessionCookies = true,
-                RemoteDebuggingPort = 0,
-            });
+            Cef.SetInitSettings(CreateSettings(options));
 
             // Environment.GetCommandLineArgs includes argv[0]. This matters on
             // Linux, where --type=renderer must not accidentally become argv[0].
@@ -167,6 +154,25 @@ public static class BrowserEngineRuntime
         }
     }
 
+    internal static Cef.CefSettings CreateSettings(
+        BrowserEngineRuntimeOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return new Cef.CefSettings
+        {
+            // User-visible request contexts are intentionally ephemeral until
+            // CEF profile persistence can participate in the application-
+            // encryption lock, rekey, and shutdown lifecycle.
+            CachePath = null,
+            RootCachePath = options.ProfileDirectory,
+            UserAgentProduct = $"GhostSHELL/{options.ProductVersion}",
+            LogFile = options.LogFilePath,
+            LogSeverity = Cef.CefLogSeverity.Warning,
+            PersistSessionCookies = false,
+            RemoteDebuggingPort = 0,
+        };
+    }
+
     private static void PreparePrivateDirectory(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -184,29 +190,16 @@ public static class BrowserEngineRuntime
 
     internal static void PrepareProfileLayout(string rootDirectory)
     {
-        var runtimeDirectory = Path.Combine(rootDirectory, "runtime");
-        var globalProfilesDirectory = Path.Combine(
-            rootDirectory,
-            "profiles",
-            "global");
-        var globalDirectory = Path.Combine(
-            globalProfilesDirectory,
-            "local");
-        PreparePrivateDirectory(runtimeDirectory);
-        PreparePrivateDirectory(globalProfilesDirectory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
+        var root = Path.GetFullPath(rootDirectory);
 
-        // Builds before browser profiles stored the shared Chromium profile
-        // in the Default child of the CEF root. The explicit request context
-        // uses its cache path itself as the profile directory, so move Default
-        // to that exact path (not below it) exactly once.
-        var legacyDefault = Path.Combine(rootDirectory, "Default");
-        if (Directory.Exists(legacyDefault)
-            && !Directory.Exists(globalDirectory))
-        {
-            Directory.Move(legacyDefault, globalDirectory);
-        }
-
-        PreparePrivateDirectory(globalDirectory);
+        // Request contexts are now ephemeral. Remove the complete prior CEF
+        // root before initialization so Default/, runtime/, profiles/, Local
+        // State, and crash leftovers cannot silently outlive the encrypted-
+        // default migration. The shared deletion boundary rejects filesystem
+        // links before recursive removal.
+        CefBrowserProfileStore.DeleteOwnedDirectory(root);
+        PreparePrivateDirectory(root);
     }
 }
 

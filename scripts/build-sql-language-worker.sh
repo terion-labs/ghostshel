@@ -5,19 +5,26 @@ readonly SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly REPOSITORY_ROOT="$(cd "$SCRIPT_DIRECTORY/.." && pwd)"
 readonly WORKER_DIRECTORY="$REPOSITORY_ROOT/native/sql-language-worker"
 readonly LEGAL_CLOSURE_GENERATOR="$WORKER_DIRECTORY/generate-third-party-notices.sh"
+readonly MAVEN_CONTENT_LOCK="$WORKER_DIRECTORY/maven-content-lock.json"
+readonly MAVEN_REPOSITORY_PREPARER="$SCRIPT_DIRECTORY/prepare-locked-maven-repository.py"
 readonly ARTIFACTS_DIRECTORY="$REPOSITORY_ROOT/native/artifacts"
-readonly MAVEN_IMAGE="maven:3.9.11-eclipse-temurin-21"
-readonly NATIVE_IMAGE="container-registry.oracle.com/graalvm/native-image:25.0.4"
+readonly MAVEN_IMAGE_VERSION="3.9.11-eclipse-temurin-21"
+readonly MAVEN_IMAGE_LINUX_AMD64="maven:$MAVEN_IMAGE_VERSION@sha256:463a1849665463254b2dd56e3a5b316f1596bc93d0571065c06ea05bb48ab8f4"
+readonly MAVEN_IMAGE_LINUX_ARM64="maven:$MAVEN_IMAGE_VERSION@sha256:d1d89ba5f782ba5dd52272e7da5aed592abb192dff6435523b852ffab3ee8484"
+readonly NATIVE_IMAGE_VERSION="25.0.4"
+readonly NATIVE_IMAGE_LINUX_AMD64="container-registry.oracle.com/graalvm/native-image:$NATIVE_IMAGE_VERSION@sha256:1e1e083cb7cbf4d8ca0b9809ec0028a26e8022743415531c0c0a75842e1b5b61"
+readonly NATIVE_IMAGE_LINUX_ARM64="container-registry.oracle.com/graalvm/native-image:$NATIVE_IMAGE_VERSION@sha256:320ef30a226f66bf0ee34a80aaa1d40bc42e0c96277a634e0b30b32907da957b"
 readonly EXPECTED_NATIVE_IMAGE_VERSION="25.0.4"
 readonly MAXIMUM_RUNTIME_HEAP="256m"
 readonly MINIMUM_MACOS_VERSION="13.0"
 readonly MAXIMUM_GLIBC_VERSION="2.34"
-readonly MAVEN_CACHE_VOLUME="ghostshell-sql-language-m2"
 
 rid=""
 mode="auto"
 skip_tests=false
 native_image_command=""
+maven_image=""
+native_image=""
 
 if [[ -n "${GRAALVM_HOME:-}" && -z "${JAVA_HOME:-}" ]]; then
     export JAVA_HOME="$GRAALVM_HOME"
@@ -98,10 +105,14 @@ abi=""
 case "$rid" in
     linux-x64)
         docker_platform="linux/amd64"
+        maven_image="$MAVEN_IMAGE_LINUX_AMD64"
+        native_image="$NATIVE_IMAGE_LINUX_AMD64"
         abi="linux-gnu-x64"
         ;;
     linux-arm64)
         docker_platform="linux/arm64"
+        maven_image="$MAVEN_IMAGE_LINUX_ARM64"
+        native_image="$NATIVE_IMAGE_LINUX_ARM64"
         abi="linux-gnu-arm64"
         ;;
     osx-x64) abi="darwin-x64" ;;
@@ -151,6 +162,14 @@ if [[ "$mode" == "docker" ]]; then
         exit 69
     }
     command -v docker >/dev/null || { echo "docker is required for --docker." >&2; exit 69; }
+    [[ "$maven_image" =~ @sha256:[0-9a-f]{64}$ ]] || {
+        echo "The Maven builder must be pinned to a platform manifest digest." >&2
+        exit 65
+    }
+    [[ "$native_image" =~ @sha256:[0-9a-f]{64}$ ]] || {
+        echo "The Native Image builder must be pinned to a platform manifest digest." >&2
+        exit 65
+    }
 fi
 
 verify_native_image_version() {
@@ -200,8 +219,10 @@ read_macos_minimum_version() {
 if [[ "$mode" == "local" ]]; then
     native_image_version="$("$native_image_command" --version 2>&1 | sed -n '1p')"
 else
-    native_image_version="$(docker run --rm --platform "$docker_platform" \
-        "$NATIVE_IMAGE" --version 2>&1 | sed -n '1p')"
+    native_image_output="$(docker run --rm --network none --platform "$docker_platform" \
+        "$native_image" --version 2>&1)"
+    native_image_version="$(printf '%s\n' "$native_image_output" \
+        | awk '/^native-image / { print; exit }')"
 fi
 verify_native_image_version "$native_image_version"
 
@@ -210,10 +231,24 @@ artifact_path="$artifact_directory/$binary_name"
 mkdir -p "$ARTIFACTS_DIRECTORY"
 staging_directory="$(mktemp -d "$ARTIFACTS_DIRECTORY/.sql-language-$rid.XXXXXX")"
 staged_artifact_path="$staging_directory/$binary_name"
+locked_maven_repository="$staging_directory/maven-repository"
 cleanup_staging() {
+    if [[ -d "$locked_maven_repository" ]]; then
+        # The verified repository is sealed before Maven starts. Restore owner
+        # write permission only so the private staging tree can be removed.
+        "$MAVEN_REPOSITORY_PREPARER" --unseal "$locked_maven_repository"
+    fi
     rm -rf -- "$staging_directory"
 }
 trap cleanup_staging EXIT
+
+command -v python3 >/dev/null || { echo "python3 is required to verify the Maven content lock." >&2; exit 69; }
+maven_content_lock_sha256="$(sha256_file "$MAVEN_CONTENT_LOCK")"
+"$MAVEN_REPOSITORY_PREPARER" "$MAVEN_CONTENT_LOCK" "$locked_maven_repository"
+[[ "$(sha256_file "$MAVEN_CONTENT_LOCK")" == "$maven_content_lock_sha256" ]] || {
+    echo "The Maven content lock changed while its repository was prepared." >&2
+    exit 65
+}
 
 maven_goal="verify"
 if [[ "$skip_tests" == true ]]; then
@@ -230,15 +265,16 @@ if [[ "$mode" == "local" ]]; then
     (
         cd "$WORKER_DIRECTORY"
         if [[ "$skip_tests" == true ]]; then
-            mvn -B clean package -DskipTests
+            mvn -B --offline "-Dmaven.repo.local=$locked_maven_repository" clean package -DskipTests
         else
-            mvn -B clean verify
+            mvn -B --offline "-Dmaven.repo.local=$locked_maven_repository" clean verify
         fi
-        mvn -B dependency:list \
+        mvn -B --offline "-Dmaven.repo.local=$locked_maven_repository" \
+            org.apache.maven.plugins:maven-dependency-plugin:3.8.1:list \
             -DincludeScope=runtime \
             -DoutputFile=target/runtime-dependencies.raw.txt \
             -DappendOutput=false \
-            dependency:copy-dependencies \
+            org.apache.maven.plugins:maven-dependency-plugin:3.8.1:copy-dependencies \
             -DincludeScope=runtime \
             -DoutputDirectory=target/runtime-jars \
             -DoverWriteReleases=true \
@@ -250,7 +286,7 @@ if [[ "$mode" == "local" ]]; then
             --manifest target/runtime-dependencies.txt \
             --output target/THIRD-PARTY-NOTICES.md \
             --metadata target/legal-closure.properties
-        mvn -B \
+        mvn -B --offline "-Dmaven.repo.local=$locked_maven_repository" \
             -Dtest=LegalClosurePolicyTest \
             "-Dlegal.runtimeDependencies=$WORKER_DIRECTORY/target/runtime-dependencies.txt" \
             "-Dlegal.thirdPartyNotices=$WORKER_DIRECTORY/target/THIRD-PARTY-NOTICES.md" \
@@ -276,39 +312,42 @@ if [[ "$mode" == "local" ]]; then
         "$native_image_command" "${native_image_arguments[@]}"
     fi
 else
-    docker volume create "$MAVEN_CACHE_VOLUME" >/dev/null
-    maven_arguments=(mvn -B clean "$maven_goal")
+    maven_arguments=(mvn -B --offline -Dmaven.repo.local=/locked-m2 clean "$maven_goal")
     if [[ "$skip_tests" == true ]]; then
         maven_arguments+=(-DskipTests)
     fi
     docker run --rm \
+        --network none \
         --platform "$docker_platform" \
-        -v "$MAVEN_CACHE_VOLUME:/root/.m2" \
+        -v "$locked_maven_repository:/locked-m2:ro" \
         -v "$WORKER_DIRECTORY:/workspace" \
         -w /workspace \
-        "$MAVEN_IMAGE" \
+        "$maven_image" \
         "${maven_arguments[@]}"
     docker run --rm \
+        --network none \
         --platform "$docker_platform" \
-        -v "$MAVEN_CACHE_VOLUME:/root/.m2" \
+        -v "$locked_maven_repository:/locked-m2:ro" \
         -v "$WORKER_DIRECTORY:/workspace" \
         -w /workspace \
-        "$MAVEN_IMAGE" \
-        mvn -B dependency:list \
+        "$maven_image" \
+        mvn -B --offline -Dmaven.repo.local=/locked-m2 \
+            org.apache.maven.plugins:maven-dependency-plugin:3.8.1:list \
             -DincludeScope=runtime \
             -DoutputFile=target/runtime-dependencies.raw.txt \
             -DappendOutput=false \
-            dependency:copy-dependencies \
+            org.apache.maven.plugins:maven-dependency-plugin:3.8.1:copy-dependencies \
             -DincludeScope=runtime \
             -DoutputDirectory=target/runtime-jars \
             -DoverWriteReleases=true \
             -DoverWriteSnapshots=true \
             -DoverWriteIfNewer=true
     docker run --rm \
+        --network none \
         --platform "$docker_platform" \
         -v "$WORKER_DIRECTORY:/workspace" \
         -w /workspace \
-        "$MAVEN_IMAGE" \
+        "$maven_image" \
         bash ./generate-third-party-notices.sh \
             --dependency-list target/runtime-dependencies.raw.txt \
             --jar-directory target/runtime-jars \
@@ -316,24 +355,26 @@ else
             --output target/THIRD-PARTY-NOTICES.md \
             --metadata target/legal-closure.properties
     docker run --rm \
+        --network none \
         --platform "$docker_platform" \
-        -v "$MAVEN_CACHE_VOLUME:/root/.m2" \
+        -v "$locked_maven_repository:/locked-m2:ro" \
         -v "$WORKER_DIRECTORY:/workspace" \
         -w /workspace \
-        "$MAVEN_IMAGE" \
-        mvn -B \
+        "$maven_image" \
+        mvn -B --offline -Dmaven.repo.local=/locked-m2 \
             -Dtest=LegalClosurePolicyTest \
             -Dlegal.runtimeDependencies=/workspace/target/runtime-dependencies.txt \
             -Dlegal.thirdPartyNotices=/workspace/target/THIRD-PARTY-NOTICES.md \
             -Dlegal.metadata=/workspace/target/legal-closure.properties \
             test
     docker run --rm \
+        --network none \
         --platform "$docker_platform" \
         --entrypoint native-image \
         -v "$WORKER_DIRECTORY:/workspace" \
         -v "$staging_directory:/out" \
         -w /workspace \
-        "$NATIVE_IMAGE" \
+        "$native_image" \
         "${native_image_common_arguments[@]}" \
         -jar target/ghostshell-sql-language-worker.jar \
         -o "/out/$binary_name"
@@ -354,10 +395,11 @@ if [[ "$rid" == osx-* ]]; then
     }
 elif [[ "$rid" == linux-* ]]; then
     minimum_glibc_version="$(docker run --rm \
+        --network none \
         --platform "$docker_platform" \
         --entrypoint /bin/bash \
         -v "$staging_directory:/out:ro" \
-        "$NATIVE_IMAGE" \
+        "$native_image" \
         -lc "readelf --version-info '/out/$binary_name' \
             | grep -o 'GLIBC_[0-9.]*' \
             | sed 's/GLIBC_//' \
@@ -376,20 +418,21 @@ fi
 if [[ "$mode" == "local" ]]; then
     (
         cd "$WORKER_DIRECTORY"
-        mvn -B \
+        mvn -B --offline "-Dmaven.repo.local=$locked_maven_repository" \
             -Dtest=NativeExecutableSmokeTest \
             "-Dnative.executable=$staged_artifact_path" \
             test
     )
 else
     docker run --rm \
+        --network none \
         --platform "$docker_platform" \
-        -v "$MAVEN_CACHE_VOLUME:/root/.m2" \
+        -v "$locked_maven_repository:/locked-m2:ro" \
         -v "$WORKER_DIRECTORY:/workspace" \
         -v "$staging_directory:/out:ro" \
         -w /workspace \
-        "$MAVEN_IMAGE" \
-        mvn -B \
+        "$maven_image" \
+        mvn -B --offline -Dmaven.repo.local=/locked-m2 \
             -Dtest=NativeExecutableSmokeTest \
             "-Dnative.executable=/out/$binary_name" \
             test
@@ -423,12 +466,20 @@ third_party_notices_sha256="$(legal_property thirdPartyNoticesSha256)"
 
 escaped_builder="${native_image_version//\\/\\\\}"
 escaped_builder="${escaped_builder//\"/\\\"}"
-builder_source="$NATIVE_IMAGE"
+maven_builder_source="$maven_image"
+native_image_builder_source="$native_image"
+builder_source="$native_image_builder_source"
 if [[ "$mode" == "local" ]]; then
+    maven_builder_source="local"
+    native_image_builder_source="local"
     builder_source="local"
 fi
 escaped_builder_source="${builder_source//\\/\\\\}"
 escaped_builder_source="${escaped_builder_source//\"/\\\"}"
+escaped_maven_builder_source="${maven_builder_source//\\/\\\\}"
+escaped_maven_builder_source="${escaped_maven_builder_source//\"/\\\"}"
+escaped_native_image_builder_source="${native_image_builder_source//\\/\\\\}"
+escaped_native_image_builder_source="${escaped_native_image_builder_source//\"/\\\"}"
 built_at_utc="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 minimum_version_field=""
 if [[ -n "$minimum_os_version" ]]; then
@@ -452,10 +503,13 @@ $minimum_version_field
   "runtimeDependencyCount": $runtime_dependency_count,
   "runtimeDependenciesSha256": "$runtime_dependencies_sha256",
   "thirdPartyNoticesSha256": "$third_party_notices_sha256",
+  "mavenContentLockSha256": "$maven_content_lock_sha256",
   "maximumRuntimeHeap": "$MAXIMUM_RUNTIME_HEAP",
   "buildMode": "$mode",
   "builder": "$escaped_builder",
   "builderSource": "$escaped_builder_source",
+  "mavenBuilderSource": "$escaped_maven_builder_source",
+  "nativeImageBuilderSource": "$escaped_native_image_builder_source",
   "builtAtUtc": "$built_at_utc"
 }
 EOF

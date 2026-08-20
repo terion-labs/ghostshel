@@ -60,6 +60,26 @@ public sealed partial class InMemorySessionHostClient
                 return ownerFailure;
             }
 
+            if (TryReplay(
+                    context,
+                    fingerprint,
+                    0,
+                    out HostResult<SessionSnapshot>? inGateReplay))
+            {
+                return inGateReplay;
+            }
+
+            using var operationCancellation = HostedOperationCancellation.Create(
+                context,
+                cancellationToken,
+                _timeProvider);
+            if (operationCancellation.Token.IsCancellationRequested)
+            {
+                return operationCancellation.DeadlineElapsed
+                    ? DeadlineExceeded<SessionSnapshot>(0)
+                    : Cancelled<SessionSnapshot>(0);
+            }
+
             if (TryGetSession(request.SessionId, out var existing))
             {
                 var existingSnapshot = existing.Snapshot();
@@ -82,95 +102,112 @@ public sealed partial class InMemorySessionHostClient
                         existingSnapshot.Descriptor.Revision);
                 }
 
+                var existingReservation = ReserveReplay<SessionSnapshot>(
+                    context,
+                    fingerprint,
+                    existingSnapshot.Descriptor.Revision,
+                    out var existingOutcomeReserved);
+                if (existingReservation is not null)
+                {
+                    return existingReservation;
+                }
+
                 if (WorkspaceGraphFailure<SessionSnapshot>(
                         _workspaceGraphs.LinkSession(
                             request.Owner,
                             PanelKind.DatabaseViewer,
                             request.SessionId)) is { } linkFailure)
                 {
-                    return linkFailure;
+                    return existingOutcomeReserved
+                        ? OutcomeUncertain<SessionSnapshot>(
+                            existingSnapshot.Descriptor.Revision)
+                        : linkFailure;
                 }
 
                 var existingResult = HostResult<SessionSnapshot>.Succeed(
                     existingSnapshot,
                     existingSnapshot.Descriptor.Revision);
-                StoreReplay(context, fingerprint, existingResult);
+                CompleteReplay(context, fingerprint, existingResult);
                 return existingResult;
             }
 
-            IDatabasePanelSession? engine = null;
-            PanelSessionSnapshot engineSnapshot;
-            using var operationCancellation = HostedOperationCancellation.Create(
+            var reservationReplay = ReserveReplay<SessionSnapshot>(
                 context,
-                cancellationToken,
-                _timeProvider);
+                fingerprint,
+                currentRevision: 0,
+                out var outcomeReserved);
+            if (reservationReplay is not null)
+            {
+                return reservationReplay;
+            }
+
+            IDatabasePanelSession? createdEngine = null;
+            HostedSession hosted;
             try
             {
-                engine = await _databasePanelFactory
+                createdEngine = await _databasePanelFactory
                     .CreateAsync(
                         request.SessionId,
                         request.Target,
                         operationCancellation.Token)
                     .ConfigureAwait(false);
-                if (engine.Id != request.SessionId
-                    || engine.Kind != PanelKind.DatabaseViewer
-                    || engine.Binding != binding)
+                if (createdEngine.Id != request.SessionId
+                    || createdEngine.Kind != PanelKind.DatabaseViewer
+                    || createdEngine.Binding != binding)
                 {
-                    await engine.DisposeAsync().ConfigureAwait(false);
-                    return HostResult<SessionSnapshot>.Fail(
+                    await DisposeUnownedSessionAsync(createdEngine).ConfigureAwait(false);
+                    createdEngine = null;
+                    var mismatch = HostResult<SessionSnapshot>.Fail(
                         HostError.Create(
                             HostErrorCode.EngineFailed,
                             "The database engine returned an invalid session."),
                         0);
+                    return outcomeReserved
+                        ? OutcomeUncertain<SessionSnapshot>(0)
+                        : mismatch;
                 }
 
-                engineSnapshot = await engine
-                    .SnapshotAsync(operationCancellation.Token)
+                var engineSnapshot = await createdEngine
+                    .SnapshotAsync(CancellationToken.None)
                     .ConfigureAwait(false);
-                if (operationCancellation.DeadlineElapsed)
+                hosted = new HostedSession(
+                    createdEngine,
+                    request.Owner,
+                    request.Title,
+                    engineSnapshot,
+                    _eventRetention,
+                    _timeProvider);
+                lock (_gate)
                 {
-                    await engine.DisposeAsync().ConfigureAwait(false);
-                    return DeadlineExceeded<SessionSnapshot>(0);
+                    _sessions.Add(request.SessionId, hosted);
                 }
+
+                createdEngine = null;
             }
             catch (OperationCanceledException)
             {
-                if (engine is not null)
-                {
-                    await engine.DisposeAsync().ConfigureAwait(false);
-                }
-
-                return operationCancellation.DeadlineElapsed
-                    ? DeadlineExceeded<SessionSnapshot>(0)
-                    : Cancelled<SessionSnapshot>(0);
+                await DisposeUnownedSessionAsync(createdEngine).ConfigureAwait(false);
+                return outcomeReserved
+                    ? OutcomeUncertain<SessionSnapshot>(0)
+                    : operationCancellation.DeadlineElapsed
+                        ? DeadlineExceeded<SessionSnapshot>(0)
+                        : Cancelled<SessionSnapshot>(0);
             }
             catch (Exception)
             {
-                if (engine is not null)
-                {
-                    await engine.DisposeAsync().ConfigureAwait(false);
-                }
+                await DisposeUnownedSessionAsync(createdEngine).ConfigureAwait(false);
 
                 // Provider errors can contain server-generated or connection
                 // material, so the hosted boundary returns a fixed message.
-                return HostResult<SessionSnapshot>.Fail(
+                var failure = HostResult<SessionSnapshot>.Fail(
                     new HostError(
                         HostErrorCode.EngineFailed,
                         "database_open_failed",
                         "The database session could not be opened."),
                     0);
-            }
-
-            var hosted = new HostedSession(
-                engine,
-                request.Owner,
-                request.Title,
-                engineSnapshot,
-                _eventRetention,
-                _timeProvider);
-            lock (_gate)
-            {
-                _sessions.Add(request.SessionId, hosted);
+                return outcomeReserved
+                    ? OutcomeUncertain<SessionSnapshot>(0)
+                    : failure;
             }
 
             if (WorkspaceGraphFailure<SessionSnapshot>(
@@ -179,15 +216,18 @@ public sealed partial class InMemorySessionHostClient
                         PanelKind.DatabaseViewer,
                         request.SessionId)) is { } rejected)
             {
-                return await RemoveRejectedSessionAsync(hosted, rejected)
+                var removed = await RemoveRejectedSessionAsync(hosted, rejected)
                     .ConfigureAwait(false);
+                return outcomeReserved
+                    ? OutcomeUncertain<SessionSnapshot>(0)
+                    : removed;
             }
 
             var snapshot = hosted.Snapshot();
             var result = HostResult<SessionSnapshot>.Succeed(
                 snapshot,
                 snapshot.Descriptor.Revision);
-            StoreReplay(context, fingerprint, result);
+            CompleteReplay(context, fingerprint, result);
             return result;
         }
         finally

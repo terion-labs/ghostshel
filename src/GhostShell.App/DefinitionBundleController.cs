@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using GhostShell.Application;
 using GhostShell.Core;
+using GhostShell.Docking;
 
 namespace GhostShell.App;
 
@@ -118,6 +119,7 @@ public sealed class DefinitionBundleController
 
             var path = NormalizeSelectedPath(selectedPath);
             var bundle = await ReadBundleAsync(path, cancellationToken).ConfigureAwait(false);
+            ValidateDockLayoutPayloads(bundle);
             var preflight = await _bundleStore.PreflightImportAsync(
                     bundle,
                     mode,
@@ -149,6 +151,11 @@ public sealed class DefinitionBundleController
         {
             return Invalid<DefinitionBundleImportPlan>(
                 "The selected definition bundle uses an unsupported JSON shape.");
+        }
+        catch (InvalidDataException)
+        {
+            return Invalid<DefinitionBundleImportPlan>(
+                "The selected definition bundle contains an oversized or invalid Dock layout.");
         }
         catch (Exception exception) when (IsFileBoundaryFailure(exception))
         {
@@ -272,6 +279,70 @@ public sealed class DefinitionBundleController
                 cancellationToken)
             .ConfigureAwait(false)
             ?? throw new JsonException("The definition bundle document is empty.");
+    }
+
+    private static void ValidateDockLayoutPayloads(PortableDefinitionBundle bundle)
+    {
+        if (bundle.Definitions is null)
+        {
+            // The authoritative store reports the malformed bundle shape.
+            return;
+        }
+
+        foreach (var definition in bundle.Definitions)
+        {
+            if (definition is null
+                || definition.Kind != DefinitionKind.Layout
+                || string.IsNullOrWhiteSpace(definition.PayloadJson))
+            {
+                continue;
+            }
+
+            JsonDocument document;
+            try
+            {
+                document = JsonDocument.Parse(definition.PayloadJson);
+            }
+            catch (JsonException)
+            {
+                // The authoritative store preflight owns general definition
+                // syntax diagnostics. This boundary only rejects a readable
+                // Dock field before that deeper deserialization begins.
+                continue;
+            }
+
+            using var parsedDocument = document;
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (!string.Equals(
+                        property.Name,
+                        "dockLayoutJson",
+                        StringComparison.OrdinalIgnoreCase)
+                    || property.Value.ValueKind is JsonValueKind.Null)
+                {
+                    continue;
+                }
+
+                if (property.Value.ValueKind != JsonValueKind.String)
+                {
+                    throw new JsonException(
+                        "A Dock layout payload must be encoded as a JSON string.");
+                }
+
+                var payload = property.Value.GetString();
+                if (!string.IsNullOrWhiteSpace(payload))
+                {
+                    _ = DockLayoutPayloadCodec.Decode(payload);
+                }
+
+                break;
+            }
+        }
     }
 
     private static string NormalizeSelectedPath(string selectedPath)

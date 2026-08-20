@@ -74,6 +74,29 @@ public sealed class RedisPanelSessionFactory(
 
 internal sealed class RedisPanelSession : IRedisPanelSession
 {
+    private const string ReadJsonPreviewScript = """
+        local json = redis.call('JSON.GET', KEYS[1], '.')
+        if not json then
+            return {'', 0, 0}
+        end
+        local length = string.len(json)
+        local maximum = tonumber(ARGV[1])
+        if length > maximum then
+            return {string.sub(json, 1, maximum), length, 1}
+        end
+        return {json, length, 0}
+        """;
+
+    private const string RemoveListElementScript = """
+        local current = redis.call('LINDEX', KEYS[1], ARGV[1])
+        if not current or current ~= ARGV[2] then
+            return 0
+        end
+        redis.call('LSET', KEYS[1], ARGV[1], ARGV[3])
+        redis.call('LREM', KEYS[1], 1, ARGV[3])
+        return 1
+        """;
+
     private readonly ConnectionMultiplexer _connection;
     private readonly IDatabaseTunnelLease? _tunnel;
     private readonly ISubscriber _subscriber;
@@ -365,7 +388,7 @@ internal sealed class RedisPanelSession : IRedisPanelSession
         CancellationToken cancellationToken) =>
         WaitAsync(_database.ListSetByIndexAsync(key.Bytes, index, value), cancellationToken);
 
-    public async Task RemoveEntryAsync(
+    public async Task<RedisEntryRemovalOutcome> RemoveEntryAsync(
         RedisKeyReference key,
         string type,
         RedisValueEntry entry,
@@ -379,18 +402,18 @@ internal sealed class RedisPanelSession : IRedisPanelSession
                         _database.HashDeleteAsync(redisKey, entry.Field ?? entry.Identity),
                         cancellationToken)
                     .ConfigureAwait(false);
-                break;
+                return RedisEntryRemovalOutcome.Removed;
             case "list":
-                await RemoveListElementAsync(redisKey, entry, cancellationToken).ConfigureAwait(false);
-                break;
+                return await RemoveListElementAsync(redisKey, entry, cancellationToken)
+                    .ConfigureAwait(false);
             case "set":
                 await WaitAsync(_database.SetRemoveAsync(redisKey, entry.Value), cancellationToken)
                     .ConfigureAwait(false);
-                break;
+                return RedisEntryRemovalOutcome.Removed;
             case "zset":
                 await WaitAsync(_database.SortedSetRemoveAsync(redisKey, entry.Value), cancellationToken)
                     .ConfigureAwait(false);
-                break;
+                return RedisEntryRemovalOutcome.Removed;
             case "stream":
                 // A stream entry is the whole field set at one id, so removing
                 // any of its fields removes the entry they belong to.
@@ -398,7 +421,7 @@ internal sealed class RedisPanelSession : IRedisPanelSession
                         _database.StreamDeleteAsync(redisKey, [StreamEntryId(entry.Identity)]),
                         cancellationToken)
                     .ConfigureAwait(false);
-                break;
+                return RedisEntryRemovalOutcome.Removed;
             default:
                 throw new NotSupportedException(
                     $"A {type} value has no entries that can be removed one at a time.");
@@ -406,11 +429,11 @@ internal sealed class RedisPanelSession : IRedisPanelSession
     }
 
     /// <summary>
-    /// Redis cannot delete a list element by position. The element is rewritten
-    /// to a value nothing else can hold, and that value is then removed once —
-    /// which is how redis-cli's own users are told to do it.
+    /// Redis cannot delete a list element by position. One server-side script
+    /// compares the live raw value with the snapshot, then rewrites and removes
+    /// it without exposing an intermediate marker to another client.
     /// </summary>
-    private async Task RemoveListElementAsync(
+    private async Task<RedisEntryRemovalOutcome> RemoveListElementAsync(
         RedisKey key,
         RedisValueEntry entry,
         CancellationToken cancellationToken)
@@ -421,11 +444,22 @@ internal sealed class RedisPanelSession : IRedisPanelSession
                 $"A list element is addressed by its position, and \"{entry.Identity}\" is not one.");
         }
 
+        if (entry.RawValue is null)
+        {
+            throw new InvalidOperationException(
+                "The list snapshot does not contain the raw value required for safe deletion.");
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
         var sentinel = $"__ghostshell_removed_{Guid.NewGuid():N}__";
-        await WaitAsync(_database.ListSetByIndexAsync(key, index, sentinel), cancellationToken)
+        var result = await _database.ScriptEvaluateAsync(
+                RemoveListElementScript,
+                [key],
+                [index.ToString(CultureInfo.InvariantCulture), entry.RawValue, sentinel])
             .ConfigureAwait(false);
-        await WaitAsync(_database.ListRemoveAsync(key, sentinel, count: 1), cancellationToken)
-            .ConfigureAwait(false);
+        return (long)result == 1
+            ? RedisEntryRemovalOutcome.Removed
+            : RedisEntryRemovalOutcome.Stale;
     }
 
     private static string StreamEntryId(string identity)
@@ -631,7 +665,11 @@ internal sealed class RedisPanelSession : IRedisPanelSession
         return new RedisKeySnapshot(
             summary,
             length,
-            [.. values.Select((value, index) => new RedisValueEntry(index.ToString(CultureInfo.InvariantCulture), null, Display(value)))],
+            [.. values.Select((value, index) => new RedisValueEntry(
+                index.ToString(CultureInfo.InvariantCulture),
+                null,
+                Display(value),
+                RawValue: [.. ((byte[]?)value ?? [])]))],
             length > limit);
     }
 
@@ -674,15 +712,38 @@ internal sealed class RedisPanelSession : IRedisPanelSession
 
     private async Task<RedisKeySnapshot> ReadJsonAsync(RedisKey key, RedisKeySummary summary, int limit)
     {
-        var result = await _database.ExecuteAsync("JSON.GET", key, ".").ConfigureAwait(false);
-        var json = result.ToString();
+        var maximumBytes = checked(limit * 4);
+        var result = await _database.ScriptEvaluateAsync(
+                ReadJsonPreviewScript,
+                [key],
+                [maximumBytes])
+            .ConfigureAwait(false);
+        var parts = (RedisResult[]?)result
+            ?? throw new RedisServerException("Redis returned an invalid bounded JSON response.");
+        if (parts.Length != 3
+            || !long.TryParse(
+                parts[1].ToString(),
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var byteLength)
+            || !long.TryParse(
+                parts[2].ToString(),
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var serverTruncated))
+        {
+            throw new RedisServerException("Redis returned an invalid bounded JSON response.");
+        }
+
+        var json = Encoding.UTF8.GetString((byte[]?)parts[0] ?? []);
         var value = json.Length > limit ? json[..limit] : json;
+        var truncated = serverTruncated == 1 || json.Length > limit;
         return new RedisKeySnapshot(
             summary,
-            Encoding.UTF8.GetByteCount(json),
+            byteLength,
             [new RedisValueEntry("$", "$", value)],
-            json.Length > limit,
-            json.Length > limit ? $"JSON preview is limited to {limit} characters." : null);
+            truncated,
+            truncated ? $"JSON preview is limited to {limit} characters." : null);
     }
 
     private async Task<RedisKeySnapshot> ReadTimeSeriesAsync(

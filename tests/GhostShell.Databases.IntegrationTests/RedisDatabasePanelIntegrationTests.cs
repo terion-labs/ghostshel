@@ -1,3 +1,4 @@
+using System.Text;
 using DotNet.Testcontainers.Builders;
 using GhostShell.Application;
 using GhostShell.Redis;
@@ -55,6 +56,15 @@ public sealed class RedisDatabasePanelIntegrationTests
             var jsonSnapshot = await session.ReadKeyAsync(Key("ghostshell:json"), 500, cancellationToken);
             Assert.Equal("json", jsonSnapshot.Summary.Type);
             Assert.Contains("\"name\":\"Ada\"", Assert.Single(jsonSnapshot.Entries).Value, StringComparison.Ordinal);
+            var largeJson = $$"""{"payload":"{{new string('x', 20_000)}}"}""";
+            await session.SetJsonAsync(Key("ghostshell:large-json"), largeJson, cancellationToken);
+            var boundedJson = await session.ReadKeyAsync(
+                Key("ghostshell:large-json"),
+                64,
+                cancellationToken);
+            Assert.True(boundedJson.Truncated);
+            Assert.Equal(Encoding.UTF8.GetByteCount(largeJson), boundedJson.Length);
+            Assert.InRange(Assert.Single(boundedJson.Entries).Value.Length, 1, 64);
             var timeSeriesSnapshot = await session.ReadKeyAsync(Key("ghostshell:timeseries"), 100, cancellationToken);
             Assert.Equal("timeseries", timeSeriesSnapshot.Summary.Type);
             Assert.Equal("12.5", Assert.Single(timeSeriesSnapshot.Entries).Value);
@@ -121,6 +131,92 @@ public sealed class RedisDatabasePanelIntegrationTests
                 (await session.ReadKeyAsync(Key("ghostshell:list"), 100, cancellationToken))
                     .Entries.Select(entry => entry.Value), StringComparer.Ordinal);
 
+            await session.AppendListValueAsync(Key("ghostshell:list"), "third", cancellationToken);
+            var staleListSnapshot = await session.ReadKeyAsync(
+                Key("ghostshell:list"),
+                100,
+                cancellationToken);
+            await using (var competing = await ConnectionMultiplexer.ConnectAsync(connectionString))
+            {
+                await competing.GetDatabase(1).ListLeftPushAsync("ghostshell:list", "inserted");
+            }
+
+            Assert.Equal(
+                RedisEntryRemovalOutcome.Stale,
+                await session.RemoveEntryAsync(
+                    Key("ghostshell:list"),
+                    "list",
+                    staleListSnapshot.Entries[0],
+                    cancellationToken));
+            var reconciledList = await session.ReadKeyAsync(
+                Key("ghostshell:list"),
+                100,
+                cancellationToken);
+            Assert.Equal(
+                ["inserted", "second", "third"],
+                reconciledList.Entries.Select(entry => entry.Value),
+                StringComparer.Ordinal);
+            Assert.DoesNotContain(
+                reconciledList.Entries,
+                entry => entry.Value.Contains("__ghostshell_removed_", StringComparison.Ordinal));
+
+            await session.AppendListValueAsync(Key("ghostshell:duplicates"), "same", cancellationToken);
+            await session.AppendListValueAsync(Key("ghostshell:duplicates"), "same", cancellationToken);
+            var duplicates = await session.ReadKeyAsync(
+                Key("ghostshell:duplicates"),
+                100,
+                cancellationToken);
+            Assert.Equal(
+                RedisEntryRemovalOutcome.Removed,
+                await session.RemoveEntryAsync(
+                    Key("ghostshell:duplicates"),
+                    "list",
+                    duplicates.Entries[1],
+                    cancellationToken));
+            Assert.Equal(
+                ["same"],
+                (await session.ReadKeyAsync(Key("ghostshell:duplicates"), 100, cancellationToken))
+                    .Entries.Select(entry => entry.Value),
+                StringComparer.Ordinal);
+
+            var binaryValue = new byte[] { 0x00, 0xFF, 0x01 };
+            await using (var competing = await ConnectionMultiplexer.ConnectAsync(connectionString))
+            {
+                await competing.GetDatabase(1).ListRightPushAsync("ghostshell:binary-list", binaryValue);
+            }
+
+            var binaryList = await session.ReadKeyAsync(
+                Key("ghostshell:binary-list"),
+                100,
+                cancellationToken);
+            var binaryEntry = Assert.Single(binaryList.Entries);
+            Assert.Equal(binaryValue, binaryEntry.RawValue);
+            Assert.Equal(
+                RedisEntryRemovalOutcome.Removed,
+                await session.RemoveEntryAsync(
+                    Key("ghostshell:binary-list"),
+                    "list",
+                    binaryEntry,
+                    cancellationToken));
+
+            var cancellationSnapshot = await session.ReadKeyAsync(
+                Key("ghostshell:duplicates"),
+                100,
+                cancellationToken);
+            using var cancelled = new CancellationTokenSource();
+            cancelled.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+                await session.RemoveEntryAsync(
+                    Key("ghostshell:duplicates"),
+                    "list",
+                    cancellationSnapshot.Entries[0],
+                    cancelled.Token));
+            Assert.Equal(
+                ["same"],
+                (await session.ReadKeyAsync(Key("ghostshell:duplicates"), 100, cancellationToken))
+                    .Entries.Select(entry => entry.Value),
+                StringComparer.Ordinal);
+
             await RemoveFirstEntryAsync(session, "ghostshell:set", "set", cancellationToken);
             Assert.Single((await session.ReadKeyAsync(Key("ghostshell:set"), 100, cancellationToken)).Entries);
 
@@ -144,7 +240,9 @@ public sealed class RedisDatabasePanelIntegrationTests
         CancellationToken cancellationToken)
     {
         var snapshot = await session.ReadKeyAsync(Key(name), 100, cancellationToken);
-        await session.RemoveEntryAsync(Key(name), type, snapshot.Entries[0], cancellationToken);
+        Assert.Equal(
+            RedisEntryRemovalOutcome.Removed,
+            await session.RemoveEntryAsync(Key(name), type, snapshot.Entries[0], cancellationToken));
     }
 
     private static RedisKeyReference Key(string value) =>

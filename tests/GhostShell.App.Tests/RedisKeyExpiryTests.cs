@@ -357,6 +357,27 @@ public sealed class RedisKeyExpiryTests
         Assert.Empty(session.Removals);
     }
 
+    [Fact]
+    public async Task AStaleListRemovalRefreshesWithoutRetryingTheMutation()
+    {
+        var session = new RedisPanelFixtures.StubSession(null, type: "list")
+        {
+            RemovalOutcome = RedisEntryRemovalOutcome.Stale,
+        };
+        using var panel = NewPanel(session, new RedisPanelFixtures.StoppedClock(DateTimeOffset.UnixEpoch));
+        await panel.Initialization;
+        panel.SelectedKey = panel.Keys[0];
+        panel.SelectedValueEntry = panel.ValueEntries[0];
+        var readsBeforeRemoval = session.ReadCount;
+
+        panel.RemoveEntryCommand.Execute(null);
+
+        Assert.Single(session.Removals);
+        Assert.Equal(readsBeforeRemoval + 1, session.ReadCount);
+        Assert.Null(panel.SelectedValueEntry);
+        Assert.Contains("changed after it was displayed", panel.ErrorMessage, StringComparison.Ordinal);
+    }
+
 
     /// <summary>
     /// Two forms, because they are two acts: one rewrites what is already in

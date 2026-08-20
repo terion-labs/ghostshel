@@ -6,9 +6,11 @@ using GhostShell.Application;
 namespace GhostShell.Browser;
 
 /// <summary>
-/// Owns the persistent CEF request contexts behind GhostSHELL browser
-/// profiles. A profile is further sharded by network route because Chromium's
-/// proxy preference belongs to the request context that also owns storage.
+/// Owns the ephemeral CEF request contexts behind GhostSHELL browser profiles.
+/// A profile is further sharded by network route because Chromium's proxy
+/// preference belongs to the request context that also owns in-memory state.
+/// The data-control API remains for compatibility and reports no retained data
+/// after startup removes legacy persistent CEF storage.
 /// </summary>
 public sealed class CefBrowserProfileStore : IBrowserProfileDataControl, IDisposable
 {
@@ -22,8 +24,6 @@ public sealed class CefBrowserProfileStore : IBrowserProfileDataControl, IDispos
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
         _rootDirectory = Path.GetFullPath(rootDirectory);
-        Directory.CreateDirectory(_rootDirectory);
-        RestrictDirectory(_rootDirectory);
     }
 
     public CefBrowserProfileLease AcquireLocal(BrowserProfileKey profile) =>
@@ -131,15 +131,18 @@ public sealed class CefBrowserProfileStore : IBrowserProfileDataControl, IDispos
                 }
 
                 existing.ActiveLeases++;
-                return new CefBrowserProfileLease(this, key, existing.Context);
+                return new CefBrowserProfileLease(
+                    this,
+                    key,
+                    existing.Context,
+                    existing.SocksProxyPort is null
+                        ? BrowserNetworkRouteKind.Local
+                        : BrowserNetworkRouteKind.SshRouted);
             }
 
-            var directory = ContextDirectory(key);
-            Directory.CreateDirectory(directory);
-            RestrictDirectory(directory);
-            var context = Cef.CreateRequestContext(directory)
+            var context = Cef.CreateRequestContext()
                 ?? throw new InvalidOperationException(
-                    "The embedded browser could not create its storage profile.");
+                    "The embedded browser could not create its ephemeral profile.");
             try
             {
                 if (socksProxyPort is { } port)
@@ -161,7 +164,13 @@ public sealed class CefBrowserProfileStore : IBrowserProfileDataControl, IDispos
                     {
                         ActiveLeases = 1,
                     });
-                return new CefBrowserProfileLease(this, key, context);
+                return new CefBrowserProfileLease(
+                    this,
+                    key,
+                    context,
+                    socksProxyPort is null
+                        ? BrowserNetworkRouteKind.Local
+                        : BrowserNetworkRouteKind.SshRouted);
             }
             catch
             {
@@ -245,16 +254,6 @@ public sealed class CefBrowserProfileStore : IBrowserProfileDataControl, IDispos
         }
     }
 
-    private string ContextDirectory(ContextKey key)
-    {
-        var profileDirectory = key.Profile.Kind == BrowserProfileKind.Global
-            ? ScopeDirectory(BrowserProfileKind.Global)
-            : Path.Combine(
-                ScopeDirectory(key.Profile.Kind),
-                StableName(key.Profile.Identity));
-        return Path.Combine(profileDirectory, key.Route);
-    }
-
     private string ScopeDirectory(BrowserProfileKind kind) => Path.Combine(
         _rootDirectory,
         kind switch
@@ -328,7 +327,7 @@ public sealed class CefBrowserProfileStore : IBrowserProfileDataControl, IDispos
         }
     }
 
-    private static void DeleteOwnedDirectory(string directory)
+    internal static void DeleteOwnedDirectory(string directory)
     {
         if (!Directory.Exists(directory))
         {
@@ -369,18 +368,6 @@ public sealed class CefBrowserProfileStore : IBrowserProfileDataControl, IDispos
         return false;
     }
 
-    private static void RestrictDirectory(string directory)
-    {
-        if (!OperatingSystem.IsWindows())
-        {
-            File.SetUnixFileMode(
-                directory,
-                UnixFileMode.UserRead
-                | UnixFileMode.UserWrite
-                | UnixFileMode.UserExecute);
-        }
-    }
-
     internal readonly record struct ContextKey(
         BrowserProfileKey Profile,
         string Route);
@@ -410,12 +397,16 @@ public sealed class CefBrowserProfileLease : IDisposable
     internal CefBrowserProfileLease(
         CefBrowserProfileStore owner,
         CefBrowserProfileStore.ContextKey key,
-        CefRequestContext context)
+        CefRequestContext context,
+        BrowserNetworkRouteKind routeKind)
     {
         _owner = owner;
         _key = key;
         _context = context;
+        RouteKind = routeKind;
     }
+
+    internal BrowserNetworkRouteKind RouteKind { get; }
 
     internal CefBrowserView CreateView() => new(_context);
 

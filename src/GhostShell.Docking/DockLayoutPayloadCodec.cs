@@ -10,18 +10,18 @@ namespace GhostShell.Docking;
 public static class DockLayoutPayloadCodec
 {
     private const string BrotliPrefix = "dock.br.1:";
-    private const int MaximumDecodedBytes = 4 * 1024 * 1024;
+    public const int MaximumDecodedBytes = 4 * 1024 * 1024;
 
     public static string Encode(string json)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(json);
-        var source = Encoding.UTF8.GetBytes(json);
-        if (source.Length > MaximumDecodedBytes)
+        if (Encoding.UTF8.GetByteCount(json) > MaximumDecodedBytes)
         {
             throw new InvalidDataException(
                 "The serialized Dock layout exceeds the supported size.");
         }
 
+        var source = Encoding.UTF8.GetBytes(json);
         using var destination = new MemoryStream();
         using (var compressor = new BrotliStream(
                    destination,
@@ -42,7 +42,13 @@ public static class DockLayoutPayloadCodec
         ArgumentException.ThrowIfNullOrWhiteSpace(payload);
         if (!payload.StartsWith(BrotliPrefix, StringComparison.Ordinal))
         {
-            // Dock JSON written before the compact envelope remains readable.
+            if (Encoding.UTF8.GetByteCount(payload) > MaximumDecodedBytes)
+            {
+                throw new InvalidDataException(
+                    "The serialized Dock layout exceeds the supported size.");
+            }
+
+            // Bounded Dock JSON written before the compact envelope remains readable.
             return payload;
         }
 

@@ -7,6 +7,12 @@ namespace GhostShell.Infrastructure;
 
 public sealed class GhostShellDatabase : IAsyncDisposable
 {
+    private const UnixFileMode OwnerDirectoryMode =
+        UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+
+    private const UnixFileMode OwnerFileMode =
+        UnixFileMode.UserRead | UnixFileMode.UserWrite;
+
     /// <summary>
     /// The engine version this build bundles, asserted so a stray system
     /// library can never be swapped in underneath. The bundled SQLite3
@@ -336,7 +342,7 @@ public sealed class GhostShellDatabase : IAsyncDisposable
         int nextVersion,
         CancellationToken cancellationToken)
     {
-        Directory.CreateDirectory(_options.BackupDirectory);
+        EnsureOwnerOnlyBackupDirectory();
         var timestamp = _timeProvider.GetUtcNow().ToString(
             "yyyyMMddTHHmmssfffZ",
             CultureInfo.InvariantCulture);
@@ -347,12 +353,21 @@ public sealed class GhostShellDatabase : IAsyncDisposable
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
+            CreateOwnerOnlyFile(temporaryPath);
             var builder = new SqliteConnectionStringBuilder
             {
                 DataSource = temporaryPath,
                 Mode = SqliteOpenMode.ReadWriteCreate,
                 Pooling = false,
             };
+            if (_options.PasswordProvider?.Invoke() is { } password)
+            {
+                // SQLite online backup applies the destination connection's
+                // codec. Match the source's active application key so the
+                // backup cannot silently cross into plaintext storage.
+                builder.Password = password;
+            }
+
             await using (var destination = new SqliteConnection(builder.ConnectionString))
             {
                 await destination.OpenAsync(cancellationToken).ConfigureAwait(false);
@@ -363,6 +378,7 @@ public sealed class GhostShellDatabase : IAsyncDisposable
 
             cancellationToken.ThrowIfCancellationRequested();
             File.Move(temporaryPath, backupPath, overwrite: false);
+            EnsureOwnerOnlyFileMode(backupPath);
         }
         catch (Exception backupFailure)
         {
@@ -381,6 +397,43 @@ public sealed class GhostShellDatabase : IAsyncDisposable
             }
 
             throw;
+        }
+    }
+
+    private void EnsureOwnerOnlyBackupDirectory()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Directory.CreateDirectory(_options.BackupDirectory);
+        }
+        else
+        {
+            Directory.CreateDirectory(_options.BackupDirectory, OwnerDirectoryMode);
+            File.SetUnixFileMode(_options.BackupDirectory, OwnerDirectoryMode);
+        }
+    }
+
+    private static void CreateOwnerOnlyFile(string path)
+    {
+        var options = new FileStreamOptions
+        {
+            Mode = FileMode.CreateNew,
+            Access = FileAccess.ReadWrite,
+            Share = FileShare.None,
+        };
+        if (!OperatingSystem.IsWindows())
+        {
+            options.UnixCreateMode = OwnerFileMode;
+        }
+
+        using var _ = new FileStream(path, options);
+    }
+
+    private static void EnsureOwnerOnlyFileMode(string path)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(path, OwnerFileMode);
         }
     }
 

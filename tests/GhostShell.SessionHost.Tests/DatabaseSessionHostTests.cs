@@ -16,6 +16,192 @@ public sealed class DatabaseSessionHostTests
     private static readonly SessionId SessionId = new("database-session");
 
     [Fact]
+    public async Task CancellationDuringDatabaseSessionCreationRetainsUncertainReplay()
+    {
+        var factory = new FakeDatabasePanelSessionFactory();
+        var creationEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        factory.AfterCreateAsync = async (_, cancellationToken) =>
+        {
+            creationEntered.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken)
+                .ConfigureAwait(false);
+        };
+        await using var host = CreateHost(factory);
+        var request = Request();
+        var context = Context(
+            new IdempotencyKey("database-create-cancelled"));
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = host.EnsureDatabaseSessionAsync(
+            request,
+            context,
+            cancellation.Token).AsTask();
+        await creationEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+
+        var uncertain = await pending;
+        var replay = await host.EnsureDatabaseSessionAsync(
+            request,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            uncertain.Error().Code);
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            replay.Error().Code);
+        Assert.Equal(1, factory.CreateCount);
+    }
+
+    [Fact]
+    public async Task DatabaseSessionSnapshotFailureDisposesEngineAndRetainsUncertainReplay()
+    {
+        var factory = new FakeDatabasePanelSessionFactory
+        {
+            BeforeSnapshotForNewSessions = static _ =>
+                ValueTask.FromException(new IOException("fake snapshot failure")),
+        };
+        await using var host = CreateHost(factory);
+        var request = Request();
+        var context = Context(new IdempotencyKey("database-create-failed"));
+
+        var uncertain = await host.EnsureDatabaseSessionAsync(
+            request,
+            context,
+            CancellationToken.None);
+        var replay = await host.EnsureDatabaseSessionAsync(
+            request,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            uncertain.Error().Code);
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            replay.Error().Code);
+        Assert.Equal(1, factory.Session!.DisposeCount);
+        Assert.Equal(1, factory.CreateCount);
+    }
+
+    [Fact]
+    public async Task ConcurrentDatabaseCreationCompletesKnownSuccessAfterCallerCancellation()
+    {
+        var factory = new FakeDatabasePanelSessionFactory();
+        var snapshotEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSnapshot = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var snapshotToken = CancellationToken.None;
+        factory.BeforeSnapshotForNewSessions = async cancellationToken =>
+        {
+            snapshotToken = cancellationToken;
+            snapshotEntered.TrySetResult();
+            await releaseSnapshot.Task.ConfigureAwait(false);
+        };
+        await using var host = CreateHost(factory);
+        var request = Request();
+        var context = Context(new IdempotencyKey("database-create-known"));
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = host.EnsureDatabaseSessionAsync(
+            request,
+            context,
+            cancellation.Token).AsTask();
+        await snapshotEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+        var concurrentReplay = await host.EnsureDatabaseSessionAsync(
+            request,
+            context,
+            CancellationToken.None);
+        releaseSnapshot.TrySetResult();
+
+        var completed = await pending;
+        var completedReplay = await host.EnsureDatabaseSessionAsync(
+            request,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            concurrentReplay.Error().Code);
+        Assert.IsType<HostResult<SessionSnapshot>.Success>(completed);
+        Assert.IsType<HostResult<SessionSnapshot>.Success>(completedReplay);
+        Assert.False(snapshotToken.CanBeCanceled);
+        Assert.Equal(1, factory.CreateCount);
+    }
+
+    [Fact]
+    public async Task CancellationBeforeDatabaseSessionCreationLeavesKeyFresh()
+    {
+        var factory = new FakeDatabasePanelSessionFactory();
+        await using var host = CreateHost(factory);
+        var request = Request();
+        var context = Context(
+            new IdempotencyKey("database-create-pre-cancelled"));
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        var cancelled = await host.EnsureDatabaseSessionAsync(
+            request,
+            context,
+            cancellation.Token);
+        var retry = await host.EnsureDatabaseSessionAsync(
+            request,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(HostErrorCode.Cancelled, cancelled.Error().Code);
+        Assert.IsType<HostResult<SessionSnapshot>.Success>(retry);
+        Assert.Equal(1, factory.CreateCount);
+    }
+
+    [Fact]
+    public async Task DatabaseOpenReservationRejectsCrossFamilyTerminalOpen()
+    {
+        var factory = new FakeDatabasePanelSessionFactory();
+        var terminals = new FakeTerminalSessionFactory();
+        var snapshotEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSnapshot = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        factory.BeforeSnapshotForNewSessions = async _ =>
+        {
+            snapshotEntered.TrySetResult();
+            await releaseSnapshot.Task.ConfigureAwait(false);
+        };
+        await using var host = CreateHost(factory, terminals);
+        var context = Context(new IdempotencyKey("database-cross-family"));
+
+        var database = host.EnsureDatabaseSessionAsync(
+            Request(),
+            context,
+            CancellationToken.None).AsTask();
+        await snapshotEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var rejected = await host.EnsureTerminalSessionAsync(
+            new EnsureTerminalSessionRequest(
+                new SessionId("database-cross-family-terminal"),
+                new SessionOwner(
+                    HostMode.Desktop,
+                    WindowId,
+                    WorkspaceId,
+                    TabId,
+                    new PanelInstanceId("database-cross-family-terminal-panel")),
+                "Terminal",
+                new TerminalLaunchRequest("/tmp")),
+            context,
+            CancellationToken.None);
+        releaseSnapshot.TrySetResult();
+
+        Assert.Equal(HostErrorCode.IdempotencyKeyReused, rejected.Error().Code);
+        Assert.IsType<HostResult<SessionSnapshot>.Success>(await database);
+        Assert.Equal(1, factory.CreateCount);
+        Assert.Equal(0, terminals.CreateCount);
+    }
+
+    [Fact]
     public async Task NegotiationReflectsTheConfiguredDatabaseFactory()
     {
         var factory = new FakeDatabasePanelSessionFactory();
@@ -164,9 +350,10 @@ public sealed class DatabaseSessionHostTests
     }
 
     private static InMemorySessionHostClient CreateHost(
-        IDatabasePanelSessionFactory? databaseFactory) =>
+        IDatabasePanelSessionFactory? databaseFactory,
+        ITerminalSessionFactory? terminalFactory = null) =>
         new(
-            new FakeTerminalSessionFactory(),
+            terminalFactory ?? new FakeTerminalSessionFactory(),
             new DesktopLifecyclePolicy(),
             new ManualTimeProvider(DateTimeOffset.UnixEpoch),
             databasePanelFactory: databaseFactory);
@@ -245,9 +432,21 @@ public sealed class DatabaseSessionHostTests
 
         public bool FailOpen { get; init; }
 
+        public Func<FakeDatabasePanelSession, CancellationToken, ValueTask>? AfterCreateAsync
+        {
+            get;
+            set;
+        }
+
+        public Func<CancellationToken, ValueTask>? BeforeSnapshotForNewSessions
+        {
+            get;
+            set;
+        }
+
         public FakeDatabasePanelSession? Session { get; private set; }
 
-        public ValueTask<IDatabasePanelSession> CreateAsync(
+        public async ValueTask<IDatabasePanelSession> CreateAsync(
             SessionId sessionId,
             DatabaseSessionTarget target,
             CancellationToken cancellationToken)
@@ -260,11 +459,20 @@ public sealed class DatabaseSessionHostTests
                     "Provider included Password=needle in its exception.");
             }
 
-            Session = new FakeDatabasePanelSession(
+            var session = new FakeDatabasePanelSession(
                 sessionId,
                 target.Binding,
-                RelationalCapabilities);
-            return ValueTask.FromResult<IDatabasePanelSession>(Session);
+                RelationalCapabilities)
+            {
+                BeforeSnapshotAsync = BeforeSnapshotForNewSessions,
+            };
+            Session = session;
+            if (AfterCreateAsync is { } afterCreate)
+            {
+                await afterCreate(session, cancellationToken).ConfigureAwait(false);
+            }
+
+            return session;
         }
     }
 
@@ -290,6 +498,10 @@ public sealed class DatabaseSessionHostTests
             IsReady: true);
 
         public int ListCount { get; private set; }
+
+        public Func<CancellationToken, ValueTask>? BeforeSnapshotAsync { get; set; }
+
+        public int DisposeCount { get; private set; }
 
         public ValueTask<DatabaseObjectPage> ListObjectsAsync(
             int maximumObjects,
@@ -323,11 +535,16 @@ public sealed class DatabaseSessionHostTests
             ValueTask.FromException<DatabaseSchemaGraphSnapshot>(
                 new NotSupportedException());
 
-        public ValueTask<PanelSessionSnapshot> SnapshotAsync(
+        public async ValueTask<PanelSessionSnapshot> SnapshotAsync(
             CancellationToken cancellationToken)
         {
+            if (BeforeSnapshotAsync is { } beforeSnapshot)
+            {
+                await beforeSnapshot(cancellationToken).ConfigureAwait(false);
+            }
+
             cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult(_closed
+            return _closed
                 ? new PanelSessionSnapshot(
                     SessionLifecycle.Closed,
                     SessionHealth.Ended,
@@ -337,7 +554,7 @@ public sealed class DatabaseSessionHostTests
                     SessionLifecycle.Active,
                     SessionHealth.Healthy,
                     false,
-                    "Ready"));
+                    "Ready");
         }
 
         public async IAsyncEnumerable<PanelSessionEvent> WatchAsync(
@@ -367,6 +584,7 @@ public sealed class DatabaseSessionHostTests
 
         public ValueTask DisposeAsync()
         {
+            DisposeCount++;
             _closed = true;
             return ValueTask.CompletedTask;
         }

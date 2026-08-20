@@ -534,15 +534,16 @@ public sealed class DockerEngineClient(
             : request.Limit + 1;
         var script = isSearch
             ? """
-              status_file="${TMPDIR:-/tmp}/ghostshell-docker-logs-$$.status"
-              trap 'rm -f "$status_file"' EXIT HUP INT TERM
+              status_dir=$(mktemp -d "${TMPDIR:-/tmp}/ghostshell-docker-logs.XXXXXX") || exit 1
+              status_file="$status_dir/status"
+              trap 'rm -f "$status_file"; rmdir "$status_dir"' EXIT HUP INT TERM
               {
                 case "$1" in
                   before) docker container logs --timestamps --until "$3" "$2" 2>&1 ;;
                   since) docker container logs --timestamps --since "$3" "$2" 2>&1 ;;
                   *) docker container logs --timestamps "$2" 2>&1 ;;
                 esac
-                printf '%s' "$?" > "$status_file"
+                printf '%s' "$?" > "$status_file" || exit 1
               } | grep -F -i -C "$5" -- "$6" | tail -n "$4"
               docker_status=$(cat "$status_file" 2>/dev/null || printf '1')
               [ "$docker_status" -eq 0 ] || exit "$docker_status"

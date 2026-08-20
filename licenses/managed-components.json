@@ -1572,13 +1572,13 @@
       "nuspecLicense": "Apache-2.0"
     },
     {
-      "identity": "runtimepack.Microsoft.NETCore.App.Runtime.osx-arm64/10.0.10",
+      "identity": "runtimepack.Microsoft.NETCore.App.Runtime.osx-arm64/10.0.11",
       "kind": "runtime",
       "depsType": "runtimepack",
       "licenseDeclared": "NOASSERTION",
       "nuGetId": "Microsoft.NETCore.App.Runtime.osx-arm64",
-      "contentHash": "XxRHSisV/tz6/SY78LtvRMPDSSgDIzkJWNzVSDs7/TKKXUoJI+xWmcNqOdSHTRGnLYTY+e5tOU2+jopCgcbxKQ==",
-      "nupkgSha512": "TDvyn0oygOw20euEuEuo4jLcflyDwNnuV4VARBN0LXVwAJe2CpvaDdXJvqY2lU6C7XJItjz3wgjLKRZl/nYJNw==",
+      "contentHash": "zjYmMH4pfOm7QrSWX5iwVG020vv8UlcIlCL8XppJd3yX8dQAvrujkZGDsH2apr8EUY39BYMAXDr5MLgRcAolQg==",
+      "nupkgSha512": "7+/J1t8Daj/Rtrf7ySI0ONwPH/pGXmIClDQKVXnv6L6WBfYBC38azortAsqPRlvJw+UKodGl8nwydxNlxedxCA==",
       "nuspecLicenseType": "expression",
       "nuspecLicense": "MIT"
     }

@@ -58,6 +58,26 @@ public sealed partial class InMemorySessionHostClient
                 return ownerFailure;
             }
 
+            if (TryReplay(
+                    context,
+                    fingerprint,
+                    0,
+                    out HostResult<SessionSnapshot>? inGateReplay))
+            {
+                return inGateReplay;
+            }
+
+            using var operationCancellation = HostedOperationCancellation.Create(
+                context,
+                cancellationToken,
+                _timeProvider);
+            if (operationCancellation.Token.IsCancellationRequested)
+            {
+                return operationCancellation.DeadlineElapsed
+                    ? DeadlineExceeded<SessionSnapshot>(0)
+                    : Cancelled<SessionSnapshot>(0);
+            }
+
             if (TryGetSession(request.SessionId, out var existing))
             {
                 var existingSnapshot = existing.Snapshot();
@@ -92,79 +112,104 @@ public sealed partial class InMemorySessionHostClient
                         existingSnapshot.Descriptor.Revision);
                 }
 
+                var existingReservation = ReserveReplay<SessionSnapshot>(
+                    context,
+                    fingerprint,
+                    existingSnapshot.Descriptor.Revision,
+                    out var existingOutcomeReserved);
+                if (existingReservation is not null)
+                {
+                    return existingReservation;
+                }
+
                 if (WorkspaceGraphFailure<SessionSnapshot>(
                         _workspaceGraphs.LinkSession(
                             request.Owner,
                             PanelKind.FileViewer,
                             request.SessionId)) is { } existingLinkFailure)
                 {
-                    return existingLinkFailure;
+                    return existingOutcomeReserved
+                        ? OutcomeUncertain<SessionSnapshot>(
+                            existingSnapshot.Descriptor.Revision)
+                        : existingLinkFailure;
                 }
 
                 var existingResult = HostResult<SessionSnapshot>.Succeed(
                     existingSnapshot,
                     existingSnapshot.Descriptor.Revision);
-                StoreReplay(context, fingerprint, existingResult);
+                CompleteReplay(context, fingerprint, existingResult);
                 return existingResult;
             }
 
-            IFilePanelSession engine;
-            PanelSessionSnapshot engineSnapshot;
-            FileSessionMetadata createdFileMetadata;
-            using var operationCancellation = HostedOperationCancellation.Create(
+            var reservationReplay = ReserveReplay<SessionSnapshot>(
                 context,
-                cancellationToken,
-                _timeProvider);
+                fingerprint,
+                currentRevision: 0,
+                out var outcomeReserved);
+            if (reservationReplay is not null)
+            {
+                return reservationReplay;
+            }
+
+            IFilePanelSession? createdEngine = null;
+            FileSessionMetadata createdFileMetadata;
+            HostedSession hosted;
             try
             {
-                engine = await _filePanelFactory
+                createdEngine = await _filePanelFactory
                     .CreateAsync(
                         request.SessionId,
                         request.InitialLocation,
                         operationCancellation.Token)
                     .ConfigureAwait(false);
-                engineSnapshot = await engine
-                    .SnapshotAsync(operationCancellation.Token)
-                    .ConfigureAwait(false);
-                createdFileMetadata = engine.Metadata;
+                createdFileMetadata = createdEngine.Metadata;
                 if (createdFileMetadata.TrustedRoot != request.InitialLocation)
                 {
-                    await engine.DisposeAsync().ConfigureAwait(false);
-                    return HostResult<SessionSnapshot>.Fail(
+                    await DisposeUnownedSessionAsync(createdEngine).ConfigureAwait(false);
+                    createdEngine = null;
+                    var mismatch = HostResult<SessionSnapshot>.Fail(
                         HostError.Create(
                             HostErrorCode.EngineFailed,
                             "The File Viewer engine did not bind the requested trusted root."),
                         currentRevision: 0);
+                    return outcomeReserved
+                        ? OutcomeUncertain<SessionSnapshot>(0)
+                        : mismatch;
                 }
 
-                if (operationCancellation.DeadlineElapsed)
+                var engineSnapshot = await createdEngine
+                    .SnapshotAsync(CancellationToken.None)
+                    .ConfigureAwait(false);
+                hosted = new HostedSession(
+                    createdEngine,
+                    request.Owner,
+                    request.Title,
+                    engineSnapshot,
+                    _eventRetention,
+                    _timeProvider,
+                    fileMetadata: createdFileMetadata);
+                lock (_gate)
                 {
-                    await engine.DisposeAsync().ConfigureAwait(false);
-                    return DeadlineExceeded<SessionSnapshot>(0);
+                    _sessions.Add(request.SessionId, hosted);
                 }
+
+                createdEngine = null;
             }
             catch (OperationCanceledException)
             {
-                return operationCancellation.DeadlineElapsed
-                    ? DeadlineExceeded<SessionSnapshot>(0)
-                    : Cancelled<SessionSnapshot>(0);
+                await DisposeUnownedSessionAsync(createdEngine).ConfigureAwait(false);
+                return outcomeReserved
+                    ? OutcomeUncertain<SessionSnapshot>(0)
+                    : operationCancellation.DeadlineElapsed
+                        ? DeadlineExceeded<SessionSnapshot>(0)
+                        : Cancelled<SessionSnapshot>(0);
             }
             catch (Exception exception)
             {
-                return EngineFailure<SessionSnapshot>(exception, 0);
-            }
-
-            var hosted = new HostedSession(
-                engine,
-                request.Owner,
-                request.Title,
-                engineSnapshot,
-                _eventRetention,
-                _timeProvider,
-                fileMetadata: createdFileMetadata);
-            lock (_gate)
-            {
-                _sessions.Add(request.SessionId, hosted);
+                await DisposeUnownedSessionAsync(createdEngine).ConfigureAwait(false);
+                return outcomeReserved
+                    ? OutcomeUncertain<SessionSnapshot>(0)
+                    : EngineFailure<SessionSnapshot>(exception, 0);
             }
 
             if (WorkspaceGraphFailure<SessionSnapshot>(
@@ -173,15 +218,18 @@ public sealed partial class InMemorySessionHostClient
                         PanelKind.FileViewer,
                         request.SessionId)) is { } linkFailure)
             {
-                return await RemoveRejectedSessionAsync(hosted, linkFailure)
+                var rejected = await RemoveRejectedSessionAsync(hosted, linkFailure)
                     .ConfigureAwait(false);
+                return outcomeReserved
+                    ? OutcomeUncertain<SessionSnapshot>(0)
+                    : rejected;
             }
 
             var snapshot = hosted.Snapshot();
             var result = HostResult<SessionSnapshot>.Succeed(
                 snapshot,
                 snapshot.Descriptor.Revision);
-            StoreReplay(context, fingerprint, result);
+            CompleteReplay(context, fingerprint, result);
             return result;
         }
         finally
@@ -461,16 +509,39 @@ public sealed partial class InMemorySessionHostClient
                 context,
                 cancellationToken,
                 _timeProvider);
+            if (operationCancellation.Token.IsCancellationRequested)
+            {
+                return operationCancellation.DeadlineElapsed
+                    ? DeadlineExceeded<FilePanelResult<T>>(revision)
+                    : Cancelled<FilePanelResult<T>>(revision);
+            }
+
+            HostResult<FilePanelResult<T>>? reservationReplay = null;
+            var outcomeReserved = false;
+            if (changesState)
+            {
+                reservationReplay = ReserveReplay<FilePanelResult<T>>(
+                    context,
+                    fingerprint,
+                    revision,
+                    out outcomeReserved);
+            }
+
+            if (reservationReplay is not null)
+            {
+                return reservationReplay;
+            }
+
             try
             {
                 var fileResult = await operation(filePanel, operationCancellation.Token)
                     .ConfigureAwait(false);
-                if (cancellationToken.IsCancellationRequested)
+                if (!outcomeReserved && cancellationToken.IsCancellationRequested)
                 {
                     return Cancelled<FilePanelResult<T>>(revision);
                 }
 
-                if (operationCancellation.DeadlineElapsed)
+                if (!outcomeReserved && operationCancellation.DeadlineElapsed)
                 {
                     return DeadlineExceeded<FilePanelResult<T>>(revision);
                 }
@@ -478,7 +549,10 @@ public sealed partial class InMemorySessionHostClient
                 if (changesState && fileResult.IsSuccess)
                 {
                     var engineSnapshot = await filePanel
-                        .SnapshotAsync(operationCancellation.Token)
+                        .SnapshotAsync(
+                            outcomeReserved
+                                ? CancellationToken.None
+                                : operationCancellation.Token)
                         .ConfigureAwait(false);
                     if (!session.ApplyEngineSnapshot(engineSnapshot))
                     {
@@ -492,20 +566,27 @@ public sealed partial class InMemorySessionHostClient
                     resultingRevision);
                 if (changesState)
                 {
-                    StoreReplay(context, fingerprint, result);
+                    CompleteReplay(context, fingerprint, result);
                 }
 
                 return result;
             }
             catch (OperationCanceledException)
             {
+                if (outcomeReserved)
+                {
+                    return OutcomeUncertain<FilePanelResult<T>>(revision);
+                }
+
                 return operationCancellation.DeadlineElapsed
                     ? DeadlineExceeded<FilePanelResult<T>>(revision)
                     : Cancelled<FilePanelResult<T>>(revision);
             }
             catch (Exception exception)
             {
-                return EngineFailure<FilePanelResult<T>>(exception, revision);
+                return outcomeReserved
+                    ? OutcomeUncertain<FilePanelResult<T>>(revision)
+                    : EngineFailure<FilePanelResult<T>>(exception, revision);
             }
         }
         finally

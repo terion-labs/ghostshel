@@ -3311,19 +3311,6 @@ string.Equals(SelectedProfile?.Id, BuiltInFileProviders.HomeId.Value, StringComp
     }
 
     /// <summary>
-    /// The pixel budget a preview image is scaled into. It bounds the memory a
-    /// single preview can cost regardless of what the file claims to be.
-    /// </summary>
-    private const long MaximumPreviewPixels = 8_000_000;
-
-    /// <summary>
-    /// The width an ordinary image is decoded to. Decoding at the source
-    /// resolution would hold a camera photograph's full bitmap in memory for a
-    /// preview a fraction of that size.
-    /// </summary>
-    private const int MaximumPreviewImageWidth = 2400;
-
-    /// <summary>
     /// Shows an image, decoding it first when the drawing stack cannot read the
     /// format. Formats it can read are drawn from the preview bytes already in
     /// hand; the rest need the whole file, which is fetched the same way a
@@ -3380,7 +3367,7 @@ string.Equals(SelectedProfile?.Id, BuiltInFileProviders.HomeId.Value, StringComp
             {
                 var decoded = await _imageDecoder.DecodeAsync(
                     content,
-                    MaximumPreviewPixels,
+                    PreviewRasterBudget.MaximumPixels,
                     operation.Token);
                 if (!ReferenceEquals(_preview, operation) || operation.IsCancellationRequested)
                 {
@@ -3401,20 +3388,18 @@ string.Equals(SelectedProfile?.Id, BuiltInFileProviders.HomeId.Value, StringComp
                 return;
             }
 
-            // A format the drawing stack reads itself, decoded from wherever
-            // the content lives and scaled down as it is read: a full-size
-            // bitmap of a camera photograph costs far more memory than the
-            // preview needs.
             var bitmap = await Task.Run(
-                () =>
-                {
-                    using var source = content.OpenRead();
-                    return Bitmap.DecodeToWidth(source, MaximumPreviewImageWidth);
-                },
+                () => OrdinaryImagePreviewDecoder.Decode(content),
                 operation.Token);
             if (!ReferenceEquals(_preview, operation) || operation.IsCancellationRequested)
             {
-                bitmap.Dispose();
+                bitmap?.Dispose();
+                return;
+            }
+
+            if (bitmap is null)
+            {
+                PreviewText = "The image data could not be decoded safely.";
                 return;
             }
 

@@ -1,3 +1,6 @@
 namespace GhostShell.SessionHost;
 
-internal sealed record IdempotencyRecord(string Fingerprint, object Result);
+internal sealed record IdempotencyRecord(
+    string Fingerprint,
+    object Result,
+    bool IsOutcomeUncertain = false);

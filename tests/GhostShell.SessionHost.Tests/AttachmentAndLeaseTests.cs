@@ -6,6 +6,103 @@ namespace GhostShell.SessionHost.Tests;
 public sealed class AttachmentAndLeaseTests
 {
     [Fact]
+    public async Task ConcurrentIdempotentReadAttachmentsReturnOneStableAttachment()
+    {
+        await using var harness = new SessionHostTestHarness();
+        await harness.OpenAsync();
+        var initial = await harness.AttachAsync();
+        _ = (await harness.Client.AttachTerminalRendererAsync(
+            new AttachTerminalRendererRequest(
+                harness.SessionId,
+                initial.Attachment.Id,
+                new NativeRendererHost("fake", 1, ViewportDescriptor.Empty)),
+            harness.HumanContext(),
+            CancellationToken.None)).Value();
+        var terminal = harness.Factory[harness.SessionId];
+        terminal.BlockRendererDetach = true;
+
+        var blocker = harness.Client.AttachAsync(
+            new AttachSessionRequest(
+                harness.SessionId,
+                harness.ClientId,
+                AttachmentKind.Interactive,
+                new ViewportDescriptor(800, 600, 2),
+                SessionHostTestHarness.AllCapabilities()),
+            harness.HumanContext(),
+            CancellationToken.None).AsTask();
+        await terminal.RendererDetachStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var context = harness.HumanContext(
+            idempotencyKey: new IdempotencyKey("concurrent-read-attachment"));
+        var request = new AttachSessionRequest(
+            harness.SessionId,
+            harness.ClientId,
+            AttachmentKind.ReadOnly,
+            new ViewportDescriptor(800, 600, 2),
+            SessionHostTestHarness.AllCapabilities());
+        var first = harness.Client.AttachAsync(
+            request,
+            context,
+            CancellationToken.None).AsTask();
+        var duplicate = harness.Client.AttachAsync(
+            request,
+            context,
+            CancellationToken.None).AsTask();
+
+        terminal.ReleaseRendererDetach.TrySetResult();
+        _ = (await blocker).Value();
+        var results = await Task.WhenAll(first, duplicate);
+        var firstResult = results[0].Value();
+        var duplicateResult = results[1].Value();
+
+        Assert.Equal(firstResult.Attachment.Id, duplicateResult.Attachment.Id);
+        Assert.Equal(2, duplicateResult.Snapshot.Attachments.Count);
+        Assert.Equal(1, terminal.DetachRendererCount);
+    }
+
+    [Fact]
+    public async Task AttachmentFailureAfterRendererDetachRetainsUncertainReplay()
+    {
+        await using var harness = new SessionHostTestHarness();
+        await harness.OpenAsync();
+        var initial = await harness.AttachAsync();
+        _ = (await harness.Client.AttachTerminalRendererAsync(
+            new AttachTerminalRendererRequest(
+                harness.SessionId,
+                initial.Attachment.Id,
+                new NativeRendererHost("fake", 1, ViewportDescriptor.Empty)),
+            harness.HumanContext(),
+            CancellationToken.None)).Value();
+        var terminal = harness.Factory[harness.SessionId];
+        terminal.ThrowAfterRendererDetach = true;
+        var context = harness.HumanContext(
+            idempotencyKey: new IdempotencyKey("failed-interactive-attachment"));
+        var request = new AttachSessionRequest(
+            harness.SessionId,
+            harness.ClientId,
+            AttachmentKind.Interactive,
+            new ViewportDescriptor(800, 600, 2),
+            SessionHostTestHarness.AllCapabilities());
+
+        var uncertain = await harness.Client.AttachAsync(
+            request,
+            context,
+            CancellationToken.None);
+        var replay = await harness.Client.AttachAsync(
+            request,
+            context,
+            CancellationToken.None);
+
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            uncertain.Error().Code);
+        Assert.Equal(
+            HostErrorCode.ResynchronizationRequired,
+            replay.Error().Code);
+        Assert.Equal(1, terminal.DetachRendererCount);
+    }
+
+    [Fact]
     public async Task ReadAttachmentsCoexistAndVisualDetachKeepsSessionAlive()
     {
         await using var harness = new SessionHostTestHarness();
