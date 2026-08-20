@@ -26,6 +26,23 @@ Pass route names to capture a subset:
 ./.dotnet/dotnet run --project tools/GhostShell.DesignQa -- design/qa/current launcher-home settings-appearance
 ```
 
+## Website assets
+
+Website mode exports every route and dialog on the same 1440 × 900 canvas,
+forces the runtime tabs to the top, and uses GhostSHELL bronze instead of the
+host accent. The shell backdrop keeps its PNG alpha so a site can place its own
+blurred background underneath it. Because the headless platform has no native
+decorations, this mode adds the standard macOS traffic lights and applies the
+same rounded window silhouette to every frame.
+
+```sh
+./.dotnet/dotnet run --project tools/GhostShell.DesignQa -- --website artifacts/design-qa/website
+```
+
+The directory also contains `window-chrome-mask.png`, a white alpha silhouette
+at the exact screenshot dimensions for CSS masking. Route names may follow the
+output directory to generate a subset while iterating.
+
 ## Why it exists
 
 Screenshotting the real window needs macOS Screen Recording permission for the

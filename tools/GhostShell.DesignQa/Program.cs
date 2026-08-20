@@ -52,6 +52,8 @@ internal static class Program
 
     public static string[] RequestedRoutes { get; private set; } = [];
 
+    public static bool IsWebsiteExport { get; private set; }
+
     public static bool IsTerminalFontVerification { get; private set; }
 
     [STAThread]
@@ -71,15 +73,34 @@ internal static class Program
             return;
         }
 
-        OutputDirectory = Path.GetFullPath(
-            args.FirstOrDefault() ?? Path.Combine(Directory.GetCurrentDirectory(), "artifacts", "design-qa", "current"));
+        if (string.Equals(args.FirstOrDefault(), "--website", StringComparison.Ordinal))
+        {
+            IsWebsiteExport = true;
+            OutputDirectory = Path.GetFullPath(
+                args.ElementAtOrDefault(1)
+                ?? Path.Combine(
+                    Directory.GetCurrentDirectory(),
+                    "artifacts",
+                    "design-qa",
+                    "website"));
+            RequestedRoutes = [.. args.Skip(2)];
+        }
+        else
+        {
+            OutputDirectory = Path.GetFullPath(
+                args.FirstOrDefault()
+                ?? Path.Combine(
+                    Directory.GetCurrentDirectory(),
+                    "artifacts",
+                    "design-qa",
+                    "current"));
+            RequestedRoutes = [.. args.Skip(1)];
+        }
 
         SqliteProbePath = Path.Combine(OutputDirectory, "probe.sqlite");
         TiffProbePath = Path.Combine(OutputDirectory, "probe.tiff");
         PdfProbePath = Path.Combine(OutputDirectory, "probe.pdf");
         JpegProbePath = Path.Combine(OutputDirectory, "probe.jpg");
-        RequestedRoutes = [.. args.Skip(1)];
-
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, ShutdownMode.OnExplicitShutdown);
     }
 
@@ -526,7 +547,7 @@ internal sealed class QaApplication : Avalonia.Application
         new(
             "settings-appearance-density-compact",
             vm => vm.ShowSettings(SettingsPage.Appearance),
-            ClickFirst: "Compact padding density"),
+            ClickFirst: "Compact density"),
         // Long settings pages are also captured whole, so a section below the
         // fold is reviewable without scrolling by hand.
         new("settings-appearance-full", vm => vm.ShowSettings(SettingsPage.Appearance), Height: 2100),
@@ -1310,7 +1331,9 @@ internal sealed class QaApplication : Avalonia.Application
             var size = int.TryParse(Environment.GetEnvironmentVariable("QA_HEX_BYTES"),
 System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requested
                 : 64 * 1024;
-            var bytes = Enumerable.Range(0, size).Select(value => (byte)value).ToArray();
+            var bytes = Enumerable.Range(0, size)
+                .Select(value => (byte)(value % 256))
+                .ToArray();
             var window = new Window { Width = 700,
                 Height = 500,
                 CanResize = false,
@@ -1931,6 +1954,10 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
             WindowStartupLocation = WindowStartupLocation.Manual,
             Position = new PixelPoint(40, 40),
         };
+        if (Program.IsWebsiteExport)
+        {
+            WebsiteScreenshotExport.PrepareWindow(window);
+        }
 
         desktop.MainWindow = window;
         window.Opened += async (_, _) => await CaptureAllAsync(desktop, window, viewModel);
@@ -1941,14 +1968,20 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
 
     private static MainWindowViewModel CreateViewModel()
     {
-        var catalog = new QaDefinitionCatalog(QaData.Snapshot);
+        var catalog = Program.IsWebsiteExport
+            ? new QaDefinitionCatalog(
+                WebsiteScreenshotExport.NormalizeSnapshot(QaData.Snapshot),
+                WebsiteScreenshotExport.NormalizeTheme)
+            : new QaDefinitionCatalog(QaData.Snapshot);
         // The product republishes the appearance whenever the catalog changes;
         // mirroring that here makes "settings apply immediately" capturable.
         catalog.Changed += (_, _) =>
         {
             if (catalog.SavedTheme is { } savedTheme)
             {
-                ApplyTheme(savedTheme);
+                ApplyTheme(Program.IsWebsiteExport
+                    ? WebsiteScreenshotExport.NormalizeTheme(savedTheme)
+                    : savedTheme);
             }
         };
         var viewModel = new MainWindowViewModel(
@@ -2907,7 +2940,7 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
             Path.Combine(root, "libghost.dylib"),
             [
                 0xCF, 0xFA, 0xED, 0xFE,
-                .. Enumerable.Range(0, 512 * 1024).Select(value => (byte)value),
+                .. Enumerable.Range(0, 512 * 1024).Select(value => (byte)(value % 256)),
             ]);
         File.WriteAllText(
             Path.Combine(root, "settings.json"),
@@ -3246,7 +3279,10 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
         image.Write(Program.JpegProbePath);
     }
 
-    private static async Task CaptureDialogAsync(string name, Window dialog)
+    private static async Task CaptureDialogAsync(
+        string name,
+        Window dialog,
+        MainWindow? websiteBackdrop = null)
     {
         dialog.WindowStartupLocation = WindowStartupLocation.Manual;
         dialog.Position = new PixelPoint(-4000, -4000);
@@ -3264,7 +3300,10 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
 
         // A "-2x" suffix renders at Retina density, so glyph-placement issues
         // that only appear under fractional-scale pixel snapping are capturable.
-        var scale = name.EndsWith("-2x", StringComparison.Ordinal) ? 2 : 1;
+        var scale = !Program.IsWebsiteExport
+            && name.EndsWith("-2x", StringComparison.Ordinal)
+                ? 2
+                : 1;
         Control captureTarget = dialog;
         ContextMenu? contextMenu = null;
         if (name.StartsWith("database-context-menu", StringComparison.Ordinal))
@@ -3288,10 +3327,26 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
         var width = (int)Math.Ceiling(Math.Max(captureTarget.Bounds.Width, 1)) * scale;
         var height = (int)Math.Ceiling(Math.Max(captureTarget.Bounds.Height, 1)) * scale;
         var path = Path.Combine(Program.OutputDirectory, $"{name}.png");
-        using (var bitmap = new RenderTargetBitmap(
-                   new PixelSize(width, height),
-                   new Vector(96 * scale, 96 * scale)))
+        if (Program.IsWebsiteExport)
         {
+            if (websiteBackdrop is null)
+            {
+                throw new InvalidOperationException(
+                    "Website dialog captures require the shell backdrop.");
+            }
+
+            WebsiteScreenshotExport.WriteDialogFrame(
+                websiteBackdrop,
+                captureTarget,
+                new PixelSize(width, height),
+                new Vector(96 * scale, 96 * scale),
+                path);
+        }
+        else
+        {
+            using var bitmap = new RenderTargetBitmap(
+                new PixelSize(width, height),
+                new Vector(96 * scale, 96 * scale));
             bitmap.Render(captureTarget);
             bitmap.Save(path);
         }
@@ -3310,6 +3365,10 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
         try
         {
             Directory.CreateDirectory(Program.OutputDirectory);
+            if (Program.IsWebsiteExport)
+            {
+                WebsiteScreenshotExport.WriteChromeMask(Program.OutputDirectory);
+            }
             WriteSqliteProbe();
             WriteTiffProbe();
             WritePdfProbe();
@@ -3333,7 +3392,10 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
 
             foreach (var route in selected)
             {
-                ApplyTheme(route.Theme ?? ThemePreference.Default);
+                var routeTheme = route.Theme ?? ThemePreference.Default;
+                ApplyTheme(Program.IsWebsiteExport
+                    ? WebsiteScreenshotExport.NormalizeTheme(routeTheme)
+                    : routeTheme);
                 // The sample agent conversation belongs to the one route that asks
                 // for it. Resetting first keeps that route from leaking a connected
                 // agent into whatever is captured after it, whatever the order.
@@ -3409,10 +3471,16 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
                     window.UpdateLayout();
                 }
 
-                if (window.Width != route.Width || window.Height != route.Height)
+                var captureWidth = Program.IsWebsiteExport
+                    ? WebsiteScreenshotExport.Width
+                    : route.Width;
+                var captureHeight = Program.IsWebsiteExport
+                    ? WebsiteScreenshotExport.Height
+                    : route.Height;
+                if (window.Width != captureWidth || window.Height != captureHeight)
                 {
-                    window.Width = route.Width;
-                    window.Height = route.Height;
+                    window.Width = captureWidth;
+                    window.Height = captureHeight;
                     await Task.Delay(200);
                     Dispatcher.UIThread.RunJobs();
                     window.UpdateLayout();
@@ -3440,10 +3508,20 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
                     Dispatcher.UIThread.RunJobs();
                     dialog.UpdateLayout();
                     await Task.Delay(120);
-                    using (var dialogBitmap = new RenderTargetBitmap(
-                        new PixelSize((int)dialog.Width, (int)dialog.Height),
-                        new Vector(96, 96)))
+                    if (Program.IsWebsiteExport)
                     {
+                        WebsiteScreenshotExport.WriteDialogFrame(
+                            window,
+                            dialog,
+                            new PixelSize((int)dialog.Width, (int)dialog.Height),
+                            new Vector(96, 96),
+                            path);
+                    }
+                    else
+                    {
+                        using var dialogBitmap = new RenderTargetBitmap(
+                            new PixelSize((int)dialog.Width, (int)dialog.Height),
+                            new Vector(96, 96));
                         dialogBitmap.Render(dialog);
                         dialogBitmap.Save(path);
                     }
@@ -3455,11 +3533,15 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
                 }
 
                 using (var bitmap = new RenderTargetBitmap(
-                           new PixelSize(route.Width, route.Height),
+                           new PixelSize(captureWidth, captureHeight),
                            new Vector(96, 96)))
                 {
                     bitmap.Render(window);
                     bitmap.Save(path);
+                }
+                if (Program.IsWebsiteExport)
+                {
+                    WebsiteScreenshotExport.FinishFrame(path);
                 }
 
                 Console.WriteLine($"CAPTURE {route.Name} -> {path}");
@@ -3467,7 +3549,8 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
                 // The workspace route again at Retina density: the rail and panel
                 // chrome are the surfaces users judge at 2x, so pixel snapping
                 // there must be reviewable at the density they actually see.
-                if (string.Equals(route.Name, "workspace", StringComparison.Ordinal))
+                if (!Program.IsWebsiteExport
+                    && string.Equals(route.Name, "workspace", StringComparison.Ordinal))
                 {
                     var retinaPath = Path.Combine(Program.OutputDirectory, "workspace-2x.png");
                     using var retina = new RenderTargetBitmap(
@@ -3481,8 +3564,11 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
 
             foreach (var dialog in selectedDialogs)
             {
-                ApplyTheme(dialog.Theme ?? ThemePreference.Default);
-                await CaptureDialogAsync(dialog.Name, dialog.Create());
+                var dialogTheme = dialog.Theme ?? ThemePreference.Default;
+                ApplyTheme(Program.IsWebsiteExport
+                    ? WebsiteScreenshotExport.NormalizeTheme(dialogTheme)
+                    : dialogTheme);
+                await CaptureDialogAsync(dialog.Name, dialog.Create(), window);
             }
 
             ApplyTheme(ThemePreference.Default);

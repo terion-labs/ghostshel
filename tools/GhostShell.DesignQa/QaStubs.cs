@@ -15,7 +15,15 @@ namespace GhostShell.DesignQa;
 /// </summary>
 internal sealed class QaDefinitionCatalog : IDefinitionCatalog
 {
-    public QaDefinitionCatalog(DefinitionCatalogSnapshot snapshot) => Snapshot = snapshot;
+    private readonly Func<ThemePreference, ThemePreference>? _normalizeTheme;
+
+    public QaDefinitionCatalog(
+        DefinitionCatalogSnapshot snapshot,
+        Func<ThemePreference, ThemePreference>? normalizeTheme = null)
+    {
+        Snapshot = snapshot;
+        _normalizeTheme = normalizeTheme;
+    }
 
     public DefinitionCatalogSnapshot Snapshot { get; private set; }
 
@@ -88,9 +96,24 @@ internal sealed class QaDefinitionCatalog : IDefinitionCatalog
     public ValueTask<DefinitionStoreResult<StoredDefinition<ThemePreference>>> SaveThemeAsync(
         ThemePreference definition, long? expectedRevision, CancellationToken cancellationToken)
     {
-        SavedTheme = definition;
+        var savedTheme = _normalizeTheme?.Invoke(definition) ?? definition;
+        var stored = new StoredDefinition<ThemePreference>(
+            savedTheme,
+            (expectedRevision ?? 0) + 1,
+            QaData.Now,
+            QaData.Now);
+        SavedTheme = savedTheme;
+        Snapshot = Snapshot with
+        {
+            Themes =
+            [
+                .. Snapshot.Themes.Where(item => item.Value.Id != savedTheme.Id),
+                stored,
+            ],
+        };
         Changed?.Invoke(this, EventArgs.Empty);
-        return Store(definition);
+        return ValueTask.FromResult(
+            DefinitionStoreResult<StoredDefinition<ThemePreference>>.Success(stored));
     }
 
     public ValueTask<DefinitionStoreResult<StoredDefinition<TerminalProfile>>> SaveTerminalProfileAsync(
