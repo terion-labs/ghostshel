@@ -50,6 +50,15 @@ build, and architecture checks for fast iteration. Bootstrap installs the
 checked-in pre-commit and pre-push hooks; they can be reinstalled with
 `./scripts/install-hooks.sh`.
 
+GitHub Actions runs the managed suite as six functional sections in parallel
+on macOS, Linux, and Windows while retaining complete Release builds on every
+platform. A `v<major>.<minor>.<patch>` tag, or a manual **Repository gate** run,
+waits for those jobs and then builds the verified native dependencies on an
+Apple Silicon runner. The run publishes `GhostShell-macOS-arm64-<version>.zip`
+and its SHA-256 checksum as a 30-day workflow artifact. This first early-release
+artifact is unsigned; use the signing and notarization flow documented below
+before distributing outside a trusted tester group.
+
 Dependency updates must refresh every graph that CI consumes: the ordinary
 managed graph, the Windows-targeted managed graph, and both portable Linux
 release RIDs. Regenerate them deliberately, review the lock-file diffs, and

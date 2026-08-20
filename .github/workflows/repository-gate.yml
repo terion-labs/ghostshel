@@ -3,8 +3,15 @@ name: Repository gate
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      version:
+        description: Three-part macOS bundle version
+        required: true
+        default: 0.1.0
+        type: string
 
 permissions:
   contents: read
@@ -19,11 +26,13 @@ env:
 
 jobs:
   managed-conformance:
-    name: Managed conformance (${{ matrix.os }})
+    name: Tests (${{ matrix.os }}, ${{ matrix.section }})
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, ubuntu-24.04, windows-2022]
+        os: [macos-15, ubuntu-24.04, windows-2022]
+        section: [core, agent, app, services, data-browser, terminal-host]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -32,16 +41,41 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
-      - name: Run the canonical repository gate
+      - name: Restore the locked dependency graph
         shell: bash
-        run: ./scripts/check.sh --full
+        run: dotnet restore GhostShell.slnx --locked-mode
+      - name: Run test section
+        shell: bash
+        run: ./scripts/test-section.sh "${{ matrix.section }}" --no-restore
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: test-results-${{ runner.os }}
+          name: test-results-${{ runner.os }}-${{ matrix.section }}
           path: ".test-results/**/*.trx"
           if-no-files-found: error
+
+  cross-platform-build:
+    name: Release build (${{ matrix.os }})
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - name: Restore the locked dependency graph
+        shell: bash
+        run: dotnet restore GhostShell.slnx --locked-mode
+      - name: Build the complete solution
+        shell: bash
+        run: dotnet build GhostShell.slnx --configuration Release --no-restore --nologo
 
   format-and-boundaries:
     name: Format and architecture boundaries
@@ -156,3 +190,82 @@ jobs:
           name: ghostshell-${{ matrix.rid }}
           path: artifacts/${{ matrix.rid }}
           if-no-files-found: error
+
+  macos-early-release:
+    name: macOS arm64 early release
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    needs: [managed-conformance, cross-platform-build, format-and-boundaries]
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - name: Expose the SDK at the repository-local path
+        run: |
+          mkdir -p .dotnet
+          ln -s "$(command -v dotnet)" .dotnet/dotnet
+      - name: Set up the pinned Native Image toolchain
+        uses: graalvm/setup-graalvm@5298d94fb55a4f185c602eeac5de1b553882abe2 # v1.6.4
+        with:
+          java-version: 25.0.4
+          distribution: graalvm
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          native-image-job-reports: true
+      - name: Resolve release version
+        id: release
+        shell: bash
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            version="${REQUESTED_VERSION}"
+          fi
+          if [[ ! "${version}" =~ ^[0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9}$ ]]; then
+            echo "Release version must contain exactly three unsigned integer parts." >&2
+            exit 64
+          fi
+          if [[ "$(uname -m)" != "arm64" ]]; then
+            echo "The macOS release job requires an Apple Silicon runner." >&2
+            exit 1
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+      - name: Build verified native payloads
+        run: |
+          ./scripts/build-libghostty-vt.sh --rid osx-arm64
+          ./scripts/build-sql-language-worker.sh --local --rid osx-arm64
+          ./scripts/build-cef-runtime.sh --rid osx-arm64 --dotnet ./.dotnet/dotnet
+      - name: Assemble macOS application
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          mkdir -p artifacts/macos-arm64
+          ./scripts/package-macos.sh \
+            --version "${RELEASE_VERSION}" \
+            --build-version "${GITHUB_RUN_NUMBER}" \
+            --runtime-identifier osx-arm64 \
+            --output artifacts/macos-arm64/GhostShell.app
+      - name: Archive release candidate
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          archive="GhostShell-macOS-arm64-${RELEASE_VERSION}.zip"
+          cd artifacts
+          ditto -c -k --sequesterRsrc --keepParent \
+            macos-arm64/GhostShell.app \
+            "${archive}"
+          shasum -a 256 "${archive}" > "${archive}.sha256"
+      - name: Upload macOS release candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ghostshell-macos-arm64-${{ steps.release.outputs.version }}
+          path: |
+            artifacts/GhostShell-macOS-arm64-${{ steps.release.outputs.version }}.zip
+            artifacts/GhostShell-macOS-arm64-${{ steps.release.outputs.version }}.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
