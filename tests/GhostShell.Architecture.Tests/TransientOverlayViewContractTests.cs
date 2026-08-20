@@ -214,13 +214,35 @@ public sealed class TransientOverlayViewContractTests
         Assert.Contains(
             root.Descendants(),
             element => string.Equals(element.Name.LocalName, "PanelDockHandle", StringComparison.Ordinal));
-        Assert.Contains(
-            root.Descendants(),
-            element => string.Equals(element.Name.LocalName, "ItemsControl"
-, StringComparison.Ordinal) && string.Equals(
-                    AttributeValue(element, "ItemsSource"),
-                    "{Binding Layouts}",
+        foreach (var itemsSource in new[]
+                 {
+                     "{Binding LayoutDesignerEditor.Slots}",
+                     "{Binding Layouts}",
+                 })
+        {
+            var items = Assert.Single(
+                root.Descendants(),
+                element => string.Equals(
+                        element.Name.LocalName,
+                        "ItemsControl",
+                        StringComparison.Ordinal)
+                    && string.Equals(
+                        AttributeValue(element, "ItemsSource"),
+                        itemsSource,
+                        StringComparison.Ordinal));
+            var itemButton = Assert.Single(
+                items.Descendants(),
+                element => string.Equals(
+                    element.Name.LocalName,
+                    "Button",
                     StringComparison.Ordinal));
+            Assert.Equal(
+                "Stretch",
+                AttributeValue(itemButton, "HorizontalAlignment"));
+            Assert.Equal(
+                "Stretch",
+                AttributeValue(itemButton, "HorizontalContentAlignment"));
+        }
         Assert.Contains(
             root.Descendants(),
             element => string.Equals(element.Name.LocalName, "Button"

@@ -165,6 +165,7 @@
                     <Button
                         Margin="{controls:Inset Bottom=Xs}"
                         Padding="{controls:Inset Sm}"
+                        HorizontalAlignment="Stretch"
                         HorizontalContentAlignment="Stretch"
                         Classes="SecondaryButton"
                         Classes.active="{Binding IsSelected}"
@@ -214,7 +215,7 @@
               <ItemsControl ItemsSource="{Binding Layouts}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
-                    <Button Margin="{controls:Inset Bottom=Xs}" Padding="{controls:Inset Sm}" Classes="SecondaryButton" HorizontalContentAlignment="Stretch" Click="OnEditLayoutClick">
+                    <Button Margin="{controls:Inset Bottom=Xs}" Padding="{controls:Inset Sm}" Classes="SecondaryButton" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Click="OnEditLayoutClick">
                       <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                         <Border Width="44" Height="28" Background="{DynamicResource ShellBackgroundBrush}" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="1" CornerRadius="{DynamicResource ShellInnerCornerRadius}" ClipToBounds="True">
                           <ItemsControl Margin="{DynamicResource ShellPreviewTileInset}" ItemsSource="{Binding PreviewPanels}">
