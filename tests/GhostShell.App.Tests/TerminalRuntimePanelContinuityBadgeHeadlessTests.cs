@@ -5,6 +5,7 @@ using Avalonia.Headless;
 using Avalonia.VisualTree;
 using FluentIcons.Avalonia;
 using GhostShell.App.Controls;
+using GhostShell.App.ViewModels;
 using GhostShell.App.Views.RuntimePanels;
 
 namespace GhostShell.App.Tests;
@@ -20,6 +21,7 @@ public sealed class TerminalRuntimePanelContinuityBadgeHeadlessTests
             var view = new TerminalRuntimePanelView
             {
                 DataContext = new TerminalHeaderState(isContinuityActive),
+                IsVisible = true,
             };
             var window = new Window
             {
@@ -108,6 +110,7 @@ public sealed class TerminalRuntimePanelContinuityBadgeHeadlessTests
     }
 
     private sealed record TerminalHeaderState(bool IsContinuityActive)
+        : ITerminalContinuityState
     {
         public bool IsVisibleInLayout => true;
     }

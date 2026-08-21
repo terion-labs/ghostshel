@@ -28,6 +28,9 @@ public sealed partial class NativeAgentSession
         WriteIndented = false,
     };
 
+    private static readonly NativeAgentCheckpointJsonContext CheckpointJsonContext =
+        new(CheckpointJsonOptions);
+
     private static readonly UTF8Encoding StrictUtf8 = new(
         encoderShouldEmitUTF8Identifier: false,
         throwOnInvalidBytes: true);
@@ -411,7 +414,9 @@ public sealed partial class NativeAgentSession
             providerBinding?.ProfileId.Value ?? _conversationProviderId?.Value,
             providerBinding?.Model ?? _conversationModel,
             [.. durableTranscript.Select(ToCheckpointMessage)]);
-        var payloadJson = JsonSerializer.Serialize(payload, CheckpointJsonOptions);
+        var payloadJson = JsonSerializer.Serialize(
+            payload,
+            CheckpointJsonContext.CheckpointPayload);
         var checkpoint = new AgentSessionCheckpoint(
             RunId,
             AgentSessionCheckpoint.CurrentSchemaVersion,
@@ -461,9 +466,9 @@ public sealed partial class NativeAgentSession
                 }
             }
 
-            payload = JsonSerializer.Deserialize<CheckpointPayload>(
+            payload = JsonSerializer.Deserialize(
                 checkpoint.PayloadJson,
-                CheckpointJsonOptions);
+                CheckpointJsonContext.CheckpointPayload);
         }
         catch (Exception exception) when (
             exception is JsonException or NotSupportedException)
@@ -1285,4 +1290,11 @@ public sealed partial class NativeAgentSession
     private sealed record CheckpointToolBinding(
         string ProviderName,
         string ToolName);
+
+    [JsonSourceGenerationOptions(
+        AllowTrailingCommas = false,
+        PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+        WriteIndented = false)]
+    [JsonSerializable(typeof(CheckpointPayload))]
+    private sealed partial class NativeAgentCheckpointJsonContext : JsonSerializerContext;
 }

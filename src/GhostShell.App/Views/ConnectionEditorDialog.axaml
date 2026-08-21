@@ -1,7 +1,9 @@
 <Window
     x:Class="GhostShell.App.Views.ConnectionEditorDialog"
+    x:DataType="vm:UnifiedConnectionEditorViewModel"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:GhostShell.App.ViewModels"
     xmlns:controls="using:GhostShell.App.Controls"
     Title="Connection"
     Width="760"

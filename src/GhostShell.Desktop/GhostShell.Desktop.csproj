@@ -95,28 +95,17 @@
     <StripSymbols>true</StripSymbols>
     <DebugType>None</DebugType>
     <DebugSymbols>false</DebugSymbols>
-    <!-- The current Avalonia views and database-provider boundary still use
-         reflection. Keep their metadata until those dependencies can become
-         fully trim-safe; Native AOT still compiles every managed method and
-         ships no JIT or managed application assemblies. -->
-    <IlcGenerateCompleteTypeMetadata>true</IlcGenerateCompleteTypeMetadata>
-    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
-    <!-- AOT diagnostics remain visible in release logs. They cannot be errors
-         yet because several reviewed third-party providers are not annotated
-         and vendor sources must not be changed locally. -->
+    <!-- Reflection-based JSON is disabled at runtime. First-party projects set
+         IsAotCompatible globally, so unsupported reflection and dynamic-code
+         paths fail in the assembly that owns them. -->
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+    <IlcGenerateCompleteTypeMetadata>false</IlcGenerateCompleteTypeMetadata>
+    <!-- Dependency warnings remain visible here and are audited separately;
+         first-party IL2026/IL3050 diagnostics are already build errors. -->
     <IlcTreatWarningsAsErrors>false</IlcTreatWarningsAsErrors>
     <TrimmerSingleWarn>true</TrimmerSingleWarn>
     <LinkerFlavor Condition="'$(GhostShellNativeAotLinker)' != ''">$(GhostShellNativeAotLinker)</LinkerFlavor>
   </PropertyGroup>
-
-  <!-- Avalonia reflection bindings still address public view-model members by
-       name. Native AOT cannot infer those members from XAML, so keep the UI
-       assembly intact until ghostshell-362 converts every view to compiled
-       bindings. This roots UI code only; the rest of the application and the
-       framework remain trimmed. -->
-  <ItemGroup Condition="'$(GhostShellMacReleaseNativeAot)' == 'true'">
-    <TrimmerRootAssembly Include="GhostShell.App" />
-  </ItemGroup>
 
   <ItemGroup Condition="Exists('$(GhostShellRuntimePackDirectory)/LICENSE.TXT') and Exists('$(GhostShellRuntimePackDirectory)/THIRD-PARTY-NOTICES.TXT')">
     <Content Include="$(GhostShellRuntimePackDirectory)/LICENSE.TXT" Link="DOTNET-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

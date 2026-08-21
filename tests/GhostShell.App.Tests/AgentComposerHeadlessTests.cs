@@ -1426,7 +1426,13 @@ public sealed partial class AgentChatViewModelTests
         }
     }
 
-    private sealed record AgentComposerHost(AgentChatViewModel? AgentChat);
+    private sealed record AgentComposerHost(AgentChatViewModel? AgentChat)
+        : IAgentWorkspaceHost
+    {
+        public bool IsAgentPanelDocked => false;
+
+        public string AgentPanelPinTip => string.Empty;
+    }
 
     private static string RenderedText(SelectableTextBlock block) =>
         !string.IsNullOrEmpty(block.Text)

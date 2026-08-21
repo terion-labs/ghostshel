@@ -418,7 +418,7 @@
 
       <Border
           x:Name="OverlayTitleBarDragRegion"
-          Height="{Binding $parent[Window].TitleBarChromeHeight}"
+          Height="{Binding $parent[views:MainWindow].TitleBarChromeHeight}"
           HorizontalAlignment="Stretch"
           VerticalAlignment="Top"
           Background="Transparent"
@@ -462,6 +462,7 @@
         IsHitTestVisible="False">
       <controls:SurfaceCard
           x:Name="DragGhostPresenter"
+          x:DataType="components:DragGhostPayload"
           MinWidth="148"
           MaxWidth="320"
           Padding="{controls:Inset Horizontal=Md, Vertical=Sm}"

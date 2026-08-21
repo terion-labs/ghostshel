@@ -1,6 +1,7 @@
 <Project>
   <PropertyGroup>
     <GhostShellFirstPartyProject>$([System.String]::Copy('$(MSBuildProjectName)').StartsWith('GhostShell'))</GhostShellFirstPartyProject>
+    <GhostShellFirstPartySourceProject>$([System.String]::Copy('$(MSBuildProjectDirectory)').StartsWith('$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)src'))'))</GhostShellFirstPartySourceProject>
     <LangVersion>14</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -14,6 +15,11 @@
     <AllowUnsafeBlocks Condition="'$(GhostShellFirstPartyProject)' == 'True' and '$(AllowUnsafeBlocks)' == ''">false</AllowUnsafeBlocks>
     <MeziantouAnalysisMode>Default</MeziantouAnalysisMode>
     <Deterministic>true</Deterministic>
+    <!-- Every shipped managed assembly must prove that its reachable code is
+         statically analyzable. This runs the trim and Native AOT analyzers at
+         the owning project, where a warning still identifies first-party code
+         instead of being collapsed into an assembly-level publish warning. -->
+    <IsAotCompatible Condition="'$(GhostShellFirstPartySourceProject)' == 'True'">true</IsAotCompatible>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
     <RestorePackagesWithLockFile Condition="'$(GhostShellFirstPartyProject)' == 'True'">true</RestorePackagesWithLockFile>
     <NuGetLockFilePath Condition="'$(GhostShellFirstPartyProject)' == 'True' and '$(RuntimeIdentifier)' != ''">packages.$(RuntimeIdentifier).lock.json</NuGetLockFilePath>

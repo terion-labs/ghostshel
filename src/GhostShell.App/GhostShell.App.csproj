@@ -41,7 +41,7 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <GhostShellTerminalFontDirectory>$(MSBuildThisFileDirectory)../../native/artifacts/common/fonts/JetBrainsMono</GhostShellTerminalFontDirectory>
   </PropertyGroup>
 

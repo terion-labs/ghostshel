@@ -1143,7 +1143,7 @@ public sealed class RuntimePanelViewContractTests
         // not offer a second one.
         Assert.Equal("False", AttributeValue(chooser, "ShowCloseAction"));
         Assert.Equal(
-            "{Binding $parent[Window].DataContext}",
+            "{Binding $parent[Window].((vm:MainWindowViewModel)DataContext)}",
             AttributeValue(chooser, "DataContext"));
         Assert.Equal(
             "OnConnectionLaunchRequested",
@@ -1213,7 +1213,7 @@ public sealed class RuntimePanelViewContractTests
             root.Descendants(),
             element => string.Equals(element.Name.LocalName, "PanelConnectionSelectorView", StringComparison.Ordinal));
         Assert.Equal(
-            "{ReflectionBinding $parent[Window].DataContext.PanelConnectionOptions}",
+            "{CompiledBinding $parent[Window].((vm:IPanelConnectionOptionsHost)DataContext).PanelConnectionOptions}",
             AttributeValue(connectionSelector, "Options"));
         Assert.Equal(
             "{Binding ConnectionDisplayName}",
@@ -1477,7 +1477,7 @@ public sealed class RuntimePanelViewContractTests
             root.Descendants(),
             element => string.Equals(element.Name.LocalName, "PanelConnectionSelectorView", StringComparison.Ordinal));
         Assert.Equal(
-            "{Binding $parent[Window].DataContext.FileConnectionOptions}",
+            "{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).FileConnectionOptions}",
             AttributeValue(connectionSelector, "Options"));
         Assert.Equal(
             "{Binding ConnectionDisplayName}",

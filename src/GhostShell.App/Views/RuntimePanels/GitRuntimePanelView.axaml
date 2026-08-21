@@ -1,8 +1,10 @@
 <UserControl
     x:Class="GhostShell.App.Views.RuntimePanels.GitRuntimePanelView"
+    x:DataType="vm:GitRuntimePanelViewModel"
     x:Name="Root"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:GhostShell.App.ViewModels"
     xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
@@ -224,7 +226,7 @@
 
     <controls:PanelChrome.Leading>
       <components:PanelConnectionSelectorView
-          Options="{Binding $parent[Window].DataContext.PanelConnectionOptions}"
+          Options="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).PanelConnectionOptions}"
           SelectedLabel="{Binding ConnectionDisplayName}"
           ConnectionSelected="OnConnectionSelected"
           NewConnectionRequested="OnNewConnectionRequested" />
@@ -791,7 +793,7 @@
                   IsVisible="{Binding UnstagedViewIsTree}"
                   AutomationProperties.Name="Unstaged changes tree">
                 <TreeView.ItemContainerTheme>
-                  <ControlTheme TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}">
+                  <ControlTheme TargetType="TreeViewItem" x:DataType="vm:GitChangeTreeNodeViewModel" BasedOn="{StaticResource {x:Type TreeViewItem}}">
                     <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
                     <Setter Property="Padding" Value="{controls:Inset Horizontal=Xs}" />
                     <Setter Property="MinHeight" Value="24" />
@@ -904,7 +906,7 @@
                   IsVisible="{Binding StagedViewIsTree}"
                   AutomationProperties.Name="Staged changes tree">
                 <TreeView.ItemContainerTheme>
-                  <ControlTheme TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}">
+                  <ControlTheme TargetType="TreeViewItem" x:DataType="vm:GitChangeTreeNodeViewModel" BasedOn="{StaticResource {x:Type TreeViewItem}}">
                     <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
                     <Setter Property="Padding" Value="{controls:Inset Horizontal=Xs}" />
                     <Setter Property="MinHeight" Value="24" />
@@ -1237,7 +1239,7 @@
                     IsVisible="{Binding IsFileTreeTab}"
                     AutomationProperties.Name="Commit file tree">
                   <TreeView.ItemContainerTheme>
-                    <ControlTheme TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}">
+                    <ControlTheme TargetType="TreeViewItem" x:DataType="vm:GitTreeNodeViewModel" BasedOn="{StaticResource {x:Type TreeViewItem}}">
                       <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
                       <Setter Property="Padding" Value="{controls:Inset Horizontal=Xs}" />
                       <Setter Property="MinHeight" Value="24" />

@@ -807,10 +807,10 @@ public sealed partial class AgentDatabaseReadActionComposer
     private static T EnsureSerializedBound<T>(T result)
         where T : AgentDatabaseReadResult
     {
+        var typeInfo = (JsonTypeInfo<T>)ProjectionJsonOptions.GetTypeInfo(typeof(T));
         var serialized = JsonSerializer.SerializeToUtf8Bytes(
             result,
-            result.GetType(),
-            ProjectionJsonOptions);
+            typeInfo);
         if (serialized.Length > MaximumSerializedResultBytes)
         {
             throw new ArgumentException(
@@ -823,24 +823,25 @@ public sealed partial class AgentDatabaseReadActionComposer
 
     private static JsonSerializerOptions CreateProjectionJsonOptions()
     {
-        var resolver = new DefaultJsonTypeInfoResolver();
-        resolver.Modifiers.Add(static typeInfo =>
-        {
-            for (var index = typeInfo.Properties.Count - 1; index >= 0; index--)
+        var resolver = JsonTypeInfoResolver.WithAddedModifier(
+            AgentProjectionJsonContext.Default,
+            static typeInfo =>
             {
-                var property = typeInfo.Properties[index];
-                if (property.Name is
-                    nameof(DatabaseQueryPage.ValueRows)
-                    or nameof(DatabaseObjectSummary.DisplayName)
-                    or nameof(DatabaseTableDescriptor.DisplayName)
-                    or nameof(DatabaseTableDescriptor.Id)
-                    or nameof(DatabaseObjectDetails.PrimaryKey)
-                    or nameof(DatabaseColumnSchema.CanEdit))
+                for (var index = typeInfo.Properties.Count - 1; index >= 0; index--)
                 {
-                    typeInfo.Properties.RemoveAt(index);
+                    var property = typeInfo.Properties[index];
+                    if (property.Name is
+                        nameof(DatabaseQueryPage.ValueRows)
+                        or nameof(DatabaseObjectSummary.DisplayName)
+                        or nameof(DatabaseTableDescriptor.DisplayName)
+                        or nameof(DatabaseTableDescriptor.Id)
+                        or nameof(DatabaseObjectDetails.PrimaryKey)
+                        or nameof(DatabaseColumnSchema.CanEdit))
+                    {
+                        typeInfo.Properties.RemoveAt(index);
+                    }
                 }
-            }
-        });
+            });
         return new JsonSerializerOptions
         {
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,

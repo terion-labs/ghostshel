@@ -1,7 +1,9 @@
 <UserControl
     x:Class="GhostShell.App.Views.Components.AgentCapabilityRequestCardView"
+    x:DataType="vm:IAgentWorkspaceHost"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:GhostShell.App.ViewModels"
     xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
     Focusable="False"
@@ -56,7 +58,7 @@
             Text="Allows asking to:" />
         <ItemsControl ItemsSource="{Binding AgentChat.PendingCapabilityRequest.AffectedToolTitles}">
           <ItemsControl.ItemTemplate>
-            <DataTemplate>
+            <DataTemplate x:DataType="x:String">
               <TextBlock
                   FontSize="{DynamicResource ShellFontSize10}"
                   Text="{Binding StringFormat={}· {0}}"

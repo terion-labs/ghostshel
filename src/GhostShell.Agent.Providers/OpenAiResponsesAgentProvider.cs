@@ -1402,20 +1402,19 @@ string.Equals(role, "assistant", StringComparison.Ordinal) ? "output_text" : "in
             var outputIndex = _replaySlots.Count == 0
                 ? 0
                 : checked(_replaySlots.Keys.Max() + 1);
-            var initialJson = JsonSerializer.Serialize(new
-            {
-                type = "message",
-                id = itemId,
-                role = "assistant",
-                status = "completed",
-                content = Array.Empty<object>(),
-            });
-            using var initial = JsonDocument.Parse(initialJson);
+            var initial = JsonSerializer.SerializeToElement(
+                new OpenAiSyntheticMessage(
+                    "message",
+                    itemId,
+                    "assistant",
+                    "completed",
+                    []),
+                AgentProviderJsonContext.Default.OpenAiSyntheticMessage);
             _replaySlots.Add(
                 outputIndex,
                 ResponsesReplaySlot.Create(
                     AgentProviderReplayItemKind.OpenAiMessage,
-                    initial.RootElement));
+                    initial));
             return outputIndex;
         }
 
@@ -1429,24 +1428,18 @@ string.Equals(role, "assistant", StringComparison.Ordinal) ? "output_text" : "in
                     continue;
                 }
 
-                var json = JsonSerializer.Serialize(new
-                {
-                    type = "message",
-                    id = slot.Id,
-                    role = "assistant",
-                    status = "completed",
-                    content = new[]
-                    {
-                        new
-                        {
-                            type = "output_text",
-                            text = text.ToString(),
-                            annotations = Array.Empty<object>(),
-                        },
-                    },
-                });
-                using var item = JsonDocument.Parse(json);
-                slot.Finalize(item.RootElement);
+                var item = JsonSerializer.SerializeToElement(
+                    new OpenAiSyntheticMessage(
+                        "message",
+                        slot.Id,
+                        "assistant",
+                        "completed",
+                        [new OpenAiSyntheticContent(
+                            "output_text",
+                            text.ToString(),
+                            [])]),
+                    AgentProviderJsonContext.Default.OpenAiSyntheticMessage);
+                slot.Finalize(item);
             }
         }
 

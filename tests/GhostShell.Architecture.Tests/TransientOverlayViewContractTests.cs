@@ -97,7 +97,7 @@ public sealed class TransientOverlayViewContractTests
                 "OverlayTitleBarDragRegion",
                 StringComparison.Ordinal));
         Assert.Equal(
-            "{Binding $parent[Window].TitleBarChromeHeight}",
+            "{Binding $parent[views:MainWindow].TitleBarChromeHeight}",
             AttributeValue(titleBar, "Height"));
         Assert.Equal("Top", AttributeValue(titleBar, "VerticalAlignment"));
         Assert.Equal(

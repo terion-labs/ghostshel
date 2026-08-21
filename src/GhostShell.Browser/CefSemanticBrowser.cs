@@ -30,10 +30,15 @@ internal sealed class CefSemanticBrowser : ICefSemanticBrowser
         ReadAccessibilityTreeAsync()
     {
         await EnsureDomainsEnabledAsync().ConfigureAwait(false);
-        var nodes = await _browser.Accessibility
-            .GetFullTreeAsync(maxDepth: 64)
+        var reply = await _browser.ExecuteDevToolsMethodAsync(
+                "Accessibility.getFullAXTree",
+                "{\"depth\":64}")
             .ConfigureAwait(false);
-        return [.. nodes.Select(Project)];
+        using var document = JsonDocument.Parse(reply);
+        var nodes = document.RootElement
+            .GetProperty("result")
+            .GetProperty("nodes");
+        return [.. nodes.EnumerateArray().Select(Project)];
     }
 
     public async Task<CefSemanticNode?> ReadAccessibilityNodeAsync(
@@ -304,38 +309,17 @@ internal sealed class CefSemanticBrowser : ICefSemanticBrowser
         int windowsVirtualKeyCode,
         string text = "",
         IReadOnlyList<string>? commands = null) =>
-        commands is null
-            ? JsonSerializer.Serialize(
-                new
-                {
-                    type,
-                    key,
-                    code,
-                    text,
-                    unmodifiedText = text,
-                    windowsVirtualKeyCode,
-                    nativeVirtualKeyCode = 0,
-                })
-            : JsonSerializer.Serialize(
-                new
-                {
-                    type,
-                    key,
-                    code,
-                    text,
-                    unmodifiedText = text,
-                    windowsVirtualKeyCode,
-                    nativeVirtualKeyCode = 0,
-                    commands,
-                });
-
-    private async Task ExecuteAcknowledgedAsync(
-        string method,
-        object parameters) =>
-        await ExecuteAcknowledgedAsync(
-                method,
-                JsonSerializer.Serialize(parameters))
-            .ConfigureAwait(false);
+        JsonSerializer.Serialize(
+            new CdpSemanticKeyEventParameters(
+                type,
+                key,
+                code,
+                text,
+                text,
+                windowsVirtualKeyCode,
+                NativeVirtualKeyCode: 0,
+                commands),
+            BrowserJsonContext.Default.CdpSemanticKeyEventParameters);
 
     private async Task ExecuteAcknowledgedAsync(
         string method,
@@ -373,4 +357,70 @@ internal sealed class CefSemanticBrowser : ICefSemanticBrowser
             node.ChildIds,
             node.Properties,
             node.Value);
+
+    private static CefSemanticNode Project(JsonElement node)
+    {
+        var childIds = node.TryGetProperty("childIds", out var children)
+            ? children.EnumerateArray()
+                .Select(static child => child.GetString() ?? string.Empty)
+                .Where(static child => child.Length > 0)
+                .ToArray()
+            : [];
+        var properties = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (node.TryGetProperty("properties", out var sourceProperties))
+        {
+            foreach (var property in sourceProperties.EnumerateArray())
+            {
+                if (property.TryGetProperty("name", out var name)
+                    && name.GetString() is { Length: > 0 } propertyName)
+                {
+                    properties[propertyName] = ReadAccessibilityValue(property);
+                }
+            }
+        }
+
+        return new CefSemanticNode(
+            node.GetProperty("nodeId").GetString() ?? string.Empty,
+            node.TryGetProperty("backendDOMNodeId", out var backendNodeId)
+                ? backendNodeId.GetInt32()
+                : null,
+            node.TryGetProperty("ignored", out var ignored) && ignored.GetBoolean(),
+            ReadAccessibilityProperty(node, "role"),
+            ReadAccessibilityProperty(node, "name"),
+            node.TryGetProperty("parentId", out var parentId)
+                ? parentId.GetString()
+                : null,
+            childIds,
+            properties,
+            ReadAccessibilityProperty(node, "value"));
+    }
+
+    private static string ReadAccessibilityProperty(JsonElement node, string name) =>
+        node.TryGetProperty(name, out var value)
+            ? ReadAccessibilityValue(value)
+            : string.Empty;
+
+    private static string ReadAccessibilityValue(JsonElement envelope)
+    {
+        if (!envelope.TryGetProperty("value", out var value))
+        {
+            return string.Empty;
+        }
+
+        while (value.ValueKind == JsonValueKind.Object
+               && value.TryGetProperty("value", out var nested))
+        {
+            value = nested;
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString() ?? string.Empty,
+            JsonValueKind.Number or JsonValueKind.Array or JsonValueKind.Object =>
+                value.GetRawText(),
+            JsonValueKind.True => "true",
+            JsonValueKind.False => "false",
+            _ => string.Empty,
+        };
+    }
 }

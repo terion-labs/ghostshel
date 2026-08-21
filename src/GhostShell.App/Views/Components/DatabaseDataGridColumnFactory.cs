@@ -146,13 +146,13 @@ internal static class DatabaseDataGridColumnFactory
         };
         text.Bind(
             TextBlock.TextProperty,
-            new ReflectionBinding(nameof(DatabaseResultCellViewModel.Text)));
+            CompiledBinding.Create(
+                (DatabaseResultCellViewModel viewModel) => viewModel.Text));
         text.Bind(
             Visual.OpacityProperty,
-            new ReflectionBinding(nameof(DatabaseResultCellViewModel.State))
-            {
-                Converter = EditStateOpacityConverter.Instance,
-            });
+            CompiledBinding.Create(
+                (DatabaseResultCellViewModel viewModel) => viewModel.State,
+                converter: EditStateOpacityConverter.Instance));
         return AddValidationState(cell, text);
     }
 
@@ -182,11 +182,10 @@ internal static class DatabaseDataGridColumnFactory
         };
         editor.Bind(
             CheckBox.IsCheckedProperty,
-            new ReflectionBinding(nameof(DatabaseResultCellViewModel.BooleanValue))
-            {
-                Mode = BindingMode.TwoWay,
-                UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged,
-            });
+            CompiledBinding.Create(
+                (DatabaseResultCellViewModel viewModel) => viewModel.BooleanValue,
+                mode: BindingMode.TwoWay,
+                updateSourceTrigger: UpdateSourceTrigger.PropertyChanged));
         AutomationProperties.SetName(editor, $"Edit {cell.Column.Name}");
         return AddValidationState(cell, editor);
     }
@@ -206,11 +205,10 @@ internal static class DatabaseDataGridColumnFactory
         };
         editor.Bind(
             TextBox.TextProperty,
-            new ReflectionBinding(nameof(DatabaseResultCellViewModel.EditText))
-            {
-                Mode = BindingMode.TwoWay,
-                UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged,
-            });
+            CompiledBinding.Create(
+                (DatabaseResultCellViewModel viewModel) => viewModel.EditText,
+                mode: BindingMode.TwoWay,
+                updateSourceTrigger: UpdateSourceTrigger.PropertyChanged));
         AutomationProperties.SetName(editor, $"Edit {cell.Column.Name}");
         return AddValidationState(cell, editor);
     }
@@ -227,10 +225,9 @@ internal static class DatabaseDataGridColumnFactory
         border.Classes.Add("DatabaseCellValidation");
         border.Bind(
             Border.BorderThicknessProperty,
-            new ReflectionBinding(nameof(DatabaseResultCellViewModel.ValidationError))
-            {
-                Converter = ValidationBorderThicknessConverter.Instance,
-            });
+            CompiledBinding.Create(
+                (DatabaseResultCellViewModel viewModel) => viewModel.ValidationError,
+                converter: ValidationBorderThicknessConverter.Instance));
         BindValidationMetadata(border);
         BindValidationMetadata(content);
         return border;
@@ -240,10 +237,12 @@ internal static class DatabaseDataGridColumnFactory
     {
         control.Bind(
             ToolTip.TipProperty,
-            new ReflectionBinding(nameof(DatabaseResultCellViewModel.ValidationError)));
+            CompiledBinding.Create(
+                (DatabaseResultCellViewModel viewModel) => viewModel.ValidationError));
         control.Bind(
             AutomationProperties.HelpTextProperty,
-            new ReflectionBinding(nameof(DatabaseResultCellViewModel.ValidationError)));
+            CompiledBinding.Create(
+                (DatabaseResultCellViewModel viewModel) => viewModel.ValidationError));
         ToolTip.SetShowDelay(control, 250);
         ToolTip.SetShowOnDisabled(control, true);
     }

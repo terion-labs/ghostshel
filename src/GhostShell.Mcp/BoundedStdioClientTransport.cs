@@ -203,7 +203,7 @@ internal sealed class BoundedStdioSessionTransport : ITransport
         {
             json = JsonSerializer.SerializeToUtf8Bytes(
                 message,
-                ModelContextProtocol.McpJsonUtilities.DefaultOptions);
+                McpSdkJson.TypeInfo<JsonRpcMessage>());
         }
         catch (Exception exception) when (exception is JsonException or NotSupportedException)
         {
@@ -433,8 +433,7 @@ internal sealed class BoundedStdioSessionTransport : ITransport
             {
                 message = JsonSerializer.Deserialize(
                     utf8Line.Span,
-                    typeof(JsonRpcMessage),
-                    ModelContextProtocol.McpJsonUtilities.DefaultOptions) as JsonRpcMessage;
+                    McpSdkJson.TypeInfo<JsonRpcMessage>());
             }
             catch (JsonException exception)
             {

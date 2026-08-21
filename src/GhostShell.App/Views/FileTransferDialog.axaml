@@ -1,7 +1,9 @@
 <Window
     x:Class="GhostShell.App.Views.FileTransferDialog"
+    x:DataType="vm:FileTransferEditorViewModel"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:GhostShell.App.ViewModels"
     xmlns:controls="using:GhostShell.App.Controls"
     Width="620"
     Height="430"

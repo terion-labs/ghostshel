@@ -156,39 +156,34 @@ internal sealed class CefBrowserAutomationAdapter
 
             using var worldReply = await ExecuteAsync(
                     "Page.createIsolatedWorld",
-                    new
-                    {
-                        frameId,
-                        worldName = IsolatedWorldName,
-                        grantUniveralAccess = false,
-                    })
+                    JsonSerializer.Serialize(
+                        new CdpCreateIsolatedWorldParameters(
+                            frameId,
+                            IsolatedWorldName,
+                            GrantUniveralAccess: false),
+                        BrowserJsonContext.Default.CdpCreateIsolatedWorldParameters))
                 .ConfigureAwait(false);
             contextId = RequireResult(worldReply.RootElement)
                 .GetProperty("executionContextId")
                 .GetInt32();
         }
 
-        var sharedEvaluationParameters = new Dictionary<string, object?>(StringComparer.Ordinal)
-        {
-            ["expression"] = request.Source,
-            ["awaitPromise"] = request.AwaitPromise,
-            ["returnByValue"] = true,
-            ["generatePreview"] = false,
-            ["userGesture"] = false,
-            ["timeout"] = request.Timeout.TotalMilliseconds,
-            ["disableBreaks"] = true,
-            ["replMode"] = false,
-            ["allowUnsafeEvalBlockedByCSP"] = false,
-            ["throwOnSideEffect"] = true,
-        };
-        if (contextId is { } isolatedContextId)
-        {
-            sharedEvaluationParameters["contextId"] = isolatedContextId;
-        }
-
         using var evaluationReply = await ExecuteAsync(
                 "Runtime.evaluate",
-                sharedEvaluationParameters)
+                JsonSerializer.Serialize(
+                    new CdpEvaluationParameters(
+                        request.Source,
+                        request.AwaitPromise,
+                        ReturnByValue: true,
+                        GeneratePreview: false,
+                        UserGesture: false,
+                        request.Timeout.TotalMilliseconds,
+                        DisableBreaks: true,
+                        ReplMode: false,
+                        AllowUnsafeEvalBlockedByCSP: false,
+                        ThrowOnSideEffect: true,
+                        contextId),
+                    BrowserJsonContext.Default.CdpEvaluationParameters))
             .ConfigureAwait(false);
         var evaluation = RequireResult(evaluationReply.RootElement);
         if (evaluation.TryGetProperty("exceptionDetails", out _))
@@ -215,38 +210,38 @@ internal sealed class CefBrowserAutomationAdapter
         BrowserInputModifiers modifiers) =>
         ExecuteAcknowledgedAsync(
             "Input.dispatchKeyEvent",
-            new
-            {
-                type,
-                modifiers = (int)modifiers,
-                key = key.Key,
-                code = key.Code,
-                text = string.Equals(type, "keyDown"
-, StringComparison.Ordinal) && modifiers is BrowserInputModifiers.None
-                    ? key.Text
-                    : string.Empty,
-                unmodifiedText = string.Equals(type, "keyDown"
-, StringComparison.Ordinal) && modifiers is BrowserInputModifiers.None
-                    ? key.Text
-                    : string.Empty,
-                windowsVirtualKeyCode = key.VirtualKeyCode,
-                nativeVirtualKeyCode = 0,
-                autoRepeat = false,
-                isKeypad = false,
-                isSystemKey = modifiers.HasFlag(BrowserInputModifiers.Alt),
-            });
+            JsonSerializer.Serialize(
+                new CdpAutomationKeyEventParameters(
+                    type,
+                    (int)modifiers,
+                    key.Key,
+                    key.Code,
+                    string.Equals(type, "keyDown", StringComparison.Ordinal)
+                        && modifiers is BrowserInputModifiers.None
+                            ? key.Text
+                            : string.Empty,
+                    string.Equals(type, "keyDown", StringComparison.Ordinal)
+                        && modifiers is BrowserInputModifiers.None
+                            ? key.Text
+                            : string.Empty,
+                    key.VirtualKeyCode,
+                    NativeVirtualKeyCode: 0,
+                    AutoRepeat: false,
+                    IsKeypad: false,
+                    modifiers.HasFlag(BrowserInputModifiers.Alt)),
+                BrowserJsonContext.Default.CdpAutomationKeyEventParameters));
 
-    private async Task ExecuteAcknowledgedAsync(string method, object parameters)
+    private async Task ExecuteAcknowledgedAsync(string method, string parametersJson)
     {
-        using var reply = await ExecuteAsync(method, parameters).ConfigureAwait(false);
+        using var reply = await ExecuteAsync(method, parametersJson).ConfigureAwait(false);
         _ = RequireResult(reply.RootElement);
     }
 
-    private async Task<JsonDocument> ExecuteAsync(string method, object? parameters)
+    private async Task<JsonDocument> ExecuteAsync(string method, string? parametersJson)
     {
         var reply = await _transport.ExecuteAsync(
                 method,
-                parameters is null ? null : JsonSerializer.Serialize(parameters))
+                parametersJson)
             .ConfigureAwait(false);
         try
         {

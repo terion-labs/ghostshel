@@ -1,7 +1,10 @@
 <UserControl
     x:Class="GhostShell.App.Views.AgentWorkspaceView"
+    x:DataType="vm:IAgentWorkspaceHost"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:GhostShell.App.ViewModels"
+    xmlns:application="using:GhostShell.Application"
     xmlns:controls="using:GhostShell.App.Controls"
     xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:icons="using:FluentIcons.Avalonia"
@@ -213,7 +216,7 @@
                   <StackPanel Margin="{controls:Inset Horizontal=Sm, Bottom=Sm}">
                     <ItemsControl ItemsSource="{Binding AgentChat.FilteredConversations}">
                       <ItemsControl.ItemTemplate>
-                        <DataTemplate>
+                        <DataTemplate x:DataType="vm:AgentConversationItemViewModel">
                           <Grid ColumnDefinitions="*,Auto">
                             <Button
                                 Grid.Column="0"
@@ -396,7 +399,7 @@
                             TextWrapping="Wrap" />
                         <ItemsControl ItemsSource="{Binding AgentChat.ContextItems}">
                           <ItemsControl.ItemTemplate>
-                            <DataTemplate>
+                            <DataTemplate x:DataType="vm:AgentContextItemViewModel">
                               <Border
                                   Margin="{controls:Inset Bottom=Xs}"
                                   Padding="{controls:Inset Sm}"
@@ -464,7 +467,7 @@
                             TextWrapping="Wrap" />
                         <ItemsControl ItemsSource="{Binding AgentChat.EffectivePolicyCapabilities}">
                           <ItemsControl.ItemTemplate>
-                            <DataTemplate>
+                            <DataTemplate x:DataType="vm:AgentPolicyCapabilityViewModel">
                               <Grid
                                   Margin="{controls:Inset Vertical=Xs}"
                                   ColumnDefinitions="*,Auto"
@@ -525,7 +528,7 @@
               </ControlTheme>
             </ItemsControl.ItemContainerTheme>
             <ItemsControl.ItemTemplate>
-              <DataTemplate>
+              <DataTemplate x:DataType="vm:AgentChatMessageViewModel">
                 <Grid Margin="{controls:Inset Bottom=Sm}">
                   <StackPanel
                       MaxWidth="286"
@@ -830,7 +833,7 @@
                   AutomationProperties.Name="Loading agent activity" />
               <ItemsControl ItemsSource="{Binding AgentChat.AuditEntries}">
                 <ItemsControl.ItemTemplate>
-                  <DataTemplate>
+                  <DataTemplate x:DataType="vm:AgentAuditEntryViewModel">
                     <Border
                         Margin="{controls:Inset Bottom=Xs}"
                         Padding="{controls:Inset Sm}"
@@ -979,7 +982,7 @@
             ItemsSource="{Binding AgentChat.QueuedFollowUps}"
             IsVisible="{Binding AgentChat.HasQueuedFollowUps, FallbackValue=False}">
           <ItemsControl.ItemTemplate>
-            <DataTemplate>
+            <DataTemplate x:DataType="vm:AgentQueuedFollowUpViewModel">
               <Grid Classes="agentQueueRow" Margin="{controls:Inset Bottom=2}">
                 <Border
                     Classes="queueDropBefore"
@@ -1243,7 +1246,7 @@
                       <StackPanel Margin="{controls:Inset Horizontal=Sm, Bottom=Sm}">
                         <ItemsControl ItemsSource="{Binding AgentChat.FilteredModels}">
                           <ItemsControl.ItemTemplate>
-                            <DataTemplate>
+                            <DataTemplate x:DataType="vm:AgentModelPickerItemViewModel">
                               <Grid ColumnDefinitions="*,Auto">
                                 <Button
                                     Grid.Column="0"
@@ -1312,7 +1315,7 @@
                             IsVisible="{Binding AgentChat.HasMultipleProviders}"
                             AutomationProperties.Name="AI provider">
                           <ComboBox.ItemTemplate>
-                            <DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate>
+                            <DataTemplate x:DataType="application:AiProviderProfileDescriptor"><TextBlock Text="{Binding Name}" /></DataTemplate>
                           </ComboBox.ItemTemplate>
                         </ComboBox>
                         <Grid
@@ -1327,7 +1330,7 @@
                               IsEnabled="{Binding AgentChat.CanSelectReasoningEffort}"
                               AutomationProperties.Name="AI reasoning effort">
                             <ComboBox.ItemTemplate>
-                              <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
+                              <DataTemplate x:DataType="vm:AgentReasoningEffortOption"><TextBlock Text="{Binding Label}" /></DataTemplate>
                             </ComboBox.ItemTemplate>
                           </ComboBox>
                         </Grid>
@@ -1343,7 +1346,7 @@
                               IsEnabled="{Binding AgentChat.CanSelectServiceTier}"
                               AutomationProperties.Name="AI service tier">
                             <ComboBox.ItemTemplate>
-                              <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
+                              <DataTemplate x:DataType="vm:AgentServiceTierOption"><TextBlock Text="{Binding Label}" /></DataTemplate>
                             </ComboBox.ItemTemplate>
                           </ComboBox>
                         </Grid>

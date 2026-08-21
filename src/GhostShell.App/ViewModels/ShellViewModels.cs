@@ -1200,7 +1200,7 @@ public sealed record RuntimeHistorySource
         && !value.Any(char.IsControl);
 }
 
-public sealed class RuntimeTabViewModel : ObservableObject
+public sealed class RuntimeTabViewModel : ObservableObject, IRuntimeTabStripItem
 {
     private const double DefaultPanelMinimumWidth = 220;
     private const double DefaultPanelMinimumHeight = 140;

@@ -1,9 +1,12 @@
 <UserControl
     x:Class="GhostShell.App.Views.WorkspaceView"
+    x:DataType="vm:MainWindowViewModel"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:GhostShell.App.ViewModels"
     xmlns:controls="using:GhostShell.App.Controls"
     xmlns:dock="using:Dock.Avalonia.Controls"
+    xmlns:dockCore="using:Dock.Model.Core"
     xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:icons="using:FluentIcons.Avalonia"
     xmlns:views="using:GhostShell.App.Views"
@@ -50,9 +53,9 @@
   <Grid RowDefinitions="Auto,*,Auto">
     <Border
         Classes="TopChrome"
-        MinHeight="{Binding $parent[Window].TitleBarChromeHeight}"
+        MinHeight="{Binding $parent[views:MainWindow].TitleBarChromeHeight}"
         WindowDecorationProperties.ElementRole="TitleBar">
-      <Grid ColumnDefinitions="Auto,*,Auto" Margin="{Binding $parent[Window].WindowTitleBarContentMargin}" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+      <Grid ColumnDefinitions="Auto,*,Auto" Margin="{Binding $parent[views:MainWindow].WindowTitleBarContentMargin}" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <!-- Where the home tab used to sit. Home was a screen you left the work
              to visit; this is the same corner answering the question that screen
              was mostly opened for — which workspace, and whether the rail that
@@ -453,11 +456,11 @@
                       BorderThickness="1"
                       CornerRadius="{DynamicResource ShellControlCornerRadius}"
                       BoxShadow="{DynamicResource ShellOverlayShadow}">
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                    <Grid x:DataType="dockCore:IDockable" ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                       <TextBlock
                           VerticalAlignment="Center"
                           FontWeight="SemiBold"
-                          Text="{Binding Title}"
+                        Text="{Binding Title}"
                           TextTrimming="CharacterEllipsis" />
                       <TextBlock
                           Grid.Column="1"

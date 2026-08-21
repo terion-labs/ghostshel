@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using GhostShell.Application;
 
 namespace GhostShell.Databases;
@@ -551,7 +552,9 @@ internal sealed partial class RelationalDatabasePanelSession
     {
         try
         {
-            if (JsonSerializer.SerializeToUtf8Bytes(value).Length
+            var typeInfo = (JsonTypeInfo<T>)DatabaseProjectionJsonContext.Default
+                .Options.GetTypeInfo(typeof(T));
+            if (JsonSerializer.SerializeToUtf8Bytes(value, typeInfo).Length
                 > MaximumSerializedResultBytes)
             {
                 throw new InvalidDataException(

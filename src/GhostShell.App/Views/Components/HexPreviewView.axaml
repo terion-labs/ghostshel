@@ -1,7 +1,10 @@
 <UserControl
     x:Class="GhostShell.App.Views.Components.HexPreviewView"
+    x:DataType="vm:PreviewHexViewModel"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:GhostShell.App.ViewModels"
+    xmlns:previews="using:GhostShell.Application.Previews"
     xmlns:controls="using:GhostShell.App.Controls"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
@@ -15,7 +18,7 @@
         SelectionMode="Single"
         AutomationProperties.Name="File bytes">
       <ListBox.ItemTemplate>
-        <DataTemplate>
+        <DataTemplate x:DataType="previews:HexPreviewRow">
           <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceMd}">
             <TextBlock
                 Classes="Muted"

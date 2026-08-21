@@ -1,5 +1,6 @@
 <UserControl
     x:Class="GhostShell.App.Views.RuntimePanels.TerminalRuntimePanelView"
+    x:Name="TerminalRuntimePanelRoot"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
@@ -20,7 +21,7 @@
       IsActive="{Binding IsActive}"
       IsAgentActive="{Binding IsAgentActive}"
       IsNotificationPulseActive="{Binding IsNotificationPulseActive}"
-      IsTitleAdornmentVisible="{ReflectionBinding IsContinuityActive}"
+      IsTitleAdornmentVisible="{CompiledBinding #TerminalRuntimePanelRoot.((vm:ITerminalContinuityState)DataContext).IsContinuityActive}"
       IsZoomed="{Binding IsZoomed}"
       SplitRequested="OnSplitRequested"
       Title="Terminal">
@@ -159,7 +160,7 @@
 
     <controls:PanelChrome.Leading>
       <components:PanelConnectionSelectorView
-          Options="{ReflectionBinding $parent[Window].DataContext.PanelConnectionOptions}"
+          Options="{CompiledBinding $parent[Window].((vm:IPanelConnectionOptionsHost)DataContext).PanelConnectionOptions}"
           SelectedLabel="{Binding ConnectionDisplayName}"
           ConnectionSelected="OnConnectionSelected"
           NewConnectionRequested="OnNewConnectionRequested" />

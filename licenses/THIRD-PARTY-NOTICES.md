@@ -97,7 +97,6 @@ materials and independent license review.
 | `Dock.MarkupExtension` | `12.0.0.2` | MIT |
 | `Dock.Model.Inpc` | `12.0.0.2` | MIT |
 | `Dock.Model` | `12.0.0.2` | MIT |
-| `Dock.Serializer.SystemTextJson` | `12.0.0.2` | MIT |
 | `Dock.Settings` | `12.0.0.2` | MIT |
 | `DuckDB.NET.Bindings.Full` | `1.2.1` | NOASSERTION (nuspec file: `LICENSE.md`) |
 | `DuckDB.NET.Data.Full` | `1.2.1` | NOASSERTION (nuspec file: `LICENSE.md`) |

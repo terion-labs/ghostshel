@@ -1,7 +1,9 @@
 <UserControl
     x:Class="GhostShell.App.Views.RuntimePanels.BrowserRuntimePanelView"
+    x:DataType="vm:BrowserRuntimePanelViewModel"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:GhostShell.App.ViewModels"
     xmlns:controls="using:GhostShell.App.Controls"
     xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:icons="using:FluentIcons.Avalonia"
@@ -34,7 +36,7 @@
 
     <controls:PanelChrome.Leading>
       <components:PanelConnectionSelectorView
-          Options="{Binding $parent[Window].DataContext.BrowserConnectionOptions}"
+          Options="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).BrowserConnectionOptions}"
           SelectedLabel="{Binding ConnectionDisplayName}"
           ConnectionSelected="OnConnectionSelected"
           NewConnectionRequested="OnNewConnectionRequested" />

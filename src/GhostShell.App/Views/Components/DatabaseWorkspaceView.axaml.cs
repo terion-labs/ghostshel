@@ -37,11 +37,10 @@ public sealed partial class DatabaseWorkspaceView : UserControl
         // is its DataContext, set when a prose-sized cell begins editing.
         CellExpandEditor.Bind(
             CodeEditBox.TextProperty,
-            new Avalonia.Data.Binding(nameof(DatabaseResultCellViewModel.EditText))
-            {
-                Mode = Avalonia.Data.BindingMode.TwoWay,
-                UpdateSourceTrigger = Avalonia.Data.UpdateSourceTrigger.PropertyChanged,
-            });
+            Avalonia.Data.CompiledBinding.Create(
+                (DatabaseResultCellViewModel viewModel) => viewModel.EditText,
+                mode: Avalonia.Data.BindingMode.TwoWay,
+                updateSourceTrigger: Avalonia.Data.UpdateSourceTrigger.PropertyChanged));
         ResultDataGrid.PreparingCellForEdit += OnPreparingCellForEdit;
         ObservePanel();
     }

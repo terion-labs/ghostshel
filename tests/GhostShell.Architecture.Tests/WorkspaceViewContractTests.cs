@@ -467,7 +467,7 @@ public sealed class WorkspaceViewContractTests
             AttributeValue(titleBar, "WindowDecorationProperties.ElementRole"));
         Assert.Null(AttributeValue(titleBar, "PointerPressed"));
         Assert.Equal(
-            "{Binding $parent[Window].TitleBarChromeHeight}",
+            "{Binding $parent[views:MainWindow].TitleBarChromeHeight}",
             AttributeValue(titleBar, "MinHeight"));
     }
 

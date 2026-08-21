@@ -859,11 +859,10 @@ public sealed partial class GovernedAgentRuntime :
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             Trace.TraceError(
-                "Governed agent {0} failure during {1}: {2} at {3}",
+                "Governed agent {0} failure during {1}: {2}",
                 providerTurnStarted ? "turn" : "setup",
                 setupStage,
-                exception.GetType().FullName,
-                exception.TargetSite?.Name ?? "unknown boundary");
+                exception.GetType().FullName);
             if (!providerTurnStarted)
             {
                 return FinishRecoverableSetupFailure(
@@ -2070,9 +2069,8 @@ public sealed partial class GovernedAgentRuntime :
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             Trace.TraceError(
-                "Governed agent compaction threw {0} at {1}.",
-                exception.GetType().FullName,
-                exception.TargetSite?.Name ?? "unknown boundary");
+                "Governed agent compaction threw {0}.",
+                exception.GetType().FullName);
             return ConversationCompactionOutcome.Failure(
                 "agent_compaction_failed",
                 "The conversation could not be compacted before the next provider request. Retry.");
@@ -3748,19 +3746,26 @@ public sealed partial class GovernedAgentRuntime :
     private static void AppendManifestValue(
         StringBuilder builder,
         string? value) =>
-        builder.Append(
-            JsonSerializer.Serialize(
-                BoundManifestValue(
-                    value ?? "<not reported>",
-                    MaximumManifestIdentifierBytes)));
+        AppendJsonString(
+            builder,
+            BoundManifestValue(
+                value ?? "<not reported>",
+                MaximumManifestIdentifierBytes));
 
     private static void AppendUntrustedManifestValue(
         StringBuilder builder,
         string? value)
     {
-        builder.Append(
-            JsonSerializer.Serialize(
-                BoundUntrustedDisplayValue(value) ?? "<not reported>"));
+        AppendJsonString(
+            builder,
+            BoundUntrustedDisplayValue(value) ?? "<not reported>");
+    }
+
+    private static void AppendJsonString(StringBuilder builder, string value)
+    {
+        builder.Append('"');
+        builder.Append(JsonEncodedText.Encode(value));
+        builder.Append('"');
     }
 
     private static string? BoundUntrustedDisplayValue(string? value) =>

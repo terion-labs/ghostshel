@@ -3811,10 +3811,18 @@ string.Equals(SelectedProfile?.Id, BuiltInFileProviders.HomeId.Value, StringComp
         try
         {
             using var document = JsonDocument.Parse(content.ToArray());
-            return JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions
+            using var stream = new MemoryStream();
+            using (var writer = new Utf8JsonWriter(
+                       stream,
+                       new JsonWriterOptions { Indented = true }))
             {
-                WriteIndented = true,
-            });
+                document.RootElement.WriteTo(writer);
+            }
+
+            return Encoding.UTF8.GetString(
+                stream.GetBuffer(),
+                0,
+                checked((int)stream.Length));
         }
         catch (JsonException)
         {

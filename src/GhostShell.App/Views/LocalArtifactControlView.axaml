@@ -1,7 +1,9 @@
 <UserControl
     x:Class="GhostShell.App.Views.LocalArtifactControlView"
+    x:DataType="vm:LocalArtifactControlViewModel"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:GhostShell.App.ViewModels"
     xmlns:controls="using:GhostShell.App.Controls">
   <controls:SurfaceCard>
     <StackPanel Spacing="{DynamicResource ShellSpaceMd}">

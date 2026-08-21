@@ -42,7 +42,7 @@ public sealed record ManagedRemoteSessionViewModel(
         Lease.State == TerminalMultiplexerLeaseState.TerminationPending;
 }
 
-public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
+public sealed partial class MainWindowViewModel : ObservableObject, IDisposable, IAgentWorkspaceHost, IPanelConnectionOptionsHost
 {
     private enum McpServerTestPresentationState
     {
@@ -8223,11 +8223,28 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             : new WorkspaceAutoSaveCapture(definition, storedRevision, layouts);
     }
 
-    private static bool DefinitionPayloadEquals(object left, object right) =>
-        left.GetType() == right.GetType()
-        && string.Equals(
-            System.Text.Json.JsonSerializer.Serialize(left, left.GetType()),
-            System.Text.Json.JsonSerializer.Serialize(right, right.GetType()),
+    private static bool DefinitionPayloadEquals(
+        WorkspaceDefinition left,
+        WorkspaceDefinition right) =>
+        string.Equals(
+            System.Text.Json.JsonSerializer.Serialize(
+                left,
+                DefinitionBundleJsonContext.Default.WorkspaceDefinition),
+            System.Text.Json.JsonSerializer.Serialize(
+                right,
+                DefinitionBundleJsonContext.Default.WorkspaceDefinition),
+            StringComparison.Ordinal);
+
+    private static bool DefinitionPayloadEquals(
+        LayoutDefinition left,
+        LayoutDefinition right) =>
+        string.Equals(
+            System.Text.Json.JsonSerializer.Serialize(
+                left,
+                DefinitionBundleJsonContext.Default.LayoutDefinition),
+            System.Text.Json.JsonSerializer.Serialize(
+                right,
+                DefinitionBundleJsonContext.Default.LayoutDefinition),
             StringComparison.Ordinal);
 
     /// <summary>

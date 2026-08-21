@@ -692,8 +692,7 @@
       "ghostshell.docking": {
         "type": "Project",
         "dependencies": {
-          "Dock.Model.Inpc": "[12.0.0.2, )",
-          "Dock.Serializer.SystemTextJson": "[12.0.0.2, )"
+          "Dock.Model.Inpc": "[12.0.0.2, )"
         }
       },
       "ghostshell.files": {
@@ -828,15 +827,6 @@
         "requested": "[12.0.0.2, )",
         "resolved": "12.0.0.2",
         "contentHash": "ObZcu0Gmp8vkunBrvISvsWsCuODnjYsA5hrb6Examey621SjwLjDwYLswZmzNZfw/a0FxyF56Q1PXf3uxq1wiQ==",
-        "dependencies": {
-          "Dock.Model": "12.0.0.2"
-        }
-      },
-      "Dock.Serializer.SystemTextJson": {
-        "type": "CentralTransitive",
-        "requested": "[12.0.0.2, )",
-        "resolved": "12.0.0.2",
-        "contentHash": "0mp0exVyEvJWCayQT4bduldbh1+Ly+z3GIUPSGWoe/ZYC99f5gUc+wxqANgoe4CL3qFJnKR8fCECCfrEcb6TAw==",
         "dependencies": {
           "Dock.Model": "12.0.0.2"
         }

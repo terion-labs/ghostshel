@@ -5,6 +5,7 @@ using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.VisualTree;
 using AvaloniaEdit.CodeCompletion;
+using GhostShell.App.ViewModels;
 using GhostShell.App.Views.Components;
 using GhostShell.Application;
 
@@ -1051,8 +1052,10 @@ public sealed class SqlCodeEditBoxHeadlessTests
         };
     }
 
-    private sealed class QueryEditorStatusSource(string status)
+    private sealed class QueryEditorStatusSource(string status) : ISqlQueryEditorHost
     {
+        public SqlCompletionContext SqlLanguageCompletionContext { get; } = new(null);
+
         public string SqlLanguageStatus { get; } = status;
 
         public ISqlLanguageSession? SqlLanguageSession => null;

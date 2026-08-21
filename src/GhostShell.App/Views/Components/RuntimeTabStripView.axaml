@@ -1,11 +1,13 @@
 <UserControl
     x:Class="GhostShell.App.Views.Components.RuntimeTabStripView"
+    x:DataType="components:RuntimeTabStripView"
     x:Name="Root"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
+    xmlns:vm="using:GhostShell.App.ViewModels"
     Focusable="False"
     Margin="{DynamicResource ShellTabStripTopClearance}"
     HorizontalContentAlignment="Stretch"
@@ -91,7 +93,7 @@
         </ItemsPanelTemplate>
       </ItemsControl.ItemsPanel>
       <ItemsControl.ItemTemplate>
-        <DataTemplate>
+        <DataTemplate x:DataType="vm:IRuntimeTabStripItem">
           <!-- Compact, because the active tab is now a filled accent block: at
                the old height it was the heaviest thing in the chrome and read
                as a banner rather than as one tab among several. -->
@@ -146,6 +148,7 @@
                   <FlyoutBase.AttachedFlyout>
                     <Flyout Opened="OnIconFlyoutOpened">
                       <components:IconPicker
+                          x:DataType="vm:RuntimeTabIconPickerViewModel"
                           Width="330"
                           ItemsSource="{Binding IconChoices}"
                           SearchText="{Binding IconSearch, Mode=TwoWay}"

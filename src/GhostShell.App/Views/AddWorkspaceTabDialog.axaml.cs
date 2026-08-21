@@ -7,6 +7,22 @@ using GhostShell.Core;
 
 namespace GhostShell.App.Views;
 
+internal sealed record TabSourceRow(
+    string Title,
+    string Detail,
+    Symbol Symbol,
+    string Kind,
+    WorkspaceTabSource? Source)
+{
+    public bool IsNewScreen => Source is null;
+
+    public bool Matches(string term) =>
+        IsNewScreen
+        || Title.Contains(term, StringComparison.OrdinalIgnoreCase)
+        || Detail.Contains(term, StringComparison.OrdinalIgnoreCase)
+        || Kind.Contains(term, StringComparison.OrdinalIgnoreCase);
+}
+
 /// <summary>
 /// Chooses what a new workspace tab opens: a saved connection, a saved screen —
 /// linked or copied — or a screen that exists only in this workspace.
@@ -143,19 +159,4 @@ public sealed partial class AddWorkspaceTabDialog : Window
             : row.Source);
     }
 
-    private sealed record TabSourceRow(
-        string Title,
-        string Detail,
-        Symbol Symbol,
-        string Kind,
-        WorkspaceTabSource? Source)
-    {
-        public bool IsNewScreen => Source is null;
-
-        public bool Matches(string term) =>
-            IsNewScreen
-            || Title.Contains(term, StringComparison.OrdinalIgnoreCase)
-            || Detail.Contains(term, StringComparison.OrdinalIgnoreCase)
-            || Kind.Contains(term, StringComparison.OrdinalIgnoreCase);
-    }
 }

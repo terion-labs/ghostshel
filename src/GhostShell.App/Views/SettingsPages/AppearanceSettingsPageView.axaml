@@ -1,7 +1,10 @@
 <UserControl
     x:Class="GhostShell.App.Views.SettingsPages.AppearanceSettingsPageView"
+    x:DataType="vm:MainWindowViewModel"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:pages="using:GhostShell.App.Views.SettingsPages"
+    xmlns:vm="using:GhostShell.App.ViewModels"
     xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
@@ -404,7 +407,7 @@
                 SelectionChanged="OnAppearanceChanged"
                 AutomationProperties.Name="Application text size">
               <ComboBox.ItemTemplate>
-                <DataTemplate>
+                <DataTemplate x:DataType="pages:AppearanceTextScaleOption">
                   <TextBlock Text="{Binding DisplayName}" />
                 </DataTemplate>
               </ComboBox.ItemTemplate>

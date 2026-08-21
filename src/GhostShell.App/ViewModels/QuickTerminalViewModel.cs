@@ -5,7 +5,7 @@ using GhostShell.Core;
 
 namespace GhostShell.App.ViewModels;
 
-public sealed class QuickTerminalViewModel : ObservableObject, IDisposable
+public sealed class QuickTerminalViewModel : ObservableObject, IDisposable, IAgentWorkspaceHost, IPanelConnectionOptionsHost
 {
     private static readonly IReadOnlyList<AgentRunScopeOption> AgentRunScopeOptionsValue =
         Array.AsReadOnly<AgentRunScopeOption>(
@@ -289,6 +289,9 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable
 
     public IEnumerable<PanelConnectionOptionViewModel> ConnectionOptions =>
         _mainWindow.PanelConnectionOptions;
+
+    IEnumerable<PanelConnectionOptionViewModel> IPanelConnectionOptionsHost.PanelConnectionOptions =>
+        ConnectionOptions;
 
     public async Task AddTabAsync()
     {

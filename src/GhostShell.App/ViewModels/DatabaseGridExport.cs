@@ -1046,7 +1046,11 @@ internal static class DatabaseGridExport
                 writer.WriteEndArray();
                 return;
             default:
-                JsonSerializer.Serialize(writer, value, value.GetType());
+                // Provider-specific CLR values have no stable JSON schema. A
+                // deterministic invariant string is the only portable shape;
+                // runtime-type serialization would require reflection and can
+                // silently change when a provider updates.
+                writer.WriteStringValue(Convert.ToString(value, CultureInfo.InvariantCulture));
                 return;
         }
     }

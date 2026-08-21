@@ -1,5 +1,6 @@
 <Window
     x:Class="GhostShell.App.Views.FileAccessControlDialog"
+    x:DataType="vm:FileAccessControlEditorViewModel"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
@@ -61,7 +62,7 @@
                     HorizontalAlignment="Stretch"
                     ItemsSource="{Binding Choices}"
                     SelectedItem="{Binding Privilege, Mode=TwoWay}"
-                    IsEnabled="{Binding $parent[Window].DataContext.CanEdit}"
+                    IsEnabled="{Binding $parent[Window].((vm:FileAccessControlEditorViewModel)DataContext).CanEdit}"
                     AutomationProperties.Name="{Binding PrivilegeLabel}" />
                 <ToggleSwitch
                     Grid.Column="2"
@@ -69,7 +70,7 @@
                     HorizontalAlignment="Center"
                     IsChecked="{Binding CanRun, Mode=TwoWay}"
                     IsVisible="{Binding ShowsExecute}"
-                    IsEnabled="{Binding $parent[Window].DataContext.CanEdit}"
+                    IsEnabled="{Binding $parent[Window].((vm:FileAccessControlEditorViewModel)DataContext).CanEdit}"
                     AutomationProperties.Name="{Binding Name, StringFormat={}{0} can run this}" />
               </Grid>
             </DataTemplate>

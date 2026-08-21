@@ -11,6 +11,7 @@ using Avalonia.VisualTree;
 using FluentIcons.Avalonia;
 using FluentIcons.Common;
 using GhostShell.App.Controls;
+using GhostShell.App.ViewModels;
 using GhostShell.App.Views.Components;
 
 namespace GhostShell.App.Tests;
@@ -29,7 +30,12 @@ public sealed class RuntimeTabStripSideDockHeadlessTests
         bool CanClose,
         bool HasAttention,
         string Icon = "terminal",
-        Symbol IconSymbol = Symbol.WindowConsole);
+        Symbol IconSymbol = Symbol.WindowConsole) : IRuntimeTabStripItem
+    {
+        public string AgentActivity => string.Empty;
+
+        public bool HasAgentActivity => false;
+    }
 
     [Fact]
     public Task Active_tab_sticks_to_both_overflow_edges() =>

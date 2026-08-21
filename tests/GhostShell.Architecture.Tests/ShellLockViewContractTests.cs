@@ -45,57 +45,101 @@ public sealed class ShellLockViewContractTests
     }
 
     [Fact]
-    public void Release_aot_preserves_remaining_reflection_bound_ui_members()
+    public void Application_ui_is_compiled_binding_only_for_native_aot()
     {
-        var project = XDocument.Load(Path.Combine(
+        var applicationProject = XDocument.Load(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "GhostShell.App.csproj"));
+        Assert.Equal(
+            "true",
+            applicationProject.Descendants()
+                .Single(element => element.Name.LocalName
+                    == "AvaloniaUseCompiledBindingsByDefault")
+                .Value);
+
+        var applicationRoot = Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App");
+        var reflectionBindings = Directory
+            .EnumerateFiles(applicationRoot, "*", SearchOption.AllDirectories)
+            .Where(path => path.EndsWith(".axaml", StringComparison.Ordinal)
+                || path.EndsWith(".cs", StringComparison.Ordinal))
+            .Where(path => File.ReadAllText(path).Contains(
+                "ReflectionBinding",
+                StringComparison.Ordinal))
+            .Select(path => Path.GetRelativePath(applicationRoot, path))
+            .ToArray();
+        Assert.Empty(reflectionBindings);
+
+        var desktopProject = XDocument.Load(Path.Combine(
             ApplicationViews.RepositoryRoot,
             "src",
             "GhostShell.Desktop",
             "GhostShell.Desktop.csproj"));
-        var root = Assert.Single(
-            project.Descendants(),
+        Assert.DoesNotContain(
+            desktopProject.Descendants(),
             element => element.Name.LocalName == "TrimmerRootAssembly"
                 && AttributeValue(element, "Include") == "GhostShell.App");
-        var group = Assert.IsType<XElement>(root.Parent);
-
         Assert.Equal(
-            "'$(GhostShellMacReleaseNativeAot)' == 'true'",
-            AttributeValue(group, "Condition"));
-
-        var workspaceEditor = LoadView("WorkspaceEditorView");
+            "false",
+            desktopProject.Descendants()
+                .Single(element => element.Name.LocalName
+                    == "JsonSerializerIsReflectionEnabledByDefault")
+                .Value);
         Assert.Equal(
-            "vm:WorkspaceEditorViewModel",
-            AttributeValue(workspaceEditor.Root!, "DataType"));
-        Assert.Contains(
-            workspaceEditor.Descendants().Attributes(),
-            attribute => attribute.Value
-                == "{CompiledBinding AgentPolicy.IsEnabled}");
-        Assert.Contains(
-            workspaceEditor.Descendants().Attributes(),
-            attribute => attribute.Value
-                == "{CompiledBinding ValidationSummary}");
+            "false",
+            desktopProject.Descendants()
+                .Single(element => element.Name.LocalName
+                    == "IlcGenerateCompleteTypeMetadata")
+                .Value);
 
-        var mainWindow = LoadView("MainWindow");
-        var operationError = Assert.Single(
-            mainWindow.Descendants().Attributes(),
-            attribute => attribute.Value == "{CompiledBinding OperationError}");
-        Assert.Equal("Text", operationError.Name.LocalName);
+        var sourceRoot = Path.Combine(ApplicationViews.RepositoryRoot, "src");
+        var dynamicallyDiscoveredContracts = Directory
+            .EnumerateFiles(sourceRoot, "*.cs", SearchOption.AllDirectories)
+            .Where(path => File.ReadAllText(path).Contains(
+                "DefaultJsonTypeInfoResolver",
+                StringComparison.Ordinal))
+            .Select(path => Path.GetRelativePath(sourceRoot, path))
+            .ToArray();
+        Assert.Empty(dynamicallyDiscoveredContracts);
 
-        var terminalPanel = LoadView(Path.Combine(
-            "RuntimePanels",
-            "TerminalRuntimePanelView"));
+        var aotReflectionWorkarounds = Directory
+            .EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories)
+            .Where(path => path.EndsWith(".cs", StringComparison.Ordinal)
+                || path.EndsWith(".csproj", StringComparison.Ordinal))
+            .Where(path =>
+            {
+                var source = File.ReadAllText(path);
+                return source.Contains("DynamicallyAccessedMembers", StringComparison.Ordinal)
+                    || source.Contains("DynamicDependency", StringComparison.Ordinal)
+                    || source.Contains("UnconditionalSuppressMessage", StringComparison.Ordinal)
+                    || source.Contains("TrimmerRootAssembly", StringComparison.Ordinal)
+                    || source.Contains("TrimmerRootDescriptor", StringComparison.Ordinal);
+            })
+            .Select(path => Path.GetRelativePath(sourceRoot, path))
+            .ToArray();
+        Assert.Empty(aotReflectionWorkarounds);
+
+        var dockProject = File.ReadAllText(Path.Combine(
+            sourceRoot,
+            "GhostShell.Docking",
+            "GhostShell.Docking.csproj"));
+        Assert.DoesNotContain(
+            "Dock.Serializer.SystemTextJson",
+            dockProject,
+            StringComparison.Ordinal);
+
+        var buildProperties = XDocument.Load(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "Directory.Build.props"));
         Assert.Equal(
-            "True",
-            AttributeValue(terminalPanel.Root!, "CompileBindings"));
-        Assert.Equal(
-            "vm:TerminalRuntimePanelViewModel",
-            AttributeValue(terminalPanel.Root!, "DataType"));
-        Assert.Contains(
-            terminalPanel.Descendants().Attributes(),
-            attribute => attribute.Value == "{CompiledBinding SessionRequest}");
-        Assert.Contains(
-            terminalPanel.Descendants().Attributes(),
-            attribute => attribute.Value == "{CompiledBinding HasConnectionOverlay}");
+            "true",
+            buildProperties.Descendants()
+                .Single(element => element.Name.LocalName == "IsAotCompatible")
+                .Value);
     }
 
     private static XDocument LoadView(string relativePath) =>

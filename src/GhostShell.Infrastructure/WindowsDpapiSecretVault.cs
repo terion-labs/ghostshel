@@ -2,6 +2,7 @@ using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using GhostShell.Application;
 using GhostShell.Core;
 
@@ -11,7 +12,7 @@ namespace GhostShell.Infrastructure;
 /// Stores one current-user DPAPI ciphertext per secret reference. Files contain metadata and ciphertext only.
 /// </summary>
 [SupportedOSPlatform("windows")]
-public sealed class WindowsDpapiSecretVault : ISecretVault
+public sealed partial class WindowsDpapiSecretVault : ISecretVault
 {
     private const int FormatVersion = 1;
     private const string FileExtension = ".gsvault";
@@ -397,7 +398,9 @@ public sealed class WindowsDpapiSecretVault : ISecretVault
 
         try
         {
-            var stored = JsonSerializer.Deserialize<StoredSecret>(bytes)
+            var stored = JsonSerializer.Deserialize(
+                    bytes,
+                    WindowsSecretJsonContext.Default.StoredSecret)
                 ?? throw new JsonException("The secret entry was empty.");
             if (stored.FormatVersion != FormatVersion
                 || expectedReference is { } expected && stored.Metadata.Reference != expected)
@@ -417,7 +420,9 @@ public sealed class WindowsDpapiSecretVault : ISecretVault
     {
         Directory.CreateDirectory(_directory);
         var temporaryPath = Path.Combine(_directory, $".{Path.GetRandomFileName()}.tmp");
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(value);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(
+            value,
+            WindowsSecretJsonContext.Default.StoredSecret);
 
         try
         {
@@ -535,4 +540,7 @@ public sealed class WindowsDpapiSecretVault : ISecretVault
         int FormatVersion,
         SecretMetadata Metadata,
         string ProtectedValue);
+
+    [JsonSerializable(typeof(StoredSecret))]
+    private sealed partial class WindowsSecretJsonContext : JsonSerializerContext;
 }

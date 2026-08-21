@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using GhostShell.Application;
 using GhostShell.Core;
 
@@ -17,7 +18,7 @@ namespace GhostShell.Infrastructure;
 /// further attempt waits twice as long as the one before — a restart does
 /// not reset the meter, because the meter is on disk.
 /// </summary>
-public sealed class StartupProtectionRuntime : IStartupProtection
+public sealed partial class StartupProtectionRuntime : IStartupProtection
 {
     private const string FileName = "startup-protection.json";
     private const int Iterations = 600_000;
@@ -532,7 +533,9 @@ public sealed class StartupProtectionRuntime : IStartupProtection
     {
         try
         {
-            return JsonSerializer.Deserialize<ProtectionFile>(File.ReadAllText(_path));
+            return JsonSerializer.Deserialize(
+                File.ReadAllText(_path),
+                StartupProtectionJsonContext.Default.ProtectionFile);
         }
         catch (Exception exception) when (exception
             is FileNotFoundException
@@ -550,7 +553,11 @@ public sealed class StartupProtectionRuntime : IStartupProtection
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-            File.WriteAllText(_path, JsonSerializer.Serialize(file));
+            File.WriteAllText(
+                _path,
+                JsonSerializer.Serialize(
+                    file,
+                    StartupProtectionJsonContext.Default.ProtectionFile));
         }
         catch (Exception exception)
             when (exception is IOException or UnauthorizedAccessException)
@@ -574,4 +581,7 @@ public sealed class StartupProtectionRuntime : IStartupProtection
         int FailedAttempts,
         DateTimeOffset? RetryAfterUtc,
         string? WrappedKeys = null);
+
+    [JsonSerializable(typeof(ProtectionFile))]
+    private sealed partial class StartupProtectionJsonContext : JsonSerializerContext;
 }

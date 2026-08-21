@@ -1,6 +1,7 @@
 <Styles
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:GhostShell.App.ViewModels"
     xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia">
   <!--
@@ -336,7 +337,7 @@
         </ItemsPanelTemplate>
       </Setter>
       <Setter Property="ItemContainerTheme">
-        <ControlTheme TargetType="ContentPresenter">
+        <ControlTheme TargetType="ContentPresenter" x:DataType="vm:FloatingRuntimePanelViewModel">
           <Setter Property="Canvas.Left" Value="{Binding X}" />
           <Setter Property="Canvas.Top" Value="{Binding Y}" />
           <Setter Property="Width" Value="{Binding Width}" />
@@ -344,7 +345,7 @@
         </ControlTheme>
       </Setter>
       <Setter Property="ItemTemplate">
-        <DataTemplate>
+        <DataTemplate x:DataType="vm:FloatingRuntimePanelViewModel">
           <Grid>
             <ContentControl
                 Content="{Binding Panel}"

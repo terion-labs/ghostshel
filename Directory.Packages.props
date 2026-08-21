@@ -22,7 +22,6 @@
     <PackageVersion Include="Dock.Avalonia" Version="12.0.0.2" />
     <PackageVersion Include="Dock.Avalonia.Themes.Fluent" Version="12.0.0.2" />
     <PackageVersion Include="Dock.Model.Inpc" Version="12.0.0.2" />
-    <PackageVersion Include="Dock.Serializer.SystemTextJson" Version="12.0.0.2" />
     <PackageVersion Include="DuckDB.NET.Data.Full" Version="1.2.1" />
     <PackageVersion Include="FirebirdSql.Data.FirebirdClient" Version="10.3.1" />
     <PackageVersion Include="FluentFTP" Version="54.2.0" />

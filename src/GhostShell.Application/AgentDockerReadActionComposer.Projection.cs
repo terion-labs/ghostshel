@@ -512,9 +512,10 @@ public sealed partial class AgentDockerReadActionComposer
     {
         try
         {
+            var typeInfo = (JsonTypeInfo<T>)DockerProjectionJsonOptions.GetTypeInfo(typeof(T));
             if (JsonSerializer.SerializeToUtf8Bytes(
                     result,
-                    DockerProjectionJsonOptions).Length
+                    typeInfo).Length
                 > MaximumSerializedDockerResultBytes)
             {
                 throw InvalidResult("Docker result exceeds its serialized byte bound.");
@@ -534,18 +535,19 @@ public sealed partial class AgentDockerReadActionComposer
 
     private static JsonSerializerOptions CreateDockerProjectionJsonOptions()
     {
-        var resolver = new DefaultJsonTypeInfoResolver();
-        resolver.Modifiers.Add(static typeInfo =>
-        {
-            for (var index = typeInfo.Properties.Count - 1; index >= 0; index--)
+        var resolver = JsonTypeInfoResolver.WithAddedModifier(
+            AgentProjectionJsonContext.Default,
+            static typeInfo =>
             {
-                if (string.Equals(typeInfo.Properties[index].Name
-, nameof(DockerContainerLogLine.RawText), StringComparison.Ordinal))
+                for (var index = typeInfo.Properties.Count - 1; index >= 0; index--)
                 {
-                    typeInfo.Properties.RemoveAt(index);
+                    if (string.Equals(typeInfo.Properties[index].Name
+    , nameof(DockerContainerLogLine.RawText), StringComparison.Ordinal))
+                    {
+                        typeInfo.Properties.RemoveAt(index);
+                    }
                 }
-            }
-        });
+            });
         return new JsonSerializerOptions
         {
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,

@@ -673,9 +673,10 @@ internal sealed partial class DockerPanelSession
     {
         try
         {
+            var typeInfo = (JsonTypeInfo<T>)ProjectionJsonOptions.GetTypeInfo(typeof(T));
             var bytes = JsonSerializer.SerializeToUtf8Bytes(
                 value,
-                ProjectionJsonOptions);
+                typeInfo);
             if (bytes.Length > MaximumSerializedResultBytes)
             {
                 throw new InvalidDataException(
@@ -693,22 +694,23 @@ internal sealed partial class DockerPanelSession
 
     private static JsonSerializerOptions CreateProjectionJsonOptions()
     {
-        var resolver = new DefaultJsonTypeInfoResolver();
-        resolver.Modifiers.Add(static typeInfo =>
-        {
-            for (var index = typeInfo.Properties.Count - 1; index >= 0; index--)
+        var resolver = JsonTypeInfoResolver.WithAddedModifier(
+            DockerProjectionJsonContext.Default,
+            static typeInfo =>
             {
-                if (typeInfo.Properties[index].Name is
-                    nameof(DockerContainerSummary.IsRunning)
-                    or nameof(DockerContainerSummary.IsPaused)
-                    or nameof(DockerContainerSummary.IsStandalone)
-                    or nameof(DockerContainerSummary.StackName)
-                    or nameof(DockerContainerLogLine.RawText))
+                for (var index = typeInfo.Properties.Count - 1; index >= 0; index--)
                 {
-                    typeInfo.Properties.RemoveAt(index);
+                    if (typeInfo.Properties[index].Name is
+                        nameof(DockerContainerSummary.IsRunning)
+                        or nameof(DockerContainerSummary.IsPaused)
+                        or nameof(DockerContainerSummary.IsStandalone)
+                        or nameof(DockerContainerSummary.StackName)
+                        or nameof(DockerContainerLogLine.RawText))
+                    {
+                        typeInfo.Properties.RemoveAt(index);
+                    }
                 }
-            }
-        });
+            });
         return new JsonSerializerOptions
         {
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,

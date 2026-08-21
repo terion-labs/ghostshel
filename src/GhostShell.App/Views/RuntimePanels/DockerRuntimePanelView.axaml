@@ -1,8 +1,10 @@
 <UserControl
     x:Class="GhostShell.App.Views.RuntimePanels.DockerRuntimePanelView"
+    x:DataType="vm:DockerRuntimePanelViewModel"
     x:Name="Root"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:GhostShell.App.ViewModels"
     xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:panelViews="using:GhostShell.App.Views.RuntimePanels"
     xmlns:controls="using:GhostShell.App.Controls"
@@ -15,7 +17,7 @@
     IsVisible="{Binding IsVisibleInLayout}"
     AutomationProperties.Name="Docker panel">
   <UserControl.Resources>
-    <DataTemplate x:Key="DockerResourceItemTemplate">
+    <DataTemplate x:Key="DockerResourceItemTemplate" x:DataType="vm:DockerResourceItemViewModel">
       <controls:ListItem
           Classes="DockerResourceListItem"
           ContentPadding="{DynamicResource ShellListRowPadding}"
@@ -244,7 +246,7 @@
 
     <controls:PanelChrome.Leading>
       <components:PanelConnectionSelectorView
-          Options="{Binding $parent[Window].DataContext.PanelConnectionOptions}"
+          Options="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).PanelConnectionOptions}"
           SelectedLabel="{Binding ConnectionDisplayName}"
           ConnectionSelected="OnConnectionSelected"
           NewConnectionRequested="OnNewConnectionRequested" />

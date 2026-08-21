@@ -499,7 +499,7 @@ internal sealed class McpClientSession : IAsyncDisposable
         {
             serialized = JsonSerializer.SerializeToUtf8Bytes(
                 sdkResult,
-                ModelContextProtocol.McpJsonUtilities.DefaultOptions);
+                McpSdkJson.TypeInfo<CallToolResult>());
         }
         catch (Exception exception) when (exception is JsonException or NotSupportedException)
         {
@@ -547,8 +547,7 @@ internal sealed class McpClientSession : IAsyncDisposable
             {
                 blockJson = JsonSerializer.SerializeToElement(
                     block,
-                    typeof(ContentBlock),
-                    ModelContextProtocol.McpJsonUtilities.DefaultOptions);
+                    McpSdkJson.TypeInfo<ContentBlock>());
             }
             catch (Exception exception) when (exception is JsonException or NotSupportedException)
             {

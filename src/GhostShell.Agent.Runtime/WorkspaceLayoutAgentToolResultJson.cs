@@ -83,11 +83,14 @@ internal static class WorkspaceLayoutAgentToolResultJson
             return AgentToolResultJson.Failure(stableCode, retryable: false);
         }
 
-        return JsonSerializer.Serialize(new
-        {
-            ok = false,
-            error = stableCode,
-        });
+        var buffer = new ArrayBufferWriter<byte>();
+        using var writer = new Utf8JsonWriter(buffer);
+        writer.WriteStartObject();
+        writer.WriteBoolean("ok", false);
+        writer.WriteString("error", stableCode);
+        writer.WriteEndObject();
+        writer.Flush();
+        return Encoding.UTF8.GetString(buffer.WrittenSpan);
     }
 
     public static string ProviderStableCode(HostError error) =>

@@ -401,6 +401,7 @@ trap cleanup EXIT
 
 publish_dir="${working_dir}/publish"
 managed_evidence_dir="${working_dir}/managed-evidence"
+aot_publish_log="${working_dir}/native-aot-publish.log"
 "${dotnet}" restore \
     "${desktop_project}" \
     -maxcpucount:4 \
@@ -437,7 +438,15 @@ managed_evidence_dir="${working_dir}/managed-evidence"
     -p:GhostShellCefRuntimeArtifactDirectory="${cef_runtime_root}" \
     -p:DebugType=None \
     -p:DebugSymbols=false \
-    -p:GhostShellSqlLanguageRequired=true
+    -p:GhostShellSqlLanguageRequired=true \
+    2>&1 | /usr/bin/tee "${aot_publish_log}"
+
+if /usr/bin/grep -E \
+    'ILC : (Trim analysis warning IL2026|AOT analysis warning IL3050): GhostShell\.' \
+    "${aot_publish_log}"; then
+    echo "Native AOT packaging rejected unsupported reflection in first-party code." >&2
+    exit 1
+fi
 
 # Project-reference symbols are build artifacts, not release payload. Native
 # AOT folds application IL into GhostShell, so no managed symbols are useful in

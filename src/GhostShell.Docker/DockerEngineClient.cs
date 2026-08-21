@@ -1,5 +1,6 @@
 using System.Formats.Tar;
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using GhostShell.Application;
 using GhostShell.Core;
@@ -202,10 +203,7 @@ public sealed class DockerEngineClient(
                 && document.RootElement.GetArrayLength() > 0
                     ? document.RootElement[0]
                     : throw new JsonException("Docker inspect returned no resource.");
-            var json = JsonSerializer.Serialize(root, new JsonSerializerOptions
-            {
-                WriteIndented = true,
-            });
+            var json = FormatJson(root, indented: true);
             return new DockerResult<DockerResourceInspection>.Success(
                 new DockerResourceInspection(
                     resource,
@@ -1325,8 +1323,21 @@ public sealed class DockerEngineClient(
             // source whitespace here turned arrays into tall, bracket-per-line
             // values in the property inspector. Serialize compound values again
             // so the summary remains valid JSON without inheriting presentation.
-            _ => JsonSerializer.Serialize(current),
+            _ => FormatJson(current, indented: false),
         };
+    }
+
+    private static string FormatJson(JsonElement value, bool indented)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(
+                   stream,
+                   new JsonWriterOptions { Indented = indented }))
+        {
+            value.WriteTo(writer);
+        }
+
+        return Encoding.UTF8.GetString(stream.GetBuffer(), 0, checked((int)stream.Length));
     }
 
     private static string Text(JsonElement row, string name, string fallback = "") =>

@@ -1,7 +1,9 @@
 <UserControl
     x:Class="GhostShell.App.Views.Components.AgentApprovalCardView"
+    x:DataType="vm:IAgentWorkspaceHost"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:GhostShell.App.ViewModels"
     xmlns:controls="using:GhostShell.App.Controls"
     Focusable="False"
     HorizontalContentAlignment="Stretch">
@@ -40,7 +42,7 @@
         <TextBlock Classes="Eyebrow" Text="Material arguments" />
         <ItemsControl ItemsSource="{Binding AgentChat.PendingApproval.Arguments}">
           <ItemsControl.ItemTemplate>
-            <DataTemplate>
+            <DataTemplate x:DataType="vm:AgentApprovalArgumentViewModel">
               <Grid Margin="{controls:Inset Bottom=Xs}" ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                 <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Name, StringFormat={}{0}:}" />
                 <TextBlock Grid.Column="1" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding DisplayValue}" TextWrapping="Wrap" />

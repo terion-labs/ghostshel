@@ -398,4 +398,6 @@ public sealed class DefinitionBundleController
     UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
     WriteIndented = true)]
 [JsonSerializable(typeof(PortableDefinitionBundle))]
+[JsonSerializable(typeof(WorkspaceDefinition))]
+[JsonSerializable(typeof(LayoutDefinition))]
 internal sealed partial class DefinitionBundleJsonContext : JsonSerializerContext;

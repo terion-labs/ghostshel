@@ -1,5 +1,6 @@
 <UserControl
     x:Class="GhostShell.App.Views.RuntimePanels.FileRuntimePanelView"
+    x:DataType="vm:FileRuntimePanelViewModel"
     x:Name="FileRuntimePanelRoot"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -111,7 +112,7 @@
     <controls:PanelChrome.Leading>
       <components:PanelConnectionSelectorView
           IsEnabled="{Binding CanSelectProfile}"
-          Options="{Binding $parent[Window].DataContext.FileConnectionOptions}"
+          Options="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).FileConnectionOptions}"
           SelectedLabel="{Binding ConnectionDisplayName}"
           ConnectionSelected="OnConnectionSelected"
           NewConnectionRequested="OnNewConnectionRequested" />
@@ -230,7 +231,7 @@
                 <Button.Flyout>
                   <MenuFlyout Placement="Bottom">
                     <MenuFlyout.ItemContainerTheme>
-                      <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                      <ControlTheme TargetType="MenuItem" x:DataType="vm:FileActionViewModel" BasedOn="{StaticResource {x:Type MenuItem}}">
                         <Setter Property="Command" Value="{Binding Command}" />
                         <Setter Property="IsEnabled" Value="{Binding IsEnabled}" />
                       </ControlTheme>
@@ -273,7 +274,7 @@
             <Grid.ContextMenu>
               <ContextMenu x:Name="FileListContextMenu" Opening="OnFileContextMenuOpening">
                 <ContextMenu.ItemContainerTheme>
-                  <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                  <ControlTheme TargetType="MenuItem" x:DataType="vm:FileActionViewModel" BasedOn="{StaticResource {x:Type MenuItem}}">
                     <Setter Property="Command" Value="{Binding Command}" />
                     <Setter Property="IsEnabled" Value="{Binding IsEnabled}" />
                     <Setter Property="InputGesture" Value="{Binding Gesture}" />

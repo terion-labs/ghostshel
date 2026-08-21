@@ -55,7 +55,7 @@ internal sealed class CefHumanizedInput : IDisposable
     {
         using var reply = await ExecuteAsync(
                 "Page.getLayoutMetrics",
-                parameters: null)
+                parametersJson: null)
             .ConfigureAwait(false);
         var result = RequireResult(reply.RootElement);
         var viewport = result.TryGetProperty("cssVisualViewport", out var visual)
@@ -246,7 +246,9 @@ internal sealed class CefHumanizedInput : IDisposable
                 var burst = string.Concat(elements.Skip(index).Take(burstSize));
                 await ExecuteAcknowledgedAsync(
                         "Input.insertText",
-                        new { text = burst })
+                        JsonSerializer.Serialize(
+                            new CdpInsertTextParameters(burst),
+                            BrowserJsonContext.Default.CdpInsertTextParameters))
                     .ConfigureAwait(false);
                 KeepCursorVisible();
                 index += burstSize;
@@ -462,36 +464,36 @@ internal sealed class CefHumanizedInput : IDisposable
         double deltaY) =>
         ExecuteAcknowledgedAsync(
             "Input.dispatchMouseEvent",
-            new
-            {
-                type,
-                x,
-                y,
-                button = MouseButtonName(button),
-                buttons = (int)buttons,
-                modifiers = (int)modifiers,
-                clickCount,
-                deltaX,
-                deltaY,
-                pointerType = "mouse",
-            });
+            JsonSerializer.Serialize(
+                new CdpMouseEventParameters(
+                    type,
+                    x,
+                    y,
+                    MouseButtonName(button),
+                    (int)buttons,
+                    (int)modifiers,
+                    clickCount,
+                    deltaX,
+                    deltaY,
+                    "mouse"),
+                BrowserJsonContext.Default.CdpMouseEventParameters));
 
     private async Task ExecuteAcknowledgedAsync(
         string method,
-        object parameters)
+        string parametersJson)
     {
-        using var reply = await ExecuteAsync(method, parameters)
+        using var reply = await ExecuteAsync(method, parametersJson)
             .ConfigureAwait(false);
         _ = RequireResult(reply.RootElement);
     }
 
     private async Task<JsonDocument> ExecuteAsync(
         string method,
-        object? parameters)
+        string? parametersJson)
     {
         var reply = await _transport.ExecuteAsync(
                 method,
-                parameters is null ? null : JsonSerializer.Serialize(parameters))
+                parametersJson)
             .ConfigureAwait(false);
         if (StrictUtf8.GetByteCount(reply) > MaximumCdpReplyBytes)
         {

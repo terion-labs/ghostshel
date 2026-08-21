@@ -693,7 +693,9 @@ public sealed class LinuxSecretServiceSecretVault : ISecretVault
 
         try
         {
-            var metadata = JsonSerializer.Deserialize<SecretMetadata>(bytes)
+            var metadata = JsonSerializer.Deserialize(
+                    bytes,
+                    InfrastructureJsonContext.Default.SecretMetadata)
                 ?? throw new JsonException("Secret metadata was empty.");
             if (expectedReference is { } expected && metadata.Reference != expected)
             {
@@ -712,7 +714,9 @@ public sealed class LinuxSecretServiceSecretVault : ISecretVault
     {
         Directory.CreateDirectory(_metadataDirectory);
         var temporaryPath = Path.Combine(_metadataDirectory, $".{Path.GetRandomFileName()}.tmp");
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(metadata);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(
+            metadata,
+            InfrastructureJsonContext.Default.SecretMetadata);
 
         try
         {

@@ -925,6 +925,7 @@
           "GhostShell.Databases": "[1.0.0, )",
           "GhostShell.Docker": "[1.0.0, )",
           "GhostShell.Files": "[1.0.0, )",
+          "GhostShell.Git": "[1.0.0, )",
           "GhostShell.Infrastructure": "[1.0.0, )",
           "GhostShell.Mcp": "[1.0.0, )",
           "GhostShell.Monitoring": "[1.0.0, )",
@@ -1028,8 +1029,7 @@
       "ghostshell.docking": {
         "type": "Project",
         "dependencies": {
-          "Dock.Model.Inpc": "[12.0.0.2, )",
-          "Dock.Serializer.SystemTextJson": "[12.0.0.2, )"
+          "Dock.Model.Inpc": "[12.0.0.2, )"
         }
       },
       "ghostshell.files": {
@@ -1043,6 +1043,13 @@
           "SMBLibrary": "[1.5.7.1, )",
           "SSH.NET": "[2026.0.0, )",
           "SshNet.Agent": "[2026.0.0, )"
+        }
+      },
+      "ghostshell.git": {
+        "type": "Project",
+        "dependencies": {
+          "GhostShell.Application": "[1.0.0, )",
+          "GhostShell.Core": "[1.0.0, )"
         }
       },
       "ghostshell.infrastructure": {
@@ -1258,15 +1265,6 @@
         "requested": "[12.0.0.2, )",
         "resolved": "12.0.0.2",
         "contentHash": "ObZcu0Gmp8vkunBrvISvsWsCuODnjYsA5hrb6Examey621SjwLjDwYLswZmzNZfw/a0FxyF56Q1PXf3uxq1wiQ==",
-        "dependencies": {
-          "Dock.Model": "12.0.0.2"
-        }
-      },
-      "Dock.Serializer.SystemTextJson": {
-        "type": "CentralTransitive",
-        "requested": "[12.0.0.2, )",
-        "resolved": "12.0.0.2",
-        "contentHash": "0mp0exVyEvJWCayQT4bduldbh1+Ly+z3GIUPSGWoe/ZYC99f5gUc+wxqANgoe4CL3qFJnKR8fCECCfrEcb6TAw==",
         "dependencies": {
           "Dock.Model": "12.0.0.2"
         }

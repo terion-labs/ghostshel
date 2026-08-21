@@ -1,7 +1,9 @@
 <UserControl
     x:Class="GhostShell.App.Views.Components.PreviewTreeView"
+    x:DataType="vm:PreviewTreeViewModel"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:GhostShell.App.ViewModels"
     xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
     HorizontalContentAlignment="Stretch"
@@ -9,12 +11,12 @@
   <Grid RowDefinitions="*,Auto">
     <TreeView ItemsSource="{Binding Nodes}" Background="Transparent" BorderThickness="0">
       <TreeView.ItemContainerTheme>
-        <ControlTheme TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}">
+        <ControlTheme TargetType="TreeViewItem" x:DataType="vm:PreviewTreeNodeViewModel" BasedOn="{StaticResource {x:Type TreeViewItem}}">
           <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
         </ControlTheme>
       </TreeView.ItemContainerTheme>
       <TreeView.ItemTemplate>
-        <TreeDataTemplate ItemsSource="{Binding Children}">
+        <TreeDataTemplate x:DataType="vm:PreviewTreeNodeViewModel" ItemsSource="{Binding Children}">
           <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceXs}">
             <icons:SymbolIcon
                 VerticalAlignment="Center"

@@ -2,6 +2,8 @@
     x:Class="GhostShell.App.Views.AddWorkspaceTabDialog"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:views="using:GhostShell.App.Views"
+    xmlns:vm="using:GhostShell.App.ViewModels"
     xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
     Title="Add a tab"
@@ -47,7 +49,7 @@
           DoubleTapped="OnSourceDoubleTapped"
           AutomationProperties.Name="Connections and screens">
         <ListBox.ItemTemplate>
-          <DataTemplate>
+          <DataTemplate x:DataType="views:TabSourceRow">
             <controls:ListItem
                 Margin="{controls:Inset Vertical=Xs}"
                 Title="{Binding Title}"
@@ -84,7 +86,7 @@
                   Grid.Column="1"
                   HorizontalAlignment="Stretch"
                   AutomationProperties.Name="Layout for the new screen">
-                <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
+                <ComboBox.ItemTemplate><DataTemplate x:DataType="vm:WorkspaceLayoutOption"><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
               </ComboBox>
             </Grid>
           </StackPanel>

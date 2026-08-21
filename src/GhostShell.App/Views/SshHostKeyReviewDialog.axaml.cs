@@ -5,6 +5,21 @@ using GhostShell.Application;
 
 namespace GhostShell.App.Views;
 
+internal sealed record SshHostKeyReviewPrompt(SshHostKeyReview Review)
+{
+    public string Title => Review.RequiresExplicitReplacement
+        ? "The SSH host key changed"
+        : "Trust this SSH host key?";
+
+    public string Explanation => Review.RequiresExplicitReplacement
+        ? "The server presented a different identity from the one you previously trusted. This can indicate a rebuilt server, an endpoint change, or an interception attempt."
+        : "This is the first host key GhostSHELL has seen for this saved connection.";
+
+    public string ConfirmLabel => Review.RequiresExplicitReplacement
+        ? "Replace trusted key"
+        : "Trust host key";
+}
+
 public sealed partial class SshHostKeyReviewDialog : Window
 {
     public SshHostKeyReviewDialog()
@@ -35,18 +50,4 @@ public sealed partial class SshHostKeyReviewDialog : Window
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 
-    private sealed record SshHostKeyReviewPrompt(SshHostKeyReview Review)
-    {
-        public string Title => Review.RequiresExplicitReplacement
-            ? "The SSH host key changed"
-            : "Trust this SSH host key?";
-
-        public string Explanation => Review.RequiresExplicitReplacement
-            ? "The server presented a different identity from the one you previously trusted. This can indicate a rebuilt server, an endpoint change, or an interception attempt."
-            : "This is the first host key GhostSHELL has seen for this saved connection.";
-
-        public string ConfirmLabel => Review.RequiresExplicitReplacement
-            ? "Replace trusted key"
-            : "Trust host key";
-    }
 }

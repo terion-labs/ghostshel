@@ -4,7 +4,6 @@ using Dock.Model.Controls;
 using Dock.Model.Core;
 using Dock.Model.Inpc;
 using Dock.Model.Inpc.Controls;
-using Dock.Serializer.SystemTextJson;
 using GhostShell.App.Controls;
 using GhostShell.Core;
 using GhostShell.Docking;
@@ -22,7 +21,7 @@ namespace GhostShell.App.ViewModels;
 internal sealed class RuntimeDockLayoutController
 {
     private const string RootId = "ghostshell-root";
-    private readonly DockSerializer _serializer = DockLayoutSerializer.Create();
+    private readonly IDockSerializer _serializer = DockLayoutSerializer.Create();
     private readonly DockWorkspaceManager _workspaceManager;
     private readonly Dictionary<string, RuntimePanelViewModel> _contexts =
         new(StringComparer.Ordinal);

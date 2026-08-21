@@ -352,17 +352,6 @@
       "nuspecLicense": "MIT"
     },
     {
-      "identity": "Dock.Serializer.SystemTextJson/12.0.0.2",
-      "kind": "nuget",
-      "depsType": "package",
-      "licenseDeclared": "MIT",
-      "nuGetId": "Dock.Serializer.SystemTextJson",
-      "contentHash": "0mp0exVyEvJWCayQT4bduldbh1+Ly+z3GIUPSGWoe/ZYC99f5gUc+wxqANgoe4CL3qFJnKR8fCECCfrEcb6TAw==",
-      "nupkgSha512": "7xm5flMJxS/2Ig05lEwPHk8VEWMg802FhwlY6YLAvXyrZGOec0krWS3YtJoeW+LRJgaDr2/QgedjHyLmueolKQ==",
-      "nuspecLicenseType": "expression",
-      "nuspecLicense": "MIT"
-    },
-    {
       "identity": "Dock.Settings/12.0.0.2",
       "kind": "nuget",
       "depsType": "package",

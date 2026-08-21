@@ -6,7 +6,6 @@
 
   <ItemGroup>
     <PackageReference Include="Dock.Model.Inpc" />
-    <PackageReference Include="Dock.Serializer.SystemTextJson" />
   </ItemGroup>
 
 </Project>

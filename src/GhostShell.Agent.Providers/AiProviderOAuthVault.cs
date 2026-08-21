@@ -20,7 +20,9 @@ internal sealed class AiProviderOAuthVault(ISecretVault vault)
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(session);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(
+            session,
+            AgentProviderJsonContext.Default.AiProviderOAuthSession);
         try
         {
             if (bytes.Length > MaximumSessionBytes)
@@ -98,7 +100,9 @@ internal sealed class AiProviderOAuthVault(ISecretVault vault)
         try
         {
             material.CopyTo(bytes);
-            return JsonSerializer.Deserialize<AiProviderOAuthSession>(bytes)
+            return JsonSerializer.Deserialize(
+                    bytes,
+                    AgentProviderJsonContext.Default.AiProviderOAuthSession)
                 ?? throw AiProviderClientException.Create(
                     AiProviderRuntimeErrorCode.CredentialUnavailable);
         }

@@ -1,7 +1,9 @@
 <UserControl
     x:Class="GhostShell.App.Views.Overlays.CommandPaletteView"
+    x:DataType="vm:MainWindowViewModel"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:GhostShell.App.ViewModels"
     xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
     HorizontalContentAlignment="Stretch"
@@ -41,7 +43,7 @@
           ItemsSource="{Binding LauncherSearchResults}"
           SelectedItem="{Binding SelectedLauncherSearchResult, Mode=TwoWay}">
         <ListBox.Styles>
-          <Style Selector="ListBoxItem">
+          <Style Selector="ListBoxItem" x:DataType="vm:LauncherSearchResultViewModel">
             <Setter Property="IsEnabled" Value="{Binding IsAvailable}" />
           </Style>
           <!--

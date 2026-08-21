@@ -7,6 +7,7 @@
     xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:icons="using:FluentIcons.Avalonia"
     xmlns:vm="using:GhostShell.App.ViewModels"
+    xmlns:application="using:GhostShell.Application"
     x:DataType="vm:WorkspaceEditorViewModel"
     MinWidth="900"
     MinHeight="600">
@@ -46,7 +47,7 @@
             SelectionChanged="OnPeerSelectionChanged"
             AutomationProperties.Name="Workspaces">
           <ListBox.ItemTemplate>
-            <DataTemplate>
+            <DataTemplate x:DataType="vm:WorkspaceRailItemViewModel">
               <controls:ListItem
                   Margin="{controls:Inset Vertical=Xs}"
                   Title="{Binding Name}"
@@ -175,7 +176,7 @@
                     SelectionChanged="OnEntrySelectionChanged"
                     AutomationProperties.Name="Workspace tabs">
                   <ListBox.ItemTemplate>
-                    <DataTemplate>
+                    <DataTemplate x:DataType="vm:WorkspaceEntryEditorViewModel">
                       <controls:ListItem
                           Margin="{controls:Inset Vertical=Xs}"
                           Title="{Binding DisplayName}"
@@ -272,7 +273,7 @@
                beside it: a tab's panels are a second level of detail, and
                putting them in a column of their own left both columns half
                empty. -->
-          <StackPanel x:Name="SelectedEntryEditor" Spacing="{DynamicResource ShellSpaceMd}" IsVisible="False">
+          <StackPanel x:Name="SelectedEntryEditor" x:DataType="vm:WorkspaceEntryEditorViewModel" Spacing="{DynamicResource ShellSpaceMd}" IsVisible="False">
             <controls:SurfaceCard>
               <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
@@ -298,7 +299,7 @@
                       x:Name="EntryConnectionPicker"
                       SelectedItem="{Binding SelectedConnection, Mode=TwoWay}"
                       AutomationProperties.Name="Workspace entry connection">
-                    <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
+                    <ComboBox.ItemTemplate><DataTemplate x:DataType="vm:ScreenConnectionOption"><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
                   </ComboBox>
                 </controls:LabeledField>
 
@@ -310,14 +311,14 @@
                       x:Name="EntryScreenPicker"
                       SelectedItem="{Binding SelectedScreen, Mode=TwoWay}"
                       AutomationProperties.Name="Workspace entry saved screen">
-                    <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
+                    <ComboBox.ItemTemplate><DataTemplate x:DataType="vm:WorkspaceScreenOption"><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
                   </ComboBox>
                 </controls:LabeledField>
               </StackPanel>
             </controls:SurfaceCard>
 
             <controls:SurfaceCard IsVisible="{Binding IsWorkspaceTab}">
-              <StackPanel DataContext="{Binding Tab}" Spacing="{DynamicResource ShellSpaceMd}">
+              <StackPanel x:DataType="vm:WorkspaceTabEditorViewModel" DataContext="{Binding Tab}" Spacing="{DynamicResource ShellSpaceMd}">
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                   <components:SectionHeader
                       Heading="Workspace-only screen"
@@ -330,7 +331,7 @@
                   </controls:LabeledField>
                   <controls:LabeledField Grid.Column="1" Label="Layout">
                     <ComboBox ItemsSource="{Binding LayoutOptions}" SelectedItem="{Binding SelectedLayout, Mode=TwoWay}">
-                      <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
+                      <ComboBox.ItemTemplate><DataTemplate x:DataType="vm:WorkspaceLayoutOption"><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
                     </ComboBox>
                   </controls:LabeledField>
                 </Grid>
@@ -351,7 +352,7 @@
 
                 <ItemsControl ItemsSource="{Binding Panels}">
                   <ItemsControl.ItemTemplate>
-                    <DataTemplate>
+                    <DataTemplate x:DataType="vm:WorkspaceTabPanelEditorViewModel">
                       <controls:SurfaceCard Tone="Sunken" ClipsContent="True" Padding="{DynamicResource ShellCardPaddingCompact}" Margin="{controls:Inset Bottom=Sm}">
                         <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
                           <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">

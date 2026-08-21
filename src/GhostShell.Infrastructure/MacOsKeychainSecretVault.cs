@@ -197,7 +197,9 @@ public sealed class MacOsKeychainSecretVault : ISecretVault
 
         using var item = CreateIdentityQuery(request.Reference);
         item.SetString(MacConstants.SecAttrLabel, metadata.Label);
-        item.SetString(MacConstants.SecAttrComment, JsonSerializer.Serialize(metadata));
+        item.SetString(
+            MacConstants.SecAttrComment,
+            JsonSerializer.Serialize(metadata, InfrastructureJsonContext.Default.SecretMetadata));
         item.SetData(MacConstants.SecValueData, plaintext);
 
         var status = MacNative.SecItemAdd(item.Handle, out var result);
@@ -391,7 +393,9 @@ public sealed class MacOsKeychainSecretVault : ISecretVault
     {
         using var query = CreateIdentityQuery(reference);
         using var attributes = new MacDictionary();
-        attributes.SetString(MacConstants.SecAttrComment, JsonSerializer.Serialize(metadata));
+        attributes.SetString(
+            MacConstants.SecAttrComment,
+            JsonSerializer.Serialize(metadata, InfrastructureJsonContext.Default.SecretMetadata));
         if (newLabel is not null)
         {
             attributes.SetString(MacConstants.SecAttrLabel, newLabel);
@@ -416,7 +420,9 @@ public sealed class MacOsKeychainSecretVault : ISecretVault
             throw new JsonException("Keychain metadata was missing.");
         }
 
-        return JsonSerializer.Deserialize<SecretMetadata>(MacNative.CopyString(comment))
+        return JsonSerializer.Deserialize(
+                MacNative.CopyString(comment),
+                InfrastructureJsonContext.Default.SecretMetadata)
             ?? throw new JsonException("Keychain metadata was empty.");
     }
 

@@ -46,10 +46,8 @@ internal sealed class CefBrowserNetworkContext : IDisposable
         {
             // Context-local content settings keep JavaScript disabled across
             // replacement renderers without changing ordinary browser panels.
-            ["profile.default_content_setting_values.javascript"] =
-                JsonSerializer.Serialize(2),
-            ["profile.default_content_setting_values.popups"] =
-                JsonSerializer.Serialize(2),
+            ["profile.default_content_setting_values.javascript"] = "2",
+            ["profile.default_content_setting_values.popups"] = "2",
         };
 
     private static CefBrowserNetworkContext CreateConfigured(
@@ -91,17 +89,10 @@ internal sealed class CefBrowserNetworkContext : IDisposable
                 "A SOCKS proxy port must be between 1 and 65535.");
         }
 
-        var proxy = new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            ["mode"] = "fixed_servers",
-            ["server"] = $"socks5://127.0.0.1:{socksProxyPort}",
-            ["bypass_list"] = "<-loopback>",
-        };
         return new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["proxy"] = JsonSerializer.Serialize(proxy),
-            ["webrtc.ip_handling_policy"] = JsonSerializer.Serialize(
-                "disable_non_proxied_udp"),
+            ["proxy"] = $$"""{"mode":"fixed_servers","server":"socks5://127.0.0.1:{{socksProxyPort}}","bypass_list":"<-loopback>"}""",
+            ["webrtc.ip_handling_policy"] = "\"disable_non_proxied_udp\"",
         };
     }
 
