@@ -23,7 +23,7 @@ font_assets_build_receipt="${repository_dir}/native/artifacts/common/terminal-fo
 declare_macos_sdk="${repository_dir}/scripts/declare-macos-sdk26.sh"
 sign_notarize_macos="${repository_dir}/scripts/sign-notarize-macos.sh"
 namespace_avalonia_native="${repository_dir}/scripts/namespace-avalonia-native-macos.sh"
-nuget_packages="${NUGET_PACKAGES:-${HOME}/.nuget/packages}"
+nuget_packages="${NUGET_PACKAGES:-${repository_dir}/.nuget/packages}"
 sql_language_artifact_directory="${repository_dir}/native/artifacts/osx-arm64"
 sql_language_worker="${sql_language_artifact_directory}/ghostshell-sql-language"
 sql_language_receipt="${sql_language_artifact_directory}/build-receipt.json"
@@ -400,6 +400,7 @@ managed_evidence_dir="${working_dir}/managed-evidence"
     "${desktop_project}" \
     --runtime "${runtime_identifier}" \
     --locked-mode \
+    -p:GhostShellProductVersion="${version}" \
     -p:GhostShellMacReleaseNativeAot=true
 "${dotnet}" publish \
     "${desktop_project}" \
@@ -552,13 +553,16 @@ first_party_assemblies=(
     "GhostShell.Browser.dll"
     "GhostShell.Core.dll"
     "GhostShell.Databases.dll"
+    "GhostShell.Docker.dll"
     "GhostShell.Docking.dll"
     "GhostShell.Files.dll"
+    "GhostShell.Git.dll"
     "GhostShell.Infrastructure.dll"
     "GhostShell.Mcp.dll"
     "GhostShell.Monitoring.dll"
     "GhostShell.Previews.dll"
     "GhostShell.Protocol.dll"
+    "GhostShell.Redis.dll"
     "GhostShell.SessionHost.dll"
     "GhostShell.Terminal.dll"
 )
@@ -639,6 +643,15 @@ fi
     --runtime-identifier "${runtime_identifier}"
 
 /usr/bin/plutil -lint "${candidate}/Contents/Info.plist"
+candidate_icon="${candidate}/Contents/Resources/GhostShell.icns"
+if [[ ! -f "${candidate_icon}" || -L "${candidate_icon}" ]]; then
+    echo "The packaged macOS application icon is missing or linked." >&2
+    exit 1
+fi
+if [[ "$(/usr/bin/plutil -extract CFBundleIconFile raw "${candidate}/Contents/Info.plist")" != "GhostShell.icns" ]]; then
+    echo "The packaged macOS application icon declaration is invalid." >&2
+    exit 1
+fi
 
 if [[ ! -x "${candidate}/Contents/MacOS/GhostShell" ]]; then
     echo "The packaged GhostShell executable is not executable." >&2

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1024"
+     height="1024"
+     viewBox="0 0 1024 1024"
+     fill-rule="evenodd"
+     clip-rule="evenodd"
+     stroke-linejoin="round"
+     stroke-miterlimit="2">
+  <!-- Keep the checked-in mark intact. The square canvas supplies Apple's
+       optical safe area while Icon Composer owns masking and appearance. -->
+  <g transform="translate(143.5 216) scale(1.416)">
+    <g transform="translate(-985.323 -598.176)">
+      <g transform="matrix(1.25124 0 0 1.00547 -583.894 9.76733)">
+        <path d="M1462.26 585.381L1670.14 1001.12L1254.39 1001.12L1462.26 585.381ZM1462.26 640.223L1299.53 971.126L1625 971.126L1462.26 640.223ZM1395.57 929.502L1386.59 947.854L1334.01 947.854L1343 929.502L1395.57 929.502Z"/>
+      </g>
+    </g>
+  </g>
+</svg>

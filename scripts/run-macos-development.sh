@@ -8,6 +8,7 @@ target_directory=""
 cef_runtime_root=""
 app_bundle=""
 info_plist_template=""
+app_icon="${repository_dir}/assets/macos/GhostShell.icns"
 application_arguments=()
 
 usage() {
@@ -82,6 +83,10 @@ if [[ ! -f "${info_plist_template}" || -L "${info_plist_template}" ]]; then
     echo "The GhostSHELL Info.plist template is missing or linked." >&2
     exit 1
 fi
+if [[ ! -f "${app_icon}" || -L "${app_icon}" ]]; then
+    echo "The GhostSHELL macOS application icon is missing or linked." >&2
+    exit 1
+fi
 if [[ ! -x "${namespace_avalonia_native}" ]]; then
     echo "The Avalonia Native Objective-C namespace helper is unavailable." >&2
     exit 1
@@ -143,7 +148,8 @@ trap cleanup EXIT
 contents="${candidate}/Contents"
 macos_directory="${contents}/MacOS"
 frameworks_directory="${contents}/Frameworks"
-mkdir -p -- "${macos_directory}" "${frameworks_directory}"
+resources_directory="${contents}/Resources"
+mkdir -p -- "${macos_directory}" "${frameworks_directory}" "${resources_directory}"
 
 echo "Assembling the macOS CEF development bundle..." >&2
 /usr/bin/ditto --clone --noqtn "${target_directory}" "${macos_directory}"
@@ -154,6 +160,7 @@ echo "Assembling the macOS CEF development bundle..." >&2
     -e 's/__GHOSTSHELL_BUILD_VERSION__/1/g' \
     "${info_plist_template}" > "${contents}/Info.plist"
 /usr/bin/plutil -lint "${contents}/Info.plist" >/dev/null
+/usr/bin/ditto --noqtn "${app_icon}" "${resources_directory}/GhostShell.icns"
 
 /usr/bin/ditto --clone --noqtn \
     "${cef_runtime_root}/Chromium Embedded Framework.framework" \

@@ -113,6 +113,13 @@ public sealed partial class RepositoryConventionTests
                 ".github",
                 "workflows",
                 "repository-gate.yml"));
+        var infoPlist = File.ReadAllText(
+            Path.Combine(
+                RepositoryRoot,
+                "tools",
+                "GhostShell.Packaging",
+                "MacOS",
+                "Info.plist.template"));
 
         Assert.Contains("<PublishAot>true</PublishAot>", desktopProject, StringComparison.Ordinal);
         Assert.Contains(
@@ -125,6 +132,18 @@ public sealed partial class RepositoryConventionTests
         Assert.Contains("--managed-evidence", packageScript, StringComparison.Ordinal);
         Assert.Contains("*.runtimeconfig.json", packageScript, StringComparison.Ordinal);
         Assert.Contains("brew install lld@22", workflow, StringComparison.Ordinal);
+        Assert.Contains("<string>GhostShell.icns</string>", infoPlist, StringComparison.Ordinal);
+        Assert.True(File.Exists(Path.Combine(
+            RepositoryRoot,
+            "assets",
+            "macos",
+            "GhostShell.icns")));
+        Assert.True(File.Exists(Path.Combine(
+            RepositoryRoot,
+            "assets",
+            "macos",
+            "GhostShell.icon",
+            "icon.json")));
     }
 
     [Fact]
@@ -137,6 +156,15 @@ public sealed partial class RepositoryConventionTests
 
         Assert.Contains(
             "-p:GhostShellProductVersion=\"${version}\"",
+            packageScript,
+            StringComparison.Ordinal);
+        Assert.Equal(
+            3,
+            packageScript.Split(
+                "-p:GhostShellProductVersion=\"${version}\"",
+                StringSplitOptions.None).Length - 1);
+        Assert.Contains(
+            "nuget_packages=\"${NUGET_PACKAGES:-${repository_dir}/.nuget/packages}\"",
             packageScript,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -190,8 +218,11 @@ public sealed partial class RepositoryConventionTests
             Path.Combine(RepositoryRoot, "scripts", "package-macos.sh"));
 
         Assert.Contains("\"GhostShell.Databases.dll\"", packageScript, StringComparison.Ordinal);
+        Assert.Contains("\"GhostShell.Docker.dll\"", packageScript, StringComparison.Ordinal);
         Assert.Contains("\"GhostShell.Docking.dll\"", packageScript, StringComparison.Ordinal);
+        Assert.Contains("\"GhostShell.Git.dll\"", packageScript, StringComparison.Ordinal);
         Assert.Contains("\"GhostShell.Previews.dll\"", packageScript, StringComparison.Ordinal);
+        Assert.Contains("\"GhostShell.Redis.dll\"", packageScript, StringComparison.Ordinal);
     }
 
     [Fact]

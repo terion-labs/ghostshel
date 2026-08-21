@@ -11,6 +11,9 @@
     <EmbeddedResource
         Include="MacOS/Info.plist.template"
         LogicalName="GhostShell.Packaging.MacOS.Info.plist.template" />
+    <EmbeddedResource
+        Include="../../assets/macos/GhostShell.icns"
+        LogicalName="GhostShell.Packaging.MacOS.GhostShell.icns" />
   </ItemGroup>
 
   <ItemGroup>

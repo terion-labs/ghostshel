@@ -27,6 +27,21 @@ Install LLVM's `ld64.lld` as well. GhostSHELL's Native AOT object exceeds the
 limits of Apple's current linker. Set `GHOSTSHELL_NATIVE_AOT_LINKER` when the
 linker is not on `PATH`.
 
+Install Apple's Icon Composer to regenerate the checked-in icon fallback:
+
+```sh
+./scripts/build-macos-icon.sh
+```
+
+`assets/macos/GhostShell.icon` is the layered source. It uses automatic and
+system fills so Icon Composer can render default, dark, tinted, and clear
+appearances while macOS supplies its mask, material, shadow, and highlight.
+`GhostShell.icns` is the deterministic compatibility rendition consumed by
+the non-Xcode packager. Icon Composer can preview every adaptive rendition,
+but its `ictool` only exports images. A truly adaptive installed icon requires
+Xcode's asset compiler to turn the layered source into `Assets.car`; copying a
+raw `.icon` document into an application bundle is not a supported substitute.
+
 The native build checks out Ghostty commit
 `08f039fbb3dea9c6b1cdb5ff4550666598122346`, applies the ordered patch overlay
 from `native/ghostty-vt/patches` to a disposable checkout, builds the public
@@ -151,6 +166,9 @@ The packager fails closed unless the Native AOT publish contains:
 
 - the GhostSHELL Native AOT executable, with no managed application DLLs,
   dependency manifest, runtime configuration, or JIT runtime;
+- `Contents/Resources/GhostShell.icns`, rendered from the checked-in layered
+  `assets/macos/GhostShell.icon` source and declared by `CFBundleIconFile` as
+  the compatibility icon until an Xcode-built `Assets.car` is packaged;
 - exactly the current terminal library `libghostty-vt.dylib` rather than
   `libghostshell-ghostty.dylib` or full `libghostty.dylib`;
 - the pinned Ghostty license, native component catalog, and native build
@@ -233,10 +251,16 @@ and executable digests but does not launch the candidate.
 
 The pipeline supports Developer ID signing, Chromium JIT hardened-runtime
 entitlements, notarization, and stapling, but possession of credentials does
-not itself make a distributable release. Independent license review, icon
-production, DMG or PKG creation, update-feed policy, and release-identity
-operations remain separate gates. An unsigned or ad-hoc local candidate must
-not be represented as notarized.
+not itself make a distributable release. Independent license review, DMG or
+PKG creation, update-feed policy, and release-identity operations remain
+separate gates. An unsigned or ad-hoc local candidate must not be represented
+as notarized.
+
+Adaptive Icon Composer delivery is also still a release gate. The layered
+document and all six appearances are ready, but the current non-Xcode bundle
+contains the `.icns` compatibility rendition. Install full Xcode before
+claiming that the shipped bundle follows live system tint and clear-icon
+settings.
 
 The native component catalog deliberately reports `BLOCKED`: the exact linked
 libghostty-vt and staged shell-integration source/license closure has not

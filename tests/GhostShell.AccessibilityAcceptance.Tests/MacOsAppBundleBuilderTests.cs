@@ -27,13 +27,16 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         "GhostShell.Browser",
         "GhostShell.Core",
         "GhostShell.Databases",
+        "GhostShell.Docker",
         "GhostShell.Docking",
         "GhostShell.Files",
+        "GhostShell.Git",
         "GhostShell.Infrastructure",
         "GhostShell.Mcp",
         "GhostShell.Monitoring",
         "GhostShell.Previews",
         "GhostShell.Protocol",
+        "GhostShell.Redis",
         "GhostShell.SessionHost",
         "GhostShell.Terminal",
     ];
@@ -65,6 +68,27 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         Assert.Equal("GhostShell.app", Path.GetFileName(result.DestinationPath));
         Assert.True(Directory.Exists(result.DestinationPath));
         Assert.Equal("42", result.BuildVersion);
+        var appIcon = Path.Combine(
+            output,
+            "Contents",
+            "Resources",
+            "GhostShell.icns");
+        Assert.True(File.Exists(appIcon));
+        Assert.Equal(
+            "icns",
+            Encoding.ASCII.GetString(File.ReadAllBytes(appIcon), 0, 4));
+        var infoPlist = File.ReadAllText(Path.Combine(
+            output,
+            "Contents",
+            "Info.plist"));
+        Assert.Contains(
+            "<key>CFBundleIconFile</key>",
+            infoPlist,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "<string>GhostShell.icns</string>",
+            infoPlist,
+            StringComparison.Ordinal);
         Assert.True(File.Exists(Path.Combine(
             output,
             "Contents",
@@ -199,7 +223,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
                 .GetProperty("packages")
                 .EnumerateArray()
                 .ToArray();
-            Assert.Equal(24, packages.Length);
+            Assert.Equal(ProjectAssemblyNames.Length + 4, packages.Length);
             AssertProjectPackage(
                 packages,
                 "Exclr8Cef",
@@ -267,7 +291,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
                 "DESCRIBES",
                 StringComparison.Ordinal));
             Assert.Equal(
-                23,
+                ProjectAssemblyNames.Length + 3,
                 relationships.Count(relationship =>
                     string.Equals(
                         relationship.GetProperty("relationshipType").GetString(),

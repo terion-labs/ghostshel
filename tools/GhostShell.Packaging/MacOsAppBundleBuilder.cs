@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Text;
 
 namespace GhostShell.Packaging;
@@ -33,6 +34,10 @@ public sealed class MacOsAppBundleBuilder
 
     private const string InfoPlistResource =
         "GhostShell.Packaging.MacOS.Info.plist.template";
+    private const string AppIconResource =
+        "GhostShell.Packaging.MacOS.GhostShell.icns";
+    private const string AppIconFileName = "GhostShell.icns";
+    private const int MaximumAppIconBytes = 16 * 1024 * 1024;
     private const string ProductVersionPlaceholder = "__GHOSTSHELL_VERSION__";
     private const string BuildVersionPlaceholder = "__GHOSTSHELL_BUILD_VERSION__";
     private const int NativeEvidenceDirectoryCount = 1;
@@ -126,7 +131,9 @@ public sealed class MacOsAppBundleBuilder
         ValidateVersion(request.BuildVersion, nameof(request.BuildVersion), 1, 3);
 
         var infoPlist = RenderInfoPlist(request.ProductVersion, request.BuildVersion);
-        var infoPlistBytes = Encoding.UTF8.GetByteCount(infoPlist);
+        var appIcon = ReadAppIcon();
+        var generatedBundleBytes = checked(
+            Encoding.UTF8.GetByteCount(infoPlist) + appIcon.Length);
         var publishDirectory = MacOsPackagePaths.RequireExistingDirectory(
             request.PublishDirectory,
             nameof(request.PublishDirectory));
@@ -153,11 +160,11 @@ public sealed class MacOsAppBundleBuilder
 
         var sourceEntries = InspectPublishDirectory(
             publishDirectory,
-            infoPlistBytes);
+            generatedBundleBytes);
         ValidateRequiredPayload(sourceEntries, hasSeparateManagedEvidence);
         var evidenceLimits = CreateManagedEvidenceLimits(
             sourceEntries,
-            infoPlistBytes);
+            generatedBundleBytes);
 
         var destinationParent = Path.GetDirectoryName(destinationPath)
             ?? throw new ArgumentException(
@@ -172,7 +179,8 @@ public sealed class MacOsAppBundleBuilder
         {
             var contentsDirectory = Path.Combine(stagingPath, "Contents");
             var executableDirectory = Path.Combine(contentsDirectory, "MacOS");
-            var licenseDirectory = Path.Combine(contentsDirectory, "Resources", "Licenses");
+            var resourcesDirectory = Path.Combine(contentsDirectory, "Resources");
+            var licenseDirectory = Path.Combine(resourcesDirectory, "Licenses");
             Directory.CreateDirectory(executableDirectory);
             Directory.CreateDirectory(licenseDirectory);
 
@@ -193,10 +201,13 @@ public sealed class MacOsAppBundleBuilder
             ValidateFinalBudget(
                 sourceEntries,
                 managedEvidence.Files,
-                infoPlistBytes,
+                generatedBundleBytes,
                 cefPlan);
             WriteManagedEvidence(licenseDirectory, managedEvidence.Files);
             cefPlan?.CopyTo(contentsDirectory);
+            File.WriteAllBytes(
+                Path.Combine(resourcesDirectory, AppIconFileName),
+                appIcon);
             File.WriteAllText(
                 Path.Combine(contentsDirectory, "Info.plist"),
                 infoPlist,
@@ -212,7 +223,7 @@ public sealed class MacOsAppBundleBuilder
                 sourceEntries.Count(entry => !entry.IsDirectory)
                 + managedEvidence.Files.Count
                 + (cefPlan?.FileCount ?? 0)
-                + 1);
+                + 2);
 
             void ValidateNativeProvenance()
             {
@@ -242,7 +253,7 @@ public sealed class MacOsAppBundleBuilder
         int entryCount,
         int maximumDirectoryDepth,
         long sourceBytes,
-        int infoPlistBytes)
+        int generatedBundleBytes)
     {
         if (fileCount < 0 || fileCount > MaximumSourceFiles)
         {
@@ -263,9 +274,9 @@ public sealed class MacOsAppBundleBuilder
                 $"The publish payload exceeds {MaximumSourceDirectoryDepth} directory levels.");
         }
 
-        if (infoPlistBytes < 0
+        if (generatedBundleBytes < 0
             || sourceBytes < 0
-            || sourceBytes > MaximumPackageBytes - infoPlistBytes)
+            || sourceBytes > MaximumPackageBytes - generatedBundleBytes)
         {
             throw new InvalidDataException(
                 $"The finished application bundle exceeds {MaximumPackageBytes} bytes.");
@@ -274,7 +285,7 @@ public sealed class MacOsAppBundleBuilder
 
     private static IReadOnlyList<SourceEntry> InspectPublishDirectory(
         string publishDirectory,
-        int infoPlistBytes)
+        int generatedBundleBytes)
     {
         var root = new DirectoryInfo(publishDirectory);
         var entries = new List<SourceEntry>();
@@ -306,7 +317,7 @@ public sealed class MacOsAppBundleBuilder
                         entryCount,
                         maximumDirectoryDepth,
                         sourceBytes,
-                        infoPlistBytes);
+                        generatedBundleBytes);
                 }
 
                 if (entry.LinkTarget is not null
@@ -328,7 +339,7 @@ public sealed class MacOsAppBundleBuilder
                             entryCount,
                             maximumDirectoryDepth,
                             sourceBytes,
-                            infoPlistBytes);
+                            generatedBundleBytes);
                     }
 
                     entries.Add(new SourceEntry(
@@ -355,7 +366,7 @@ public sealed class MacOsAppBundleBuilder
                         entryCount,
                         maximumDirectoryDepth,
                         sourceBytes,
-                        infoPlistBytes);
+                        generatedBundleBytes);
                 }
 
                 using var stream = RegularPackageFileReader.Open(
@@ -377,7 +388,7 @@ public sealed class MacOsAppBundleBuilder
                     entryCount,
                     maximumDirectoryDepth,
                     sourceBytes,
-                    infoPlistBytes);
+                    generatedBundleBytes);
                 entries.Add(new SourceEntry(
                     entry.FullName,
                     relativePath,
@@ -392,7 +403,7 @@ public sealed class MacOsAppBundleBuilder
             entryCount,
             maximumDirectoryDepth,
             sourceBytes,
-            infoPlistBytes);
+            generatedBundleBytes);
         return entries;
     }
 
@@ -542,7 +553,7 @@ public sealed class MacOsAppBundleBuilder
     private static void ValidateFinalBudget(
         IReadOnlyList<SourceEntry> sourceEntries,
         IReadOnlyList<ManagedComponentEvidenceFile> evidenceFiles,
-        int infoPlistBytes,
+        int generatedBundleBytes,
         CefMacOsBundlePlan? cefPlan)
     {
         var evidenceDirectories = new HashSet<string>(StringComparer.Ordinal);
@@ -592,7 +603,7 @@ public sealed class MacOsAppBundleBuilder
                     cefPlan?.MaximumRelativePathDepth ?? 0),
                 NativeEvidenceDirectoryCount),
             bytes,
-            infoPlistBytes);
+            generatedBundleBytes);
     }
 
     private static CefMacOsBundlePlan? CreateCefPlan(
@@ -649,13 +660,13 @@ public sealed class MacOsAppBundleBuilder
 
     private static ManagedComponentEvidenceLimits CreateManagedEvidenceLimits(
         IReadOnlyList<SourceEntry> sourceEntries,
-        int infoPlistBytes)
+        int generatedBundleBytes)
     {
         var sourceFileCount = sourceEntries.Count(entry => !entry.IsDirectory);
         var sourceBytes = sourceEntries
             .Where(entry => !entry.IsDirectory)
             .Sum(entry => entry.Length);
-        var remainingBytes = MaximumPackageBytes - infoPlistBytes - sourceBytes;
+        var remainingBytes = MaximumPackageBytes - generatedBundleBytes - sourceBytes;
         var remainingFiles = MaximumSourceFiles - sourceFileCount;
         var remainingEntries = MaximumSourceEntries
             - sourceEntries.Count
@@ -797,6 +808,31 @@ public sealed class MacOsAppBundleBuilder
                 BuildVersionPlaceholder,
                 buildVersion,
                 StringComparison.Ordinal);
+    }
+
+    private static byte[] ReadAppIcon()
+    {
+        using var stream = typeof(MacOsAppBundleBuilder).Assembly
+            .GetManifestResourceStream(AppIconResource)
+            ?? throw new InvalidOperationException(
+                "The embedded macOS application icon is unavailable.");
+        if (stream.Length is < 8 or > MaximumAppIconBytes)
+        {
+            throw new InvalidDataException(
+                "The embedded macOS application icon has an invalid size.");
+        }
+
+        var icon = new byte[(int)stream.Length];
+        stream.ReadExactly(icon);
+        var declaredLength = BinaryPrimitives.ReadUInt32BigEndian(icon.AsSpan(4, 4));
+        if (!icon.AsSpan(0, 4).SequenceEqual("icns"u8)
+            || declaredLength != icon.Length)
+        {
+            throw new InvalidDataException(
+                "The embedded macOS application icon is not a valid ICNS container.");
+        }
+
+        return icon;
     }
 
     private static int CountOccurrences(string value, string search)

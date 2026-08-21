@@ -231,13 +231,13 @@
       "nuspecLicense": "MIT"
     },
     {
-      "identity": "BouncyCastle.Cryptography/2.6.2",
+      "identity": "BouncyCastle.Cryptography/2.7.0",
       "kind": "nuget",
       "depsType": "package",
       "licenseDeclared": "MIT",
       "nuGetId": "BouncyCastle.Cryptography",
-      "contentHash": "7oWOcvnntmMKNzDLsdxAYqApt+AjpRpP2CShjMfIa3umZ42UQMvH0tl1qAliYPNYO6vTdcGMqnRrCPmsfzTI1w==",
-      "nupkgSha512": "Thoy+Tfuu6E08cZkbAtVTtqhvEGWnexYFtEcPChZBuEGN3ET6mwcsLFhdJ/wiuitOd8FlWtiq+InTUswYPDa7w==",
+      "contentHash": "U+12df8UEWHgBi04YVf/Lgi2dy3SItlIYvHjjEVa/BngCQIzDCDRBk50DDByCfDvSbe5pRNFr3b7UrVK2kMcLw==",
+      "nupkgSha512": "Lys+dJthpD8quONaAkRV9ke8DgET0CwBW91NeJjMVHZGvRRNO8DkdReYFfCBOCcvMpzJeC3DuLrpRuntYnq9Iw==",
       "nuspecLicenseType": "expression",
       "nuspecLicense": "MIT"
     },
@@ -562,6 +562,13 @@
       "file": "GhostShell.Databases.dll"
     },
     {
+      "identity": "GhostShell.Docker/0.1.0",
+      "kind": "project",
+      "depsType": "project",
+      "licenseDeclared": "NOASSERTION",
+      "file": "GhostShell.Docker.dll"
+    },
+    {
       "identity": "GhostShell.Docking/0.1.0",
       "kind": "project",
       "depsType": "project",
@@ -574,6 +581,13 @@
       "depsType": "project",
       "licenseDeclared": "NOASSERTION",
       "file": "GhostShell.Files.dll"
+    },
+    {
+      "identity": "GhostShell.Git/0.1.0",
+      "kind": "project",
+      "depsType": "project",
+      "licenseDeclared": "NOASSERTION",
+      "file": "GhostShell.Git.dll"
     },
     {
       "identity": "GhostShell.Infrastructure/0.1.0",
@@ -609,6 +623,13 @@
       "depsType": "project",
       "licenseDeclared": "NOASSERTION",
       "file": "GhostShell.Protocol.dll"
+    },
+    {
+      "identity": "GhostShell.Redis/0.1.0",
+      "kind": "project",
+      "depsType": "project",
+      "licenseDeclared": "NOASSERTION",
+      "file": "GhostShell.Redis.dll"
     },
     {
       "identity": "GhostShell.SessionHost/0.1.0",
@@ -1195,6 +1216,17 @@
       "nuspecLicense": "MIT"
     },
     {
+      "identity": "RESPite/3.0.17",
+      "kind": "nuget",
+      "depsType": "package",
+      "licenseDeclared": "MIT",
+      "nuGetId": "RESPite",
+      "contentHash": "68slEMyRTUNLc75DruEDsEohFmFfNwkHLLtwQ46bobF+8Tl+UXMKM1kM87ihhKy6JdAqy1RrvAfvBWeLmcY9Gg==",
+      "nupkgSha512": "5++gPKrERonBm0tKr6sJan97lZUEPGS4WIYhMAV5vp2aznLujlTQReacxn602bN0owK9GmMPyjfmRFMzzUKiwg==",
+      "nuspecLicenseType": "expression",
+      "nuspecLicense": "MIT"
+    },
+    {
       "identity": "SMBLibrary/1.5.7.1",
       "kind": "nuget",
       "depsType": "package",
@@ -1250,13 +1282,13 @@
       "nuspecLicense": "Apache-2.0"
     },
     {
-      "identity": "SSH.NET/2025.1.0",
+      "identity": "SSH.NET/2026.0.0",
       "kind": "nuget",
       "depsType": "package",
       "licenseDeclared": "MIT",
       "nuGetId": "SSH.NET",
-      "contentHash": "jrnbtf0ItVaXAe6jE8X/kSLa6uC+0C+7W1vepcnRQB/rD88qy4IxG7Lf1FIbWmkoc4iVXv0pKrz+Wc6J4ngmHw==",
-      "nupkgSha512": "fSXVWCGuqZa2EPnsab2IXeZY0DVxHPriLbSQxOCN74O9oN+9lkod3gQ99EqDWYoc+CZGkFWqhm8B8VQNvKMgdQ==",
+      "contentHash": "Yu9dirPq8l3oaat0+OQ7K0nUf5MmYltpia5UGqsApTG4zTPvBC1cxbNnC3NERij26dUST0A3Ef1QdHSn5ArbWQ==",
+      "nupkgSha512": "xXfgKxQmdN3uBo8mP89cVEOvRmFkj5ovBMExrZFDRz5ZaclAcrgSx0Hx1U4Ov1mJPQRz5X2lGk0hwXickyhwAg==",
       "nuspecLicenseType": "expression",
       "nuspecLicense": "MIT"
     },
@@ -1308,13 +1340,24 @@
       "nuspecLicense": "MIT"
     },
     {
-      "identity": "SshNet.Agent/2024.2.0.5",
+      "identity": "SshNet.Agent/2026.0.0",
       "kind": "nuget",
       "depsType": "package",
       "licenseDeclared": "MIT",
       "nuGetId": "SshNet.Agent",
-      "contentHash": "Q7f1HCLmRUTkUtBgvooTw5H12uLN6oMUfGPADlKHXZtBq79C2q6T9DDuBecug4FhXl9Di1tTh4dIrOAwb6jutQ==",
-      "nupkgSha512": "ynfvYuLgkshNJ3qyq/Cx60vcaq/wgSYbxCf1tTo9mkyHCOkkZgSA2xgH+xwkaOnPtKwv02ydaY046y9MfWdPPg==",
+      "contentHash": "1Q31ysRgeCBCa6rm87AWe+Tert+Pbk2cRovf+Owr04yDwv5kVaSZdilzgG3XYdriH06FWz/8H9A/uR1cKIIIew==",
+      "nupkgSha512": "HFD804Rzumv7ENjaHE+HWHdU/fnEf8WFQvbj1xbN8jNdnPCd6bilydycNDloe2DjW5n+xZwVUfiGGVoJEzjKbw==",
+      "nuspecLicenseType": "expression",
+      "nuspecLicense": "MIT"
+    },
+    {
+      "identity": "StackExchange.Redis/3.0.17",
+      "kind": "nuget",
+      "depsType": "package",
+      "licenseDeclared": "MIT",
+      "nuGetId": "StackExchange.Redis",
+      "contentHash": "ItAm9lokZ1mWsQLF3u4Yw4eb/gvkX6Rp9bLAe1KUKgKAjPkALoQwTc6jJLtBZoOv9LT7RwvSIXZZb9FF30QhOg==",
+      "nupkgSha512": "DzpIkStP2SD74bERqoVPYqP82YjHDFg9fQB6Cb0gDFrarywr4C+01ZT6AzON9uXeQ15rUEzsC1yGoIL4X2I94Q==",
       "nuspecLicenseType": "expression",
       "nuspecLicense": "MIT"
     },
@@ -1396,6 +1439,17 @@
       "nuspecLicense": "MIT"
     },
     {
+      "identity": "Sylinko.CSharpMath.Avalonia/12.0.0",
+      "kind": "nuget",
+      "depsType": "package",
+      "licenseDeclared": "MIT",
+      "nuGetId": "Sylinko.CSharpMath.Avalonia",
+      "contentHash": "uIGv38IvLYuWgvy8TB9+o2WGLS2IgYVWRNHywGIHfU1abdwwLmqPr74fJJV5rt8+Z/2Cgxm2It8IJeofnJgzqA==",
+      "nupkgSha512": "7SfLfbTML4t7PExWuVmykhUmlliPC/7sbCZmlXejBZhRbDGhsjpDcyVQg7F7qJoJ1M8Djnwr0EG4INbuo7TPqw==",
+      "nuspecLicenseType": "expression",
+      "nuspecLicense": "MIT"
+    },
+    {
       "identity": "System.ClientModel/1.0.0",
       "kind": "nuget",
       "depsType": "package",
@@ -1458,6 +1512,17 @@
       "nuGetId": "System.IdentityModel.Tokens.Jwt",
       "contentHash": "D0TtrWOfoPdyYSlvOGaU9F1QR+qrbgJ/4eiEsQkIz7YQKIKkGXQldXukn6cYG9OahSq5UVMvyAIObECpH6Wglg==",
       "nupkgSha512": "1jhH5/jR7JYI4YEECKe7oMcweLeNPkATLd1wNx5EFEdxY9iNN2H2c9hZZeGcWFa/sHSFCEqcFn0LgIJ9NKhRUg==",
+      "nuspecLicenseType": "expression",
+      "nuspecLicense": "MIT"
+    },
+    {
+      "identity": "System.IO.Hashing/10.0.5",
+      "kind": "nuget",
+      "depsType": "package",
+      "licenseDeclared": "MIT",
+      "nuGetId": "System.IO.Hashing",
+      "contentHash": "8IBJWcCT9+e4Bmevm4T7+fQEiAh133KGiz4oiVTgJckd3Q76OFdR1falgn9lpz7+C4HJvogCDJeAa2QmvbeVtg==",
+      "nupkgSha512": "Nd5PpLgyvzGZzGAEdJta8tN5EC3h6C2OYx96vEeU/hZ23VQQI9+r86wAjag/m36Q0m3owYeidxPHH39nV0bQxw==",
       "nuspecLicenseType": "expression",
       "nuspecLicense": "MIT"
     },
