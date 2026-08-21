@@ -876,6 +876,68 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
     }
 
     [Fact]
+    public void Builder_keeps_managed_evidence_out_of_the_native_aot_bundle()
+    {
+        var managedEvidence = CreatePublishPayload();
+        var nativePublish = CreatePublishPayload();
+        File.Delete(Path.Combine(nativePublish, "GhostShell.deps.json"));
+        File.Delete(Path.Combine(nativePublish, "GhostShell.runtimeconfig.json"));
+        foreach (var assembly in Directory.EnumerateFiles(
+                     nativePublish,
+                     "*.dll",
+                     SearchOption.TopDirectoryOnly))
+        {
+            File.Delete(assembly);
+        }
+
+        var output = OutputPath();
+        var request = Request(nativePublish, output) with
+        {
+            ManagedEvidenceDirectory = managedEvidence,
+        };
+
+        _ = new MacOsAppBundleBuilder().Build(request);
+
+        var executableDirectory = Path.Combine(output, "Contents", "MacOS");
+        Assert.Empty(Directory.EnumerateFiles(
+            executableDirectory,
+            "*.dll",
+            SearchOption.TopDirectoryOnly));
+        Assert.False(File.Exists(Path.Combine(executableDirectory, "GhostShell.deps.json")));
+        Assert.False(File.Exists(Path.Combine(
+            executableDirectory,
+            "GhostShell.runtimeconfig.json")));
+    }
+
+    [Fact]
+    public void Builder_rejects_managed_host_files_in_a_native_aot_publish()
+    {
+        var managedEvidence = CreatePublishPayload();
+        var nativePublish = CreatePublishPayload();
+        File.Delete(Path.Combine(nativePublish, "GhostShell.deps.json"));
+        File.Delete(Path.Combine(nativePublish, "GhostShell.runtimeconfig.json"));
+        foreach (var assembly in Directory.EnumerateFiles(
+                     nativePublish,
+                     "*.dll",
+                     SearchOption.TopDirectoryOnly))
+        {
+            File.Delete(assembly);
+        }
+        File.WriteAllText(Path.Combine(nativePublish, "Unexpected.dll"), "managed");
+        var output = OutputPath();
+        var request = Request(nativePublish, output) with
+        {
+            ManagedEvidenceDirectory = managedEvidence,
+        };
+
+        var exception = Assert.Throws<InvalidDataException>(() =>
+            new MacOsAppBundleBuilder().Build(request));
+
+        Assert.Contains("Unexpected.dll", exception.Message, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(output));
+    }
+
+    [Fact]
     public void Builder_fails_closed_when_shell_integration_resources_are_empty()
     {
         var publish = CreatePublishPayload();
@@ -1128,6 +1190,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         var command = MacOsPackagingCommand.Parse(
         [
             "--publish", "/publish",
+            "--managed-evidence", "/managed-evidence",
             "--output", "/output/GhostShell.app",
             "--version", "1.2.3",
             "--build-version", "42",
@@ -1143,6 +1206,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         ]);
 
         Assert.Equal("/publish", command.PublishDirectory);
+        Assert.Equal("/managed-evidence", command.ManagedEvidenceDirectory);
         Assert.Equal(
             "/repo/licenses/managed-components.json",
             command.ComponentCatalogPath);
@@ -1184,6 +1248,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             MacOsPackagingCommand.Parse(
             [
                 "--publish", "/publish",
+                "--managed-evidence", "/managed-evidence",
                 "--output", "/output/GhostShell.app",
                 "--version", "1.2.3",
                 "--build-version", "42",

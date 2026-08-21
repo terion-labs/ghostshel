@@ -215,6 +215,10 @@ jobs:
           distribution: graalvm
           github-token: ${{ secrets.GITHUB_TOKEN }}
           native-image-job-reports: true
+      - name: Set up the Native AOT linker
+        run: |
+          brew install lld@22
+          echo "GHOSTSHELL_NATIVE_AOT_LINKER=$(brew --prefix lld@22)/bin/ld64.lld" >> "${GITHUB_ENV}"
       - name: Resolve release version
         id: release
         shell: bash

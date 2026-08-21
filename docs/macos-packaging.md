@@ -1,6 +1,6 @@
 # macOS release-candidate packaging
 
-GhostSHELL can currently produce a self-contained macOS arm64 application
+GhostSHELL can currently produce a Native AOT macOS arm64 application
 bundle for local release validation. Candidates are unsigned by default; the
 same pipeline can apply nested Developer ID signatures and submit
 the finished application for notarization when release credentials are
@@ -22,6 +22,10 @@ GHOSTSHELL_SKIP_NATIVE=1 ./scripts/bootstrap.sh
 ./scripts/build-sql-language-worker.sh --local --rid osx-arm64
 ./scripts/build-cef-runtime.sh --rid osx-arm64
 ```
+
+Install LLVM's `ld64.lld` as well. GhostSHELL's Native AOT object exceeds the
+limits of Apple's current linker. Set `GHOSTSHELL_NATIVE_AOT_LINKER` when the
+linker is not on `PATH`.
 
 The native build checks out Ghostty commit
 `08f039fbb3dea9c6b1cdb5ff4550666598122346`, applies the ordered patch overlay
@@ -84,8 +88,8 @@ mkdir -p artifacts/macos-arm64-rc
 ```
 
 The destination must be named `GhostShell.app` and must not already exist. The
-script publishes an `osx-arm64` self-contained application, rejects symbolic
-links and special entries, verifies that the apphost and libghostty-vt are
+script publishes an `osx-arm64`, speed-optimized Native AOT application, rejects symbolic
+links and special entries, verifies that the executable and libghostty-vt are
 arm64 Mach-O files, verifies the CEF shim, framework libraries,
 and five helper executables against that same architecture, and requires the
 terminal library install name
@@ -96,12 +100,12 @@ The SQL-language worker is also mandatory. Packaging verifies its RID, ABI,
 artifact name, protocol version, file type, and SHA-256 against the build
 receipt. It then reads the Mach-O `LC_BUILD_VERSION` command, requires its
 minimum OS version to match the receipt, and rejects any minimum newer than
-macOS 13. The verified receipt must survive the self-contained publish and
+macOS 13. The verified receipt must survive both publish passes and the
 final bundle byte-for-byte. Packaging also re-hashes the dependency manifest
 and third-party notices before publish, after publish, and in the assembled
 bundle; all three copies must match the receipt.
 
-The temporary apphost's `LC_BUILD_VERSION` SDK field is updated to macOS 26.0
+The temporary Native AOT executable's `LC_BUILD_VERSION` SDK field is updated to macOS 26.0
 before package fingerprinting and is ad-hoc signed so the candidate remains
 launchable. This opts native window chrome into the current macOS appearance;
 it neither introduces a native terminal view nor raises the app's macOS 13
@@ -122,7 +126,7 @@ it requires a separate exact managed-component catalog and a verified x64
 libghostty-vt payload/receipt before the app packager may claim that RID.
 
 For a release candidate, use a Developer ID Application identity. The signing
-script signs all managed-runtime leaf Mach-O files, CEF leaf libraries, the
+script signs all Native AOT payload Mach-O files, CEF leaf libraries, the
 framework, shared shims, five helper apps, and the outer app in nested-code
 order without `codesign --deep` mutation:
 
@@ -143,10 +147,10 @@ to package evidence.
 
 ## Validated payload
 
-The packager fails closed unless the self-contained publish contains:
+The packager fails closed unless the Native AOT publish contains:
 
-- the GhostSHELL apphost, runtime configuration, and complete first-party
-  assembly set;
+- the GhostSHELL Native AOT executable, with no managed application DLLs,
+  dependency manifest, runtime configuration, or JIT runtime;
 - exactly the current terminal library `libghostty-vt.dylib` rather than
   `libghostshell-ghostty.dylib` or full `libghostty.dylib`;
 - the pinned Ghostty license, native component catalog, and native build
@@ -167,8 +171,9 @@ The packager fails closed unless the self-contained publish contains:
 Native provenance validation requires a passing patched-test receipt and the
 exact extension ABI, then compares the packaged dylib, reviewed export
 manifest, license, shell-integration manifest, and every staged shell resource
-with the build receipt and native component catalog. Managed provenance validation compares
-the complete `GhostShell.deps.json` closure with the reviewed catalog, NuGet
+with the build receipt and native component catalog. A separate locked
+self-contained publish provides managed provenance without entering the app
+bundle. Validation compares its complete `GhostShell.deps.json` closure with the reviewed catalog, NuGet
 content hashes, archive SHA-512 receipts, nuspec identity/version/license
 metadata, and resolved dependency graph. Unknown, missing, malformed,
 ambiguous, linked, or tampered evidence fails assembly.
@@ -198,8 +203,8 @@ The bundle declares:
   `Contents/Frameworks` for helper-process `@rpath` resolution.
 
 The shell-integration runtime assets and their manifest remain under
-`Contents/MacOS/ghostty/shell-integration`, beside the managed application that
-resolves them. The public terminal library remains beside the apphost at
+`Contents/MacOS/ghostty/shell-integration`, beside the Native AOT application
+that resolves them. The public terminal library remains beside the executable at
 `Contents/MacOS/libghostty-vt.dylib`.
 The inspectable font closure remains under
 `Contents/MacOS/fonts/JetBrainsMono`; Avalonia consumes the same verified

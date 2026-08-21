@@ -110,7 +110,7 @@ public static class DesktopComposition
             provider.GetRequiredService<SecretVaultFactoryResult>().Vault);
         services.AddSingleton(new ConnectionCredentialBrokerOptions
         {
-            SelfReentry = SelfReentryLaunch.Detect(typeof(DesktopComposition).Assembly.Location),
+            SelfReentry = SelfReentryLaunch.Detect(),
         });
         services.AddSingleton<IConnectionCredentialBroker, ConnectionCredentialBroker>();
         services.AddSingleton(_ => ConnectionRuntimeOptions.Detect());

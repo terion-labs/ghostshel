@@ -2,6 +2,7 @@ namespace GhostShell.Packaging;
 
 internal sealed record MacOsPackagingCommand(
     string PublishDirectory,
+    string ManagedEvidenceDirectory,
     string DestinationPath,
     string ProductVersion,
     string BuildVersion,
@@ -18,10 +19,11 @@ internal sealed record MacOsPackagingCommand(
     public static MacOsPackagingCommand Parse(IReadOnlyList<string> arguments)
     {
         ArgumentNullException.ThrowIfNull(arguments);
-        if (arguments.Count != 26)
+        if (arguments.Count != 28)
         {
             throw new PackagingUsageException(
-                "macos requires --publish, --output, --version, --build-version, "
+                "macos requires --publish, --managed-evidence, --output, "
+                + "--version, --build-version, "
                 + "--component-catalog, --native-component-catalog, "
                 + "--native-build-receipt, --font-assets-catalog, "
                 + "--font-assets-build-receipt, --nuget-packages, "
@@ -35,6 +37,7 @@ internal sealed record MacOsPackagingCommand(
             var name = arguments[index];
             if (name is not (
                     "--publish"
+                    or "--managed-evidence"
                     or "--output"
                     or "--version"
                     or "--build-version"
@@ -59,6 +62,7 @@ internal sealed record MacOsPackagingCommand(
 
         return new MacOsPackagingCommand(
             Required(values, "--publish"),
+            Required(values, "--managed-evidence"),
             Required(values, "--output"),
             Required(values, "--version"),
             Required(values, "--build-version"),
@@ -86,7 +90,8 @@ internal sealed record MacOsPackagingCommand(
         NuGetPackageRoot,
         CefRuntimeRoot,
         CefRuntimeCatalogPath,
-        RuntimeIdentifier);
+        RuntimeIdentifier,
+        ManagedEvidenceDirectory);
 
     private static string RequireSupportedAppRuntimeIdentifier(
         IReadOnlyDictionary<string, string> values)

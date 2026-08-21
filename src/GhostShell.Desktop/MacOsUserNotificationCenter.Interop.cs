@@ -138,10 +138,11 @@ internal sealed partial class MacOsUserNotificationCenter
         }
     }
 
-    private static void AddDelegateMethod(
+    private static void AddDelegateMethod<TCallback>(
         nint delegateClass,
         string selector,
-        Delegate callback)
+        TCallback callback)
+        where TCallback : Delegate
     {
         if (!class_addMethod(
                 delegateClass,

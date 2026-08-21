@@ -97,6 +97,37 @@ public sealed partial class RepositoryConventionTests
     }
 
     [Fact]
+    public void Macos_release_packages_a_speed_optimized_native_aot_executable()
+    {
+        var packageScript = File.ReadAllText(
+            Path.Combine(RepositoryRoot, "scripts", "package-macos.sh"));
+        var desktopProject = File.ReadAllText(
+            Path.Combine(
+                RepositoryRoot,
+                "src",
+                "GhostShell.Desktop",
+                "GhostShell.Desktop.csproj"));
+        var workflow = File.ReadAllText(
+            Path.Combine(
+                RepositoryRoot,
+                ".github",
+                "workflows",
+                "repository-gate.yml"));
+
+        Assert.Contains("<PublishAot>true</PublishAot>", desktopProject, StringComparison.Ordinal);
+        Assert.Contains(
+            "<OptimizationPreference>Speed</OptimizationPreference>",
+            desktopProject,
+            StringComparison.Ordinal);
+        Assert.Contains("<StripSymbols>true</StripSymbols>", desktopProject, StringComparison.Ordinal);
+        Assert.Contains("-p:GhostShellMacReleaseNativeAot=true", packageScript, StringComparison.Ordinal);
+        Assert.Contains("packages.${runtime_identifier}.aot.lock.json", packageScript, StringComparison.Ordinal);
+        Assert.Contains("--managed-evidence", packageScript, StringComparison.Ordinal);
+        Assert.Contains("*.runtimeconfig.json", packageScript, StringComparison.Ordinal);
+        Assert.Contains("brew install lld@22", workflow, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Macos_packaging_keeps_vendored_project_versions_independent()
     {
         var packageScript = File.ReadAllText(

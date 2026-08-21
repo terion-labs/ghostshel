@@ -15,7 +15,8 @@ public sealed record MacOsAppBundleRequest(
     string NuGetPackageRoot,
     string? CefRuntimeRoot = null,
     string? CefRuntimeCatalogPath = null,
-    string CefRuntimeIdentifier = "osx-arm64");
+    string CefRuntimeIdentifier = "osx-arm64",
+    string? ManagedEvidenceDirectory = null);
 
 public sealed record MacOsAppBundleResult(
     string DestinationPath,
@@ -49,8 +50,6 @@ public sealed class MacOsAppBundleBuilder
     private static readonly string[] RequiredRootFiles =
     [
         "GhostShell",
-        "GhostShell.deps.json",
-        "GhostShell.runtimeconfig.json",
         "libghostty-vt.dylib",
         "GHOSTTY-LICENSE",
         "ghostty-vt-required-exports.txt",
@@ -131,14 +130,31 @@ public sealed class MacOsAppBundleBuilder
         var publishDirectory = MacOsPackagePaths.RequireExistingDirectory(
             request.PublishDirectory,
             nameof(request.PublishDirectory));
+        var managedEvidenceDirectory = request.ManagedEvidenceDirectory is null
+            ? publishDirectory
+            : MacOsPackagePaths.RequireExistingDirectory(
+                request.ManagedEvidenceDirectory,
+                nameof(request.ManagedEvidenceDirectory));
+        var hasSeparateManagedEvidence = !MacOsPackagePaths.AreSameDirectory(
+            publishDirectory,
+            managedEvidenceDirectory);
         var destinationPath = MacOsPackagePaths.RequireDestination(request.DestinationPath);
         MacOsPackagePaths.ValidateSeparateTrees(publishDirectory, destinationPath);
+        if (hasSeparateManagedEvidence)
+        {
+            MacOsPackagePaths.ValidateSeparateTrees(
+                publishDirectory,
+                managedEvidenceDirectory);
+            MacOsPackagePaths.ValidateSeparateTrees(
+                managedEvidenceDirectory,
+                destinationPath);
+        }
         var cefPlan = CreateCefPlan(request, publishDirectory, destinationPath);
 
         var sourceEntries = InspectPublishDirectory(
             publishDirectory,
             infoPlistBytes);
-        ValidateRequiredPayload(sourceEntries);
+        ValidateRequiredPayload(sourceEntries, hasSeparateManagedEvidence);
         var evidenceLimits = CreateManagedEvidenceLimits(
             sourceEntries,
             infoPlistBytes);
@@ -166,7 +182,7 @@ public sealed class MacOsAppBundleBuilder
                 sourceEntries);
             ValidateNativeProvenance();
             var managedEvidence = ManagedComponentEvidenceBuilder.Build(
-                executableDirectory,
+                managedEvidenceDirectory,
                 licenseDirectory,
                 request.ComponentCatalogPath,
                 request.NuGetPackageRoot,
@@ -380,7 +396,9 @@ public sealed class MacOsAppBundleBuilder
         return entries;
     }
 
-    private static void ValidateRequiredPayload(IReadOnlyList<SourceEntry> entries)
+    private static void ValidateRequiredPayload(
+        IReadOnlyList<SourceEntry> entries,
+        bool hasSeparateManagedEvidence)
     {
         var rootFiles = entries
             .Where(entry =>
@@ -395,6 +413,36 @@ public sealed class MacOsAppBundleBuilder
             {
                 throw new InvalidDataException(
                     $"The publish payload is missing required file {requiredFile}.");
+            }
+        }
+
+        if (hasSeparateManagedEvidence)
+        {
+            var managedHostEntry = entries.FirstOrDefault(entry =>
+                !entry.IsDirectory
+                && (entry.RelativePath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
+                    || entry.RelativePath.EndsWith(".deps.json", StringComparison.OrdinalIgnoreCase)
+                    || entry.RelativePath.EndsWith(".runtimeconfig.json", StringComparison.OrdinalIgnoreCase)
+                    || entry.RelativePath.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase)));
+            if (managedHostEntry is not null)
+            {
+                throw new InvalidDataException(
+                    $"The Native AOT publish contains managed host file {managedHostEntry.RelativePath}.");
+            }
+        }
+        else
+        {
+            foreach (var managedHostFile in new[]
+                     {
+                         "GhostShell.deps.json",
+                         "GhostShell.runtimeconfig.json",
+                     })
+            {
+                if (!rootFiles.ContainsKey(managedHostFile))
+                {
+                    throw new InvalidDataException(
+                        $"The publish payload is missing required file {managedHostFile}.");
+                }
             }
         }
 

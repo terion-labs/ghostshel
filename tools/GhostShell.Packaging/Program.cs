@@ -100,7 +100,9 @@ internal static class Program
             """
             GhostSHELL packaging
 
-              macos --publish <directory> --output <GhostShell.app>
+              macos --publish <native-aot-directory>
+                    --managed-evidence <self-contained-directory>
+                    --output <GhostShell.app>
                     --version <major.minor.patch> --build-version <number[.number...]>
                     --component-catalog <managed-components.json>
                     --native-component-catalog <native-terminal-components.json>

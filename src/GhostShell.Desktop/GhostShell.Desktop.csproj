@@ -96,6 +96,31 @@
     <GhostShellCefShimLibrary Condition="'$(GhostShellEffectiveRuntimeIdentifier)' == 'win-x64'">exclr8cef.dll</GhostShellCefShimLibrary>
   </PropertyGroup>
 
+  <!-- Keep Native AOT scoped to the packaged macOS application. Passing
+       PublishAot as a global command-line property would incorrectly add the
+       AOT toolchain to every ProjectReference lock file. -->
+  <PropertyGroup Condition="'$(GhostShellMacReleaseNativeAot)' == 'true'">
+    <NuGetLockFilePath>packages.osx-arm64.aot.lock.json</NuGetLockFilePath>
+    <PublishAot>true</PublishAot>
+    <SelfContained>true</SelfContained>
+    <OptimizationPreference>Speed</OptimizationPreference>
+    <StripSymbols>true</StripSymbols>
+    <DebugType>None</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <!-- The current Avalonia views and database-provider boundary still use
+         reflection. Keep their metadata until those dependencies can become
+         fully trim-safe; Native AOT still compiles every managed method and
+         ships no JIT or managed application assemblies. -->
+    <IlcGenerateCompleteTypeMetadata>true</IlcGenerateCompleteTypeMetadata>
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
+    <!-- AOT diagnostics remain visible in release logs. They cannot be errors
+         yet because several reviewed third-party providers are not annotated
+         and vendor sources must not be changed locally. -->
+    <IlcTreatWarningsAsErrors>false</IlcTreatWarningsAsErrors>
+    <TrimmerSingleWarn>true</TrimmerSingleWarn>
+    <LinkerFlavor Condition="'$(GhostShellNativeAotLinker)' != ''">$(GhostShellNativeAotLinker)</LinkerFlavor>
+  </PropertyGroup>
+
   <ItemGroup Condition="Exists('$(GhostShellRuntimePackDirectory)/LICENSE.TXT') and Exists('$(GhostShellRuntimePackDirectory)/THIRD-PARTY-NOTICES.TXT')">
     <Content Include="$(GhostShellRuntimePackDirectory)/LICENSE.TXT" Link="DOTNET-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="$(GhostShellRuntimePackDirectory)/THIRD-PARTY-NOTICES.TXT" Link="DOTNET-THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

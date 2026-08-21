@@ -36,6 +36,9 @@ public sealed record SelfReentryLaunch
     /// <summary>Runtime discovery values needed only when an apphost reenters a dotnet-hosted app.</summary>
     public IReadOnlyDictionary<string, string> AskpassEnvironment { get; }
 
+    public static SelfReentryLaunch Detect() =>
+        Detect(Path.Combine(AppContext.BaseDirectory, "GhostShell.dll"));
+
     public static SelfReentryLaunch Detect(string managedEntryAssemblyPath) =>
         Detect(
             Environment.ProcessPath

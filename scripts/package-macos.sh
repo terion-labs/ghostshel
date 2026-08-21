@@ -12,6 +12,7 @@ runtime_identifier=""
 cef_runtime_root=""
 sign_identity=""
 notary_profile=""
+native_aot_linker="${GHOSTSHELL_NATIVE_AOT_LINKER:-}"
 component_catalog="${repository_dir}/licenses/managed-components.json"
 desktop_project="${repository_dir}/src/GhostShell.Desktop/GhostShell.Desktop.csproj"
 cef_runtime_catalog="${repository_dir}/licenses/cef-runtime-components.json"
@@ -77,7 +78,7 @@ Usage:
     [--sign-identity <Developer ID Application identity>] \
     [--notary-profile <notarytool keychain profile>]
 
-Creates a self-contained macOS arm64 release candidate. Without --sign-identity
+Creates a speed-optimized Native AOT macOS arm64 release candidate. Without --sign-identity
 the candidate is unsigned. --notary-profile requires signing. The destination
 must not already exist. The script never launches the application. Standalone
 CEF runtime builds retain separate osx-x64 support; the full application does
@@ -159,8 +160,13 @@ if [[ "${runtime_identifier}" != "osx-arm64" ]]; then
 fi
 expected_macho_architecture="arm64"
 runtime_lock="${repository_dir}/src/GhostShell.Desktop/packages.${runtime_identifier}.lock.json"
+native_aot_runtime_lock="${repository_dir}/src/GhostShell.Desktop/packages.${runtime_identifier}.aot.lock.json"
 if [[ ! -f "${runtime_lock}" ]]; then
     echo "The reviewed ${runtime_identifier} dependency lock is missing: ${runtime_lock}." >&2
+    exit 1
+fi
+if [[ ! -f "${native_aot_runtime_lock}" ]]; then
+    echo "The reviewed ${runtime_identifier} Native AOT dependency lock is missing: ${native_aot_runtime_lock}." >&2
     exit 1
 fi
 
@@ -177,6 +183,19 @@ fi
 
 if [[ ! -x "${dotnet}" ]]; then
     echo "Run ./scripts/bootstrap.sh before packaging GhostSHELL." >&2
+    exit 1
+fi
+
+if [[ -z "${native_aot_linker}" ]]; then
+    native_aot_linker="$(command -v ld64.lld || true)"
+fi
+if [[ -z "${native_aot_linker}" || ! -x "${native_aot_linker}" ]]; then
+    echo "Native AOT packaging requires LLVM's ld64.lld. Set GHOSTSHELL_NATIVE_AOT_LINKER to its absolute path." >&2
+    exit 1
+fi
+native_aot_linker_version="$("${native_aot_linker}" --version)"
+if [[ ! "${native_aot_linker_version}" =~ LLD[[:space:]]22\. ]]; then
+    echo "Native AOT packaging requires LLVM lld 22.x; found ${native_aot_linker_version}." >&2
     exit 1
 fi
 
@@ -376,10 +395,25 @@ cleanup() {
 trap cleanup EXIT
 
 publish_dir="${working_dir}/publish"
+managed_evidence_dir="${working_dir}/managed-evidence"
 "${dotnet}" restore \
     "${desktop_project}" \
     --runtime "${runtime_identifier}" \
-    --locked-mode
+    --locked-mode \
+    -p:GhostShellMacReleaseNativeAot=true
+"${dotnet}" publish \
+    "${desktop_project}" \
+    --configuration "${configuration}" \
+    --runtime "${runtime_identifier}" \
+    --self-contained true \
+    --no-restore \
+    --output "${managed_evidence_dir}" \
+    -p:RestoreLockedMode=true \
+    -p:GhostShellProductVersion="${version}" \
+    -p:GhostShellCefRuntimeArtifactDirectory="${cef_runtime_root}" \
+    -p:DebugType=None \
+    -p:DebugSymbols=false \
+    -p:GhostShellSqlLanguageRequired=true
 "${dotnet}" publish \
     "${desktop_project}" \
     --configuration "${configuration}" \
@@ -388,11 +422,18 @@ publish_dir="${working_dir}/publish"
     --no-restore \
     --output "${publish_dir}" \
     -p:RestoreLockedMode=true \
+    -p:GhostShellMacReleaseNativeAot=true \
+    -p:GhostShellNativeAotLinker="${native_aot_linker}" \
     -p:GhostShellProductVersion="${version}" \
     -p:GhostShellCefRuntimeArtifactDirectory="${cef_runtime_root}" \
     -p:DebugType=None \
     -p:DebugSymbols=false \
     -p:GhostShellSqlLanguageRequired=true
+
+# Project-reference symbols are build artifacts, not release payload. Native
+# AOT folds application IL into GhostShell, so no managed symbols are useful in
+# the bundle.
+find "${publish_dir}" -type f -name '*.pdb' -delete
 
 # Keep the runtime assets as a deterministic, independently receipted closure.
 # Avalonia also embeds these faces for font discovery, but package provenance
@@ -418,8 +459,6 @@ cp "${font_assets_directory}/OFL.txt" \
 
 required_publish=(
     "${publish_dir}/GhostShell"
-    "${publish_dir}/GhostShell.deps.json"
-    "${publish_dir}/GhostShell.runtimeconfig.json"
     "${publish_dir}/libAvaloniaNative.dylib"
     "${publish_dir}/libghostty-vt.dylib"
     "${publish_dir}/GHOSTTY-LICENSE"
@@ -458,7 +497,7 @@ required_publish=(
 )
 for required in "${required_publish[@]}"; do
     if [[ ! -e "${required}" ]]; then
-        echo "The self-contained publish is incomplete; missing $(basename "${required}")." >&2
+        echo "The Native AOT publish is incomplete; missing $(basename "${required}")." >&2
         exit 1
     fi
 done
@@ -467,6 +506,8 @@ done
 # fingerprints are generated, so the inspected payload is the shipped payload.
 "${namespace_avalonia_native}" \
     "${publish_dir}/libAvaloniaNative.dylib"
+cp "${publish_dir}/libAvaloniaNative.dylib" \
+    "${managed_evidence_dir}/libAvaloniaNative.dylib"
 
 published_sql_language_worker="${publish_dir}/runtimes/osx-arm64/native/ghostshell-sql-language"
 published_sql_language_receipt="${publish_dir}/runtimes/osx-arm64/native/build-receipt.json"
@@ -489,14 +530,15 @@ if [[ "${published_sql_language_dependencies_sha}" != "${sql_language_expected_d
     exit 1
 fi
 
-# macOS uses the apphost's SDK marker for compatibility styling. Rewrite the
-# temporary apphost before any package fingerprint is produced; release signing
+# macOS uses the executable's SDK marker for compatibility styling. Rewrite the
+# temporary Native AOT executable before any package fingerprint is produced; release signing
 # replaces the helper's ad-hoc signature later.
 "${declare_macos_sdk}" "${publish_dir}/GhostShell"
 
-if find "${publish_dir}" -maxdepth 1 -type f -name 'GhostShell*.pdb' -print -quit \
-        | grep -q .; then
-    echo "The self-contained publish unexpectedly contains first-party debug symbols." >&2
+if find "${publish_dir}" -type f \
+        \( -name '*.dll' -o -name '*.deps.json' -o -name '*.runtimeconfig.json' -o -name '*.pdb' \) \
+        -print -quit | grep -q .; then
+    echo "The Native AOT publish unexpectedly contains a managed host artifact." >&2
     exit 1
 fi
 
@@ -521,19 +563,19 @@ first_party_assemblies=(
     "GhostShell.Terminal.dll"
 )
 for assembly in "${first_party_assemblies[@]}"; do
-    if [[ ! -f "${publish_dir}/${assembly}" ]]; then
-        echo "The self-contained publish is incomplete; missing ${assembly}." >&2
+    if [[ ! -f "${managed_evidence_dir}/${assembly}" ]]; then
+        echo "The managed evidence publish is incomplete; missing ${assembly}." >&2
         exit 1
     fi
 
-    if LC_ALL=C grep -aFq "${repository_dir}" "${publish_dir}/${assembly}"; then
+    if LC_ALL=C grep -aFq "${repository_dir}" "${managed_evidence_dir}/${assembly}"; then
         echo "${assembly} embeds the build host repository path." >&2
         exit 1
     fi
 done
 
 if find "${publish_dir}" ! -type f ! -type d -print -quit | grep -q .; then
-    echo "The self-contained publish contains a symbolic link or special entry." >&2
+    echo "The Native AOT publish contains a symbolic link or special entry." >&2
     exit 1
 fi
 
@@ -582,6 +624,7 @@ fi
     -- \
     macos \
     --publish "${publish_dir}" \
+    --managed-evidence "${managed_evidence_dir}" \
     --output "${candidate}" \
     --version "${version}" \
     --build-version "${build_version}" \

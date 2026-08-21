@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using GhostShell.Application;
@@ -310,8 +309,7 @@ public static class ConnectionCredentialProcessHost
 
         if (askpass is not null)
         {
-            selfReentry ??= SelfReentryLaunch.Detect(
-                Assembly.GetEntryAssembly()?.Location ?? string.Empty);
+            selfReentry ??= SelfReentryLaunch.Detect();
 
             startInfo.Environment["SSH_ASKPASS"] = selfReentry.AskpassExecutable;
             foreach (var (name, value) in selfReentry.AskpassEnvironment)

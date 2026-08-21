@@ -69,7 +69,8 @@ internal sealed class MacOsObjectiveCBlock : IDisposable
         BlockRelease(pointer);
     }
 
-    private static nint CreateBlock(Delegate callback)
+    private static nint CreateBlock<TCallback>(TCallback callback)
+        where TCallback : Delegate
     {
         var literal = new BlockLiteral
         {

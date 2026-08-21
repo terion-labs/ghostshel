@@ -105,7 +105,9 @@ runtime/broker/session-host suites:
 ./.dotnet/dotnet test tests/GhostShell.Terminal.Tests/GhostShell.Terminal.Tests.csproj
 ```
 
-Build a non-launching, unsigned macOS arm64 application-bundle candidate:
+Build a non-launching, unsigned macOS arm64 Native AOT application-bundle candidate.
+Install LLVM's `ld64.lld` first; the packager also accepts its absolute path
+through `GHOSTSHELL_NATIVE_AOT_LINKER`:
 
 ```sh
 mkdir -p artifacts/macos-arm64-rc
@@ -115,7 +117,11 @@ mkdir -p artifacts/macos-arm64-rc
   --output artifacts/macos-arm64-rc/GhostShell.app
 ```
 
-The packager refuses incomplete native payloads, dependency-catalog drift,
+The packager emits a speed-optimized Native AOT executable with no managed
+application DLLs, `.deps.json`, runtime configuration, or JIT runtime in the
+bundle. It uses a separate locked self-contained publish only to validate the
+reviewed managed dependency catalog and produce license evidence. The packager
+refuses incomplete native payloads, dependency-catalog drift,
 tampered NuGet archives, and existing destinations. It validates the single
 published `libghostty-vt.dylib`, its reviewed export manifest, pinned build
 receipt, Ghostty license, and staged shell-integration manifest, emits deterministic SPDX 2.3 evidence

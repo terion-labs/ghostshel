@@ -9,7 +9,10 @@
     <ItemGroup>
       <GhostShellExpectedRuntimeLock
           Include="$([System.IO.Path]::GetFullPath('packages.$(RuntimeIdentifier).lock.json', '$(MSBuildProjectDirectory)'))"
-          Condition="'$(RuntimeIdentifier)' != ''" />
+          Condition="'$(RuntimeIdentifier)' != '' and !('$(MSBuildProjectName)' == 'GhostShell.Desktop' and '$(GhostShellMacReleaseNativeAot)' == 'true')" />
+      <GhostShellExpectedRuntimeLock
+          Include="$([System.IO.Path]::GetFullPath('packages.$(RuntimeIdentifier).aot.lock.json', '$(MSBuildProjectDirectory)'))"
+          Condition="'$(RuntimeIdentifier)' != '' and '$(MSBuildProjectName)' == 'GhostShell.Desktop' and '$(GhostShellMacReleaseNativeAot)' == 'true'" />
       <GhostShellExpectedRuntimeLock
           Include="$([System.IO.Path]::GetFullPath('packages.$(RuntimeIdentifiers).lock.json', '$(MSBuildProjectDirectory)'))"
           Condition="'$(RuntimeIdentifier)' == '' and '$(RuntimeIdentifiers)' != '' and !$([System.String]::Copy('$(RuntimeIdentifiers)').Contains(';'))" />
@@ -47,7 +50,7 @@
       Name="RequireLockedRestoreForSelfContainedDesktopPackage"
       DependsOnTargets="RequireExistingRuntimeLockForLockedRestore"
       BeforeTargets="_GenerateRestoreGraphProjectEntry;Restore;PrepareForBuild;Publish"
-      Condition="'$(MSBuildProjectName)' == 'GhostShell.Desktop' and '$(SelfContained)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+      Condition="'$(MSBuildProjectName)' == 'GhostShell.Desktop' and '$(SelfContained)' == 'true' and '$(DesignTimeBuild)' != 'true' and '$(RestoreForceEvaluate)' != 'true'">
     <Error
         Condition="'$(RuntimeIdentifier)' == ''"
         Text="Self-contained GhostShell.Desktop packaging requires an explicit RuntimeIdentifier and its reviewed packages.&lt;RID&gt;.lock.json closure." />
