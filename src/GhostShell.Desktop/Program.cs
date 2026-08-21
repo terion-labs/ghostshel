@@ -21,28 +21,6 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        if (args.Length == 1
-            && string.Equals(
-                args[0],
-                ClaudeHookTerminalNotificationAdapter.CommandLineSwitch,
-                StringComparison.Ordinal))
-        {
-            Environment.ExitCode = ClaudeHookTerminalNotificationAdapter.Run(
-                Console.In,
-                Console.Out);
-            return;
-        }
-
-        if (args.Length > 0
-            && string.Equals(
-                args[0],
-                ClaudeCodeWrapperProcessHost.CommandLineSwitch,
-                StringComparison.Ordinal))
-        {
-            Environment.ExitCode = ClaudeCodeWrapperProcessHost.Run(args[1..]);
-            return;
-        }
-
         if (ConnectionCredentialProcessHost.IsPrivateHelperInvocation(args))
         {
             Environment.ExitCode = ConnectionCredentialProcessHost

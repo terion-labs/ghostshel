@@ -1,8 +1,0 @@
-#!/bin/sh
-
-if [ -z "${GHOSTSHELL_CLAUDE_WRAPPER_HOST:-}" ] || [ ! -x "$GHOSTSHELL_CLAUDE_WRAPPER_HOST" ]; then
-    echo "GhostSHELL's Claude launcher is unavailable." >&2
-    exit 126
-fi
-
-exec "$GHOSTSHELL_CLAUDE_WRAPPER_HOST" --ghostshell-claude-wrapper "$@"

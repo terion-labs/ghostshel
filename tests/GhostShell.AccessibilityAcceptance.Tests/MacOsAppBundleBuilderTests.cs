@@ -92,34 +92,6 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         Assert.True(File.Exists(Path.Combine(
             output,
             "Contents",
-            "MacOS",
-            "claude-plugins",
-            "notifications",
-            "hooks",
-            "hooks.json")));
-        Assert.True(File.Exists(Path.Combine(
-            output,
-            "Contents",
-            "MacOS",
-            "ghostshell-cli-shims",
-            "claude")));
-        if (!OperatingSystem.IsWindows())
-        {
-            const UnixFileMode executeBits =
-                UnixFileMode.UserExecute
-                | UnixFileMode.GroupExecute
-                | UnixFileMode.OtherExecute;
-            Assert.True(
-                (File.GetUnixFileMode(Path.Combine(
-                    output,
-                    "Contents",
-                    "MacOS",
-                    "ghostshell-cli-shims",
-                    "claude")) & executeBits) != UnixFileMode.None);
-        }
-        Assert.True(File.Exists(Path.Combine(
-            output,
-            "Contents",
             "Resources",
             "Licenses",
             "GHOSTTY-LICENSE")));
@@ -1504,27 +1476,6 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         WriteFile(directory, "DOTNET-LICENSE.txt", "dotnet license");
         WriteFile(directory, "DOTNET-THIRD-PARTY-NOTICES.txt", "dotnet notices");
         WriteFile(directory, "sentinel.txt", "publish sentinel");
-        WriteFile(
-            directory,
-            "claude-plugins/notifications/.claude-plugin/plugin.json",
-            "{}");
-        WriteFile(
-            directory,
-            "claude-plugins/notifications/hooks/hooks.json",
-            "{}");
-        WriteFile(directory, "ghostshell-cli-shims/claude", "#!/bin/sh\n");
-        WriteFile(
-            directory,
-            "terminal-shell-integration/bash/ghostshell-claude.bash",
-            "# fixture\n");
-        WriteFile(
-            directory,
-            "terminal-shell-integration/zsh/.zshenv",
-            "# fixture\n");
-        WriteFile(
-            directory,
-            "terminal-shell-integration/fish/vendor_conf.d/ghostshell-claude.fish",
-            "# fixture\n");
         foreach (var assemblyName in ProjectAssemblyNames)
         {
             WriteFile(
@@ -1538,15 +1489,6 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         {
             File.SetUnixFileMode(
                 Path.Combine(directory, "GhostShell"),
-                UnixFileMode.UserRead
-                | UnixFileMode.UserWrite
-                | UnixFileMode.UserExecute
-                | UnixFileMode.GroupRead
-                | UnixFileMode.GroupExecute
-                | UnixFileMode.OtherRead
-                | UnixFileMode.OtherExecute);
-            File.SetUnixFileMode(
-                Path.Combine(directory, "ghostshell-cli-shims", "claude"),
                 UnixFileMode.UserRead
                 | UnixFileMode.UserWrite
                 | UnixFileMode.UserExecute

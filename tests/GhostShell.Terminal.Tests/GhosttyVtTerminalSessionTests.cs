@@ -608,36 +608,6 @@ public sealed class GhosttyVtTerminalSessionTests
     }
 
     [Fact]
-    public async Task Claude_stop_hook_response_reaches_the_terminal_notification_stream()
-    {
-        using var hookOutput = new StringWriter();
-        Assert.Equal(
-            0,
-            ClaudeHookTerminalNotificationAdapter.Run(
-                new StringReader("{\"hook_event_name\":\"Stop\"}"),
-                hookOutput));
-        using var hookResponse = JsonDocument.Parse(hookOutput.ToString());
-        var terminalSequence = Assert.IsType<string>(hookResponse.RootElement
-            .GetProperty("terminalSequence")
-            .GetString());
-
-        var harness = await CreateAsync();
-        await using var session = harness.Session;
-        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await using var notifications = session
-            .WatchNotificationsAsync(0, lifetime.Token)
-            .GetAsyncEnumerator(lifetime.Token);
-        var received = notifications.MoveNextAsync().AsTask();
-
-        await harness.Pty.WriteOutputAsync(terminalSequence);
-
-        Assert.True(await received.WaitAsync(TimeSpan.FromSeconds(10)));
-        Assert.Equal(PanelNotificationKind.Notification, notifications.Current.Kind);
-        Assert.Equal("Claude Code", notifications.Current.Title);
-        Assert.Equal("Work complete", notifications.Current.Body);
-    }
-
-    [Fact]
     public async Task Interactive_state_protocol_is_exposed_on_screen()
     {
         var harness = await CreateAsync();

@@ -4,7 +4,7 @@
 
 | Target | Status |
 |---|---|
-| Terminal notifications | Supported for OSC 9/777 and bell after host activation. Local interactive Claude Code 2.1.145 or newer receives a session-scoped Stop/StopFailure plugin that returns OSC 777 through the originating PTY. OSC 99 and a generic shell-facing `notify` command remain gaps. |
+| Terminal notifications | Supported for applications that emit OSC 9 or OSC 777, plus bell after host activation. OSC 99 and a generic shell-facing `notify` command remain gaps. |
 | Browser notifications | Blocked by the current Exclr8CEF Alloy+OSR runtime; see the browser gap below. |
 | Background AI agent completion | Supported for the built-in workspace agent on success and failure; cancellation is intentionally quiet. |
 | File-transfer completion | Supported once per completed or failed owner-scoped transfer. |
@@ -60,16 +60,13 @@ moving unread ownership back into individual views.
 cmux capabilities intentionally left for follow-up are called out below: OSC 99
 and generic `notify` CLI ingress, jump-to-latest and feed controls,
 application-icon counts, and withdrawing delivered OS notifications when a
-record is read or cleared. GhostSHELL's Claude integration borrows only the
-per-terminal command interception boundary; it uses Claude's local plugin
-interface instead of merging or editing settings.
+record is read or cleared.
 
 ## Source support
 
 | Source | Current behavior | Effects |
 |---|---|---|
 | Terminal | OSC 9 and OSC 777 desktop notifications are observed for every live panel, including background workspaces. The watch starts only after the session host accepts the terminal, and spawned shells receive managed `TERM`, `COLORTERM`, and `TERM_PROGRAM=ghostty` values so terminal-aware applications select a compatible notification protocol. Bell follows the terminal profile's Disabled, Visual, System, or SystemAndVisual setting. | Explicit notification: Visual + System. Bell: profile-controlled. |
-| Local interactive Claude Code | For Claude Code 2.1.145 or newer, the terminal launch prepends a GhostSHELL-owned Claude shim. Interactive Claude invocations receive the bundled notification plugin through a session-only `--plugin-dir` argument. Its Stop and StopFailure hooks return a bounded OSC 777 `terminalSequence`, so ownership naturally remains with the originating PTY. User settings and plugin directories are preserved; global Claude configuration is never edited. Help, version, print, safe-mode, management commands, and an explicit `GHOSTSHELL_CLAUDE_NOTIFICATIONS=0` opt-out pass through without plugin injection. Older Claude versions remain runnable but do not provide this notification guarantee. On Windows, a cmd-only legacy npm install is left untouched when no native Claude executable can be resolved. | Visual + System through the terminal source. |
 | Built-in AI agent | A successful or failed run notifies when its agent surface is hidden or the window is unfocused. Cancellation does not notify. | Visual + System. |
 | File transfer | The destination panel's owner-scoped queue emits one completion or failure notification per transfer. | Visual + System. |
 | Browser | Not supported in the current embedded runtime. Alloy+OSR denies Web Notifications before the permission handler and does not initialize Chromium's platform notification service. CDP observation is profile-wide and cannot by itself attribute a service-worker event to one panel. | None. |
@@ -104,8 +101,8 @@ adapter error does not remove the in-app unread trail.
    in Settings.
 5. The bounded internal history has no notification-feed UI, jump-to-latest
    command, or explicit mark-read/mark-unread controls.
-6. Terminal applications can use OSC 9/777 today, and local interactive Claude
-   Code has a bundled adapter, but there is no generic GhostSHELL `notify` CLI
-   and no documented OSC 99 compatibility contract. Remote Claude sessions and
-   other agent CLIs that only print a final response still need provider-specific
-   notification adapters.
+6. Terminal applications can use OSC 9/777 today, but there is no generic
+   GhostSHELL `notify` CLI and no documented OSC 99 compatibility contract.
+   GhostSHELL does not intercept application commands or inject provider hooks.
+   An application that only prints a final response must emit a terminal
+   notification protocol itself before GhostSHELL can report completion.

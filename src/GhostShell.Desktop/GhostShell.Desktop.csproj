@@ -40,18 +40,6 @@
   <ItemGroup>
     <Content Include="../../licenses/THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../../native/artifacts/common/fonts/JetBrainsMono/OFL.txt" Link="JETBRAINS-MONO-OFL.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="Resources/Claude/claude-plugins/notifications/.claude-plugin/plugin.json" Link="claude-plugins/notifications/.claude-plugin/plugin.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="Resources/Claude/terminal-shell-integration/**/*" Link="terminal-shell-integration/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-  </ItemGroup>
-
-  <ItemGroup Condition="'$(GhostShellWindowsBuild)' == 'true'">
-    <Content Include="Resources/Claude/claude-plugins/notifications/hooks/hooks.windows.json" Link="claude-plugins/notifications/hooks/hooks.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="Resources/Claude/ghostshell-cli-shims/claude.cmd" Link="ghostshell-cli-shims/claude.cmd" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-  </ItemGroup>
-
-  <ItemGroup Condition="'$(GhostShellWindowsBuild)' != 'true'">
-    <Content Include="Resources/Claude/claude-plugins/notifications/hooks/hooks.posix.json" Link="claude-plugins/notifications/hooks/hooks.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="Resources/Claude/ghostshell-cli-shims/claude" Link="ghostshell-cli-shims/claude" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <PropertyGroup>

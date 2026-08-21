@@ -168,7 +168,7 @@ public sealed class TerminalRuntimePanelViewModelTests
         notificationClient.Publish(new PanelNotificationEvent(
             1,
             PanelNotificationKind.Notification,
-            "Claude Code",
+            "Task runner",
             "Work complete",
             DateTimeOffset.UtcNow));
 
@@ -222,7 +222,7 @@ public sealed class TerminalRuntimePanelViewModelTests
         notificationClient.Publish(new PanelNotificationEvent(
             1,
             PanelNotificationKind.Notification,
-            "Claude Code",
+            "Task runner",
             "Still delivered",
             DateTimeOffset.UtcNow));
 
@@ -311,7 +311,7 @@ public sealed class TerminalRuntimePanelViewModelTests
         notificationClient.Publish(new PanelNotificationEvent(
             2,
             PanelNotificationKind.Notification,
-            "Claude Code",
+            "Task runner",
             "Retry delivered",
             DateTimeOffset.UtcNow));
 

@@ -62,13 +62,13 @@ public sealed class TerminalNotificationHostIntegrationTests
         engine.PublishNotification(new PanelNotificationEvent(
             1,
             PanelNotificationKind.Notification,
-            "Claude Code",
+            "Task runner",
             "Work complete",
             DateTimeOffset.UtcNow));
 
         var notification = await received.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
-        Assert.Equal("Claude Code", notification.Title);
+        Assert.Equal("Task runner", notification.Title);
         Assert.Equal("Work complete", notification.Body);
         Assert.Equal(
             PanelNotificationEffects.Visual | PanelNotificationEffects.System,

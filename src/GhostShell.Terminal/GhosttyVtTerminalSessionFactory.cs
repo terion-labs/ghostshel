@@ -13,41 +13,24 @@ public sealed class GhosttyVtTerminalSessionFactory : ITerminalSessionFactory
     private const int InitialRows = 24;
     private readonly IPortablePtyFactory _ptyFactory;
     private readonly GhosttyShellIntegrationLaunchAdapter _shellIntegration;
-    private readonly ClaudeCodeTerminalLaunchAdapter _claudeCodeIntegration;
 
     public GhosttyVtTerminalSessionFactory()
-        : this(
-            new PortaPtyFactory(),
-            new GhosttyShellIntegrationLaunchAdapter(),
-            new ClaudeCodeTerminalLaunchAdapter())
+        : this(new PortaPtyFactory(), new GhosttyShellIntegrationLaunchAdapter())
     {
     }
 
     internal GhosttyVtTerminalSessionFactory(IPortablePtyFactory ptyFactory)
-        : this(
-            ptyFactory,
-            new GhosttyShellIntegrationLaunchAdapter(),
-            new ClaudeCodeTerminalLaunchAdapter())
+        : this(ptyFactory, new GhosttyShellIntegrationLaunchAdapter())
     {
     }
 
     internal GhosttyVtTerminalSessionFactory(
         IPortablePtyFactory ptyFactory,
         GhosttyShellIntegrationLaunchAdapter shellIntegration)
-        : this(ptyFactory, shellIntegration, new ClaudeCodeTerminalLaunchAdapter())
-    {
-    }
-
-    internal GhosttyVtTerminalSessionFactory(
-        IPortablePtyFactory ptyFactory,
-        GhosttyShellIntegrationLaunchAdapter shellIntegration,
-        ClaudeCodeTerminalLaunchAdapter claudeCodeIntegration)
     {
         _ptyFactory = ptyFactory ?? throw new ArgumentNullException(nameof(ptyFactory));
         _shellIntegration = shellIntegration
             ?? throw new ArgumentNullException(nameof(shellIntegration));
-        _claudeCodeIntegration = claudeCodeIntegration
-            ?? throw new ArgumentNullException(nameof(claudeCodeIntegration));
     }
 
     public CapabilitySet Capabilities => GhosttyVtTerminalSession.SessionCapabilities;
@@ -67,9 +50,8 @@ public sealed class GhosttyVtTerminalSessionFactory : ITerminalSessionFactory
         // Shell scripts affect only the child process. The session retains the
         // original launch as its durable connection and recovery identity.
         var shellIntegration = _shellIntegration.Prepare(launch);
-        var processLaunch = _claudeCodeIntegration.Prepare(shellIntegration);
         var pty = await _ptyFactory.SpawnAsync(
-                processLaunch,
+                shellIntegration.Launch,
                 InitialColumns,
                 InitialRows,
                 cancellationToken)
