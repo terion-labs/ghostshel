@@ -10,6 +10,7 @@
     xmlns:panelViews="using:GhostShell.App.Views.RuntimePanels"
     xmlns:views="using:GhostShell.App.Views"
     xmlns:vm="using:GhostShell.App.ViewModels"
+    x:DataType="vm:MainWindowViewModel"
     Title="GhostSHELL"
     Width="1440"
     Height="900"
@@ -218,7 +219,7 @@
          collapse it whole. The browser is now an ordinary Avalonia visual, but
          a collapsed ancestor also hides any native terminal hosts that a veil
          alone could not cover. -->
-    <Panel IsVisible="{Binding !ApplicationSecurityEditor.IsLocked}">
+    <Panel IsVisible="{CompiledBinding !ApplicationSecurityEditor.IsLocked}">
     <!-- Runtime workspace -->
     <views:WorkspaceView
         x:Name="WorkspaceRouteView"
@@ -443,8 +444,8 @@
         MaxWidth="520"
         Tone="Danger"
         Glyph="ErrorCircle"
-        Text="{Binding OperationError}"
-        IsVisible="{Binding HasOperationError}"
+        Text="{CompiledBinding OperationError}"
+        IsVisible="{CompiledBinding HasOperationError}"
         AutomationProperties.LiveSetting="Assertive"
         AutomationProperties.Name="Operation error">
       <controls:Callout.Action>
@@ -501,7 +502,7 @@
          the veil sits above every panel, overlay and toast — and the layer
          above holds nothing, native included. -->
     <components:ShellLockView
-        DataContext="{Binding ApplicationSecurityEditor}"
-        IsVisible="{Binding IsLocked}" />
+        DataContext="{CompiledBinding ApplicationSecurityEditor}"
+        IsVisible="{CompiledBinding IsLocked}" />
   </Grid>
 </Window>

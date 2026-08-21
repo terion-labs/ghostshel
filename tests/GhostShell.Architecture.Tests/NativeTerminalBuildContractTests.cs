@@ -203,6 +203,32 @@ public sealed partial class NativeTerminalBuildContractTests
     }
 
     [Fact]
+    public void Managed_abi_validation_roots_static_native_aot_marshalling_layouts()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            "src",
+            "GhostShell.Terminal",
+            "GhosttyVt",
+            "GhosttyVtAbi.cs"));
+        var rootedLayouts = GenericMarshalSizePattern()
+            .Matches(source)
+            .Select(match => match.Groups["type"].Value)
+            .ToArray();
+
+        Assert.Equal(26, rootedLayouts.Length);
+        Assert.Equal(
+            rootedLayouts.Length,
+            rootedLayouts.Distinct(StringComparer.Ordinal).Count());
+        Assert.Contains("GhosttyVtString", rootedLayouts, StringComparer.Ordinal);
+        Assert.Contains(
+            "GhosttyVtKittyVirtualPlacementRenderInfo",
+            rootedLayouts,
+            StringComparer.Ordinal);
+        Assert.DoesNotContain("Marshal.SizeOf(type)", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Desktop_build_fails_closed_for_every_supported_native_payload()
     {
         var project = XDocument.Load(
@@ -285,6 +311,12 @@ public sealed partial class NativeTerminalBuildContractTests
         RegexOptions.CultureInvariant,
         matchTimeoutMilliseconds: 1_000)]
     private static partial Regex EntryPointPattern();
+
+    [GeneratedRegex(
+        @"Marshal\.SizeOf<(?<type>GhosttyVt\w+)>\(\)",
+        RegexOptions.CultureInvariant,
+        matchTimeoutMilliseconds: 1_000)]
+    private static partial Regex GenericMarshalSizePattern();
 
     private static string FindRepositoryRoot()
     {

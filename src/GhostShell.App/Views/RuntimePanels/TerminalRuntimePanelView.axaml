@@ -6,6 +6,9 @@
     xmlns:dock="clr-namespace:Dock.Avalonia.Controls;assembly=Dock.Avalonia"
     xmlns:icons="using:FluentIcons.Avalonia"
     xmlns:components="using:GhostShell.App.Views.Components"
+    xmlns:vm="using:GhostShell.App.ViewModels"
+    x:CompileBindings="True"
+    x:DataType="vm:TerminalRuntimePanelViewModel"
     Classes="RuntimePanelFocusTarget"
     Focusable="True"
     HorizontalContentAlignment="Stretch"
@@ -17,7 +20,7 @@
       IsActive="{Binding IsActive}"
       IsAgentActive="{Binding IsAgentActive}"
       IsNotificationPulseActive="{Binding IsNotificationPulseActive}"
-      IsTitleAdornmentVisible="{Binding IsContinuityActive}"
+      IsTitleAdornmentVisible="{ReflectionBinding IsContinuityActive}"
       IsZoomed="{Binding IsZoomed}"
       SplitRequested="OnSplitRequested"
       Title="Terminal">
@@ -156,7 +159,7 @@
 
     <controls:PanelChrome.Leading>
       <components:PanelConnectionSelectorView
-          Options="{Binding $parent[Window].DataContext.PanelConnectionOptions}"
+          Options="{ReflectionBinding $parent[Window].DataContext.PanelConnectionOptions}"
           SelectedLabel="{Binding ConnectionDisplayName}"
           ConnectionSelected="OnConnectionSelected"
           NewConnectionRequested="OnNewConnectionRequested" />
@@ -166,12 +169,12 @@
         <controls:TerminalPresentationHost
             x:Name="RuntimeTerminal"
             Margin="{DynamicResource ShellHairline}"
-            ClientId="{Binding ClientId}"
-            SessionClient="{Binding SessionClient}"
-            StartupCommandDispatchState="{Binding StartupCommandDispatchState}"
-            StartupCommandDispatcher="{Binding StartupCommandDispatcher}"
-            SessionRequest="{Binding SessionRequest}"
-            RenderProfile="{Binding RenderProfile}"
+            ClientId="{CompiledBinding ClientId}"
+            SessionClient="{CompiledBinding SessionClient}"
+            StartupCommandDispatchState="{CompiledBinding StartupCommandDispatchState}"
+            StartupCommandDispatcher="{CompiledBinding StartupCommandDispatcher}"
+            SessionRequest="{CompiledBinding SessionRequest}"
+            RenderProfile="{CompiledBinding RenderProfile}"
             BackgroundOpacity="{DynamicResource ShellSurfaceOpacity}"
             SessionSnapshotChanged="OnSessionSnapshotChanged"
             SessionInitializationFailed="OnSessionInitializationFailed" />
@@ -230,11 +233,11 @@
         <Border
             Margin="{DynamicResource ShellHairline}"
             Background="{DynamicResource ShellSurfaceBrush}"
-            IsVisible="{Binding HasConnectionOverlay}">
+            IsVisible="{CompiledBinding HasConnectionOverlay}">
           <controls:StateOverlay
               Glyph="WindowConsole"
-              Heading="{Binding ConnectionStatus}"
-              Body="{Binding ConnectionDetail}">
+              Heading="{CompiledBinding ConnectionStatus}"
+              Body="{CompiledBinding ConnectionDetail}">
             <StackPanel MaxWidth="460" Spacing="{DynamicResource ShellSpaceSm}">
               <TextBlock
                   Classes="Muted"

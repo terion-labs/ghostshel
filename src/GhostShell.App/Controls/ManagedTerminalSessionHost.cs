@@ -805,6 +805,9 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
                         Retryable: true)));
             }
 
+            Console.Error.WriteLine(
+                "[ghostshell:terminal] Unable to attach the managed terminal session: "
+                + exception);
             Trace.TraceError("Unable to attach the managed terminal session: {0}", exception);
         }
         finally

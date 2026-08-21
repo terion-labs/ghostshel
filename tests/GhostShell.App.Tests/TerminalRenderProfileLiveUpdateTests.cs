@@ -95,7 +95,7 @@ public sealed class TerminalRenderProfileLiveUpdateTests
             element => string.Equals(element.Name.LocalName, "TerminalPresentationHost", StringComparison.Ordinal));
 
         Assert.Equal(
-            "{Binding RenderProfile}",
+            "{CompiledBinding RenderProfile}",
             (string?)host.Attribute("RenderProfile"));
     }
 

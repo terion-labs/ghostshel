@@ -3768,8 +3768,11 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
             return ConnectionAttemptOutcome.Fail(
                 ConnectionRuntimeError.Create(ConnectionRuntimeErrorCode.Cancelled));
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            Console.Error.WriteLine(
+                "[ghostshell:connections] Preparing terminal session failed: "
+                + exception);
             result = ConnectionRuntimeResult<ConnectionOpenPlan>.Fail(
                 ConnectionRuntimeError.Create(ConnectionRuntimeErrorCode.ProcessFailed));
         }

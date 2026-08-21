@@ -6,6 +6,8 @@
     xmlns:controls="using:GhostShell.App.Controls"
     xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:icons="using:FluentIcons.Avalonia"
+    xmlns:vm="using:GhostShell.App.ViewModels"
+    x:DataType="vm:WorkspaceEditorViewModel"
     MinWidth="900"
     MinHeight="600">
   <!--
@@ -451,11 +453,11 @@
             <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
               <controls:ToggleField
                   Label="Override AI configuration for this workspace"
-                  IsChecked="{Binding AgentPolicy.IsEnabled, Mode=TwoWay}"
+                  IsChecked="{CompiledBinding AgentPolicy.IsEnabled, Mode=TwoWay}"
                   AutomationProperties.Name="Override AI configuration for this workspace" />
               <StackPanel
                   Spacing="{DynamicResource ShellSpaceMd}"
-                  IsVisible="{Binding AgentPolicy.IsEnabled}">
+                  IsVisible="{CompiledBinding AgentPolicy.IsEnabled}">
                 <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                   <controls:LabeledField Label="Provider profile">
                     <Grid MinHeight="{DynamicResource ShellControlMinHeight}">
@@ -563,7 +565,7 @@
                     Foreground="{DynamicResource ShellDangerBrush}"
                     FontSize="{DynamicResource ShellFontSize9}"
                     Text="Choose an available, enabled provider profile and enter a valid model."
-                    IsVisible="{Binding !AgentPolicy.IsValid}" />
+                    IsVisible="{CompiledBinding !AgentPolicy.IsValid}" />
               </StackPanel>
             </StackPanel>
           </controls:SettingsGroup>
@@ -624,8 +626,8 @@
           <controls:Callout
               Tone="Notice"
               ShowsGlyph="False"
-              Text="{Binding LastOperationError}"
-              IsVisible="{Binding HasOperationError}">
+              Text="{CompiledBinding LastOperationError}"
+              IsVisible="{CompiledBinding HasOperationError}">
             <controls:Callout.Action>
               <Button Classes="IconButton" Click="OnClearOperationErrorClick" AutomationProperties.Name="Dismiss workspace editor error"><icons:SymbolIcon Symbol="Dismiss" FontSize="11" /></Button>
             </controls:Callout.Action>
@@ -639,18 +641,18 @@
 
       <Border Grid.Row="1" BorderBrush="{DynamicResource ShellBorderBrush}" BorderThickness="0,1,0,0">
         <Grid Margin="{controls:Inset Horizontal=Lg, Vertical=Md}" ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-          <controls:StatusChip VerticalAlignment="Center" Classes.Warning="{Binding IsDirty}" Content="{Binding DirtyStatus}" />
+          <controls:StatusChip VerticalAlignment="Center" Classes.Warning="{CompiledBinding IsDirty}" Content="{CompiledBinding DirtyStatus}" />
           <TextBlock
               Grid.Column="1"
               Margin="{controls:Inset Left=Md}"
               VerticalAlignment="Center"
               Classes="Muted"
               FontSize="{DynamicResource ShellFontSize10}"
-              Text="{Binding ValidationSummary}"
+              Text="{CompiledBinding ValidationSummary}"
               TextTrimming="CharacterEllipsis" />
-          <Button Grid.Column="2" VerticalAlignment="Center" Classes="TextButton" Click="OnResetClick" Content="Reset" IsEnabled="{Binding IsDirty}" />
+          <Button Grid.Column="2" VerticalAlignment="Center" Classes="TextButton" Click="OnResetClick" Content="Reset" IsEnabled="{CompiledBinding IsDirty}" />
           <Button Grid.Column="3" MinWidth="88" VerticalAlignment="Center" Classes="SecondaryButton" Click="OnCancelClick" Content="Cancel" />
-          <Button Grid.Column="4" MinWidth="128" VerticalAlignment="Center" Classes="PrimaryButton" Click="OnSaveClick" Content="Save workspace" IsEnabled="{Binding CanSave}" />
+          <Button Grid.Column="4" MinWidth="128" VerticalAlignment="Center" Classes="PrimaryButton" Click="OnSaveClick" Content="Save workspace" IsEnabled="{CompiledBinding CanSave}" />
         </Grid>
       </Border>
     </Grid>

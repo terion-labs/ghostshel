@@ -3,7 +3,9 @@
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
-    xmlns:icons="using:FluentIcons.Avalonia">
+    xmlns:icons="using:FluentIcons.Avalonia"
+    xmlns:vm="using:GhostShell.App.ViewModels"
+    x:DataType="vm:ApplicationSecurityEditorViewModel">
 
   <!-- The veil is opaque on purpose: a lock screen that lets the content
        shimmer through is a screenshot of the content. It also covers the
@@ -39,15 +41,15 @@
             HorizontalContentAlignment="Center"
             PasswordChar="●"
             KeyDown="OnPinKeyDown"
-            Text="{Binding UnlockPin}"
+            Text="{CompiledBinding UnlockPin}"
             AutomationProperties.Name="Unlock PIN" />
         <TextBlock
             HorizontalAlignment="Center"
             Foreground="{DynamicResource ShellDangerBrush}"
             FontSize="{DynamicResource ShellFontSize10}"
-            Text="{Binding UnlockStatus}"
+            Text="{CompiledBinding UnlockStatus}"
             TextWrapping="Wrap"
-            IsVisible="{Binding HasUnlockStatus}" />
+            IsVisible="{CompiledBinding HasUnlockStatus}" />
         <Button
             HorizontalAlignment="Stretch"
             HorizontalContentAlignment="Center"
@@ -60,8 +62,8 @@
             HorizontalContentAlignment="Center"
             Classes="SecondaryButton"
             Click="OnBiometricUnlockClick"
-            Content="{Binding BiometricUnlockLabel}"
-            IsVisible="{Binding CanUseBiometrics}"
+            Content="{CompiledBinding BiometricUnlockLabel}"
+            IsVisible="{CompiledBinding CanUseBiometrics}"
             AutomationProperties.Name="Unlock with biometrics" />
       </StackPanel>
     </controls:SurfaceCard>

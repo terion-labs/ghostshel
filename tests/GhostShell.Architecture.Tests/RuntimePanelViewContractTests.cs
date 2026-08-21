@@ -1213,7 +1213,7 @@ public sealed class RuntimePanelViewContractTests
             root.Descendants(),
             element => string.Equals(element.Name.LocalName, "PanelConnectionSelectorView", StringComparison.Ordinal));
         Assert.Equal(
-            "{Binding $parent[Window].DataContext.PanelConnectionOptions}",
+            "{ReflectionBinding $parent[Window].DataContext.PanelConnectionOptions}",
             AttributeValue(connectionSelector, "Options"));
         Assert.Equal(
             "{Binding ConnectionDisplayName}",
@@ -1237,12 +1237,12 @@ public sealed class RuntimePanelViewContractTests
 
         Assert.Equal("RuntimeTerminal", AttributeValue(terminal, "Name"));
         Assert.Equal("{DynamicResource ShellHairline}", AttributeValue(terminal, "Margin"));
-        Assert.Equal("{Binding ClientId}", AttributeValue(terminal, "ClientId"));
+        Assert.Equal("{CompiledBinding ClientId}", AttributeValue(terminal, "ClientId"));
         Assert.Equal(
-            "{Binding SessionClient}",
+            "{CompiledBinding SessionClient}",
             AttributeValue(terminal, "SessionClient"));
         Assert.Equal(
-            "{Binding SessionRequest}",
+            "{CompiledBinding SessionRequest}",
             AttributeValue(terminal, "SessionRequest"));
         Assert.Equal(
             "OnSessionSnapshotChanged",
