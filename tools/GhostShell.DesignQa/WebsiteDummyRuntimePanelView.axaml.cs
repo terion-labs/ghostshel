@@ -19,6 +19,10 @@ internal sealed class WebsiteDummyRuntimePanelViewModel(
     WebsiteDummyPanelContent content)
     : RuntimePanelViewModel(id, kind, title, kindLabel)
 {
+    public string BrowserAddress => "https://example.com/";
+
+    public string ConnectionDisplayName => "Local";
+
     public bool ShowsTerminal => content == WebsiteDummyPanelContent.Terminal;
 
     public bool ShowsBrowser => content == WebsiteDummyPanelContent.Browser;

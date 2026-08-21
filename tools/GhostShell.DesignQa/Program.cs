@@ -357,6 +357,11 @@ internal sealed class QaApplication : Avalonia.Application
             vm.ShowWorkspace();
             AddSampleProcessMonitorPanel(vm);
         }),
+        new("workspace-browser", vm =>
+        {
+            vm.ShowWorkspace();
+            AddSampleBrowserPanel(vm);
+        }),
         // The Docker browser with realistic engine data: navigation, selected
         // container, lifecycle affordances, inspection rows, and live metrics.
         new("workspace-docker", vm =>
@@ -830,7 +835,7 @@ internal sealed class QaApplication : Avalonia.Application
         {
             foreach (var sampleTab in workspace.Tabs
                          .Where(tab => tab.Id.Value is
-                             "qa-tab-database" or "qa-tab-docker" or "qa-tab-file-viewer"
+                             "qa-tab-browser" or "qa-tab-database" or "qa-tab-docker" or "qa-tab-file-viewer"
                              or "qa-tab-git" or "qa-tab-process-monitor" or "qa-tab-statistics"
                              || tab.Id.Value.StartsWith("qa-tab-redis-", StringComparison.Ordinal))
                          .ToArray())
@@ -2340,6 +2345,38 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
         tab.NotifyPanelLayoutChanged();
         workspace.Tabs.Add(tab);
 
+        ActivateTab(workspace, tab);
+    }
+
+    private static void AddSampleBrowserPanel(MainWindowViewModel viewModel)
+    {
+        if (viewModel.RuntimeWorkspace is not { } workspace)
+        {
+            throw new InvalidOperationException(
+                "The Browser route needs a runtime workspace.");
+        }
+
+        var tab = new RuntimeTabViewModel(
+            new TabInstanceId("qa-tab-browser"),
+            "Browser",
+            "Local");
+        RuntimePanelViewModel panel = Program.IsWebsiteExport
+            ? new WebsiteDummyRuntimePanelViewModel(
+                new PanelInstanceId("qa-panel-browser-full"),
+                PanelKind.Browser,
+                "Browser",
+                "Browser",
+                WebsiteDummyPanelContent.Browser)
+            : new UnavailableRuntimePanelViewModel(
+                new PanelInstanceId("qa-panel-browser-full"),
+                PanelKind.Browser,
+                "Browser",
+                "Browser",
+                "This harness renders the browser panel without a live session.");
+        tab.AddPanel(panel);
+        _ = tab.ActivatePanel(panel.Id);
+        tab.NotifyPanelLayoutChanged();
+        workspace.Tabs.Add(tab);
         ActivateTab(workspace, tab);
     }
 

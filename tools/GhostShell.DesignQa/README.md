@@ -43,8 +43,9 @@ same rounded window silhouette to every frame.
 Default workspace panels use deterministic terminal and browser previews in
 website mode. The general QA set keeps the real unavailable-adapter state, but
 marketing artwork never substitutes a harness warning for product content.
-The full-window utility routes are `workspace-file-viewer`,
-`workspace-statistics`, and `workspace-process-monitor`.
+The full-window adapter routes are `workspace-browser`,
+`workspace-file-viewer`, `workspace-statistics`, and
+`workspace-process-monitor`.
 
 The Retina pass scales the laid-out visual tree onto a 2× surface. Do not render
 the 1× tree directly at 192 DPI: centered overlays and dialogs receive doubled
