@@ -183,7 +183,7 @@ public sealed class SqliteDefinitionRepository<TDefinition> : IDefinitionReposit
         string payloadJson;
         try
         {
-            payloadJson = JsonSerializer.Serialize(definition, DefinitionJson.Options);
+            payloadJson = DefinitionJson.Serialize(definition);
         }
         catch (Exception exception) when (IsPayloadException(exception))
         {

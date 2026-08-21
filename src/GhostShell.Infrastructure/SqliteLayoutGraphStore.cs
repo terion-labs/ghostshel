@@ -288,10 +288,7 @@ public sealed class SqliteLayoutGraphStore : ILayoutGraphStore
         string payloadJson;
         try
         {
-            payloadJson = JsonSerializer.Serialize(
-                definition,
-                definition.GetType(),
-                DefinitionJson.Options);
+            payloadJson = DefinitionJson.Serialize(definition);
         }
         catch (NotSupportedException)
         {

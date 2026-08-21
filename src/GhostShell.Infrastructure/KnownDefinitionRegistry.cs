@@ -109,7 +109,7 @@ internal static class KnownDefinitionRegistry
 
         try
         {
-            definition = Deserialize(document.Kind, document.PayloadJson);
+            definition = DefinitionJson.Deserialize(document.Kind, document.PayloadJson);
             if (definition is null || !IsExpectedRuntimeType(definition.GetType(), document.Kind))
             {
                 problem = new(
@@ -195,36 +195,6 @@ internal static class KnownDefinitionRegistry
 
         return ValidateSelf(definition);
     }
-
-    private static IDurableDefinition? Deserialize(DefinitionKind kind, string payloadJson) =>
-        kind switch
-        {
-            var value when value == DefinitionKind.Connection =>
-                JsonSerializer.Deserialize<ConnectionProfile>(payloadJson, DefinitionJson.Options),
-            var value when value == DefinitionKind.Layout =>
-                JsonSerializer.Deserialize<LayoutDefinition>(payloadJson, DefinitionJson.Options),
-            var value when value == DefinitionKind.Screen =>
-                JsonSerializer.Deserialize<ScreenDefinition>(payloadJson, DefinitionJson.Options),
-            var value when value == DefinitionKind.Workspace =>
-                JsonSerializer.Deserialize<WorkspaceDefinition>(payloadJson, DefinitionJson.Options),
-            var value when value == DefinitionKind.Theme =>
-                JsonSerializer.Deserialize<ThemePreference>(payloadJson, DefinitionJson.Options),
-            var value when value == DefinitionKind.TerminalProfile =>
-                JsonSerializer.Deserialize<TerminalProfile>(payloadJson, DefinitionJson.Options),
-            var value when value == DefinitionKind.Keymap =>
-                JsonSerializer.Deserialize<KeymapProfile>(payloadJson, DefinitionJson.Options),
-            var value when value == DefinitionKind.FileProviderProfile =>
-                JsonSerializer.Deserialize<FileProviderProfile>(payloadJson, DefinitionJson.Options),
-            var value when value == DefinitionKind.AiProviderProfile =>
-                JsonSerializer.Deserialize<AiProviderProfile>(payloadJson, DefinitionJson.Options),
-            var value when value == DefinitionKind.McpServerProfile =>
-                JsonSerializer.Deserialize<McpServerProfile>(payloadJson, DefinitionJson.Options),
-            var value when value == DefinitionKind.DatabaseConnection =>
-                JsonSerializer.Deserialize<DatabaseConnectionProfile>(payloadJson, DefinitionJson.Options),
-            var value when value == DefinitionKind.QuickTerminalSettings =>
-                JsonSerializer.Deserialize<QuickTerminalSettings>(payloadJson, DefinitionJson.Options),
-            _ => null,
-        };
 
     private static DefinitionProblem? ValidateSelf(IDurableDefinition definition)
     {

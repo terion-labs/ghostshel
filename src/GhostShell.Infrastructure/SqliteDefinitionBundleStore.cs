@@ -365,9 +365,7 @@ public sealed class SqliteDefinitionBundleStore : IDefinitionBundleStore
                 {
                     SchemaVersion = disabledProfile.SchemaVersion,
                     Name = disabledProfile.Name,
-                    PayloadJson = JsonSerializer.Serialize(
-                        disabledProfile,
-                        DefinitionJson.Options),
+                    PayloadJson = DefinitionJson.Serialize(disabledProfile),
                 };
                 parsed.Issues.Add(new(
                     DefinitionImportIssueCode.ImportedAiProviderProfileDisabled,
@@ -392,9 +390,7 @@ public sealed class SqliteDefinitionBundleStore : IDefinitionBundleStore
                 definition = disabledProfile;
                 importedDocument = importedDocument with
                 {
-                    PayloadJson = JsonSerializer.Serialize(
-                        disabledProfile,
-                        DefinitionJson.Options),
+                    PayloadJson = DefinitionJson.Serialize(disabledProfile),
                 };
                 parsed.Issues.Add(new(
                     DefinitionImportIssueCode.ImportedMcpProfileDisabled,
