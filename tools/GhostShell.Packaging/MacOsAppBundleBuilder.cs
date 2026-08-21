@@ -302,6 +302,14 @@ public sealed class MacOsAppBundleBuilder
                 var relativePath = Path.GetRelativePath(root.FullName, entry.FullName);
                 if (entry is DirectoryInfo childDirectory)
                 {
+                    if (childDirectory.Name.EndsWith(
+                            ".dSYM",
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new InvalidDataException(
+                            "Debug symbol bundles must be published outside the application bundle.");
+                    }
+
                     var childDepth = depth + 1;
                     maximumDirectoryDepth = Math.Max(maximumDirectoryDepth, childDepth);
                     if (childDepth > MaximumSourceDirectoryDepth)

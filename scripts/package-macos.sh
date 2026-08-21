@@ -225,9 +225,14 @@ if [[ ! -d "${output_parent}" ]]; then
 fi
 output_parent="$(cd "${output_parent}" && pwd -P)"
 output="${output_parent}/GhostShell.app"
+symbol_output="${output_parent}/GhostShell.dSYM"
 
 if [[ -e "${output}" ]]; then
     echo "The package destination already exists and will not be overwritten." >&2
+    exit 1
+fi
+if [[ -e "${symbol_output}" ]]; then
+    echo "The debug-symbol destination already exists and will not be overwritten." >&2
     exit 1
 fi
 
@@ -398,12 +403,14 @@ publish_dir="${working_dir}/publish"
 managed_evidence_dir="${working_dir}/managed-evidence"
 "${dotnet}" restore \
     "${desktop_project}" \
+    -maxcpucount:4 \
     --runtime "${runtime_identifier}" \
     --locked-mode \
     -p:GhostShellProductVersion="${version}" \
     -p:GhostShellMacReleaseNativeAot=true
 "${dotnet}" publish \
     "${desktop_project}" \
+    -maxcpucount:4 \
     --configuration "${configuration}" \
     --runtime "${runtime_identifier}" \
     --self-contained true \
@@ -417,6 +424,7 @@ managed_evidence_dir="${working_dir}/managed-evidence"
     -p:GhostShellSqlLanguageRequired=true
 "${dotnet}" publish \
     "${desktop_project}" \
+    -maxcpucount:4 \
     --configuration "${configuration}" \
     --runtime "${runtime_identifier}" \
     --self-contained true \
@@ -435,6 +443,13 @@ managed_evidence_dir="${working_dir}/managed-evidence"
 # AOT folds application IL into GhostShell, so no managed symbols are useful in
 # the bundle.
 find "${publish_dir}" -type f -name '*.pdb' -delete
+published_symbols="${publish_dir}/GhostShell.dSYM"
+staged_symbols="${working_dir}/GhostShell.dSYM"
+if [[ ! -d "${published_symbols}" || -L "${published_symbols}" ]]; then
+    echo "The Native AOT debug symbol bundle is missing or linked." >&2
+    exit 1
+fi
+mv "${published_symbols}" "${staged_symbols}"
 
 # Keep the runtime assets as a deterministic, independently receipted closure.
 # Avalonia also embeds these faces for font discovery, but package provenance
@@ -705,6 +720,8 @@ fi
     --package "${candidate}" \
     --output "${output}"
 
+mv "${staged_symbols}" "${symbol_output}"
+
 if [[ -n "${notary_profile}" ]]; then
     echo "Created signed and notarized macOS release candidate at ${output}."
 elif [[ -n "${sign_identity}" ]]; then
@@ -712,3 +729,4 @@ elif [[ -n "${sign_identity}" ]]; then
 else
     echo "Created unsigned macOS release candidate at ${output}."
 fi
+echo "Created matching debug symbols at ${symbol_output}."

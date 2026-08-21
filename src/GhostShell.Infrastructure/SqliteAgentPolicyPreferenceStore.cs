@@ -34,7 +34,7 @@ public sealed class SqliteAgentPolicyPreferenceStore : IAgentPolicyPreferenceSto
                 return ApplicationRunResult<AgentPolicy?>.Success(null);
             }
 
-            var policy = JsonSerializer.Deserialize<AgentPolicy>((string)value);
+            var policy = DefinitionJson.DeserializeAgentPolicy((string)value);
             return policy?.IsValidForDurableStorage() == true
                 ? ApplicationRunResult<AgentPolicy?>.Success(policy)
                 : Failure<AgentPolicy?>(
@@ -73,7 +73,7 @@ public sealed class SqliteAgentPolicyPreferenceStore : IAgentPolicyPreferenceSto
 
         try
         {
-            var payload = JsonSerializer.Serialize(policy);
+            var payload = DefinitionJson.SerializeAgentPolicy(policy);
             await using var connection = await _database.OpenConnectionAsync(cancellationToken)
                 .ConfigureAwait(false);
             await using var command = connection.CreateCommand();

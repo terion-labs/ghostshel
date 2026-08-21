@@ -10,6 +10,12 @@ internal static class DefinitionJson
 
     public static JsonSerializerOptions Options => Context.Options;
 
+    public static string SerializeAgentPolicy(AgentPolicy policy) =>
+        JsonSerializer.Serialize(policy, Context.AgentPolicy);
+
+    public static AgentPolicy? DeserializeAgentPolicy(string payloadJson) =>
+        JsonSerializer.Deserialize(payloadJson, Context.AgentPolicy);
+
     public static string Serialize(IDurableDefinition definition) =>
         definition switch
         {
@@ -139,6 +145,7 @@ internal static class DefinitionJson
 [JsonSerializable(typeof(McpServerProfile))]
 [JsonSerializable(typeof(DatabaseConnectionProfile))]
 [JsonSerializable(typeof(QuickTerminalSettings))]
+[JsonSerializable(typeof(AgentPolicy))]
 [JsonSerializable(typeof(ConnectionEndpoint.Local), TypeInfoPropertyName = "ConnectionEndpointLocal")]
 [JsonSerializable(typeof(FileProviderConfiguration.Local), TypeInfoPropertyName = "FileProviderConfigurationLocal")]
 [JsonSerializable(typeof(AiProviderAuthentication.None), TypeInfoPropertyName = "AiProviderAuthenticationNone")]

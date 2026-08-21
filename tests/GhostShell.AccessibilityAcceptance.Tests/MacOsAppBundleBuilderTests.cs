@@ -973,6 +973,32 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
     }
 
     [Fact]
+    public void Builder_rejects_debug_symbols_in_the_publish_payload()
+    {
+        var publish = CreatePublishPayload();
+        var symbols = Path.Combine(publish, "GhostShell.dSYM");
+        Directory.CreateDirectory(Path.Combine(
+            symbols,
+            "Contents",
+            "Resources",
+            "DWARF"));
+        File.WriteAllText(Path.Combine(
+            symbols,
+            "Contents",
+            "Resources",
+            "DWARF",
+            "GhostShell"), "symbols");
+        var output = OutputPath();
+
+        var exception = Assert.Throws<InvalidDataException>(() =>
+            new MacOsAppBundleBuilder().Build(
+                Request(publish, output)));
+
+        Assert.Contains("outside", exception.Message, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(output));
+    }
+
+    [Fact]
     public void Builder_resolves_destination_ancestor_links_before_containment_checks()
     {
         if (OperatingSystem.IsWindows())
