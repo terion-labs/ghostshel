@@ -304,6 +304,7 @@ internal sealed class QaApplication : Avalonia.Application
             // Floating is the default, so the panel is summoned the way a
             // person summons it — this capture reviews the flyout state.
             vm.ToggleAgentPanel();
+            MarkTerminalPanelForAgentActivity(vm);
             AgentProfiles.PublishSampleProfile();
             AgentRuntime.PublishSampleConversation();
         }),
@@ -320,6 +321,7 @@ internal sealed class QaApplication : Avalonia.Application
         {
             vm.ShowWorkspace();
             _ = vm.ToggleAgentPanelPinAsync(CancellationToken.None);
+            MarkTerminalPanelForAgentActivity(vm);
             AgentProfiles.PublishSampleProfile();
             AgentRuntime.PublishSampleConversation();
         }),
@@ -871,6 +873,48 @@ internal sealed class QaApplication : Avalonia.Application
             item.HasAttention = false;
             item.IsOpen = index == 0;
             item.IsInFront = index == 0;
+        }
+    }
+
+    private static void ClearWorkspaceAgentActivity(MainWindowViewModel viewModel)
+    {
+        if (viewModel.RuntimeWorkspace is { } workspace)
+        {
+            foreach (var tab in workspace.Tabs)
+            {
+                foreach (var panel in tab.Panels)
+                {
+                    panel.SetAgentActivity(null);
+                }
+
+                tab.SetAgentActivity(null);
+            }
+
+            workspace.HasAgentActivity = false;
+        }
+
+        foreach (var workspaceItem in viewModel.Workspaces)
+        {
+            workspaceItem.HasAgentActivity = false;
+        }
+    }
+
+    private static void MarkTerminalPanelForAgentActivity(MainWindowViewModel viewModel)
+    {
+        if (viewModel.RuntimeWorkspace is not { } workspace
+            || workspace.ActiveTab is not { } tab
+            || tab.Panels.FirstOrDefault(panel => panel.Kind == PanelKind.Terminal) is not { } terminal)
+        {
+            throw new InvalidOperationException(
+                "The agent terminal capture needs an active terminal panel.");
+        }
+
+        terminal.SetAgentActivity("AI agent working in this panel");
+        tab.SetAgentActivity(terminal.AgentActivity);
+        workspace.HasAgentActivity = true;
+        if (viewModel.Workspaces.FirstOrDefault(item => item.IsInFront) is { } workspaceItem)
+        {
+            workspaceItem.HasAgentActivity = true;
         }
     }
 
@@ -3669,6 +3713,7 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
                 {
                     await ResetWebsiteRouteStateAsync(viewModel, window);
                 }
+                ClearWorkspaceAgentActivity(viewModel);
                 // The sample agent conversation belongs to the one route that asks
                 // for it. Resetting first keeps that route from leaking a connected
                 // agent into whatever is captured after it, whatever the order.
