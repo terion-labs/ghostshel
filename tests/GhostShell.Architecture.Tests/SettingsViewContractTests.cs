@@ -85,17 +85,23 @@ public sealed class SettingsViewContractTests
         };
 
     [Fact]
-    public void Main_window_delegates_the_settings_route_to_one_named_view()
+    public void Main_window_defers_the_settings_route_behind_one_named_host()
     {
         var mainWindow = LoadView("MainWindow");
         var settings = Assert.Single(
             mainWindow.Descendants(),
             element => string.Equals(element.Name.LocalName, "SettingsView", StringComparison.Ordinal));
+        var template = Assert.IsType<XElement>(settings.Parent);
 
-        Assert.Equal("SettingsRouteView", AttributeValue(settings, "Name"));
+        Assert.Equal("DataTemplate", template.Name.LocalName);
+        Assert.Equal("SettingsRouteTemplate", AttributeValue(template, "Key"));
+        var host = Assert.Single(
+            mainWindow.Descendants(),
+            element => AttributeValue(element, "Name") == "SettingsRouteHost");
         Assert.Equal(
             "{Binding IsSettingsVisible}",
-            AttributeValue(settings, "IsVisible"));
+            AttributeValue(host, "IsVisible"));
+        Assert.Empty(host.Elements());
 
         foreach (var (interaction, handler) in ShellInteractions)
         {
@@ -680,9 +686,11 @@ public sealed class SettingsViewContractTests
         }
 
         Assert.Contains(
-            "this.FindControl<SettingsView>(\"SettingsRouteView\")",
+            "MaterializeRoute<SettingsView>(",
             mainWindowCode,
             StringComparison.Ordinal);
+        Assert.Contains("\"SettingsRouteTemplate\"", mainWindowCode, StringComparison.Ordinal);
+        Assert.Contains("\"SettingsRouteHost\"", mainWindowCode, StringComparison.Ordinal);
 
         foreach (var extractedName in ExtractedControlNames)
         {
@@ -704,8 +712,8 @@ public sealed class SettingsViewContractTests
             "new AvaloniaDiagnosticsBundleDestinationPicker(this)",
             mainWindowCode,
             StringComparison.Ordinal);
-        Assert.Contains("recoveryDataControlViewModel.Start();", mainWindowCode);
-        Assert.Contains("localArtifactControlViewModel.Start();", mainWindowCode);
+        Assert.Contains("_recoveryDataControlViewModel.Start();", mainWindowCode);
+        Assert.Contains("_localArtifactControlViewModel.Start();", mainWindowCode);
         Assert.Contains("ShowDialog<", mainWindowCode, StringComparison.Ordinal);
         Assert.DoesNotContain(
             "OnAccentModeSelectionChanged",
@@ -831,9 +839,9 @@ public sealed class SettingsViewContractTests
 
     private static readonly string[] MainWindowTypedCalls =
     [
-        "SettingsRoute.ConfigureAppearanceControls(",
-        "SettingsRoute.BindOperationalViewModels(",
-        "SettingsRoute.ApplyAppearance(",
+        "settings.ConfigureAppearanceControls(",
+        "settings.BindOperationalViewModels(",
+        "settings.ApplyAppearance(",
         "SettingsRoute.CaptureAppearance()",
         "SettingsRoute.CaptureKeybindingPrefixOptions()",
         "SettingsRoute.CaptureConnectionSecretForm()",

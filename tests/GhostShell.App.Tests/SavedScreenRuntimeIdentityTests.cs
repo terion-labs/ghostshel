@@ -393,6 +393,34 @@ public sealed class SavedScreenRuntimeIdentityTests
         Assert.IsType<PanelPlaceholderViewModel>(Assert.Single(launcher.Panels));
     }
 
+    [Fact]
+    public void Additional_windows_do_not_restart_process_onboarding()
+    {
+        var snapshot = new DefinitionCatalogSnapshot(
+            [], [], [], [], [], [], [], [], []);
+        var store = new IncompleteOnboardingProgressStore();
+        var recentStore = new CountingRecentSessionStore();
+        var onboarding = new OnboardingViewModel(
+            store,
+            new FixedDefinitionCatalog(snapshot),
+            new SuccessfulConnectionRuntime(),
+            new EmptySecretVault().Availability);
+
+        using var viewModel = CreateViewModel(
+            snapshot,
+            new EmptyFileClients(),
+            recentSessionHistory: new RecentSessionHistory(recentStore),
+            onboarding: onboarding,
+            role: MainWindowRole.Additional);
+
+        Assert.Equal(MainWindowRole.Additional, viewModel.Role);
+        Assert.Null(viewModel.Onboarding);
+        Assert.Equal(0, store.ReadCalls);
+        Assert.Equal(0, recentStore.InitializationCount);
+        Assert.Equal(0, recentStore.ListCount);
+        onboarding.Dispose();
+    }
+
     /// <summary>
     /// Which workspace you are in survives the workspace being saved.
     ///
@@ -2485,8 +2513,14 @@ public sealed class SavedScreenRuntimeIdentityTests
     private sealed class CountingRecentSessionStore : IRecentSessionStore
     {
         private int _completions;
+        private int _initializations;
+        private int _lists;
 
         public int CompletionCount => Volatile.Read(ref _completions);
+
+        public int InitializationCount => Volatile.Read(ref _initializations);
+
+        public int ListCount => Volatile.Read(ref _lists);
 
         public ValueTask<RecentSessionStoreResult<Unit>> RecordCompletedAsync(
             RecentSessionCompletion completion,
@@ -2502,13 +2536,19 @@ public sealed class SavedScreenRuntimeIdentityTests
             ValueTask.FromResult(RecentSessionStoreResult<Unit>.Success(Unit.Value));
 
         public ValueTask<RecentSessionStoreResult<IReadOnlyList<RecentSessionRecord>>>
-            ListRecentAsync(RecentSessionQuery query, CancellationToken cancellationToken) =>
-            ValueTask.FromResult(
+            ListRecentAsync(RecentSessionQuery query, CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _lists);
+            return ValueTask.FromResult(
                 RecentSessionStoreResult<IReadOnlyList<RecentSessionRecord>>.Success([]));
+        }
 
         public ValueTask<RecentSessionStoreResult<int>> MarkActiveSessionsInterruptedAsync(
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult(RecentSessionStoreResult<int>.Success(0));
+            CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _initializations);
+            return ValueTask.FromResult(RecentSessionStoreResult<int>.Success(0));
+        }
 
         public ValueTask<RecentSessionStoreResult<int>> ClearThroughAsync(
             DateTimeOffset through,
@@ -2527,7 +2567,8 @@ public sealed class SavedScreenRuntimeIdentityTests
         RecentSessionHistory? recentSessionHistory = null,
         IConnectionRuntime? connectionRuntime = null,
         ISessionHostClient? sessionClient = null,
-        OnboardingViewModel? onboarding = null) =>
+        OnboardingViewModel? onboarding = null,
+        MainWindowRole role = MainWindowRole.Primary) =>
         new(
             sessionClient ?? DispatchProxy.Create<ISessionHostClient, NullSessionClient>(),
             new FixedDefinitionCatalog(snapshot),
@@ -2538,14 +2579,18 @@ public sealed class SavedScreenRuntimeIdentityTests
             new TerminalStartupCommandDispatcher(new SuccessfulAuditStore(), TimeProvider.System),
             runtimeRecoveryWriter: recoveryWriter,
             recentSessionHistory: recentSessionHistory,
-            onboarding: onboarding);
+            onboarding: onboarding,
+            role: role);
 
     private sealed class IncompleteOnboardingProgressStore : IOnboardingProgressStore
     {
+        public int ReadCalls { get; private set; }
+
         public ValueTask<OnboardingProgressResult<OnboardingProgress>> ReadAsync(
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            ReadCalls++;
             return ValueTask.FromResult(
                 OnboardingProgressResult<OnboardingProgress>.Success(
                     new OnboardingProgress(0, 1)));

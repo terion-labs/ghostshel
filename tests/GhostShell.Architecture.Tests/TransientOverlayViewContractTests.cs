@@ -47,27 +47,43 @@ public sealed class TransientOverlayViewContractTests
             };
 
     [Fact]
-    public void Main_window_delegates_three_transient_overlays_to_named_views()
+    public void Main_window_defers_transient_overlays_behind_named_hosts()
     {
         var mainWindow = LoadView("MainWindow");
         AssertDelegatedOverlay(
             mainWindow,
             "CommandPaletteView",
-            "CommandPaletteOverlayView",
+            "CommandPaletteOverlayTemplate",
+            "CommandPaletteOverlayHost",
             "{Binding IsCommandPaletteVisible}",
             CommandPaletteInteractions);
         AssertDelegatedOverlay(
             mainWindow,
             "LayoutDesignerView",
-            "LayoutDesignerOverlayView",
+            "LayoutDesignerOverlayTemplate",
+            "LayoutDesignerOverlayHost",
             "{Binding IsLayoutDesignerVisible}",
             LayoutDesignerInteractions);
         AssertDelegatedOverlay(
             mainWindow,
             "NewPanelChooserView",
-            "NewPanelChooserOverlayView",
+            "NewPanelOverlayTemplate",
+            "NewPanelOverlayHost",
             "{Binding IsNewPanelVisible}",
             NewPanelChooserInteractions);
+        var definitionTemplate = Assert.Single(
+            mainWindow.Descendants(),
+            element => AttributeValue(element, "Key") == "DefinitionEditorOverlayTemplate");
+        Assert.Contains(
+            definitionTemplate.Descendants(),
+            element => element.Name.LocalName == "WorkspaceEditorView");
+        var definitionHost = Assert.Single(
+            mainWindow.Descendants(),
+            element => AttributeValue(element, "Name") == "DefinitionEditorOverlayHost");
+        Assert.Equal(
+            "{Binding IsDefinitionEditorVisible}",
+            AttributeValue(definitionHost, "IsVisible"));
+        Assert.Empty(definitionHost.Elements());
 
         foreach (var extractedName in ExtractedControlNames)
         {
@@ -501,13 +517,13 @@ public sealed class TransientOverlayViewContractTests
         var mainWindowCode = ApplicationViews.FindPartialClassSources("MainWindow");
 
         Assert.Contains(
-            "this.FindControl<CommandPaletteView>(\"CommandPaletteOverlayView\")",
+            "MaterializeRoute<CommandPaletteView>(",
             mainWindowCode);
         Assert.Contains(
-            "this.FindControl<LayoutDesignerView>(\"LayoutDesignerOverlayView\")",
+            "MaterializeRoute<LayoutDesignerView>(",
             mainWindowCode);
         Assert.Contains(
-            "this.FindControl<NewPanelChooserView>(\"NewPanelChooserOverlayView\")",
+            "MaterializeRoute<NewPanelChooserView>(",
             mainWindowCode);
         Assert.Contains("CommandPaletteOverlay.FocusSearch();", mainWindowCode);
         Assert.Contains(
@@ -630,15 +646,22 @@ public sealed class TransientOverlayViewContractTests
     private static void AssertDelegatedOverlay(
         XDocument mainWindow,
         string viewName,
-        string instanceName,
+        string templateName,
+        string hostName,
         string visibilityBinding,
         IReadOnlyDictionary<string, string> interactions)
     {
         var overlay = Assert.Single(
             mainWindow.Descendants(),
             element => string.Equals(element.Name.LocalName, viewName, StringComparison.Ordinal));
-        Assert.Equal(instanceName, AttributeValue(overlay, "Name"));
-        Assert.Equal(visibilityBinding, AttributeValue(overlay, "IsVisible"));
+        var template = Assert.IsType<XElement>(overlay.Parent);
+        Assert.Equal("DataTemplate", template.Name.LocalName);
+        Assert.Equal(templateName, AttributeValue(template, "Key"));
+        var host = Assert.Single(
+            mainWindow.Descendants(),
+            element => AttributeValue(element, "Name") == hostName);
+        Assert.Equal(visibilityBinding, AttributeValue(host, "IsVisible"));
+        Assert.Empty(host.Elements());
 
         foreach (var (interaction, handler) in interactions)
         {

@@ -31,13 +31,66 @@ public sealed partial class MainWindow
     private bool _changingKeybindingProfile;
     private ThemePreference? _appearanceControlsSource;
 
-    private SettingsView SettingsRoute =>
-        this.FindControl<SettingsView>("SettingsRouteView")
-        ?? throw new InvalidOperationException(
-            "The settings route view is unavailable.");
+    private SettingsView SettingsRoute => EnsureSettingsRoute();
+
+    private SettingsView EnsureSettingsRoute()
+    {
+        if (_settingsRoute is { } existing)
+        {
+            return existing;
+        }
+
+        var settings = MaterializeRoute<SettingsView>(
+            "SettingsRouteTemplate",
+            "SettingsRouteHost");
+        _settingsRoute = settings;
+        settings.ConfigureAppearanceControls(
+            AppearancePlatformProfiles,
+            AppearanceTextScaleOptions);
+
+        if (_definitionBundleStore is not null
+            && _definitionCatalog is not null)
+        {
+            _definitionBundles = new DefinitionBundleController(
+                _definitionBundleStore,
+                new AvaloniaDefinitionBundlePathPicker(this),
+                new DefinitionCatalogImportRefresh(_definitionCatalog));
+        }
+
+        if (_recentSessionHistoryExporter is not null)
+        {
+            _historyExport = new RecentSessionHistoryExportController(
+                _recentSessionHistoryExporter,
+                new AvaloniaRecentSessionHistoryPathPicker(this));
+        }
+
+        if (_diagnosticsExporter is not null
+            && _diagnosticsRequestSource is not null
+            && _diagnosticsArtifactPresenter is not null
+            && _recoveryDataControlViewModel is not null
+            && _localArtifactControlViewModel is not null)
+        {
+            var diagnostics = new DiagnosticsExportViewModel(
+                _diagnosticsExporter,
+                _diagnosticsRequestSource,
+                new AvaloniaDiagnosticsBundleDestinationPicker(this),
+                _diagnosticsArtifactPresenter,
+                TimeProvider.System);
+            settings.BindOperationalViewModels(
+                _recoveryDataControlViewModel,
+                _localArtifactControlViewModel,
+                diagnostics);
+            _recoveryDataControlViewModel.Start();
+            _localArtifactControlViewModel.Start();
+        }
+
+        RefreshAppearanceControlsFromStoredProfile();
+        return settings;
+    }
 
     public void NavigateToSettings(SettingsPage page = SettingsPage.Appearance)
     {
+        _ = SettingsRoute;
         ViewModel.ShowSettings(page);
         if (ViewModel.IsSettingsVisible && !ViewModel.HasOverlay)
         {
@@ -232,7 +285,8 @@ public sealed partial class MainWindow
 
     internal void RefreshAppearanceControlsFromStoredProfile()
     {
-        if (DataContext is not MainWindowViewModel viewModel)
+        if (_settingsRoute is not { } settings
+            || DataContext is not MainWindowViewModel viewModel)
         {
             return;
         }
@@ -246,7 +300,7 @@ public sealed partial class MainWindow
         _applyingAppearanceControls = true;
         try
         {
-            SettingsRoute.ApplyAppearance(
+            settings.ApplyAppearance(
                 theme,
                 ResolveApplicationTextScaleOption(theme.TextScaleOverride));
         }
@@ -692,8 +746,7 @@ public sealed partial class MainWindow
     {
         if (string.Equals(field, WorkspaceAccentSampleField, StringComparison.Ordinal))
         {
-            this.FindControl<WorkspaceEditorView>("WorkspaceDefinitionEditor")
-                ?.ApplySampledColor(color);
+            _workspaceDefinitionEditor?.ApplySampledColor(color);
             return;
         }
 

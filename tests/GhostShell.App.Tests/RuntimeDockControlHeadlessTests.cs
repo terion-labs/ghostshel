@@ -1,14 +1,18 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Templates;
 using Avalonia.Headless;
+using Avalonia.LogicalTree;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Dock.Avalonia.Controls;
 using Dock.Controls.ProportionalStackPanel;
 using Dock.Model.Core;
 using Dock.Model.Inpc.Controls;
+using GhostShell.App.Controls;
 using GhostShell.App.ViewModels;
 using GhostShell.App.Views;
 using GhostShell.App.Views.Components;
+using GhostShell.App.Views.Overlays;
 using GhostShell.App.Views.RuntimePanels;
 using GhostShell.Core;
 
@@ -90,6 +94,42 @@ public sealed class RuntimeDockControlHeadlessTests
             Assert.Equal(8, splitter.Width);
             Assert.True(double.IsNaN(splitter.Height));
             return Task.CompletedTask;
+        });
+
+    [Fact]
+    public Task Main_window_routes_are_deferred_and_each_template_materializes() =>
+        RunHeadlessAsync(() =>
+        {
+            var window = new MainWindow();
+            foreach (var hostName in new[]
+                     {
+                         "SettingsRouteHost",
+                         "CommandPaletteOverlayHost",
+                         "NewPanelOverlayHost",
+                         "LayoutDesignerOverlayHost",
+                         "DefinitionEditorOverlayHost",
+                     })
+            {
+                var host = window.FindControl<ContentControl>(hostName);
+                Assert.NotNull(host);
+                Assert.Null(host.Content);
+            }
+
+            Assert.IsType<SettingsView>(Build(window, "SettingsRouteTemplate"));
+            Assert.IsType<CommandPaletteView>(Build(window, "CommandPaletteOverlayTemplate"));
+            Assert.IsType<NewPanelChooserView>(Build(window, "NewPanelOverlayTemplate"));
+            Assert.IsType<LayoutDesignerView>(Build(window, "LayoutDesignerOverlayTemplate"));
+            var definitionEditor = Assert.IsType<SurfaceCard>(
+                Build(window, "DefinitionEditorOverlayTemplate"));
+            Assert.Single(
+                definitionEditor.GetLogicalDescendants().OfType<WorkspaceEditorView>());
+            return Task.CompletedTask;
+
+            static Control Build(MainWindow owner, string key)
+            {
+                var template = Assert.IsAssignableFrom<IDataTemplate>(owner.Resources[key]);
+                return Assert.IsAssignableFrom<Control>(template.Build(null));
+            }
         });
 
     [Fact]

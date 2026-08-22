@@ -1,7 +1,9 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.LogicalTree;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using GhostShell.App;
@@ -34,8 +36,21 @@ public sealed partial class MainWindow : Window
     private long _activeApplicationKeymapRevision;
     private CancellationTokenSource? _applicationHintLifetime;
     private CancellationTokenSource? _historyExportLifetime;
-    private readonly DefinitionBundleController? _definitionBundles;
-    private readonly RecentSessionHistoryExportController? _historyExport;
+    private readonly IDefinitionBundleStore? _definitionBundleStore;
+    private readonly IDefinitionCatalog? _definitionCatalog;
+    private readonly IDiagnosticsBundleExporter? _diagnosticsExporter;
+    private readonly IDiagnosticsBundleRequestSource? _diagnosticsRequestSource;
+    private readonly IDiagnosticsArtifactPresenter? _diagnosticsArtifactPresenter;
+    private readonly IRecentSessionHistoryExporter? _recentSessionHistoryExporter;
+    private readonly RecoveryDataControlViewModel? _recoveryDataControlViewModel;
+    private readonly LocalArtifactControlViewModel? _localArtifactControlViewModel;
+    private DefinitionBundleController? _definitionBundles;
+    private RecentSessionHistoryExportController? _historyExport;
+    private SettingsView? _settingsRoute;
+    private CommandPaletteView? _commandPaletteOverlay;
+    private LayoutDesignerView? _layoutDesignerOverlay;
+    private NewPanelChooserView? _newPanelChooserOverlay;
+    private WorkspaceEditorView? _workspaceDefinitionEditor;
     private bool _closeApproved;
     private bool _closeInProgress;
     private bool _restoreRouteFocusWhenActivated;
@@ -65,9 +80,6 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        SettingsRoute.ConfigureAppearanceControls(
-            AppearancePlatformProfiles,
-            AppearanceTextScaleOptions);
         AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
         // Tunneled so any input anywhere counts as activity for the idle
         // lock, before a control can mark it handled.
@@ -123,25 +135,14 @@ public sealed partial class MainWindow : Window
         IScreenColorSampler screenColorSampler)
         : this()
     {
-        _definitionBundles = new DefinitionBundleController(
-            definitionBundleStore,
-            new AvaloniaDefinitionBundlePathPicker(this),
-            new DefinitionCatalogImportRefresh(definitionCatalog));
-        _historyExport = new RecentSessionHistoryExportController(
-            recentSessionHistoryExporter,
-            new AvaloniaRecentSessionHistoryPathPicker(this));
-        var diagnosticsExportViewModel = new DiagnosticsExportViewModel(
-            diagnosticsExporter,
-            diagnosticsRequestSource,
-            new AvaloniaDiagnosticsBundleDestinationPicker(this),
-            diagnosticsArtifactPresenter,
-            TimeProvider.System);
-        SettingsRoute.BindOperationalViewModels(
-            recoveryDataControlViewModel,
-            localArtifactControlViewModel,
-            diagnosticsExportViewModel);
-        recoveryDataControlViewModel.Start();
-        localArtifactControlViewModel.Start();
+        _definitionBundleStore = definitionBundleStore;
+        _definitionCatalog = definitionCatalog;
+        _diagnosticsExporter = diagnosticsExporter;
+        _diagnosticsRequestSource = diagnosticsRequestSource;
+        _diagnosticsArtifactPresenter = diagnosticsArtifactPresenter;
+        _recentSessionHistoryExporter = recentSessionHistoryExporter;
+        _recoveryDataControlViewModel = recoveryDataControlViewModel;
+        _localArtifactControlViewModel = localArtifactControlViewModel;
         _screenColorSampler = screenColorSampler;
     }
 
@@ -181,7 +182,6 @@ public sealed partial class MainWindow : Window
         Avalonia.Threading.Dispatcher.UIThread.Post(
             RefreshWindowChromeMetrics,
             Avalonia.Threading.DispatcherPriority.Loaded);
-        RefreshAppearanceControlsFromStoredProfile();
         ApplyWindowBackdrop();
         Screens.Changed += OnScreensChanged;
         QueueBackingScaleReconciliation();
@@ -389,23 +389,77 @@ public sealed partial class MainWindow : Window
     private MainWindowViewModel ViewModel => DataContext as MainWindowViewModel
         ?? throw new InvalidOperationException("The main window view model is unavailable.");
 
-    private CommandPaletteView CommandPaletteOverlay =>
-        this.FindControl<CommandPaletteView>("CommandPaletteOverlayView")
+    private CommandPaletteView CommandPaletteOverlay => _commandPaletteOverlay
         ?? throw new InvalidOperationException(
-            "The command palette overlay view is unavailable.");
+            "The command palette overlay has not been opened.");
 
-    private LayoutDesignerView LayoutDesignerOverlay =>
-        this.FindControl<LayoutDesignerView>("LayoutDesignerOverlayView")
+    private LayoutDesignerView LayoutDesignerOverlay => _layoutDesignerOverlay
         ?? throw new InvalidOperationException(
-            "The layout designer overlay view is unavailable.");
+            "The layout designer overlay has not been opened.");
 
-    private NewPanelChooserView NewPanelChooserOverlay =>
-        this.FindControl<NewPanelChooserView>("NewPanelChooserOverlayView")
+    private NewPanelChooserView NewPanelChooserOverlay => _newPanelChooserOverlay
         ?? throw new InvalidOperationException(
-            "The new panel chooser overlay view is unavailable.");
+            "The new panel chooser overlay has not been opened.");
+
+    private T MaterializeRoute<T>(string templateKey, string hostName)
+        where T : Control
+    {
+        var host = this.FindControl<ContentControl>(hostName)
+            ?? throw new InvalidOperationException(
+                $"The lazy route host '{hostName}' is unavailable.");
+        if (host.Content is T existing)
+        {
+            return existing;
+        }
+
+        if (!Resources.TryGetResource(templateKey, ActualThemeVariant, out var resource)
+            || resource is not IDataTemplate template
+            || template.Build(ViewModel) is not T route)
+        {
+            throw new InvalidOperationException(
+                $"The lazy route template '{templateKey}' is unavailable.");
+        }
+
+        host.Content = route;
+        return route;
+    }
+
+    private void EnsureCommandPaletteOverlay() =>
+        _commandPaletteOverlay ??= MaterializeRoute<CommandPaletteView>(
+            "CommandPaletteOverlayTemplate",
+            "CommandPaletteOverlayHost");
+
+    private void EnsureNewPanelChooserOverlay() =>
+        _newPanelChooserOverlay ??= MaterializeRoute<NewPanelChooserView>(
+            "NewPanelOverlayTemplate",
+            "NewPanelOverlayHost");
+
+    private void EnsureLayoutDesignerOverlay() =>
+        _layoutDesignerOverlay ??= MaterializeRoute<LayoutDesignerView>(
+            "LayoutDesignerOverlayTemplate",
+            "LayoutDesignerOverlayHost");
+
+    private void EnsureDefinitionEditorOverlay()
+    {
+        if (_workspaceDefinitionEditor is not null)
+        {
+            return;
+        }
+
+        var card = MaterializeRoute<SurfaceCard>(
+            "DefinitionEditorOverlayTemplate",
+            "DefinitionEditorOverlayHost");
+        _workspaceDefinitionEditor = card
+            .GetLogicalDescendants()
+            .OfType<WorkspaceEditorView>()
+            .SingleOrDefault()
+            ?? throw new InvalidOperationException(
+                "The workspace definition editor is unavailable.");
+    }
 
     public void ShowCommandPalette()
     {
+        EnsureCommandPaletteOverlay();
         ViewModel.ShowOverlay(ShellOverlay.CommandPalette);
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
@@ -474,6 +528,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        EnsureNewPanelChooserOverlay();
         ViewModel.ShowOverlay(ShellOverlay.NewPanel);
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
@@ -497,6 +552,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        EnsureLayoutDesignerOverlay();
         ViewModel.BeginCreateLayout();
         FocusLayoutDesignerNameWhenReady();
     }
@@ -1317,6 +1373,7 @@ public sealed partial class MainWindow : Window
         }
 
         ViewModel.DismissLayoutDesigner();
+        EnsureLayoutDesignerOverlay();
         ViewModel.BeginEditLayout(layout.Id);
         FocusLayoutDesignerNameWhenReady();
     }
@@ -1380,6 +1437,7 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = e;
+        EnsureDefinitionEditorOverlay();
         ViewModel.BeginCreateWorkspace();
         FocusDefinitionEditorWhenReady();
     }
@@ -1389,6 +1447,7 @@ public sealed partial class MainWindow : Window
         _ = e;
         if (sender is Control { DataContext: LauncherWorkspaceViewModel workspace })
         {
+            EnsureDefinitionEditorOverlay();
             ViewModel.BeginEditWorkspace(workspace.Id);
             FocusDefinitionEditorWhenReady();
         }
@@ -2098,10 +2157,10 @@ public sealed partial class MainWindow : Window
     private void FocusDefinitionEditorWhenReady() =>
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
-            if (ViewModel.IsDefinitionEditorVisible)
+            if (ViewModel.IsDefinitionEditorVisible
+                && _workspaceDefinitionEditor is { } editor)
             {
-                this.FindControl<WorkspaceEditorView>("WorkspaceDefinitionEditor")
-                    ?.FocusInitialControl();
+                editor.FocusInitialControl();
             }
         });
 

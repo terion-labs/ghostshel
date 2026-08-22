@@ -218,5 +218,8 @@ public sealed class CompositionTests
         Assert.NotSame(first, second);
         Assert.NotEqual(primary.WindowId, first.WindowId);
         Assert.NotEqual(first.WindowId, second.WindowId);
+        Assert.Equal(MainWindowRole.Primary, primary.Role);
+        Assert.Equal(MainWindowRole.Additional, first.Role);
+        Assert.Equal(MainWindowRole.Additional, second.Role);
     }
 }

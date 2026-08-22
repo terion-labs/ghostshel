@@ -264,7 +264,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         IAgentWorkspaceRuntimeFactory? agentRuntimeFactory = null,
         IBrowserProfilePreferences? browserProfilePreferences = null,
         IBrowserProfileDataControl? browserProfileDataControl = null,
-        INativeNotificationService? nativeNotificationService = null)
+        INativeNotificationService? nativeNotificationService = null,
+        MainWindowRole role = MainWindowRole.Primary)
     {
         SessionClient = sessionClient ?? throw new ArgumentNullException(nameof(sessionClient));
         _uiThreadDispatcher = uiThreadDispatcher ?? AvaloniaUiThreadDispatcher.Instance;
@@ -334,6 +335,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             ? ClientId.New()
             : RequireDesktopClientId(agentApprovalPrincipal);
         WindowId = WindowInstanceId.New();
+        Role = role;
         AgentChat = _agentRuntimeFactory is null
             && agentChatRuntime is not null
             && _aiProviderRuntime is not null
@@ -351,7 +353,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             IsEnabled = true
         };
         DefaultAgentPolicy.Changed += OnDefaultAgentPolicyChanged;
-        Onboarding = onboarding;
+        Onboarding = role == MainWindowRole.Primary ? onboarding : null;
         ProductComponents = productComponentCatalog?.Components ?? [];
         _catalog.Changed += OnCatalogChanged;
         _fileTransferQueue.TransfersChanged += OnFileTransfersChanged;
@@ -360,31 +362,36 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _runtimeRecoveryWriter?.WriteFailed += OnRuntimeRecoveryWriteFailed;
         RefreshCatalog(_catalog.Snapshot);
         RefreshFileTransfers();
-        Onboarding?.Start();
-        if (_recentSessionHistory is not null)
+        if (role == MainWindowRole.Primary)
         {
-            IsHistoryLoading = true;
-            _ = QueueHistoryOperation(async token =>
+            Onboarding?.Start();
+            if (_recentSessionHistory is not null)
             {
-                try
+                IsHistoryLoading = true;
+                _ = QueueHistoryOperation(async token =>
                 {
-                    await RefreshRecentSessionsCoreAsync(token);
-                }
-                finally
-                {
-                    IsHistoryLoading = false;
-                }
-            });
-        }
+                    try
+                    {
+                        await RefreshRecentSessionsCoreAsync(token);
+                    }
+                    finally
+                    {
+                        IsHistoryLoading = false;
+                    }
+                });
+            }
 
-        // The editor displays a complete default as soon as an enabled
-        // provider exists. Persist that exact visible configuration so the
-        // Agent surface and Settings cannot disagree about whether AI is set
-        // up. Subsequent edits are persisted by OnDefaultAgentPolicyChanged.
-        QueueDefaultAgentPolicyPersistence(onlyWhenMissing: true);
+            // The editor displays a complete default as soon as an enabled
+            // provider exists. Persist that exact visible configuration so the
+            // Agent surface and Settings cannot disagree about whether AI is set
+            // up. Subsequent edits are persisted by OnDefaultAgentPolicyChanged.
+            QueueDefaultAgentPolicyPersistence(onlyWhenMissing: true);
+        }
     }
 
     public ISessionHostClient SessionClient { get; }
+
+    public MainWindowRole Role { get; }
 
     /// <summary>
     /// The preview settings the Files &amp; transfers page edits. Always

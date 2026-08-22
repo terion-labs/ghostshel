@@ -64,6 +64,145 @@
     </NativeMenu>
   </NativeMenu.Menu>
 
+  <!-- These routes are templates rather than live controls on purpose. Avalonia
+       keeps template content deferred, so a window pays for Settings or an
+       overlay only when that route is requested for the first time. -->
+  <Window.Resources>
+    <DataTemplate x:Key="SettingsRouteTemplate" x:DataType="vm:MainWindowViewModel">
+      <views:SettingsView
+          AboutSettingsRequested="OnAboutSettingsClick"
+          AddAiProviderRequested="OnAddAiProviderClick"
+          AddFileProviderRequested="OnAddFileProviderClick"
+          AddMcpServerRequested="OnAddMcpServerClick"
+          AgentSettingsRequested="OnAgentSettingsClick"
+          AppearanceSettingsRequested="OnAppearanceSettingsClick"
+          ClearKeybindingPrefixRequested="OnClearKeybindingPrefixClick"
+          CloneKeybindingPresetRequested="OnCloneKeybindingPresetClick"
+          CreateAiProviderSecretRequested="OnCreateAiProviderSecretClick"
+          CreateConnectionSecretRequested="OnCreateConnectionSecretClick"
+          CreateFileProviderSecretRequested="OnCreateFileProviderSecretClick"
+          CreateMcpServerSecretRequested="OnCreateMcpServerSecretClick"
+          DeleteAiProviderRequested="OnDeleteAiProviderClick"
+          DeleteFileProviderRequested="OnDeleteFileProviderClick"
+          DeleteMcpServerRequested="OnDeleteMcpServerClick"
+          DeleteScreenRequested="OnDeleteScreenClick"
+          DeleteSecretRequested="OnDeleteSecretClick"
+          DeleteWorkspaceRequested="OnDeleteWorkspaceClick"
+          DiagnosticsSettingsRequested="OnDiagnosticsSettingsClick"
+          DismissSavedScreenDeleteUndoRequested="OnDismissSavedScreenDeleteUndoClick"
+          EditAiProviderRequested="OnEditAiProviderClick"
+          EditFileProviderRequested="OnEditFileProviderClick"
+          EditLayoutRequested="OnEditLayoutClick"
+          EditMcpServerRequested="OnEditMcpServerClick"
+          EditScreenRequested="OnEditScreenClick"
+          EditSecretRequested="OnEditSecretClick"
+          CreateWorkspaceRequested="OnCreateWorkspaceClick"
+          EditWorkspaceRequested="OnEditWorkspaceClick"
+          ExportDefinitionsRequested="OnExportDefinitionsClick"
+          DisableStartupProtectionRequested="OnDisableStartupProtectionClick"
+          EnableStartupProtectionRequested="OnEnableStartupProtectionClick"
+          FilesSettingsRequested="OnFilesSettingsClick"
+          BrowserSettingsRequested="OnBrowserSettingsClick"
+          LockNowRequested="OnLockNowClick"
+          ImportDefinitionsRequested="OnImportDefinitionsClick"
+          KeybindingPrefixOptionsChangedRequested="OnKeybindingPrefixOptionsChanged"
+          KeybindingProfileSelectionChangedRequested="OnKeybindingProfileSelectionChanged"
+          KeybindingSettingsRequested="OnKeybindingSettingsClick"
+          McpSettingsRequested="OnMcpSettingsClick"
+          OpenThirdPartyNoticesRequested="OnOpenThirdPartyNoticesClick"
+          QuickTerminalSettingsRequested="OnQuickTerminalSettingsClick"
+          RecordKeybindingPrefixRequested="OnRecordKeybindingPrefixClick"
+          RecordKeybindingRequested="OnRecordKeybindingClick"
+          ResetAllKeybindingsRequested="OnResetAllKeybindingsClick"
+          ResetKeybindingRequested="OnResetKeybindingClick"
+          ReviewOnboardingRequested="OnReviewOnboardingClick"
+          RestoreSessionsOnStartChangedRequested="OnRestoreSessionsOnStartChanged"
+          TerminalMultiplexingChangedRequested="OnTerminalMultiplexingChanged"
+          TerminateManagedRemoteSessionRequested="OnTerminateManagedRemoteSessionClick"
+          ForgetManagedRemoteSessionRequested="OnForgetManagedRemoteSessionClick"
+          AppearanceChangedRequested="OnAppearanceChanged"
+          PickColorRequested="OnPickColorRequested"
+          RecordQuickTerminalHotkeyRequested="OnRecordQuickTerminalHotkeyClick"
+          SaveKeybindingsRequested="OnSaveKeybindingsClick"
+          SaveQuickTerminalSettingsRequested="OnSaveQuickTerminalSettingsClick"
+          SaveTerminalProfileRequested="OnSaveTerminalProfileClick"
+          SaveDefaultAgentPolicyRequested="OnSaveDefaultAgentPolicyClick"
+          SelectTerminalPaletteRequested="OnSelectTerminalPaletteClick"
+          SecretsSettingsRequested="OnSecretsSettingsClick"
+          SettingsBackRequested="OnSettingsBackClick"
+          ShowCommandPaletteRequested="OnShowCommandPaletteClick"
+          ShowLayoutDesignerRequested="OnShowLayoutDesignerClick"
+          ShowNewItemRequested="OnShowNewItemClick"
+          SaveHistoryRetentionRequested="OnSaveHistoryRetentionClick"
+          ReviewHistoryPrivacyRequested="OnReviewHistoryPrivacyClick"
+          RetryRecentSessionHistoryRequested="OnRetryRecentSessionHistoryClick"
+          ExportAllHistoryRequested="OnExportAllHistoryClick"
+          CancelHistoryExportRequested="OnCancelHistoryExportClick"
+          ClearRecentSessionsRequested="OnClearRecentSessionsClick"
+          ResetRecentSessionHistoryRequested="OnResetRecentSessionHistoryClick"
+          TerminalSettingsRequested="OnTerminalSettingsClick"
+          TestMcpServerRequested="OnTestMcpServerClick"
+          UnbindKeybindingRequested="OnUnbindKeybindingClick"
+          UndoDeletedSavedScreenRequested="OnUndoDeletedSavedScreenClick"
+          WorkspaceSettingsRequested="OnWorkspaceSettingsClick" />
+    </DataTemplate>
+
+    <DataTemplate x:Key="CommandPaletteOverlayTemplate" x:DataType="vm:MainWindowViewModel">
+      <overlays:CommandPaletteView
+          ActivateSearchResultRequested="OnLauncherSearchResultClick"
+          CloseRequested="OnCloseOverlayClick"
+          SearchKeyDownRequested="OnCommandSearchKeyDown" />
+    </DataTemplate>
+
+    <DataTemplate x:Key="NewPanelOverlayTemplate" x:DataType="vm:MainWindowViewModel">
+      <overlays:NewPanelChooserView
+          AddBrowserPanelRequested="OnAddBrowserPanelClick"
+          AddConnectionPanelRequested="OnAddConnectionPanelClick"
+          AddDatabasePanelRequested="OnAddDatabasePanelClick"
+          AddDockerPanelRequested="OnAddDockerPanelClick"
+          AddFilePanelRequested="OnAddFilePanelClick"
+          AddGitPanelRequested="OnAddGitPanelClick"
+          AddProcessMonitorPanelRequested="OnAddProcessMonitorPanelClick"
+          AddStatisticsPanelRequested="OnAddStatisticsPanelClick"
+          AddTerminalPanelRequested="OnAddTerminalPanelClick"
+          CloseRequested="OnCloseOverlayClick"
+          OpenScreenRequested="OnOpenScreenClick"
+          ShowLayoutDesignerRequested="OnShowLayoutDesignerClick" />
+    </DataTemplate>
+
+    <DataTemplate x:Key="LayoutDesignerOverlayTemplate" x:DataType="vm:MainWindowViewModel">
+      <overlays:LayoutDesignerView
+          AddSlotRequested="OnLayoutAddSlotClick"
+          CloseRequested="OnCloseOverlayClick"
+          EditLayoutRequested="OnEditLayoutClick"
+          RemoveSlotRequested="OnLayoutRemoveSlotClick"
+          ResetRequested="OnResetLayoutClick"
+          SaveRequested="OnSaveLayoutDesignerClick"
+          SlotSelectedRequested="OnLayoutSlotClick"
+          SplitSlotDownRequested="OnLayoutSplitSlotDownClick"
+          SplitSlotRightRequested="OnLayoutSplitSlotRightClick" />
+    </DataTemplate>
+
+    <DataTemplate x:Key="DefinitionEditorOverlayTemplate" x:DataType="vm:MainWindowViewModel">
+      <controls:SurfaceCard Elevation="Overlay" Padding="0"
+          Margin="42,58,42,34"
+          MaxWidth="1280"
+          HorizontalAlignment="Center"
+          VerticalAlignment="Stretch"
+          ClipToBounds="True"
+          KeyboardNavigation.TabNavigation="Cycle">
+        <views:WorkspaceEditorView
+            x:Name="WorkspaceDefinitionEditor"
+            DataContext="{Binding WorkspaceEditor}"
+            PickAccentRequested="OnWorkspaceAccentPickRequested"
+            SaveRequested="OnWorkspaceEditorSaveRequested"
+            CancelRequested="OnWorkspaceEditorCancelRequested"
+            WorkspaceSelectionRequested="OnWorkspaceSelectionRequested"
+            CreateWorkspaceRequested="OnCreateWorkspaceRequested" />
+      </controls:SurfaceCard>
+    </DataTemplate>
+  </Window.Resources>
+
   <!--
     The pale band across the top was never the platform's title bar — Avalonia
     draws its own decorations, and up to 12.0.4 the Fluent template filled them
@@ -318,141 +457,25 @@
         ToggleAgentRequested="OnToggleAgentClick"
         ToggleAgentPinRequested="OnToggleAgentPinClick" />
 
-    <!-- Settings -->
-    <views:SettingsView
-        x:Name="SettingsRouteView"
-        AboutSettingsRequested="OnAboutSettingsClick"
-        AddAiProviderRequested="OnAddAiProviderClick"
-        AddFileProviderRequested="OnAddFileProviderClick"
-        AddMcpServerRequested="OnAddMcpServerClick"
-        AgentSettingsRequested="OnAgentSettingsClick"
-        AppearanceSettingsRequested="OnAppearanceSettingsClick"
-        ClearKeybindingPrefixRequested="OnClearKeybindingPrefixClick"
-        CloneKeybindingPresetRequested="OnCloneKeybindingPresetClick"
-        CreateAiProviderSecretRequested="OnCreateAiProviderSecretClick"
-        CreateConnectionSecretRequested="OnCreateConnectionSecretClick"
-        CreateFileProviderSecretRequested="OnCreateFileProviderSecretClick"
-        CreateMcpServerSecretRequested="OnCreateMcpServerSecretClick"
-        DeleteAiProviderRequested="OnDeleteAiProviderClick"
-        DeleteFileProviderRequested="OnDeleteFileProviderClick"
-        DeleteMcpServerRequested="OnDeleteMcpServerClick"
-        DeleteScreenRequested="OnDeleteScreenClick"
-        DeleteSecretRequested="OnDeleteSecretClick"
-        DeleteWorkspaceRequested="OnDeleteWorkspaceClick"
-        DiagnosticsSettingsRequested="OnDiagnosticsSettingsClick"
-        DismissSavedScreenDeleteUndoRequested="OnDismissSavedScreenDeleteUndoClick"
-        EditAiProviderRequested="OnEditAiProviderClick"
-        EditFileProviderRequested="OnEditFileProviderClick"
-        EditLayoutRequested="OnEditLayoutClick"
-        EditMcpServerRequested="OnEditMcpServerClick"
-        EditScreenRequested="OnEditScreenClick"
-        EditSecretRequested="OnEditSecretClick"
-        CreateWorkspaceRequested="OnCreateWorkspaceClick"
-        EditWorkspaceRequested="OnEditWorkspaceClick"
-        ExportDefinitionsRequested="OnExportDefinitionsClick"
-        DisableStartupProtectionRequested="OnDisableStartupProtectionClick"
-        EnableStartupProtectionRequested="OnEnableStartupProtectionClick"
-        FilesSettingsRequested="OnFilesSettingsClick"
-        BrowserSettingsRequested="OnBrowserSettingsClick"
-        LockNowRequested="OnLockNowClick"
-        ImportDefinitionsRequested="OnImportDefinitionsClick"
-        IsVisible="{Binding IsSettingsVisible}"
-        KeybindingPrefixOptionsChangedRequested="OnKeybindingPrefixOptionsChanged"
-        KeybindingProfileSelectionChangedRequested="OnKeybindingProfileSelectionChanged"
-        KeybindingSettingsRequested="OnKeybindingSettingsClick"
-        McpSettingsRequested="OnMcpSettingsClick"
-        OpenThirdPartyNoticesRequested="OnOpenThirdPartyNoticesClick"
-        QuickTerminalSettingsRequested="OnQuickTerminalSettingsClick"
-        RecordKeybindingPrefixRequested="OnRecordKeybindingPrefixClick"
-        RecordKeybindingRequested="OnRecordKeybindingClick"
-        ResetAllKeybindingsRequested="OnResetAllKeybindingsClick"
-        ResetKeybindingRequested="OnResetKeybindingClick"
-        ReviewOnboardingRequested="OnReviewOnboardingClick"
-        RestoreSessionsOnStartChangedRequested="OnRestoreSessionsOnStartChanged"
-        TerminalMultiplexingChangedRequested="OnTerminalMultiplexingChanged"
-        TerminateManagedRemoteSessionRequested="OnTerminateManagedRemoteSessionClick"
-        ForgetManagedRemoteSessionRequested="OnForgetManagedRemoteSessionClick"
-        AppearanceChangedRequested="OnAppearanceChanged"
-        PickColorRequested="OnPickColorRequested"
-        RecordQuickTerminalHotkeyRequested="OnRecordQuickTerminalHotkeyClick"
-        SaveKeybindingsRequested="OnSaveKeybindingsClick"
-        SaveQuickTerminalSettingsRequested="OnSaveQuickTerminalSettingsClick"
-        SaveTerminalProfileRequested="OnSaveTerminalProfileClick"
-        SaveDefaultAgentPolicyRequested="OnSaveDefaultAgentPolicyClick"
-        SelectTerminalPaletteRequested="OnSelectTerminalPaletteClick"
-        SecretsSettingsRequested="OnSecretsSettingsClick"
-        SettingsBackRequested="OnSettingsBackClick"
-        ShowCommandPaletteRequested="OnShowCommandPaletteClick"
-        ShowLayoutDesignerRequested="OnShowLayoutDesignerClick"
-        ShowNewItemRequested="OnShowNewItemClick"
-        SaveHistoryRetentionRequested="OnSaveHistoryRetentionClick"
-        ReviewHistoryPrivacyRequested="OnReviewHistoryPrivacyClick"
-        RetryRecentSessionHistoryRequested="OnRetryRecentSessionHistoryClick"
-        ExportAllHistoryRequested="OnExportAllHistoryClick"
-        CancelHistoryExportRequested="OnCancelHistoryExportClick"
-        ClearRecentSessionsRequested="OnClearRecentSessionsClick"
-        ResetRecentSessionHistoryRequested="OnResetRecentSessionHistoryClick"
-        TerminalSettingsRequested="OnTerminalSettingsClick"
-        TestMcpServerRequested="OnTestMcpServerClick"
-        UnbindKeybindingRequested="OnUnbindKeybindingClick"
-        UndoDeletedSavedScreenRequested="OnUndoDeletedSavedScreenClick"
-        WorkspaceSettingsRequested="OnWorkspaceSettingsClick" />
+    <!-- The host is cheap. Its template is built once, on first navigation. -->
+    <ContentControl
+        x:Name="SettingsRouteHost"
+        IsVisible="{Binding IsSettingsVisible}" />
 
     <!-- Docked overlays. Runtime native views are hidden while these are open. -->
     <Grid IsVisible="{Binding HasOverlay}" Background="{DynamicResource ShellScrimBrush}">
-      <overlays:CommandPaletteView
-          x:Name="CommandPaletteOverlayView"
-          ActivateSearchResultRequested="OnLauncherSearchResultClick"
-          CloseRequested="OnCloseOverlayClick"
-          IsVisible="{Binding IsCommandPaletteVisible}"
-          SearchKeyDownRequested="OnCommandSearchKeyDown" />
-
-      <overlays:NewPanelChooserView
-          x:Name="NewPanelChooserOverlayView"
-          AddBrowserPanelRequested="OnAddBrowserPanelClick"
-          AddConnectionPanelRequested="OnAddConnectionPanelClick"
-          AddDatabasePanelRequested="OnAddDatabasePanelClick"
-          AddDockerPanelRequested="OnAddDockerPanelClick"
-          AddFilePanelRequested="OnAddFilePanelClick"
-          AddGitPanelRequested="OnAddGitPanelClick"
-          AddProcessMonitorPanelRequested="OnAddProcessMonitorPanelClick"
-          AddStatisticsPanelRequested="OnAddStatisticsPanelClick"
-          AddTerminalPanelRequested="OnAddTerminalPanelClick"
-          CloseRequested="OnCloseOverlayClick"
-          OpenScreenRequested="OnOpenScreenClick"
-          IsVisible="{Binding IsNewPanelVisible}"
-          ShowLayoutDesignerRequested="OnShowLayoutDesignerClick" />
-
-      <overlays:LayoutDesignerView
-          x:Name="LayoutDesignerOverlayView"
-          AddSlotRequested="OnLayoutAddSlotClick"
-          CloseRequested="OnCloseOverlayClick"
-          EditLayoutRequested="OnEditLayoutClick"
-          IsVisible="{Binding IsLayoutDesignerVisible}"
-          RemoveSlotRequested="OnLayoutRemoveSlotClick"
-          ResetRequested="OnResetLayoutClick"
-          SaveRequested="OnSaveLayoutDesignerClick"
-          SlotSelectedRequested="OnLayoutSlotClick"
-          SplitSlotDownRequested="OnLayoutSplitSlotDownClick"
-          SplitSlotRightRequested="OnLayoutSplitSlotRightClick" />
-
-      <controls:SurfaceCard Elevation="Overlay" Padding="0"
-          Margin="42,58,42,34"
-          MaxWidth="1280"
-          HorizontalAlignment="Center"
-          VerticalAlignment="Stretch"
-          ClipToBounds="True"
-          KeyboardNavigation.TabNavigation="Cycle"
-          IsVisible="{Binding IsDefinitionEditorVisible}">
-        <views:WorkspaceEditorView
-            x:Name="WorkspaceDefinitionEditor"
-            DataContext="{Binding WorkspaceEditor}"
-            PickAccentRequested="OnWorkspaceAccentPickRequested"
-            SaveRequested="OnWorkspaceEditorSaveRequested"
-            CancelRequested="OnWorkspaceEditorCancelRequested"
-            WorkspaceSelectionRequested="OnWorkspaceSelectionRequested"
-            CreateWorkspaceRequested="OnCreateWorkspaceRequested" />
-      </controls:SurfaceCard>
+      <ContentControl
+          x:Name="CommandPaletteOverlayHost"
+          IsVisible="{Binding IsCommandPaletteVisible}" />
+      <ContentControl
+          x:Name="NewPanelOverlayHost"
+          IsVisible="{Binding IsNewPanelVisible}" />
+      <ContentControl
+          x:Name="LayoutDesignerOverlayHost"
+          IsVisible="{Binding IsLayoutDesignerVisible}" />
+      <ContentControl
+          x:Name="DefinitionEditorOverlayHost"
+          IsVisible="{Binding IsDefinitionEditorVisible}" />
 
       <Border
           x:Name="OverlayTitleBarDragRegion"
