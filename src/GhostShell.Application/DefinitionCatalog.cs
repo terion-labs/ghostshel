@@ -43,6 +43,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog, IDisposable
     private readonly IDefinitionRepository<DatabaseConnectionProfile> _databaseConnections;
     private readonly IDefinitionRepository<QuickTerminalSettings> _quickTerminalSettings;
     private readonly ILayoutGraphStore? _layoutGraph;
+    private readonly ThemePreference _defaultTheme;
     private readonly SemaphoreSlim _mutationGate = new(1, 1);
     private DefinitionCatalogSnapshot _snapshot = DefinitionCatalogSnapshot.Empty;
     private bool _initialized;
@@ -60,7 +61,8 @@ public sealed class DefinitionCatalog : IDefinitionCatalog, IDisposable
         IDefinitionRepository<McpServerProfile> mcpServerProfiles,
         IDefinitionRepository<QuickTerminalSettings> quickTerminalSettings,
         ILayoutGraphStore? layoutGraph = null,
-        IDefinitionRepository<DatabaseConnectionProfile>? databaseConnections = null)
+        IDefinitionRepository<DatabaseConnectionProfile>? databaseConnections = null,
+        ThemePreference? defaultTheme = null)
     {
         _layoutGraph = layoutGraph;
         _connections = connections ?? throw new ArgumentNullException(nameof(connections));
@@ -81,6 +83,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog, IDisposable
             ?? throw new ArgumentNullException(nameof(quickTerminalSettings));
         _databaseConnections = databaseConnections
             ?? new EphemeralRepository<DatabaseConnectionProfile>();
+        _defaultTheme = defaultTheme ?? ThemePreference.Default;
     }
 
     /// <summary>
@@ -1173,10 +1176,10 @@ public sealed class DefinitionCatalog : IDefinitionCatalog, IDisposable
             }
         }
 
-        if (!Snapshot.Themes.Any(item => item.Value.Id == ThemePreference.Default.Id))
+        if (!Snapshot.Themes.Any(item => item.Value.Id == _defaultTheme.Id))
         {
             var saved = await _themes.SaveAsync(
-                    ThemePreference.Default,
+                    _defaultTheme,
                     null,
                     cancellationToken)
                 .ConfigureAwait(false);

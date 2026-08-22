@@ -46,6 +46,27 @@ public sealed class ThemeChromePreferenceTests
     }
 
     [Fact]
+    public void MacOS_first_run_defaults_to_normal_translucent_glass()
+    {
+        var theme = ThemePreference.DefaultFor(HostOperatingSystem.MacOS);
+
+        Assert.Equal(InterfaceDensity.Cozy, theme.Density);
+        Assert.True(theme.IsTranslucent);
+        Assert.True(theme.HasGlassPanels);
+        Assert.False(theme.OverridesBackdropOpacity);
+        Assert.Equal(78, theme.BackdropOpacityPercent);
+    }
+
+    [Theory]
+    [InlineData(HostOperatingSystem.Windows)]
+    [InlineData(HostOperatingSystem.Linux)]
+    public void Other_platforms_keep_the_existing_first_run_default(
+        HostOperatingSystem operatingSystem)
+    {
+        Assert.Same(ThemePreference.Default, ThemePreference.DefaultFor(operatingSystem));
+    }
+
+    [Fact]
     public void Resolving_carries_every_chrome_setting_through()
     {
         var resolved = Theme(

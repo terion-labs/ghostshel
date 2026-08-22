@@ -62,6 +62,42 @@ public sealed class DefinitionCatalogTests
     }
 
     [Fact]
+    public async Task Initialize_empty_catalog_seeds_the_host_default_theme()
+    {
+        var hostDefault = ThemePreference.DefaultFor(HostOperatingSystem.MacOS);
+        var fixture = new CatalogFixture(hostDefault);
+
+        var result = await fixture.Catalog.InitializeAsync(CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.Message);
+        Assert.Equal(hostDefault, Assert.Single(result.Value!.Themes).Value);
+    }
+
+    [Fact]
+    public async Task Initialize_preserves_a_saved_theme_instead_of_applying_the_host_default()
+    {
+        var savedTheme = new ThemePreference(
+            ThemePreference.Default.Id,
+            ThemePreference.Default.Name,
+            AppearanceMode.Dark,
+            PlatformProfile.Custom,
+            AccentPreference.Custom(RgbColor.Parse("#123456")),
+            density: InterfaceDensity.Compact,
+            isTranslucent: false,
+            hasGlassPanels: false,
+            overridesBackdropOpacity: true);
+        var fixture = new CatalogFixture(ThemePreference.DefaultFor(HostOperatingSystem.MacOS));
+        fixture.Themes.Add(savedTheme, revision: 7);
+
+        var result = await fixture.Catalog.InitializeAsync(CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.Message);
+        var stored = Assert.Single(result.Value!.Themes);
+        Assert.Equal(savedTheme, stored.Value);
+        Assert.Equal(7, stored.Revision);
+    }
+
+    [Fact]
     public async Task Initialize_loads_persisted_definitions_and_is_idempotent()
     {
         var fixture = new CatalogFixture();
@@ -1196,12 +1232,12 @@ public sealed class DefinitionCatalogTests
 
     private sealed class CatalogFixture
     {
-        public CatalogFixture()
+        public CatalogFixture(ThemePreference? defaultTheme = null)
         {
-            Catalog = CreateCatalog();
+            Catalog = CreateCatalog(defaultTheme);
         }
 
-        public DefinitionCatalog CreateCatalog() =>
+        public DefinitionCatalog CreateCatalog(ThemePreference? defaultTheme = null) =>
             new(
                 Connections,
                 Layouts,
@@ -1213,7 +1249,8 @@ public sealed class DefinitionCatalogTests
                 FileProviderProfiles,
                 AiProviderProfiles,
                 McpServerProfiles,
-                QuickTerminalSettings);
+                QuickTerminalSettings,
+                defaultTheme: defaultTheme);
 
         public InMemoryDefinitionRepository<ConnectionProfile> Connections { get; } = new();
 

@@ -67,8 +67,9 @@ public sealed record ThemePreference : IDurableDefinition
 
     /// <summary>
     /// Whether the panels standing on the base are glass too, rather than
-    /// near-solid slabs on it. Off by default: it is a different look, not a
-    /// better one, and the shell's is the one it already had.
+    /// near-solid slabs on it. This remains off as the durable fallback for
+    /// older documents and platforms whose first-run preference does not opt
+    /// into glass panels.
     /// </summary>
     public const bool DefaultHasGlassPanels = false;
 
@@ -103,6 +104,21 @@ public sealed record ThemePreference : IDurableDefinition
         AppearanceMode.System,
         PlatformProfile.Automatic,
         AccentPreference.FollowHost);
+
+    public static ThemePreference DefaultFor(HostOperatingSystem operatingSystem) =>
+        operatingSystem == HostOperatingSystem.MacOS
+            ? new(
+                Default.Id,
+                Default.Name,
+                Default.Appearance,
+                Default.PlatformProfile,
+                Default.Accent,
+                density: InterfaceDensity.Cozy,
+                isTranslucent: true,
+                backdropOpacityPercent: DefaultBackdropOpacityPercent,
+                hasGlassPanels: true,
+                overridesBackdropOpacity: false)
+            : Default;
 
     public ThemePreference(
         ThemePreferenceId id,

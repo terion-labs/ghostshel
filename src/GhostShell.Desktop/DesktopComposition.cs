@@ -5,6 +5,7 @@ using GhostShell.App.ViewModels;
 using GhostShell.Application;
 using GhostShell.Application.Previews;
 using GhostShell.Browser;
+using GhostShell.Core;
 using GhostShell.Databases;
 using GhostShell.Docker;
 using GhostShell.Files;
@@ -26,6 +27,7 @@ public static class DesktopComposition
     {
         var services = new ServiceCollection();
         services.AddSingleton(TimeProvider.System);
+        services.AddSingleton(_ => ThemePreference.DefaultFor(CurrentOperatingSystem()));
         services.AddSingleton<INativeNotificationService>(_ =>
             NativeNotificationServiceSelector.CreateForCurrentPlatform());
         services.AddSingleton<IHostAccessibilityPreferencesSource>(_ =>
@@ -295,4 +297,11 @@ public static class DesktopComposition
             ValidateScopes = true,
         });
     }
+
+    private static HostOperatingSystem CurrentOperatingSystem() =>
+        OperatingSystem.IsMacOS()
+            ? HostOperatingSystem.MacOS
+            : OperatingSystem.IsWindows()
+                ? HostOperatingSystem.Windows
+                : HostOperatingSystem.Linux;
 }
