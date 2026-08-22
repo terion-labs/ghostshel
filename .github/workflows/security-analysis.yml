@@ -34,6 +34,15 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Expose the SDK at the repository-local path
+        shell: bash
+        run: |
+          mkdir -p .dotnet
+          ln -s "$(command -v dotnet)" .dotnet/dotnet
+
+      - name: Build required native terminal payload
+        run: ./scripts/build-libghostty-vt.sh --rid linux-x64
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@faaa5d804fc648d0fdb28822a8e36cf7d0a6132c # v4.37.7
         with:
@@ -49,4 +58,3 @@ jobs:
 
       - name: Analyze
         uses: github/codeql-action/analyze@faaa5d804fc648d0fdb28822a8e36cf7d0a6132c # v4.37.7
-

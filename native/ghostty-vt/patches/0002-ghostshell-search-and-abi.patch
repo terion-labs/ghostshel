@@ -382,7 +382,7 @@ index 60f97c3..8e79b3b 100644
          .{ "GhosttyTerminalSelectWordOptions", StructInfo.init(selection.SelectWordOptions) },
          .{ "GhosttyTerminalSelectWordBetweenOptions", StructInfo.init(selection.SelectWordBetweenOptions) },
          .{ "GhosttyTerminalSelectLineOptions", StructInfo.init(selection.SelectLineOptions) },
-@@ -77,7 +80,7 @@ pub const structs: std.StaticStringMap(StructInfo) = structs: {
+@@ -77,6 +80,6 @@ pub const structs: std.StaticStringMap(StructInfo) = structs: {
 
  /// The comptime-generated JSON string of all structs.
  pub const json: [:0]const u8 = json: {

@@ -119,6 +119,55 @@ public sealed partial class NativeTerminalBuildContractTests
     }
 
     [Fact]
+    public void Repository_gate_provisions_terminal_fonts_before_managed_builds()
+    {
+        var workflow = File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            ".github",
+            "workflows",
+            "repository-gate.yml"));
+
+        Assert.Contains("terminal-font-assets:", workflow, StringComparison.Ordinal);
+        Assert.Contains(
+            "name: terminal-font-test-assets",
+            workflow,
+            StringComparison.Ordinal);
+        Assert.Equal(
+            3,
+            workflow.Split(
+                "needs: terminal-font-assets",
+                StringSplitOptions.None).Length - 1);
+        Assert.Equal(
+            3,
+            workflow.Split(
+                "name: Download terminal font assets",
+                StringSplitOptions.None).Length - 1);
+    }
+
+    [Fact]
+    public void Security_analysis_provisions_the_native_terminal_payload_before_codeql_build()
+    {
+        var workflow = File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            ".github",
+            "workflows",
+            "security-analysis.yml"));
+        var nativeBuildIndex = workflow.IndexOf(
+            "./scripts/build-libghostty-vt.sh --rid linux-x64",
+            StringComparison.Ordinal);
+        var codeQlBuildIndex = workflow.IndexOf(
+            "dotnet build GhostShell.slnx --configuration Release --no-restore",
+            StringComparison.Ordinal);
+
+        Assert.True(
+            nativeBuildIndex >= 0,
+            "CodeQL must provision the native library and generated terminal fonts.");
+        Assert.True(
+            codeQlBuildIndex > nativeBuildIndex,
+            "CodeQL must provision native terminal assets before building the analyzed graph.");
+    }
+
+    [Fact]
     public void App_embeds_the_exact_terminal_faces_and_desktop_publishes_the_license()
     {
         var appProject = XDocument.Load(
