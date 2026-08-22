@@ -11,7 +11,7 @@
     <key>CFBundleIdentifier</key>
     <string>app.ghostshell</string>
     <key>CFBundleIconFile</key>
-    <string>GhostShell.icns</string>
+    <string>GhostShell</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>

@@ -86,7 +86,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             infoPlist,
             StringComparison.Ordinal);
         Assert.Contains(
-            "<string>GhostShell.icns</string>",
+            "<string>GhostShell</string>",
             infoPlist,
             StringComparison.Ordinal);
         Assert.True(File.Exists(Path.Combine(

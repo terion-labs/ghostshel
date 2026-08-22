@@ -34,6 +34,7 @@ public sealed partial class App : Avalonia.Application
     private IPlatformSettings? _platformSettings;
     private AvaloniaHostAppearanceAdapter? _hostAppearance;
     private INotifyCollectionChanged? _windowCollection;
+    private DispatcherTimer? _applicationIconRefreshTimer;
 
     private static readonly string[] AppearanceClasses =
     [
@@ -327,6 +328,16 @@ public sealed partial class App : Avalonia.Application
         hostAccessibilityPreferences.Changed += OnHostAccessibilityPreferencesChanged;
         hostAccessibilityPreferences.Start();
         ApplyAppearance();
+        if (OperatingSystem.IsMacOSVersionAtLeast(26))
+        {
+            _applicationIconRefreshTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(2),
+            };
+            _applicationIconRefreshTimer.Tick += OnApplicationIconRefresh;
+            _applicationIconRefreshTimer.Start();
+        }
+
         _definitionCatalog?.Changed += OnDefinitionCatalogChanged;
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
@@ -343,7 +354,20 @@ public sealed partial class App : Avalonia.Application
             _definitionCatalog?.Changed -= OnDefinitionCatalogChanged;
             _windowCollection?.CollectionChanged -= OnWindowCollectionChanged;
             _windowCollection = null;
+            if (_applicationIconRefreshTimer is { } iconRefreshTimer)
+            {
+                iconRefreshTimer.Stop();
+                iconRefreshTimer.Tick -= OnApplicationIconRefresh;
+                _applicationIconRefreshTimer = null;
+            }
         };
+    }
+
+    private void OnApplicationIconRefresh(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        RefreshApplicationIcon();
     }
 
     private void OnPlatformColorValuesChanged(object? sender, PlatformColorValues values)
@@ -388,6 +412,8 @@ public sealed partial class App : Avalonia.Application
     private void ApplyAppearance()
     {
         var resources = ResolveAppearanceResources();
+        RefreshApplicationIcon();
+
         RequestedThemeVariant = resources.ThemeVariant;
         ApplyApplicationResources(resources);
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
@@ -398,6 +424,15 @@ public sealed partial class App : Avalonia.Application
             }
 
             (desktop.MainWindow as MainWindow)?.RefreshAppearanceControlsFromStoredProfile();
+        }
+    }
+
+    private void RefreshApplicationIcon()
+    {
+        var hostAccent = _hostAppearance?.GetCurrent().Accent;
+        if (hostAccent is { } accent)
+        {
+            _ = MacOsApplicationIcon.TryApply(accent);
         }
     }
 

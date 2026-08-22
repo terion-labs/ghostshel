@@ -666,7 +666,7 @@ if [[ ! -f "${candidate_icon}" || -L "${candidate_icon}" ]]; then
     echo "The packaged macOS application icon is missing or linked." >&2
     exit 1
 fi
-if [[ "$(/usr/bin/plutil -extract CFBundleIconFile raw "${candidate}/Contents/Info.plist")" != "GhostShell.icns" ]]; then
+if [[ "$(/usr/bin/plutil -extract CFBundleIconFile raw "${candidate}/Contents/Info.plist")" != "GhostShell" ]]; then
     echo "The packaged macOS application icon declaration is invalid." >&2
     exit 1
 fi

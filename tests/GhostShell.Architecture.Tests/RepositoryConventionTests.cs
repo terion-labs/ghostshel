@@ -132,7 +132,7 @@ public sealed partial class RepositoryConventionTests
         Assert.Contains("--managed-evidence", packageScript, StringComparison.Ordinal);
         Assert.Contains("*.runtimeconfig.json", packageScript, StringComparison.Ordinal);
         Assert.Contains("brew install lld@22", workflow, StringComparison.Ordinal);
-        Assert.Contains("<string>GhostShell.icns</string>", infoPlist, StringComparison.Ordinal);
+        Assert.DoesNotContain("<string>GhostShell.icns</string>", infoPlist, StringComparison.Ordinal);
         Assert.True(File.Exists(Path.Combine(
             RepositoryRoot,
             "assets",
