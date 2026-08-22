@@ -1,14 +1,9 @@
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
-using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using Dock.Avalonia.Controls;
-using Dock.Model.Controls;
-using Dock.Model.Core;
 
 using GhostShell.App.Controls;
 using GhostShell.App.ViewModels;
@@ -18,8 +13,6 @@ namespace GhostShell.App.Views;
 
 public sealed partial class WorkspaceView : UserControl
 {
-    private readonly ConditionalWeakTable<IRootDock, object> _mountedLayouts = [];
-
     public WorkspaceView()
     {
         InitializeComponent();
@@ -43,36 +36,6 @@ public sealed partial class WorkspaceView : UserControl
     {
         _ = sender;
         FloatPanelRequested?.Invoke(e.Source, e);
-    }
-
-    /// <summary>
-    /// Prepares one workspace's canvas as it comes into the tree.
-    ///
-    /// Initialising a layout allocates native hosts, which belongs to the
-    /// moment the canvas is mounted rather than to the moment its view model
-    /// was built — recovery constructs a workspace while the launcher and its
-    /// modal are still transitioning, and a floating window presented into that
-    /// is torn straight back down. A canvas is mounted once and remembered,
-    /// because it is kept for as long as its workspace is open.
-    /// </summary>
-    private void OnRuntimeDockControlLoaded(object? sender, RoutedEventArgs e)
-    {
-        _ = e;
-        if (sender is not DockControl canvas)
-        {
-            return;
-        }
-
-        canvas.HostWindowFactory = static () => new RuntimePanelHostWindow();
-        if (canvas.Layout is not IRootDock layout
-            || layout.Factory is null
-            || _mountedLayouts.TryGetValue(layout, out _))
-        {
-            return;
-        }
-
-        layout.Factory.InitLayout(layout);
-        _mountedLayouts.Add(layout, this);
     }
 
     public event EventHandler<RoutedEventArgs>? ActivateTabRequested;

@@ -12,6 +12,34 @@
     xmlns:views="using:GhostShell.App.Views"
     HorizontalContentAlignment="Stretch"
     VerticalContentAlignment="Stretch">
+  <UserControl.Resources>
+    <ControlTheme
+        x:Key="RuntimeDockControlTheme"
+        TargetType="components:RuntimeDockControl"
+        BasedOn="{StaticResource {x:Type dock:DockControl}}">
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Grid RowDefinitions="Auto,*">
+            <dock:DockCommandBarHost x:Name="PART_CommandBarHost" Grid.Row="0" />
+            <ContentControl
+                x:Name="PART_ContentControl"
+                Grid.Row="1"
+                Content="{TemplateBinding Layout}" />
+            <dock:ManagedWindowLayer
+                x:Name="PART_ManagedWindowLayer"
+                Grid.Row="1"
+                IsVisible="False" />
+            <dock:DockSelectorOverlay
+                x:Name="PART_SelectorOverlay"
+                Grid.Row="0"
+                Grid.RowSpan="2"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch" />
+          </Grid>
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
+  </UserControl.Resources>
   <UserControl.Styles>
     <!-- A workspace calling for attention. Slow and shallow on purpose: this
          sits in a menu the user opened to read, and anything sharper reads as
@@ -430,18 +458,17 @@
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate>
-        <dock:DockControl
+        <components:RuntimeDockControl
+            Theme="{StaticResource RuntimeDockControlTheme}"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"
             IsVisible="{Binding IsCanvasShown}"
             ZIndex="{Binding CanvasDepth}"
-            Layout="{Binding ActiveTab.DockLayout}"
-            Factory="{Binding ActiveTab.DockFactory}"
+            RuntimeTab="{Binding ActiveTab}"
             IsDockingEnabled="{Binding $parent[ItemsControl].DataContext.IsLayoutDesignerVisible, Converter={x:Static BoolConverters.Not}}"
-            Loaded="OnRuntimeDockControlLoaded"
             InitializeFactory="True"
             InitializeLayout="False">
-          <dock:DockControl.Styles>
+          <components:RuntimeDockControl.Styles>
             <!-- Keep the drag ghost compact. Dock's stock preview can render a
                  second full document surface, which is misleading for the
                  one-panel-per-leaf workspace model. -->
@@ -473,8 +500,8 @@
                 </ControlTemplate>
               </Setter>
             </Style>
-          </dock:DockControl.Styles>
-        </dock:DockControl>
+          </components:RuntimeDockControl.Styles>
+        </components:RuntimeDockControl>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>

@@ -25,6 +25,7 @@ internal sealed class RuntimeDockLayoutController
     private readonly DockWorkspaceManager _workspaceManager;
     private readonly Dictionary<string, RuntimePanelViewModel> _contexts =
         new(StringComparer.Ordinal);
+    private bool _isInitializedForPresentation;
     private int _revision;
 
     public RuntimeDockLayoutController(LayoutDefinition? definition)
@@ -62,6 +63,23 @@ internal sealed class RuntimeDockLayoutController
     public IRootDock Layout { get; }
 
     public int Revision => _revision;
+
+    public void InitializeForPresentation(PanelInstanceId? activePanelId)
+    {
+        if (_isInitializedForPresentation)
+        {
+            return;
+        }
+
+        DiscardUnboundDocuments();
+        Factory.InitLayout(Layout);
+        if (activePanelId is { } panelId)
+        {
+            Activate(panelId);
+        }
+
+        _isInitializedForPresentation = true;
+    }
 
     public string Serialize() => DockLayoutPayloadCodec.Encode(
         _serializer.Serialize<IRootDock>(Layout));
@@ -254,6 +272,32 @@ internal sealed class RuntimeDockLayoutController
         }
 
         _contexts.Remove(panelId.Value);
+        RemoveDocument(document);
+        Changed();
+    }
+
+    private void DiscardUnboundDocuments()
+    {
+        var unbound = EnumerateDockables(Layout)
+            .OfType<IDocument>()
+            .Where(document => document.Id is not { Length: > 0 } id
+                || document.Context is not RuntimePanelViewModel panel
+                || !_contexts.TryGetValue(id, out var registered)
+                || !ReferenceEquals(panel, registered))
+            .ToArray();
+        foreach (var document in unbound)
+        {
+            RemoveDocument(document);
+        }
+
+        if (unbound.Length > 0)
+        {
+            Changed();
+        }
+    }
+
+    private void RemoveDocument(IDocument document)
+    {
         // Documents deliberately advertise CanClose=false so Dock chrome cannot
         // bypass GhostShell's busy-session confirmation. Once that confirmation
         // has completed, the controller owns the authoritative removal and must
@@ -269,7 +313,6 @@ internal sealed class RuntimeDockLayoutController
         {
             Factory.RemoveDockable(document, collapse: true);
         }
-        Changed();
     }
 
     private object? ResolveContext(string id) =>

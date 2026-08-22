@@ -3,7 +3,6 @@
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:GhostShell.App.Controls"
-    xmlns:dockDocuments="using:Dock.Model.Inpc.Controls"
     xmlns:icons="using:FluentIcons.Avalonia"
     xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:overlays="using:GhostShell.App.Views.Overlays"
@@ -41,12 +40,6 @@
   </Window.Styles>
 
   <Window.DataTemplates>
-    <DataTemplate DataType="dockDocuments:Document">
-      <ContentControl
-          Content="{Binding Context}"
-          HorizontalContentAlignment="Stretch"
-          VerticalContentAlignment="Stretch" />
-    </DataTemplate>
     <DataTemplate DataType="vm:TerminalRuntimePanelViewModel">
       <panelViews:TerminalRuntimePanelView
           CancelReconnectRequested="OnCancelConnectionReconnectClick"

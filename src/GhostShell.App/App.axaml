@@ -304,5 +304,6 @@
     <StyleInclude Source="avares://GhostShell.App/Styles/DesignSystem.axaml" />
     <StyleInclude Source="avares://GhostShell.App/Styles/GhostShellTheme.axaml" />
     <StyleInclude Source="avares://GhostShell.App/Styles/GhostShellDockTheme.axaml" />
+    <StyleInclude Source="avares://GhostShell.App/Styles/GhostShellDockImmediateTheme.axaml" />
   </Application.Styles>
 </Application>

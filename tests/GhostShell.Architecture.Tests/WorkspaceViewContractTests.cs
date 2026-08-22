@@ -344,13 +344,37 @@ public sealed class WorkspaceViewContractTests
         // preparing one aside either. Each workspace keeps its own.
         var canvases = Assert.Single(
             root.Descendants(),
-            element => string.Equals(element.Name.LocalName, "ItemsControl"
-, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "ItemsSource"), "{Binding OpenWorkspaces}", StringComparison.Ordinal));
+            element => string.Equals(element.Name.LocalName, "ItemsControl", StringComparison.Ordinal)
+                && string.Equals(
+                    AttributeValue(element, "ItemsSource"),
+                    "{Binding OpenWorkspaces}",
+                    StringComparison.Ordinal));
         var dockControl = Assert.Single(
             canvases.Descendants(),
-            element => string.Equals(element.Name.LocalName, "DockControl", StringComparison.Ordinal));
-        Assert.Equal("{Binding ActiveTab.DockLayout}", AttributeValue(dockControl, "Layout"));
-        Assert.Equal("{Binding ActiveTab.DockFactory}", AttributeValue(dockControl, "Factory"));
+            element => string.Equals(element.Name.LocalName, "RuntimeDockControl", StringComparison.Ordinal));
+        // The typed canvas owns Dock's presentation lifecycle. Binding Layout
+        // directly lets Dock consume an uninitialized restored model and leaves
+        // the first frame empty until a tab switch publishes it again.
+        Assert.Equal("{Binding ActiveTab}", AttributeValue(dockControl, "RuntimeTab"));
+        Assert.Equal(
+            "{StaticResource RuntimeDockControlTheme}",
+            AttributeValue(dockControl, "Theme"));
+        Assert.Null(AttributeValue(dockControl, "Layout"));
+        Assert.Null(AttributeValue(dockControl, "Factory"));
+        var runtimeCanvasTheme = Assert.Single(
+            root.Descendants(),
+            element => string.Equals(element.Name.LocalName, "ControlTheme", StringComparison.Ordinal)
+                && string.Equals(
+                    AttributeValue(element, "Key"),
+                    "RuntimeDockControlTheme",
+                    StringComparison.Ordinal));
+        var runtimeContentHost = Assert.Single(
+            runtimeCanvasTheme.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "Name"),
+                "PART_ContentControl",
+                StringComparison.Ordinal));
+        Assert.Equal("ContentControl", runtimeContentHost.Name.LocalName);
         // Shown, not in front: the workspace being left keeps its canvas on
         // screen and above the arriving one until that one has built, because a
         // dock control builds only what it is showing.
@@ -504,6 +528,53 @@ public sealed class WorkspaceViewContractTests
         Assert.DoesNotContain("MainWindowViewModel", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("RuntimeTabDragCandidate", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("DataFormat.CreateInProcessFormat", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Dock_active_content_is_materialized_without_the_deferred_queue()
+    {
+        var themePath = Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Styles",
+            "GhostShellDockImmediateTheme.axaml");
+        var theme = XDocument.Load(themePath);
+        var themeRoot = Assert.IsType<XElement>(theme.Root);
+
+        Assert.DoesNotContain(
+            themeRoot.Descendants(),
+            element => string.Equals(
+                element.Name.LocalName,
+                "DeferredContentControl",
+                StringComparison.Ordinal));
+        var rootHost = Assert.Single(
+            themeRoot.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "Name"),
+                "PART_MainContent",
+                StringComparison.Ordinal));
+        Assert.Equal("ContentControl", rootHost.Name.LocalName);
+        var panelHost = Assert.Single(
+            themeRoot.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "Name"),
+                "PART_ContentPresenter",
+                StringComparison.Ordinal));
+        Assert.Equal("RuntimePanelContentControl", panelHost.Name.LocalName);
+
+        var app = XDocument.Load(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "App.axaml"));
+        Assert.Contains(
+            app.Descendants(),
+            element => string.Equals(element.Name.LocalName, "StyleInclude", StringComparison.Ordinal)
+                && string.Equals(
+                    AttributeValue(element, "Source"),
+                    "avares://GhostShell.App/Styles/GhostShellDockImmediateTheme.axaml",
+                    StringComparison.Ordinal));
     }
 
     [Fact]

@@ -1317,6 +1317,9 @@ public sealed class RuntimeTabViewModel : ObservableObject, IRuntimeTabStripItem
 
     public Dock.Model.Core.IFactory DockFactory => _dockLayout.Factory;
 
+    internal void InitializeDockLayoutForPresentation() =>
+        _dockLayout.InitializeForPresentation(ActivePanelId);
+
     public int DockLayoutRevision => _dockLayout.Revision;
 
     public string SerializeDockLayout() => _dockLayout.Serialize();

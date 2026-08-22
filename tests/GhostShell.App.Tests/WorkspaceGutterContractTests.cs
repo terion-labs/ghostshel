@@ -51,7 +51,10 @@ public sealed class WorkspaceGutterContractTests
         Assert.Empty(panelMargins);
         Assert.Single(
             canvas.Descendants(),
-            element => string.Equals(element.Name.LocalName, "DockControl", StringComparison.Ordinal));
+            element => string.Equals(
+                element.Name.LocalName,
+                "RuntimeDockControl",
+                StringComparison.Ordinal));
     }
 
     /// <summary>
