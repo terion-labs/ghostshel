@@ -315,6 +315,17 @@ abi_probe_link_options=()
 if [[ "${target_rid}" == "win-x64" ]]; then
     abi_probe="${abi_probe}.exe"
     abi_probe_link_input="${install_dir}/${installed_import_library}"
+elif [[ "${target_rid}" == linux-* ]]; then
+    # Zig records the shared library's major-version SONAME even though the
+    # release payload deliberately exposes the stable unversioned P/Invoke
+    # name. Give the disposable probe a matching runtime alias so its rpath
+    # can resolve the exact staged bytes without adding another package file.
+    abi_probe_runtime_dir="${build_run_dir}/abi-probe-runtime"
+    mkdir -p "${abi_probe_runtime_dir}"
+    ln -s \
+        "${abi_probe_link_input}" \
+        "${abi_probe_runtime_dir}/libghostty-vt.so.${library_version%%.*}"
+    abi_probe_link_options+=("-Wl,-rpath,${abi_probe_runtime_dir}")
 else
     abi_probe_link_options+=("-Wl,-rpath,${artifact_dir}")
 fi

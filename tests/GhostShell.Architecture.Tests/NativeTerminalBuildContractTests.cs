@@ -47,6 +47,14 @@ public sealed partial class NativeTerminalBuildContractTests
         Assert.Contains("nm -g -P", script, StringComparison.Ordinal);
         Assert.Contains("missing required export", script, StringComparison.Ordinal);
         Assert.Contains("extension-abi-probe.c", script, StringComparison.Ordinal);
+        Assert.Contains(
+            "${abi_probe_runtime_dir}/libghostty-vt.so.${library_version%%.*}",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "-Wl,-rpath,${abi_probe_runtime_dir}",
+            script,
+            StringComparison.Ordinal);
         Assert.Contains("-std=c11", script, StringComparison.Ordinal);
         Assert.Contains("-Wall", script, StringComparison.Ordinal);
         Assert.Contains("-Wextra", script, StringComparison.Ordinal);
