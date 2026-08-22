@@ -132,7 +132,8 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         ISqlLanguageService? sqlLanguageService = null,
         Func<DatabaseConnectionProfileId, string, CancellationToken,
             Task<DatabaseConnectionProfile?>>? passwordPersister = null,
-        string passwordStoreLabel = "Save in system credential store")
+        string passwordStoreLabel = "Save in system credential store",
+        bool deferStoredCredentialAccess = false)
         : base(id, PanelKind.DatabaseViewer, title, "Database")
     {
         _pendingInitialObject = initialObject;
@@ -176,12 +177,13 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         RunQueryCommand = new AsyncActionCommand(
             RunQueryAsync,
             () => !IsBusy && IsConnected && !HasPendingChanges);
-        // A restored panel reconnects on its own: the saved target is the whole
-        // point of persisting it. A saved connection that must ask for its
-        // password waits for the user instead — the prompt needs a view.
+        // Recovery may construct this panel during application startup. A
+        // stored database or tunnel credential must not make that construction
+        // open the OS credential store before the user presses Connect.
         Initialization = !string.IsNullOrWhiteSpace(_connectionString)
             && (savedConnection is not null || driverId is not null)
             && !NeedsPasswordPrompt
+            && !(deferStoredCredentialAccess && RequiresStoredCredentialAccess)
             ? ConnectAsync()
             : Task.CompletedTask;
     }
@@ -322,6 +324,11 @@ public sealed class DatabaseRuntimePanelViewModel : RuntimePanelViewModel
         && _savedConnection.PasswordSecret is null
         && _sessionPassword is null
         && _client.ParseConnectionDetails(SelectedDriver.Id, ConnectionString).Password is null;
+
+    private bool RequiresStoredCredentialAccess =>
+        _savedConnection?.PasswordSecret is not null
+        || _tunnelConnection?.Authentication is
+            ConnectionAuthentication.Password or ConnectionAuthentication.PrivateKey;
 
     /// <summary>
     /// The string handed to the engine: a saved connection gets its password

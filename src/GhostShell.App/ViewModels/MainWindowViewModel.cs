@@ -12379,7 +12379,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 recovered.StartupLocation,
                 recovered.ConnectionId is { } tunnelId
                     ? FindConnection(new ConnectionId(tunnelId))
-                    : null);
+                    : null,
+                deferStoredCredentialAccess: true);
         }
 
         if (recovered.Kind == RuntimePanelRecoveryKind.Docker)
@@ -13109,7 +13110,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         string? connectionString = null,
         ConnectionProfile? tunnelConnection = null,
         DatabaseConnectionProfile? savedConnection = null,
-        DatabaseObjectId? initialObject = null)
+        DatabaseObjectId? initialObject = null,
+        bool deferStoredCredentialAccess = false)
     {
         var effectiveDriver = savedConnection?.DriverId ?? driverId;
         if (string.Equals(effectiveDriver, RedisDatabase.DriverId, StringComparison.Ordinal))
@@ -13133,7 +13135,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                     _secretVault.Availability.CanPersist
                         ? StoreDatabasePasswordAsync
                         : null,
-                    DatabasePasswordStoreLabel(_secretVault.Availability.Adapter));
+                    DatabasePasswordStoreLabel(_secretVault.Availability.Adapter),
+                    deferStoredCredentialAccess: deferStoredCredentialAccess);
         }
 
         return _databasePanelClient is null
@@ -13158,7 +13161,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                     ? StoreDatabasePasswordAsync
                     : null,
                 passwordStoreLabel: DatabasePasswordStoreLabel(
-                    _secretVault.Availability.Adapter));
+                    _secretVault.Availability.Adapter),
+                deferStoredCredentialAccess: deferStoredCredentialAccess);
     }
 
     private static string DatabasePasswordStoreLabel(string adapter) => adapter switch
@@ -13549,7 +13553,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         PanelInstanceId panelId,
         string title,
         string? target,
-        ConnectionProfile? recoveredTunnel)
+        ConnectionProfile? recoveredTunnel,
+        bool deferStoredCredentialAccess = false)
     {
         if (target?.StartsWith(SavedDatabaseTargetPrefix, StringComparison.Ordinal) == true)
         {
@@ -13572,7 +13577,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 panelId,
                 title,
                 tunnelConnection: tunnel,
-                savedConnection: profile);
+                savedConnection: profile,
+                deferStoredCredentialAccess: deferStoredCredentialAccess);
         }
 
         var parsed = DatabasePanelTarget.TryParse(target);
@@ -13581,7 +13587,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             title,
             parsed?.DriverId,
             parsed?.ConnectionString,
-            recoveredTunnel);
+            recoveredTunnel,
+            deferStoredCredentialAccess: deferStoredCredentialAccess);
     }
 
     /// <summary>

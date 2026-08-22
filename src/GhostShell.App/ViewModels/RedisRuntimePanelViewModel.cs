@@ -327,7 +327,8 @@ public sealed class RedisRuntimePanelViewModel : RuntimePanelViewModel
         Func<DatabaseConnectionProfileId, string, CancellationToken,
             Task<DatabaseConnectionProfile?>>? passwordPersister = null,
         string passwordStoreLabel = "Save in system credential store",
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        bool deferStoredCredentialAccess = false)
         : base(id, PanelKind.DatabaseViewer, title, "Database")
     {
         _time = timeProvider ?? TimeProvider.System;
@@ -397,7 +398,12 @@ public sealed class RedisRuntimePanelViewModel : RuntimePanelViewModel
             _expiryTimer.Start();
         }
 
-        Initialization = HasConnectionTarget ? ConnectAsync() : Task.CompletedTask;
+        // Session recovery runs during startup. Keep a credential-backed
+        // restored panel disconnected until Connect supplies user intent.
+        Initialization = HasConnectionTarget
+            && !(deferStoredCredentialAccess && RequiresStoredCredentialAccess)
+            ? ConnectAsync()
+            : Task.CompletedTask;
     }
 
     public event EventHandler? PasswordRequested;
@@ -433,6 +439,11 @@ public sealed class RedisRuntimePanelViewModel : RuntimePanelViewModel
     }
 
     public Task Initialization { get; }
+
+    private bool RequiresStoredCredentialAccess =>
+        _savedConnection?.PasswordSecret is not null
+        || _tunnelConnection?.Authentication is
+            ConnectionAuthentication.Password or ConnectionAuthentication.PrivateKey;
 
     public string ConnectionString { get; private set; }
 

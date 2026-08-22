@@ -258,6 +258,67 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     }
 
     [Fact]
+    public async Task Recovery_waits_for_connect_before_resolving_saved_database_credential()
+    {
+        var secret = SecretRef.New();
+        var profile = new DatabaseConnectionProfile(
+            new DatabaseConnectionProfileId("runtime-graph-recovery-secret"),
+            DatabaseConnectionProfile.CurrentSchemaVersion,
+            "Recovered database",
+            "postgres",
+            "Host=recovered.internal;Database=app",
+            secret);
+        var snapshot = CreateCatalogSnapshot() with
+        {
+            DatabaseConnections = [Store(profile)],
+        };
+        var database = new HostedDatabaseClient(isFileBased: false);
+        var sourceVault = new CountingSecretVault(secret);
+        var (sourceClient, _) = CreateSessionClient();
+        string recoveryPayload;
+        using (var source = CreateViewModel(
+                   sourceClient,
+                   snapshot,
+                   databasePanelClient: database,
+                   secretVault: sourceVault))
+        {
+            Assert.True(await source.LaunchSavedDatabaseAsync(profile.Id));
+            var sourcePanel = Assert.IsType<DatabaseRuntimePanelViewModel>(
+                source.RuntimeWorkspace!.ActiveTab!.ActivePanel);
+            await sourcePanel.Initialization;
+            Assert.True(sourceVault.ResolveCount > 0);
+            recoveryPayload = RuntimeWorkspaceRecoveryCodec.Serialize(source.RuntimeWorkspace);
+        }
+
+        var recoverySnapshot = new RuntimeRecoverySnapshot(
+            "database-credential-recovery",
+            RuntimeWorkspaceRecoveryCodec.SnapshotKey,
+            RuntimeWorkspaceRecoveryCodec.SchemaVersion,
+            recoveryPayload,
+            DateTimeOffset.UtcNow);
+        var recoveredVault = new CountingSecretVault(secret);
+        var (recoveredClient, _) = CreateSessionClient();
+        using var recovered = CreateViewModel(
+            recoveredClient,
+            snapshot,
+            databasePanelClient: database,
+            secretVault: recoveredVault);
+
+        Assert.True(await recovered.RestoreRuntimeSnapshotsAsync([recoverySnapshot]));
+        var recoveredPanel = Assert.IsType<DatabaseRuntimePanelViewModel>(
+            recovered.RuntimeWorkspace!.ActiveTab!.ActivePanel);
+        await recoveredPanel.Initialization;
+
+        Assert.Equal(0, recoveredVault.ResolveCount);
+        Assert.False(recoveredPanel.IsConnected);
+
+        await recoveredPanel.ConnectAsync();
+
+        Assert.True(recoveredVault.ResolveCount > 0);
+        Assert.True(recoveredPanel.IsConnected);
+    }
+
+    [Fact]
     public async Task Accepted_docker_panel_links_hosted_read_capabilities_and_dispose_unlinks_session()
     {
         var docker = new SingleContainerDockerClient();
@@ -5297,7 +5358,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         IRedisPanelSessionFactory? redisPanelSessionFactory = null,
         AgentPolicyCoordinator? agentPolicyCoordinator = null,
         IBrowserProfilePreferences? browserProfilePreferences = null,
-        IGitRepositoryClient? gitRepositoryClient = null) =>
+        IGitRepositoryClient? gitRepositoryClient = null,
+        ISecretVault? secretVault = null) =>
         CreateViewModel(
             sessionClient,
             CreateFixedCatalog(snapshot),
@@ -5316,7 +5378,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             redisPanelSessionFactory,
             agentPolicyCoordinator,
             browserProfilePreferences,
-            gitRepositoryClient);
+            gitRepositoryClient,
+            secretVault);
 
     private static MainWindowViewModel CreateViewModel(
         ISessionHostClient sessionClient,
@@ -5336,7 +5399,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         IRedisPanelSessionFactory? redisPanelSessionFactory = null,
         AgentPolicyCoordinator? agentPolicyCoordinator = null,
         IBrowserProfilePreferences? browserProfilePreferences = null,
-        IGitRepositoryClient? gitRepositoryClient = null)
+        IGitRepositoryClient? gitRepositoryClient = null,
+        ISecretVault? secretVault = null)
     {
         var files = new EmptyFileClients();
         agentPolicyCoordinator ??= CreateConfiguredPolicyCoordinator(aiProfiles);
@@ -5344,7 +5408,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             sessionClient,
             catalog,
             connectionRuntime ?? new SuccessfulConnectionRuntime(),
-            new EmptySecretVault(),
+            secretVault ?? new EmptySecretVault(),
             filePanelClient ?? files,
             fileTransferQueueClient ?? files,
             new TerminalStartupCommandDispatcher(new SuccessfulAuditStore(), TimeProvider.System),
@@ -5487,15 +5551,15 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                 new DockerResult<bool>.Success(true));
     }
 
-    private sealed class HostedDatabaseClient : IDatabasePanelClient
+    private sealed class HostedDatabaseClient(bool isFileBased = true) : IDatabasePanelClient
     {
         public IReadOnlyList<DatabaseDriverDescriptor> Drivers { get; } =
         [
             new(
-                "sqlite",
-                "SQLite",
-                "Data Source=…",
-                IsFileBased: true),
+                isFileBased ? "sqlite" : "postgres",
+                isFileBased ? "SQLite" : "PostgreSQL",
+                isFileBased ? "Data Source=…" : "Host=…;Database=…",
+                IsFileBased: isFileBased),
         ];
 
         public Task<IReadOnlyList<DatabaseTableDescriptor>> ListTablesAsync(
@@ -5520,12 +5584,16 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         public DatabaseConnectionDetails ParseConnectionDetails(
             string driverId,
             string connectionString) =>
-            new(FilePath: connectionString);
+            isFileBased
+                ? new(FilePath: connectionString)
+                : new(Options: connectionString);
 
         public string BuildConnectionString(
             string driverId,
             DatabaseConnectionDetails details) =>
-            details.FilePath ?? string.Empty;
+            isFileBased
+                ? details.FilePath ?? string.Empty
+                : $"{details.Options};Password={details.Password}";
 
         public string BuildTablePreviewQuery(
             string driverId,
@@ -8073,6 +8141,61 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
         public ValueTask<SecretVaultResult<SecretMaterial>> ResolveAsync(
             ResolveSecretRequest request,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public ValueTask<SecretVaultResult<SecretMetadata>> ReplaceAsync(
+            ReplaceSecretRequest request,
+            SecretMaterial material,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public ValueTask<SecretVaultResult<SecretMetadata>> RelabelAsync(
+            RelabelSecretRequest request,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public ValueTask<SecretVaultResult<Unit>> DeleteAsync(
+            DeleteSecretRequest request,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public ValueTask<SecretVaultResult<SecretMetadata>> GetMetadataAsync(
+            GetSecretMetadataRequest request,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    private sealed class CountingSecretVault(SecretRef expectedSecret) : ISecretVault
+    {
+        public SecretVaultAvailability Availability { get; } = new(
+            SecretVaultAvailabilityState.Available,
+            SecretVaultPersistenceKind.MemoryOnly,
+            SecretVaultCapabilities.Resolve,
+            "test",
+            "counting_vault",
+            "Counting test vault");
+
+        public int ResolveCount { get; private set; }
+
+        public void Dispose()
+        {
+        }
+
+        public ValueTask<SecretVaultResult<SecretMaterial>> ResolveAsync(
+            ResolveSecretRequest request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Assert.Equal(expectedSecret, request.Reference);
+            ResolveCount++;
+            return ValueTask.FromResult(
+                SecretVaultResult<SecretMaterial>.Succeed(
+                    SecretMaterial.CopyFrom("vaulted"u8)));
+        }
+
+        public ValueTask<SecretVaultResult<IReadOnlyList<SecretMetadata>>> ListMetadataAsync(
+            ListSecretMetadataRequest request,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public ValueTask<SecretVaultResult<SecretMetadata>> CreateAsync(
+            CreateSecretRequest request,
+            SecretMaterial material,
             CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public ValueTask<SecretVaultResult<SecretMetadata>> ReplaceAsync(

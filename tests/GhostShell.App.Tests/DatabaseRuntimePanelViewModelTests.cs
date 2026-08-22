@@ -422,6 +422,44 @@ public sealed class DatabaseRuntimePanelViewModelTests
     }
 
     [Fact]
+    public async Task Restored_saved_connection_waits_for_connect_before_resolving_credential()
+    {
+        var client = new FakeDatabasePanelClient();
+        var secret = SecretRef.New();
+        var profile = new DatabaseConnectionProfile(
+            DatabaseConnectionProfileId.New(),
+            DatabaseConnectionProfile.CurrentSchemaVersion,
+            "neon",
+            "postgres",
+            "Host=db.internal;Database=app",
+            secret);
+        var resolveCount = 0;
+        using var panel = new DatabaseRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Database",
+            client,
+            savedConnection: profile,
+            passwordResolver: (reference, _) =>
+            {
+                Assert.Equal(secret, reference);
+                resolveCount++;
+                return Task.FromResult<string?>("vaulted");
+            },
+            deferStoredCredentialAccess: true);
+
+        await panel.Initialization;
+
+        Assert.Equal(0, resolveCount);
+        Assert.False(panel.IsConnected);
+
+        var resolvesBeforeConnect = resolveCount;
+        await panel.ConnectAsync();
+
+        Assert.True(resolveCount > resolvesBeforeConnect);
+        Assert.True(panel.IsConnected);
+    }
+
+    [Fact]
     public async Task Saved_connection_without_password_asks_before_connecting()
     {
         var client = new FakeDatabasePanelClient();
