@@ -32,6 +32,41 @@ public sealed class AcceleratedFramePacingTests
     }
 
     [Theory]
+    [InlineData(true, true, Cef.OffscreenFlags.SharedTexture)]
+    [InlineData(false, true, Cef.OffscreenFlags.None)]
+    [InlineData(true, false, Cef.OffscreenFlags.None)]
+    public void BackgroundBrowserHonorsAcceleratedRenderingPreference(
+        bool preferred,
+        bool supported,
+        Cef.OffscreenFlags expected)
+    {
+        var flags = WebView.BackgroundBrowserCreationFlags(
+            preferred,
+            supported);
+
+        Assert.Equal(expected, flags);
+    }
+
+    [Theory]
+    [InlineData(false, false, false, true)]
+    [InlineData(false, true, true, true)]
+    [InlineData(false, true, false, false)]
+    [InlineData(true, false, false, false)]
+    public void AcceleratedBackgroundBrowserCanInitializePresentationLater(
+        bool initializationStarted,
+        bool browserCreated,
+        bool browserAccelerated,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            WebView.CanInitializeAcceleratedPresentation(
+                initializationStarted,
+                browserCreated,
+                browserAccelerated));
+    }
+
+    [Theory]
     [InlineData(null, false)]
     [InlineData("fixed-60", false)]
     [InlineData("display-link", true)]

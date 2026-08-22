@@ -154,10 +154,13 @@ public class WebView : Control, IWebView, IDisposable
     public int BrowserId => _browser?.Id ?? 0;
 
     /// <summary>
-    /// Creates a CPU-rendered off-screen browser without requiring this control
-    /// to be mounted in an Avalonia visual tree. This is for background tabs and
-    /// headless hosts that still need Chromium's semantic/input APIs. A browser
-    /// already created by normal layout is left untouched.
+    /// Creates an off-screen browser without requiring this control to be
+    /// mounted in an Avalonia visual tree. This is for background tabs and
+    /// headless hosts that still need Chromium's semantic/input APIs. The
+    /// preferred accelerated mode remains the default on supported platforms;
+    /// set <see cref="PreferAcceleratedRendering"/> to false before creation to
+    /// request CPU rendering. A browser already created by normal layout is
+    /// left untouched.
     /// </summary>
     public bool EnsureOffscreenBrowserCreated(
         int logicalWidth = 1280,
@@ -190,7 +193,9 @@ public class WebView : Control, IWebView, IDisposable
             logicalWidth,
             logicalHeight,
             renderScale,
-            BrowserCreationFlags(accelerated: false));
+            BackgroundBrowserCreationFlags(
+                PreferAcceleratedRendering,
+                OperatingSystem.IsMacOS()));
     }
 
     /// <summary>
@@ -778,6 +783,13 @@ public class WebView : Control, IWebView, IDisposable
             : Cef.OffscreenFlags.SharedTexture;
     }
 
+    internal static Cef.OffscreenFlags BackgroundBrowserCreationFlags(
+        bool preferAcceleratedRendering,
+        bool acceleratedRenderingSupported) =>
+        BrowserCreationFlags(
+            preferAcceleratedRendering && acceleratedRenderingSupported,
+            displayLinked: false);
+
     internal const int CpuFallbackFrameRate = 30;
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -863,11 +875,17 @@ public class WebView : Control, IWebView, IDisposable
 
     private void BeginAcceleratedPresentationInitialization()
     {
-        if (_acceleratedInitializationStarted || _browser is not null)
+        if (!CanInitializeAcceleratedPresentation(
+                _acceleratedInitializationStarted,
+                _browser is not null,
+                IsAcceleratedRenderingActive))
         {
             return;
         }
 
+        // Background automation can create a shared-texture browser before the
+        // control is attached. It still needs Avalonia composition resources
+        // when a workspace later presents it.
         _acceleratedInitializationStarted = true;
         if (!ShouldAttemptAcceleratedRendering())
         {
@@ -877,6 +895,12 @@ public class WebView : Control, IWebView, IDisposable
 
         _ = InitializeAcceleratedPresentationAsync();
     }
+
+    internal static bool CanInitializeAcceleratedPresentation(
+        bool initializationStarted,
+        bool browserCreated,
+        bool browserAccelerated) =>
+        !initializationStarted && (!browserCreated || browserAccelerated);
 
     private async Task InitializeAcceleratedPresentationAsync()
     {
