@@ -283,7 +283,8 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable, IAge
     public string TerminalUnavailableMessage =>
         ActiveTab?.TerminalUnavailableMessage ?? "Choose a connection to start a terminal.";
 
-    public string ConnectionName => ActiveTab?.Title ?? "No connection";
+    public string ConnectionName =>
+        ResolveConnection(ActiveTab?.ConnectionId)?.Name ?? "No connection";
 
     public string ProfileName { get; }
 
@@ -426,6 +427,10 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable, IAge
         await Initialization;
 
         var previousRequests = TerminalRequests;
+        var fallbackConnection = QuickTerminalDefinitionSelection
+            .Resolve(_catalog.Snapshot)
+            .Connection
+            ?.Value;
         _restoringRecovery = true;
         try
         {
@@ -445,7 +450,7 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable, IAge
                 var connectionId = storedConnectionId is null
                     ? (ConnectionId?)null
                     : new ConnectionId(storedConnectionId);
-                var connection = ResolveConnection(connectionId);
+                var connection = ResolveConnection(connectionId) ?? fallbackConnection;
                 var tab = new QuickTerminalTabViewModel(
                     connection?.Id,
                     connection?.Name ?? "No connection");
@@ -770,6 +775,7 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable, IAge
         if (string.Equals(e.PropertyName, nameof(MainWindowViewModel.PanelConnectionOptions), StringComparison.Ordinal))
         {
             OnPropertyChanged(nameof(ConnectionOptions));
+            OnPropertyChanged(nameof(ConnectionName));
         }
 
     }

@@ -3937,6 +3937,42 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         Assert.Equal(3, quickTerminal.TerminalRequests.Count);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("deleted-connection")]
+    public async Task Quick_terminal_recovery_replaces_unavailable_connections_with_the_catalog_default(
+        string? recoveredConnectionId)
+    {
+        var snapshot = CreateCatalogSnapshot();
+        var fallback = snapshot.Connections[0].Value;
+        var (client, _) = CreateSessionClient();
+        using var mainWindow = CreateViewModel(client, snapshot);
+        using var quickTerminal = new QuickTerminalViewModel(
+            mainWindow,
+            CreateFixedCatalog(snapshot),
+            new SuccessfulConnectionRuntime());
+
+        await quickTerminal.RestoreAsync(new QuickTerminalRecoveryPayload(
+            [recoveredConnectionId],
+            ActiveTabIndex: 0,
+            Titles: ["Custom tab"],
+            Icons: ["terminal"]));
+
+        var tab = Assert.Single(quickTerminal.Tabs);
+        Assert.Equal(fallback.Id, tab.ConnectionId);
+        Assert.Equal("Custom tab", tab.Title);
+        Assert.Equal(fallback.Name, quickTerminal.ConnectionName);
+        Assert.NotNull(tab.TerminalRequest);
+    }
+
+    [Fact]
+    public void Quick_terminal_tabs_satisfy_the_compiled_tab_strip_contract()
+    {
+        var tab = new QuickTerminalTabViewModel(null, "Local terminal");
+
+        Assert.IsAssignableFrom<IRuntimeTabStripItem>(tab);
+    }
+
     [Fact]
     public async Task Quick_terminal_agent_targets_its_own_workspace_by_default()
     {

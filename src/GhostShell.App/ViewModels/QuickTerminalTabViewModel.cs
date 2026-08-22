@@ -7,7 +7,7 @@ namespace GhostShell.App.ViewModels;
 /// <summary>
 /// One independently owned terminal session in the process-wide Quick Terminal window.
 /// </summary>
-public sealed class QuickTerminalTabViewModel : ObservableObject
+public sealed class QuickTerminalTabViewModel : ObservableObject, IRuntimeTabStripItem
 {
     private ConnectionId? _connectionId;
     private string _title;
