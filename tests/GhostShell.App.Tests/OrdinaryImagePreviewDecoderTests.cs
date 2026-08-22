@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using Avalonia.Headless;
 using Avalonia.Media.Imaging;
 using GhostShell.Application;
+using GhostShell.Application.Previews;
 using SkiaSharp;
 
 namespace GhostShell.App.Tests;
@@ -10,6 +11,40 @@ namespace GhostShell.App.Tests;
 [Collection(AvaloniaUiCollection.Name)]
 public sealed class OrdinaryImagePreviewDecoderTests
 {
+    [Fact]
+    public async Task A_large_jpeg_uses_a_bounded_native_decode_then_fits_the_preview()
+    {
+        var path = Path.Combine(
+            Path.GetTempPath(),
+            $"ghostshell-large-jpeg-{Guid.NewGuid():N}.jpg");
+        await File.WriteAllBytesAsync(
+            path,
+            EncodedImage(SKEncodedImageFormat.Jpeg, width: 3_456, height: 2_234));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var session = HeadlessUnitTestSession.StartNew(typeof(SqlEditorHeadlessApplication));
+        try
+        {
+            Assert.True(await session.Dispatch(
+                () =>
+                {
+                    using var content = FilePreviewContent.FromLocalFile(path);
+                    using var bitmap = OrdinaryImagePreviewDecoder.Decode(content);
+                    Assert.NotNull(bitmap);
+                    Assert.Equal(2_400, bitmap!.PixelSize.Width);
+                    Assert.True(bitmap.PixelSize.Height < 2_234);
+                    Assert.True((long)bitmap.PixelSize.Width * bitmap.PixelSize.Height
+                        <= PreviewRasterBudget.MaximumPixels);
+                    return Task.FromResult(true);
+                },
+                timeout.Token));
+        }
+        finally
+        {
+            await session.DisposeAsync();
+            File.Delete(path);
+        }
+    }
+
     [Theory]
     [InlineData(16_384, 1, true)]
     [InlineData(16_385, 1, false)]

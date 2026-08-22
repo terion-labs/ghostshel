@@ -81,9 +81,7 @@ internal static class OrdinaryImagePreviewDecoder
         var decodedSize = requestedScale >= 1d
             ? decoder.Info.Size
             : decoder.GetScaledDimensions((float)requestedScale);
-        if (decodedSize.Width > encodedTarget.Width
-            || decodedSize.Height > encodedTarget.Height
-            || decodedSize.Width > sourceWidth
+        if (decodedSize.Width > sourceWidth
             || decodedSize.Height > sourceHeight
             || !PreviewRasterBudget.Contains(
                 decodedSize.Width,
@@ -104,8 +102,26 @@ internal static class OrdinaryImagePreviewDecoder
             return null;
         }
 
-        using var orientedBitmap = Orient(decodedBitmap, encodedOrigin);
-        var displayBitmap = orientedBitmap ?? decodedBitmap;
+        using var resizedBitmap = decodedSize.Width > encodedTarget.Width
+            || decodedSize.Height > encodedTarget.Height
+                ? decodedBitmap.Resize(
+                    new SKImageInfo(
+                        encodedTarget.Width,
+                        encodedTarget.Height,
+                        SKColorType.Bgra8888,
+                        SKAlphaType.Premul),
+                    new SKSamplingOptions(SKCubicResampler.CatmullRom))
+                : null;
+        if (resizedBitmap is null
+            && (decodedSize.Width > encodedTarget.Width
+                || decodedSize.Height > encodedTarget.Height))
+        {
+            return null;
+        }
+
+        var scaledBitmap = resizedBitmap ?? decodedBitmap;
+        using var orientedBitmap = Orient(scaledBitmap, encodedOrigin);
+        var displayBitmap = orientedBitmap ?? scaledBitmap;
 
         var bitmap = new WriteableBitmap(
             PixelFormats.Bgra8888,

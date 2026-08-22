@@ -8,58 +8,13 @@
   <NativeMenu.Menu>
     <NativeMenu>
       <NativeMenuItem
-          Header="Command Palette…"
-          Gesture="Meta+K"
-          Click="OnCommandPaletteMenuClick" />
+          Header="About GhostSHELL…"
+          Click="OnAboutMenuClick" />
+      <NativeMenuItemSeparator />
       <NativeMenuItem
           Header="Settings…"
           Gesture="Meta+OemComma"
           Click="OnSettingsMenuClick" />
-      <NativeMenuItem
-          Header="Launcher"
-          Click="OnLauncherMenuClick" />
-      <NativeMenuItem
-          Header="Quick Terminal"
-          Click="OnQuickTerminalMenuClick" />
-      <NativeMenuItemSeparator />
-      <NativeMenuItem
-          Header="New Tab"
-          Gesture="Meta+T"
-          Click="OnNewTabMenuClick" />
-      <NativeMenuItem
-          Header="New Terminal Tab"
-          Gesture="Meta+Shift+T"
-          Click="OnNewTerminalMenuClick" />
-      <NativeMenuItem
-          Header="Add Panel…"
-          Gesture="Meta+Shift+D"
-          Click="OnAddPanelMenuClick" />
-      <NativeMenuItem
-          Header="Layout Designer…"
-          Gesture="Meta+Shift+L"
-          Click="OnLayoutDesignerMenuClick" />
-      <NativeMenuItemSeparator />
-      <NativeMenuItem
-          Header="Previous Tab"
-          Gesture="Meta+Shift+OemOpenBrackets"
-          Click="OnPreviousTabMenuClick" />
-      <NativeMenuItem
-          Header="Next Tab"
-          Gesture="Meta+Shift+OemCloseBrackets"
-          Click="OnNextTabMenuClick" />
-      <NativeMenuItem
-          Header="Close Panel"
-          Gesture="Meta+Shift+W"
-          Click="OnClosePanelMenuClick" />
-      <NativeMenuItem
-          Header="Close Tab"
-          Gesture="Meta+W"
-          Click="OnCloseTabMenuClick" />
-      <NativeMenuItemSeparator />
-      <NativeMenuItem
-          Header="Toggle Agent Panel"
-          Gesture="Meta+Shift+A"
-          Click="OnToggleAgentMenuClick" />
     </NativeMenu>
   </NativeMenu.Menu>
   <Application.Resources>

@@ -19,6 +19,7 @@ namespace GhostShell.App;
 public sealed partial class App : Avalonia.Application
 {
     private readonly MainWindowViewModel? _mainWindowViewModel;
+    private readonly MainWindowViewModelFactory? _mainWindowViewModelFactory;
     private readonly ApplicationStartupState? _startupState;
     private readonly IDefinitionCatalog? _definitionCatalog;
     private readonly IDefinitionBundleStore? _definitionBundleStore;
@@ -35,6 +36,7 @@ public sealed partial class App : Avalonia.Application
     private AvaloniaHostAppearanceAdapter? _hostAppearance;
     private INotifyCollectionChanged? _windowCollection;
     private DispatcherTimer? _applicationIconRefreshTimer;
+    private readonly HashSet<MainWindowViewModel> _additionalMainWindowViewModels = [];
 
     private static readonly string[] AppearanceClasses =
     [
@@ -100,6 +102,7 @@ public sealed partial class App : Avalonia.Application
 
     public App(
         MainWindowViewModel mainWindowViewModel,
+        MainWindowViewModelFactory mainWindowViewModelFactory,
         ApplicationStartupState startupState,
         IDefinitionCatalog definitionCatalog,
         IDefinitionBundleStore definitionBundleStore,
@@ -114,6 +117,7 @@ public sealed partial class App : Avalonia.Application
         IScreenColorSampler screenColorSampler)
     {
         ArgumentNullException.ThrowIfNull(mainWindowViewModel);
+        ArgumentNullException.ThrowIfNull(mainWindowViewModelFactory);
         ArgumentNullException.ThrowIfNull(startupState);
         ArgumentNullException.ThrowIfNull(definitionCatalog);
         ArgumentNullException.ThrowIfNull(definitionBundleStore);
@@ -127,6 +131,7 @@ public sealed partial class App : Avalonia.Application
         ArgumentNullException.ThrowIfNull(hostAccessibilityPreferences);
         ArgumentNullException.ThrowIfNull(screenColorSampler);
         _mainWindowViewModel = mainWindowViewModel;
+        _mainWindowViewModelFactory = mainWindowViewModelFactory;
         _startupState = startupState;
         _definitionCatalog = definitionCatalog;
         _definitionBundleStore = definitionBundleStore;
@@ -147,41 +152,11 @@ public sealed partial class App : Avalonia.Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
+            desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
             var mainWindowViewModel = _mainWindowViewModel
                 ?? throw new InvalidOperationException(
                     "The desktop composition root did not provide the main window view model.");
-            var mainWindow = new MainWindow(
-                _definitionBundleStore
-                    ?? throw new InvalidOperationException(
-                        "The desktop composition root did not provide the definition bundle store."),
-                _definitionCatalog
-                    ?? throw new InvalidOperationException(
-                        "The desktop composition root did not provide the definition catalog."),
-                _diagnosticsExporter
-                    ?? throw new InvalidOperationException(
-                        "The desktop composition root did not provide the diagnostics exporter."),
-                _diagnosticsRequestSource
-                    ?? throw new InvalidOperationException(
-                        "The desktop composition root did not provide the diagnostics request source."),
-                _diagnosticsArtifactPresenter
-                    ?? throw new InvalidOperationException(
-                        "The desktop composition root did not provide the diagnostics artifact presenter."),
-                _recentSessionHistoryExporter
-                    ?? throw new InvalidOperationException(
-                        "The desktop composition root did not provide the session-history exporter."),
-                _recoveryDataControlViewModel
-                    ?? throw new InvalidOperationException(
-                        "The desktop composition root did not provide recovery data controls."),
-                _localArtifactControlViewModel
-                    ?? throw new InvalidOperationException(
-                        "The desktop composition root did not provide app-managed storage controls."),
-                _screenColorSampler
-                    ?? throw new InvalidOperationException(
-                        "The desktop composition root did not provide a screen colour sampler."))
-            {
-                DataContext = mainWindowViewModel,
-            };
+            var mainWindow = CreateMainWindow(mainWindowViewModel);
             desktop.MainWindow = mainWindow;
             foreach (var hostWindow in desktop.Windows.OfType<RuntimePanelHostWindow>())
             {
@@ -189,9 +164,9 @@ public sealed partial class App : Avalonia.Application
             }
 
             QuickTerminalController.Initialize(mainWindow);
-            mainWindow.Closed += OnMainWindowClosed;
+            RegisterMainWindow(mainWindow);
             desktop.Exit += OnDesktopExit;
-            AttachAppearance(mainWindow);
+            AttachAppearance();
             mainWindow.Opened += OnStartupWindowOpened;
         }
 
@@ -199,8 +174,8 @@ public sealed partial class App : Avalonia.Application
     }
 
     private MainWindow MainWindow =>
-        (ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow as MainWindow
-        ?? throw new InvalidOperationException("The GhostSHELL window is unavailable.");
+        ActiveMainWindow()
+        ?? throw new InvalidOperationException("A GhostSHELL window is unavailable.");
 
     private MainWindowViewModel MainWindowViewModel => _mainWindowViewModel
         ?? throw new InvalidOperationException("The main window view model is unavailable.");
@@ -208,11 +183,101 @@ public sealed partial class App : Avalonia.Application
     private QuickTerminalController QuickTerminalController => _quickTerminalController
         ?? throw new InvalidOperationException("The Quick Terminal controller is unavailable.");
 
-    private void OnCommandPaletteMenuClick(object? sender, EventArgs e)
+    private MainWindow CreateMainWindow(MainWindowViewModel viewModel) =>
+        new(
+            _definitionBundleStore
+                ?? throw new InvalidOperationException(
+                    "The desktop composition root did not provide the definition bundle store."),
+            _definitionCatalog
+                ?? throw new InvalidOperationException(
+                    "The desktop composition root did not provide the definition catalog."),
+            _diagnosticsExporter
+                ?? throw new InvalidOperationException(
+                    "The desktop composition root did not provide the diagnostics exporter."),
+            _diagnosticsRequestSource
+                ?? throw new InvalidOperationException(
+                    "The desktop composition root did not provide the diagnostics request source."),
+            _diagnosticsArtifactPresenter
+                ?? throw new InvalidOperationException(
+                    "The desktop composition root did not provide the diagnostics artifact presenter."),
+            _recentSessionHistoryExporter
+                ?? throw new InvalidOperationException(
+                    "The desktop composition root did not provide the session-history exporter."),
+            _recoveryDataControlViewModel
+                ?? throw new InvalidOperationException(
+                    "The desktop composition root did not provide recovery data controls."),
+            _localArtifactControlViewModel
+                ?? throw new InvalidOperationException(
+                    "The desktop composition root did not provide app-managed storage controls."),
+            _screenColorSampler
+                ?? throw new InvalidOperationException(
+                    "The desktop composition root did not provide a screen colour sampler."))
+        {
+            DataContext = viewModel,
+        };
+
+    private MainWindow? ActiveMainWindow()
     {
-        _ = sender;
-        _ = e;
-        MainWindow.ShowCommandPalette();
+        if (ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            return null;
+        }
+
+        return desktop.Windows.OfType<MainWindow>().FirstOrDefault(window => window.IsActive)
+            ?? desktop.Windows.OfType<MainWindow>().FirstOrDefault(window => window.IsVisible)
+            ?? desktop.MainWindow as MainWindow;
+    }
+
+    private void RegisterMainWindow(MainWindow window)
+    {
+        window.Activated += OnMainWindowActivated;
+        window.Closed += OnMainWindowClosed;
+    }
+
+    internal void OpenNewWindow()
+    {
+        var factory = _mainWindowViewModelFactory
+            ?? throw new InvalidOperationException(
+                "The desktop composition root did not provide the main window factory.");
+        var viewModel = factory();
+        try
+        {
+            var window = CreateMainWindow(viewModel);
+            _additionalMainWindowViewModels.Add(viewModel);
+            RegisterMainWindow(window);
+            window.Opened += OnAdditionalWindowOpened;
+            window.Show();
+            window.Activate();
+        }
+        catch
+        {
+            viewModel.Dispose();
+            throw;
+        }
+    }
+
+    internal void ToggleQuickTerminal() => QuickTerminalController.Toggle();
+
+    internal async Task OpenNewTabAsync(MainWindow owner)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        if (await QuickTerminalController.TryAddTabToActiveQuickTerminalAsync())
+        {
+            return;
+        }
+
+        await owner.ShowNewItemLauncherAsync();
+    }
+
+    internal async Task CloseTabAsync(MainWindow owner)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        if (await QuickTerminalController.TryCloseTabInActiveQuickTerminalAsync())
+        {
+            return;
+        }
+
+        await owner.RequestCloseTabAsync();
     }
 
     private void OnSettingsMenuClick(object? sender, EventArgs e)
@@ -222,99 +287,14 @@ public sealed partial class App : Avalonia.Application
         MainWindow.NavigateToSettings();
     }
 
-    private void OnLauncherMenuClick(object? sender, EventArgs e)
+    private void OnAboutMenuClick(object? sender, EventArgs e)
     {
         _ = sender;
         _ = e;
-        _ = MainWindow.NavigateToLauncherAsync();
+        MainWindow.NavigateToSettings(SettingsPage.About);
     }
 
-    private void OnQuickTerminalMenuClick(object? sender, EventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        QuickTerminalController.Toggle();
-    }
-
-    /// <summary>
-    /// Cmd+T opens a tab the way the strip's plus does — the launcher chooses
-    /// what goes in it. The straight-to-terminal path keeps its own entry a
-    /// shift away.
-    /// </summary>
-    private async void OnNewTabMenuClick(object? sender, EventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        if (await QuickTerminalController.TryAddTabToActiveQuickTerminalAsync())
-        {
-            return;
-        }
-
-        await MainWindow.ShowNewItemLauncherAsync();
-    }
-
-    private async void OnNewTerminalMenuClick(object? sender, EventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        await MainWindow.RequestNewTerminalAsync();
-    }
-
-    private async void OnAddPanelMenuClick(object? sender, EventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        await MainWindow.ShowNewPanelChooserAsync();
-    }
-
-    private async void OnLayoutDesignerMenuClick(object? sender, EventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        await MainWindow.ShowLayoutDesignerAsync();
-    }
-
-    private void OnToggleAgentMenuClick(object? sender, EventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        MainWindow.ToggleAgentPanel();
-    }
-
-    private async void OnPreviousTabMenuClick(object? sender, EventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        await MainWindow.SelectRelativeTabAsync(-1);
-    }
-
-    private async void OnNextTabMenuClick(object? sender, EventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        await MainWindow.SelectRelativeTabAsync(1);
-    }
-
-    private async void OnClosePanelMenuClick(object? sender, EventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        await MainWindow.RequestClosePanelAsync();
-    }
-
-    private async void OnCloseTabMenuClick(object? sender, EventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        if (await QuickTerminalController.TryCloseTabInActiveQuickTerminalAsync())
-        {
-            return;
-        }
-
-        await MainWindow.RequestCloseTabAsync();
-    }
-
-    private void AttachAppearance(MainWindow mainWindow)
+    private void AttachAppearance()
     {
         _platformSettings = PlatformSettings
             ?? throw new InvalidOperationException("Platform appearance settings are unavailable.");
@@ -347,20 +327,6 @@ public sealed partial class App : Avalonia.Application
             _windowCollection.CollectionChanged += OnWindowCollectionChanged;
         }
 
-        mainWindow.Closed += (_, _) =>
-        {
-            _platformSettings?.ColorValuesChanged -= OnPlatformColorValuesChanged;
-            hostAccessibilityPreferences.Changed -= OnHostAccessibilityPreferencesChanged;
-            _definitionCatalog?.Changed -= OnDefinitionCatalogChanged;
-            _windowCollection?.CollectionChanged -= OnWindowCollectionChanged;
-            _windowCollection = null;
-            if (_applicationIconRefreshTimer is { } iconRefreshTimer)
-            {
-                iconRefreshTimer.Stop();
-                iconRefreshTimer.Tick -= OnApplicationIconRefresh;
-                _applicationIconRefreshTimer = null;
-            }
-        };
     }
 
     private void OnApplicationIconRefresh(object? sender, EventArgs e)
@@ -958,20 +924,93 @@ public sealed partial class App : Avalonia.Application
             desktop.Exit -= OnDesktopExit;
         }
 
+        _platformSettings?.ColorValuesChanged -= OnPlatformColorValuesChanged;
+        _hostAccessibilityPreferences?.Changed -= OnHostAccessibilityPreferencesChanged;
+        _definitionCatalog?.Changed -= OnDefinitionCatalogChanged;
+        _windowCollection?.CollectionChanged -= OnWindowCollectionChanged;
+        _windowCollection = null;
+        if (_applicationIconRefreshTimer is { } iconRefreshTimer)
+        {
+            iconRefreshTimer.Stop();
+            iconRefreshTimer.Tick -= OnApplicationIconRefresh;
+            _applicationIconRefreshTimer = null;
+        }
+
+        foreach (var viewModel in _additionalMainWindowViewModels.ToArray())
+        {
+            viewModel.TeardownPresentationForShutdown();
+            viewModel.Dispose();
+        }
+
+        _additionalMainWindowViewModels.Clear();
         _quickTerminalController?.Dispose();
+    }
+
+    private void OnMainWindowActivated(object? sender, EventArgs e)
+    {
+        _ = e;
+        if (sender is not MainWindow window
+            || ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            return;
+        }
+
+        desktop.MainWindow = window;
+        QuickTerminalController.SetMainWindow(window);
+        var accent = (window.DataContext as MainWindowViewModel)?.ActiveWorkspaceAccent;
+        SetWorkspaceAccent(RgbColor.TryParse(accent, out var color) ? color : null);
     }
 
     private void OnMainWindowClosed(object? sender, EventArgs e)
     {
-        if (sender is MainWindow mainWindow)
+        _ = e;
+        if (sender is not MainWindow mainWindow
+            || ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
         {
-            mainWindow.Closed -= OnMainWindowClosed;
+            return;
         }
 
-        // macOS can keep the native application run loop alive after every window closes.
-        // The main window remains the explicit desktop lifetime owner even though Quick Terminal
-        // is a reusable hidden top-level window.
-        (ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.Shutdown();
+        mainWindow.Activated -= OnMainWindowActivated;
+        mainWindow.Closed -= OnMainWindowClosed;
+        mainWindow.Opened -= OnAdditionalWindowOpened;
+        if (mainWindow.DataContext is MainWindowViewModel viewModel
+            && _additionalMainWindowViewModels.Remove(viewModel))
+        {
+            viewModel.TeardownPresentationForShutdown();
+            viewModel.Dispose();
+        }
+
+        var replacement = desktop.Windows
+            .OfType<MainWindow>()
+            .FirstOrDefault(window => !ReferenceEquals(window, mainWindow));
+        if (replacement is null)
+        {
+            desktop.Shutdown();
+            return;
+        }
+
+        desktop.MainWindow = replacement;
+        QuickTerminalController.SetMainWindow(replacement);
+    }
+
+    private async void OnAdditionalWindowOpened(object? sender, EventArgs e)
+    {
+        _ = e;
+        if (sender is not MainWindow owner
+            || owner.DataContext is not MainWindowViewModel viewModel
+            || _startupState is null)
+        {
+            return;
+        }
+
+        owner.Opened -= OnAdditionalWindowOpened;
+        await _startupState.Initialized;
+        if (!_additionalMainWindowViewModels.Contains(viewModel))
+        {
+            return;
+        }
+
+        _ = await viewModel.OpenDefaultLauncherIfIdleAsync(CancellationToken.None);
     }
 
     /// <summary>

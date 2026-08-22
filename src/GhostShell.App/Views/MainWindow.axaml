@@ -20,6 +20,50 @@
     ExtendClientAreaTitleBarHeightHint="-1"
     WindowStartupLocation="CenterScreen">
 
+  <NativeMenu.Menu>
+    <NativeMenu>
+      <NativeMenuItem Header="File">
+        <NativeMenuItem.Menu>
+          <NativeMenu>
+            <NativeMenuItem Header="New Window" Gesture="Meta+N" Click="OnNewWindowMenuClick" />
+            <NativeMenuItem Header="New Tab" Gesture="Meta+T" Click="OnNewTabMenuClick" />
+            <NativeMenuItem Header="New Terminal Tab" Gesture="Meta+Shift+T" Click="OnNewTerminalMenuClick" />
+            <NativeMenuItemSeparator />
+            <NativeMenuItem Header="Close Tab" Gesture="Meta+W" Click="OnCloseTabMenuClick" />
+          </NativeMenu>
+        </NativeMenuItem.Menu>
+      </NativeMenuItem>
+      <NativeMenuItem Header="Edit">
+        <NativeMenuItem.Menu>
+          <NativeMenu />
+        </NativeMenuItem.Menu>
+      </NativeMenuItem>
+      <NativeMenuItem Header="View">
+        <NativeMenuItem.Menu>
+          <NativeMenu>
+            <NativeMenuItem Header="Command Palette…" Gesture="Meta+K" Click="OnCommandPaletteMenuClick" />
+            <NativeMenuItem Header="Launcher" Click="OnLauncherMenuClick" />
+            <NativeMenuItem Header="Quick Terminal" Click="OnQuickTerminalMenuClick" />
+            <NativeMenuItemSeparator />
+            <NativeMenuItem Header="Toggle Agent Panel" Gesture="Meta+Shift+A" Click="OnToggleAgentMenuClick" />
+          </NativeMenu>
+        </NativeMenuItem.Menu>
+      </NativeMenuItem>
+      <NativeMenuItem Header="Window">
+        <NativeMenuItem.Menu>
+          <NativeMenu>
+            <NativeMenuItem Header="Add Panel…" Gesture="Meta+Shift+D" Click="OnAddPanelMenuClick" />
+            <NativeMenuItem Header="Layout Designer…" Gesture="Meta+Shift+L" Click="OnLayoutDesignerMenuClick" />
+            <NativeMenuItemSeparator />
+            <NativeMenuItem Header="Previous Tab" Gesture="Meta+Shift+OemOpenBrackets" Click="OnPreviousTabMenuClick" />
+            <NativeMenuItem Header="Next Tab" Gesture="Meta+Shift+OemCloseBrackets" Click="OnNextTabMenuClick" />
+            <NativeMenuItem Header="Close Panel" Gesture="Meta+Shift+W" Click="OnClosePanelMenuClick" />
+          </NativeMenu>
+        </NativeMenuItem.Menu>
+      </NativeMenuItem>
+    </NativeMenu>
+  </NativeMenu.Menu>
+
   <!--
     The pale band across the top was never the platform's title bar — Avalonia
     draws its own decorations, and up to 12.0.4 the Fluent template filled them

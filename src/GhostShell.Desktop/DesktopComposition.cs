@@ -279,7 +279,7 @@ public static class DesktopComposition
             GlobalHotkeyServiceSelector.CreateForCurrentPlatform());
         services.AddSingleton<IScreenColorSampler>(_ =>
             ScreenColorSamplerSelector.Create());
-        services.AddSingleton(provider => new OnboardingViewModel(
+        services.AddTransient(provider => new OnboardingViewModel(
             provider.GetRequiredService<IOnboardingProgressStore>(),
             provider.GetRequiredService<IDefinitionCatalog>(),
             provider.GetRequiredService<IConnectionRuntime>(),
@@ -289,6 +289,8 @@ public static class DesktopComposition
         services.AddSingleton<IProductComponentCatalog, DesktopProductComponentCatalog>();
         services.AddSingleton<IBrowserRendererViewFactory, DesktopBrowserRendererViewFactory>();
         services.AddSingleton<MainWindowViewModel>();
+        services.AddSingleton<MainWindowViewModelFactory>(provider =>
+            () => ActivatorUtilities.CreateInstance<MainWindowViewModel>(provider));
         services.AddSingleton<GhostShell.App.QuickTerminalController>();
         services.AddSingleton<GhostShell.App.App>();
         return services.BuildServiceProvider(new ServiceProviderOptions

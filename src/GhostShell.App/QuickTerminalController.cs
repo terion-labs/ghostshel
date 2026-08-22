@@ -107,9 +107,7 @@ public sealed class QuickTerminalController : IDisposable
         }
 
         _initialized = true;
-        _mainWindow = mainWindow;
-        _mainWindow.Closing += OnMainWindowClosing;
-        _mainWindow.Closed += OnMainWindowClosed;
+        SetMainWindow(mainWindow);
         _globalHotkey.Pressed += OnGlobalHotkeyPressed;
         _globalHotkey.EscapePressed += OnEscapePressed;
         _catalog.Changed += OnCatalogChanged;
@@ -117,6 +115,12 @@ public sealed class QuickTerminalController : IDisposable
         ApplyHostAccessibilityPreferences();
         ApplySettingsFromCatalog();
         _ = RestoreOnStartupAsync();
+    }
+
+    public void SetMainWindow(MainWindow mainWindow)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _mainWindow = mainWindow ?? throw new ArgumentNullException(nameof(mainWindow));
     }
 
     public void Toggle()
@@ -250,6 +254,7 @@ public sealed class QuickTerminalController : IDisposable
             return;
         }
 
+        _isShuttingDown = true;
         _disposed = true;
         CancelTransition();
         _catalog.Changed -= OnCatalogChanged;
@@ -260,11 +265,6 @@ public sealed class QuickTerminalController : IDisposable
         _globalHotkey.Unregister();
         _viewModel.RecoveryStateChanged -= OnRecoveryStateChanged;
         _viewModel.Dispose();
-        if (_mainWindow is not null)
-        {
-            _mainWindow.Closing -= OnMainWindowClosing;
-            _mainWindow.Closed -= OnMainWindowClosed;
-        }
 
         if (_quickWindow is not null)
         {
@@ -772,12 +772,12 @@ public sealed class QuickTerminalController : IDisposable
         _ = sender;
         _ = e;
         Hide(restorePreviousApplication: false);
-        _mainWindowViewModel.ShowSettings(SettingsPage.Agent);
         if (_mainWindow is not { } mainWindow)
         {
             return;
         }
 
+        (mainWindow.DataContext as MainWindowViewModel)?.ShowSettings(SettingsPage.Agent);
         if (!mainWindow.IsVisible)
         {
             mainWindow.Show();
@@ -952,20 +952,4 @@ public sealed class QuickTerminalController : IDisposable
         });
     }
 
-    private void OnMainWindowClosed(object? sender, EventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        Dispose();
-    }
-
-    private void OnMainWindowClosing(object? sender, WindowClosingEventArgs e)
-    {
-        _ = sender;
-        _ = e;
-        _isShuttingDown = true;
-        CancelTransition();
-        _globalHotkey.EndEscapeCapture();
-        _globalHotkey.Unregister();
-    }
 }

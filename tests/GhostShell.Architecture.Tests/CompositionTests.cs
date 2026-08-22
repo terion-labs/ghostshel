@@ -203,4 +203,20 @@ public sealed class CompositionTests
         Assert.IsType<FileSystemLocalArtifactControl>(localArtifactControl);
         Assert.NotNull(localArtifactViewModel);
     }
+
+    [Fact]
+    public async Task Main_window_factory_creates_independent_presentation_roots()
+    {
+        await using var services = DesktopComposition.CreateServiceProvider();
+        var primary = services.GetRequiredService<MainWindowViewModel>();
+        var factory = services.GetRequiredService<MainWindowViewModelFactory>();
+
+        using var first = factory();
+        using var second = factory();
+
+        Assert.NotSame(primary, first);
+        Assert.NotSame(first, second);
+        Assert.NotEqual(primary.WindowId, first.WindowId);
+        Assert.NotEqual(first.WindowId, second.WindowId);
+    }
 }
