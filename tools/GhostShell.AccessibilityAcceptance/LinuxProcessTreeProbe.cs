@@ -304,7 +304,7 @@ internal sealed class LinuxProcessTreeProbe : IProcessTreeProbe
         uint flags);
 
     [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
-    [DllImport("libc")]
+    [DllImport("libc", EntryPoint = "close")]
     private static extern int Close(int descriptor);
 
     [StructLayout(LayoutKind.Auto)]

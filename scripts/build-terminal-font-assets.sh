@@ -7,7 +7,7 @@ dependencies_dir="${repository_dir}/.deps"
 source_dir="${dependencies_dir}/ghostty-vt"
 artifact_parent_dir="${repository_dir}/native/artifacts"
 component_catalog="${repository_dir}/licenses/terminal-font-assets.json"
-dotnet="${repository_dir}/.dotnet/dotnet"
+dotnet="${GHOSTSHELL_DOTNET:-${repository_dir}/.dotnet/dotnet}"
 
 ghostty_repository="https://github.com/ghostty-org/ghostty.git"
 ghostty_commit="08f039fbb3dea9c6b1cdb5ff4550666598122346"

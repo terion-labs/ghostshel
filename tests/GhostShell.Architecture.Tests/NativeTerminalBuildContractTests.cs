@@ -28,6 +28,22 @@ public sealed partial class NativeTerminalBuildContractTests
     }
 
     [Fact]
+    public void Native_build_supports_the_pinned_windows_host_toolchain()
+    {
+        var script = File.ReadAllText(
+            Path.Combine(RepositoryRoot, "scripts", "build-libghostty-vt.sh"));
+
+        Assert.Contains("MINGW*:*64|MSYS*:*64|CYGWIN*:*64)", script, StringComparison.Ordinal);
+        Assert.Contains("zig_distribution=\"x86_64-windows\"", script, StringComparison.Ordinal);
+        Assert.Contains(
+            "68659eb5f1e4eb1437a722f1dd889c5a322c9954607f5edcf337bc3684a75a7e",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains("zig_archive_extension=\"zip\"", script, StringComparison.Ordinal);
+        Assert.Contains("zig_executable=\"zig.exe\"", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Native_build_tests_the_patched_source_and_gates_published_exports()
     {
         var script = File.ReadAllText(
@@ -136,6 +152,7 @@ public sealed partial class NativeTerminalBuildContractTests
             "repository-gate.yml"));
 
         Assert.Contains("terminal-font-assets:", workflow, StringComparison.Ordinal);
+        Assert.Contains("terminal-native-assets:", workflow, StringComparison.Ordinal);
         Assert.Contains(
             "name: terminal-font-test-assets",
             workflow,
@@ -143,13 +160,17 @@ public sealed partial class NativeTerminalBuildContractTests
         Assert.Equal(
             3,
             workflow.Split(
-                "needs: terminal-font-assets",
+                "needs: [terminal-font-assets, terminal-native-assets]",
                 StringSplitOptions.None).Length - 1);
         Assert.Equal(
             3,
             workflow.Split(
                 "name: Download terminal font assets",
                 StringSplitOptions.None).Length - 1);
+        Assert.Contains("name: terminal-native-linux-x64", workflow, StringComparison.Ordinal);
+        Assert.Contains("name: terminal-native-osx-arm64", workflow, StringComparison.Ordinal);
+        Assert.Contains("name: terminal-native-win-x64", workflow, StringComparison.Ordinal);
+        Assert.Contains("include-hidden-files: true", workflow, StringComparison.Ordinal);
     }
 
     [Fact]

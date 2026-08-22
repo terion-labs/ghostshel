@@ -49,10 +49,48 @@ jobs:
           path: native/artifacts/common
           if-no-files-found: error
           retention-days: 1
+      - name: Upload Linux terminal runtime
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: terminal-native-linux-x64
+          path: native/artifacts/linux-x64
+          if-no-files-found: error
+          retention-days: 1
+
+  terminal-native-assets:
+    name: Build terminal runtime (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            rid: osx-arm64
+          - os: windows-2022
+            rid: win-x64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - name: Build verified terminal runtime
+        shell: bash
+        run: >-
+          GHOSTSHELL_DOTNET="$(command -v dotnet)"
+          ./scripts/build-libghostty-vt.sh --rid ${{ matrix.rid }}
+      - name: Upload terminal runtime
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: terminal-native-${{ matrix.rid }}
+          path: native/artifacts/${{ matrix.rid }}
+          if-no-files-found: error
+          retention-days: 1
 
   managed-conformance:
     name: Tests (${{ matrix.os }}, ${{ matrix.section }})
-    needs: terminal-font-assets
+    needs: [terminal-font-assets, terminal-native-assets]
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -72,6 +110,24 @@ jobs:
         with:
           name: terminal-font-test-assets
           path: native/artifacts/common
+      - name: Download Linux terminal runtime
+        if: runner.os == 'Linux'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: terminal-native-linux-x64
+          path: native/artifacts/linux-x64
+      - name: Download macOS terminal runtime
+        if: runner.os == 'macOS'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: terminal-native-osx-arm64
+          path: native/artifacts/osx-arm64
+      - name: Download Windows terminal runtime
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: terminal-native-win-x64
+          path: native/artifacts/win-x64
       - name: Restore the locked dependency graph
         shell: bash
         run: dotnet restore GhostShell.slnx --locked-mode
@@ -85,10 +141,11 @@ jobs:
           name: test-results-${{ runner.os }}-${{ matrix.section }}
           path: ".test-results/**/*.trx"
           if-no-files-found: error
+          include-hidden-files: true
 
   cross-platform-build:
     name: Release build (${{ matrix.os }})
-    needs: terminal-font-assets
+    needs: [terminal-font-assets, terminal-native-assets]
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -107,6 +164,18 @@ jobs:
         with:
           name: terminal-font-test-assets
           path: native/artifacts/common
+      - name: Download macOS terminal runtime
+        if: runner.os == 'macOS'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: terminal-native-osx-arm64
+          path: native/artifacts/osx-arm64
+      - name: Download Windows terminal runtime
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: terminal-native-win-x64
+          path: native/artifacts/win-x64
       - name: Restore the locked dependency graph
         shell: bash
         run: dotnet restore GhostShell.slnx --locked-mode
@@ -116,7 +185,7 @@ jobs:
 
   format-and-boundaries:
     name: Format and architecture boundaries
-    needs: terminal-font-assets
+    needs: [terminal-font-assets, terminal-native-assets]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -130,6 +199,11 @@ jobs:
         with:
           name: terminal-font-test-assets
           path: native/artifacts/common
+      - name: Download Linux terminal runtime
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: terminal-native-linux-x64
+          path: native/artifacts/linux-x64
       - name: Run the fast repository gate
         run: ./scripts/check.sh --quick
 

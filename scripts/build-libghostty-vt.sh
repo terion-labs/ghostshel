@@ -11,7 +11,7 @@ component_catalog="${repository_dir}/licenses/native-terminal-components.json"
 shell_integration_notice="${repository_dir}/native/ghostty-vt/SHELL-INTEGRATION-NOTICE.md"
 required_exports_manifest="${repository_dir}/native/ghostty-vt/required-exports.txt"
 extension_abi_probe_source="${repository_dir}/native/ghostty-vt/extension-abi-probe.c"
-dotnet="${repository_dir}/.dotnet/dotnet"
+dotnet="${GHOSTSHELL_DOTNET:-${repository_dir}/.dotnet/dotnet}"
 
 ghostty_repository="https://github.com/ghostty-org/ghostty.git"
 ghostty_commit="08f039fbb3dea9c6b1cdb5ff4550666598122346"
@@ -54,6 +54,8 @@ done
 
 host_os="$(uname -s)"
 host_arch="$(uname -m)"
+zig_archive_extension="tar.xz"
+zig_executable="zig"
 case "${host_os}:${host_arch}" in
     Darwin:arm64)
         host_rid="osx-arm64"
@@ -74,6 +76,13 @@ case "${host_os}:${host_arch}" in
         host_rid="linux-arm64"
         zig_distribution="aarch64-linux"
         zig_archive_sha="ea4b09bfb22ec6f6c6ceac57ab63efb6b46e17ab08d21f69f3a48b38e1534f17"
+        ;;
+    MINGW*:*64|MSYS*:*64|CYGWIN*:*64)
+        host_rid="win-x64"
+        zig_distribution="x86_64-windows"
+        zig_archive_sha="68659eb5f1e4eb1437a722f1dd889c5a322c9954607f5edcf337bc3684a75a7e"
+        zig_archive_extension="zip"
+        zig_executable="zig.exe"
         ;;
     *)
         echo "Unsupported build host ${host_os} ${host_arch}." >&2
@@ -164,19 +173,23 @@ file_size() {
     fi
 }
 
-zig_archive="${dependencies_dir}/toolchains/zig-${zig_distribution}-${zig_version}.tar.xz"
+zig_archive="${dependencies_dir}/toolchains/zig-${zig_distribution}-${zig_version}.${zig_archive_extension}"
 zig_dir="${dependencies_dir}/toolchains/zig-${zig_distribution}-${zig_version}"
-zig="${zig_dir}/zig"
+zig="${zig_dir}/${zig_executable}"
 if [[ ! -x "${zig}" ]]; then
     curl -fL \
-        "https://ziglang.org/download/${zig_version}/zig-${zig_distribution}-${zig_version}.tar.xz" \
+        "https://ziglang.org/download/${zig_version}/zig-${zig_distribution}-${zig_version}.${zig_archive_extension}" \
         -o "${zig_archive}"
     actual_archive_sha="$(hash_file "${zig_archive}")"
     if [[ "${actual_archive_sha}" != "${zig_archive_sha}" ]]; then
         echo "The downloaded Zig archive failed its pinned SHA-256 check." >&2
         exit 1
     fi
-    tar -xJf "${zig_archive}" -C "${dependencies_dir}/toolchains"
+    if [[ "${zig_archive_extension}" == "zip" ]]; then
+        tar -xf "${zig_archive}" -C "${dependencies_dir}/toolchains"
+    else
+        tar -xJf "${zig_archive}" -C "${dependencies_dir}/toolchains"
+    fi
 fi
 if [[ "$("${zig}" version)" != "${zig_version}" ]]; then
     echo "Expected Zig ${zig_version} at ${zig}; found a different version." >&2
@@ -345,6 +358,9 @@ fi
     "${abi_probe_link_options[@]}" \
     -o "${abi_probe}"
 if [[ "${target_rid}" == "${host_rid}" ]]; then
+    if [[ "${target_rid}" == "win-x64" ]]; then
+        cp "${artifact_dir}/${artifact_library}" "${build_run_dir}/${artifact_library}"
+    fi
     "${abi_probe}"
 fi
 
