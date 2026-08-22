@@ -113,11 +113,11 @@
       },
       "Dock.Model.Inpc": {
         "type": "Direct",
-        "requested": "[12.0.0.2, )",
-        "resolved": "12.0.0.2",
-        "contentHash": "ObZcu0Gmp8vkunBrvISvsWsCuODnjYsA5hrb6Examey621SjwLjDwYLswZmzNZfw/a0FxyF56Q1PXf3uxq1wiQ==",
+        "requested": "[12.1.0.4, )",
+        "resolved": "12.1.0.4",
+        "contentHash": "+fQcmApWMq5crMJsLVT5eOoJ6/QXjnZvXnZNEFrvezqyGwDU+Zxr+jhVB+nSl/tJGiVW2Or0n6O8bEfnKdFcHA==",
         "dependencies": {
-          "Dock.Model": "12.0.0.2"
+          "Dock.Model": "12.1.0.4"
         }
       },
       "FluentIcons.Avalonia": {
@@ -236,8 +236,8 @@
       },
       "Dock.Controls.Recycling.Model": {
         "type": "Transitive",
-        "resolved": "12.0.0.2",
-        "contentHash": "klVsAStNW7SyvIvV6060o3Rx0Rgzo2Dus3MPJD7Td87FJyK0X7djki8m/EOtD6qi3RyZaRZTLOEjskNk12Q/3Q=="
+        "resolved": "12.1.0.4",
+        "contentHash": "vlsTxlUihDnX9ey5ssQi+bhRUpzn2cj8NIPEpn3uE5bdSlI952QVS22hS1ptZGGhIk2H4U2ltBK8ueq/GLRi7g=="
       },
       "Dock.MarkupExtension": {
         "type": "Transitive",
@@ -249,10 +249,10 @@
       },
       "Dock.Model": {
         "type": "Transitive",
-        "resolved": "12.0.0.2",
-        "contentHash": "yLD28SMkaGMVdv/kVkO1t+GkBbFWRPKlNoXh+KZ/lPjwCJKg8vm0xmdqdgszMZGbpcWPT7T2LZk/JuwECndftA==",
+        "resolved": "12.1.0.4",
+        "contentHash": "T0RKa8TbwyzjVeq4j4+yYY3PtKrXk+TpgizRn8spk8F0vt4UgSFhv4aGda6unIjJ+ne0ZD37dBZ8b7a9PDs2Gw==",
         "dependencies": {
-          "Dock.Controls.Recycling.Model": "12.0.0.2"
+          "Dock.Controls.Recycling.Model": "12.1.0.4"
         }
       },
       "Dock.Settings": {
@@ -440,7 +440,7 @@
       "ghostshell.docking": {
         "type": "Project",
         "dependencies": {
-          "Dock.Model.Inpc": "[12.0.0.2, )"
+          "Dock.Model.Inpc": "[12.1.0.4, )"
         }
       }
     }
