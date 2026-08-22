@@ -60,37 +60,41 @@ public sealed partial class App : Avalonia.Application
 
     static App()
     {
-        // A dock splitter is laid out by its Width or Height, which the library
-        // copies from Thickness when the splitter joins its panel and never
-        // again. The panel, meanwhile, divides the row by the current Thickness
-        // every time it measures. Change the thickness after that first
-        // layout — which is exactly what the density setting does, since the
-        // gap between panels comes from the spacing scale — and the two
-        // disagree: the row is divided for a six-pixel gap and drawn with an
-        // eight-pixel one, so the last panel overhangs the dock by the
-        // difference and the dock's clip cuts its border off. At a compact
-        // density that border is the focused panel's accent outline, gone down
-        // the whole right edge of the window.
+        // A dock splitter is laid out by its Width or Height, while its panel
+        // reserves the current Thickness. Dock copies Thickness to the active
+        // axis when the splitter joins a panel, but those values can drift in
+        // either direction: density changes Thickness after the first layout,
+        // and a rebuilt layout can restore Dock's one-pixel axis after the
+        // styled Thickness is already in place. Either mismatch clips a panel
+        // border or collapses the resize target.
         //
         // Whichever axis the splitter was given, it keeps; setting the other
         // would size it across the row instead of along it.
         ProportionalStackPanelSplitter.ThicknessProperty.Changed
-            .AddClassHandler<ProportionalStackPanelSplitter>((splitter, _) =>
-            {
-                if (!double.IsNaN(splitter.Width))
-                {
-                    splitter.Width = splitter.Thickness;
-                }
-
-                if (!double.IsNaN(splitter.Height))
-                {
-                    splitter.Height = splitter.Thickness;
-                }
-            });
+            .AddClassHandler<ProportionalStackPanelSplitter>(SynchronizeDockSplitterAxis);
+        ProportionalStackPanelSplitter.WidthProperty.Changed
+            .AddClassHandler<ProportionalStackPanelSplitter>(SynchronizeDockSplitterAxis);
+        ProportionalStackPanelSplitter.HeightProperty.Changed
+            .AddClassHandler<ProportionalStackPanelSplitter>(SynchronizeDockSplitterAxis);
     }
 
     public App()
     {
+    }
+
+    private static void SynchronizeDockSplitterAxis(
+        ProportionalStackPanelSplitter splitter,
+        AvaloniaPropertyChangedEventArgs _)
+    {
+        if (!double.IsNaN(splitter.Width) && splitter.Width != splitter.Thickness)
+        {
+            splitter.Width = splitter.Thickness;
+        }
+
+        if (!double.IsNaN(splitter.Height) && splitter.Height != splitter.Thickness)
+        {
+            splitter.Height = splitter.Thickness;
+        }
     }
 
     public App(

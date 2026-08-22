@@ -3,6 +3,7 @@ using Avalonia.Headless;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Dock.Avalonia.Controls;
+using Dock.Controls.ProportionalStackPanel;
 using Dock.Model.Core;
 using Dock.Model.Inpc.Controls;
 using GhostShell.App.ViewModels;
@@ -69,6 +70,25 @@ public sealed class RuntimeDockControlHeadlessTests
 
             Assert.Null(canvas.Layout);
             Assert.Null(canvas.Factory);
+            return Task.CompletedTask;
+        });
+
+    [Fact]
+    public Task Rebuilt_splitter_cannot_collapse_below_the_styled_gap() =>
+        RunHeadlessAsync(() =>
+        {
+            var splitter = new ProportionalStackPanelSplitter
+            {
+                Thickness = 8,
+                Width = 8,
+            };
+
+            // Dock reapplies its initial axis while rebuilding a changed
+            // layout, after the styled thickness has already resolved.
+            splitter.Width = 1;
+
+            Assert.Equal(8, splitter.Width);
+            Assert.True(double.IsNaN(splitter.Height));
             return Task.CompletedTask;
         });
 
