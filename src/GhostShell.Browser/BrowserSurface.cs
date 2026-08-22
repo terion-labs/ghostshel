@@ -245,6 +245,17 @@ public sealed partial class BrowserSurface :
         _nativeView.SetAgentActivity(isActive);
     }
 
+    /// <summary>
+    /// Opens Chromium's user-facing developer tools for this renderer. This is
+    /// deliberately a local presentation action rather than a session-host or
+    /// agent capability.
+    /// </summary>
+    public bool OpenDeveloperTools()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _nativeView.OpenDeveloperTools();
+    }
+
     public void Dispose()
     {
         if (_disposed)

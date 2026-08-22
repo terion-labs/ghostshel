@@ -27,6 +27,8 @@ public sealed partial class BrowserRuntimePanelView : UserControl
 
     public event EventHandler<PanelConnectionSelectedEventArgs>? ConnectionSelected;
 
+    public event EventHandler<RoutedEventArgs>? DeveloperToolsRequested;
+
     public event EventHandler<RoutedEventArgs>? NewConnectionRequested;
 
     /// <summary>
@@ -102,6 +104,12 @@ public sealed partial class BrowserRuntimePanelView : UserControl
     {
         _ = sender;
         ForwardRequested?.Invoke(RuntimeBrowser, e);
+    }
+
+    private void OnDeveloperToolsClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        DeveloperToolsRequested?.Invoke(RuntimeBrowser, e);
     }
 
     private void OnReloadClick(object? sender, RoutedEventArgs e)

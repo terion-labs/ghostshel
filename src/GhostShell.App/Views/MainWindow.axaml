@@ -62,6 +62,7 @@
           BrowserStateChanged="OnBrowserStateChanged"
           CloseRequested="OnCloseRuntimePanelClick"
           ConnectionSelected="OnPanelConnectionSelected"
+          DeveloperToolsRequested="OnBrowserDeveloperToolsClick"
           ForwardRequested="OnBrowserForwardClick"
           GotFocus="OnRuntimePanelGotFocus"
           NewConnectionRequested="OnPanelNewConnectionRequested"

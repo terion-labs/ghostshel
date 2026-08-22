@@ -63,6 +63,17 @@ public sealed class BrowserSurfaceTests
     }
 
     [Fact]
+    public void DeveloperToolsRequestReachesOnlyTheNativeBrowserView()
+    {
+        var nativeView = new RecordingEmbeddedBrowserView();
+        var surface = Surface(nativeView);
+
+        Assert.True(surface.OpenDeveloperTools());
+
+        Assert.Equal(1, nativeView.DeveloperToolsOpenCount);
+    }
+
+    [Fact]
     public void NativePopupRequestIsPromotedToANewShellTabRequest()
     {
         var nativeView = new RecordingEmbeddedBrowserView();

@@ -56,6 +56,8 @@ internal interface IEmbeddedBrowserView : IDisposable
 
     bool Stop();
 
+    bool OpenDeveloperTools();
+
     Task<NativeBrowserSnapshotResult> CaptureSnapshotAsync(
         BrowserSnapshotQuery? query = null);
 

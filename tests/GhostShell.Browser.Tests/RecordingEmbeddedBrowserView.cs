@@ -30,6 +30,8 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
 
     public bool AcceptStop { get; set; }
 
+    public bool AcceptDeveloperTools { get; set; } = true;
+
     public bool ThrowOnNavigate { get; set; }
 
     public bool ThrowOnSnapshot { get; set; }
@@ -47,6 +49,8 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
     public int StopCount { get; private set; }
 
     public int ReloadCount { get; private set; }
+
+    public int DeveloperToolsOpenCount { get; private set; }
 
     public int SnapshotCount { get; private set; }
 
@@ -228,6 +232,12 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
     {
         StopCount++;
         return AcceptStop;
+    }
+
+    public bool OpenDeveloperTools()
+    {
+        DeveloperToolsOpenCount++;
+        return AcceptDeveloperTools;
     }
 
     public Task<NativeBrowserSnapshotResult> CaptureSnapshotAsync(

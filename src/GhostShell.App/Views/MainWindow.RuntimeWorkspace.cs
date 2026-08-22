@@ -1704,6 +1704,15 @@ public sealed partial class MainWindow
         }
     }
 
+    private void OnBrowserDeveloperToolsClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if (sender is BrowserPresentationHost browser)
+        {
+            browser.OpenDeveloperTools();
+        }
+    }
+
     private async void OnBrowserReloadClick(object? sender, RoutedEventArgs e)
     {
         _ = e;

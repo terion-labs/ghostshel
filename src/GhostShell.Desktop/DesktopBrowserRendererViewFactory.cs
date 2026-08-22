@@ -30,7 +30,8 @@ internal sealed class DesktopBrowserRendererViewFactory(
             surface,
             surface,
             surface,
-            surface.SetAgentActivity);
+            surface.SetAgentActivity,
+            surface.OpenDeveloperTools);
     }
 
     public ValueTask<BrowserRendererView> CreateAsync(
@@ -78,7 +79,8 @@ internal sealed class DesktopBrowserRendererViewFactory(
                 new RoutedBrowserLifetime(
                     surface,
                     () => ReleaseRemoteRoute(route)),
-                surface.SetAgentActivity);
+                surface.SetAgentActivity,
+                surface.OpenDeveloperTools);
         }
         catch
         {
@@ -120,7 +122,8 @@ internal sealed class DesktopBrowserRendererViewFactory(
                 surface,
                 surface,
                 surface,
-                surface.SetAgentActivity);
+                surface.SetAgentActivity,
+                surface.OpenDeveloperTools);
         }
         catch
         {

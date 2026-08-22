@@ -47,11 +47,13 @@ public sealed class BrowserRendererView(
     Control view,
     IBrowserRenderer renderer,
     IDisposable? lifetime = null,
-    Action<bool>? agentActivityChanged = null) : IDisposable
+    Action<bool>? agentActivityChanged = null,
+    Func<bool>? developerToolsRequested = null) : IDisposable
 {
     private readonly SemaphoreSlim _attachmentGate = new(1, 1);
     private readonly IDisposable? _lifetime = lifetime;
     private readonly Action<bool>? _agentActivityChanged = agentActivityChanged;
+    private readonly Func<bool>? _developerToolsRequested = developerToolsRequested;
     private bool _isAgentActive;
     private bool _disposed;
 
@@ -84,6 +86,9 @@ public sealed class BrowserRendererView(
         _isAgentActive = isActive;
         _agentActivityChanged?.Invoke(isActive);
     }
+
+    internal bool OpenDeveloperTools() =>
+        !_disposed && _developerToolsRequested?.Invoke() is true;
 
     /// <summary>
     /// Ensures the panel-owned renderer is linked to its hosted session. This

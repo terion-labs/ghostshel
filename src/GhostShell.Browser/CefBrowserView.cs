@@ -183,6 +183,18 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         return true;
     }
 
+    public bool OpenDeveloperTools()
+    {
+        ThrowIfDisposed();
+        if (_browser is not { IsInitialized: true } browser)
+        {
+            return false;
+        }
+
+        browser.ShowDevTools();
+        return true;
+    }
+
     public async Task<NativeBrowserSnapshotResult> CaptureSnapshotAsync(
         BrowserSnapshotQuery? query = null)
     {

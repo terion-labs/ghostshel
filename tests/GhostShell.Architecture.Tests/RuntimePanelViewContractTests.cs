@@ -1331,6 +1331,9 @@ public sealed class RuntimePanelViewContractTests
             "OnBrowserStateChanged",
             AttributeValue(component, "BrowserStateChanged"));
         Assert.Equal(
+            "OnBrowserDeveloperToolsClick",
+            AttributeValue(component, "DeveloperToolsRequested"));
+        Assert.Equal(
             "OnBrowserForwardClick",
             AttributeValue(component, "ForwardRequested"));
         Assert.Equal(
@@ -1361,6 +1364,15 @@ public sealed class RuntimePanelViewContractTests
         Assert.Equal(
             "OnBrowserStateChanged",
             AttributeValue(browser, "BrowserStateChanged"));
+        var developerTools = FindUniqueAccessibleElement(
+            root,
+            "Open browser developer tools");
+        Assert.Equal(
+            "OnDeveloperToolsClick",
+            AttributeValue(developerTools, "Click"));
+        Assert.Equal(
+            "{Binding IsLive, ElementName=RuntimeBrowser}",
+            AttributeValue(developerTools, "IsEnabled"));
         Assert.DoesNotContain(
             root.DescendantsAndSelf(),
             element => element.Attributes().Any(attribute =>

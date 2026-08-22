@@ -219,6 +219,17 @@ public sealed class BrowserPresentationHost : ContentControl
     internal bool RequestInputFocus() =>
         RendererView?.View.Focus() ?? Focus();
 
+    internal void OpenDeveloperTools()
+    {
+        if (RendererView?.OpenDeveloperTools() is true)
+        {
+            return;
+        }
+
+        SetOperationMessage(
+            "Developer tools are unavailable until the browser is ready.");
+    }
+
     public async ValueTask NavigateAddressAsync(
         string? text,
         CancellationToken cancellationToken = default)

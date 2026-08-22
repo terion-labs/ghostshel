@@ -44,7 +44,7 @@
 
     <controls:PanelChrome.HeaderContent>
       <Grid
-          ColumnDefinitions="Auto,Auto,*,Auto"
+          ColumnDefinitions="Auto,Auto,*,Auto,Auto"
           ColumnSpacing="{DynamicResource ShellSpaceXs}">
         <Button
             AutomationProperties.Name="Go back"
@@ -93,6 +93,15 @@
             IsVisible="{Binding IsLoading, ElementName=RuntimeBrowser}"
             ToolTip.Tip="Stop loading">
           <icons:SymbolIcon FontSize="{DynamicResource ShellFontSize13}" Symbol="Dismiss" />
+        </Button>
+        <Button
+            Grid.Column="4"
+            AutomationProperties.Name="Open browser developer tools"
+            Classes="IconButton"
+            Click="OnDeveloperToolsClick"
+            IsEnabled="{Binding IsLive, ElementName=RuntimeBrowser}"
+            ToolTip.Tip="Developer tools">
+          <icons:SymbolIcon FontSize="{DynamicResource ShellFontSize13}" Symbol="Code" />
         </Button>
       </Grid>
     </controls:PanelChrome.HeaderContent>

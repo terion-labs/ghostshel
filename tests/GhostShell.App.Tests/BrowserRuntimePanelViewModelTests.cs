@@ -91,6 +91,38 @@ public sealed class BrowserRuntimePanelViewModelTests
         Assert.Equal([true, false], activityStates);
     }
 
+    [Fact]
+    public void Browser_panel_opens_developer_tools_through_its_owned_renderer()
+    {
+        var openCount = 0;
+        var rendererView = new BrowserRendererView(
+            new Border(),
+            new RecordingBrowserRenderer(),
+            developerToolsRequested: () =>
+            {
+                openCount++;
+                return true;
+            });
+        var host = new BrowserPresentationHost { RendererView = rendererView };
+
+        host.OpenDeveloperTools();
+
+        Assert.Equal(1, openCount);
+        Assert.Empty(host.StatusMessage);
+    }
+
+    [Fact]
+    public void Browser_panel_explains_when_developer_tools_are_not_ready()
+    {
+        var host = new BrowserPresentationHost();
+
+        host.OpenDeveloperTools();
+
+        Assert.Equal(
+            "Developer tools are unavailable until the browser is ready.",
+            host.StatusMessage);
+    }
+
     /// <summary>
     /// A panel floated into a window of its own takes its surface with it, and
     /// brings it back. By the time it comes back the window it was in has closed
