@@ -100,6 +100,41 @@ public sealed class AcceleratedFramePacingTests
         Assert.Equal(expectedHeight, size.Y);
     }
 
+    [Fact]
+    public void FixedRatePresentationKeepsThreeReusableGpuFramesInFlight()
+    {
+        Assert.Equal(3, WebView.AcceleratedFrameSlotCount);
+    }
+
+    [Fact]
+    public void PreciseWheelDeltasPreserveSubPixelRemainders()
+    {
+        double remainder = 0;
+
+        int first = WebView.ScaleWheelDelta(0.01, ref remainder);
+        int second = WebView.ScaleWheelDelta(0.01, ref remainder);
+
+        Assert.Equal(0, first);
+        Assert.Equal(1, second);
+        Assert.Equal(0, remainder);
+    }
+
+    [Theory]
+    [InlineData(1.0, 50)]
+    [InlineData(-1.0, -50)]
+    [InlineData(0.1, 5)]
+    public void WheelDeltasRestoreAvaloniaMacPixelNormalization(
+        double delta,
+        int expected)
+    {
+        double remainder = 0;
+
+        int actual = WebView.ScaleWheelDelta(delta, ref remainder);
+
+        Assert.Equal(expected, actual);
+        Assert.Equal(0, remainder);
+    }
+
     [Theory]
     [InlineData(1600, 900, 800, 450, 2.0, true)]
     [InlineData(1601, 901, 800, 450, 2.0, true)]

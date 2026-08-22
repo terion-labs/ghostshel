@@ -515,7 +515,6 @@ extern "C" int excef_copy_macos_accelerated_frame(
     }
 
     @autoreleasepool {
-        *out_frame = {};
         EnsureAcceleratedCopyDevice();
         if (!g_accelerated_copy_device || !g_accelerated_copy_queue) {
             return 0;
@@ -530,60 +529,91 @@ extern "C" int excef_copy_macos_accelerated_frame(
             return 0;
         }
 
-        const OSType surface_format = format == 0
-            ? kCVPixelFormatType_32RGBA
-            : kCVPixelFormatType_32BGRA;
         const MTLPixelFormat metal_format = format == 0
             ? MTLPixelFormatRGBA8Unorm
             : MTLPixelFormatBGRA8Unorm;
-        const size_t bytes_per_row = IOSurfaceAlignProperty(
-            kIOSurfaceBytesPerRow,
-            static_cast<size_t>(width) * 4);
-        NSDictionary* properties = @{
-            (__bridge NSString*)kIOSurfaceWidth: @(width),
-            (__bridge NSString*)kIOSurfaceHeight: @(height),
-            (__bridge NSString*)kIOSurfaceBytesPerElement: @4,
-            (__bridge NSString*)kIOSurfaceBytesPerRow: @(bytes_per_row),
-            (__bridge NSString*)kIOSurfaceAllocSize:
-                @(bytes_per_row * static_cast<size_t>(height)),
-            (__bridge NSString*)kIOSurfacePixelFormat: @(surface_format),
-        };
-        IOSurfaceRef destination = IOSurfaceCreate(
-            (__bridge CFDictionaryRef)properties);
-        if (!destination) {
-            return 0;
-        }
-
         MTLTextureDescriptor* source_descriptor =
             [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:metal_format
                                                                width:width
                                                               height:height
                                                            mipmapped:NO];
         source_descriptor.usage = MTLTextureUsageShaderRead;
-        MTLTextureDescriptor* destination_descriptor =
-            [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:metal_format
-                                                               width:width
-                                                              height:height
-                                                           mipmapped:NO];
-        destination_descriptor.usage = MTLTextureUsageShaderRead;
         id<MTLTexture> source_texture =
             [g_accelerated_copy_device newTextureWithDescriptor:source_descriptor
                                                        iosurface:source
                                                            plane:0];
-        id<MTLTexture> destination_texture =
-            [g_accelerated_copy_device newTextureWithDescriptor:destination_descriptor
-                                                       iosurface:destination
-                                                           plane:0];
-        if (!source_texture || !destination_texture) {
-            CFRelease(destination);
+        if (!source_texture) {
             return 0;
         }
+
+        const bool can_reuse_destination =
+            out_frame->io_surface
+            && out_frame->ready_event
+            && out_frame->destination_texture
+            && out_frame->width == width
+            && out_frame->height == height
+            && out_frame->format == format;
+        if (!can_reuse_destination) {
+            const OSType surface_format = format == 0
+                ? kCVPixelFormatType_32RGBA
+                : kCVPixelFormatType_32BGRA;
+            const size_t bytes_per_row = IOSurfaceAlignProperty(
+                kIOSurfaceBytesPerRow,
+                static_cast<size_t>(width) * 4);
+            NSDictionary* properties = @{
+                (__bridge NSString*)kIOSurfaceWidth: @(width),
+                (__bridge NSString*)kIOSurfaceHeight: @(height),
+                (__bridge NSString*)kIOSurfaceBytesPerElement: @4,
+                (__bridge NSString*)kIOSurfaceBytesPerRow: @(bytes_per_row),
+                (__bridge NSString*)kIOSurfaceAllocSize:
+                    @(bytes_per_row * static_cast<size_t>(height)),
+                (__bridge NSString*)kIOSurfacePixelFormat: @(surface_format),
+            };
+            IOSurfaceRef new_destination = IOSurfaceCreate(
+                (__bridge CFDictionaryRef)properties);
+            if (!new_destination) {
+                return 0;
+            }
+
+            MTLTextureDescriptor* destination_descriptor =
+                [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:metal_format
+                                                                   width:width
+                                                                  height:height
+                                                               mipmapped:NO];
+            destination_descriptor.usage = MTLTextureUsageShaderRead;
+            id<MTLTexture> new_destination_texture =
+                [g_accelerated_copy_device
+                    newTextureWithDescriptor:destination_descriptor
+                                   iosurface:new_destination
+                                       plane:0];
+            id<MTLSharedEvent> new_ready_event =
+                [g_accelerated_copy_device newSharedEvent];
+            if (!new_destination_texture || !new_ready_event) {
+                CFRelease(new_destination);
+                return 0;
+            }
+
+            excef_release_macos_accelerated_frame(out_frame);
+            out_frame->io_surface = new_destination;
+            out_frame->ready_event =
+                (__bridge_retained void*)new_ready_event;
+            out_frame->destination_texture =
+                (__bridge_retained void*)new_destination_texture;
+            out_frame->ready_value = 0;
+            out_frame->width = width;
+            out_frame->height = height;
+            out_frame->format = format;
+        }
+
+        id<MTLTexture> destination_texture =
+            (__bridge id<MTLTexture>)out_frame->destination_texture;
+        id<MTLSharedEvent> ready_event =
+            (__bridge id<MTLSharedEvent>)out_frame->ready_event;
 
         id<MTLCommandBuffer> command_buffer =
             [g_accelerated_copy_queue commandBuffer];
         id<MTLBlitCommandEncoder> blit = [command_buffer blitCommandEncoder];
         if (!command_buffer || !blit) {
-            CFRelease(destination);
             return 0;
         }
 
@@ -600,25 +630,31 @@ extern "C" int excef_copy_macos_accelerated_frame(
         [command_buffer commit];
         [command_buffer waitUntilCompleted];
         if (command_buffer.status != MTLCommandBufferStatusCompleted) {
-            CFRelease(destination);
             return 0;
         }
 
-        id<MTLSharedEvent> ready_event =
-            [g_accelerated_copy_device newSharedEvent];
-        if (!ready_event) {
-            CFRelease(destination);
-            return 0;
-        }
-        ready_event.signaledValue = 1;
-
-        out_frame->io_surface = destination;
-        out_frame->ready_event = (__bridge_retained void*)ready_event;
-        out_frame->ready_value = 1;
-        out_frame->width = width;
-        out_frame->height = height;
-        out_frame->format = format;
+        const uint64_t next_ready_value = out_frame->ready_value == 0
+            ? 1
+            : out_frame->ready_value + 2;
+        ready_event.signaledValue = next_ready_value;
+        out_frame->ready_value = next_ready_value;
         return 1;
+    }
+}
+
+extern "C" int excef_macos_accelerated_frame_is_released(
+    const excef_macos_accelerated_frame* frame) {
+    if (!frame || frame->ready_value == 0) {
+        return 1;
+    }
+    if (!frame->ready_event) {
+        return 0;
+    }
+
+    @autoreleasepool {
+        id<MTLSharedEvent> ready_event =
+            (__bridge id<MTLSharedEvent>)frame->ready_event;
+        return ready_event.signaledValue >= frame->ready_value + 1 ? 1 : 0;
     }
 }
 
@@ -632,6 +668,9 @@ extern "C" void excef_release_macos_accelerated_frame(
     }
     if (frame->ready_event) {
         CFBridgingRelease(frame->ready_event);
+    }
+    if (frame->destination_texture) {
+        CFBridgingRelease(frame->destination_texture);
     }
     *frame = {};
 }

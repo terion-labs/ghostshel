@@ -3,7 +3,7 @@
 This directory vendors Exclr8CEF commit
 `7751a0b76cbabaf1fa81ef2b71b694a44c87f77e` and applies the reviewed
 GhostSHELL hardening needed for a production off-screen browser host. The
-resulting native binding version is `0.8.0-ghostshell.4`.
+resulting native binding version is `0.8.0-ghostshell.5`.
 
 `GHOSTSHELL-PATCHSET.sha256` is the canonical, path-sorted manifest of every
 file that differs from that upstream commit. Its own SHA-256 is recorded in
@@ -17,7 +17,8 @@ The local changes provide fail-closed main-frame navigation and resource
 gates, opt-in/main-frame-only JavaScript bridge injection, normalized process
 arguments, command-line switch suppression, macOS helper sandbox setup,
 deterministic disposal, bounded CPU-OSR frame delivery, macOS Metal/IOSurface
-accelerated presentation paced by Avalonia's render clock, and an
+accelerated presentation with a fixed-rate CEF frame clock and reusable
+compositor-released buffers, and an
 Avalonia-rendered browser context menu, browser-tab context commands, and
 modifier/middle-click new-tab routing.
 

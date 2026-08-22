@@ -652,16 +652,18 @@ typedef void (*excef_accelerated_paint_cb_t)(int browser_id,
                                                 const void* shared_handle);
 EXCEF_API void excef_set_accelerated_paint_callback(excef_accelerated_paint_cb_t cb);
 
-// macOS-only owned copy of one accelerated paint frame. CEF recycles the
-// source IOSurface as soon as OnAcceleratedPaint returns, so a compositor
-// cannot safely retain that pointer. This helper performs a synchronous
-// GPU-to-GPU Metal blit into a new IOSurface and returns that surface plus a
-// signaled MTLSharedEvent suitable for compositor import. The caller owns the
-// returned objects and must call excef_release_macos_accelerated_frame.
-// Returns 1 on success and 0 when unsupported or when the copy fails.
+// macOS-only client-owned accelerated paint buffer. CEF recycles the source
+// IOSurface as soon as OnAcceleratedPaint returns, so a compositor cannot
+// safely retain that pointer. This helper performs a synchronous GPU-to-GPU
+// Metal blit into the destination IOSurface. Passing a struct returned by an
+// earlier successful call reuses its IOSurface, destination texture, and
+// MTLSharedEvent when the dimensions and format still match. Initialize the
+// struct to zero before its first use and call
+// excef_release_macos_accelerated_frame when finished.
 typedef struct excef_macos_accelerated_frame {
     void* io_surface;
     void* ready_event;
+    void* destination_texture;
     uint64_t ready_value;
     int width;
     int height;
@@ -674,6 +676,11 @@ EXCEF_API int excef_copy_macos_accelerated_frame(
     int height,
     int format,
     excef_macos_accelerated_frame* out_frame);
+// Returns 1 after the compositor has signaled ready_value + 1, or before the
+// buffer has ever been submitted. A destination must not be overwritten while
+// this function returns 0.
+EXCEF_API int excef_macos_accelerated_frame_is_released(
+    const excef_macos_accelerated_frame* frame);
 EXCEF_API void excef_release_macos_accelerated_frame(
     excef_macos_accelerated_frame* frame);
 

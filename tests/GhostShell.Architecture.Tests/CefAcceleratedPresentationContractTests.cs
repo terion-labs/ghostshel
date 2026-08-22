@@ -67,6 +67,37 @@ public sealed class CefAcceleratedPresentationContractTests
         Assert.Contains("info.extra.coded_size", acceleratedPaint);
     }
 
+    [Fact]
+    public void Mac_accelerated_frames_reuse_only_compositor_released_buffers()
+    {
+        var nativeSource = File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            "vendor",
+            "exclr8cef",
+            "native",
+            "shim",
+            "exclr8cef_mac.mm"));
+        var copy = Slice(
+            nativeSource,
+            "extern \"C\" int excef_copy_macos_accelerated_frame(",
+            "extern \"C\" int excef_macos_accelerated_frame_is_released(");
+        Assert.Contains("can_reuse_destination", copy);
+        Assert.Contains("out_frame->destination_texture", copy);
+        Assert.Contains("out_frame->ready_value + 2", copy);
+
+        var slotSource = File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            "vendor",
+            "exclr8cef",
+            "src",
+            "Exclr8Cef.WebView",
+            "AcceleratedFrameSlot.cs"));
+        Assert.Contains("AwaitingConsumer", slotSource);
+        Assert.Contains("_frame.IsReleasedByConsumer", slotSource);
+        Assert.Contains("_importedSurfaceHandle == surfaceHandle", slotSource);
+        Assert.Contains("_importedEventHandle == eventHandle", slotSource);
+    }
+
     private static string Slice(string source, string start, string end)
     {
         var startIndex = source.IndexOf(start, StringComparison.Ordinal);

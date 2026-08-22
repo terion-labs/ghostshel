@@ -73,11 +73,12 @@ public class WebView : Control, IWebView, IDisposable
         }
         lock (_acceleratedPaintGate)
         {
-            _pendingMainAcceleratedPaint?.Frame.Dispose();
+            _pendingMainAcceleratedPaint?.Slot.ReleaseWithoutPresentation();
             _pendingMainAcceleratedPaint = null;
-            _pendingPopupAcceleratedPaint?.Frame.Dispose();
+            _pendingPopupAcceleratedPaint?.Slot.ReleaseWithoutPresentation();
             _pendingPopupAcceleratedPaint = null;
         }
+        _ = DisposeAcceleratedFrameSlotsAsync();
         DismissBrowserContextMenu();
         DisposeAcceleratedPresentation();
         GC.SuppressFinalize(this);
@@ -287,8 +288,12 @@ public class WebView : Control, IWebView, IDisposable
     private PendingPaint? _pendingPaint;
     private bool _paintDispatchScheduled;
     private readonly object _acceleratedPaintGate = new();
+    internal const int AcceleratedFrameSlotCount = 3;
+    private readonly AcceleratedFrameSlot[] _acceleratedFrameSlots =
+        [new(), new(), new()];
     private PendingAcceleratedPaint? _pendingMainAcceleratedPaint;
     private PendingAcceleratedPaint? _pendingPopupAcceleratedPaint;
+    private int _nextAcceleratedFrameSlot;
     private Task? _acceleratedPaintPump;
     private bool _acceleratedPaintPumpScheduled;
     private bool _acceleratedInitializationStarted;
@@ -323,6 +328,8 @@ public class WebView : Control, IWebView, IDisposable
     private long _diagnosticsWindowPresentationTicks;
     private readonly FrameCadenceDiagnostics? _receivedFrameCadence;
     private readonly FrameCadenceDiagnostics? _presentedFrameCadence;
+    private double _wheelDeltaRemainderX;
+    private double _wheelDeltaRemainderY;
     private bool _disposed;
 
     public WebView()
@@ -1014,11 +1021,12 @@ public class WebView : Control, IWebView, IDisposable
         Interlocked.Increment(ref _acceleratedFramesReceived);
         _receivedFrameCadence?.Record(Stopwatch.GetTimestamp());
 
-        MacAcceleratedFrame? frame;
+        AcceleratedFrameSlot? slot;
+        bool copyFailed;
         long copyStartedAt = Stopwatch.GetTimestamp();
         try
         {
-            frame = MacAcceleratedFrame.TryCopy(paint);
+            slot = TryCopyAcceleratedFrame(paint, out copyFailed);
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
@@ -1027,10 +1035,17 @@ public class WebView : Control, IWebView, IDisposable
                 exception);
             return;
         }
-        if (frame is null)
+        if (slot is null)
         {
-            ReportAcceleratedRenderingFailure(
-                "CEF IOSurface copy was rejected");
+            if (copyFailed)
+            {
+                ReportAcceleratedRenderingFailure(
+                    "CEF IOSurface copy was rejected");
+            }
+            else
+            {
+                Interlocked.Increment(ref _acceleratedFramesDropped);
+            }
             return;
         }
 
@@ -1041,17 +1056,23 @@ public class WebView : Control, IWebView, IDisposable
 
         var pending = new PendingAcceleratedPaint(
             paint.ElementType,
-            frame,
+            slot,
             Volatile.Read(ref _renderScale));
         lock (_acceleratedPaintGate)
         {
+            if (_disposed)
+            {
+                slot.ReleaseWithoutPresentation();
+                return;
+            }
+
             if (paint.ElementType == Cef.PaintElementType.Popup)
             {
                 if (_pendingPopupAcceleratedPaint is not null)
                 {
                     Interlocked.Increment(ref _acceleratedFramesDropped);
                 }
-                _pendingPopupAcceleratedPaint?.Frame.Dispose();
+                _pendingPopupAcceleratedPaint?.Slot.ReleaseWithoutPresentation();
                 _pendingPopupAcceleratedPaint = pending;
             }
             else
@@ -1060,7 +1081,7 @@ public class WebView : Control, IWebView, IDisposable
                 {
                     Interlocked.Increment(ref _acceleratedFramesDropped);
                 }
-                _pendingMainAcceleratedPaint?.Frame.Dispose();
+                _pendingMainAcceleratedPaint?.Slot.ReleaseWithoutPresentation();
                 _pendingMainAcceleratedPaint = pending;
             }
 
@@ -1074,6 +1095,36 @@ public class WebView : Control, IWebView, IDisposable
         Dispatcher.UIThread.Post(
             StartAcceleratedPaintPump,
             DispatcherPriority.Render);
+    }
+
+    private AcceleratedFrameSlot? TryCopyAcceleratedFrame(
+        AcceleratedPaintEventArgs paint,
+        out bool copyFailed)
+    {
+        copyFailed = false;
+        int start = (int)((uint)Interlocked.Increment(
+            ref _nextAcceleratedFrameSlot)
+            % AcceleratedFrameSlotCount);
+        for (int offset = 0; offset < AcceleratedFrameSlotCount; offset++)
+        {
+            var slot = _acceleratedFrameSlots[
+                (start + offset) % AcceleratedFrameSlotCount];
+            switch (slot.TryAcquireAndCopy(paint))
+            {
+                case AcceleratedFrameCopyResult.Copied:
+                    return slot;
+                case AcceleratedFrameCopyResult.Failed:
+                    copyFailed = true;
+                    return null;
+                case AcceleratedFrameCopyResult.Unavailable:
+                    break;
+                default:
+                    throw new InvalidOperationException(
+                        "Unknown accelerated frame slot result.");
+            }
+        }
+
+        return null;
     }
 
     private void StartAcceleratedPaintPump()
@@ -1117,9 +1168,9 @@ public class WebView : Control, IWebView, IDisposable
                 exception);
             lock (_acceleratedPaintGate)
             {
-                _pendingMainAcceleratedPaint?.Frame.Dispose();
+                _pendingMainAcceleratedPaint?.Slot.ReleaseWithoutPresentation();
                 _pendingMainAcceleratedPaint = null;
-                _pendingPopupAcceleratedPaint?.Frame.Dispose();
+                _pendingPopupAcceleratedPaint?.Slot.ReleaseWithoutPresentation();
                 _pendingPopupAcceleratedPaint = null;
                 _acceleratedPaintPumpScheduled = false;
             }
@@ -1134,16 +1185,16 @@ public class WebView : Control, IWebView, IDisposable
         var interop = _gpuInterop;
         if (surface is null || interop is null)
         {
-            pending.Frame.Dispose();
+            pending.Slot.ReleaseWithoutPresentation();
             return;
         }
 
-        ICompositionImportedGpuImage? image = null;
-        ICompositionImportedGpuSemaphore? readyEvent = null;
+        bool submitted = false;
         long presentationStartedAt = Stopwatch.GetTimestamp();
         try
         {
-            var frame = pending.Frame;
+            var slot = pending.Slot;
+            var frame = slot.Frame;
             int frameWidth = frame.Width;
             int frameHeight = frame.Height;
             double frameScale = pending.RenderScale;
@@ -1175,30 +1226,10 @@ public class WebView : Control, IWebView, IDisposable
                 }
             }
             ulong readyValue = frame.ReadyValue;
-            var format = frame.Format switch
+            if (!await slot.EnsureImportsAsync(interop))
             {
-                Cef.CefColorType.Rgba8888 =>
-                    PlatformGraphicsExternalImageFormat.R8G8B8A8UNorm,
-                Cef.CefColorType.Bgra8888 =>
-                    PlatformGraphicsExternalImageFormat.B8G8R8A8UNorm,
-                _ => throw new NotSupportedException(
-                    "CEF returned an unsupported accelerated-paint format."),
-            };
-            image = interop.ImportImage(
-                new PlatformHandle(
-                    frame.IOSurface,
-                    KnownPlatformGraphicsExternalImageHandleTypes.IOSurfaceRef),
-                new PlatformGraphicsExternalImageProperties
-                {
-                    Width = frameWidth,
-                    Height = frameHeight,
-                    Format = format,
-                    TopLeftOrigin = true,
-                });
-            readyEvent = interop.ImportSemaphore(
-                new PlatformHandle(
-                    frame.ReadyEvent,
-                    KnownPlatformGraphicsExternalSemaphoreHandleTypes.MetalSharedEvent));
+                return;
+            }
 
             if (pending.ElementType == Cef.PaintElementType.Main
                 && _acceleratedMainVisual is not null)
@@ -1213,22 +1244,19 @@ public class WebView : Control, IWebView, IDisposable
                     frameScale);
             }
 
-            // Avalonia's macOS handle wrapper retained both ref-counted
-            // objects synchronously during Import*, so the native copy can
-            // release its ownership before the render-thread import runs.
-            frame.Dispose();
-
             // Imports and drawing-surface updates are serialized in call order
-            // by Avalonia's compositor. Queue the update immediately so both
-            // imports and the surface snapshot run in one compositor commit.
-            // Awaiting ImportCompleted here splits every frame across two
-            // commits and caps presentation at roughly half the refresh rate.
-            await surface.UpdateWithTimelineSemaphoresAsync(
-                image,
-                readyEvent,
+            // by Avalonia's compositor. The imported objects remain attached
+            // to this reusable slot; the Metal signal controls when CEF may
+            // overwrite its IOSurface again.
+            var update = surface.UpdateWithTimelineSemaphoresAsync(
+                slot.Image,
+                slot.ReadyEvent,
                 readyValue,
-                readyEvent,
+                slot.ReadyEvent,
                 readyValue + 1);
+            slot.MarkSubmittedToConsumer();
+            submitted = true;
+            await update;
             long presentationTicks =
                 Stopwatch.GetTimestamp() - presentationStartedAt;
             Interlocked.Increment(ref _acceleratedFramesPresented);
@@ -1254,14 +1282,9 @@ public class WebView : Control, IWebView, IDisposable
         }
         finally
         {
-            pending.Frame.Dispose();
-            if (readyEvent is not null)
+            if (!submitted)
             {
-                await readyEvent.DisposeAsync();
-            }
-            if (image is not null)
-            {
-                await image.DisposeAsync();
+                pending.Slot.ReleaseWithoutPresentation();
             }
         }
     }
@@ -1845,6 +1868,26 @@ public class WebView : Control, IWebView, IDisposable
         _compositor = null;
     }
 
+    private async Task DisposeAcceleratedFrameSlotsAsync()
+    {
+        try
+        {
+            var disposals = new Task[AcceleratedFrameSlotCount];
+            for (int index = 0; index < _acceleratedFrameSlots.Length; index++)
+            {
+                disposals[index] = _acceleratedFrameSlots[index].DisposeAsync();
+            }
+
+            await Task.WhenAll(disposals);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            Trace.TraceError(
+                "Accelerated frame resource disposal failed: {0}",
+                exception);
+        }
+    }
+
     private void StartExternalFramePacingIfReady()
     {
         if (_externalFramePacingActive
@@ -2060,7 +2103,7 @@ public class WebView : Control, IWebView, IDisposable
 
     private sealed record PendingAcceleratedPaint(
         Cef.PaintElementType ElementType,
-        MacAcceleratedFrame Frame,
+        AcceleratedFrameSlot Slot,
         double RenderScale);
 
     // ---- Popup overlay handling ----------------------------------------
@@ -2262,12 +2305,50 @@ public class WebView : Control, IWebView, IDisposable
         base.OnPointerWheelChanged(e);
         if (_browser is null) return;
         var p = e.GetCurrentPoint(this);
-        const int linePixels = 40;
+        int deltaX = ScaleWheelDelta(
+            e.Delta.X,
+            ref _wheelDeltaRemainderX);
+        int deltaY = ScaleWheelDelta(
+            e.Delta.Y,
+            ref _wheelDeltaRemainderY);
+        if (deltaX == 0 && deltaY == 0)
+        {
+            return;
+        }
+
         _browser.SendMouseWheel(
             (int)p.Position.X, (int)p.Position.Y,
-            (int)(e.Delta.X * linePixels),
-            (int)(e.Delta.Y * linePixels),
+            deltaX,
+            deltaY,
             InputMapping.MapModifiers(e.KeyModifiers));
+    }
+
+    internal static int ScaleWheelDelta(double delta, ref double remainder)
+    {
+        // Avalonia Native normalizes macOS precise scrolling deltas by 50.
+        // Restore the pixel delta and retain sub-pixel residue because CEF's
+        // OSR input API accepts integers only.
+        const double avaloniaMacScrollNormalization = 50;
+        double scaled = delta * avaloniaMacScrollNormalization + remainder;
+        if (!double.IsFinite(scaled))
+        {
+            remainder = 0;
+            return 0;
+        }
+        if (scaled >= int.MaxValue)
+        {
+            remainder = 0;
+            return int.MaxValue;
+        }
+        if (scaled <= int.MinValue)
+        {
+            remainder = 0;
+            return int.MinValue;
+        }
+
+        int wholePixels = (int)scaled;
+        remainder = scaled - wholePixels;
+        return wholePixels;
     }
 
     // Avalonia 12 unified OnGotFocus / OnLostFocus to FocusChangedEventArgs
