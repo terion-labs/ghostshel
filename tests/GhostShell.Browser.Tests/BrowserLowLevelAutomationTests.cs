@@ -375,7 +375,7 @@ public sealed class BrowserLowLevelAutomationTests
         using var parameters = JsonDocument.Parse(transport.Calls[2].Parameters!);
         var root = parameters.RootElement;
         Assert.False(root.GetProperty("throwOnSideEffect").GetBoolean());
-        Assert.True(root.GetProperty("awaitPromise").GetBoolean());
+        Assert.False(root.GetProperty("awaitPromise").GetBoolean());
         Assert.Equal(42, root.GetProperty("contextId").GetInt32());
         Assert.True(root.GetProperty("returnByValue").GetBoolean());
         var source = root.GetProperty("expression").GetString()!;
@@ -383,11 +383,8 @@ public sealed class BrowserLowLevelAutomationTests
             "const resultCandidates = () =>",
             source,
             StringComparison.Ordinal);
-        Assert.Contains("new MutationObserver", source, StringComparison.Ordinal);
-        Assert.Contains("scheduleAfterQuietPeriod", source, StringComparison.Ordinal);
-        Assert.Contains("characterData: true", source, StringComparison.Ordinal);
-        Assert.Contains("setTimeout(finish, 1000)", source, StringComparison.Ordinal);
-        Assert.Contains("setTimeout(finish, 8000)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("MutationObserver", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("setTimeout", source, StringComparison.Ordinal);
         Assert.DoesNotContain(
             "resultCandidates().length >=",
             source,
