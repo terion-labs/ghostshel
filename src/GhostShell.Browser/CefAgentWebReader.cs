@@ -71,6 +71,11 @@ internal sealed class CefAgentWebReader
             var root = document.RootElement;
             var pageTitle = root.GetProperty("title").GetString() ?? string.Empty;
             var renderedHtml = root.GetProperty("html").GetString() ?? string.Empty;
+            var links = root.GetProperty("links")
+                .EnumerateArray()
+                .Select(link => link.GetString() ?? throw new JsonException(
+                    "Page link is not a string."))
+                .ToArray();
             var sourceTruncated = root.GetProperty("truncated").GetBoolean();
             string title;
             string content;
@@ -99,6 +104,7 @@ internal sealed class CefAgentWebReader
                     title,
                     format,
                     content,
+                    links,
                     sourceTruncated || contentTruncated)));
         }
         catch (OperationCanceledException)

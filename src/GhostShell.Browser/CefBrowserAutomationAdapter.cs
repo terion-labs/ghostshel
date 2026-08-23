@@ -32,9 +32,34 @@ internal sealed class CefBrowserAutomationAdapter
     private const int MaximumCdpReplyBytes = 256 * 1024;
     private const int MaximumReadableArticleCharacters = 1024 * 1024;
     private const int ReadableArticleChunkCharacters = 32 * 1024;
+    private const int MaximumExtractedLinkCharacters = 32 * 1024;
     private static readonly UTF8Encoding StrictUtf8 = new(
         encoderShouldEmitUTF8Identifier: false,
         throwOnInvalidBytes: true);
+    private static readonly string PageLinkCollectionStatements = $$"""
+        const links = [];
+        const seenLinks = new Set();
+        let linkCharacters = 0;
+        let linksTruncated = false;
+        for (const anchor of document.querySelectorAll('a[href]')) {
+          const url = String(anchor.href || '');
+          if (!/^https?:\/\//i.test(url) || seenLinks.has(url)) {
+            continue;
+          }
+
+          seenLinks.add(url);
+          if (links.length >= {{AgentWebReadResult.MaximumLinkCount}}
+              || url.length > {{AgentWebToolRequest.MaximumUrlBytes}}
+              || linkCharacters + url.length > {{MaximumExtractedLinkCharacters}}) {
+            linksTruncated = true;
+            continue;
+          }
+
+          links.push(url);
+          linkCharacters += url.length;
+        }
+
+        """;
     private readonly ICefDevToolsTransport _transport;
     private readonly CefHumanizedInput _humanizedInput;
 
@@ -277,6 +302,7 @@ internal sealed class CefBrowserAutomationAdapter
         var extractSource = MozillaReadabilityScript.Source + """
 
             ;(() => {
+            """ + PageLinkCollectionStatements + """
               const article = new Readability(
                 document.cloneNode(true),
                 { keepClasses: false, maxElemsToParse: 0 }).parse();
@@ -288,7 +314,9 @@ internal sealed class CefBrowserAutomationAdapter
               globalThis.__ghostshellReadableArticleHtml = article.content;
               return {
                 title: String(article.title || document.title || '').slice(0, 1024),
-                length: article.content.length
+                length: article.content.length,
+                links,
+                linksTruncated
               };
             })()
             """;
@@ -392,7 +420,9 @@ internal sealed class CefBrowserAutomationAdapter
             SerializeExtractedDocument(
                 titleValue.GetString() ?? string.Empty,
                 articleHtml.ToString(),
-                articleLength > captureLength));
+                ReadLinks(root),
+                articleLength > captureLength
+                    || root.GetProperty("linksTruncated").GetBoolean()));
     }
 
     private async Task<NativeBrowserAutomationResult>
@@ -405,14 +435,16 @@ internal sealed class CefBrowserAutomationAdapter
                 "script_context_unavailable");
         }
 
-        const string source = """
+        var source = """
             (() => {
               const maximum = 98304;
               const html = document.documentElement ? document.documentElement.outerHTML : '';
+            """ + PageLinkCollectionStatements + """
               return {
                 title: String(document.title || '').slice(0, 1024),
                 html: html.slice(0, maximum),
-                truncated: html.length > maximum
+                links,
+                truncated: html.length > maximum || linksTruncated
               };
             })()
             """;
@@ -428,6 +460,7 @@ internal sealed class CefBrowserAutomationAdapter
     private static string SerializeExtractedDocument(
         string title,
         string html,
+        IReadOnlyList<string> links,
         bool truncated)
     {
         var buffer = new ArrayBufferWriter<byte>();
@@ -440,10 +473,34 @@ internal sealed class CefBrowserAutomationAdapter
         writer.WriteStartObject();
         writer.WriteString("title", title);
         writer.WriteString("html", html);
+        writer.WriteStartArray("links");
+        foreach (var link in links)
+        {
+            writer.WriteStringValue(link);
+        }
+
+        writer.WriteEndArray();
         writer.WriteBoolean("truncated", truncated);
         writer.WriteEndObject();
         writer.Flush();
         return Encoding.UTF8.GetString(buffer.WrittenSpan);
+    }
+
+    private static IReadOnlyList<string> ReadLinks(JsonElement root)
+    {
+        var links = root.GetProperty("links");
+        if (links.ValueKind is not JsonValueKind.Array
+            || links.GetArrayLength() > AgentWebReadResult.MaximumLinkCount)
+        {
+            throw new JsonException("Readable article links are invalid.");
+        }
+
+        return
+        [
+            .. links.EnumerateArray()
+                .Select(link => link.GetString() ?? throw new JsonException(
+                    "Readable article link is invalid.")),
+        ];
     }
 
     private async Task<int?> CreateIsolatedWorldAsync()

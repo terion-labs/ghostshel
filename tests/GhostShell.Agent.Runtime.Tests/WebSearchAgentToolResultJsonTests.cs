@@ -1,4 +1,6 @@
+using System.Text;
 using System.Text.Json;
+using GhostShell.Agent;
 using GhostShell.Agent.Runtime;
 using GhostShell.Application;
 using GhostShell.Core;
@@ -116,6 +118,10 @@ public sealed class WebSearchAgentToolResultJsonTests
             "Guide",
             request.Format,
             "<main>Guide</main>",
+            [
+                "https://docs.example.test/guide",
+                "https://docs.example.test/reference",
+            ],
             truncated: false);
 
         var projection = WebAgentToolResultJson.Project(request, result);
@@ -125,6 +131,48 @@ public sealed class WebSearchAgentToolResultJsonTests
             "rendered_html",
             document.RootElement.GetProperty("format").GetString());
         Assert.Equal("<main>Guide</main>", document.RootElement.GetProperty("content").GetString());
+        Assert.Equal(
+            [
+                "https://docs.example.test/guide",
+                "https://docs.example.test/reference",
+            ],
+            document.RootElement.GetProperty("links")
+                .EnumerateArray()
+                .Select(link => link.GetString()),
+            StringComparer.Ordinal);
+    }
+
+    [Fact]
+    public void WebReadProjectionPreservesLinksWhenContentNeedsTruncation()
+    {
+        var request = new AgentWebReadRequest("https://docs.example.test/guide");
+        var links = Enumerable.Range(0, 100)
+            .Select(index => $"https://docs.example.test/page/{index}")
+            .ToArray();
+        var result = new AgentWebReadResult(
+            request.Address.AbsoluteUri,
+            "Guide",
+            request.Format,
+            new string('x', AgentWebReadResult.MaximumContentBytes),
+            links,
+            truncated: false);
+
+        var projection = WebAgentToolResultJson.Project(request, result);
+
+        Assert.True(projection.IsSuccess);
+        Assert.True(
+            Encoding.UTF8.GetByteCount(projection.Json)
+            <= AgentKernelLimits.Default.MaximumToolResultBytes);
+        using var document = JsonDocument.Parse(projection.Json);
+        var root = document.RootElement;
+        Assert.True(root.GetProperty("truncated").GetBoolean());
+        Assert.Equal(
+            links,
+            root.GetProperty("links")
+                .EnumerateArray()
+                .Select(link => link.GetString()),
+            StringComparer.Ordinal);
+        Assert.NotEmpty(root.GetProperty("content").GetString()!);
     }
 
     [Fact]
