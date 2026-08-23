@@ -5,10 +5,10 @@ namespace GhostShell.Browser.Tests;
 public sealed class BrowserEngineRuntimeTests
 {
     [Fact]
-    public void RuntimeDisablesOnlyTheUnusedOnDeviceModelService()
+    public void RuntimeDisablesEveryUnusedOnDeviceModelStartupPath()
     {
         Assert.Equal(
-            "OptimizationGuideOnDeviceModel",
+            "OptimizationGuideOnDeviceModel,LogOnDeviceMetricsOnStartup",
             BrowserEngineRuntime.DisabledChromiumFeatures);
     }
 
