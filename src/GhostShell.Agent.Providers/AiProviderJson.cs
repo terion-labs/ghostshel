@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using GhostShell.Agent;
 using GhostShell.Application;
@@ -25,6 +26,9 @@ internal static class AiProviderJson
                    stream,
                    new JsonWriterOptions
                    {
+                       // Provider payloads are UTF-8 JSON, never HTML. Preserve
+                       // tool and page text instead of exposing \uXXXX escapes.
+                       Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
                        Indented = false,
                        MaxDepth = 64,
                        SkipValidation = false,
