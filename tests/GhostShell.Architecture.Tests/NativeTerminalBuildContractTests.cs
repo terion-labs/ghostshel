@@ -200,6 +200,7 @@ public sealed partial class NativeTerminalBuildContractTests
             "dotnet build GhostShell.slnx --configuration Release --no-restore",
             StringComparison.Ordinal);
 
+        Assert.Contains("timeout-minutes: 90", workflow, StringComparison.Ordinal);
         Assert.True(
             terminalBuildIndex >= 0,
             "CodeQL must provision the native library and generated terminal fonts.");
