@@ -37,6 +37,14 @@ internal sealed class CefBrowserNetworkContext : IDisposable
             "The embedded browser could not create an isolated network context.");
     }
 
+    public static CefBrowserNetworkContext CreateIsolatedAgentWeb()
+    {
+        return CreateConfigured(
+            AgentWebPreferences(),
+            CefBrowserContentPolicy.Ordinary,
+            "The embedded browser could not create an isolated agent web context.");
+    }
+
     public CefBrowserView CreateView() => new(_context, _contentPolicy);
 
     public void Dispose() => _context.Dispose();
@@ -48,6 +56,13 @@ internal sealed class CefBrowserNetworkContext : IDisposable
             // replacement renderers without changing ordinary browser panels.
             ["profile.default_content_setting_values.javascript"] = "2",
             ["profile.default_content_setting_values.popups"] = "2",
+        };
+
+    internal static IReadOnlyDictionary<string, string> AgentWebPreferences() =>
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["profile.default_content_setting_values.popups"] = "2",
+            ["webrtc.ip_handling_policy"] = "\"disable_non_proxied_udp\"",
         };
 
     private static CefBrowserNetworkContext CreateConfigured(

@@ -14,6 +14,7 @@ public sealed partial class GovernedAgentRuntime
         new PanelToolContribution(this),
         new TerminalToolContribution(this),
         new BrowserToolContribution(this),
+        new WebSearchToolContribution(this),
         new ProcessToolContribution(this),
         new StatisticsToolContribution(this),
         new DatabaseToolContribution(this),

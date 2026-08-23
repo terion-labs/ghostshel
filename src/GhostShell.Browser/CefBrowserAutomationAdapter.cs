@@ -69,6 +69,18 @@ internal sealed class CefBrowserAutomationAdapter
         BrowserEvaluateRequest request) =>
         CaptureOutcomeAsync(() => EvaluateCoreAsync(request));
 
+    public Task<NativeBrowserAutomationResult> ExtractWebSearchDocumentAsync(
+        int maximumLinks)
+    {
+        if (maximumLinks is < 1 or > AgentWebSearchResult.MaximumLinks)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumLinks));
+        }
+
+        return CaptureOutcomeAsync(
+            () => ExtractWebSearchDocumentCoreAsync(maximumLinks));
+    }
+
     private async Task<NativeBrowserAutomationResult> DispatchMouseCoreAsync(
         BrowserMouseRequest request)
     {
@@ -139,49 +151,123 @@ internal sealed class CefBrowserAutomationAdapter
     private async Task<NativeBrowserAutomationResult> EvaluateCoreAsync(
         BrowserEvaluateRequest request)
     {
-        int? contextId = null;
-        if (request.World == BrowserEvaluationWorld.Isolated)
-        {
-            using var frameReply = await ExecuteAsync("Page.getFrameTree", null)
+        var contextId = request.World == BrowserEvaluationWorld.Isolated
+            ? await CreateIsolatedWorldAsync().ConfigureAwait(false)
+            : null;
+        return contextId == 0
+            ? NativeBrowserAutomationResult.Rejected("script_context_unavailable")
+            : await EvaluateSourceAsync(
+                    request.Source,
+                    request.AwaitPromise,
+                    request.Timeout,
+                    throwOnSideEffect: true,
+                    contextId)
                 .ConfigureAwait(false);
-            var frameId = RequireResult(frameReply.RootElement)
-                .GetProperty("frameTree")
-                .GetProperty("frame")
-                .GetProperty("id")
-                .GetString();
-            if (string.IsNullOrWhiteSpace(frameId))
-            {
-                return NativeBrowserAutomationResult.Rejected("script_context_unavailable");
-            }
+    }
 
-            using var worldReply = await ExecuteAsync(
-                    "Page.createIsolatedWorld",
-                    JsonSerializer.Serialize(
-                        new CdpCreateIsolatedWorldParameters(
-                            frameId,
-                            IsolatedWorldName,
-                            GrantUniveralAccess: false),
-                        BrowserJsonContext.Default.CdpCreateIsolatedWorldParameters))
-                .ConfigureAwait(false);
-            contextId = RequireResult(worldReply.RootElement)
-                .GetProperty("executionContextId")
-                .GetInt32();
+    private async Task<NativeBrowserAutomationResult>
+        ExtractWebSearchDocumentCoreAsync(int maximumLinks)
+    {
+        var contextId = await CreateIsolatedWorldAsync().ConfigureAwait(false);
+        if (contextId == 0)
+        {
+            return NativeBrowserAutomationResult.Rejected(
+                "script_context_unavailable");
         }
 
+        var source = $$"""
+            (() => {
+              const compact = value => String(value || '').replace(/\s+/g, ' ').trim();
+              const googleHost = host => host === 'google.com' || host.endsWith('.google.com');
+              const links = [];
+              const seen = new Set();
+              for (const anchor of document.querySelectorAll('a[href]')) {
+                if (links.length >= {{maximumLinks}}) break;
+                const label = compact(anchor.innerText || anchor.textContent).slice(0, 256);
+                if (!label) continue;
+                let target;
+                try {
+                  target = new URL(anchor.href, document.baseURI);
+                  if (googleHost(target.hostname) && target.pathname === '/url') {
+                    const redirected = target.searchParams.get('q') || target.searchParams.get('url');
+                    if (redirected) target = new URL(redirected);
+                  }
+                } catch {
+                  continue;
+                }
+                if (!['http:', 'https:'].includes(target.protocol)
+                    || googleHost(target.hostname)
+                    || seen.has(target.href)) continue;
+                seen.add(target.href);
+                links.push({ text: label, url: target.href.slice(0, 2048) });
+              }
+              const body = compact(document.body && document.body.innerText);
+              return {
+                title: compact(document.title).slice(0, 1024),
+                text: body.slice(0, 20480),
+                truncated: body.length > 20480,
+                links
+              };
+            })()
+            """;
+        return await EvaluateSourceAsync(
+                source,
+                awaitPromise: false,
+                TimeSpan.FromSeconds(5),
+                throwOnSideEffect: false,
+                contextId)
+            .ConfigureAwait(false);
+    }
+
+    private async Task<int?> CreateIsolatedWorldAsync()
+    {
+        using var frameReply = await ExecuteAsync("Page.getFrameTree", null)
+            .ConfigureAwait(false);
+        var frameId = RequireResult(frameReply.RootElement)
+            .GetProperty("frameTree")
+            .GetProperty("frame")
+            .GetProperty("id")
+            .GetString();
+        if (string.IsNullOrWhiteSpace(frameId))
+        {
+            return 0;
+        }
+
+        using var worldReply = await ExecuteAsync(
+                "Page.createIsolatedWorld",
+                JsonSerializer.Serialize(
+                    new CdpCreateIsolatedWorldParameters(
+                        frameId,
+                        IsolatedWorldName,
+                        GrantUniveralAccess: false),
+                    BrowserJsonContext.Default.CdpCreateIsolatedWorldParameters))
+            .ConfigureAwait(false);
+        return RequireResult(worldReply.RootElement)
+            .GetProperty("executionContextId")
+            .GetInt32();
+    }
+
+    private async Task<NativeBrowserAutomationResult> EvaluateSourceAsync(
+        string source,
+        bool awaitPromise,
+        TimeSpan timeout,
+        bool throwOnSideEffect,
+        int? contextId)
+    {
         using var evaluationReply = await ExecuteAsync(
                 "Runtime.evaluate",
                 JsonSerializer.Serialize(
                     new CdpEvaluationParameters(
-                        request.Source,
-                        request.AwaitPromise,
+                        source,
+                        awaitPromise,
                         ReturnByValue: true,
                         GeneratePreview: false,
                         UserGesture: false,
-                        request.Timeout.TotalMilliseconds,
+                        timeout.TotalMilliseconds,
                         DisableBreaks: true,
                         ReplMode: false,
                         AllowUnsafeEvalBlockedByCSP: false,
-                        ThrowOnSideEffect: true,
+                        throwOnSideEffect,
                         contextId),
                     BrowserJsonContext.Default.CdpEvaluationParameters))
             .ConfigureAwait(false);
@@ -195,7 +281,8 @@ internal sealed class CefBrowserAutomationAdapter
         if (remoteObject.TryGetProperty("objectId", out _)
             || remoteObject.TryGetProperty("unserializableValue", out _))
         {
-            return NativeBrowserAutomationResult.Rejected("script_result_not_serializable");
+            return NativeBrowserAutomationResult.Rejected(
+                "script_result_not_serializable");
         }
 
         var json = remoteObject.TryGetProperty("value", out var value)

@@ -13,7 +13,7 @@ internal static class AgentPolicyPresentation
             AgentCapability.ReadFiles => "Read files",
             AgentCapability.Search => "Search",
             AgentCapability.Git => "Git",
-            AgentCapability.WebFetch => "Web fetch",
+            AgentCapability.WebFetch => "Web search and fetch",
             AgentCapability.Docker => "Docker",
             AgentCapability.DestructiveTerminalActions => "Destructive terminal actions",
             AgentCapability.BrowserNavigation => "Browser navigation",
@@ -48,7 +48,7 @@ internal static class AgentPolicyPresentation
             AgentCapability.ReadFiles => "Read files and list directories.",
             AgentCapability.Search => "Search file contents and paths.",
             AgentCapability.Git => "Inspect and change Git repositories.",
-            AgentCapability.WebFetch => "Fetch internet resources.",
+            AgentCapability.WebFetch => "Search and fetch internet resources.",
             AgentCapability.Docker => "Manage Docker workload lifecycle.",
             AgentCapability.DestructiveTerminalActions =>
                 "Run terminal actions classified as destructive.",

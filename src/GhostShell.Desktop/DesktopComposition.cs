@@ -94,6 +94,7 @@ public static class DesktopComposition
         services.AddSingleton<AgentDatabaseReadActionComposer>();
         services.AddSingleton<AgentDockerReadActionComposer>();
         services.AddSingleton<AgentMcpToolCallActionComposer>();
+        services.AddSingleton<AgentWebSearchActionComposer>();
         services.AddSingleton<AgentPanelActionComposer>();
         services.AddSingleton<AgentWorkspaceLayoutActionComposer>();
         services.AddSingleton<AgentWorkspaceGraphActionComposer>();
@@ -168,6 +169,7 @@ public static class DesktopComposition
         services.AddSingleton<BrowserPanelSessionFactory>();
         services.AddSingleton<IBrowserPanelSessionFactory>(provider =>
             provider.GetRequiredService<BrowserPanelSessionFactory>());
+        services.AddSingleton<IAgentWebSearchExecutor, CefAgentWebSearchExecutor>();
         services.AddSingleton<ISystemMonitorPanelSessionFactory, SystemMonitorPanelSessionFactory>();
         services.AddSingleton<IDatabaseTunnelFactory, SshNetDatabaseTunnelFactory>();
         services.AddSingleton<SshNetBrowserTunnelFactory>();
@@ -274,6 +276,8 @@ public static class DesktopComposition
         services.AddSingleton<IAgentWorkspaceGraphSessionHost>(provider =>
             provider.GetRequiredService<InMemorySessionHostClient>());
         services.AddSingleton<IAgentWorkspaceLayoutSessionHost>(provider =>
+            provider.GetRequiredService<InMemorySessionHostClient>());
+        services.AddSingleton<IAgentWebSearchSessionHost>(provider =>
             provider.GetRequiredService<InMemorySessionHostClient>());
         services.AddSingleton<IGlobalHotkeyService>(_ =>
             GlobalHotkeyServiceSelector.CreateForCurrentPlatform());

@@ -19,6 +19,7 @@ public sealed partial class InMemorySessionHostClient :
     IAgentStatisticsSessionHost,
     IAgentDatabaseSessionHost,
     IAgentDockerSessionHost,
+    IAgentWebSearchSessionHost,
     IAsyncDisposable
 {
     private const int DefaultEventRetention = 256;
@@ -58,6 +59,9 @@ public sealed partial class InMemorySessionHostClient :
         _agentDatabaseReadActionComposer;
     private readonly AgentDockerReadActionComposer?
         _agentDockerReadActionComposer;
+    private readonly AgentWebSearchActionComposer?
+        _agentWebSearchActionComposer;
+    private readonly IAgentWebSearchExecutor? _agentWebSearchExecutor;
     private readonly IAgentAuthorizationConsumer? _agentAuthorizationConsumer;
     private readonly int _eventRetention;
     private readonly CapabilitySet _hostCapabilities;
@@ -89,7 +93,9 @@ public sealed partial class InMemorySessionHostClient :
         AgentDockerReadActionComposer?
             agentDockerReadActionComposer = null,
         AgentWorkspaceLayoutActionComposer?
-            agentWorkspaceLayoutActionComposer = null)
+            agentWorkspaceLayoutActionComposer = null,
+        AgentWebSearchActionComposer? agentWebSearchActionComposer = null,
+        IAgentWebSearchExecutor? agentWebSearchExecutor = null)
     {
         ArgumentNullException.ThrowIfNull(terminalFactory);
         ArgumentNullException.ThrowIfNull(lifecyclePolicy);
@@ -122,6 +128,8 @@ public sealed partial class InMemorySessionHostClient :
             agentStatisticsReadActionComposer;
         _agentDatabaseReadActionComposer = agentDatabaseReadActionComposer;
         _agentDockerReadActionComposer = agentDockerReadActionComposer;
+        _agentWebSearchActionComposer = agentWebSearchActionComposer;
+        _agentWebSearchExecutor = agentWebSearchExecutor;
         _agentAuthorizationConsumer = agentAuthorizationConsumer;
         _eventRetention = eventRetention;
         _workspaceGraphs = new WorkspaceGraphRegistry(_eventRetention, _timeProvider);

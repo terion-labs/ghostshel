@@ -29,6 +29,7 @@ public sealed partial class GovernedAgentRuntimeTests
             "PanelToolContribution",
             "TerminalToolContribution",
             "BrowserToolContribution",
+            "WebSearchToolContribution",
             "ProcessToolContribution",
             "StatisticsToolContribution",
             "DatabaseToolContribution",

@@ -358,6 +358,32 @@ public sealed class BrowserLowLevelAutomationTests
     }
 
     [Fact]
+    public async Task WebSearchExtractionUsesFixedCodeInAPrivateWorld()
+    {
+        var transport = new RecordingTransport(
+            "{\"result\":{\"frameTree\":{\"frame\":{\"id\":\"main\"}}}}",
+            "{\"result\":{\"executionContextId\":42}}",
+            "{\"result\":{\"result\":{\"type\":\"object\",\"value\":{\"title\":\"Search\",\"text\":\"result\",\"truncated\":false,\"links\":[]}}}}");
+        var adapter = new CefBrowserAutomationAdapter(transport);
+
+        var result = await adapter.ExtractWebSearchDocumentAsync(7);
+
+        Assert.Equal(NativeBrowserAutomationStatus.Acknowledged, result.Status);
+        Assert.Equal(
+            ["Page.getFrameTree", "Page.createIsolatedWorld", "Runtime.evaluate"],
+            transport.Calls.Select(call => call.Method), StringComparer.Ordinal);
+        using var parameters = JsonDocument.Parse(transport.Calls[2].Parameters!);
+        var root = parameters.RootElement;
+        Assert.False(root.GetProperty("throwOnSideEffect").GetBoolean());
+        Assert.Equal(42, root.GetProperty("contextId").GetInt32());
+        Assert.True(root.GetProperty("returnByValue").GetBoolean());
+        var source = root.GetProperty("expression").GetString()!;
+        Assert.Contains("document.querySelectorAll('a[href]')", source, StringComparison.Ordinal);
+        Assert.Contains("links.length >= 7", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("eval(", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task MainWorldEvaluationOmitsContextIdInsteadOfSendingNull()
     {
         var transport = new RecordingTransport(
