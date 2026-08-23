@@ -280,6 +280,18 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
     public void BeginNetworkActivityObservation() =>
         _networkActivity?.BeginObservation();
 
+    internal async Task<bool> BeginNetworkActivityObservationWhenReadyAsync()
+    {
+        if (!await EnsureRendererReadyAsync().ConfigureAwait(false)
+            || _networkActivity is null)
+        {
+            return false;
+        }
+
+        _networkActivity.BeginObservation();
+        return true;
+    }
+
     public void EndNetworkActivityObservation() =>
         _networkActivity?.EndObservation();
 

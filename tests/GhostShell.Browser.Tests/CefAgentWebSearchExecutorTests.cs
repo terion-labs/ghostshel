@@ -39,6 +39,10 @@ public sealed class CefAgentWebSearchExecutorTests
                 {
                   "url": "javascript:alert(1)",
                   "desc": "Invalid destination"
+                },
+                {
+                  "url": "https://example.test/guide",
+                  "desc": "Second useful result"
                 }
               ],
               "truncated": false
@@ -52,9 +56,18 @@ public sealed class CefAgentWebSearchExecutorTests
         var succeeded = Assert.IsType<AgentWebSearchExecutionResult.Succeeded>(
             result);
         Assert.Equal("Search results", succeeded.Result.Title);
-        var entry = Assert.Single(succeeded.Result.Entries);
-        Assert.Equal("https://example.test/docs", entry.Url);
-        Assert.Equal("Useful result Example docs", entry.Description);
+        Assert.Collection(
+            succeeded.Result.Entries,
+            entry =>
+            {
+                Assert.Equal("https://example.test/docs", entry.Url);
+                Assert.Equal("Useful result Example docs", entry.Description);
+            },
+            entry =>
+            {
+                Assert.Equal("https://example.test/guide", entry.Url);
+                Assert.Equal("Second useful result", entry.Description);
+            });
     }
 
     [Theory]
