@@ -414,7 +414,14 @@ public sealed partial class GovernedAgentRuntimeTests
     [Fact]
     public async Task Provider_completion_during_changed_notification_uses_the_captured_turn_token()
     {
-        var provider = new ControlledSteeringProvider();
+        var provider = new ControlledSteeringProvider
+        {
+            // This test needs the completion to commit inside the Changed
+            // callback. An asynchronously scheduled continuation makes the
+            // callback spin on a saturated test thread pool and tests the
+            // scheduler instead of the captured turn token.
+            CompleteOriginal = new(TaskCreationOptions.None),
+        };
         await using var fixture = new SteeringRuntimeFixture(provider);
         var sending = fixture.Runtime.SendAsync(
             fixture.Prompt("Inspect."),
@@ -432,10 +439,7 @@ public sealed partial class GovernedAgentRuntimeTests
             }
 
             provider.CompleteOriginal.TrySetResult();
-            Assert.True(
-                SpinWait.SpinUntil(
-                    () => sending.IsCompleted,
-                    TimeSpan.FromSeconds(5)));
+            Assert.True(sending.IsCompleted);
         };
 
         var result = await fixture.Runtime.SteerAsync(
@@ -706,7 +710,7 @@ public sealed partial class GovernedAgentRuntimeTests
 
         public ConcurrentQueue<AgentProviderRequest> Requests { get; } = [];
 
-        public TaskCompletionSource CompleteOriginal { get; } = new(
+        public TaskCompletionSource CompleteOriginal { get; init; } = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
         public TaskCompletionSource ReplacementEntered { get; } = new(
