@@ -54,6 +54,7 @@ jobs:
           path: native/artifacts/osx-arm64
           if-no-files-found: error
           retention-days: 1
+          include-hidden-files: true
 
   managed-conformance:
     name: Tests (macOS, ${{ matrix.section }})

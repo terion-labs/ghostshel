@@ -1188,10 +1188,11 @@ public sealed class GhosttyVtTerminalSessionTests
             new TerminalKeyStroke(TerminalKey.Backspace),
             default);
         await harness.Pty.WriteOutputAsync("\rAFTER");
-        await WaitUntilAsync(() => Task.FromResult(
-            ReadPrivateField<long>(session, "_contentRevision")
-            > baseline.ContentRevision));
-        var internalRead = await session.ReadScreenAsync(default);
+        var internalRead = await WaitForScreenAsync(
+            session,
+            snapshot => snapshot.PlainText.Contains(
+                "AFTER",
+                StringComparison.Ordinal));
         Assert.True(internalRead.ContentRevision > baseline.ContentRevision);
         var diff = await session.ReadScreenDiffAsync(
             new TerminalScreenDiffInput(

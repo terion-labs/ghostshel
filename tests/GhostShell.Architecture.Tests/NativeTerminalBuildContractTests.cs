@@ -169,7 +169,13 @@ public sealed partial class NativeTerminalBuildContractTests
         Assert.Contains("name: terminal-native-osx-arm64", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("name: terminal-native-linux-x64", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("name: terminal-native-win-x64", workflow, StringComparison.Ordinal);
-        Assert.Contains("include-hidden-files: true", workflow, StringComparison.Ordinal);
+        Assert.Contains(
+            "path: native/artifacts/osx-arm64\n" +
+            "          if-no-files-found: error\n" +
+            "          retention-days: 1\n" +
+            "          include-hidden-files: true",
+            workflow,
+            StringComparison.Ordinal);
     }
 
     [Fact]
