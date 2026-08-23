@@ -315,6 +315,19 @@ public sealed class SqlLanguageWorkerPackagingTests
         Assert.Contains("NATIVE_IMAGE_VERSION=\"25.0.4\"", script, StringComparison.Ordinal);
         Assert.DoesNotContain("readonly MAVEN_IMAGE=", script, StringComparison.Ordinal);
         Assert.DoesNotContain("readonly NATIVE_IMAGE=", script, StringComparison.Ordinal);
+        Assert.Contains(
+            "native_image_output=\"$(\"$native_image_command\" --version 2>&1)\"",
+            script,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "native_image_command\" --version 2>&1 | sed -n '1p'",
+            script,
+            StringComparison.Ordinal);
+        Assert.Equal(
+            1,
+            script.Split(
+                "awk '/^native-image / { print; exit }'",
+                StringSplitOptions.None).Length - 1);
         Assert.All(
             script.Split("docker run", StringSplitOptions.None).Skip(1),
             invocation => Assert.Contains("--network none", invocation, StringComparison.Ordinal));

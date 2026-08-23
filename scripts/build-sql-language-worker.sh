@@ -217,13 +217,13 @@ read_macos_minimum_version() {
 }
 
 if [[ "$mode" == "local" ]]; then
-    native_image_version="$("$native_image_command" --version 2>&1 | sed -n '1p')"
+    native_image_output="$("$native_image_command" --version 2>&1)"
 else
     native_image_output="$(docker run --rm --network none --platform "$docker_platform" \
         "$native_image" --version 2>&1)"
-    native_image_version="$(printf '%s\n' "$native_image_output" \
-        | awk '/^native-image / { print; exit }')"
 fi
+native_image_version="$(printf '%s\n' "$native_image_output" \
+    | awk '/^native-image / { print; exit }')"
 verify_native_image_version "$native_image_version"
 
 artifact_directory="$ARTIFACTS_DIRECTORY/$rid"
