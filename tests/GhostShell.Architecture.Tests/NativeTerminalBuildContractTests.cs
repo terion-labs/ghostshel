@@ -222,11 +222,17 @@ public sealed partial class NativeTerminalBuildContractTests
         Assert.Contains("name: Download macOS terminal runtime", codeQlJob, StringComparison.Ordinal);
         Assert.Contains("name: Initialize CodeQL", codeQlJob, StringComparison.Ordinal);
         Assert.Contains(
-            "dotnet build GhostShell.slnx --configuration Release --no-restore",
+            "if: \"!startsWith(github.ref, 'refs/tags/v')\"",
             codeQlJob,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "src/GhostShell.Desktop/GhostShell.Desktop.csproj",
+            codeQlJob,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("dotnet build GhostShell.slnx", codeQlJob, StringComparison.Ordinal);
         Assert.DoesNotContain("build-libghostty-vt.sh", codeQlJob, StringComparison.Ordinal);
         Assert.DoesNotContain("build-cef-runtime.sh", codeQlJob, StringComparison.Ordinal);
+        Assert.Contains("actions: read", workflow, StringComparison.Ordinal);
         Assert.False(File.Exists(Path.Combine(
             RepositoryRoot,
             ".github",
