@@ -69,17 +69,8 @@ internal sealed class CefBrowserAutomationAdapter
         BrowserEvaluateRequest request) =>
         CaptureOutcomeAsync(() => EvaluateCoreAsync(request));
 
-    public Task<NativeBrowserAutomationResult> ExtractWebSearchDocumentAsync(
-        int maximumLinks)
-    {
-        if (maximumLinks is < 1 or > AgentWebSearchResult.MaximumLinks)
-        {
-            throw new ArgumentOutOfRangeException(nameof(maximumLinks));
-        }
-
-        return CaptureOutcomeAsync(
-            () => ExtractWebSearchDocumentCoreAsync(maximumLinks));
-    }
+    public Task<NativeBrowserAutomationResult> ExtractWebSearchDocumentAsync() =>
+        CaptureOutcomeAsync(ExtractWebSearchDocumentCoreAsync);
 
     public Task<NativeBrowserAutomationResult> ExtractRenderedDocumentAsync() =>
         CaptureOutcomeAsync(ExtractRenderedDocumentCoreAsync);
@@ -169,7 +160,7 @@ internal sealed class CefBrowserAutomationAdapter
     }
 
     private async Task<NativeBrowserAutomationResult>
-        ExtractWebSearchDocumentCoreAsync(int maximumLinks)
+        ExtractWebSearchDocumentCoreAsync()
     {
         var contextId = await CreateIsolatedWorldAsync().ConfigureAwait(false);
         if (contextId == 0)
@@ -178,34 +169,12 @@ internal sealed class CefBrowserAutomationAdapter
                 "script_context_unavailable");
         }
 
-        var source = $$"""
+        const string source = """
             (() => {
               const compact = value => String(value || '').replace(/\s+/g, ' ').trim();
-              const googleHost = host => host === 'google.com' || host.endsWith('.google.com');
-              const links = [];
-              const seen = new Set();
-              for (const anchor of document.querySelectorAll('a[href]')) {
-                if (links.length >= {{maximumLinks}}) break;
-                const label = compact(anchor.innerText || anchor.textContent).slice(0, 256);
-                if (!label) continue;
-                let target;
-                try {
-                  target = new URL(anchor.href, document.baseURI);
-                  if (googleHost(target.hostname) && target.pathname === '/url') {
-                    const redirected = target.searchParams.get('q') || target.searchParams.get('url');
-                    if (redirected) target = new URL(redirected);
-                  }
-                } catch {
-                  continue;
-                }
-                if (!['http:', 'https:'].includes(target.protocol)
-                    || googleHost(target.hostname)
-                    || seen.has(target.href)) continue;
-                seen.add(target.href);
-                links.push({ text: label, url: target.href.slice(0, 2048) });
-              }
-              const body = compact(document.body && document.body.innerText);
-              const clone = document.documentElement && document.documentElement.cloneNode(true);
+              const pageText = compact(document.body && document.body.innerText);
+              const results = document.querySelector('#rso');
+              const clone = results && results.cloneNode(true);
               if (clone) {
                 for (const element of clone.querySelectorAll(
                     "script, style, noscript, iframe, object, embed, form, input, button, dialog, template, [hidden], [aria-hidden='true']")) {
@@ -215,10 +184,9 @@ internal sealed class CefBrowserAutomationAdapter
               const html = clone ? clone.outerHTML : '';
               return {
                 title: compact(document.title).slice(0, 1024),
-                text: body.slice(0, 20480),
+                pageText: pageText.slice(0, 20480),
                 html: html.slice(0, 98304),
-                truncated: body.length > 20480 || html.length > 98304,
-                links
+                truncated: html.length > 98304
               };
             })()
             """;

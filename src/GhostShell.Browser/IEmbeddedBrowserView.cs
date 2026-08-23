@@ -97,8 +97,7 @@ internal interface IEmbeddedBrowserView : IDisposable
 
     Task<NativeBrowserAutomationResult> EvaluateAsync(BrowserEvaluateRequest request);
 
-    Task<NativeBrowserAutomationResult> ExtractWebSearchDocumentAsync(
-        int maximumLinks);
+    Task<NativeBrowserAutomationResult> ExtractWebSearchDocumentAsync();
 
     Task<NativeBrowserAutomationResult> ExtractRenderedDocumentAsync();
 }

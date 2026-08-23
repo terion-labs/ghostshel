@@ -21,17 +21,14 @@ public sealed class CefAgentWebSearchExecutorTests
     }
 
     [Fact]
-    public void ExtractionProjectsBoundedHttpLinks()
+    public void ExtractionConvertsTheRsoFragmentToMarkdown()
     {
         const string json = """
             {
               "title": "Search results",
-              "text": "Useful result",
-              "truncated": false,
-              "links": [
-                { "text": "Example", "url": "https://example.test/docs" },
-                { "text": "HTTP", "url": "http://example.org/" }
-              ]
+              "pageText": "Google navigation Useful result Sign in",
+              "html": "<div id='rso'><h2>Useful result</h2><a href='https://example.test/docs'>Example docs</a></div>",
+              "truncated": false
             }
             """;
 
@@ -42,10 +39,12 @@ public sealed class CefAgentWebSearchExecutorTests
         var succeeded = Assert.IsType<AgentWebSearchExecutionResult.Succeeded>(
             result);
         Assert.Equal("Search results", succeeded.Result.Title);
-        Assert.Equal(2, succeeded.Result.Links.Count);
-        Assert.Equal(
-            "https://example.test/docs",
-            succeeded.Result.Links[0].Url);
+        Assert.Contains("## Useful result", succeeded.Result.Text, StringComparison.Ordinal);
+        Assert.Contains(
+            "[Example docs](https://example.test/docs)",
+            succeeded.Result.Text,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("Sign in", succeeded.Result.Text, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -60,9 +59,9 @@ public sealed class CefAgentWebSearchExecutorTests
         var json = $$"""
             {
               "title": "{{title}}",
-              "text": "{{text}}",
-              "truncated": false,
-              "links": []
+              "pageText": "{{text}}",
+              "html": "",
+              "truncated": false
             }
             """;
 
@@ -76,8 +75,8 @@ public sealed class CefAgentWebSearchExecutorTests
 
     [Theory]
     [InlineData("not-json")]
-    [InlineData("{\"title\":\"Search\",\"text\":\"x\",\"truncated\":false,\"links\":[{\"text\":\"bad\",\"url\":\"file:///tmp/private\"}]}")]
-    public void MalformedOrUnsafeExtractionFailsClosed(string json)
+    [InlineData("{\"title\":\"Search\",\"pageText\":\"x\",\"html\":\"\",\"truncated\":false}")]
+    public void MalformedOrMissingRsoExtractionFailsClosed(string json)
     {
         var result = CefAgentWebSearchExecutor.ParseExtraction(
             new BrowserAddress(new Uri("https://www.google.com/search?q=cef")),
@@ -87,28 +86,4 @@ public sealed class CefAgentWebSearchExecutorTests
         Assert.Equal(AgentWebSearchErrorCode.ExtractionFailed, failed.Code);
     }
 
-    [Fact]
-    public void SearchRenderedDocumentIsConvertedToMarkdown()
-    {
-        const string json = """
-            {
-              "title": "Search results",
-              "text": "fallback",
-              "html": "<html><body><main><h1>Results</h1><p><a href='https://example.test/docs'>Example docs</a></p></main><script>ignore()</script></body></html>",
-              "truncated": false,
-              "links": [
-                { "text": "Example docs", "url": "https://example.test/docs" }
-              ]
-            }
-            """;
-
-        var result = CefAgentWebSearchExecutor.ParseExtraction(
-            new BrowserAddress(new Uri("https://www.google.com/search?q=cef")),
-            json);
-
-        var succeeded = Assert.IsType<AgentWebSearchExecutionResult.Succeeded>(result);
-        Assert.Contains("# Results", succeeded.Result.Text, StringComparison.Ordinal);
-        Assert.Contains("[Example docs]", succeeded.Result.Text, StringComparison.Ordinal);
-        Assert.DoesNotContain("ignore()", succeeded.Result.Text, StringComparison.Ordinal);
-    }
 }
