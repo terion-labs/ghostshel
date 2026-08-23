@@ -2,7 +2,7 @@ using System.Text;
 
 namespace GhostShell.Application;
 
-public sealed record AgentWebSearchRequest
+public sealed record AgentWebSearchRequest : AgentWebToolRequest
 {
     public const int DefaultResultCount = 10;
     public const int MaximumQueryBytes = 512;
@@ -36,6 +36,8 @@ public sealed record AgentWebSearchRequest
     public string Query { get; }
 
     public int ResultCount { get; }
+
+    public override string ToolName => BuiltInAgentTools.WebSearch;
 
     private static bool TryGetByteCount(string value, out int byteCount)
     {

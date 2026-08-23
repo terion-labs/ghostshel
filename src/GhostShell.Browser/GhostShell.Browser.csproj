@@ -2,6 +2,8 @@
 
   <ItemGroup>
     <PackageReference Include="FluentIcons.Avalonia" />
+    <PackageReference Include="ReverseMarkdown" />
+    <PackageReference Include="SmartReader" />
     <ProjectReference Include="..\GhostShell.Application\GhostShell.Application.csproj" />
     <ProjectReference Include="..\..\vendor\exclr8cef\src\Exclr8Cef.WebView\Exclr8Cef.WebView.csproj" />
   </ItemGroup>

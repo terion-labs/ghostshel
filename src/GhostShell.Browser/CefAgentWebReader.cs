@@ -1,0 +1,248 @@
+using System.Text.Json;
+using GhostShell.Application;
+
+namespace GhostShell.Browser;
+
+internal sealed class CefAgentWebReader
+{
+    private static readonly TimeSpan ReadDeadline = TimeSpan.FromSeconds(25);
+    private static readonly TimeSpan DynamicContentSettleDelay =
+        TimeSpan.FromMilliseconds(400);
+    private static readonly SemaphoreSlim BrowserGate = new(1, 1);
+    private readonly WebContentMarkdownConverter _converter = new();
+
+    public async ValueTask<AgentWebToolExecutionResult> ReadAsync(
+        AgentWebReadRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Failed(AgentWebToolErrorCode.Cancelled);
+        }
+
+        try
+        {
+            await BrowserGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return Failed(AgentWebToolErrorCode.Cancelled);
+        }
+
+        try
+        {
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken);
+            deadline.CancelAfter(ReadDeadline);
+            return await ReadCoreAsync(request, deadline.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return Failed(
+                cancellationToken.IsCancellationRequested
+                    ? AgentWebToolErrorCode.Cancelled
+                    : AgentWebToolErrorCode.TimedOut);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            _ = exception;
+            return Failed(AgentWebToolErrorCode.Unavailable);
+        }
+        finally
+        {
+            BrowserGate.Release();
+        }
+    }
+
+    internal async ValueTask<AgentWebToolExecutionResult> ConvertAsync(
+        BrowserAddress finalAddress,
+        AgentWebReadFormat format,
+        string json,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json, new JsonDocumentOptions
+            {
+                AllowTrailingCommas = false,
+                CommentHandling = JsonCommentHandling.Disallow,
+                MaxDepth = 8,
+            });
+            var root = document.RootElement;
+            var pageTitle = root.GetProperty("title").GetString() ?? string.Empty;
+            var renderedHtml = root.GetProperty("html").GetString() ?? string.Empty;
+            var sourceTruncated = root.GetProperty("truncated").GetBoolean();
+            string title;
+            string content;
+            if (format is AgentWebReadFormat.Markdown)
+            {
+                (title, content) = await _converter.ConvertArticleAsync(
+                        finalAddress.Value,
+                        renderedHtml,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            else
+            {
+                title = pageTitle;
+                content = renderedHtml;
+            }
+
+            content = BoundedWebText.Truncate(
+                content,
+                AgentWebReadResult.MaximumContentBytes,
+                out var contentTruncated);
+            title = BoundedWebText.Truncate(
+                title,
+                AgentWebReadResult.MaximumTitleBytes,
+                out _);
+            return Succeeded(new AgentWebReadResult(
+                finalAddress.Value.AbsoluteUri,
+                title,
+                format,
+                content,
+                sourceTruncated || contentTruncated));
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is
+            ArgumentException
+            or InvalidOperationException
+            or JsonException)
+        {
+            _ = exception;
+            return Failed(
+                format is AgentWebReadFormat.Markdown
+                    ? AgentWebToolErrorCode.ConverterFailed
+                    : AgentWebToolErrorCode.ExtractionFailed);
+        }
+    }
+
+    private async ValueTask<AgentWebToolExecutionResult> ReadCoreAsync(
+        AgentWebReadRequest request,
+        CancellationToken cancellationToken)
+    {
+        CefBrowserNetworkContext? network = null;
+        CefBrowserView? browser = null;
+        try
+        {
+            (network, browser) = await AvaloniaBrowserUiDispatcher.Instance
+                .InvokeAsync(() =>
+                {
+                    var createdNetwork = CefBrowserNetworkContext.CreateIsolatedAgentWeb();
+                    var createdBrowser = createdNetwork.CreateView();
+                    createdBrowser.SetResourceRequestPolicy(
+                        (candidate, token) => BrowserDestinationPolicy.LocalSystem
+                            .AllowsResolvedAsync(candidate, token));
+                    return (createdNetwork, createdBrowser);
+                });
+            var navigation = new TaskCompletionSource<NavigationOutcome>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            await BeginNavigationAsync(
+                    browser,
+                    new BrowserAddress(request.Address),
+                    navigation,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            var outcome = await navigation.Task.WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (!outcome.IsSuccess || outcome.Address is null)
+            {
+                return Failed(outcome.ErrorCode);
+            }
+
+            await Task.Delay(DynamicContentSettleDelay, cancellationToken)
+                .ConfigureAwait(false);
+            var extracted = await browser.ExtractRenderedDocumentAsync()
+                .WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (extracted.Status != NativeBrowserAutomationStatus.Acknowledged
+                || extracted.ResultJson is null)
+            {
+                return Failed(AgentWebToolErrorCode.ExtractionFailed);
+            }
+
+            return await ConvertAsync(
+                    outcome.Address,
+                    request.Format,
+                    extracted.ResultJson,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            if (browser is not null || network is not null)
+            {
+                await AvaloniaBrowserUiDispatcher.Instance.InvokeAsync(() =>
+                {
+                    browser?.Dispose();
+                    network?.Dispose();
+                    return true;
+                });
+            }
+        }
+    }
+
+    private static async ValueTask BeginNavigationAsync(
+        CefBrowserView browser,
+        BrowserAddress address,
+        TaskCompletionSource<NavigationOutcome> completion,
+        CancellationToken cancellationToken)
+    {
+        await AvaloniaBrowserUiDispatcher.Instance.InvokeAsync(() =>
+        {
+            browser.NavigationStarted += (_, args) =>
+            {
+                try
+                {
+                    browser.SetActiveNavigationRequestPolicy(
+                        (candidate, token) => BrowserDestinationPolicy.LocalSystem
+                            .AllowsResolvedAsync(candidate, token));
+                }
+                catch (InvalidOperationException)
+                {
+                    args.Cancel = true;
+                }
+            };
+            browser.NavigationRejected += (_, _) =>
+                completion.TrySetResult(NavigationOutcome.Denied());
+            browser.RenderProcessFailed += (_, _) =>
+                completion.TrySetResult(NavigationOutcome.RenderProcessFailed());
+            browser.NavigationCompleted += (_, args) =>
+                completion.TrySetResult(
+                    args.IsSuccess && args.Address is not null
+                        ? NavigationOutcome.Succeeded(args.Address)
+                        : NavigationOutcome.LoadFailed());
+            browser.Navigate(address);
+            return true;
+        });
+        cancellationToken.ThrowIfCancellationRequested();
+    }
+
+    private static AgentWebToolExecutionResult Failed(AgentWebToolErrorCode code) =>
+        new AgentWebToolExecutionResult.Failed(code);
+
+    private static AgentWebToolExecutionResult Succeeded(AgentWebToolResult result) =>
+        new AgentWebToolExecutionResult.Succeeded(result);
+
+    private sealed record NavigationOutcome(
+        bool IsSuccess,
+        BrowserAddress? Address,
+        AgentWebToolErrorCode ErrorCode)
+    {
+        public static NavigationOutcome Succeeded(BrowserAddress address) =>
+            new(true, address, AgentWebToolErrorCode.LoadFailed);
+
+        public static NavigationOutcome Denied() =>
+            new(false, null, AgentWebToolErrorCode.DestinationDenied);
+
+        public static NavigationOutcome LoadFailed() =>
+            new(false, null, AgentWebToolErrorCode.LoadFailed);
+
+        public static NavigationOutcome RenderProcessFailed() =>
+            new(false, null, AgentWebToolErrorCode.RenderProcessFailed);
+    }
+}

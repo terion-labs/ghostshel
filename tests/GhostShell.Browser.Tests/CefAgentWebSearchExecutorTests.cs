@@ -86,4 +86,29 @@ public sealed class CefAgentWebSearchExecutorTests
         var failed = Assert.IsType<AgentWebSearchExecutionResult.Failed>(result);
         Assert.Equal(AgentWebSearchErrorCode.ExtractionFailed, failed.Code);
     }
+
+    [Fact]
+    public void SearchRenderedDocumentIsConvertedToMarkdown()
+    {
+        const string json = """
+            {
+              "title": "Search results",
+              "text": "fallback",
+              "html": "<html><body><main><h1>Results</h1><p><a href='https://example.test/docs'>Example docs</a></p></main><script>ignore()</script></body></html>",
+              "truncated": false,
+              "links": [
+                { "text": "Example docs", "url": "https://example.test/docs" }
+              ]
+            }
+            """;
+
+        var result = CefAgentWebSearchExecutor.ParseExtraction(
+            new BrowserAddress(new Uri("https://www.google.com/search?q=cef")),
+            json);
+
+        var succeeded = Assert.IsType<AgentWebSearchExecutionResult.Succeeded>(result);
+        Assert.Contains("# Results", succeeded.Result.Text, StringComparison.Ordinal);
+        Assert.Contains("[Example docs]", succeeded.Result.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("ignore()", succeeded.Result.Text, StringComparison.Ordinal);
+    }
 }

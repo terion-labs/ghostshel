@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "documentName": "GhostSHELL 0.1.5 managed-component evidence",
-  "documentCreatedUtc": "2026-08-09T00:00:00Z",
+  "documentCreatedUtc": "2026-08-23T00:00:00Z",
   "namespaceBase": "https://ghostshell.app/spdx/managed-components/0.1.5",
   "releaseBlockers": [
     "SMBLibrary 1.5.7.1 is declared LGPL-3.0-or-later; release obligations and distribution posture remain unresolved.",
@@ -31,6 +31,17 @@
       "nupkgSha512": "XO0JmVm+3ps3lXU+siVSMG3DqMsh9GHpFZpkgk4N4t41UVZvLs5BNRPINon56kvnenQN+a9F1rB/uD0UCirVbg==",
       "nuspecLicenseType": "expression",
       "nuspecLicense": "Apache-2.0"
+    },
+    {
+      "identity": "AngleSharp/1.5.2",
+      "kind": "nuget",
+      "depsType": "package",
+      "licenseDeclared": "MIT",
+      "nuGetId": "AngleSharp",
+      "contentHash": "LVZ7rrr6GHbhERhTgVDarVygl1e6KwE96pronA90LBOMacDhxR4lB+xYLjn/vlnUu+xbOB2RM9fuCPEx5bdyWA==",
+      "nupkgSha512": "1oApYJ/BR4zndyRsFt6x2yytk9Z/j5CoHeYLJQvi21ICLA0/1SAVRBIW76ucrNaDpIextucRqkKlv9gtJcaLJw==",
+      "nuspecLicenseType": "expression",
+      "nuspecLicense": "MIT"
     },
     {
       "identity": "Avalonia.AvaloniaEdit/12.0.0",
@@ -1216,6 +1227,17 @@
       "nuspecLicense": "MIT"
     },
     {
+      "identity": "ReverseMarkdown/6.2.1",
+      "kind": "nuget",
+      "depsType": "package",
+      "licenseDeclared": "MIT",
+      "nuGetId": "ReverseMarkdown",
+      "contentHash": "4ef2AoeNdBHrKoMU6t04dxTQ72TXsNO3RfWU1YN5jaJjCIrQhvNo9nhfO+6z+j7UBZNadsdN2d4rzAFO27xUnw==",
+      "nupkgSha512": "A76Dk9LLtinx2MmTLTLSV0AlSYVi6EKBYG/FYzvlPxYNo1bS7od6fTKlvETOHhQA4FTae8TgHwUqHk/ytQFjww==",
+      "nuspecLicenseType": "expression",
+      "nuspecLicense": "MIT"
+    },
+    {
       "identity": "SMBLibrary/1.5.7.1",
       "kind": "nuget",
       "depsType": "package",
@@ -1327,6 +1349,17 @@
       "nupkgSha512": "7DRqkmsU+ChkQYxHlIZJScJyHOhmfJZZ9eHn0T4XmNvJi/XZuMnH5rtluS6nWU6+H0mkrRrJYnklEbxRngrsHA==",
       "nuspecLicenseType": "expression",
       "nuspecLicense": "MIT"
+    },
+    {
+      "identity": "SmartReader/0.11.1",
+      "kind": "nuget",
+      "depsType": "package",
+      "licenseDeclared": "Apache-2.0",
+      "nuGetId": "SmartReader",
+      "contentHash": "hzhS0IVfSDuf0IghJ4+ODSuTZXSjwS+4NXSBiy5yH/FXdBkl4q3yMDAt7rkPHdLyBlealsk7aL2CcG+kPP5Ocg==",
+      "nupkgSha512": "r8/Ajn1SugPtRwsbb9tWgGssk43MwbUbrj+Bc30bMcKdJWEAK9Sui9kqwTPR3S63U3S5cFfsZJTF4esxhX8O3g==",
+      "nuspecLicenseType": "expression",
+      "nuspecLicense": "Apache-2.0"
     },
     {
       "identity": "SshNet.Agent/2026.0.0",

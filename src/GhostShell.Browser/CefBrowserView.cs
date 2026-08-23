@@ -33,6 +33,8 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
     private CefHumanizedInput? _humanizedInput;
     private CefBrowserNetworkActivityTracker? _networkActivity;
     private volatile ActiveNativeNavigation? _activeNavigation;
+    private Func<BrowserAddress, CancellationToken, ValueTask<bool>>?
+        _resourceRequestPolicy;
     private BrowserAddress? _queuedAddress;
     private CefLocalDocumentAccessPolicy _localDocumentAccess =
         CefLocalDocumentAccessPolicy.None;
@@ -94,6 +96,14 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
             ?? throw new InvalidOperationException(
                 "The browser has no active navigation to protect.");
         navigation.SetRequestPolicy(policy);
+    }
+
+    public void SetResourceRequestPolicy(
+        Func<BrowserAddress, CancellationToken, ValueTask<bool>> policy)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+        ThrowIfDisposed();
+        Volatile.Write(ref _resourceRequestPolicy, policy);
     }
 
     public event EventHandler<NativeBrowserNavigationEventArgs>? NavigationStarted;
@@ -316,6 +326,10 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         await DispatchAutomationAsync(
             adapter => adapter.ExtractWebSearchDocumentAsync(maximumLinks));
 
+    public async Task<NativeBrowserAutomationResult> ExtractRenderedDocumentAsync() =>
+        await DispatchAutomationAsync(
+            static adapter => adapter.ExtractRenderedDocumentAsync());
+
     public void Dispose()
     {
         if (_disposed)
@@ -326,6 +340,7 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         _disposed = true;
         _queuedAddress = null;
         _activeNavigation = null;
+        Volatile.Write(ref _resourceRequestPolicy, null);
         Volatile.Write(
             ref _localDocumentAccess,
             CefLocalDocumentAccessPolicy.None);
@@ -590,7 +605,7 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
 
             if (args.Type is not Cef.ResourceType.MainFrame)
             {
-                ResolveSubresource(args);
+                ResolveSubresource(args, Volatile.Read(ref _resourceRequestPolicy));
                 return;
             }
 
@@ -643,7 +658,9 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         }
     }
 
-    private void ResolveSubresource(ResourceRequestEventArgs args)
+    private void ResolveSubresource(
+        ResourceRequestEventArgs args,
+        Func<BrowserAddress, CancellationToken, ValueTask<bool>>? requestPolicy)
     {
         if (Uri.TryCreate(args.Url, UriKind.Absolute, out var uri)
             && uri.IsFile
@@ -652,6 +669,18 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
                 Volatile.Read(ref _localDocumentAccess).PermittedPage))
         {
             args.Cancel();
+            return;
+        }
+
+        if (requestPolicy is not null)
+        {
+            if (!BrowserAddress.TryParse(args.Url, out var address))
+            {
+                args.Cancel();
+                return;
+            }
+
+            _ = ResolveMainFrameRequestAsync(args, address, requestPolicy);
             return;
         }
 

@@ -33,7 +33,7 @@ internal static class WebSearchAgentToolSet
     [
         new AgentToolDefinition(
             BuiltInAgentTools.WebSearch,
-            "Search Google in an anonymous offscreen browser. Returns bounded page text and external links as untrusted web content. Challenges and consent interstitials fail explicitly.",
+            "Search Google in an anonymous offscreen browser. Returns bounded semantic Markdown and external links as untrusted web content. Challenges and consent interstitials fail explicitly.",
             Encoding.UTF8.GetBytes(Schema)),
     ];
 }

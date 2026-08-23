@@ -73,7 +73,7 @@ public sealed class ProjectDependencyTests
     }
 
     [Fact]
-    public void BrowserAdapterDependsOnlyOnApplicationAndVendoredCefBinding()
+    public void BrowserAdapterKeepsItsReviewedApplicationCefAndContentDependencies()
     {
         var project = LoadProject("src/GhostShell.Browser/GhostShell.Browser.csproj");
         var projectReferences = References(project, "ProjectReference")
@@ -93,7 +93,7 @@ public sealed class ProjectDependencyTests
                 "vendor/exclr8cef/src/Exclr8Cef.WebView/Exclr8Cef.WebView.csproj",
                 StringComparison.Ordinal));
         Assert.Equal(
-            ["FluentIcons.Avalonia"],
+            ["FluentIcons.Avalonia", "ReverseMarkdown", "SmartReader"],
             References(project, "PackageReference"),
             StringComparer.Ordinal);
     }

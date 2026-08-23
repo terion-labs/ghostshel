@@ -11,6 +11,10 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
         BrowserAddress,
         CancellationToken,
         ValueTask<bool>>? _activeNavigationRequestPolicy;
+    private Func<
+        BrowserAddress,
+        CancellationToken,
+        ValueTask<bool>>? _resourceRequestPolicy;
 
     public Control View { get; } = new Border();
 
@@ -180,6 +184,19 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
         (_activeNavigationRequestPolicy
             ?? throw new InvalidOperationException(
                 "The fake browser has no active navigation request policy."))(
+            address,
+            cancellationToken);
+
+    public void SetResourceRequestPolicy(
+        Func<BrowserAddress, CancellationToken, ValueTask<bool>> policy) =>
+        _resourceRequestPolicy = policy ?? throw new ArgumentNullException(nameof(policy));
+
+    public ValueTask<bool> AllowsResourceRequestAsync(
+        BrowserAddress address,
+        CancellationToken cancellationToken = default) =>
+        (_resourceRequestPolicy
+            ?? throw new InvalidOperationException(
+                "The fake browser has no resource request policy."))(
             address,
             cancellationToken);
 
@@ -355,6 +372,9 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
 
     public Task<NativeBrowserAutomationResult> ExtractWebSearchDocumentAsync(
         int maximumLinks) =>
+        PendingAutomation?.Task ?? Task.FromResult(EvaluationResult);
+
+    public Task<NativeBrowserAutomationResult> ExtractRenderedDocumentAsync() =>
         PendingAutomation?.Task ?? Task.FromResult(EvaluationResult);
 
     public bool RaiseNavigationStarted(

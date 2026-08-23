@@ -12,12 +12,13 @@ public sealed class AgentWebSearchSessionHostTests
         await using var fixture = await WebSearchFixture.CreateAsync();
         var action = await fixture.PrepareAsync();
 
-        var result = (await fixture.Client.RunAgentWebSearchAsync(
+        var result = (await fixture.Client.RunAgentWebToolAsync(
             fixture.Authorization.Arm(action),
             action,
             default)).Value();
 
-        Assert.Equal("Search results", result.Title);
+        var search = Assert.IsType<AgentWebSearchResult>(result);
+        Assert.Equal("Search results", search.Title);
         Assert.Equal(1, fixture.Executor.SearchCount);
         var completion = Assert.Single(fixture.Authorization.Completions);
         Assert.Equal(AgentActionOutcome.Succeeded, completion.Outcome);
@@ -32,7 +33,7 @@ public sealed class AgentWebSearchSessionHostTests
         var action = await fixture.PrepareAsync();
         _ = fixture.Authorization.Arm(action);
 
-        var failure = (await fixture.Client.RunAgentWebSearchAsync(
+        var failure = (await fixture.Client.RunAgentWebToolAsync(
             AgentAuthorizationId.New(),
             action,
             default)).Error();
@@ -49,11 +50,11 @@ public sealed class AgentWebSearchSessionHostTests
         var action = await fixture.PrepareAsync();
         var authorizationId = fixture.Authorization.Arm(action);
 
-        _ = (await fixture.Client.RunAgentWebSearchAsync(
+        _ = (await fixture.Client.RunAgentWebToolAsync(
             authorizationId,
             action,
             default)).Value();
-        var replay = await fixture.Client.RunAgentWebSearchAsync(
+        var replay = await fixture.Client.RunAgentWebToolAsync(
             authorizationId,
             action,
             default);
@@ -67,7 +68,7 @@ public sealed class AgentWebSearchSessionHostTests
         private WebSearchFixture()
         {
             Clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
-            Composer = new AgentWebSearchActionComposer();
+            Composer = new AgentWebToolActionComposer();
             Executor = new RecordingWebSearchExecutor();
             Authorization = new WebSearchAuthorizationConsumer(Clock, ClientId);
             Client = new InMemorySessionHostClient(
@@ -75,13 +76,13 @@ public sealed class AgentWebSearchSessionHostTests
                 new DesktopLifecyclePolicy(),
                 Clock,
                 agentAuthorizationConsumer: Authorization,
-                agentWebSearchActionComposer: Composer,
-                agentWebSearchExecutor: Executor);
+                agentWebToolActionComposer: Composer,
+                agentWebToolExecutor: Executor);
         }
 
         public ManualTimeProvider Clock { get; }
 
-        public AgentWebSearchActionComposer Composer { get; }
+        public AgentWebToolActionComposer Composer { get; }
 
         public RecordingWebSearchExecutor Executor { get; }
 
@@ -119,7 +120,7 @@ public sealed class AgentWebSearchSessionHostTests
             return fixture;
         }
 
-        public async ValueTask<AgentWebSearchAction> PrepareAsync()
+        public async ValueTask<AgentWebToolAction> PrepareAsync()
         {
             var target = new AgentTarget.OpenTab(
                 WindowId,
@@ -172,19 +173,19 @@ public sealed class AgentWebSearchSessionHostTests
         }
     }
 
-    private sealed class RecordingWebSearchExecutor : IAgentWebSearchExecutor
+    private sealed class RecordingWebSearchExecutor : IAgentWebToolExecutor
     {
         public int SearchCount { get; private set; }
 
-        public ValueTask<AgentWebSearchExecutionResult> SearchAsync(
-            AgentWebSearchRequest request,
+        public ValueTask<AgentWebToolExecutionResult> ExecuteAsync(
+            AgentWebToolRequest request,
             CancellationToken cancellationToken)
         {
             _ = request;
             cancellationToken.ThrowIfCancellationRequested();
             SearchCount++;
-            return ValueTask.FromResult<AgentWebSearchExecutionResult>(
-                new AgentWebSearchExecutionResult.Succeeded(
+            return ValueTask.FromResult<AgentWebToolExecutionResult>(
+                new AgentWebToolExecutionResult.Succeeded(
                     new AgentWebSearchResult(
                         "https://www.google.com/search?q=cef",
                         "Search results",
@@ -200,13 +201,13 @@ public sealed class AgentWebSearchSessionHostTests
         TimeProvider timeProvider,
         ClientId clientId) : IAgentAuthorizationConsumer
     {
-        private AgentWebSearchAction? _action;
+        private AgentWebToolAction? _action;
         private AgentAuthorizationId _authorizationId;
         private int _consumed;
 
         public List<AgentActionCompletion> Completions { get; } = [];
 
-        public AgentAuthorizationId Arm(AgentWebSearchAction action)
+        public AgentAuthorizationId Arm(AgentWebToolAction action)
         {
             _action = action;
             _authorizationId = AgentAuthorizationId.New();

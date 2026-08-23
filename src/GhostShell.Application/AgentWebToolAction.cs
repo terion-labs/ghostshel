@@ -1,16 +1,16 @@
 namespace GhostShell.Application;
 
-public sealed class AgentWebSearchAction
+public sealed class AgentWebToolAction
 {
-    internal AgentWebSearchAction(
-        AgentWebSearchRequest request,
+    internal AgentWebToolAction(
+        AgentWebToolRequest request,
         AgentActionProposal proposal)
     {
         Request = request ?? throw new ArgumentNullException(nameof(request));
         Proposal = proposal ?? throw new ArgumentNullException(nameof(proposal));
     }
 
-    public AgentWebSearchRequest Request { get; }
+    public AgentWebToolRequest Request { get; }
 
     public AgentActionProposal Proposal { get; }
 }

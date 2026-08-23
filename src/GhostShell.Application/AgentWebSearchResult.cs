@@ -75,7 +75,7 @@ public sealed record AgentWebSearchLink
     }
 }
 
-public sealed record AgentWebSearchResult
+public sealed record AgentWebSearchResult : AgentWebToolResult
 {
     public const int MaximumTitleBytes = 1_024;
     public const int MaximumTextBytes = 20 * 1_024;

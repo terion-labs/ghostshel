@@ -40,7 +40,7 @@ public sealed class CefBrowserNetworkContextTests
     }
 
     [Fact]
-    public void Agent_web_context_blocks_popups_and_non_proxied_webrtc_udp()
+    public void Agent_web_context_is_direct_and_blocks_popups_and_webrtc_udp()
     {
         var preferences = CefBrowserNetworkContext.AgentWebPreferences();
 
@@ -52,7 +52,10 @@ public sealed class CefBrowserNetworkContextTests
             "disable_non_proxied_udp",
             JsonSerializer.Deserialize<string>(
                 preferences["webrtc.ip_handling_policy"]));
-        Assert.DoesNotContain("proxy", preferences.Keys, StringComparer.Ordinal);
+        using var proxyDocument = JsonDocument.Parse(preferences["proxy"]);
+        Assert.Equal(
+            "direct",
+            proxyDocument.RootElement.GetProperty("mode").GetString());
     }
 
     [Theory]
