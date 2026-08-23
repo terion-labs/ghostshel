@@ -2,9 +2,10 @@ namespace GhostShell.Application;
 
 public sealed record AgentWebSearchEntry
 {
+    public const int MaximumTitleBytes = 1 * 1_024;
     public const int MaximumDescriptionBytes = 4 * 1_024;
 
-    public AgentWebSearchEntry(string url, string description)
+    public AgentWebSearchEntry(string url, string title, string description)
     {
         var boundedUrl = AgentWebToolResult.RequireBoundedText(
             url,
@@ -25,8 +26,13 @@ public sealed record AgentWebSearchEntry
                 nameof(url));
         }
 
+        ArgumentException.ThrowIfNullOrWhiteSpace(title);
         ArgumentException.ThrowIfNullOrWhiteSpace(description);
         Url = address.AbsoluteUri;
+        Title = AgentWebToolResult.RequireBoundedText(
+            title,
+            MaximumTitleBytes,
+            nameof(title));
         Description = AgentWebToolResult.RequireBoundedText(
             description,
             MaximumDescriptionBytes,
@@ -34,6 +40,8 @@ public sealed record AgentWebSearchEntry
     }
 
     public string Url { get; }
+
+    public string Title { get; }
 
     public string Description { get; }
 }

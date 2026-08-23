@@ -46,15 +46,6 @@
           "AngleSharp": "1.5.2"
         }
       },
-      "SmartReader": {
-        "type": "Direct",
-        "requested": "[0.11.1, )",
-        "resolved": "0.11.1",
-        "contentHash": "hzhS0IVfSDuf0IghJ4+ODSuTZXSjwS+4NXSBiy5yH/FXdBkl4q3yMDAt7rkPHdLyBlealsk7aL2CcG+kPP5Ocg==",
-        "dependencies": {
-          "AngleSharp": "1.5.2"
-        }
-      },
       "AngleSharp": {
         "type": "Transitive",
         "resolved": "1.5.2",

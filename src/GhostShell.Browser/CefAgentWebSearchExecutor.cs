@@ -157,6 +157,8 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
         if (candidate.ValueKind != JsonValueKind.Object
             || !candidate.TryGetProperty("url", out var urlValue)
             || urlValue.ValueKind != JsonValueKind.String
+            || !candidate.TryGetProperty("title", out var titleValue)
+            || titleValue.ValueKind != JsonValueKind.String
             || !candidate.TryGetProperty("desc", out var descriptionValue)
             || descriptionValue.ValueKind != JsonValueKind.String)
         {
@@ -164,19 +166,25 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
         }
 
         var url = urlValue.GetString();
+        var title = titleValue.GetString();
         var description = descriptionValue.GetString();
-        if (url is null || description is null)
+        if (url is null || title is null || description is null)
         {
             return false;
         }
 
+        title = BoundedWebText.Truncate(
+            title.Trim(),
+            AgentWebSearchEntry.MaximumTitleBytes,
+            out var titleTruncated);
         description = BoundedWebText.Truncate(
             description.Trim(),
             AgentWebSearchEntry.MaximumDescriptionBytes,
-            out truncated);
+            out var descriptionTruncated);
+        truncated = titleTruncated || descriptionTruncated;
         try
         {
-            entry = new AgentWebSearchEntry(url, description);
+            entry = new AgentWebSearchEntry(url, title, description);
             return true;
         }
         catch (ArgumentException)
@@ -204,7 +212,7 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
                             .AllowsResolvedAsync(candidate, token));
                     return (createdNetwork, createdBrowser);
                 });
-            if (!await browser.BeginWebSearchDomObservationWhenReadyAsync()
+            if (!await browser.BeginDomObservationWhenReadyAsync()
                     .WaitAsync(cancellationToken)
                     .ConfigureAwait(false))
             {
@@ -227,11 +235,11 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
                 return Failed(outcome.ErrorCode);
             }
 
-            browser.MarkWebSearchDomActivity();
+            browser.MarkDomActivity();
             while (true)
             {
                 var settledGeneration = await browser
-                    .WaitForWebSearchDomQuietAsync(
+                    .WaitForDomQuietAsync(
                         DomQuietWindow,
                         cancellationToken)
                     .ConfigureAwait(false);
@@ -255,7 +263,7 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
                     return parsed;
                 }
 
-                await browser.WaitForWebSearchDomActivityAfterAsync(
+                await browser.WaitForDomActivityAfterAsync(
                         settledGeneration,
                         cancellationToken)
                     .ConfigureAwait(false);
@@ -267,7 +275,7 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
             {
                 await AvaloniaBrowserUiDispatcher.Instance.InvokeAsync(() =>
                 {
-                    browser?.EndWebSearchDomObservation();
+                    browser?.EndDomObservation();
                     browser?.Dispose();
                     network?.Dispose();
                     return true;

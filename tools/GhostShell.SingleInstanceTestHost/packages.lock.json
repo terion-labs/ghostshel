@@ -791,8 +791,7 @@
           "Exclr8Cef.WebView": "[0.8.0, )",
           "FluentIcons.Avalonia": "[2.1.333, )",
           "GhostShell.Application": "[1.0.0, )",
-          "ReverseMarkdown": "[6.2.1, )",
-          "SmartReader": "[0.11.1, )"
+          "ReverseMarkdown": "[6.2.1, )"
         }
       },
       "ghostshell.core": {
@@ -1240,15 +1239,6 @@
         "requested": "[6.2.1, )",
         "resolved": "6.2.1",
         "contentHash": "4ef2AoeNdBHrKoMU6t04dxTQ72TXsNO3RfWU1YN5jaJjCIrQhvNo9nhfO+6z+j7UBZNadsdN2d4rzAFO27xUnw==",
-        "dependencies": {
-          "AngleSharp": "1.5.2"
-        }
-      },
-      "SmartReader": {
-        "type": "CentralTransitive",
-        "requested": "[0.11.1, )",
-        "resolved": "0.11.1",
-        "contentHash": "hzhS0IVfSDuf0IghJ4+ODSuTZXSjwS+4NXSBiy5yH/FXdBkl4q3yMDAt7rkPHdLyBlealsk7aL2CcG+kPP5Ocg==",
         "dependencies": {
           "AngleSharp": "1.5.2"
         }

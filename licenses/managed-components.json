@@ -1351,17 +1351,6 @@
       "nuspecLicense": "MIT"
     },
     {
-      "identity": "SmartReader/0.11.1",
-      "kind": "nuget",
-      "depsType": "package",
-      "licenseDeclared": "Apache-2.0",
-      "nuGetId": "SmartReader",
-      "contentHash": "hzhS0IVfSDuf0IghJ4+ODSuTZXSjwS+4NXSBiy5yH/FXdBkl4q3yMDAt7rkPHdLyBlealsk7aL2CcG+kPP5Ocg==",
-      "nupkgSha512": "r8/Ajn1SugPtRwsbb9tWgGssk43MwbUbrj+Bc30bMcKdJWEAK9Sui9kqwTPR3S63U3S5cFfsZJTF4esxhX8O3g==",
-      "nuspecLicenseType": "expression",
-      "nuspecLicense": "Apache-2.0"
-    },
-    {
       "identity": "SshNet.Agent/2026.0.0",
       "kind": "nuget",
       "depsType": "package",

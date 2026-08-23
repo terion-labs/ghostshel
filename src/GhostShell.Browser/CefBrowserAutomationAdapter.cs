@@ -1,4 +1,6 @@
+using System.Buffers;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using Exclr8Cef;
 using GhostShell.Application;
@@ -28,6 +30,8 @@ internal sealed class CefBrowserAutomationAdapter
 {
     private const string IsolatedWorldName = "ghostshell-agent-isolated";
     private const int MaximumCdpReplyBytes = 256 * 1024;
+    private const int MaximumReadableArticleCharacters = 1024 * 1024;
+    private const int ReadableArticleChunkCharacters = 32 * 1024;
     private static readonly UTF8Encoding StrictUtf8 = new(
         encoderShouldEmitUTF8Identifier: false,
         throwOnInvalidBytes: true);
@@ -83,6 +87,9 @@ internal sealed class CefBrowserAutomationAdapter
 
     public Task<NativeBrowserAutomationResult> ExtractRenderedDocumentAsync() =>
         CaptureOutcomeAsync(ExtractRenderedDocumentCoreAsync);
+
+    public Task<NativeBrowserAutomationResult> ExtractReadableArticleAsync() =>
+        CaptureOutcomeAsync(ExtractReadableArticleCoreAsync);
 
     private async Task<NativeBrowserAutomationResult> DispatchMouseCoreAsync(
         BrowserMouseRequest request)
@@ -191,7 +198,7 @@ internal sealed class CefBrowserAutomationAdapter
                   const anchor = heading.closest('a[href]');
                   const block = heading.closest('[jscontroller][lang]');
                   if (anchor && block && resultRoot.contains(block)) {
-                    candidates.push({ anchor, block });
+                    candidates.push({ anchor, block, heading });
                   }
                 }
 
@@ -203,12 +210,16 @@ internal sealed class CefBrowserAutomationAdapter
               const candidates = resultCandidates();
               const results = [];
               let truncated = candidates.length > {{maximumResults}};
-              for (const { anchor, block } of candidates) {
+              for (const { anchor, block, heading } of candidates) {
                 if (results.length >= {{maximumResults}}) {
                   break;
                 }
 
                 const clone = block.cloneNode(true);
+                const clonedHeading = clone.querySelector('h3');
+                if (clonedHeading) {
+                  clonedHeading.remove();
+                }
                 for (const hidden of clone.querySelectorAll('[aria-hidden]')) {
                   const parent = hidden.parentElement;
                   if (parent && parent !== clone) {
@@ -223,14 +234,16 @@ internal sealed class CefBrowserAutomationAdapter
                 }
 
                 const description = compact(clone.textContent);
+                const title = compact(heading.textContent);
                 const url = String(anchor.href || '');
-                if (!url || !description) {
+                if (!url || !title || !description) {
                   continue;
                 }
 
-                truncated ||= description.length > 2048;
+                truncated ||= title.length > 1024 || description.length > 2048;
                 results.push({
                   url: url.slice(0, 2048),
+                  title: title.slice(0, 1024),
                   desc: description.slice(0, 2048)
                 });
               }
@@ -249,6 +262,137 @@ internal sealed class CefBrowserAutomationAdapter
                 throwOnSideEffect: false,
                 contextId)
             .ConfigureAwait(false);
+    }
+
+    private async Task<NativeBrowserAutomationResult>
+        ExtractReadableArticleCoreAsync()
+    {
+        var contextId = await CreateIsolatedWorldAsync().ConfigureAwait(false);
+        if (contextId == 0)
+        {
+            return NativeBrowserAutomationResult.Rejected(
+                "script_context_unavailable");
+        }
+
+        var extractSource = MozillaReadabilityScript.Source + """
+
+            ;(() => {
+              const article = new Readability(
+                document.cloneNode(true),
+                { keepClasses: false, maxElemsToParse: 0 }).parse();
+              if (!article || typeof article.content !== 'string'
+                  || !article.content.trim()) {
+                return null;
+              }
+
+              globalThis.__ghostshellReadableArticleHtml = article.content;
+              return {
+                title: String(article.title || document.title || '').slice(0, 1024),
+                length: article.content.length
+              };
+            })()
+            """;
+        var initialized = await EvaluateSourceAsync(
+                extractSource,
+                awaitPromise: false,
+                TimeSpan.FromSeconds(15),
+                throwOnSideEffect: false,
+                contextId)
+            .ConfigureAwait(false);
+        if (initialized.Status is not NativeBrowserAutomationStatus.Acknowledged
+            || initialized.ResultJson is null)
+        {
+            return initialized;
+        }
+
+        using var metadata = JsonDocument.Parse(initialized.ResultJson);
+        var root = metadata.RootElement;
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty("title", out var titleValue)
+            || titleValue.ValueKind != JsonValueKind.String
+            || !root.TryGetProperty("length", out var lengthValue)
+            || !lengthValue.TryGetInt32(out var articleLength)
+            || articleLength < 0)
+        {
+            return NativeBrowserAutomationResult.Rejected(
+                "readable_article_metadata_invalid");
+        }
+
+        var captureLength = Math.Min(
+            articleLength,
+            MaximumReadableArticleCharacters);
+        var articleHtml = new StringBuilder(captureLength);
+        var offset = 0;
+        while (offset < captureLength)
+        {
+            var chunkSource = $$"""
+                (() => {
+                  const html = globalThis.__ghostshellReadableArticleHtml;
+                  if (typeof html !== 'string') {
+                    return null;
+                  }
+
+                  let end = Math.min(
+                    {{captureLength}},
+                    {{offset}} + {{ReadableArticleChunkCharacters}});
+                  if (end < {{captureLength}}) {
+                    const before = html.charCodeAt(end - 1);
+                    const after = html.charCodeAt(end);
+                    if (before >= 0xD800 && before <= 0xDBFF
+                        && after >= 0xDC00 && after <= 0xDFFF) {
+                      end--;
+                    }
+                  }
+
+                  return {
+                    chunk: html.slice({{offset}}, end),
+                    nextOffset: end
+                  };
+                })()
+                """;
+            var extracted = await EvaluateSourceAsync(
+                    chunkSource,
+                    awaitPromise: false,
+                    TimeSpan.FromSeconds(5),
+                    throwOnSideEffect: false,
+                    contextId)
+                .ConfigureAwait(false);
+            if (extracted.Status is not NativeBrowserAutomationStatus.Acknowledged
+                || extracted.ResultJson is null)
+            {
+                return extracted;
+            }
+
+            using var chunkDocument = JsonDocument.Parse(extracted.ResultJson);
+            var chunkRoot = chunkDocument.RootElement;
+            if (chunkRoot.ValueKind != JsonValueKind.Object
+                || !chunkRoot.TryGetProperty("chunk", out var chunkValue)
+                || chunkValue.ValueKind != JsonValueKind.String
+                || !chunkRoot.TryGetProperty("nextOffset", out var nextOffsetValue)
+                || !nextOffsetValue.TryGetInt32(out var nextOffset)
+                || nextOffset <= offset
+                || nextOffset > captureLength)
+            {
+                return NativeBrowserAutomationResult.Rejected(
+                    "readable_article_chunk_invalid");
+            }
+
+            var chunk = chunkValue.GetString()!;
+            if (chunk.Length != nextOffset - offset)
+            {
+                return NativeBrowserAutomationResult.Rejected(
+                    "readable_article_chunk_invalid");
+            }
+
+            articleHtml.Append(chunk);
+            offset = nextOffset;
+        }
+
+        return NativeBrowserAutomationResult.Acknowledged(
+            SerializeExtractedDocument(
+                titleValue.GetString() ?? string.Empty,
+                articleHtml.ToString(),
+                articleLength > captureLength));
     }
 
     private async Task<NativeBrowserAutomationResult>
@@ -279,6 +423,27 @@ internal sealed class CefBrowserAutomationAdapter
                 throwOnSideEffect: false,
                 contextId)
             .ConfigureAwait(false);
+    }
+
+    private static string SerializeExtractedDocument(
+        string title,
+        string html,
+        bool truncated)
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+        using var writer = new Utf8JsonWriter(
+            buffer,
+            new JsonWriterOptions
+            {
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            });
+        writer.WriteStartObject();
+        writer.WriteString("title", title);
+        writer.WriteString("html", html);
+        writer.WriteBoolean("truncated", truncated);
+        writer.WriteEndObject();
+        writer.Flush();
+        return Encoding.UTF8.GetString(buffer.WrittenSpan);
     }
 
     private async Task<int?> CreateIsolatedWorldAsync()

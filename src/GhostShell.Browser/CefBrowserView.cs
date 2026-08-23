@@ -291,7 +291,7 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
             ActiveRequestCount: 0,
             QuietFor: TimeSpan.Zero);
 
-    internal async Task<bool> BeginWebSearchDomObservationWhenReadyAsync()
+    internal async Task<bool> BeginDomObservationWhenReadyAsync()
     {
         if (!await EnsureRendererReadyAsync().ConfigureAwait(false)
             || _domActivity is null)
@@ -302,25 +302,25 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         return await _domActivity.BeginObservationAsync().ConfigureAwait(false);
     }
 
-    internal long MarkWebSearchDomActivity() =>
+    internal long MarkDomActivity() =>
         _domActivity?.MarkActivity()
         ?? throw new InvalidOperationException("CEF DOM observation is unavailable.");
 
-    internal Task<long> WaitForWebSearchDomQuietAsync(
+    internal Task<long> WaitForDomQuietAsync(
         TimeSpan quietWindow,
         CancellationToken cancellationToken) =>
         _domActivity?.WaitForQuietAsync(quietWindow, cancellationToken)
         ?? Task.FromException<long>(
             new InvalidOperationException("CEF DOM observation is unavailable."));
 
-    internal Task<long> WaitForWebSearchDomActivityAfterAsync(
+    internal Task<long> WaitForDomActivityAfterAsync(
         long generation,
         CancellationToken cancellationToken) =>
         _domActivity?.WaitForActivityAfterAsync(generation, cancellationToken)
         ?? Task.FromException<long>(
             new InvalidOperationException("CEF DOM observation is unavailable."));
 
-    internal void EndWebSearchDomObservation() =>
+    internal void EndDomObservation() =>
         _domActivity?.EndObservation();
 
     public async Task<NativeBrowserViewport> ReadViewportAsync()
@@ -358,6 +358,10 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         ExtractWebSearchDocumentAsync(int maximumResults) =>
         await DispatchAutomationAsync(
             adapter => adapter.ExtractWebSearchDocumentAsync(maximumResults));
+
+    public async Task<NativeBrowserAutomationResult> ExtractReadableArticleAsync() =>
+        await DispatchAutomationAsync(
+            static adapter => adapter.ExtractReadableArticleAsync());
 
     public async Task<NativeBrowserAutomationResult> ExtractRenderedDocumentAsync() =>
         await DispatchAutomationAsync(

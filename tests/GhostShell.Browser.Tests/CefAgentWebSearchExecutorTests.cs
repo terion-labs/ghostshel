@@ -30,18 +30,22 @@ public sealed class CefAgentWebSearchExecutorTests
               "results": [
                 {
                   "url": "https://example.test/docs",
+                  "title": "Useful result",
                   "desc": "Useful result Example docs"
                 },
                 {
                   "url": "https://example.test/docs",
+                  "title": "Duplicate",
                   "desc": "Duplicate"
                 },
                 {
                   "url": "javascript:alert(1)",
+                  "title": "Invalid destination",
                   "desc": "Invalid destination"
                 },
                 {
                   "url": "https://example.test/guide",
+                  "title": "Second useful result",
                   "desc": "Second useful result"
                 }
               ],
@@ -61,11 +65,13 @@ public sealed class CefAgentWebSearchExecutorTests
             entry =>
             {
                 Assert.Equal("https://example.test/docs", entry.Url);
+                Assert.Equal("Useful result", entry.Title);
                 Assert.Equal("Useful result Example docs", entry.Description);
             },
             entry =>
             {
                 Assert.Equal("https://example.test/guide", entry.Url);
+                Assert.Equal("Second useful result", entry.Title);
                 Assert.Equal("Second useful result", entry.Description);
             });
     }
