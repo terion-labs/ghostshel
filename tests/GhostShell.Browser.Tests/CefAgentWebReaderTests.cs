@@ -14,6 +14,11 @@ public sealed class CefAgentWebReaderTests
             {
               "title": "Reader guide",
               "html": "<div><h1>Reader guide</h1><p>{{paragraph}}</p><script>secret()</script></div>",
+              "links": [
+                "https://docs.example.test/guide",
+                "https://docs.example.test/reference",
+                "https://docs.example.test/guide"
+              ],
               "truncated": false
             }
             """;
@@ -33,6 +38,13 @@ public sealed class CefAgentWebReaderTests
             read.Content,
             StringComparison.Ordinal);
         Assert.DoesNotContain("secret()", read.Content, StringComparison.Ordinal);
+        Assert.Equal(
+            [
+                "https://docs.example.test/guide",
+                "https://docs.example.test/reference",
+            ],
+            read.Links,
+            StringComparer.Ordinal);
     }
 
     [Fact]
@@ -42,6 +54,7 @@ public sealed class CefAgentWebReaderTests
             {
               "title": "Dynamic page",
               "html": "<html><body><main>Rendered client content</main></body></html>",
+              "links": ["https://app.example.test/account"],
               "truncated": true
             }
             """;
@@ -56,6 +69,7 @@ public sealed class CefAgentWebReaderTests
         var read = Assert.IsType<AgentWebReadResult>(succeeded.Result);
         Assert.Equal("Dynamic page", read.Title);
         Assert.Contains("Rendered client content", read.Content, StringComparison.Ordinal);
+        Assert.Equal("https://app.example.test/account", Assert.Single(read.Links));
         Assert.True(read.Truncated);
     }
 }

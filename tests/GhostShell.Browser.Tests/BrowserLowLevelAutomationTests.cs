@@ -418,7 +418,17 @@ public sealed class BrowserLowLevelAutomationTests
         var transport = new RecordingTransport(
             "{\"result\":{\"frameTree\":{\"frame\":{\"id\":\"main\"}}}}",
             "{\"result\":{\"executionContextId\":42}}",
-            EvaluationReply(new { title = "Guide", length = chunkSize + 1 }),
+            EvaluationReply(new
+            {
+                title = "Guide",
+                length = chunkSize + 1,
+                links = new[]
+                {
+                    "https://docs.example.test/guide",
+                    "https://docs.example.test/reference",
+                },
+                linksTruncated = false,
+            }),
             EvaluationReply(new { chunk = firstChunk, nextOffset = chunkSize }),
             EvaluationReply(new { chunk = secondChunk, nextOffset = chunkSize + 1 }));
         var adapter = new CefBrowserAutomationAdapter(transport);
@@ -432,6 +442,15 @@ public sealed class BrowserLowLevelAutomationTests
             firstChunk + secondChunk,
             document.RootElement.GetProperty("html").GetString());
         Assert.False(document.RootElement.GetProperty("truncated").GetBoolean());
+        Assert.Equal(
+            [
+                "https://docs.example.test/guide",
+                "https://docs.example.test/reference",
+            ],
+            document.RootElement.GetProperty("links")
+                .EnumerateArray()
+                .Select(link => link.GetString()),
+            StringComparer.Ordinal);
         Assert.Equal(
             [
                 "Page.getFrameTree",
@@ -452,6 +471,19 @@ public sealed class BrowserLowLevelAutomationTests
             "document.cloneNode(true)",
             expressions[0],
             StringComparison.Ordinal);
+        Assert.Contains(
+            "document.querySelectorAll('a[href]')",
+            expressions[0],
+            StringComparison.Ordinal);
+        Assert.Contains("anchor.href", expressions[0], StringComparison.Ordinal);
+        Assert.Contains("seenLinks.has(url)", expressions[0], StringComparison.Ordinal);
+        Assert.True(
+            expressions[0].IndexOf(
+                "document.querySelectorAll('a[href]')",
+                StringComparison.Ordinal)
+            < expressions[0].IndexOf(
+                "document.cloneNode(true)",
+                StringComparison.Ordinal));
         Assert.Contains(
             "globalThis.__ghostshellReadableArticleHtml = article.content",
             expressions[0],

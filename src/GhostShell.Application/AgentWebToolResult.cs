@@ -81,12 +81,14 @@ public sealed record AgentWebReadResult : AgentWebToolResult
 {
     public const int MaximumTitleBytes = 1_024;
     public const int MaximumContentBytes = 64 * 1_024;
+    public const int MaximumLinkCount = 512;
 
     public AgentWebReadResult(
         string finalUrl,
         string title,
         AgentWebReadFormat format,
         string content,
+        IReadOnlyList<string> links,
         bool truncated)
     {
         if (!Enum.IsDefined(format))
@@ -98,6 +100,7 @@ public sealed record AgentWebReadResult : AgentWebToolResult
         Title = RequireBoundedText(title, MaximumTitleBytes, nameof(title));
         Format = format;
         Content = RequireBoundedText(content, MaximumContentBytes, nameof(content));
+        Links = NormalizeLinks(links);
         Truncated = truncated;
     }
 
@@ -109,7 +112,50 @@ public sealed record AgentWebReadResult : AgentWebToolResult
 
     public string Content { get; }
 
+    public IReadOnlyList<string> Links { get; }
+
     public bool Truncated { get; }
+
+    private static IReadOnlyList<string> NormalizeLinks(IReadOnlyList<string> links)
+    {
+        ArgumentNullException.ThrowIfNull(links);
+        if (links.Count > MaximumLinkCount)
+        {
+            throw new ArgumentOutOfRangeException(nameof(links));
+        }
+
+        var uniqueLinks = new List<string>(links.Count);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var link in links)
+        {
+            var boundedLink = RequireBoundedText(
+                link,
+                AgentWebToolRequest.MaximumUrlBytes,
+                nameof(links));
+            if (!Uri.TryCreate(boundedLink, UriKind.Absolute, out var address)
+                || !(address.Scheme.Equals(
+                        Uri.UriSchemeHttp,
+                        StringComparison.OrdinalIgnoreCase)
+                    || address.Scheme.Equals(
+                        Uri.UriSchemeHttps,
+                        StringComparison.OrdinalIgnoreCase))
+                || string.IsNullOrWhiteSpace(address.Host)
+                || !string.IsNullOrEmpty(address.UserInfo))
+            {
+                throw new ArgumentException(
+                    "Page links must be bounded, credential-free HTTP(S) URLs.",
+                    nameof(links));
+            }
+
+            var normalized = address.AbsoluteUri;
+            if (seen.Add(normalized))
+            {
+                uniqueLinks.Add(normalized);
+            }
+        }
+
+        return uniqueLinks.AsReadOnly();
+    }
 }
 
 public enum AgentWebToolErrorCode
