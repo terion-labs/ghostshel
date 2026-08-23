@@ -23,7 +23,7 @@ public sealed class AgentWebSearchSessionHostTests
         var completion = Assert.Single(fixture.Authorization.Completions);
         Assert.Equal(AgentActionOutcome.Succeeded, completion.Outcome);
         Assert.Equal("web_search_completed", completion.StableCode);
-        Assert.Equal(1, completion.ResultCount);
+        Assert.Null(completion.ResultCount);
     }
 
     [Fact]
@@ -190,9 +190,6 @@ public sealed class AgentWebSearchSessionHostTests
                         "https://www.google.com/search?q=cef",
                         "Search results",
                         "Example result",
-                        [new AgentWebSearchLink(
-                            "Example",
-                            "https://example.test/")],
                         truncated: false)));
         }
     }

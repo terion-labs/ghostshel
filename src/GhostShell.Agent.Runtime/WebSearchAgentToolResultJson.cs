@@ -30,16 +30,6 @@ internal static class WebSearchAgentToolResultJson
         writer.WriteString("content", result.Text);
         writer.WriteString("text", result.Text);
         writer.WriteBoolean("truncated", result.Truncated);
-        writer.WriteStartArray("links");
-        foreach (var link in result.Links.Take(request.ResultCount))
-        {
-            writer.WriteStartObject();
-            writer.WriteString("text", link.Text);
-            writer.WriteString("url", link.Url);
-            writer.WriteEndObject();
-        }
-
-        writer.WriteEndArray();
         writer.WriteEndObject();
         writer.Flush();
         if (buffer.WrittenCount > AgentKernelLimits.Default.MaximumToolResultBytes)

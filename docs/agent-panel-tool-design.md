@@ -151,9 +151,10 @@ not require a visible browser panel.
   `rendered_html` mode returns the bounded current DOM, not original response
   bytes.
 - `web.search` performs an anonymous Google search in the same detached CEF
-  isolation, permits only Google top-level navigations, and converts a cleaned
-  rendered document to bounded semantic Markdown plus credential-free HTTP(S)
-  links. Consent, unusual-traffic, and challenge pages fail explicitly.
+  isolation, permits only Google top-level navigations, clones the rendered
+  `#rso` result container, and converts that complete fragment to bounded
+  semantic Markdown. It does not maintain a Google-result selector or link
+  parser. Consent, unusual-traffic, and challenge pages fail explicitly.
 
 All returned content is labeled `untrusted_web`; model-supplied scripts,
 headers, request bodies, credentials, cookies, provider URLs, and selectors

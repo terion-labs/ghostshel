@@ -363,10 +363,10 @@ public sealed class BrowserLowLevelAutomationTests
         var transport = new RecordingTransport(
             "{\"result\":{\"frameTree\":{\"frame\":{\"id\":\"main\"}}}}",
             "{\"result\":{\"executionContextId\":42}}",
-            "{\"result\":{\"result\":{\"type\":\"object\",\"value\":{\"title\":\"Search\",\"text\":\"result\",\"truncated\":false,\"links\":[]}}}}");
+            "{\"result\":{\"result\":{\"type\":\"object\",\"value\":{\"title\":\"Search\",\"pageText\":\"result\",\"html\":\"\u003Cdiv id=\\\"rso\\\"\u003Eresult\u003C/div\u003E\",\"truncated\":false}}}}");
         var adapter = new CefBrowserAutomationAdapter(transport);
 
-        var result = await adapter.ExtractWebSearchDocumentAsync(7);
+        var result = await adapter.ExtractWebSearchDocumentAsync();
 
         Assert.Equal(NativeBrowserAutomationStatus.Acknowledged, result.Status);
         Assert.Equal(
@@ -378,8 +378,8 @@ public sealed class BrowserLowLevelAutomationTests
         Assert.Equal(42, root.GetProperty("contextId").GetInt32());
         Assert.True(root.GetProperty("returnByValue").GetBoolean());
         var source = root.GetProperty("expression").GetString()!;
-        Assert.Contains("document.querySelectorAll('a[href]')", source, StringComparison.Ordinal);
-        Assert.Contains("links.length >= 7", source, StringComparison.Ordinal);
+        Assert.Contains("document.querySelector('#rso')", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("querySelectorAll('a[href]')", source, StringComparison.Ordinal);
         Assert.DoesNotContain("eval(", source, StringComparison.Ordinal);
     }
 

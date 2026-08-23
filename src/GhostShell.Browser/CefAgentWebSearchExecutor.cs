@@ -86,37 +86,30 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
             });
             var root = document.RootElement;
             var title = root.GetProperty("title").GetString() ?? string.Empty;
-            var text = root.GetProperty("text").GetString() ?? string.Empty;
+            var pageText = root.GetProperty("pageText").GetString() ?? string.Empty;
             var truncated = root.GetProperty("truncated").GetBoolean();
-            if (IsInterstitial(finalAddress.Value, title, text))
+            if (IsInterstitial(finalAddress.Value, title, pageText))
             {
                 return Failed(AgentWebSearchErrorCode.Interstitial);
             }
 
-            if (root.TryGetProperty("html", out var htmlElement)
-                && htmlElement.ValueKind == JsonValueKind.String)
+            var html = root.GetProperty("html").GetString() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(html))
             {
-                var markdown = new WebContentMarkdownConverter().ConvertDocument(
-                    htmlElement.GetString() ?? string.Empty);
-                text = BoundedWebText.Truncate(
-                    markdown,
-                    AgentWebSearchResult.MaximumTextBytes,
-                    out var markdownTruncated);
-                truncated |= markdownTruncated;
+                return Failed(AgentWebSearchErrorCode.ExtractionFailed);
             }
 
-            var links = root.GetProperty("links")
-                .EnumerateArray()
-                .Select(link => new AgentWebSearchLink(
-                    link.GetProperty("text").GetString() ?? string.Empty,
-                    link.GetProperty("url").GetString() ?? string.Empty))
-                .ToArray();
+            var markdown = new WebContentMarkdownConverter().ConvertDocument(html);
+            var text = BoundedWebText.Truncate(
+                markdown,
+                AgentWebSearchResult.MaximumTextBytes,
+                out var markdownTruncated);
+            truncated |= markdownTruncated;
             return new AgentWebSearchExecutionResult.Succeeded(
                 new AgentWebSearchResult(
                     finalAddress.Value.AbsoluteUri,
                     title,
                     text,
-                    links,
                     truncated));
         }
         catch (Exception exception) when (exception is
@@ -167,10 +160,7 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
             await Task.Delay(DynamicContentSettleDelay, cancellationToken)
                 .ConfigureAwait(false);
             var extracted = await browser
-                .ExtractWebSearchDocumentAsync(
-                    Math.Min(
-                        AgentWebSearchResult.MaximumLinks,
-                        request.ResultCount * 3))
+                .ExtractWebSearchDocumentAsync()
                 .WaitAsync(cancellationToken)
                 .ConfigureAwait(false);
             if (extracted.Status != NativeBrowserAutomationStatus.Acknowledged

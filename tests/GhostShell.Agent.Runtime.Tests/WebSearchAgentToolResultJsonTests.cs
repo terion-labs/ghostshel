@@ -8,18 +8,13 @@ namespace GhostShell.Agent.Runtime.Tests;
 public sealed class WebSearchAgentToolResultJsonTests
 {
     [Fact]
-    public void SuccessIsLabeledUntrustedAndLimitsLinksToRequestedCount()
+    public void SuccessIsLabeledUntrustedAndReturnsRsoMarkdown()
     {
         var request = new AgentWebSearchRequest("cef offscreen", 2);
         var result = new AgentWebSearchResult(
             "https://www.google.com/search?q=cef%20offscreen",
             "cef offscreen - Google Search",
-            "Search page text",
-            [
-                new AgentWebSearchLink("First", "https://example.test/first"),
-                new AgentWebSearchLink("Second", "https://example.test/second"),
-                new AgentWebSearchLink("Third", "https://example.test/third"),
-            ],
+            "## First\n\n[Result](https://example.test/first)",
             truncated: true);
 
         var projection = WebSearchAgentToolResultJson.Project(request, result);
@@ -33,7 +28,8 @@ public sealed class WebSearchAgentToolResultJsonTests
         Assert.Equal("google", root.GetProperty("provider").GetString());
         Assert.Equal(request.Query, root.GetProperty("query").GetString());
         Assert.True(root.GetProperty("truncated").GetBoolean());
-        Assert.Equal(2, root.GetProperty("links").GetArrayLength());
+        Assert.Equal("markdown", root.GetProperty("format").GetString());
+        Assert.False(root.TryGetProperty("links", out _));
     }
 
     [Theory]
