@@ -3,17 +3,25 @@ namespace GhostShell.Application;
 public sealed record AgentWebSearchResult : AgentWebToolResult
 {
     public const int MaximumTitleBytes = 1_024;
-    public const int MaximumTextBytes = 20 * 1_024;
 
     public AgentWebSearchResult(
         string finalUrl,
         string title,
-        string text,
+        IReadOnlyList<AgentWebSearchEntry> entries,
         bool truncated)
     {
+        ArgumentNullException.ThrowIfNull(entries);
+        if (entries.Count is < 1 or > AgentWebSearchRequest.MaximumResultCount
+            || entries.Any(static entry => entry is null))
+        {
+            throw new ArgumentException(
+                $"A web search result must contain 1 to {AgentWebSearchRequest.MaximumResultCount} entries.",
+                nameof(entries));
+        }
+
         FinalUrl = RequireFinalUrl(finalUrl);
         Title = RequireBoundedText(title, MaximumTitleBytes, nameof(title));
-        Text = RequireBoundedText(text, MaximumTextBytes, nameof(text));
+        Entries = [.. entries];
         Truncated = truncated;
     }
 
@@ -21,7 +29,7 @@ public sealed record AgentWebSearchResult : AgentWebToolResult
 
     public string Title { get; }
 
-    public string Text { get; }
+    public IReadOnlyList<AgentWebSearchEntry> Entries { get; }
 
     public bool Truncated { get; }
 }

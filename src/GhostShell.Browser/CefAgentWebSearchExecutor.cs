@@ -93,23 +93,18 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
                 return Failed(AgentWebSearchErrorCode.Interstitial);
             }
 
-            var html = root.GetProperty("html").GetString() ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(html))
+            var parsed = ParseEntries(root.GetProperty("results"));
+            if (parsed.Entries.Count == 0)
             {
                 return Failed(AgentWebSearchErrorCode.ExtractionFailed);
             }
 
-            var markdown = new WebContentMarkdownConverter().ConvertDocument(html);
-            var text = BoundedWebText.Truncate(
-                markdown,
-                AgentWebSearchResult.MaximumTextBytes,
-                out var markdownTruncated);
-            truncated |= markdownTruncated;
+            truncated |= parsed.Truncated;
             return new AgentWebSearchExecutionResult.Succeeded(
                 new AgentWebSearchResult(
                     finalAddress.Value.AbsoluteUri,
                     title,
-                    text,
+                    parsed.Entries,
                     truncated));
         }
         catch (Exception exception) when (exception is
@@ -119,6 +114,75 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
             or KeyNotFoundException)
         {
             return Failed(AgentWebSearchErrorCode.ExtractionFailed);
+        }
+    }
+
+    private static SearchEntries ParseEntries(JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.Array)
+        {
+            throw new JsonException("Search results must be an array.");
+        }
+
+        List<AgentWebSearchEntry> entries = [];
+        HashSet<string> seenUrls = new(StringComparer.Ordinal);
+        var truncated = false;
+        foreach (var candidate in value.EnumerateArray())
+        {
+            if (entries.Count >= AgentWebSearchRequest.MaximumResultCount)
+            {
+                truncated = true;
+                break;
+            }
+
+            if (!TryCreateEntry(candidate, out var entry, out var entryTruncated)
+                || !seenUrls.Add(entry.Url))
+            {
+                continue;
+            }
+
+            truncated |= entryTruncated;
+            entries.Add(entry);
+        }
+
+        return new SearchEntries(entries, truncated);
+    }
+
+    private static bool TryCreateEntry(
+        JsonElement candidate,
+        out AgentWebSearchEntry entry,
+        out bool truncated)
+    {
+        entry = null!;
+        truncated = false;
+        if (candidate.ValueKind != JsonValueKind.Object
+            || !candidate.TryGetProperty("url", out var urlValue)
+            || urlValue.ValueKind != JsonValueKind.String
+            || !candidate.TryGetProperty("desc", out var descriptionValue)
+            || descriptionValue.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        var url = urlValue.GetString();
+        var description = descriptionValue.GetString();
+        if (url is null || description is null)
+        {
+            return false;
+        }
+
+        description = BoundedWebText.Truncate(
+            description.Trim(),
+            AgentWebSearchEntry.MaximumDescriptionBytes,
+            out truncated);
+        try
+        {
+            entry = new AgentWebSearchEntry(url, description);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
         }
     }
 
@@ -160,7 +224,7 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
             await Task.Delay(DynamicContentSettleDelay, cancellationToken)
                 .ConfigureAwait(false);
             var extracted = await browser
-                .ExtractWebSearchDocumentAsync()
+                .ExtractWebSearchDocumentAsync(request.ResultCount)
                 .WaitAsync(cancellationToken)
                 .ConfigureAwait(false);
             if (extracted.Status != NativeBrowserAutomationStatus.Acknowledged
@@ -257,6 +321,10 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
     private static AgentWebSearchExecutionResult Failed(
         AgentWebSearchErrorCode code) =>
         new AgentWebSearchExecutionResult.Failed(code);
+
+    private sealed record SearchEntries(
+        IReadOnlyList<AgentWebSearchEntry> Entries,
+        bool Truncated);
 
     private sealed record NavigationOutcome(
         bool IsSuccess,

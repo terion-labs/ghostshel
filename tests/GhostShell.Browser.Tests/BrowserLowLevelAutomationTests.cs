@@ -363,10 +363,10 @@ public sealed class BrowserLowLevelAutomationTests
         var transport = new RecordingTransport(
             "{\"result\":{\"frameTree\":{\"frame\":{\"id\":\"main\"}}}}",
             "{\"result\":{\"executionContextId\":42}}",
-            "{\"result\":{\"result\":{\"type\":\"object\",\"value\":{\"title\":\"Search\",\"pageText\":\"result\",\"html\":\"\u003Cdiv id=\\\"rso\\\"\u003Eresult\u003C/div\u003E\",\"truncated\":false}}}}");
+            "{\"result\":{\"result\":{\"type\":\"object\",\"value\":{\"title\":\"Search\",\"pageText\":\"result\",\"results\":[],\"truncated\":false}}}}");
         var adapter = new CefBrowserAutomationAdapter(transport);
 
-        var result = await adapter.ExtractWebSearchDocumentAsync();
+        var result = await adapter.ExtractWebSearchDocumentAsync(4);
 
         Assert.Equal(NativeBrowserAutomationStatus.Acknowledged, result.Status);
         Assert.Equal(
@@ -379,6 +379,14 @@ public sealed class BrowserLowLevelAutomationTests
         Assert.True(root.GetProperty("returnByValue").GetBoolean());
         var source = root.GetProperty("expression").GetString()!;
         Assert.Contains("document.querySelector('#rso')", source, StringComparison.Ordinal);
+        Assert.Contains("resultRoot.querySelectorAll('h3')", source, StringComparison.Ordinal);
+        Assert.Contains("heading.closest('a[href]')", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "heading.closest('[jscontroller][lang]')",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains("results.length >= 4", source, StringComparison.Ordinal);
+        Assert.Contains("clone.querySelectorAll('[aria-hidden]')", source, StringComparison.Ordinal);
         Assert.DoesNotContain("querySelectorAll('a[href]')", source, StringComparison.Ordinal);
         Assert.DoesNotContain("eval(", source, StringComparison.Ordinal);
     }

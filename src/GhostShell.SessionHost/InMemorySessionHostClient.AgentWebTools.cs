@@ -349,7 +349,7 @@ public sealed partial class InMemorySessionHostClient
 
     private static int? ResultCount(AgentWebToolResult result) => result switch
     {
-        AgentWebSearchResult => null,
+        AgentWebSearchResult search => search.Entries.Count,
         AgentHttpFetchResult fetch => fetch.Content.Length,
         AgentWebReadResult read => read.Content.Length,
         _ => null,

@@ -8,13 +8,17 @@ namespace GhostShell.Agent.Runtime.Tests;
 public sealed class WebSearchAgentToolResultJsonTests
 {
     [Fact]
-    public void SuccessIsLabeledUntrustedAndReturnsRsoMarkdown()
+    public void SuccessIsLabeledUntrustedAndReturnsStructuredResults()
     {
         var request = new AgentWebSearchRequest("cef offscreen", 2);
         var result = new AgentWebSearchResult(
             "https://www.google.com/search?q=cef%20offscreen",
             "cef offscreen - Google Search",
-            "## First\n\n[Result](https://example.test/first)",
+            [
+                new AgentWebSearchEntry(
+                    "https://example.test/first",
+                    "First result description"),
+            ],
             truncated: true);
 
         var projection = WebSearchAgentToolResultJson.Project(request, result);
@@ -28,8 +32,15 @@ public sealed class WebSearchAgentToolResultJsonTests
         Assert.Equal("google", root.GetProperty("provider").GetString());
         Assert.Equal(request.Query, root.GetProperty("query").GetString());
         Assert.True(root.GetProperty("truncated").GetBoolean());
-        Assert.Equal("markdown", root.GetProperty("format").GetString());
-        Assert.False(root.TryGetProperty("links", out _));
+        var resultEntry = Assert.Single(root.GetProperty("results").EnumerateArray());
+        Assert.Equal(
+            "https://example.test/first",
+            resultEntry.GetProperty("url").GetString());
+        Assert.Equal(
+            "First result description",
+            resultEntry.GetProperty("desc").GetString());
+        Assert.False(root.TryGetProperty("content", out _));
+        Assert.False(root.TryGetProperty("text", out _));
     }
 
     [Theory]
