@@ -94,8 +94,13 @@ public sealed partial class AgentChatViewModelTests
                     Status = string.Empty,
                 };
                 runtime.RaiseChanged();
-                await Task.Delay(100);
-                window.UpdateLayout();
+                await WaitForVisualAsync<SelectableMarkdownDocument>(
+                    view,
+                    window,
+                    document => document.Text.Contains(
+                        "The full panel test passed.",
+                        StringComparison.Ordinal),
+                    "the committed assistant response");
 
                 Assert.False(viewModel.HasCurrentProgress);
                 Assert.Equal(49, viewModel.Messages.Count);
@@ -952,16 +957,18 @@ public sealed partial class AgentChatViewModelTests
                     ProvisionalReasoningSummary = "**Preparing the answer**",
                 };
                 runtime.RaiseChanged();
-                await Task.Delay(80);
-                window.UpdateLayout();
-                var reasoningLoader = Assert.Single(
-                    view.GetVisualDescendants().OfType<ProgressBar>(),
+                var reasoningLoader = await WaitForVisualAsync<ProgressBar>(
+                    view,
+                    window,
                     progress => AutomationProperties.GetName(progress)
-                        == "Reasoning in progress");
-                var reasoningTitle = Assert.Single(
-                    view.GetVisualDescendants().OfType<TextBlock>(),
+                        == "Reasoning in progress",
+                    "the reasoning progress indicator");
+                var reasoningTitle = await WaitForVisualAsync<TextBlock>(
+                    view,
+                    window,
                     text => AutomationProperties.GetName(text)
-                        == "Reasoning status");
+                        == "Reasoning status",
+                    "the reasoning status label");
                 Assert.True(reasoningLoader.IsEffectivelyVisible);
                 Assert.True(reasoningLoader.Bounds.Width > reasoningTitle.Bounds.Width);
                 Assert.True(reasoningLoader.Bounds.Top >= reasoningTitle.Bounds.Bottom);
@@ -977,8 +984,16 @@ public sealed partial class AgentChatViewModelTests
                     runtime.RaiseChanged();
                 }
 
-                await Task.Delay(160);
-                window.UpdateLayout();
+                await WaitForVisualAsync<SelectableMarkdownDocument>(
+                    view,
+                    window,
+                    block => block.Text.Contains("Answer 499", StringComparison.Ordinal),
+                    "the latest streamed answer");
+                await WaitForVisualAsync<SelectableMarkdownDocument>(
+                    view,
+                    window,
+                    block => block.Text.Contains("step 499", StringComparison.Ordinal),
+                    "the latest streamed reasoning step");
 
                 Assert.Equal("**Answer 499**", viewModel.ProvisionalAssistantText);
                 Assert.Equal(
@@ -1055,24 +1070,25 @@ public sealed partial class AgentChatViewModelTests
             try
             {
                 window.Show();
-                window.UpdateLayout();
-                var disclosure = Assert.Single(
-                    view.GetVisualDescendants().OfType<ToggleButton>(),
+                var disclosure = await WaitForVisualAsync<ToggleButton>(
+                    view,
+                    window,
                     toggle => string.Equals(AutomationProperties.GetName(toggle)
 , "Show or hide AI reasoning summary"
-, StringComparison.Ordinal) && toggle.IsEffectivelyVisible);
+, StringComparison.Ordinal) && toggle.IsEffectivelyVisible,
+                    "the collapsed reasoning disclosure");
 
                 Assert.False(disclosure.IsChecked);
                 window.UpdateLayout();
                 Assert.InRange(disclosure.Bounds.Width, 600, 700);
 
                 disclosure.IsChecked = true;
-                await Task.Delay(80);
-                window.UpdateLayout();
-                var rendered = Assert.Single(
-                    view.GetVisualDescendants().OfType<SelectableMarkdownDocument>(),
+                var rendered = await WaitForVisualAsync<SelectableMarkdownDocument>(
+                    view,
+                    window,
                     block => block.IsEffectivelyVisible
-                        && block.Text.Contains("Analyzing the premise", StringComparison.Ordinal));
+                        && block.Text.Contains("Analyzing the premise", StringComparison.Ordinal),
+                    "the expanded reasoning summary");
                 Assert.Contains("Checking the contradiction", rendered.Text, StringComparison.Ordinal);
                 Assert.Contains("Writing the answer", rendered.Text, StringComparison.Ordinal);
                 Assert.DoesNotContain("premiseChecking", rendered.Text, StringComparison.Ordinal);
@@ -1424,6 +1440,31 @@ public sealed partial class AgentChatViewModelTests
         {
             await session.DisposeAsync();
         }
+    }
+
+    private static async Task<TControl> WaitForVisualAsync<TControl>(
+        Control root,
+        Window window,
+        Func<TControl, bool> predicate,
+        string description)
+        where TControl : Control
+    {
+        for (var attempt = 0; attempt < 200; attempt++)
+        {
+            window.UpdateLayout();
+            var match = root.GetVisualDescendants()
+                .OfType<TControl>()
+                .FirstOrDefault(predicate);
+            if (match is not null)
+            {
+                return match;
+            }
+
+            await Task.Delay(10);
+        }
+
+        Assert.Fail($"Timed out waiting for {description}.");
+        return null!;
     }
 
     private sealed record AgentComposerHost(AgentChatViewModel? AgentChat)
