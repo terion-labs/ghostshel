@@ -59,6 +59,10 @@ public sealed partial class CodePreviewView : UserControl
     public CodePreviewView()
     {
         InitializeComponent();
+        AddHandler(
+            RequestBringIntoViewEvent,
+            OnRequestBringIntoView,
+            RoutingStrategies.Bubble);
         // A preview is a document reader, not an editor with an insertion area
         // below the last line. AvaloniaEdit otherwise includes roughly another
         // viewport in its vertical extent, so scrolling to the end can leave the
@@ -91,6 +95,19 @@ public sealed partial class CodePreviewView : UserControl
                 RequestHighlighting();
             }
         };
+    }
+
+    private void OnRequestBringIntoView(
+        object? sender,
+        RequestBringIntoViewEventArgs e)
+    {
+        if (FitsContent)
+        {
+            // AvaloniaEdit brings its read-only caret into view after a pointer
+            // press. A fitted fenced block has no scroll of its own, so letting
+            // that request escape moves the surrounding document instead.
+            e.Handled = true;
+        }
     }
 
     public string? Text
