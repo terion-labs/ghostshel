@@ -40,8 +40,10 @@ jobs:
           mkdir -p .dotnet
           ln -s "$(command -v dotnet)" .dotnet/dotnet
 
-      - name: Build required native terminal payload
-        run: ./scripts/build-libghostty-vt.sh --rid osx-arm64
+      - name: Build required native payloads
+        run: |
+          ./scripts/build-libghostty-vt.sh --rid osx-arm64
+          ./scripts/build-cef-runtime.sh --rid osx-arm64 --dotnet ./.dotnet/dotnet
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@faaa5d804fc648d0fdb28822a8e36cf7d0a6132c # v4.37.7

@@ -143,7 +143,7 @@ public sealed partial class NativeTerminalBuildContractTests
     }
 
     [Fact]
-    public void Repository_gate_provisions_macos_terminal_assets_before_managed_builds()
+    public void Repository_gate_provisions_macos_native_assets_before_managed_builds()
     {
         var workflow = File.ReadAllText(Path.Combine(
             RepositoryRoot,
@@ -170,6 +170,10 @@ public sealed partial class NativeTerminalBuildContractTests
         Assert.DoesNotContain("name: terminal-native-linux-x64", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("name: terminal-native-win-x64", workflow, StringComparison.Ordinal);
         Assert.Contains(
+            "./scripts/build-cef-runtime.sh --rid osx-arm64",
+            workflow,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "path: native/artifacts/osx-arm64\n" +
             "          if-no-files-found: error\n" +
             "          retention-days: 1\n" +
@@ -179,26 +183,32 @@ public sealed partial class NativeTerminalBuildContractTests
     }
 
     [Fact]
-    public void Security_analysis_provisions_the_native_terminal_payload_before_codeql_build()
+    public void Security_analysis_provisions_required_native_payloads_before_codeql_build()
     {
         var workflow = File.ReadAllText(Path.Combine(
             RepositoryRoot,
             ".github",
             "workflows",
             "security-analysis.yml"));
-        var nativeBuildIndex = workflow.IndexOf(
+        var terminalBuildIndex = workflow.IndexOf(
             "./scripts/build-libghostty-vt.sh --rid osx-arm64",
+            StringComparison.Ordinal);
+        var cefBuildIndex = workflow.IndexOf(
+            "./scripts/build-cef-runtime.sh --rid osx-arm64",
             StringComparison.Ordinal);
         var codeQlBuildIndex = workflow.IndexOf(
             "dotnet build GhostShell.slnx --configuration Release --no-restore",
             StringComparison.Ordinal);
 
         Assert.True(
-            nativeBuildIndex >= 0,
+            terminalBuildIndex >= 0,
             "CodeQL must provision the native library and generated terminal fonts.");
         Assert.True(
-            codeQlBuildIndex > nativeBuildIndex,
-            "CodeQL must provision native terminal assets before building the analyzed graph.");
+            cefBuildIndex > terminalBuildIndex,
+            "CodeQL must provision the CEF runtime after the terminal assets.");
+        Assert.True(
+            codeQlBuildIndex > cefBuildIndex,
+            "CodeQL must provision native payloads before building the analyzed graph.");
     }
 
     [Fact]
