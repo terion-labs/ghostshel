@@ -14,7 +14,7 @@ public static class BrowserEngineRuntime
     private const string ExpectedChromiumVersion = "150.0.7871.46";
     private const string ExpectedShimVersion = "0.8.0-ghostshell.5";
     internal const string DisabledChromiumFeatures =
-        "OptimizationGuideOnDeviceModel";
+        "OptimizationGuideOnDeviceModel,LogOnDeviceMetricsOnStartup";
     private static readonly object StateGate = new();
     private static bool _initialized;
     private static bool _shutdown;
@@ -73,9 +73,10 @@ public static class BrowserEngineRuntime
             var versions = Cef.GetVersions();
             ValidateVersions(versions);
             var settings = CreateSettings(options);
-            // GhostSHELL does not consume Chromium's on-device model service.
-            // Leaving it enabled launches a startup performance probe that
-            // requests a WebGPU adapter independently of browser rendering.
+            // Chromium 150 can launch its unused on-device model service
+            // through either of these feature gates. Disable both so its
+            // startup metrics path cannot request a GPU adapter independently
+            // of browser rendering.
             Cef.AddCommandLineSwitch(
                 "disable-features",
                 DisabledChromiumFeatures);
