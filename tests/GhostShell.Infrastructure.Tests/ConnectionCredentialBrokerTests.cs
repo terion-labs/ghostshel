@@ -242,7 +242,10 @@ public sealed class ConnectionCredentialBrokerTests
             vault,
             locator,
             new RecordingCommandRunner(),
-            new ConnectionRuntimeOptions(ConnectionHostPlatform.MacOs, "/bin/sh"),
+            new ConnectionRuntimeOptions(
+                ConnectionHostPlatform.MacOs,
+                "/bin/sh",
+                "/Users/test"),
             broker);
         var profile = ConnectionRuntimeTestSupport.Profile(
             new ConnectionEndpoint.Local("/bin/sh"),
@@ -429,7 +432,10 @@ public sealed class ConnectionCredentialBrokerTests
             vault,
             wslLocator,
             new RecordingCommandRunner(),
-            new ConnectionRuntimeOptions(ConnectionHostPlatform.Windows, "cmd.exe"),
+            new ConnectionRuntimeOptions(
+                ConnectionHostPlatform.Windows,
+                "cmd.exe",
+                "C:\\Users\\test"),
             broker);
         var wslPlan = ConnectionRuntimeTestSupport.Success(await wsl.PlanOpenAsync(
             ConnectionRuntimeTestSupport.Profile(

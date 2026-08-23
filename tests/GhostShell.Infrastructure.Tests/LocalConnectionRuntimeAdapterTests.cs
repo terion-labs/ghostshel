@@ -18,7 +18,10 @@ public sealed class LocalConnectionRuntimeAdapterTests
             vault,
             locator,
             runner,
-            new ConnectionRuntimeOptions(ConnectionHostPlatform.MacOs, "/bin/zsh"));
+            new ConnectionRuntimeOptions(
+                ConnectionHostPlatform.MacOs,
+                "/bin/zsh",
+                "/Users/test"));
         var profile = ConnectionRuntimeTestSupport.Profile(
             new ConnectionEndpoint.Local(),
             startup: new ConnectionStartup(
@@ -49,7 +52,7 @@ public sealed class LocalConnectionRuntimeAdapterTests
         Assert.Equal(
             "/work tree",
             plan.Launch.ConnectionMetadata?.InitialWorkingDirectory);
-        Assert.Empty(plan.Launch.Arguments);
+        Assert.Equal(["-l"], plan.Launch.Arguments);
         Assert.Equal("npm run dev", plan.Launch.InitialCommand);
         Assert.Equal("amber value", Assert.Single(plan.Launch.Environment).Value);
         Assert.DoesNotContain("SECRET_VALUE", plan.Launch.Environment.Keys, StringComparer.Ordinal);
@@ -91,7 +94,10 @@ public sealed class LocalConnectionRuntimeAdapterTests
             vault,
             locator,
             new RecordingCommandRunner(),
-            new ConnectionRuntimeOptions(ConnectionHostPlatform.Linux, "/bin/sh"));
+            new ConnectionRuntimeOptions(
+                ConnectionHostPlatform.Linux,
+                "/bin/sh",
+                "/home/test"));
         var profile = ConnectionRuntimeTestSupport.Profile(
             new ConnectionEndpoint.Local("custom shell"));
 
@@ -102,6 +108,58 @@ public sealed class LocalConnectionRuntimeAdapterTests
 
         Assert.Equal(["custom shell"], locator.Requests);
         Assert.Equal("/tools/custom shell", plan.Launch.Executable);
+        Assert.Equal(["-l"], plan.Launch.Arguments);
+    }
+
+    [Theory]
+    [InlineData(ConnectionHostPlatform.MacOs, "/Users/test")]
+    [InlineData(ConnectionHostPlatform.Linux, "/home/test")]
+    public async Task Default_posix_launch_uses_the_user_profile_and_a_login_shell(
+        ConnectionHostPlatform platform,
+        string userProfileDirectory)
+    {
+        using var vault = new RecordingSecretVault();
+        var locator = new RecordingExecutableLocator();
+        locator.Add("default-shell", "/resolved/default-shell");
+        var adapter = new LocalConnectionRuntimeAdapter(
+            vault,
+            locator,
+            new RecordingCommandRunner(),
+            new ConnectionRuntimeOptions(platform, "default-shell", userProfileDirectory));
+
+        var plan = ConnectionRuntimeTestSupport.Success(await adapter.PlanOpenAsync(
+            ConnectionRuntimeTestSupport.Profile(new ConnectionEndpoint.Local()),
+            null,
+            CancellationToken.None));
+
+        Assert.Equal(userProfileDirectory, plan.Launch.WorkingDirectory);
+        Assert.Equal(["-l"], plan.Launch.Arguments);
+        Assert.Equal(
+            userProfileDirectory,
+            plan.Launch.ConnectionMetadata?.InitialWorkingDirectory);
+    }
+
+    [Fact]
+    public async Task Windows_launch_uses_the_user_profile_without_posix_login_arguments()
+    {
+        using var vault = new RecordingSecretVault();
+        var locator = new RecordingExecutableLocator();
+        locator.Add("cmd.exe", "C:\\Windows\\System32\\cmd.exe");
+        var adapter = new LocalConnectionRuntimeAdapter(
+            vault,
+            locator,
+            new RecordingCommandRunner(),
+            new ConnectionRuntimeOptions(
+                ConnectionHostPlatform.Windows,
+                "cmd.exe",
+                "C:\\Users\\test"));
+
+        var plan = ConnectionRuntimeTestSupport.Success(await adapter.PlanOpenAsync(
+            ConnectionRuntimeTestSupport.Profile(new ConnectionEndpoint.Local()),
+            null,
+            CancellationToken.None));
+
+        Assert.Equal("C:\\Users\\test", plan.Launch.WorkingDirectory);
         Assert.Empty(plan.Launch.Arguments);
     }
 
@@ -113,7 +171,10 @@ public sealed class LocalConnectionRuntimeAdapterTests
             vault,
             new RecordingExecutableLocator(),
             new RecordingCommandRunner(),
-            new ConnectionRuntimeOptions(ConnectionHostPlatform.Linux, "/missing/sh"));
+            new ConnectionRuntimeOptions(
+                ConnectionHostPlatform.Linux,
+                "/missing/sh",
+                "/home/test"));
 
         var error = ConnectionRuntimeTestSupport.Failure(await adapter.PlanOpenAsync(
             ConnectionRuntimeTestSupport.Profile(new ConnectionEndpoint.Local()),
@@ -134,7 +195,10 @@ public sealed class LocalConnectionRuntimeAdapterTests
             vault,
             locator,
             new RecordingCommandRunner(),
-            new ConnectionRuntimeOptions(ConnectionHostPlatform.Linux, "/bin/sh"));
+            new ConnectionRuntimeOptions(
+                ConnectionHostPlatform.Linux,
+                "/bin/sh",
+                "/home/test"));
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 

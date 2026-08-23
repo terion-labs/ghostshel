@@ -15,7 +15,10 @@ public sealed class WslConnectionRuntimeAdapterTests
             vault,
             locator,
             new RecordingCommandRunner(),
-            new ConnectionRuntimeOptions(ConnectionHostPlatform.Linux, "/bin/sh"));
+            new ConnectionRuntimeOptions(
+                ConnectionHostPlatform.Linux,
+                "/bin/sh",
+                "/home/test"));
 
         var error = ConnectionRuntimeTestSupport.Failure(await adapter.PlanOpenAsync(
             ConnectionRuntimeTestSupport.Profile(new ConnectionEndpoint.Wsl("Ubuntu")),
@@ -151,5 +154,5 @@ public sealed class WslConnectionRuntimeAdapterTests
     }
 
     private static ConnectionRuntimeOptions WindowsOptions() =>
-        new(ConnectionHostPlatform.Windows, "cmd.exe");
+        new(ConnectionHostPlatform.Windows, "cmd.exe", "C:\\Users\\test");
 }

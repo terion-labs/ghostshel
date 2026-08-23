@@ -5,6 +5,8 @@ namespace GhostShell.Infrastructure;
 
 public sealed class LocalConnectionRuntimeAdapter : ConnectionRuntimeAdapterBase
 {
+    private static readonly IReadOnlyList<string> LoginShellArguments =
+        Array.AsReadOnly(["-l"]);
     private readonly ConnectionRuntimeOptions _options;
 
     public LocalConnectionRuntimeAdapter(
@@ -119,13 +121,19 @@ public sealed class LocalConnectionRuntimeAdapter : ConnectionRuntimeAdapterBase
         Report(progress, ConnectionProgressStage.BuildingLaunchPlan);
         try
         {
+            var workingDirectory = profile.Startup.Directory
+                ?? _options.UserProfileDirectory;
+            var arguments = _options.Platform is
+                ConnectionHostPlatform.MacOs or ConnectionHostPlatform.Linux
+                    ? LoginShellArguments
+                    : [];
             var launch = new TerminalLaunchRequest(
-                profile.Startup.Directory,
+                workingDirectory,
                 executable,
-                [],
+                arguments,
                 PlainEnvironment(profile),
                 connectionId: profile.Id,
-                connectionMetadata: ConnectionMetadata(profile),
+                connectionMetadata: ConnectionMetadata(profile, workingDirectory),
                 initialCommand: profile.Startup.Command);
             var plan = new ConnectionOpenPlan(
                 profile.Id,

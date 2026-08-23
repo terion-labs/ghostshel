@@ -98,7 +98,8 @@ public abstract class ConnectionRuntimeAdapterBase : IConnectionRuntimeAdapter
     }
 
     protected static TerminalConnectionMetadata ConnectionMetadata(
-        ConnectionProfile profile)
+        ConnectionProfile profile,
+        string? initialWorkingDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
         var boundary = profile.Endpoint switch
@@ -119,7 +120,7 @@ public abstract class ConnectionRuntimeAdapterBase : IConnectionRuntimeAdapter
         };
         return new TerminalConnectionMetadata(
             boundary,
-            profile.Startup.Directory);
+            initialWorkingDirectory ?? profile.Startup.Directory);
     }
 
     private static string UserAt(string? username) =>

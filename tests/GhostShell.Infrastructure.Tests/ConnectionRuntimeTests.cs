@@ -15,7 +15,10 @@ public sealed class ConnectionRuntimeTests
             vault,
             locator,
             new RecordingCommandRunner(),
-            new ConnectionRuntimeOptions(ConnectionHostPlatform.Linux, "/bin/sh"));
+            new ConnectionRuntimeOptions(
+                ConnectionHostPlatform.Linux,
+                "/bin/sh",
+                "/home/test"));
         IConnectionRuntime runtime = new ConnectionRuntime([local]);
 
         var plan = ConnectionRuntimeTestSupport.Success(await runtime.PlanOpenAsync(
@@ -45,7 +48,10 @@ public sealed class ConnectionRuntimeTests
         using var vault = new RecordingSecretVault();
         var locator = new RecordingExecutableLocator();
         var runner = new RecordingCommandRunner();
-        var options = new ConnectionRuntimeOptions(ConnectionHostPlatform.Linux, "/bin/sh");
+        var options = new ConnectionRuntimeOptions(
+            ConnectionHostPlatform.Linux,
+            "/bin/sh",
+            "/home/test");
         var first = new LocalConnectionRuntimeAdapter(vault, locator, runner, options);
         var second = new LocalConnectionRuntimeAdapter(vault, locator, runner, options);
 
