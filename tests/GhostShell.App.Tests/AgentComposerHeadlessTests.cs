@@ -923,6 +923,107 @@ public sealed partial class AgentChatViewModelTests
         });
 
     [Fact]
+    public Task Clicking_a_code_block_taller_than_the_viewport_keeps_the_transcript_still() =>
+        RunAgentComposerHeadlessAsync(async () =>
+        {
+            var provider = Provider("provider", "Provider", order: 0);
+            var code = string.Join(
+                '\n',
+                Enumerable.Range(1, 120).Select(index => $"const value{index} = {index};"));
+            var answer = $"Before the code.\n\n```javascript\n{code}\n```\n\nAfter the code.";
+            using var runtime = new StubGovernedRuntime
+            {
+                Snapshot = Snapshot(
+                    runId: new AgentRunId("run-code-block-pointer"),
+                    providerId: provider.Id,
+                    target: Target(),
+                    messages:
+                    [
+                        new AgentChatMessage(
+                            AgentChatMessageRole.Assistant,
+                            answer),
+                    ]),
+            };
+            using var profiles = new StubProfileRuntime { Profiles = [provider] };
+            using var viewModel = new AgentChatViewModel(
+                runtime,
+                profiles,
+                ImmediateUiThreadDispatcher.Instance);
+            var view = new AgentWorkspaceView
+            {
+                DataContext = new AgentComposerHost(viewModel),
+            };
+            var window = new Window
+            {
+                Width = 700,
+                Height = 460,
+                Content = view,
+            };
+
+            try
+            {
+                window.Show();
+                CodePreviewView? codePreview = null;
+                for (var attempt = 0; attempt < 80; attempt++)
+                {
+                    await Task.Delay(25);
+                    window.UpdateLayout();
+                    codePreview = view.GetVisualDescendants()
+                        .OfType<CodePreviewView>()
+                        .SingleOrDefault();
+                    if (codePreview is { Bounds.Height: > 0 })
+                    {
+                        break;
+                    }
+                }
+
+                Assert.NotNull(codePreview);
+                var transcript = view.FindControl<ScrollViewer>("AgentChatTranscript");
+                Assert.NotNull(transcript);
+                Assert.True(codePreview.Bounds.Height > transcript.Viewport.Height);
+
+                await Task.Delay(100);
+                window.UpdateLayout();
+                var codeTop = codePreview.TranslatePoint(default, transcript);
+                Assert.NotNull(codeTop);
+                var codeContentTop = codeTop.Value.Y + transcript.Offset.Y;
+                var targetOffset = codeContentTop + (codePreview.Bounds.Height * 0.55);
+                transcript.Offset = new Vector(0, targetOffset);
+                await Task.Delay(25);
+                window.UpdateLayout();
+                var stableOffset = transcript.Offset.Y;
+                var clickPoint = codePreview.TranslatePoint(
+                    new Point(codePreview.Bounds.Width / 2, targetOffset - codeContentTop + 40),
+                    window);
+                Assert.NotNull(clickPoint);
+                var hit = window.InputHitTest(clickPoint.Value) as Visual;
+                Assert.True(
+                    hit is not null,
+                    $"Nothing hit at {clickPoint.Value}; window={window.Bounds}; transcript={transcript.Bounds}; code={codePreview.Bounds}; stable={stableOffset}; top={codeContentTop}; target={targetOffset}.");
+                Assert.True(
+                    ReferenceEquals(hit, codePreview)
+                        || hit!.GetVisualAncestors().Contains(codePreview),
+                    $"Hit {hit.GetType().Name} instead of the code preview at {clickPoint.Value}.");
+                var editor = Assert.Single(
+                    codePreview.GetVisualDescendants().OfType<TextEditor>());
+                var dragEnd = clickPoint.Value + new Vector(80, 40);
+
+                window.MouseDown(clickPoint.Value, MouseButton.Left);
+                window.MouseMove(dragEnd, RawInputModifiers.LeftMouseButton);
+                window.MouseUp(dragEnd, MouseButton.Left, RawInputModifiers.None);
+                await Task.Delay(50);
+                window.UpdateLayout();
+
+                Assert.NotEmpty(editor.SelectedText);
+                Assert.InRange(Math.Abs(transcript.Offset.Y - stableOffset), 0, 0.01);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+    [Fact]
     public Task Streaming_reasoning_burst_is_coalesced_and_renders_the_latest_markdown() =>
         RunAgentComposerHeadlessAsync(async () =>
         {
