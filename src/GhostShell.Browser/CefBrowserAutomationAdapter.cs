@@ -69,8 +69,17 @@ internal sealed class CefBrowserAutomationAdapter
         BrowserEvaluateRequest request) =>
         CaptureOutcomeAsync(() => EvaluateCoreAsync(request));
 
-    public Task<NativeBrowserAutomationResult> ExtractWebSearchDocumentAsync() =>
-        CaptureOutcomeAsync(ExtractWebSearchDocumentCoreAsync);
+    public Task<NativeBrowserAutomationResult> ExtractWebSearchDocumentAsync(
+        int maximumResults)
+    {
+        if (maximumResults is < 1 or > AgentWebSearchRequest.MaximumResultCount)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumResults));
+        }
+
+        return CaptureOutcomeAsync(
+            () => ExtractWebSearchDocumentCoreAsync(maximumResults));
+    }
 
     public Task<NativeBrowserAutomationResult> ExtractRenderedDocumentAsync() =>
         CaptureOutcomeAsync(ExtractRenderedDocumentCoreAsync);
@@ -160,7 +169,7 @@ internal sealed class CefBrowserAutomationAdapter
     }
 
     private async Task<NativeBrowserAutomationResult>
-        ExtractWebSearchDocumentCoreAsync()
+        ExtractWebSearchDocumentCoreAsync(int maximumResults)
     {
         var contextId = await CreateIsolatedWorldAsync().ConfigureAwait(false);
         if (contextId == 0)
@@ -169,24 +178,66 @@ internal sealed class CefBrowserAutomationAdapter
                 "script_context_unavailable");
         }
 
-        const string source = """
+        var source = $$"""
             (() => {
               const compact = value => String(value || '').replace(/\s+/g, ' ').trim();
               const pageText = compact(document.body && document.body.innerText);
-              const results = document.querySelector('#rso');
-              const clone = results && results.cloneNode(true);
-              if (clone) {
+              const resultRoot = document.querySelector('#rso');
+              const headings = resultRoot ? [...resultRoot.querySelectorAll('h3')] : [];
+              const results = [];
+              let truncated = headings.length > {{maximumResults}};
+              for (const heading of headings) {
+                if (results.length >= {{maximumResults}}) {
+                  break;
+                }
+
+                const anchor = heading.closest('a[href]');
+                if (!anchor) {
+                  continue;
+                }
+
+                let block = heading.closest('[jscontroller][lang]');
+                if (!block || !resultRoot.contains(block)) {
+                  block = heading.closest('[lang]');
+                }
+                if (!block || !resultRoot.contains(block)) {
+                  block = anchor.parentElement;
+                }
+                if (!block || !resultRoot.contains(block)) {
+                  continue;
+                }
+
+                const clone = block.cloneNode(true);
+                for (const hidden of clone.querySelectorAll('[aria-hidden]')) {
+                  const parent = hidden.parentElement;
+                  if (parent && parent !== clone) {
+                    parent.remove();
+                  } else {
+                    hidden.remove();
+                  }
+                }
                 for (const element of clone.querySelectorAll(
-                    "script, style, noscript, iframe, object, embed, form, input, button, dialog, template, [hidden], [aria-hidden='true']")) {
+                    'script, style, noscript, iframe, object, embed, form, input, button, dialog, template, [hidden]')) {
                   element.remove();
                 }
+
+                const description = compact(clone.textContent);
+                const url = String(anchor.href || '');
+                if (!url || !description) {
+                  continue;
+                }
+
+                truncated ||= description.length > 2048;
+                results.push({
+                  url: url.slice(0, 2048),
+                  desc: description.slice(0, 2048)
+                });
               }
-              const html = clone ? clone.outerHTML : '';
               return {
                 title: compact(document.title).slice(0, 1024),
                 pageText: pageText.slice(0, 20480),
-                html: html.slice(0, 98304),
-                truncated: html.length > 98304
+                results,
+                truncated
               };
             })()
             """;

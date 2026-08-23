@@ -26,9 +26,16 @@ internal static class WebSearchAgentToolResultJson
         writer.WriteString("query", request.Query);
         writer.WriteString("final_url", result.FinalUrl);
         writer.WriteString("title", result.Title);
-        writer.WriteString("format", "markdown");
-        writer.WriteString("content", result.Text);
-        writer.WriteString("text", result.Text);
+        writer.WriteStartArray("results");
+        foreach (var entry in result.Entries)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("url", entry.Url);
+            writer.WriteString("desc", entry.Description);
+            writer.WriteEndObject();
+        }
+
+        writer.WriteEndArray();
         writer.WriteBoolean("truncated", result.Truncated);
         writer.WriteEndObject();
         writer.Flush();

@@ -21,13 +21,26 @@ public sealed class CefAgentWebSearchExecutorTests
     }
 
     [Fact]
-    public void ExtractionConvertsTheRsoFragmentToMarkdown()
+    public void ExtractionValidatesAndDeduplicatesSemanticResults()
     {
         const string json = """
             {
               "title": "Search results",
               "pageText": "Google navigation Useful result Sign in",
-              "html": "<div id='rso'><h2>Useful result</h2><a href='https://example.test/docs'>Example docs</a></div>",
+              "results": [
+                {
+                  "url": "https://example.test/docs",
+                  "desc": "Useful result Example docs"
+                },
+                {
+                  "url": "https://example.test/docs",
+                  "desc": "Duplicate"
+                },
+                {
+                  "url": "javascript:alert(1)",
+                  "desc": "Invalid destination"
+                }
+              ],
               "truncated": false
             }
             """;
@@ -39,12 +52,9 @@ public sealed class CefAgentWebSearchExecutorTests
         var succeeded = Assert.IsType<AgentWebSearchExecutionResult.Succeeded>(
             result);
         Assert.Equal("Search results", succeeded.Result.Title);
-        Assert.Contains("## Useful result", succeeded.Result.Text, StringComparison.Ordinal);
-        Assert.Contains(
-            "[Example docs](https://example.test/docs)",
-            succeeded.Result.Text,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain("Sign in", succeeded.Result.Text, StringComparison.Ordinal);
+        var entry = Assert.Single(succeeded.Result.Entries);
+        Assert.Equal("https://example.test/docs", entry.Url);
+        Assert.Equal("Useful result Example docs", entry.Description);
     }
 
     [Theory]
@@ -60,7 +70,7 @@ public sealed class CefAgentWebSearchExecutorTests
             {
               "title": "{{title}}",
               "pageText": "{{text}}",
-              "html": "",
+              "results": [],
               "truncated": false
             }
             """;
@@ -75,7 +85,7 @@ public sealed class CefAgentWebSearchExecutorTests
 
     [Theory]
     [InlineData("not-json")]
-    [InlineData("{\"title\":\"Search\",\"pageText\":\"x\",\"html\":\"\",\"truncated\":false}")]
+    [InlineData("{\"title\":\"Search\",\"pageText\":\"x\",\"results\":[],\"truncated\":false}")]
     public void MalformedOrMissingRsoExtractionFailsClosed(string json)
     {
         var result = CefAgentWebSearchExecutor.ParseExtraction(
