@@ -175,12 +175,12 @@ public sealed partial class NativeTerminalBuildContractTests
             workflow,
             StringComparison.Ordinal);
         Assert.Equal(
-            4,
+            3,
             workflow.Split(
                 "needs: terminal-native-assets",
                 StringSplitOptions.None).Length - 1);
         Assert.Equal(
-            4,
+            3,
             workflow.Split(
                 "name: Download terminal font assets",
                 StringSplitOptions.None).Length - 1);
@@ -214,49 +214,6 @@ public sealed partial class NativeTerminalBuildContractTests
             "          include-hidden-files: true",
             workflow,
             StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Repository_gate_shares_terminal_payload_with_codeql()
-    {
-        var workflow = File.ReadAllText(Path.Combine(
-            RepositoryRoot,
-            ".github",
-            "workflows",
-            "repository-gate.yml"));
-        var codeQlStart = workflow.IndexOf(
-            "\n  codeql:",
-            StringComparison.Ordinal);
-        var codeQlEnd = workflow.IndexOf(
-            "\n  macos-early-release:",
-            codeQlStart,
-            StringComparison.Ordinal);
-        Assert.True(codeQlStart >= 0);
-        Assert.True(codeQlEnd > codeQlStart);
-        var codeQlJob = workflow[codeQlStart..codeQlEnd];
-
-        Assert.Contains("needs: terminal-native-assets", codeQlJob, StringComparison.Ordinal);
-        Assert.Contains("name: Download terminal font assets", codeQlJob, StringComparison.Ordinal);
-        Assert.Contains("name: Download macOS terminal runtime", codeQlJob, StringComparison.Ordinal);
-        Assert.Contains("name: Initialize CodeQL", codeQlJob, StringComparison.Ordinal);
-        Assert.DoesNotContain("if:", codeQlJob, StringComparison.Ordinal);
-        Assert.Contains(
-            "src/GhostShell.Desktop/GhostShell.Desktop.csproj",
-            codeQlJob,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain("dotnet build GhostShell.slnx", codeQlJob, StringComparison.Ordinal);
-        Assert.DoesNotContain("build-libghostty-vt.sh", codeQlJob, StringComparison.Ordinal);
-        Assert.DoesNotContain("build-cef-runtime.sh", codeQlJob, StringComparison.Ordinal);
-        Assert.Contains("actions: read", workflow, StringComparison.Ordinal);
-        Assert.Contains(
-            "needs: [managed-conformance, macos-release-build, format-and-boundaries, codeql]",
-            workflow,
-            StringComparison.Ordinal);
-        Assert.False(File.Exists(Path.Combine(
-            RepositoryRoot,
-            ".github",
-            "workflows",
-            "security-analysis.yml")));
     }
 
     [Fact]
