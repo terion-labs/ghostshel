@@ -211,6 +211,58 @@ public sealed class OpenAiResponsesProviderTests
     }
 
     [Fact]
+    public async Task JsonToolResultPreservesUnicodeInProviderRequest()
+    {
+        const string description = "Знайомство з ChatGPT";
+        using var vault = new InMemorySecretVault();
+        var profile = await CreateProfileAsync(vault);
+        using var handler = new CapturingHandler(
+            ResponsesToolStream("call-unicode", "fc-unicode", "read_file", "{\"path\":\"/tmp/a\"}"),
+            ResponsesTextStream("handled"));
+        using var factory = new AiProviderFactory(vault, handler);
+        var provider = factory.Create(profile);
+        var session = new NativeAgentSession(new AgentRunId("responses-unicode-tool-result"));
+        var tools = ImmutableArray.Create(ReadFileTool());
+
+        var first = await session.RunTurnAsync(
+            "Read the file.",
+            tools,
+            provider,
+            CancellationToken.None);
+        var proposal = Assert.Single(first.ToolProposals);
+        var value = AgentToolResultValue.FromJson(
+            Encoding.UTF8.GetBytes($$"""{"desc":"{{description}}"}"""));
+
+        var continuation = await session.SubmitToolResultsAsync(
+            proposal.Generation,
+            [new AgentToolResult(
+                proposal,
+                AgentToolResultStatus.Succeeded,
+                "ok",
+                value)],
+            tools,
+            tools,
+            provider,
+            CancellationToken.None);
+
+        Assert.True(continuation.Succeeded);
+        var requestBody = handler.Requests[1].Body;
+        Assert.Contains(description, requestBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("\\u0417", requestBody, StringComparison.OrdinalIgnoreCase);
+        using var document = JsonDocument.Parse(requestBody);
+        var output = document.RootElement.GetProperty("input")
+            .EnumerateArray()
+            .Single(item => item.TryGetProperty("type", out var type)
+                && string.Equals(
+                    type.GetString(),
+                    "function_call_output",
+                    StringComparison.Ordinal))
+            .GetProperty("output")
+            .GetString();
+        Assert.Contains(description, output, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ReasoningItemIsBackfilledAndReplayedBeforeItsToolSlot()
     {
         using var vault = new InMemorySecretVault();
