@@ -39,6 +39,22 @@ public sealed class CefBrowserNetworkContextTests
         Assert.DoesNotContain("proxy.mode", preferences.Keys, StringComparer.Ordinal);
     }
 
+    [Fact]
+    public void Agent_web_context_blocks_popups_and_non_proxied_webrtc_udp()
+    {
+        var preferences = CefBrowserNetworkContext.AgentWebPreferences();
+
+        Assert.Equal(
+            2,
+            JsonSerializer.Deserialize<int>(
+                preferences["profile.default_content_setting_values.popups"]));
+        Assert.Equal(
+            "disable_non_proxied_udp",
+            JsonSerializer.Deserialize<string>(
+                preferences["webrtc.ip_handling_policy"]));
+        Assert.DoesNotContain("proxy", preferences.Keys, StringComparer.Ordinal);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(65_536)]

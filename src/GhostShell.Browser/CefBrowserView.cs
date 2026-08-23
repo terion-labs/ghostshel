@@ -311,6 +311,11 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         await DispatchAutomationAsync(
             adapter => adapter.EvaluateAsync(request));
 
+    public async Task<NativeBrowserAutomationResult>
+        ExtractWebSearchDocumentAsync(int maximumLinks) =>
+        await DispatchAutomationAsync(
+            adapter => adapter.ExtractWebSearchDocumentAsync(maximumLinks));
+
     public void Dispose()
     {
         if (_disposed)

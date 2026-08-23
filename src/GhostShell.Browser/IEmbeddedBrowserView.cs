@@ -89,6 +89,9 @@ internal interface IEmbeddedBrowserView : IDisposable
     Task<NativeBrowserAutomationResult> DispatchScrollAsync(BrowserScrollRequest request);
 
     Task<NativeBrowserAutomationResult> EvaluateAsync(BrowserEvaluateRequest request);
+
+    Task<NativeBrowserAutomationResult> ExtractWebSearchDocumentAsync(
+        int maximumLinks);
 }
 
 internal sealed class NativeBrowserAddressChangedEventArgs(

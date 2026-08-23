@@ -119,6 +119,7 @@ retain the researched target surface and mark deferred tools explicitly.
 | Panel | Production tools |
 | --- | --- |
 | Common graph/layout | `workspace.inspect`, `tab.list`, `panel.list`, `panel.inspect`, `panel.focus`, `tab.create`, `tab.close`, `panel.add`, `panel.split`, `panel.close` |
+| Web | `web.search` |
 | Terminal | `terminal.read_screen`, `terminal.read_screen_diff`, `terminal.find_on_screen`, `terminal.find_rendered_history`, `terminal.jump_to_rendered_history`, `terminal.read_scrollback`, `terminal.find`, `terminal.scroll_viewport`, `terminal.wait`, `terminal.send_text`, `terminal.paste`, `terminal.submit_text`, `terminal.send_keys`, `terminal.send_chord`, `terminal.send_mouse`, `terminal.interrupt`, `terminal.resize` |
 | Browser | `browser.read_state`, `browser.snapshot`, `browser.wait`, `browser.click`, `browser.fill`, `browser.check`, `browser.mouse`, `browser.key`, `browser.scroll`, `browser.navigate`, `browser.back`, `browser.forward`, `browser.reload`, `browser.stop` |
 | File Viewer | `files.list`, `files.search`, `files.stat`, `files.read`, `files.access_read`, `files.transfers`, `files.mkdir`, `files.move`, `files.delete` |
@@ -132,6 +133,16 @@ retain the researched target surface and mark deferred tools explicitly.
 advertised by the production browser profile. `browser.cdp`, diagnostics,
 artifacts, uploads/downloads, database/Redis writes, Docker lifecycle actions,
 and generic terminal/Docker exec are not implemented as production tools.
+
+`web.search` is a run-scoped observation tool governed by the existing
+`WebFetch` policy. It performs an anonymous Google search in a detached,
+isolated CEF network context, permits only Google top-level navigations, and
+runs one assembly-owned extractor in an isolated JavaScript world. The model
+cannot supply script source. Results are bounded, credential-free HTTP(S)
+links plus page text labeled `untrusted_web`; consent, unusual-traffic, and
+challenge pages fail explicitly. The browser and network context are destroyed
+after every call. This tool does not require a visible browser panel and does
+not add a Google-specific policy toggle.
 
 ## Cross-panel contract
 

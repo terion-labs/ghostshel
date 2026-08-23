@@ -163,6 +163,7 @@ public static class BuiltInAgentTools
     public const string BrowserForward = "browser.forward";
     public const string BrowserReload = "browser.reload";
     public const string BrowserStop = "browser.stop";
+    public const string WebSearch = "web.search";
     public const string FilesList = "files.list";
     public const string FilesSearch = "files.search";
     public const string FilesStat = "files.stat";
@@ -367,6 +368,11 @@ public static class BuiltInAgentTools
             "Stop browser loading",
             AgentCapability.BrowserNavigation,
             AgentActionRisk.Mutation),
+        Tool(
+            WebSearch,
+            "Search the web",
+            AgentCapability.WebFetch,
+            AgentActionRisk.Observation),
         Tool(
             FilesList,
             "List files",
