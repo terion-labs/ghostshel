@@ -178,6 +178,13 @@ public sealed partial class NativeTerminalBuildContractTests
             workflow,
             StringComparison.Ordinal);
         Assert.Equal(
+            workflow.Split(
+                "uses: actions/setup-dotnet@",
+                StringSplitOptions.None).Length - 1,
+            workflow.Split(
+                "name: Expose the SDK at the repository-local path",
+                StringSplitOptions.None).Length - 1);
+        Assert.Equal(
             1,
             workflow.Split(
                 "./scripts/build-cef-runtime.sh --rid osx-arm64",
