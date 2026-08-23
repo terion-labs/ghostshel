@@ -2,16 +2,7 @@ name: Repository gate
 
 on:
   push:
-    branches: [main]
     tags: ["v*"]
-  pull_request:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: Three-part macOS bundle version
-        required: true
-        default: 0.1.0
-        type: string
 
 permissions:
   actions: read
@@ -186,7 +177,6 @@ jobs:
 
   codeql:
     name: CodeQL (C#)
-    if: "!startsWith(github.ref, 'refs/tags/v')"
     needs: terminal-native-assets
     runs-on: macos-15
     timeout-minutes: 45
@@ -231,24 +221,9 @@ jobs:
       - name: Analyze
         uses: github/codeql-action/analyze@faaa5d804fc648d0fdb28822a8e36cf7d0a6132c # v4.37.7
 
-  dependency-review:
-    name: Dependency review
-    if: github.event_name == 'pull_request'
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Reject vulnerable dependency changes
-        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
-        with:
-          fail-on-severity: low
-          comment-summary-in-pr: never
-
   macos-early-release:
     name: macOS arm64 early release
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
-    needs: [managed-conformance, macos-release-build, format-and-boundaries]
+    needs: [managed-conformance, macos-release-build, format-and-boundaries, codeql]
     runs-on: macos-15
     timeout-minutes: 90
     permissions:
@@ -278,13 +253,8 @@ jobs:
       - name: Resolve release version
         id: release
         shell: bash
-        env:
-          REQUESTED_VERSION: ${{ inputs.version }}
         run: |
           version="${GITHUB_REF_NAME#v}"
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            version="${REQUESTED_VERSION}"
-          fi
           if [[ ! "${version}" =~ ^[0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9}$ ]]; then
             echo "Release version must contain exactly three unsigned integer parts." >&2
             exit 64

@@ -414,20 +414,16 @@ public sealed partial class GovernedAgentRuntimeTests
     [Fact]
     public async Task Provider_completion_during_changed_notification_uses_the_captured_turn_token()
     {
-        var provider = new ControlledSteeringProvider
-        {
-            // This test needs the completion to commit inside the Changed
-            // callback. An asynchronously scheduled continuation makes the
-            // callback spin on a saturated test thread pool and tests the
-            // scheduler instead of the captured turn token.
-            CompleteOriginal = new(TaskCreationOptions.None),
-        };
+        using var provider = new SynchronouslyCompletingProvider();
         await using var fixture = new SteeringRuntimeFixture(provider);
         var sending = fixture.Runtime.SendAsync(
             fixture.Prompt("Inspect."),
             CancellationToken.None).AsTask();
         await WaitForSteeringAsync(fixture.Runtime);
+        await provider.CompletionWaitStarted.Task.WaitAsync(
+            TimeSpan.FromSeconds(5));
         var completionTriggered = 0;
+        var completionCommittedInsideCallback = false;
         fixture.Runtime.Changed += (_, _) =>
         {
             if (!fixture.Runtime.Snapshot.Status.StartsWith(
@@ -438,17 +434,49 @@ public sealed partial class GovernedAgentRuntimeTests
                 return;
             }
 
-            provider.CompleteOriginal.TrySetResult();
-            Assert.True(sending.IsCompleted);
+            provider.Complete();
+            completionCommittedInsideCallback = SpinWait.SpinUntil(
+                () => sending.IsCompleted,
+                TimeSpan.FromSeconds(5));
         };
 
         var result = await fixture.Runtime.SteerAsync(
             CurrentSteering(fixture.Runtime, "Use staging."),
             CancellationToken.None);
 
+        Assert.True(completionCommittedInsideCallback);
         Assert.False(result.IsAccepted);
         Assert.Equal("agent_steering_not_available", result.Code);
         Assert.True((await sending.WaitAsync(TimeSpan.FromSeconds(5))).IsSuccess);
+    }
+
+    private sealed class SynchronouslyCompletingProvider : IAgentProvider, IDisposable
+    {
+        private readonly ManualResetEventSlim _completion = new(false);
+
+        public TaskCompletionSource CompletionWaitStarted { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void Complete() => _completion.Set();
+
+        public void Dispose() => _completion.Dispose();
+
+        public async IAsyncEnumerable<AgentProviderEvent> StreamAsync(
+            AgentProviderRequest request,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            _ = request;
+            yield return new AgentProviderEvent.ResponseStarted();
+            yield return new AgentProviderEvent.TextDelta("original answer");
+            CompletionWaitStarted.TrySetResult();
+            // ConsumeProviderAsync already owns a worker here. Parking that
+            // worker lets the Changed callback force the provider commit
+            // without waiting for another thread-pool continuation.
+            _completion.Wait(cancellationToken);
+            yield return new AgentProviderEvent.ResponseCompleted(
+                AgentProviderStopReason.EndTurn);
+            await Task.CompletedTask.ConfigureAwait(false);
+        }
     }
 
     [Fact]
@@ -710,7 +738,7 @@ public sealed partial class GovernedAgentRuntimeTests
 
         public ConcurrentQueue<AgentProviderRequest> Requests { get; } = [];
 
-        public TaskCompletionSource CompleteOriginal { get; init; } = new(
+        public TaskCompletionSource CompleteOriginal { get; } = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
         public TaskCompletionSource ReplacementEntered { get; } = new(

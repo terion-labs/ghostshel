@@ -52,9 +52,9 @@ checked-in pre-commit and pre-push hooks; they can be reinstalled with
 
 GitHub Actions runs the managed suite as six functional sections in parallel
 on macOS, Linux, and Windows while retaining complete Release builds on every
-platform. A `v<major>.<minor>.<patch>` tag, or a manual **Repository gate** run,
-waits for those jobs and then builds the verified native dependencies on an
-Apple Silicon runner. Both paths upload `GhostShell-macOS-arm64.zip` and its
+platform. A `v<major>.<minor>.<patch>` tag starts the repository gate, waits for
+those jobs, and then builds the verified native dependencies on an Apple
+Silicon runner. The workflow uploads `GhostShell-macOS-arm64.zip` and its
 SHA-256 checksum as a 30-day workflow artifact. Tag builds also publish those
 stable asset names in a GitHub Release marked latest, so the
 [application archive](https://github.com/terion-labs/ghostshel/releases/latest/download/GhostShell-macOS-arm64.zip)

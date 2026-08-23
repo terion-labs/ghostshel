@@ -143,6 +143,24 @@ public sealed partial class NativeTerminalBuildContractTests
     }
 
     [Fact]
+    public void Repository_gate_runs_only_for_version_tags()
+    {
+        var workflow = File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            ".github",
+            "workflows",
+            "repository-gate.yml"));
+
+        Assert.Contains(
+            "on:\n  push:\n    tags: [\"v*\"]",
+            workflow,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("branches:", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("\n  pull_request:", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("\n  workflow_dispatch:", workflow, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Repository_gate_provisions_macos_native_assets_before_managed_builds()
     {
         var workflow = File.ReadAllText(Path.Combine(
@@ -210,7 +228,7 @@ public sealed partial class NativeTerminalBuildContractTests
             "\n  codeql:",
             StringComparison.Ordinal);
         var codeQlEnd = workflow.IndexOf(
-            "\n  dependency-review:",
+            "\n  macos-early-release:",
             codeQlStart,
             StringComparison.Ordinal);
         Assert.True(codeQlStart >= 0);
@@ -221,10 +239,7 @@ public sealed partial class NativeTerminalBuildContractTests
         Assert.Contains("name: Download terminal font assets", codeQlJob, StringComparison.Ordinal);
         Assert.Contains("name: Download macOS terminal runtime", codeQlJob, StringComparison.Ordinal);
         Assert.Contains("name: Initialize CodeQL", codeQlJob, StringComparison.Ordinal);
-        Assert.Contains(
-            "if: \"!startsWith(github.ref, 'refs/tags/v')\"",
-            codeQlJob,
-            StringComparison.Ordinal);
+        Assert.DoesNotContain("if:", codeQlJob, StringComparison.Ordinal);
         Assert.Contains(
             "src/GhostShell.Desktop/GhostShell.Desktop.csproj",
             codeQlJob,
@@ -233,6 +248,10 @@ public sealed partial class NativeTerminalBuildContractTests
         Assert.DoesNotContain("build-libghostty-vt.sh", codeQlJob, StringComparison.Ordinal);
         Assert.DoesNotContain("build-cef-runtime.sh", codeQlJob, StringComparison.Ordinal);
         Assert.Contains("actions: read", workflow, StringComparison.Ordinal);
+        Assert.Contains(
+            "needs: [managed-conformance, macos-release-build, format-and-boundaries, codeql]",
+            workflow,
+            StringComparison.Ordinal);
         Assert.False(File.Exists(Path.Combine(
             RepositoryRoot,
             ".github",
