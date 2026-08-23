@@ -1070,15 +1070,19 @@ public sealed partial class AgentChatViewModelTests
                 Assert.NotNull(resizeTarget);
                 Assert.Equal(8, resizeTarget.Bounds.Width);
                 Assert.Equal(view.Bounds.Height, resizeTarget.Bounds.Height);
-                AssertResizeTargetOwnsGutter(window, view, resizeTarget);
+                await WaitForResizeTargetToOwnGutterAsync(
+                    window,
+                    view,
+                    resizeTarget);
 
                 window.Width = 760;
-                await Task.Delay(50);
-                window.UpdateLayout();
 
                 Assert.Equal(8, resizeTarget.Bounds.Width);
                 Assert.Equal(view.Bounds.Height, resizeTarget.Bounds.Height);
-                AssertResizeTargetOwnsGutter(window, view, resizeTarget);
+                await WaitForResizeTargetToOwnGutterAsync(
+                    window,
+                    view,
+                    resizeTarget);
             }
             finally
             {
@@ -1086,20 +1090,32 @@ public sealed partial class AgentChatViewModelTests
             }
         });
 
-    private static void AssertResizeTargetOwnsGutter(
+    private static async Task WaitForResizeTargetToOwnGutterAsync(
         Window window,
         AgentWorkspaceView view,
         Thumb resizeTarget)
     {
-        var panelEdge = view.TranslatePoint(
-            new Point(0, view.Bounds.Height / 2),
-            window);
-        Assert.NotNull(panelEdge);
-        var gutterPoint = panelEdge.Value + new Vector(-4, 0);
-        var hit = window.InputHitTest(gutterPoint) as Visual;
-        Assert.True(
-            ReferenceEquals(hit, resizeTarget)
-                || hit?.GetVisualAncestors().Contains(resizeTarget) == true,
+        Point? gutterPoint = null;
+        Visual? hit = null;
+        for (var attempt = 0; attempt < 100; attempt++)
+        {
+            window.UpdateLayout();
+            var panelEdge = view.TranslatePoint(
+                new Point(0, view.Bounds.Height / 2),
+                window);
+            Assert.NotNull(panelEdge);
+            gutterPoint = panelEdge.Value + new Vector(-4, 0);
+            hit = window.InputHitTest(gutterPoint.Value) as Visual;
+            if (ReferenceEquals(hit, resizeTarget)
+                || hit?.GetVisualAncestors().Contains(resizeTarget) == true)
+            {
+                return;
+            }
+
+            await Task.Delay(10);
+        }
+
+        Assert.Fail(
             $"The resize target did not own the dock gutter at {gutterPoint}; hit {hit?.GetType().Name ?? "nothing"}.");
     }
 

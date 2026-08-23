@@ -215,7 +215,11 @@ public sealed partial class GovernedAgentRuntimeTests
         var secondSending = fixture.Runtime.SendAsync(
             fixture.Prompt("Second turn."),
             CancellationToken.None).AsTask();
-        await WaitForSteeringAsync(fixture.Runtime);
+        await WaitUntilAsync(() =>
+            provider.Requests.Count == 2
+            && fixture.Runtime.Snapshot.SteeringAvailable
+            && fixture.Runtime.Snapshot.CanSteer
+            && fixture.Runtime.Snapshot.SteeringGeneration != staleGeneration);
         var currentGeneration =
             fixture.Runtime.Snapshot.SteeringGeneration!.Value;
 
