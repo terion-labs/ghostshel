@@ -24,6 +24,13 @@ internal interface IEmbeddedBrowserView : IDisposable
     void SetActiveNavigationRequestPolicy(
         Func<BrowserAddress, CancellationToken, ValueTask<bool>> policy);
 
+    /// <summary>
+    /// Applies an asynchronous destination check to every network resource
+    /// requested by this view, including subframes, scripts, images, and fetch.
+    /// </summary>
+    void SetResourceRequestPolicy(
+        Func<BrowserAddress, CancellationToken, ValueTask<bool>> policy);
+
     event EventHandler<NativeBrowserNavigationEventArgs>? NavigationStarted;
 
     event EventHandler<NativeBrowserNavigationCompletedEventArgs>? NavigationCompleted;
@@ -92,6 +99,8 @@ internal interface IEmbeddedBrowserView : IDisposable
 
     Task<NativeBrowserAutomationResult> ExtractWebSearchDocumentAsync(
         int maximumLinks);
+
+    Task<NativeBrowserAutomationResult> ExtractRenderedDocumentAsync();
 }
 
 internal sealed class NativeBrowserAddressChangedEventArgs(

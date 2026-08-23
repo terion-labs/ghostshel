@@ -2,10 +2,10 @@ using GhostShell.Core;
 
 namespace GhostShell.Application;
 
-public interface IAgentWebSearchSessionHost
+public interface IAgentWebToolSessionHost
 {
-    ValueTask<HostResult<AgentWebSearchResult>> RunAgentWebSearchAsync(
+    ValueTask<HostResult<AgentWebToolResult>> RunAgentWebToolAsync(
         AgentAuthorizationId authorizationId,
-        AgentWebSearchAction action,
+        AgentWebToolAction action,
         CancellationToken cancellationToken);
 }

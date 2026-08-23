@@ -61,6 +61,7 @@ internal sealed class CefBrowserNetworkContext : IDisposable
     internal static IReadOnlyDictionary<string, string> AgentWebPreferences() =>
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
+            ["proxy"] = """{"mode":"direct"}""",
             ["profile.default_content_setting_values.popups"] = "2",
             ["webrtc.ip_handling_policy"] = "\"disable_non_proxied_udp\"",
         };

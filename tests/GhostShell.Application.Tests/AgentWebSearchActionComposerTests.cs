@@ -12,7 +12,7 @@ public sealed class AgentWebSearchActionComposerTests
     {
         var request = new AgentWebSearchRequest("CEF offscreen browser", 4);
 
-        var action = new AgentWebSearchActionComposer().Prepare(
+        var action = new AgentWebToolActionComposer().Prepare(
             Envelope("action-1"),
             Context(revision: 3),
             request);
@@ -31,7 +31,7 @@ public sealed class AgentWebSearchActionComposerTests
     [Fact]
     public void QueryOrCountChangesProduceDifferentActionDigests()
     {
-        var composer = new AgentWebSearchActionComposer();
+        var composer = new AgentWebToolActionComposer();
 
         var first = composer.Prepare(
             Envelope("action-1"),
@@ -53,7 +53,7 @@ public sealed class AgentWebSearchActionComposerTests
     [Fact]
     public void BindingUsesFreshFingerprintAndRejectsAnotherTarget()
     {
-        var composer = new AgentWebSearchActionComposer();
+        var composer = new AgentWebToolActionComposer();
         var action = composer.Prepare(
             Envelope("action-1"),
             Context(revision: 3),
@@ -94,15 +94,55 @@ public sealed class AgentWebSearchActionComposerTests
     [Fact]
     public void CatalogUsesExistingWebFetchPolicyAndObservationRisk()
     {
-        Assert.True(BuiltInAgentTools.Catalog.TryGet(
+        foreach (var toolName in new[]
+        {
+            BuiltInAgentTools.HttpFetch,
+            BuiltInAgentTools.WebRead,
             BuiltInAgentTools.WebSearch,
-            out var descriptor));
+        })
+        {
+            Assert.True(BuiltInAgentTools.Catalog.TryGet(toolName, out var descriptor));
+            Assert.Equal(AgentCapability.WebFetch, descriptor!.Capability);
+            Assert.Equal(AgentActionRisk.Observation, descriptor.Risk);
+        }
 
-        Assert.Equal(AgentCapability.WebFetch, descriptor!.Capability);
-        Assert.Equal(AgentActionRisk.Observation, descriptor.Risk);
         Assert.Equal(
             AgentPermission.Ask,
             AgentPolicy.Default.GetPermission(AgentCapability.WebFetch));
+    }
+
+    [Fact]
+    public void FetchAndReadBindExactMethodFormatAndAddress()
+    {
+        var composer = new AgentWebToolActionComposer();
+        var fetch = composer.Prepare(
+            Envelope("action-1"),
+            Context(),
+            new AgentHttpFetchRequest(
+                "https://api.example.test/v1/items",
+                AgentHttpFetchMethod.Head));
+        var read = composer.Prepare(
+            Envelope("action-1"),
+            Context(),
+            new AgentWebReadRequest(
+                "https://docs.example.test/guide",
+                AgentWebReadFormat.RenderedHtml));
+
+        Assert.Equal(BuiltInAgentTools.HttpFetch, fetch.Proposal.ToolName);
+        Assert.Equal("api.example.test", fetch.Proposal.Presentation.Host);
+        Assert.Equal(BuiltInAgentTools.WebRead, read.Proposal.ToolName);
+        Assert.Equal("docs.example.test", read.Proposal.Presentation.Host);
+        Assert.NotEqual(fetch.Proposal.ArgumentDigest, read.Proposal.ArgumentDigest);
+    }
+
+    [Theory]
+    [InlineData("file:///tmp/private")]
+    [InlineData("https://user:password@example.test/")]
+    [InlineData("https://example.test/#fragment")]
+    public void FetchAndReadRejectUnsafeAddresses(string url)
+    {
+        Assert.Throws<ArgumentException>(() => new AgentHttpFetchRequest(url));
+        Assert.Throws<ArgumentException>(() => new AgentWebReadRequest(url));
     }
 
     private static AgentContextSnapshot Context(

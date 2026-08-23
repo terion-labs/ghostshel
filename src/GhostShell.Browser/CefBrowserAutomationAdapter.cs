@@ -81,6 +81,9 @@ internal sealed class CefBrowserAutomationAdapter
             () => ExtractWebSearchDocumentCoreAsync(maximumLinks));
     }
 
+    public Task<NativeBrowserAutomationResult> ExtractRenderedDocumentAsync() =>
+        CaptureOutcomeAsync(ExtractRenderedDocumentCoreAsync);
+
     private async Task<NativeBrowserAutomationResult> DispatchMouseCoreAsync(
         BrowserMouseRequest request)
     {
@@ -202,11 +205,50 @@ internal sealed class CefBrowserAutomationAdapter
                 links.push({ text: label, url: target.href.slice(0, 2048) });
               }
               const body = compact(document.body && document.body.innerText);
+              const clone = document.documentElement && document.documentElement.cloneNode(true);
+              if (clone) {
+                for (const element of clone.querySelectorAll(
+                    "script, style, noscript, iframe, object, embed, form, input, button, dialog, template, [hidden], [aria-hidden='true']")) {
+                  element.remove();
+                }
+              }
+              const html = clone ? clone.outerHTML : '';
               return {
                 title: compact(document.title).slice(0, 1024),
                 text: body.slice(0, 20480),
-                truncated: body.length > 20480,
+                html: html.slice(0, 98304),
+                truncated: body.length > 20480 || html.length > 98304,
                 links
+              };
+            })()
+            """;
+        return await EvaluateSourceAsync(
+                source,
+                awaitPromise: false,
+                TimeSpan.FromSeconds(5),
+                throwOnSideEffect: false,
+                contextId)
+            .ConfigureAwait(false);
+    }
+
+    private async Task<NativeBrowserAutomationResult>
+        ExtractRenderedDocumentCoreAsync()
+    {
+        var contextId = await CreateIsolatedWorldAsync().ConfigureAwait(false);
+        if (contextId == 0)
+        {
+            return NativeBrowserAutomationResult.Rejected(
+                "script_context_unavailable");
+        }
+
+        const string source = """
+            (() => {
+              const maximum = 98304;
+              const html = document.documentElement ? document.documentElement.outerHTML : '';
+              return {
+                title: String(document.title || '').slice(0, 1024),
+                html: html.slice(0, maximum),
+                truncated: html.length > maximum
               };
             })()
             """;

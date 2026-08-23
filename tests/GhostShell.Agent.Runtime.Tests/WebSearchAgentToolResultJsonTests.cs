@@ -63,4 +63,60 @@ public sealed class WebSearchAgentToolResultJsonTests
                 .GetProperty("code")
                 .GetString());
     }
+
+    [Fact]
+    public void HttpFetchProjectionIsBoundedAndUntrusted()
+    {
+        var request = new AgentHttpFetchRequest("https://api.example.test/v1");
+        var result = new AgentHttpFetchResult(
+            request.Address.AbsoluteUri,
+            200,
+            "application/json",
+            "{\"ok\":true}");
+
+        var projection = WebAgentToolResultJson.Project(request, result);
+
+        Assert.True(projection.IsSuccess);
+        Assert.Equal("http_fetch_completed", projection.StableCode);
+        using var document = JsonDocument.Parse(projection.Json);
+        Assert.Equal(
+            "untrusted_web",
+            document.RootElement.GetProperty("content_origin").GetString());
+        Assert.Equal(200, document.RootElement.GetProperty("status").GetInt32());
+    }
+
+    [Fact]
+    public void WebReadProjectionDeclaresRequestedFormat()
+    {
+        var request = new AgentWebReadRequest(
+            "https://docs.example.test/guide",
+            AgentWebReadFormat.RenderedHtml);
+        var result = new AgentWebReadResult(
+            request.Address.AbsoluteUri,
+            "Guide",
+            request.Format,
+            "<main>Guide</main>",
+            truncated: false);
+
+        var projection = WebAgentToolResultJson.Project(request, result);
+
+        using var document = JsonDocument.Parse(projection.Json);
+        Assert.Equal(
+            "rendered_html",
+            document.RootElement.GetProperty("format").GetString());
+        Assert.Equal("<main>Guide</main>", document.RootElement.GetProperty("content").GetString());
+    }
+
+    [Fact]
+    public void WebFailureDoesNotExposeAnUnknownPrefixedEngineCode()
+    {
+        var error = new HostError(
+            HostErrorCode.EngineFailed,
+            "web_read_internal_detail",
+            "private engine detail");
+
+        var stableCode = WebAgentToolResultJson.ProviderStableCode(error);
+
+        Assert.Equal("web_failed", stableCode);
+    }
 }

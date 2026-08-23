@@ -64,6 +64,54 @@ public sealed class WebSearchAgentToolParserTests
         Assert.Contains("untrusted web content", tool.Description, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("http.fetch", "{\"url\":\"https://api.example.test/v1\"}", typeof(AgentHttpFetchRequest))]
+    [InlineData("http.fetch", "{\"url\":\"https://api.example.test/v1\",\"method\":\"HEAD\"}", typeof(AgentHttpFetchRequest))]
+    [InlineData("web.read", "{\"url\":\"https://docs.example.test/guide\"}", typeof(AgentWebReadRequest))]
+    [InlineData("web.read", "{\"url\":\"https://docs.example.test/guide\",\"format\":\"rendered_html\"}", typeof(AgentWebReadRequest))]
+    public async Task ParsesClosedFetchAndReadRequests(
+        string toolName,
+        string arguments,
+        Type expectedType)
+    {
+        var proposal = await ProposalAsync(toolName, arguments);
+
+        var parsed = Assert.IsType<WebAgentIntentResult.Parsed>(
+            WebAgentToolParser.Parse(proposal));
+
+        Assert.IsType(expectedType, parsed.Request);
+    }
+
+    [Theory]
+    [InlineData("http.fetch", "{\"url\":\"file:///tmp/private\"}")]
+    [InlineData("http.fetch", "{\"url\":\"https://example.test\",\"method\":\"POST\"}")]
+    [InlineData("web.read", "{\"url\":\"https://example.test\",\"format\":\"text\"}")]
+    [InlineData("web.read", "{\"url\":\"https://example.test\",\"extra\":true}")]
+    public async Task RejectsUnsafeFetchAndReadRequests(
+        string toolName,
+        string arguments)
+    {
+        var proposal = await ProposalAsync(toolName, arguments);
+
+        var rejected = Assert.IsType<WebAgentIntentResult.Rejected>(
+            WebAgentToolParser.Parse(proposal));
+
+        Assert.Equal("invalid_tool_arguments", rejected.StableCode);
+    }
+
+    [Fact]
+    public void WebToolManifestIncludesAllThreeClosedSchemas()
+    {
+        Assert.Equal(
+            [BuiltInAgentTools.HttpFetch, BuiltInAgentTools.WebRead, BuiltInAgentTools.WebSearch],
+            WebAgentToolSet.Tools.Select(tool => tool.Name),
+            StringComparer.Ordinal);
+        Assert.All(
+            WebAgentToolSet.Tools,
+            tool => Assert.False(
+                tool.InputSchema.GetProperty("additionalProperties").GetBoolean()));
+    }
+
     private static async Task<AgentToolProposal> ProposalAsync(
         string name,
         string arguments)

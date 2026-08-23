@@ -93,6 +93,18 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
                 return Failed(AgentWebSearchErrorCode.Interstitial);
             }
 
+            if (root.TryGetProperty("html", out var htmlElement)
+                && htmlElement.ValueKind == JsonValueKind.String)
+            {
+                var markdown = new WebContentMarkdownConverter().ConvertDocument(
+                    htmlElement.GetString() ?? string.Empty);
+                text = BoundedWebText.Truncate(
+                    markdown,
+                    AgentWebSearchResult.MaximumTextBytes,
+                    out var markdownTruncated);
+                truncated |= markdownTruncated;
+            }
+
             var links = root.GetProperty("links")
                 .EnumerateArray()
                 .Select(link => new AgentWebSearchLink(
@@ -130,7 +142,11 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
                 {
                     var createdNetwork =
                         CefBrowserNetworkContext.CreateIsolatedAgentWeb();
-                    return (createdNetwork, createdNetwork.CreateView());
+                    var createdBrowser = createdNetwork.CreateView();
+                    createdBrowser.SetResourceRequestPolicy(
+                        (candidate, token) => BrowserDestinationPolicy.LocalSystem
+                            .AllowsResolvedAsync(candidate, token));
+                    return (createdNetwork, createdBrowser);
                 });
             var navigation = new TaskCompletionSource<NavigationOutcome>(
                 TaskCreationOptions.RunContinuationsAsynchronously);

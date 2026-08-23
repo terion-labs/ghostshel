@@ -119,7 +119,7 @@ retain the researched target surface and mark deferred tools explicitly.
 | Panel | Production tools |
 | --- | --- |
 | Common graph/layout | `workspace.inspect`, `tab.list`, `panel.list`, `panel.inspect`, `panel.focus`, `tab.create`, `tab.close`, `panel.add`, `panel.split`, `panel.close` |
-| Web | `web.search` |
+| Web | `http.fetch`, `web.read`, `web.search` |
 | Terminal | `terminal.read_screen`, `terminal.read_screen_diff`, `terminal.find_on_screen`, `terminal.find_rendered_history`, `terminal.jump_to_rendered_history`, `terminal.read_scrollback`, `terminal.find`, `terminal.scroll_viewport`, `terminal.wait`, `terminal.send_text`, `terminal.paste`, `terminal.submit_text`, `terminal.send_keys`, `terminal.send_chord`, `terminal.send_mouse`, `terminal.interrupt`, `terminal.resize` |
 | Browser | `browser.read_state`, `browser.snapshot`, `browser.wait`, `browser.click`, `browser.fill`, `browser.check`, `browser.mouse`, `browser.key`, `browser.scroll`, `browser.navigate`, `browser.back`, `browser.forward`, `browser.reload`, `browser.stop` |
 | File Viewer | `files.list`, `files.search`, `files.stat`, `files.read`, `files.access_read`, `files.transfers`, `files.mkdir`, `files.move`, `files.delete` |
@@ -134,15 +134,31 @@ advertised by the production browser profile. `browser.cdp`, diagnostics,
 artifacts, uploads/downloads, database/Redis writes, Docker lifecycle actions,
 and generic terminal/Docker exec are not implemented as production tools.
 
-`web.search` is a run-scoped observation tool governed by the existing
-`WebFetch` policy. It performs an anonymous Google search in a detached,
-isolated CEF network context, permits only Google top-level navigations, and
-runs one assembly-owned extractor in an isolated JavaScript world. The model
-cannot supply script source. Results are bounded, credential-free HTTP(S)
-links plus page text labeled `untrusted_web`; consent, unusual-traffic, and
-challenge pages fail explicitly. The browser and network context are destroyed
-after every call. This tool does not require a visible browser panel and does
-not add a Google-specific policy toggle.
+The three web tools are run-scoped observations governed by the existing
+`WebFetch` policy and use one exact typed action/authorization path. They do
+not require a visible browser panel.
+
+- `http.fetch` accepts only credential-free HTTP(S) URLs and `GET` or `HEAD`.
+  It uses `SocketsHttpHandler` rather than a subprocess, disables automatic
+  redirects and cookies, revalidates up to five redirect legs, rejects mixed
+  public/private DNS answers, and connects to an admitted address through
+  `ConnectCallback`. Only bounded textual, JSON, XML, form, and JavaScript
+  media types are returned.
+- `web.read` creates a detached isolated CEF context, validates every network
+  resource destination, and extracts the current rendered DOM using only
+  assembly-owned JavaScript. Its default `markdown` mode applies a managed
+  Mozilla Readability port and sanitized HTML-to-Markdown conversion. Explicit
+  `rendered_html` mode returns the bounded current DOM, not original response
+  bytes.
+- `web.search` performs an anonymous Google search in the same detached CEF
+  isolation, permits only Google top-level navigations, and converts a cleaned
+  rendered document to bounded semantic Markdown plus credential-free HTTP(S)
+  links. Consent, unusual-traffic, and challenge pages fail explicitly.
+
+All returned content is labeled `untrusted_web`; model-supplied scripts,
+headers, request bodies, credentials, cookies, provider URLs, and selectors
+are outside this surface. Browser and network contexts are destroyed after
+each call. No Google-specific policy toggle is added.
 
 ## Cross-panel contract
 
