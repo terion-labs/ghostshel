@@ -1430,8 +1430,9 @@ EXCEF_API int excef_load_string(int browser_id,
 // ---- Init: extra Chromium switches ------------------------------------
 //
 // Append a Chromium command-line switch (with optional value) that
-// `OnBeforeCommandLineProcessing` will apply to both the main and
-// subprocess command lines. Use for things like
+// `OnBeforeCommandLineProcessing` will apply to the browser process. Chromium
+// forwards supported switches to subprocesses. Feature-list switches are
+// merged with values that CEF configured before the callback. Use for things like
 // "enable-features=WebGPU,WebAssemblyDynamicTiering" or
 // "disable-blink-features=AutomationControlled". MUST be called before
 // any Initialize* function.
