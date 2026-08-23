@@ -231,7 +231,7 @@ public sealed class SqlLanguageWorkerPackagingTests
     }
 
     [Fact]
-    public void DatabaseConformanceCiCannotSilentlySkipTheNativeWorker()
+    public void Dormant_database_conformance_preserves_the_native_worker_contract()
     {
         var workflow = File.ReadAllText(Path.Combine(
             RepositoryRoot,
@@ -243,6 +243,9 @@ public sealed class SqlLanguageWorkerPackagingTests
             "scripts",
             "test-database-viewer-integration.sh"));
 
+        Assert.Equal(
+            2,
+            workflow.Split("if: ${{ false }}", StringSplitOptions.None).Length - 1);
         Assert.Contains("needs: sql-language-worker", workflow, StringComparison.Ordinal);
         Assert.Contains(
             "GHOSTSHELL_RUN_SQL_LANGUAGE_NATIVE: \"1\"",
@@ -265,7 +268,7 @@ public sealed class SqlLanguageWorkerPackagingTests
     }
 
     [Fact]
-    public void PortableReleaseGateBuildsOnlyCompleteWorkerSupportedRids()
+    public void Repository_gate_does_not_publish_unsupported_portable_platforms()
     {
         var workflow = File.ReadAllText(Path.Combine(
             RepositoryRoot,
@@ -273,51 +276,11 @@ public sealed class SqlLanguageWorkerPackagingTests
             "workflows",
             "repository-gate.yml"));
 
-        Assert.Contains("rid: [linux-x64, linux-arm64]", workflow, StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "rid: [linux-x64, linux-arm64, win-x64, win-arm64]",
-            workflow,
-            StringComparison.Ordinal);
-        Assert.Contains("docker/setup-qemu-action@", workflow, StringComparison.Ordinal);
-        Assert.Contains(
-            "./scripts/build-sql-language-worker.sh --docker --rid ${{ matrix.rid }}",
-            workflow,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "-p:GhostShellSqlLanguageRequired=true",
-            workflow,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "Verify SQL intelligence payload in candidate",
-            workflow,
-            StringComparison.Ordinal);
-        Assert.Contains("minimumGlibcVersion", workflow, StringComparison.Ordinal);
-        Assert.Contains("legalClosureFormatVersion", workflow, StringComparison.Ordinal);
-        Assert.Contains("legalDocumentCount", workflow, StringComparison.Ordinal);
-        Assert.Contains("legalReviewRequiredCount", workflow, StringComparison.Ordinal);
-        Assert.Contains("runtimeDependencyCount", workflow, StringComparison.Ordinal);
-        Assert.Contains(
-            "all(type == \"number\" and . >= 1 and floor == .)",
-            workflow,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            ".legalReviewRequiredCount | type == \"number\" and . >= 0 and floor == .",
-            workflow,
-            StringComparison.Ordinal);
-        Assert.Contains("runtimeDependenciesSha256", workflow, StringComparison.Ordinal);
-        Assert.Contains("thirdPartyNoticesSha256", workflow, StringComparison.Ordinal);
-        Assert.Contains(
-            "sha256sum \"$native_dir/runtime-dependencies.txt\"",
-            workflow,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "sha256sum \"$native_dir/THIRD-PARTY-NOTICES.md\"",
-            workflow,
-            StringComparison.Ordinal);
-        Assert.Contains("sha256sum \"$worker\"", workflow, StringComparison.Ordinal);
-        Assert.Contains("mavenContentLockSha256", workflow, StringComparison.Ordinal);
-        Assert.Contains("mavenBuilderSource", workflow, StringComparison.Ordinal);
-        Assert.Contains("nativeImageBuilderSource", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("portable-release-publish:", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("linux-x64", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("linux-arm64", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("win-x64", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("win-arm64", workflow, StringComparison.Ordinal);
     }
 
     [Fact]

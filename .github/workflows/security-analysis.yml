@@ -23,7 +23,7 @@ env:
 jobs:
   codeql:
     name: CodeQL (C#)
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -41,7 +41,7 @@ jobs:
           ln -s "$(command -v dotnet)" .dotnet/dotnet
 
       - name: Build required native terminal payload
-        run: ./scripts/build-libghostty-vt.sh --rid linux-x64
+        run: ./scripts/build-libghostty-vt.sh --rid osx-arm64
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@faaa5d804fc648d0fdb28822a8e36cf7d0a6132c # v4.37.7

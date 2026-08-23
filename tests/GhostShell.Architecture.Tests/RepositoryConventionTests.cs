@@ -8,6 +8,23 @@ namespace GhostShell.Architecture.Tests;
 public sealed partial class RepositoryConventionTests
 {
     [Fact]
+    public void Github_actions_allocate_only_macos_runners()
+    {
+        var workflowDirectory = Path.Combine(RepositoryRoot, ".github", "workflows");
+        var runnerDeclarations = Directory
+            .GetFiles(workflowDirectory, "*.yml")
+            .SelectMany(File.ReadLines)
+            .Select(line => line.Trim())
+            .Where(line => line.StartsWith("runs-on:", StringComparison.Ordinal))
+            .ToArray();
+
+        Assert.NotEmpty(runnerDeclarations);
+        Assert.All(
+            runnerDeclarations,
+            declaration => Assert.Equal("runs-on: macos-15", declaration));
+    }
+
+    [Fact]
     public void Connection_editor_keeps_test_progress_in_its_fixed_footer()
     {
         var dialog = XDocument.Load(Path.Combine(

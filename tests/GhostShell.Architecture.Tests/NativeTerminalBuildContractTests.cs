@@ -143,7 +143,7 @@ public sealed partial class NativeTerminalBuildContractTests
     }
 
     [Fact]
-    public void Repository_gate_provisions_terminal_fonts_before_managed_builds()
+    public void Repository_gate_provisions_macos_terminal_assets_before_managed_builds()
     {
         var workflow = File.ReadAllText(Path.Combine(
             RepositoryRoot,
@@ -151,7 +151,6 @@ public sealed partial class NativeTerminalBuildContractTests
             "workflows",
             "repository-gate.yml"));
 
-        Assert.Contains("terminal-font-assets:", workflow, StringComparison.Ordinal);
         Assert.Contains("terminal-native-assets:", workflow, StringComparison.Ordinal);
         Assert.Contains(
             "name: terminal-font-test-assets",
@@ -160,16 +159,16 @@ public sealed partial class NativeTerminalBuildContractTests
         Assert.Equal(
             3,
             workflow.Split(
-                "needs: [terminal-font-assets, terminal-native-assets]",
+                "needs: terminal-native-assets",
                 StringSplitOptions.None).Length - 1);
         Assert.Equal(
             3,
             workflow.Split(
                 "name: Download terminal font assets",
                 StringSplitOptions.None).Length - 1);
-        Assert.Contains("name: terminal-native-linux-x64", workflow, StringComparison.Ordinal);
         Assert.Contains("name: terminal-native-osx-arm64", workflow, StringComparison.Ordinal);
-        Assert.Contains("name: terminal-native-win-x64", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("name: terminal-native-linux-x64", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("name: terminal-native-win-x64", workflow, StringComparison.Ordinal);
         Assert.Contains("include-hidden-files: true", workflow, StringComparison.Ordinal);
     }
 
@@ -182,7 +181,7 @@ public sealed partial class NativeTerminalBuildContractTests
             "workflows",
             "security-analysis.yml"));
         var nativeBuildIndex = workflow.IndexOf(
-            "./scripts/build-libghostty-vt.sh --rid linux-x64",
+            "./scripts/build-libghostty-vt.sh --rid osx-arm64",
             StringComparison.Ordinal);
         var codeQlBuildIndex = workflow.IndexOf(
             "dotnet build GhostShell.slnx --configuration Release --no-restore",

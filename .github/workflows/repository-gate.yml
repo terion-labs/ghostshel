@@ -25,49 +25,9 @@ env:
   DOTNET_NOLOGO: "1"
 
 jobs:
-  terminal-font-assets:
-    name: Build terminal font test assets
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        with:
-          global-json-file: global.json
-      - name: Expose the SDK at the repository-local path
-        shell: bash
-        run: |
-          mkdir -p .dotnet
-          ln -s "$(command -v dotnet)" .dotnet/dotnet
-      - name: Build verified terminal font assets
-        run: ./scripts/build-libghostty-vt.sh --rid linux-x64
-      - name: Upload terminal font assets
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: terminal-font-test-assets
-          path: native/artifacts/common
-          if-no-files-found: error
-          retention-days: 1
-      - name: Upload Linux terminal runtime
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: terminal-native-linux-x64
-          path: native/artifacts/linux-x64
-          if-no-files-found: error
-          retention-days: 1
-
   terminal-native-assets:
-    name: Build terminal runtime (${{ matrix.rid }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-15
-            rid: osx-arm64
-          - os: windows-2022
-            rid: win-x64
+    name: Build macOS terminal runtime
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -79,25 +39,31 @@ jobs:
         shell: bash
         run: >-
           GHOSTSHELL_DOTNET="$(command -v dotnet)"
-          ./scripts/build-libghostty-vt.sh --rid ${{ matrix.rid }}
+          ./scripts/build-libghostty-vt.sh --rid osx-arm64
+      - name: Upload terminal font assets
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: terminal-font-test-assets
+          path: native/artifacts/common
+          if-no-files-found: error
+          retention-days: 1
       - name: Upload terminal runtime
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: terminal-native-${{ matrix.rid }}
-          path: native/artifacts/${{ matrix.rid }}
+          name: terminal-native-osx-arm64
+          path: native/artifacts/osx-arm64
           if-no-files-found: error
           retention-days: 1
 
   managed-conformance:
-    name: Tests (${{ matrix.os }}, ${{ matrix.section }})
-    needs: [terminal-font-assets, terminal-native-assets]
+    name: Tests (macOS, ${{ matrix.section }})
+    needs: terminal-native-assets
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, ubuntu-24.04, windows-2022]
         section: [core, agent, app, services, data-browser, terminal-host]
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -110,24 +76,11 @@ jobs:
         with:
           name: terminal-font-test-assets
           path: native/artifacts/common
-      - name: Download Linux terminal runtime
-        if: runner.os == 'Linux'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: terminal-native-linux-x64
-          path: native/artifacts/linux-x64
       - name: Download macOS terminal runtime
-        if: runner.os == 'macOS'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: terminal-native-osx-arm64
           path: native/artifacts/osx-arm64
-      - name: Download Windows terminal runtime
-        if: runner.os == 'Windows'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: terminal-native-win-x64
-          path: native/artifacts/win-x64
       - name: Restore the locked dependency graph
         shell: bash
         run: dotnet restore GhostShell.slnx --locked-mode
@@ -143,15 +96,11 @@ jobs:
           if-no-files-found: error
           include-hidden-files: true
 
-  cross-platform-build:
-    name: Release build (${{ matrix.os }})
-    needs: [terminal-font-assets, terminal-native-assets]
+  macos-release-build:
+    name: Release build (macOS)
+    needs: terminal-native-assets
     timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-15, windows-2022]
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -165,17 +114,10 @@ jobs:
           name: terminal-font-test-assets
           path: native/artifacts/common
       - name: Download macOS terminal runtime
-        if: runner.os == 'macOS'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: terminal-native-osx-arm64
           path: native/artifacts/osx-arm64
-      - name: Download Windows terminal runtime
-        if: runner.os == 'Windows'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: terminal-native-win-x64
-          path: native/artifacts/win-x64
       - name: Restore the locked dependency graph
         shell: bash
         run: dotnet restore GhostShell.slnx --locked-mode
@@ -185,8 +127,8 @@ jobs:
 
   format-and-boundaries:
     name: Format and architecture boundaries
-    needs: [terminal-font-assets, terminal-native-assets]
-    runs-on: ubuntu-24.04
+    needs: terminal-native-assets
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -199,18 +141,18 @@ jobs:
         with:
           name: terminal-font-test-assets
           path: native/artifacts/common
-      - name: Download Linux terminal runtime
+      - name: Download macOS terminal runtime
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: terminal-native-linux-x64
-          path: native/artifacts/linux-x64
+          name: terminal-native-osx-arm64
+          path: native/artifacts/osx-arm64
       - name: Run the fast repository gate
         run: ./scripts/check.sh --quick
 
   dependency-review:
     name: Dependency review
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -221,97 +163,10 @@ jobs:
           fail-on-severity: low
           comment-summary-in-pr: never
 
-  portable-release-publish:
-    name: Publish ${{ matrix.rid }}
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        # These are the release RIDs whose complete native payloads can be
-        # produced and executed from this Linux gate. win-x64 requires a
-        # target-host GraalVM lane; win-arm64 has no supported Native Image
-        # toolchain and must never be emitted as a feature-incomplete package.
-        rid: [linux-x64, linux-arm64]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
-        with:
-          platforms: arm64
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        with:
-          global-json-file: global.json
-      - name: Expose the SDK at the repository-local path
-        shell: bash
-        run: |
-          mkdir -p .dotnet
-          ln -s "$(command -v dotnet)" .dotnet/dotnet
-      - name: Build required native payloads
-        run: |
-          ./scripts/build-libghostty-vt.sh --rid ${{ matrix.rid }}
-          ./scripts/build-sql-language-worker.sh --docker --rid ${{ matrix.rid }}
-      - name: Restore the locked dependency graph
-        run: |
-          test -f "src/GhostShell.Desktop/packages.${{ matrix.rid }}.lock.json"
-          dotnet restore src/GhostShell.Desktop/GhostShell.Desktop.csproj \
-            --runtime ${{ matrix.rid }} \
-            --locked-mode
-      - name: Publish portable desktop
-        run: >-
-          dotnet publish src/GhostShell.Desktop/GhostShell.Desktop.csproj
-          --configuration Release
-          --runtime ${{ matrix.rid }}
-          --self-contained true
-          -p:RestoreLockedMode=true
-          -p:GhostShellSqlLanguageRequired=true
-          --no-restore
-          --output artifacts/${{ matrix.rid }}
-      - name: Verify SQL intelligence payload in candidate
-        run: |
-          native_dir=artifacts/${{ matrix.rid }}/runtimes/${{ matrix.rid }}/native
-          worker="$native_dir/ghostshell-sql-language"
-          receipt="$native_dir/build-receipt.json"
-          test -x "$worker"
-          test -s "$native_dir/THIRD-PARTY-NOTICES.md"
-          test -s "$native_dir/runtime-dependencies.txt"
-          test -s "$receipt"
-          case "${{ matrix.rid }}" in
-            linux-x64) expected_abi=linux-gnu-x64 ;;
-            linux-arm64) expected_abi=linux-gnu-arm64 ;;
-            *) exit 1 ;;
-          esac
-          test "$(jq -r '.protocolVersion' "$receipt")" = "1"
-          test "$(jq -r '.rid' "$receipt")" = "${{ matrix.rid }}"
-          test "$(jq -r '.artifact' "$receipt")" = "ghostshell-sql-language"
-          test "$(jq -r '.abi' "$receipt")" = "$expected_abi"
-          jq -e '.minimumGlibcVersion | type == "string" and test("^[0-9]+\\.[0-9]+$")' "$receipt" >/dev/null
-          jq -e \
-            '[.legalClosureFormatVersion, .legalDocumentCount, .runtimeDependencyCount] | all(type == "number" and . >= 1 and floor == .)' \
-            "$receipt" >/dev/null
-          jq -e \
-            '.legalReviewRequiredCount | type == "number" and . >= 0 and floor == .' \
-            "$receipt" >/dev/null
-          test "$(jq -r '.sha256' "$receipt")" = "$(sha256sum "$worker" | awk '{print $1}')"
-          test "$(jq -r '.runtimeDependenciesSha256' "$receipt")" = \
-            "$(sha256sum "$native_dir/runtime-dependencies.txt" | awk '{print $1}')"
-          test "$(jq -r '.thirdPartyNoticesSha256' "$receipt")" = \
-            "$(sha256sum "$native_dir/THIRD-PARTY-NOTICES.md" | awk '{print $1}')"
-          test "$(jq -r '.mavenContentLockSha256' "$receipt")" = \
-            "$(sha256sum native/sql-language-worker/maven-content-lock.json | awk '{print $1}')"
-          jq -e '.mavenBuilderSource | type == "string" and test("@sha256:[0-9a-f]{64}$")' "$receipt" >/dev/null
-          jq -e '.nativeImageBuilderSource | type == "string" and test("@sha256:[0-9a-f]{64}$")' "$receipt" >/dev/null
-      - name: Upload package candidate
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: ghostshell-${{ matrix.rid }}
-          path: artifacts/${{ matrix.rid }}
-          if-no-files-found: error
-
   macos-early-release:
     name: macOS arm64 early release
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
-    needs: [managed-conformance, cross-platform-build, format-and-boundaries]
+    needs: [managed-conformance, macos-release-build, format-and-boundaries]
     runs-on: macos-15
     timeout-minutes: 90
     permissions:
