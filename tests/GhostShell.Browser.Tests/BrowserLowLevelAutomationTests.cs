@@ -383,8 +383,11 @@ public sealed class BrowserLowLevelAutomationTests
             "const resultCandidates = () =>",
             source,
             StringComparison.Ordinal);
-        Assert.DoesNotContain("MutationObserver", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("setTimeout", source, StringComparison.Ordinal);
+        Assert.Contains("new MutationObserver", source, StringComparison.Ordinal);
+        Assert.Contains("scheduleAfterQuietPeriod", source, StringComparison.Ordinal);
+        Assert.Contains("characterData: true", source, StringComparison.Ordinal);
+        Assert.Contains("setTimeout(finish, 1000)", source, StringComparison.Ordinal);
+        Assert.Contains("setTimeout(finish, 8000)", source, StringComparison.Ordinal);
         Assert.DoesNotContain(
             "resultCandidates().length >=",
             source,

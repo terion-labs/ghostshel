@@ -180,8 +180,6 @@ internal sealed class CefBrowserAutomationAdapter
 
         var source = $$"""
             (async () => {
-              // Navigation completion and network settlement are observed by
-              // the host before this fixed parser runs.
               const resultCandidates = () => {
                 const resultRoot = document.querySelector('#rso');
                 const candidates = [];
@@ -199,6 +197,60 @@ internal sealed class CefBrowserAutomationAdapter
 
                 return candidates;
               };
+
+              // Main-frame navigation has completed. Google may still attach
+              // result cards asynchronously, so wait until mutations inside
+              // the result collection stop instead of guessing its final size.
+              await new Promise(resolve => {
+                let quietPeriod;
+                let finished = false;
+                const finish = () => {
+                  if (finished) {
+                    return;
+                  }
+
+                  finished = true;
+                  observer.disconnect();
+                  clearTimeout(quietPeriod);
+                  clearTimeout(deadline);
+                  resolve();
+                };
+                const scheduleAfterQuietPeriod = () => {
+                  if (resultCandidates().length === 0) {
+                    return;
+                  }
+
+                  clearTimeout(quietPeriod);
+                  quietPeriod = setTimeout(finish, 1000);
+                };
+                const affectsResults = mutation => {
+                  const resultRoot = document.querySelector('#rso');
+                  if (!resultRoot) {
+                    return false;
+                  }
+
+                  if (resultRoot.contains(mutation.target)) {
+                    return true;
+                  }
+
+                  return [...mutation.addedNodes, ...mutation.removedNodes]
+                    .some(node => node === resultRoot
+                      || (node.nodeType === Node.ELEMENT_NODE
+                        && node.contains(resultRoot)));
+                };
+                const observer = new MutationObserver(mutations => {
+                  if (mutations.some(affectsResults)) {
+                    scheduleAfterQuietPeriod();
+                  }
+                });
+                const deadline = setTimeout(finish, 8000);
+                observer.observe(document.documentElement, {
+                  childList: true,
+                  subtree: true,
+                  characterData: true
+                });
+                scheduleAfterQuietPeriod();
+              });
 
               const compact = value => String(value || '').replace(/\s+/g, ' ').trim();
               const pageText = compact(document.body && document.body.innerText);
@@ -247,7 +299,7 @@ internal sealed class CefBrowserAutomationAdapter
         return await EvaluateSourceAsync(
                 source,
                 awaitPromise: true,
-                TimeSpan.FromSeconds(2),
+                TimeSpan.FromSeconds(10),
                 throwOnSideEffect: false,
                 contextId)
             .ConfigureAwait(false);

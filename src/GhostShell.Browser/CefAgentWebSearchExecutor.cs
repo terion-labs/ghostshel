@@ -10,10 +10,6 @@ namespace GhostShell.Browser;
 public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
 {
     private static readonly TimeSpan SearchDeadline = TimeSpan.FromSeconds(25);
-    private static readonly TimeSpan NetworkQuietWindow =
-        TimeSpan.FromMilliseconds(300);
-    private static readonly TimeSpan NetworkObservationPollInterval =
-        TimeSpan.FromMilliseconds(25);
     private static readonly SemaphoreSlim SearchGate = new(1, 1);
 
     public async ValueTask<AgentWebSearchExecutionResult> SearchAsync(
@@ -207,15 +203,6 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
                             .AllowsResolvedAsync(candidate, token));
                     return (createdNetwork, createdBrowser);
                 });
-            if (!await browser.BeginNetworkActivityObservationWhenReadyAsync()
-                    .WaitAsync(cancellationToken)
-                    .ConfigureAwait(false))
-            {
-                return Failed(AgentWebSearchErrorCode.Unavailable);
-            }
-
-            await WaitForObservableNetworkAsync(browser, cancellationToken)
-                .ConfigureAwait(false);
             var navigation = new TaskCompletionSource<NavigationOutcome>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
             await BeginNavigationAsync(
@@ -232,8 +219,6 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
                 return Failed(outcome.ErrorCode);
             }
 
-            await WaitForNetworkSettlementAsync(browser, cancellationToken)
-                .ConfigureAwait(false);
             var extracted = await browser
                 .ExtractWebSearchDocumentAsync(request.ResultCount)
                 .WaitAsync(cancellationToken)
@@ -252,42 +237,11 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
             {
                 await AvaloniaBrowserUiDispatcher.Instance.InvokeAsync(() =>
                 {
-                    browser?.EndNetworkActivityObservation();
                     browser?.Dispose();
                     network?.Dispose();
                     return true;
                 });
             }
-        }
-    }
-
-    private static async Task WaitForObservableNetworkAsync(
-        CefBrowserView browser,
-        CancellationToken cancellationToken)
-    {
-        while (!browser.ReadNetworkActivity().IsObservable)
-        {
-            await Task.Delay(NetworkObservationPollInterval, cancellationToken)
-                .ConfigureAwait(false);
-        }
-    }
-
-    private static async Task WaitForNetworkSettlementAsync(
-        CefBrowserView browser,
-        CancellationToken cancellationToken)
-    {
-        while (true)
-        {
-            var activity = browser.ReadNetworkActivity();
-            if (activity.IsObservable
-                && activity.ActiveRequestCount == 0
-                && activity.QuietFor >= NetworkQuietWindow)
-            {
-                return;
-            }
-
-            await Task.Delay(NetworkObservationPollInterval, cancellationToken)
-                .ConfigureAwait(false);
         }
     }
 
