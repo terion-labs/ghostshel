@@ -15,7 +15,9 @@ native/artifacts/
 .vscode/
 .claude/settings.local.json
 /untitled.pen
+/design/
+/design-qa.md
+/design-qa-artifacts/
 /SF-Pro-Text-*.otf
-design/qa
 references
 .tmp

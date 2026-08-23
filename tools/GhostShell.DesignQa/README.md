@@ -1,11 +1,10 @@
 # GhostSHELL design QA harness
 
 Renders the product's real `MainWindow`, styles, and view models at a 1440 × 900
-logical viewport and writes one PNG per route. Use it to compare the running UI
-against `design/` without hand-driving the app.
+logical viewport and writes one PNG per route without hand-driving the app.
 
 ```sh
-./.dotnet/dotnet run --project tools/GhostShell.DesignQa -- design/qa/current
+./.dotnet/dotnet run --project tools/GhostShell.DesignQa -- artifacts/design-qa/current
 ```
 
 It captures the shell's routes plus modal editors and confirmations. Dialogs are
@@ -23,7 +22,7 @@ identical images.
 Pass route names to capture a subset:
 
 ```sh
-./.dotnet/dotnet run --project tools/GhostShell.DesignQa -- design/qa/current launcher-home settings-appearance
+./.dotnet/dotnet run --project tools/GhostShell.DesignQa -- artifacts/design-qa/current launcher-home settings-appearance
 ```
 
 ## Website assets
@@ -81,8 +80,8 @@ misreport the typography.
 
 Collaborators are deterministic and in-memory. The harness never touches SQLite,
 the OS vault, terminal sessions, or the user's profile, and it writes nothing to
-any store. `QaData` is sample content shaped to the density of the Pencil
-reference frames — it is not, and must not be presented as, the user's real
+any store. `QaData` is sample content shaped to exercise the product's density.
+It is not, and must not be presented as, the user's real
 connections, screens, or sessions.
 
 The agent runs offline (`QaOfflineAgentRuntime`), so the workspace route shows

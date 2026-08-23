@@ -152,7 +152,7 @@ Unsafe terminal paste fails closed into an explicit in-terminal confirmation pro
 - `src/GhostShell.SessionHost`: in-process runtime registry, ordered events, revisions, attachments, leases, browser action guards, and close policy.
 - `src/GhostShell.Terminal`: the cross-platform libghostty-vt state/input adapter and Porta.Pty process transport behind render-state, automation, typed input, and lifecycle ports.
 - `src/GhostShell.Monitoring`: package-free, cross-platform local resource sampling behind privacy-bounded statistics and process-session ports.
-- `src/GhostShell.App`: Avalonia presentation based on `design/design.pen`; it depends only on application ports and Core projections.
+- `src/GhostShell.App`: Avalonia presentation; it depends only on application ports and Core projections.
 - `src/GhostShell.Desktop`: executable composition root and platform adapter registrations.
 - `tools/GhostShell.Packaging`: fail-closed release-candidate bundle assembly.
 - `native/ghostty-vt`: the reviewed patch overlay and notices applied to the pinned libghostty-vt build.

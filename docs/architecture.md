@@ -34,26 +34,9 @@ The initial desktop product MUST be useful without the agent. Agent features enh
 - **Capabilities are explicit.** Platform-specific features expose support flags and useful fallbacks instead of silently doing less.
 - **Terminal correctness beats decoration.** IME, Unicode, mouse protocols, resize, clipboard safety, full-screen TUIs, and low-latency input come before command-block styling.
 
-## 2. Design source and product interpretation
+## 2. Product interpretation
 
-### 2.1 Inspected design sources
-
-The product direction comes from the AI-readable [`design/design.pen`](../design/design.pen), the structural HTML exports in [`design/html-export/`](../design/html-export/), and the PNG references in [`design/`](../design/). The Pencil document contains these principal compositions:
-
-- Connections & Screens launcher;
-- Terminal Workspace;
-- New Tab/New Window launcher;
-- Split New Panel chooser;
-- Quick Terminal;
-- Saved Screen editor;
-- Layout Designer;
-- Workspaces settings;
-- Appearance settings;
-- AI Providers settings;
-- Agent settings;
-- Quick Terminal settings.
-
-The visual baseline is a dark, compact, macOS-like desktop application with restrained translucency, rounded cards, JetBrains Mono for terminal/data surfaces, a workspace rail, tab strip, status bar, multi-panel canvas, command blocks, and a floating/docked agent surface. Orange in the supplied compositions is an example accent, not the product default.
+The visual baseline is a compact desktop application with restrained translucency, rounded cards, JetBrains Mono for terminal and data surfaces, a workspace rail, tab strip, status bar, multi-panel canvas, command blocks, and a floating or docked agent surface.
 
 Pixel identity is not a requirement. Implementations SHOULD preserve hierarchy, density, balance, clear focus, and subtle elevation while allowing platform profiles to alter metrics, materials, control shapes, typography, and window chrome. The application accent defaults to the host operating system's current accent. If the host does not expose one, GhostSHELL uses its bronze fallback accent.
 
