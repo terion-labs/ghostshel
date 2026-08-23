@@ -12,6 +12,10 @@ public sealed partial class NativeAgentSession
     private const string CheckpointInterruptedState = "interrupted";
     private const string InterruptedTurnMessage =
         "The previous agent turn was interrupted. No pending tool action was resumed.";
+    private const string RedactedToolResultText =
+        "[REDACTED TOOL RESULT CONTENT]";
+    private const string RedactedToolResultJson =
+        "{\"redacted\":true,\"reason\":\"credential-shaped tool content omitted from the local checkpoint\"}";
     private const int MaximumRouteIdentityLength = 256;
 
     private AiProviderProfileId? _conversationProviderId;
@@ -403,10 +407,10 @@ public sealed partial class NativeAgentSession
         ValidateConversation(conversation);
         ValidateTranscript(transcript);
         var durableConversation = conversation
-            .Select(WithoutUnsafeProviderReplayState)
+            .Select(ToDurableCheckpointMessage)
             .ToImmutableArray();
         var durableTranscript = transcript
-            .Select(WithoutUnsafeProviderReplayState)
+            .Select(ToDurableCheckpointMessage)
             .ToImmutableArray();
         ValidateConversation(durableConversation);
         ValidateTranscript(durableTranscript);
@@ -690,6 +694,31 @@ public sealed partial class NativeAgentSession
                 providerReplayState: null,
                 requestedReasoningEffort: message.RequestedReasoningEffort)
             : message;
+
+    private static AgentMessage ToDurableCheckpointMessage(AgentMessage message)
+    {
+        var durableMessage = WithoutUnsafeProviderReplayState(message);
+        if (durableMessage.ToolResult is not { } result
+            || !ContainsUnsafeToolResultValue(result))
+        {
+            return durableMessage;
+        }
+
+        // Public documentation and source code often contain password-shaped
+        // examples. Redact only the durable tool value so that one such page
+        // cannot prevent every later transcript revision from being saved.
+        var redactedValue = result.Value.Kind is AgentToolResultValueKind.Json
+            ? AgentToolResultValue.FromJson(
+                Encoding.UTF8.GetBytes(RedactedToolResultJson))
+            : AgentToolResultValue.FromText(RedactedToolResultText);
+        return AgentMessage.FromToolResult(new AgentToolResult(
+            result.ProposalId,
+            result.Generation,
+            result.ProviderCallId,
+            result.Status,
+            result.StableCode,
+            redactedValue));
+    }
 
     private static CheckpointProviderReplayState ToCheckpointReplayState(
         AgentProviderReplayState state) =>
@@ -1053,24 +1082,30 @@ public sealed partial class NativeAgentSession
                         result.ProviderCallId)
                     || LiteralSecretValidator.ContainsLikelyLiteralSecret(
                         result.StableCode)
-                    || LiteralSecretValidator.ContainsLikelyLiteralSecret(
-                        result.Value.Content))
+                    || ContainsUnsafeToolResultValue(result))
                 {
                     return true;
-                }
-
-                if (result.Value.Kind == AgentToolResultValueKind.Json)
-                {
-                    using var document = JsonDocument.Parse(result.Value.Content);
-                    if (ContainsReservedSecretProperty(document.RootElement))
-                    {
-                        return true;
-                    }
                 }
             }
         }
 
         return false;
+    }
+
+    private static bool ContainsUnsafeToolResultValue(AgentToolResult result)
+    {
+        if (LiteralSecretValidator.ContainsLikelyLiteralSecret(result.Value.Content))
+        {
+            return true;
+        }
+
+        if (result.Value.Kind is not AgentToolResultValueKind.Json)
+        {
+            return false;
+        }
+
+        using var document = JsonDocument.Parse(result.Value.Content);
+        return ContainsReservedSecretProperty(document.RootElement);
     }
 
     private void ValidateCheckpointDurableBounds(

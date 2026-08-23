@@ -606,6 +606,49 @@ public sealed partial class NativeAgentSessionTests
     }
 
     [Fact]
+    public async Task CheckpointRedactsUnsafeToolOutputAndPreservesLaterMessages()
+    {
+        var session = CreateSession();
+        var tools = ImmutableArray.Create(Tool("web.read"));
+        var turn = await session.RunTurnAsync(
+            "Read the authentication guide",
+            tools,
+            ToolProvider("web.read", "{}"),
+            CancellationToken.None);
+        var proposal = Assert.Single(turn.ToolProposals);
+        var result = SuccessJson(
+            proposal,
+            "{\"content\":\"password: values.password\",\"ok\":true}");
+        var completed = await session.SubmitToolResultsAsync(
+            proposal.Generation,
+            [result],
+            tools,
+            TextProvider("The guide uses password sign-in."),
+            CancellationToken.None);
+        Assert.True(completed.Succeeded);
+
+        var capture = session.CaptureCheckpoint();
+        var checkpoint = Assert.IsType<AgentSessionCheckpoint>(capture.Checkpoint);
+        var restored = Assert.IsType<NativeAgentSession>(
+            NativeAgentSession.RestoreCheckpoint(checkpoint).Session);
+        var transcript = restored.Snapshot().Transcript;
+        var toolMessage = Assert.Single(
+            transcript,
+            message => message.Role is AgentMessageRole.Tool);
+
+        Assert.True(capture.Succeeded);
+        Assert.DoesNotContain(
+            "values.password",
+            checkpoint.PayloadJson,
+            StringComparison.Ordinal);
+        using var redacted = JsonDocument.Parse(toolMessage.Content);
+        Assert.True(redacted.RootElement.GetProperty("redacted").GetBoolean());
+        Assert.Equal(
+            "The guide uses password sign-in.",
+            transcript[^1].Content);
+    }
+
+    [Fact]
     public void RestoreRejectsUnknownFieldsUnsupportedSchemaAndTighterBounds()
     {
         var session = CreateSession(
