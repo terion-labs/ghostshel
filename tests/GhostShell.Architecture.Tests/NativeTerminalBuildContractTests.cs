@@ -157,12 +157,12 @@ public sealed partial class NativeTerminalBuildContractTests
             workflow,
             StringComparison.Ordinal);
         Assert.Equal(
-            3,
+            4,
             workflow.Split(
                 "needs: terminal-native-assets",
                 StringSplitOptions.None).Length - 1);
         Assert.Equal(
-            3,
+            4,
             workflow.Split(
                 "name: Download terminal font assets",
                 StringSplitOptions.None).Length - 1);
@@ -170,9 +170,18 @@ public sealed partial class NativeTerminalBuildContractTests
         Assert.DoesNotContain("name: terminal-native-linux-x64", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("name: terminal-native-win-x64", workflow, StringComparison.Ordinal);
         Assert.Contains(
-            "./scripts/build-cef-runtime.sh --rid osx-arm64",
+            "uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
             workflow,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "if: steps.terminal-cache.outputs.cache-hit != 'true'",
+            workflow,
+            StringComparison.Ordinal);
+        Assert.Equal(
+            1,
+            workflow.Split(
+                "./scripts/build-cef-runtime.sh --rid osx-arm64",
+                StringSplitOptions.None).Length - 1);
         Assert.Contains(
             "path: native/artifacts/osx-arm64\n" +
             "          if-no-files-found: error\n" +
@@ -183,33 +192,39 @@ public sealed partial class NativeTerminalBuildContractTests
     }
 
     [Fact]
-    public void Security_analysis_provisions_required_native_payloads_before_codeql_build()
+    public void Repository_gate_shares_terminal_payload_with_codeql()
     {
         var workflow = File.ReadAllText(Path.Combine(
             RepositoryRoot,
             ".github",
             "workflows",
-            "security-analysis.yml"));
-        var terminalBuildIndex = workflow.IndexOf(
-            "./scripts/build-libghostty-vt.sh --rid osx-arm64",
+            "repository-gate.yml"));
+        var codeQlStart = workflow.IndexOf(
+            "\n  codeql:",
             StringComparison.Ordinal);
-        var cefBuildIndex = workflow.IndexOf(
-            "./scripts/build-cef-runtime.sh --rid osx-arm64",
+        var codeQlEnd = workflow.IndexOf(
+            "\n  dependency-review:",
+            codeQlStart,
             StringComparison.Ordinal);
-        var codeQlBuildIndex = workflow.IndexOf(
-            "dotnet build GhostShell.slnx --configuration Release --no-restore",
-            StringComparison.Ordinal);
+        Assert.True(codeQlStart >= 0);
+        Assert.True(codeQlEnd > codeQlStart);
+        var codeQlJob = workflow[codeQlStart..codeQlEnd];
 
-        Assert.Contains("timeout-minutes: 90", workflow, StringComparison.Ordinal);
-        Assert.True(
-            terminalBuildIndex >= 0,
-            "CodeQL must provision the native library and generated terminal fonts.");
-        Assert.True(
-            cefBuildIndex > terminalBuildIndex,
-            "CodeQL must provision the CEF runtime after the terminal assets.");
-        Assert.True(
-            codeQlBuildIndex > cefBuildIndex,
-            "CodeQL must provision native payloads before building the analyzed graph.");
+        Assert.Contains("needs: terminal-native-assets", codeQlJob, StringComparison.Ordinal);
+        Assert.Contains("name: Download terminal font assets", codeQlJob, StringComparison.Ordinal);
+        Assert.Contains("name: Download macOS terminal runtime", codeQlJob, StringComparison.Ordinal);
+        Assert.Contains("name: Initialize CodeQL", codeQlJob, StringComparison.Ordinal);
+        Assert.Contains(
+            "dotnet build GhostShell.slnx --configuration Release --no-restore",
+            codeQlJob,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("build-libghostty-vt.sh", codeQlJob, StringComparison.Ordinal);
+        Assert.DoesNotContain("build-cef-runtime.sh", codeQlJob, StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.Combine(
+            RepositoryRoot,
+            ".github",
+            "workflows",
+            "security-analysis.yml")));
     }
 
     [Fact]
@@ -320,6 +335,34 @@ public sealed partial class NativeTerminalBuildContractTests
             rootedLayouts,
             StringComparer.Ordinal);
         Assert.DoesNotContain("Marshal.SizeOf(type)", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Desktop_requires_the_cef_payload_only_when_publishing()
+    {
+        var project = XDocument.Load(
+            Path.Combine(
+                RepositoryRoot,
+                "src",
+                "GhostShell.Desktop",
+                "GhostShell.Desktop.csproj"));
+        var validation = Assert.Single(
+            project.Descendants("Target"),
+            element => string.Equals(
+                (string?)element.Attribute("Name"),
+                "ValidateCefRuntimePayload",
+                StringComparison.Ordinal));
+        var optionalBuildShim = Assert.Single(
+            project.Descendants("Content"),
+            element => string.Equals(
+                (string?)element.Attribute("Link"),
+                "$(GhostShellCefShimLibrary)",
+                StringComparison.Ordinal));
+
+        Assert.Equal("Publish", (string?)validation.Attribute("BeforeTargets"));
+        Assert.Equal(
+            "Exists('$(GhostShellCefRuntimeArtifactDirectory)/$(GhostShellCefShimLibrary)')",
+            (string?)optionalBuildShim.Attribute("Condition"));
     }
 
     [Fact]

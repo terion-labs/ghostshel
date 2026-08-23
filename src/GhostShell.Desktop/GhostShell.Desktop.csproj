@@ -176,7 +176,7 @@
     <!-- The unbundled macOS build can resolve the shim for compile/test probes,
          but CEF itself is runnable only after the app-bundle packager installs
          its framework and helpers under Contents/Frameworks. -->
-    <Content Include="$(GhostShellCefRuntimeArtifactDirectory)/$(GhostShellCefShimLibrary)" Link="$(GhostShellCefShimLibrary)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Never" />
+    <Content Include="$(GhostShellCefRuntimeArtifactDirectory)/$(GhostShellCefShimLibrary)" Link="$(GhostShellCefShimLibrary)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Never" Condition="Exists('$(GhostShellCefRuntimeArtifactDirectory)/$(GhostShellCefShimLibrary)')" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(GhostShellCefFlatRuntime)' == 'true'">
@@ -207,7 +207,7 @@
 
   <Target
       Name="ValidateCefRuntimePayload"
-      BeforeTargets="PrepareForBuild;Publish"
+      BeforeTargets="Publish"
       Condition="'$(GhostShellCefRuntimeRequired)' == 'true' and '$(DesignTimeBuild)' != 'true'">
     <Error
         Condition="!Exists('%(GhostShellCefRequiredFile.Identity)')"

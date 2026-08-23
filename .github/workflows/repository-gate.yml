@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: read
+  security-events: write
 
 concurrency:
   group: repository-gate-${{ github.ref }}
@@ -28,6 +29,7 @@ jobs:
   terminal-native-assets:
     name: Build macOS terminal runtime
     runs-on: macos-15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -35,12 +37,26 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
-      - name: Build verified native payloads
+      - name: Restore verified terminal payload cache
+        id: terminal-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            native/artifacts/common
+            native/artifacts/osx-arm64
+          key: >-
+            terminal-osx-arm64-${{ hashFiles(
+              'scripts/build-libghostty-vt.sh',
+              'scripts/build-terminal-font-assets.sh',
+              'native/ghostty-vt/**',
+              'licenses/native-terminal-components.json',
+              'licenses/terminal-font-assets.json') }}
+      - name: Build verified terminal payload
+        if: steps.terminal-cache.outputs.cache-hit != 'true'
         shell: bash
-        run: |
-          dotnet="$(command -v dotnet)"
-          GHOSTSHELL_DOTNET="${dotnet}" ./scripts/build-libghostty-vt.sh --rid osx-arm64
-          ./scripts/build-cef-runtime.sh --rid osx-arm64 --dotnet "${dotnet}"
+        run: >-
+          GHOSTSHELL_DOTNET="$(command -v dotnet)"
+          ./scripts/build-libghostty-vt.sh --rid osx-arm64
       - name: Upload terminal font assets
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -150,6 +166,45 @@ jobs:
           path: native/artifacts/osx-arm64
       - name: Run the fast repository gate
         run: ./scripts/check.sh --quick
+
+  codeql:
+    name: CodeQL (C#)
+    needs: terminal-native-assets
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - name: Expose the SDK at the repository-local path
+        run: |
+          mkdir -p .dotnet
+          ln -s "$(command -v dotnet)" .dotnet/dotnet
+      - name: Download terminal font assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: terminal-font-test-assets
+          path: native/artifacts/common
+      - name: Download macOS terminal runtime
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: terminal-native-osx-arm64
+          path: native/artifacts/osx-arm64
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@faaa5d804fc648d0fdb28822a8e36cf7d0a6132c # v4.37.7
+        with:
+          languages: csharp
+          build-mode: manual
+          queries: security-extended,security-and-quality
+      - name: Restore the locked dependency graph
+        run: dotnet restore GhostShell.slnx --locked-mode
+      - name: Build the analyzed graph
+        run: dotnet build GhostShell.slnx --configuration Release --no-restore
+      - name: Analyze
+        uses: github/codeql-action/analyze@faaa5d804fc648d0fdb28822a8e36cf7d0a6132c # v4.37.7
 
   dependency-review:
     name: Dependency review
