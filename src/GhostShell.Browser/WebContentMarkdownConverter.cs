@@ -1,41 +1,14 @@
 using System.Text;
 using ReverseMarkdown;
-using SmartReader;
 
 namespace GhostShell.Browser;
 
 internal sealed class WebContentMarkdownConverter
 {
-    private const int MaximumReadabilityElements = 100_000;
-
-    public async ValueTask<(string Title, string Markdown)> ConvertArticleAsync(
-        Uri address,
-        string renderedHtml,
-        CancellationToken cancellationToken)
+    public string ConvertArticle(string readableArticleHtml)
     {
-        ArgumentNullException.ThrowIfNull(address);
-        ArgumentNullException.ThrowIfNull(renderedHtml);
-        using var reader = new Reader(address.AbsoluteUri, renderedHtml)
-        {
-            ContinueIfNotReadable = true,
-            KeepClasses = false,
-            MaxElemsToParse = MaximumReadabilityElements,
-        };
-        var article = await reader.GetArticleAsync(cancellationToken)
-            .ConfigureAwait(false);
-        cancellationToken.ThrowIfCancellationRequested();
-        if (!article.Completed || string.IsNullOrWhiteSpace(article.Content))
-        {
-            throw new InvalidOperationException("Readability did not produce an article.");
-        }
-
-        return (article.Title ?? string.Empty, Convert(article.Content));
-    }
-
-    public string ConvertDocument(string renderedHtml)
-    {
-        ArgumentNullException.ThrowIfNull(renderedHtml);
-        return Convert(renderedHtml);
+        ArgumentNullException.ThrowIfNull(readableArticleHtml);
+        return Convert(readableArticleHtml);
     }
 
     private static string Convert(string html)

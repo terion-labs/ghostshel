@@ -392,6 +392,8 @@ public sealed class BrowserLowLevelAutomationTests
         Assert.Contains("document.querySelector('#rso')", source, StringComparison.Ordinal);
         Assert.Contains("resultRoot.querySelectorAll('h3')", source, StringComparison.Ordinal);
         Assert.Contains("heading.closest('a[href]')", source, StringComparison.Ordinal);
+        Assert.Contains("compact(heading.textContent)", source, StringComparison.Ordinal);
+        Assert.Contains("title: title.slice(0, 1024)", source, StringComparison.Ordinal);
         Assert.Contains(
             "heading.closest('[jscontroller][lang]')",
             source,
@@ -405,6 +407,64 @@ public sealed class BrowserLowLevelAutomationTests
         Assert.Contains("clone.querySelectorAll('[aria-hidden]')", source, StringComparison.Ordinal);
         Assert.DoesNotContain("querySelectorAll('a[href]')", source, StringComparison.Ordinal);
         Assert.DoesNotContain("eval(", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ReadableArticleExtractionRunsBeforeBoundedTransport()
+    {
+        const int chunkSize = 32 * 1024;
+        var firstChunk = new string('a', chunkSize);
+        const string secondChunk = "b";
+        var transport = new RecordingTransport(
+            "{\"result\":{\"frameTree\":{\"frame\":{\"id\":\"main\"}}}}",
+            "{\"result\":{\"executionContextId\":42}}",
+            EvaluationReply(new { title = "Guide", length = chunkSize + 1 }),
+            EvaluationReply(new { chunk = firstChunk, nextOffset = chunkSize }),
+            EvaluationReply(new { chunk = secondChunk, nextOffset = chunkSize + 1 }));
+        var adapter = new CefBrowserAutomationAdapter(transport);
+
+        var result = await adapter.ExtractReadableArticleAsync();
+
+        Assert.Equal(NativeBrowserAutomationStatus.Acknowledged, result.Status);
+        using var document = JsonDocument.Parse(result.ResultJson!);
+        Assert.Equal("Guide", document.RootElement.GetProperty("title").GetString());
+        Assert.Equal(
+            firstChunk + secondChunk,
+            document.RootElement.GetProperty("html").GetString());
+        Assert.False(document.RootElement.GetProperty("truncated").GetBoolean());
+        Assert.Equal(
+            [
+                "Page.getFrameTree",
+                "Page.createIsolatedWorld",
+                "Runtime.evaluate",
+                "Runtime.evaluate",
+                "Runtime.evaluate",
+            ],
+            transport.Calls.Select(call => call.Method),
+            StringComparer.Ordinal);
+        var expressions = transport.Calls
+            .Skip(2)
+            .Select(call => JsonDocument.Parse(call.Parameters!).RootElement
+                .GetProperty("expression")
+                .GetString()!)
+            .ToArray();
+        Assert.Contains(
+            "document.cloneNode(true)",
+            expressions[0],
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "globalThis.__ghostshellReadableArticleHtml = article.content",
+            expressions[0],
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "document.documentElement.outerHTML",
+            expressions[0],
+            StringComparison.Ordinal);
+        Assert.Contains("html.slice(0, end)", expressions[1], StringComparison.Ordinal);
+        Assert.Contains(
+            $"html.slice({chunkSize}, end)",
+            expressions[2],
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -536,4 +596,17 @@ public sealed class BrowserLowLevelAutomationTests
                     : "{\"result\":{}}");
         }
     }
+
+    private static string EvaluationReply<T>(T value) =>
+        JsonSerializer.Serialize(new
+        {
+            result = new
+            {
+                result = new
+                {
+                    type = "object",
+                    value,
+                },
+            },
+        });
 }

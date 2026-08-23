@@ -93,7 +93,7 @@ public sealed class ProjectDependencyTests
                 "vendor/exclr8cef/src/Exclr8Cef.WebView/Exclr8Cef.WebView.csproj",
                 StringComparison.Ordinal));
         Assert.Equal(
-            ["FluentIcons.Avalonia", "ReverseMarkdown", "SmartReader"],
+            ["FluentIcons.Avalonia", "ReverseMarkdown"],
             References(project, "PackageReference"),
             StringComparer.Ordinal);
     }

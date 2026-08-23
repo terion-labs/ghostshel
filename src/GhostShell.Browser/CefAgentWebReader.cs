@@ -6,8 +6,7 @@ namespace GhostShell.Browser;
 internal sealed class CefAgentWebReader
 {
     private static readonly TimeSpan ReadDeadline = TimeSpan.FromSeconds(25);
-    private static readonly TimeSpan DynamicContentSettleDelay =
-        TimeSpan.FromMilliseconds(400);
+    private static readonly TimeSpan DomQuietWindow = TimeSpan.FromMilliseconds(500);
     private static readonly SemaphoreSlim BrowserGate = new(1, 1);
     private readonly WebContentMarkdownConverter _converter = new();
 
@@ -55,7 +54,7 @@ internal sealed class CefAgentWebReader
         }
     }
 
-    internal async ValueTask<AgentWebToolExecutionResult> ConvertAsync(
+    internal ValueTask<AgentWebToolExecutionResult> ConvertAsync(
         BrowserAddress finalAddress,
         AgentWebReadFormat format,
         string json,
@@ -77,11 +76,9 @@ internal sealed class CefAgentWebReader
             string content;
             if (format is AgentWebReadFormat.Markdown)
             {
-                (title, content) = await _converter.ConvertArticleAsync(
-                        finalAddress.Value,
-                        renderedHtml,
-                        cancellationToken)
-                    .ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                title = pageTitle;
+                content = _converter.ConvertArticle(renderedHtml);
             }
             else
             {
@@ -97,12 +94,12 @@ internal sealed class CefAgentWebReader
                 title,
                 AgentWebReadResult.MaximumTitleBytes,
                 out _);
-            return Succeeded(new AgentWebReadResult(
-                finalAddress.Value.AbsoluteUri,
-                title,
-                format,
-                content,
-                sourceTruncated || contentTruncated));
+            return ValueTask.FromResult(Succeeded(new AgentWebReadResult(
+                    finalAddress.Value.AbsoluteUri,
+                    title,
+                    format,
+                    content,
+                    sourceTruncated || contentTruncated)));
         }
         catch (OperationCanceledException)
         {
@@ -114,10 +111,10 @@ internal sealed class CefAgentWebReader
             or JsonException)
         {
             _ = exception;
-            return Failed(
+            return ValueTask.FromResult(Failed(
                 format is AgentWebReadFormat.Markdown
                     ? AgentWebToolErrorCode.ConverterFailed
-                    : AgentWebToolErrorCode.ExtractionFailed);
+                    : AgentWebToolErrorCode.ExtractionFailed));
         }
     }
 
@@ -139,6 +136,13 @@ internal sealed class CefAgentWebReader
                             .AllowsResolvedAsync(candidate, token));
                     return (createdNetwork, createdBrowser);
                 });
+            if (!await browser.BeginDomObservationWhenReadyAsync()
+                    .WaitAsync(cancellationToken)
+                    .ConfigureAwait(false))
+            {
+                return Failed(AgentWebToolErrorCode.Unavailable);
+            }
+
             var navigation = new TaskCompletionSource<NavigationOutcome>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
             await BeginNavigationAsync(
@@ -154,9 +158,14 @@ internal sealed class CefAgentWebReader
                 return Failed(outcome.ErrorCode);
             }
 
-            await Task.Delay(DynamicContentSettleDelay, cancellationToken)
+            browser.MarkDomActivity();
+            await browser.WaitForDomQuietAsync(
+                    DomQuietWindow,
+                    cancellationToken)
                 .ConfigureAwait(false);
-            var extracted = await browser.ExtractRenderedDocumentAsync()
+            var extracted = await (request.Format is AgentWebReadFormat.Markdown
+                    ? browser.ExtractReadableArticleAsync()
+                    : browser.ExtractRenderedDocumentAsync())
                 .WaitAsync(cancellationToken)
                 .ConfigureAwait(false);
             if (extracted.Status != NativeBrowserAutomationStatus.Acknowledged
@@ -178,6 +187,7 @@ internal sealed class CefAgentWebReader
             {
                 await AvaloniaBrowserUiDispatcher.Instance.InvokeAsync(() =>
                 {
+                    browser?.EndDomObservation();
                     browser?.Dispose();
                     network?.Dispose();
                     return true;

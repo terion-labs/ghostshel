@@ -192,6 +192,7 @@ public sealed class AgentWebSearchSessionHostTests
                         [
                             new AgentWebSearchEntry(
                                 "https://example.test",
+                                "Example",
                                 "Example result"),
                         ],
                         truncated: false)));

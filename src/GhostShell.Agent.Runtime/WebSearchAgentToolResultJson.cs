@@ -30,6 +30,7 @@ internal static class WebSearchAgentToolResultJson
         foreach (var entry in result.Entries)
         {
             writer.WriteStartObject();
+            writer.WriteString("title", entry.Title);
             writer.WriteString("url", entry.Url);
             writer.WriteString("desc", entry.Description);
             writer.WriteEndObject();

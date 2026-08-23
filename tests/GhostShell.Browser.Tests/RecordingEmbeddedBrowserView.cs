@@ -374,6 +374,9 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
         int maximumResults) =>
         PendingAutomation?.Task ?? Task.FromResult(EvaluationResult);
 
+    public Task<NativeBrowserAutomationResult> ExtractReadableArticleAsync() =>
+        PendingAutomation?.Task ?? Task.FromResult(EvaluationResult);
+
     public Task<NativeBrowserAutomationResult> ExtractRenderedDocumentAsync() =>
         PendingAutomation?.Task ?? Task.FromResult(EvaluationResult);
 

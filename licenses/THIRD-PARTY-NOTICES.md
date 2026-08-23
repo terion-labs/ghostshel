@@ -21,6 +21,9 @@ The application bundle also includes:
   worker closure;
 - Lucide `panel-left-close`, `panel-right-close`, `panel-bottom-close`,
   `panel-top-close`, and `fullscreen` vector geometry under the ISC license;
+- Mozilla Readability 0.6.0, embedded for browser-side article extraction,
+  under the Apache-2.0 license (retained at
+  `src/GhostShell.Browser/Assets/Readability.LICENSE.md`);
 - package-specific copyright and repository metadata in the corresponding
   NuGet packages.
 
@@ -52,7 +55,7 @@ components are intentionally not duplicated in the managed NuGet table below.
 
 SPDX license texts are available from <https://spdx.org/licenses/>.
 The table below is the conservative managed third-party inventory resolved
-by the reviewed GhostSHELL 0.1.0 `osx-arm64` publish. It contains 121 NuGet
+by the reviewed GhostSHELL 0.1.0 `osx-arm64` publish. It contains 120 NuGet
 packages and the two separately licensed vendored Exclr8CEF projects.
 First-party GhostSHELL project assemblies are omitted; the self-contained
 .NET runtimepack is indexed by the retained .NET license and notice files

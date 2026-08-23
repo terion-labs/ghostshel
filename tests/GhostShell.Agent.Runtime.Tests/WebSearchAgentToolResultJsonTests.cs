@@ -17,9 +17,11 @@ public sealed class WebSearchAgentToolResultJsonTests
             [
                 new AgentWebSearchEntry(
                     "https://example.test/first",
+                    "First result",
                     "First result description"),
                 new AgentWebSearchEntry(
                     "https://example.test/second",
+                    "Second result",
                     "Second result description"),
             ],
             truncated: true);
@@ -40,6 +42,7 @@ public sealed class WebSearchAgentToolResultJsonTests
         var resultEntries = results.EnumerateArray().ToArray();
         Assert.Equal(2, resultEntries.Length);
         var resultEntry = resultEntries[0];
+        Assert.Equal("First result", resultEntry.GetProperty("title").GetString());
         Assert.Equal(
             "https://example.test/first",
             resultEntry.GetProperty("url").GetString());
