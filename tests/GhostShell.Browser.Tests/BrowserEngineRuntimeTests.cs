@@ -17,7 +17,7 @@ public sealed class BrowserEngineRuntimeTests
     {
         BrowserEngineRuntime.ValidateVersions(
             new CefVersions(
-                "0.8.0-ghostshell.5",
+                "0.8.0-ghostshell.6",
                 "150.0.9",
                 "150.0.7871.46"));
     }
@@ -32,7 +32,7 @@ public sealed class BrowserEngineRuntimeTests
         var error = Assert.Throws<InvalidOperationException>(() =>
             BrowserEngineRuntime.ValidateVersions(
                 new CefVersions(
-                    "0.8.0-ghostshell.5",
+                    "0.8.0-ghostshell.6",
                     cefVersion,
                     chromiumVersion)));
 

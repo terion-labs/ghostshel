@@ -3,7 +3,7 @@
 This directory vendors Exclr8CEF commit
 `7751a0b76cbabaf1fa81ef2b71b694a44c87f77e` and applies the reviewed
 GhostSHELL hardening needed for a production off-screen browser host. The
-resulting native binding version is `0.8.0-ghostshell.5`.
+resulting native binding version is `0.8.0-ghostshell.6`.
 
 `GHOSTSHELL-PATCHSET.sha256` is the canonical, path-sorted manifest of every
 file that differs from that upstream commit. Its own SHA-256 is recorded in

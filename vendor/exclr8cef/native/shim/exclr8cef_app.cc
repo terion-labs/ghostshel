@@ -116,12 +116,32 @@ struct ExtraSwitch { std::string name; std::string value; };
 std::vector<ExtraSwitch> g_extra_switches;
 std::mutex g_extra_switches_mu;
 
+bool IsFeatureListSwitch(const std::string& name) {
+    return name == "enable-features"
+        || name == "disable-features"
+        || name == "enable-blink-features"
+        || name == "disable-blink-features";
+}
+
 void ApplyExtraSwitches(CefRefPtr<CefCommandLine> command_line) {
     std::lock_guard<std::mutex> lock(g_extra_switches_mu);
     for (const auto& s : g_extra_switches) {
-        if (command_line->HasSwitch(s.name)) continue;
-        if (s.value.empty()) command_line->AppendSwitch(s.name);
-        else                 command_line->AppendSwitchWithValue(s.name, s.value);
+        if (!command_line->HasSwitch(s.name)) {
+            if (s.value.empty()) command_line->AppendSwitch(s.name);
+            else command_line->AppendSwitchWithValue(s.name, s.value);
+            continue;
+        }
+
+        // CefSettings and Chromium defaults are applied before this callback.
+        // Feature switches are comma-separated lists, so retaining only the
+        // pre-existing value silently drops host policy such as disabled ML
+        // services. Preserve both lists and let Chromium forward the result.
+        if (!IsFeatureListSwitch(s.name) || s.value.empty()) continue;
+        std::string merged_value = command_line->GetSwitchValue(s.name);
+        if (!merged_value.empty()) merged_value += ',';
+        merged_value += s.value;
+        command_line->RemoveSwitch(s.name);
+        command_line->AppendSwitchWithValue(s.name, merged_value);
     }
 }
 }  // namespace

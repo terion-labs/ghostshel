@@ -4,9 +4,9 @@
   "cefVersion": "150.0.9+g81b0088+chromium-150.0.7871.46",
   "bindingRepository": "https://github.com/alexmehlhorn/exclr8cef",
   "bindingCommit": "7751a0b76cbabaf1fa81ef2b71b694a44c87f77e",
-  "bindingVersion": "0.8.0-ghostshell.5",
-  "bindingPatchSetSha256": "6567f9719d406a0e129cf63bf15882de8da882afd2fbd10b7b97de46d0e116b5",
-  "bindingSourceSnapshotSha256": "dc56967c612fb03118a40cbfa5fac1088a3e99645b6ff3dd4b85ac7b56a4593a",
+  "bindingVersion": "0.8.0-ghostshell.6",
+  "bindingPatchSetSha256": "b23fab39eb6a6023f638153f9d426165ef72f97467353941ae9886db62dd79aa",
+  "bindingSourceSnapshotSha256": "f3a3261e6e2b68f5e7126af2ec5ff0162f5c4c09eeeff83e14f00d0cb4e52428",
   "bindingLicenseSha256": "1cc3259e0d9b07255f52a3dea39a19fbb8d3c51c33a76a3de05c21d31c52e2c4",
   "releaseBlockers": [
     "The bundled Chromium/CEF native and third-party license closure requires independent release review.",
