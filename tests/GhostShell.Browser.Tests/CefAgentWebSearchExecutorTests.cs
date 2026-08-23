@@ -109,4 +109,17 @@ public sealed class CefAgentWebSearchExecutorTests
         Assert.Equal(AgentWebSearchErrorCode.ExtractionFailed, failed.Code);
     }
 
+    [Theory]
+    [InlineData("{\"method\":\"DOM.childNodeInserted\",\"params\":{}}", true)]
+    [InlineData("{\"method\":\"DOM.characterDataModified\",\"params\":{}}", true)]
+    [InlineData("{\"method\":\"DOM.documentUpdated\",\"params\":{}}", true)]
+    [InlineData("{\"method\":\"Network.requestWillBeSent\",\"params\":{}}", false)]
+    [InlineData("not-json", false)]
+    public void DomActivityDetectionUsesOnlyCdpDomEvents(
+        string json,
+        bool expected)
+    {
+        Assert.Equal(expected, CefBrowserDomActivityTracker.IsDomActivityMessage(json));
+    }
+
 }

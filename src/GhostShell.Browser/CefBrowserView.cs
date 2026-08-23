@@ -32,6 +32,7 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
     private CefBrowserAutomationAdapter? _automationAdapter;
     private CefHumanizedInput? _humanizedInput;
     private CefBrowserNetworkActivityTracker? _networkActivity;
+    private CefBrowserDomActivityTracker? _domActivity;
     private volatile ActiveNativeNavigation? _activeNavigation;
     private Func<BrowserAddress, CancellationToken, ValueTask<bool>>?
         _resourceRequestPolicy;
@@ -290,6 +291,38 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
             ActiveRequestCount: 0,
             QuietFor: TimeSpan.Zero);
 
+    internal async Task<bool> BeginWebSearchDomObservationWhenReadyAsync()
+    {
+        if (!await EnsureRendererReadyAsync().ConfigureAwait(false)
+            || _domActivity is null)
+        {
+            return false;
+        }
+
+        return await _domActivity.BeginObservationAsync().ConfigureAwait(false);
+    }
+
+    internal long MarkWebSearchDomActivity() =>
+        _domActivity?.MarkActivity()
+        ?? throw new InvalidOperationException("CEF DOM observation is unavailable.");
+
+    internal Task<long> WaitForWebSearchDomQuietAsync(
+        TimeSpan quietWindow,
+        CancellationToken cancellationToken) =>
+        _domActivity?.WaitForQuietAsync(quietWindow, cancellationToken)
+        ?? Task.FromException<long>(
+            new InvalidOperationException("CEF DOM observation is unavailable."));
+
+    internal Task<long> WaitForWebSearchDomActivityAfterAsync(
+        long generation,
+        CancellationToken cancellationToken) =>
+        _domActivity?.WaitForActivityAfterAsync(generation, cancellationToken)
+        ?? Task.FromException<long>(
+            new InvalidOperationException("CEF DOM observation is unavailable."));
+
+    internal void EndWebSearchDomObservation() =>
+        _domActivity?.EndObservation();
+
     public async Task<NativeBrowserViewport> ReadViewportAsync()
     {
         if (!await EnsureRendererReadyAsync().ConfigureAwait(false)
@@ -359,6 +392,8 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         _agentCursorOverlay.SetAgentActivity(isActive: false);
         _networkActivity?.Dispose();
         _networkActivity = null;
+        _domActivity?.Dispose();
+        _domActivity = null;
         _rendererReady.TrySetResult(false);
 
         _webView.Dispose();
@@ -381,6 +416,7 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
             _browser = browser;
             _semanticAdapter?.InvalidateDocument();
             _networkActivity?.Dispose();
+            _domActivity?.Dispose();
             _humanizedInput?.Dispose();
             var transport = new CefDevToolsTransport(browser);
             var humanizedInput = new CefHumanizedInput(
@@ -393,6 +429,7 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
                 transport,
                 humanizedInput);
             _networkActivity = new CefBrowserNetworkActivityTracker(browser);
+            _domActivity = new CefBrowserDomActivityTracker(browser);
             Subscribe(browser);
             if (_isAgentActive)
             {

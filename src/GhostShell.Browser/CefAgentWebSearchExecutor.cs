@@ -10,6 +10,7 @@ namespace GhostShell.Browser;
 public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
 {
     private static readonly TimeSpan SearchDeadline = TimeSpan.FromSeconds(25);
+    private static readonly TimeSpan DomQuietWindow = TimeSpan.FromMilliseconds(500);
     private static readonly SemaphoreSlim SearchGate = new(1, 1);
 
     public async ValueTask<AgentWebSearchExecutionResult> SearchAsync(
@@ -203,6 +204,13 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
                             .AllowsResolvedAsync(candidate, token));
                     return (createdNetwork, createdBrowser);
                 });
+            if (!await browser.BeginWebSearchDomObservationWhenReadyAsync()
+                    .WaitAsync(cancellationToken)
+                    .ConfigureAwait(false))
+            {
+                return Failed(AgentWebSearchErrorCode.Unavailable);
+            }
+
             var navigation = new TaskCompletionSource<NavigationOutcome>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
             await BeginNavigationAsync(
@@ -219,17 +227,39 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
                 return Failed(outcome.ErrorCode);
             }
 
-            var extracted = await browser
-                .ExtractWebSearchDocumentAsync(request.ResultCount)
-                .WaitAsync(cancellationToken)
-                .ConfigureAwait(false);
-            if (extracted.Status != NativeBrowserAutomationStatus.Acknowledged
-                || extracted.ResultJson is null)
+            browser.MarkWebSearchDomActivity();
+            while (true)
             {
-                return Failed(AgentWebSearchErrorCode.ExtractionFailed);
-            }
+                var settledGeneration = await browser
+                    .WaitForWebSearchDomQuietAsync(
+                        DomQuietWindow,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                var extracted = await browser
+                    .ExtractWebSearchDocumentAsync(request.ResultCount)
+                    .WaitAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                if (extracted.Status != NativeBrowserAutomationStatus.Acknowledged
+                    || extracted.ResultJson is null)
+                {
+                    return Failed(AgentWebSearchErrorCode.ExtractionFailed);
+                }
 
-            return ParseExtraction(outcome.Address, extracted.ResultJson);
+                var parsed = ParseExtraction(outcome.Address, extracted.ResultJson);
+                if (parsed is not AgentWebSearchExecutionResult.Failed
+                    {
+                        Code: AgentWebSearchErrorCode.ExtractionFailed,
+                    }
+                    || !IsEmptyExtraction(extracted.ResultJson))
+                {
+                    return parsed;
+                }
+
+                await browser.WaitForWebSearchDomActivityAfterAsync(
+                        settledGeneration,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
         finally
         {
@@ -237,11 +267,27 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
             {
                 await AvaloniaBrowserUiDispatcher.Instance.InvokeAsync(() =>
                 {
+                    browser?.EndWebSearchDomObservation();
                     browser?.Dispose();
                     network?.Dispose();
                     return true;
                 });
             }
+        }
+    }
+
+    private static bool IsEmptyExtraction(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.TryGetProperty("results", out var results)
+                && results.ValueKind == JsonValueKind.Array
+                && results.GetArrayLength() == 0;
+        }
+        catch (JsonException)
+        {
+            return false;
         }
     }
 
