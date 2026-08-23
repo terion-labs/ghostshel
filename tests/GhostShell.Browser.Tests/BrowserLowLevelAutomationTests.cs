@@ -379,9 +379,16 @@ public sealed class BrowserLowLevelAutomationTests
         Assert.Equal(42, root.GetProperty("contextId").GetInt32());
         Assert.True(root.GetProperty("returnByValue").GetBoolean());
         var source = root.GetProperty("expression").GetString()!;
-        Assert.Contains("new MutationObserver", source, StringComparison.Ordinal);
-        Assert.Contains("setTimeout(finish, 5000)", source, StringComparison.Ordinal);
-        Assert.Contains("document.querySelector('#rso h3')", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "const resultCandidates = () =>",
+            source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("MutationObserver", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("setTimeout", source, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "resultCandidates().length >=",
+            source,
+            StringComparison.Ordinal);
         Assert.Contains("document.querySelector('#rso')", source, StringComparison.Ordinal);
         Assert.Contains("resultRoot.querySelectorAll('h3')", source, StringComparison.Ordinal);
         Assert.Contains("heading.closest('a[href]')", source, StringComparison.Ordinal);
@@ -389,6 +396,11 @@ public sealed class BrowserLowLevelAutomationTests
             "heading.closest('[jscontroller][lang]')",
             source,
             StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "heading.closest('[lang]')",
+            source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("anchor.parentElement", source, StringComparison.Ordinal);
         Assert.Contains("results.length >= 4", source, StringComparison.Ordinal);
         Assert.Contains("clone.querySelectorAll('[aria-hidden]')", source, StringComparison.Ordinal);
         Assert.DoesNotContain("querySelectorAll('a[href]')", source, StringComparison.Ordinal);

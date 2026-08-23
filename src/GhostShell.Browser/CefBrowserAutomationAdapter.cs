@@ -180,61 +180,34 @@ internal sealed class CefBrowserAutomationAdapter
 
         var source = $$"""
             (async () => {
-              const hasResults = () => Boolean(document.querySelector('#rso h3'));
-              if (!hasResults()) {
-                await new Promise(resolve => {
-                  let settled = false;
-                  const finish = () => {
-                    if (settled) {
-                      return;
-                    }
+              // Navigation completion and network settlement are observed by
+              // the host before this fixed parser runs.
+              const resultCandidates = () => {
+                const resultRoot = document.querySelector('#rso');
+                const candidates = [];
+                if (!resultRoot) {
+                  return candidates;
+                }
 
-                    settled = true;
-                    observer.disconnect();
-                    clearTimeout(timeout);
-                    resolve();
-                  };
-                  const observer = new MutationObserver(() => {
-                    if (hasResults()) {
-                      finish();
-                    }
-                  });
-                  const timeout = setTimeout(finish, 5000);
-                  observer.observe(document.documentElement, {
-                    childList: true,
-                    subtree: true
-                  });
-                  if (hasResults()) {
-                    finish();
+                for (const heading of resultRoot.querySelectorAll('h3')) {
+                  const anchor = heading.closest('a[href]');
+                  const block = heading.closest('[jscontroller][lang]');
+                  if (anchor && block && resultRoot.contains(block)) {
+                    candidates.push({ anchor, block });
                   }
-                });
-              }
+                }
+
+                return candidates;
+              };
 
               const compact = value => String(value || '').replace(/\s+/g, ' ').trim();
               const pageText = compact(document.body && document.body.innerText);
-              const resultRoot = document.querySelector('#rso');
-              const headings = resultRoot ? [...resultRoot.querySelectorAll('h3')] : [];
+              const candidates = resultCandidates();
               const results = [];
-              let truncated = headings.length > {{maximumResults}};
-              for (const heading of headings) {
+              let truncated = candidates.length > {{maximumResults}};
+              for (const { anchor, block } of candidates) {
                 if (results.length >= {{maximumResults}}) {
                   break;
-                }
-
-                const anchor = heading.closest('a[href]');
-                if (!anchor) {
-                  continue;
-                }
-
-                let block = heading.closest('[jscontroller][lang]');
-                if (!block || !resultRoot.contains(block)) {
-                  block = heading.closest('[lang]');
-                }
-                if (!block || !resultRoot.contains(block)) {
-                  block = anchor.parentElement;
-                }
-                if (!block || !resultRoot.contains(block)) {
-                  continue;
                 }
 
                 const clone = block.cloneNode(true);
@@ -274,7 +247,7 @@ internal sealed class CefBrowserAutomationAdapter
         return await EvaluateSourceAsync(
                 source,
                 awaitPromise: true,
-                TimeSpan.FromSeconds(7),
+                TimeSpan.FromSeconds(2),
                 throwOnSideEffect: false,
                 contextId)
             .ConfigureAwait(false);

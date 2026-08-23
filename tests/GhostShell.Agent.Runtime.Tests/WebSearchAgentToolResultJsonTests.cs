@@ -18,6 +18,9 @@ public sealed class WebSearchAgentToolResultJsonTests
                 new AgentWebSearchEntry(
                     "https://example.test/first",
                     "First result description"),
+                new AgentWebSearchEntry(
+                    "https://example.test/second",
+                    "Second result description"),
             ],
             truncated: true);
 
@@ -32,13 +35,20 @@ public sealed class WebSearchAgentToolResultJsonTests
         Assert.Equal("google", root.GetProperty("provider").GetString());
         Assert.Equal(request.Query, root.GetProperty("query").GetString());
         Assert.True(root.GetProperty("truncated").GetBoolean());
-        var resultEntry = Assert.Single(root.GetProperty("results").EnumerateArray());
+        var results = root.GetProperty("results");
+        Assert.Equal(JsonValueKind.Array, results.ValueKind);
+        var resultEntries = results.EnumerateArray().ToArray();
+        Assert.Equal(2, resultEntries.Length);
+        var resultEntry = resultEntries[0];
         Assert.Equal(
             "https://example.test/first",
             resultEntry.GetProperty("url").GetString());
         Assert.Equal(
             "First result description",
             resultEntry.GetProperty("desc").GetString());
+        Assert.Equal(
+            "https://example.test/second",
+            resultEntries[1].GetProperty("url").GetString());
         Assert.False(root.TryGetProperty("content", out _));
         Assert.False(root.TryGetProperty("text", out _));
     }
