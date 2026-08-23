@@ -61,15 +61,17 @@
          diagonal corner used by the main workspace flyout. -->
     <Style Selector="views|AgentWorkspaceView.edgeResizable Thumb#FloatingResizeHandle">
       <Setter Property="IsVisible" Value="True" />
-      <Setter Property="Width" Value="8" />
+      <Setter Property="Width" Value="{DynamicResource ShellSpaceSm}" />
       <Setter Property="Height" Value="NaN" />
       <Setter Property="VerticalAlignment" Value="Stretch" />
     </Style>
     <Style Selector="views|AgentWorkspaceView.edgeResizable.edgeRight Thumb#FloatingResizeHandle">
       <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="Margin" Value="{controls:Inset Left=Sm, Scale=-1}" />
     </Style>
     <Style Selector="views|AgentWorkspaceView.edgeResizable.edgeLeft Thumb#FloatingResizeHandle">
       <Setter Property="HorizontalAlignment" Value="Right" />
+      <Setter Property="Margin" Value="{controls:Inset Right=Sm, Scale=-1}" />
     </Style>
     <Style Selector="views|AgentWorkspaceView.edgeResizable Path#CornerResizeGlyph">
       <Setter Property="IsVisible" Value="False" />

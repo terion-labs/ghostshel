@@ -1019,6 +1019,85 @@ public sealed partial class AgentChatViewModelTests
         });
 
     [Fact]
+    public Task Docked_agent_resize_target_occupies_the_visible_panel_gutter() =>
+        RunAgentComposerHeadlessAsync(async () =>
+        {
+            var provider = Provider("provider", "Provider", order: 0);
+            using var runtime = new StubGovernedRuntime
+            {
+                Snapshot = Snapshot(
+                    runId: new AgentRunId("run-agent-resize-target"),
+                    providerId: provider.Id,
+                    target: Target()),
+            };
+            using var profiles = new StubProfileRuntime { Profiles = [provider] };
+            using var viewModel = new AgentChatViewModel(
+                runtime,
+                profiles,
+                ImmediateUiThreadDispatcher.Instance);
+            var view = new AgentWorkspaceView
+            {
+                DataContext = new AgentComposerHost(viewModel),
+                Width = 352,
+                Margin = new Thickness(0, 0, 8, 0),
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+                ClipToBounds = false,
+            };
+            view.Classes.Add("edgeResizable");
+            view.Classes.Add("edgeRight");
+            var host = new Panel { ClipToBounds = false };
+            host.Children.Add(view);
+            var window = new Window
+            {
+                Width = 700,
+                Height = 700,
+                Content = host,
+            };
+
+            try
+            {
+                window.Show();
+                await Task.Delay(100);
+                window.UpdateLayout();
+
+                var resizeTarget = view.FindControl<Thumb>("FloatingResizeHandle");
+                Assert.NotNull(resizeTarget);
+                Assert.Equal(8, resizeTarget.Bounds.Width);
+                Assert.Equal(view.Bounds.Height, resizeTarget.Bounds.Height);
+                AssertResizeTargetOwnsGutter(window, view, resizeTarget);
+
+                window.Width = 760;
+                await Task.Delay(50);
+                window.UpdateLayout();
+
+                Assert.Equal(8, resizeTarget.Bounds.Width);
+                Assert.Equal(view.Bounds.Height, resizeTarget.Bounds.Height);
+                AssertResizeTargetOwnsGutter(window, view, resizeTarget);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+    private static void AssertResizeTargetOwnsGutter(
+        Window window,
+        AgentWorkspaceView view,
+        Thumb resizeTarget)
+    {
+        var panelEdge = view.TranslatePoint(
+            new Point(0, view.Bounds.Height / 2),
+            window);
+        Assert.NotNull(panelEdge);
+        var gutterPoint = panelEdge.Value + new Vector(-4, 0);
+        var hit = window.InputHitTest(gutterPoint) as Visual;
+        Assert.True(
+            ReferenceEquals(hit, resizeTarget)
+                || hit?.GetVisualAncestors().Contains(resizeTarget) == true,
+            $"The resize target did not own the dock gutter at {gutterPoint}; hit {hit?.GetType().Name ?? "nothing"}.");
+    }
+
+    [Fact]
     public Task Streaming_reasoning_burst_is_coalesced_and_renders_the_latest_markdown() =>
         RunAgentComposerHeadlessAsync(async () =>
         {

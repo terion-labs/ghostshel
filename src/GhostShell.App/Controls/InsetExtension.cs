@@ -34,6 +34,7 @@ internal enum Space
 /// Margin="{controls:Inset Md}"
 /// Margin="{controls:Inset Horizontal=Lg, Vertical=Md}"
 /// Margin="{controls:Inset Bottom=Sm}"
+/// Margin="{controls:Inset Left=Sm, Scale=-1}"
 /// </code>
 ///
 /// It resolves to a multi-binding over the published <c>ShellSpace*</c> resources
@@ -68,9 +69,20 @@ internal sealed class InsetExtension : MarkupExtension
 
     public Space Bottom { get; set; }
 
+    /// <summary>
+    /// Multiplies every resolved edge. A negative scale lets an affordance occupy
+    /// the spacing gutter outside its own layout slot without freezing that
+    /// gutter to one density's pixel value.
+    /// </summary>
+    public double Scale { get; set; } = 1;
+
     public override object ProvideValue(IServiceProvider serviceProvider)
     {
-        var binding = new MultiBinding { Converter = ToThickness };
+        var binding = new MultiBinding
+        {
+            Converter = ToThickness,
+            ConverterParameter = Scale,
+        };
         foreach (var edge in new[]
                  {
                      Resolve(Left, Horizontal),
@@ -109,12 +121,17 @@ internal sealed class InsetExtension : MarkupExtension
             IList<object?> values,
             Type targetType,
             object? parameter,
-            System.Globalization.CultureInfo culture) =>
-            new Thickness(
-                Edge(values, 0),
-                Edge(values, 1),
-                Edge(values, 2),
-                Edge(values, 3));
+            System.Globalization.CultureInfo culture)
+        {
+            var scale = parameter is double value && double.IsFinite(value)
+                ? value
+                : 1;
+            return new Thickness(
+                Edge(values, 0) * scale,
+                Edge(values, 1) * scale,
+                Edge(values, 2) * scale,
+                Edge(values, 3) * scale);
+        }
 
         /// <summary>
         /// An unresolved token reads as no inset rather than throwing. A window
