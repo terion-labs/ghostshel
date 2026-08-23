@@ -314,6 +314,8 @@ jobs:
     needs: [managed-conformance, cross-platform-build, format-and-boundaries]
     runs-on: macos-15
     timeout-minutes: 90
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -371,10 +373,8 @@ jobs:
             --runtime-identifier osx-arm64 \
             --output artifacts/macos-arm64/GhostShell.app
       - name: Archive release candidate
-        env:
-          RELEASE_VERSION: ${{ steps.release.outputs.version }}
         run: |
-          archive="GhostShell-macOS-arm64-${RELEASE_VERSION}.zip"
+          archive="GhostShell-macOS-arm64.zip"
           cd artifacts
           ditto -c -k --sequesterRsrc --keepParent \
             macos-arm64/GhostShell.app \
@@ -383,10 +383,25 @@ jobs:
       - name: Upload macOS release candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ghostshell-macos-arm64-${{ steps.release.outputs.version }}
+          name: ghostshell-macos-arm64
           path: |
-            artifacts/GhostShell-macOS-arm64-${{ steps.release.outputs.version }}.zip
-            artifacts/GhostShell-macOS-arm64-${{ steps.release.outputs.version }}.zip.sha256
+            artifacts/GhostShell-macOS-arm64.zip
+            artifacts/GhostShell-macOS-arm64.zip.sha256
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            artifacts/GhostShell-macOS-arm64.zip \
+            artifacts/GhostShell-macOS-arm64.zip.sha256 \
+            --fail-on-no-commits \
+            --generate-notes \
+            --latest \
+            --notes "Early unsigned Apple Silicon build for trusted testing only. macOS may quarantine or block the app because it does not yet have a Developer ID signature or notarization." \
+            --title "GhostShell ${RELEASE_VERSION} early macOS release" \
+            --verify-tag

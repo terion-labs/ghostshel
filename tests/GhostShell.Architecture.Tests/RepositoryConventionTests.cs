@@ -147,6 +147,28 @@ public sealed partial class RepositoryConventionTests
     }
 
     [Fact]
+    public void Tag_release_publishes_stable_latest_download_assets()
+    {
+        var workflow = File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            ".github",
+            "workflows",
+            "repository-gate.yml"));
+
+        Assert.Contains("archive=\"GhostShell-macOS-arm64.zip\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("artifacts/GhostShell-macOS-arm64.zip.sha256", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("GhostShell-macOS-arm64-${RELEASE_VERSION}.zip", workflow, StringComparison.Ordinal);
+        Assert.Contains("name: ghostshell-macos-arm64", workflow, StringComparison.Ordinal);
+        Assert.Contains("permissions:\n      contents: write", workflow, StringComparison.Ordinal);
+        Assert.Contains("if: startsWith(github.ref, 'refs/tags/v')", workflow, StringComparison.Ordinal);
+        Assert.Contains("GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}", workflow, StringComparison.Ordinal);
+        Assert.Contains("gh release create \"${GITHUB_REF_NAME}\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("--latest", workflow, StringComparison.Ordinal);
+        Assert.Contains("--verify-tag", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("--prerelease", workflow, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Macos_packaging_keeps_vendored_project_versions_independent()
     {
         var packageScript = File.ReadAllText(

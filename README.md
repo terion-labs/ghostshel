@@ -54,10 +54,14 @@ GitHub Actions runs the managed suite as six functional sections in parallel
 on macOS, Linux, and Windows while retaining complete Release builds on every
 platform. A `v<major>.<minor>.<patch>` tag, or a manual **Repository gate** run,
 waits for those jobs and then builds the verified native dependencies on an
-Apple Silicon runner. The run publishes `GhostShell-macOS-arm64-<version>.zip`
-and its SHA-256 checksum as a 30-day workflow artifact. This first early-release
-artifact is unsigned; use the signing and notarization flow documented below
-before distributing outside a trusted tester group.
+Apple Silicon runner. Both paths upload `GhostShell-macOS-arm64.zip` and its
+SHA-256 checksum as a 30-day workflow artifact. Tag builds also publish those
+stable asset names in a GitHub Release marked latest, so the
+[application archive](https://github.com/terion-labs/ghostshel/releases/latest/download/GhostShell-macOS-arm64.zip)
+and [checksum](https://github.com/terion-labs/ghostshel/releases/latest/download/GhostShell-macOS-arm64.zip.sha256)
+have permanent download URLs. This first early-release artifact is unsigned;
+use the signing and notarization flow documented below before distributing
+outside a trusted tester group.
 
 Dependency updates must refresh every graph that CI consumes: the ordinary
 managed graph, the Windows-targeted managed graph, and both portable Linux
