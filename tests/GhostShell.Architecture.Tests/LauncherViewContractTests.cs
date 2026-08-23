@@ -243,6 +243,14 @@ public sealed class LauncherViewContractTests
             nativeTitleBar,
             StringComparison.Ordinal);
         Assert.DoesNotContain("performZoom:", nativeTitleBar, StringComparison.Ordinal);
+        // Avalonia makes the native title bar opaque again after entering
+        // macOS full screen. The client area still extends beneath it, so that
+        // band would cover the top chrome and its tabs unless the state-change
+        // repair restores transparency.
+        Assert.Contains(
+            "setTitlebarAppearsTransparent:",
+            nativeTitleBar,
+            StringComparison.Ordinal);
     }
 
     [Fact]

@@ -145,6 +145,18 @@ internal static class MacOsWindowTitleBar
 
             SitAsTheWindowKind(handle.NSWindow, kind);
 
+            // Avalonia deliberately turns this off after AppKit enters full
+            // screen. FullSizeContentView still lets the shell run beneath the
+            // title bar, so making that bar opaque again covers the top of the
+            // shell — including the tab strip — with an empty native band.
+            // This method is called for every window-state change, after
+            // Avalonia has applied its state, so restore the transparent title
+            // bar here as well as hiding Avalonia's material below.
+            SendBool(
+                handle.NSWindow,
+                Selector("setTitlebarAppearsTransparent:"),
+                true);
+
             var found = 0;
             foreach (var subview in SubviewsOf(avaloniaContent))
             {
