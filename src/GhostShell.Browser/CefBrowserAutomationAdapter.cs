@@ -179,7 +179,37 @@ internal sealed class CefBrowserAutomationAdapter
         }
 
         var source = $$"""
-            (() => {
+            (async () => {
+              const hasResults = () => Boolean(document.querySelector('#rso h3'));
+              if (!hasResults()) {
+                await new Promise(resolve => {
+                  let settled = false;
+                  const finish = () => {
+                    if (settled) {
+                      return;
+                    }
+
+                    settled = true;
+                    observer.disconnect();
+                    clearTimeout(timeout);
+                    resolve();
+                  };
+                  const observer = new MutationObserver(() => {
+                    if (hasResults()) {
+                      finish();
+                    }
+                  });
+                  const timeout = setTimeout(finish, 5000);
+                  observer.observe(document.documentElement, {
+                    childList: true,
+                    subtree: true
+                  });
+                  if (hasResults()) {
+                    finish();
+                  }
+                });
+              }
+
               const compact = value => String(value || '').replace(/\s+/g, ' ').trim();
               const pageText = compact(document.body && document.body.innerText);
               const resultRoot = document.querySelector('#rso');
@@ -243,8 +273,8 @@ internal sealed class CefBrowserAutomationAdapter
             """;
         return await EvaluateSourceAsync(
                 source,
-                awaitPromise: false,
-                TimeSpan.FromSeconds(5),
+                awaitPromise: true,
+                TimeSpan.FromSeconds(7),
                 throwOnSideEffect: false,
                 contextId)
             .ConfigureAwait(false);

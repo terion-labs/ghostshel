@@ -375,9 +375,13 @@ public sealed class BrowserLowLevelAutomationTests
         using var parameters = JsonDocument.Parse(transport.Calls[2].Parameters!);
         var root = parameters.RootElement;
         Assert.False(root.GetProperty("throwOnSideEffect").GetBoolean());
+        Assert.True(root.GetProperty("awaitPromise").GetBoolean());
         Assert.Equal(42, root.GetProperty("contextId").GetInt32());
         Assert.True(root.GetProperty("returnByValue").GetBoolean());
         var source = root.GetProperty("expression").GetString()!;
+        Assert.Contains("new MutationObserver", source, StringComparison.Ordinal);
+        Assert.Contains("setTimeout(finish, 5000)", source, StringComparison.Ordinal);
+        Assert.Contains("document.querySelector('#rso h3')", source, StringComparison.Ordinal);
         Assert.Contains("document.querySelector('#rso')", source, StringComparison.Ordinal);
         Assert.Contains("resultRoot.querySelectorAll('h3')", source, StringComparison.Ordinal);
         Assert.Contains("heading.closest('a[href]')", source, StringComparison.Ordinal);
