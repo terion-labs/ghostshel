@@ -525,6 +525,58 @@ public sealed class OpenAiResponsesProviderTests
     }
 
     [Fact]
+    public async Task RestoredConversationCanRebindToAnotherProfileWithoutReplayingPrivateState()
+    {
+        using var vault = new InMemorySecretVault();
+        var original = await CreateProfileAsync(vault);
+        var replacementId = new AiProviderProfileId("replacement-openai-profile");
+        var replacementSecret = new SecretRef("replacement-openai-secret");
+        await StoreApiKeyAsync(vault, replacementId, replacementSecret, "replacement-key");
+        var replacement = new AiProviderProfile(
+            replacementId,
+            AiProviderProfile.CurrentSchemaVersion,
+            "Replacement OpenAI",
+            AiProviderKind.OpenAi,
+            AiProviderProfile.DefaultEndpoint(AiProviderKind.OpenAi),
+            new AiProviderAuthentication.ApiKey(replacementSecret),
+            Model,
+            order: 0);
+        using var handler = new CapturingHandler(
+            ResponsesTextStream("Original answer."),
+            ResponsesTextStream("Rebound answer."));
+        using var factory = new AiProviderFactory(vault, handler);
+        var session = new NativeAgentSession(new AgentRunId("responses-profile-rebind"));
+
+        var first = await session.RunTurnAsync(
+            "First prompt.",
+            [],
+            factory.Create(original),
+            CancellationToken.None);
+        Assert.True(first.Succeeded);
+
+        var checkpoint = Assert.IsType<AgentSessionCheckpoint>(
+            session.CaptureCheckpoint().Checkpoint);
+        var restored = Assert.IsType<NativeAgentSession>(
+            NativeAgentSession.RestoreCheckpoint(checkpoint).Session);
+        Assert.True(restored.TrySetConversationRoute(replacement.Id, replacement.DefaultModel));
+
+        var second = await restored.RunTurnAsync(
+            "Continue on the replacement profile.",
+            [],
+            factory.Create(replacement),
+            CancellationToken.None);
+
+        Assert.True(second.Succeeded);
+        Assert.Equal("Rebound answer.", restored.Snapshot().Conversation[^1].Content);
+        Assert.Equal(2, handler.Requests.Count);
+        using var request = JsonDocument.Parse(handler.Requests[1].Body);
+        Assert.DoesNotContain(
+            request.RootElement.GetProperty("input").EnumerateArray(),
+            item => item.TryGetProperty("type", out var type)
+                && string.Equals(type.GetString(), "reasoning", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task ReplayStateBoundToApiKeyRouteRejectsOAuthRoute()
     {
         using var vault = new InMemorySecretVault();

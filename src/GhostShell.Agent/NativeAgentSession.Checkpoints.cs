@@ -107,6 +107,29 @@ public sealed partial class NativeAgentSession
                 return false;
             }
 
+            var profileChanged = _conversationProviderId is { } currentProviderId
+                && currentProviderId != providerId;
+            var containsForeignReplayState = _conversation.Any(message =>
+                message.ProviderReplayState is { } replayState
+                && replayState.Binding.ProfileId != providerId);
+            if (profileChanged || containsForeignReplayState)
+            {
+                // Provider-private response items are bound to one authenticated
+                // route. A restored transcript may be resumed with another
+                // selected profile, but only its provider-neutral history can
+                // cross that boundary.
+                _conversation =
+                [
+                    .. _conversation.Select(message =>
+                        message.WithoutProviderReplayState()),
+                ];
+                _transcript =
+                [
+                    .. _transcript.Select(message =>
+                        message.WithoutProviderReplayState()),
+                ];
+            }
+
             _conversationProviderId = providerId;
             _conversationModel = model.Trim();
             return true;

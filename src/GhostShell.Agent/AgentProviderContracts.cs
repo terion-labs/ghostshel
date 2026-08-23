@@ -184,6 +184,20 @@ public sealed record AgentMessage
                 Images,
                 ProviderReplayState,
                 RequestedReasoningEffort);
+
+    internal AgentMessage WithoutProviderReplayState() =>
+        ProviderReplayState is null
+            ? this
+            : new AgentMessage(
+                Role,
+                Content,
+                ToolCalls,
+                ToolResult,
+                ReasoningSummary,
+                Usage,
+                Images,
+                providerReplayState: null,
+                RequestedReasoningEffort);
 }
 
 public sealed record AgentToolDefinition
