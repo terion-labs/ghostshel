@@ -1144,6 +1144,58 @@ public sealed partial class AgentChatViewModelTests
         });
 
     [Fact]
+    public Task Code_only_fence_renders_in_chat_mode() =>
+        RunAgentComposerHeadlessAsync(async () =>
+        {
+            const string markdown = """
+                ```json
+                {
+                  "ok": true,
+                  "results": []
+                }
+                ```
+                """;
+            var preview = new MarkdownPreviewView
+            {
+                Text = markdown,
+                ContinuousSelection = true,
+            };
+            var window = new Window
+            {
+                Width = 640,
+                Height = 480,
+                Content = preview,
+            };
+
+            try
+            {
+                window.Show();
+                CodePreviewView? code = null;
+                for (var attempt = 0; attempt < 80; attempt++)
+                {
+                    await Task.Delay(25);
+                    window.UpdateLayout();
+                    code = preview.GetVisualDescendants()
+                        .OfType<CodePreviewView>()
+                        .SingleOrDefault();
+                    if (code is { Bounds.Height: > 0 })
+                    {
+                        break;
+                    }
+                }
+
+                Assert.NotNull(code);
+                Assert.True(code.IsEffectivelyVisible);
+                Assert.Contains("\"ok\": true", code.Text, StringComparison.Ordinal);
+                Assert.True(code.Bounds.Height > 0);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+    [Fact]
     public Task LaTeX_from_an_assistant_message_renders_in_the_shared_markdown_surface() =>
         RunAgentComposerHeadlessAsync(async () =>
         {

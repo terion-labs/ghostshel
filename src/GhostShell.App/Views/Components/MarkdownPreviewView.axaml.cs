@@ -202,7 +202,7 @@ public sealed partial class MarkdownPreviewView : UserControl
         }
 
         AddContinuousText(document, prose);
-        return document.Children.Count == 1 ? document.Children[0] : document;
+        return document;
     }
 
     private void AddContinuousText(
