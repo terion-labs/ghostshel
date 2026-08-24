@@ -12,6 +12,7 @@ download_cache_dir="${repository_dir}/.deps/cef"
 dotnet=""
 target_rid=""
 allow_unsandboxed_windows=false
+cef_build_jobs="${GHOSTSHELL_CEF_BUILD_JOBS:-4}"
 
 usage() {
     cat >&2 <<'EOF'
@@ -61,6 +62,10 @@ done
 
 if [[ -z "${target_rid}" ]]; then
     usage
+    exit 64
+fi
+if [[ ! "${cef_build_jobs}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "GHOSTSHELL_CEF_BUILD_JOBS must be a positive integer." >&2
     exit 64
 fi
 
@@ -354,7 +359,7 @@ EXCLR8CEF_PLATFORM="${cef_platform}" cmake "${cmake_options[@]}"
 cmake --build "${build_run_dir}/build" \
     --config Release \
     --target exclr8cef_version_probe exclr8cef_demo \
-    --parallel
+    --parallel "${cef_build_jobs}"
 
 find_built_file() {
     local name="$1"

@@ -161,6 +161,27 @@ public sealed partial class NativeTerminalBuildContractTests
     }
 
     [Fact]
+    public void Cef_runtime_build_bounds_native_compiler_concurrency()
+    {
+        var script = File.ReadAllText(
+            Path.Combine(RepositoryRoot, "scripts", "build-cef-runtime.sh"));
+
+        Assert.Contains(
+            "cef_build_jobs=\"${GHOSTSHELL_CEF_BUILD_JOBS:-4}\"",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "--parallel \"${cef_build_jobs}\"",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "GHOSTSHELL_CEF_BUILD_JOBS must be a positive integer.",
+            script,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("--parallel\n", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Repository_gate_provisions_macos_native_assets_before_managed_builds()
     {
         var workflow = File.ReadAllText(Path.Combine(
