@@ -10,6 +10,7 @@ using GhostShell.App.Views.RuntimePanels;
 
 namespace GhostShell.App.Tests;
 
+[Collection(AvaloniaUiCollection.Name)]
 public sealed class TerminalRuntimePanelContinuityBadgeHeadlessTests
 {
     [Theory]

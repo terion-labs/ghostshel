@@ -423,14 +423,10 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
         Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
 
-        // The autosave debounce is 1.5 s; poll rather than assuming timing.
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
-        while (proxy.SavedWorkspace is null && DateTime.UtcNow < deadline)
-        {
-            await Task.Delay(100);
-        }
-
-        var saved = Assert.IsType<WorkspaceDefinition>(proxy.SavedWorkspace);
+        // The autosave debounce is 1.5 s. Await the recorded write so the test
+        // observes it across the timer callback's thread boundary.
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var saved = await proxy.WaitForWorkspaceSaveAsync(timeout.Token);
         Assert.True(saved.AutoSave);
         Assert.Equal(stored.Revision, proxy.SavedWorkspaceRevision);
         var tabs = saved.Entries.Cast<WorkspaceEntry.Tab>().ToArray();
@@ -7693,6 +7689,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     public class RecordingAutoSaveCatalogProxy : DispatchProxy
     {
         private readonly List<(LayoutDefinition Definition, long? ExpectedRevision)> _layouts = [];
+        private readonly TaskCompletionSource<WorkspaceDefinition> _workspaceSaved =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public DefinitionCatalogSnapshot Snapshot { get; set; } = DefinitionCatalogSnapshot.Empty;
 
@@ -7702,6 +7700,10 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
         public IReadOnlyList<(LayoutDefinition Definition, long? ExpectedRevision)>
             SavedLayouts => _layouts;
+
+        public Task<WorkspaceDefinition> WaitForWorkspaceSaveAsync(
+            CancellationToken cancellationToken) =>
+            _workspaceSaved.Task.WaitAsync(cancellationToken);
 
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) =>
             targetMethod?.Name switch
@@ -7720,6 +7722,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                 (IReadOnlyList<(LayoutDefinition Definition, long? ExpectedRevision)>)args[2]!);
             SavedWorkspace = (WorkspaceDefinition)args[0]!;
             SavedWorkspaceRevision = (long?)args[1];
+            _workspaceSaved.TrySetResult(SavedWorkspace);
             return ValueTask.FromResult<DefinitionStoreError?>(null);
         }
 
@@ -7740,6 +7743,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         {
             SavedWorkspace = (WorkspaceDefinition)args[0]!;
             SavedWorkspaceRevision = (long?)args[1];
+            _workspaceSaved.TrySetResult(SavedWorkspace);
             return ValueTask.FromResult(
                 DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>.Success(
                     new StoredDefinition<WorkspaceDefinition>(

@@ -18,6 +18,7 @@ using GhostShell.Core;
 
 namespace GhostShell.App.Tests;
 
+[Collection(AvaloniaUiCollection.Name)]
 public sealed class RuntimeDockControlHeadlessTests
 {
     [Fact]

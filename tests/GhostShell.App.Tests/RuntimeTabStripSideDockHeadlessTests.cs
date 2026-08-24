@@ -22,6 +22,7 @@ namespace GhostShell.App.Tests;
 /// no matter how long the title is. This geometry shipped broken twice because
 /// nothing measured it.
 /// </summary>
+[Collection(AvaloniaUiCollection.Name)]
 public sealed class RuntimeTabStripSideDockHeadlessTests
 {
     private sealed record FakeTab(
