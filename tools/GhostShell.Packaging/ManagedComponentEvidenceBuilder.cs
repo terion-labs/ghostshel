@@ -35,6 +35,7 @@ internal static class ManagedComponentEvidenceBuilder
     private const long MaximumNupkgBytes = 2L * 1024 * 1024 * 1024;
     private const string SpdxFileName = "SBOM.spdx.json";
     private const string NoAssertion = "NOASSERTION";
+    private const string ProductVersionPlaceholder = "${productVersion}";
     private const string BaseRuntimeTargetName = ".NETCoreApp,Version=v10.0";
     private const string SelectedRuntimeTargetName =
         ".NETCoreApp,Version=v10.0/osx-arm64";
@@ -110,6 +111,7 @@ internal static class ManagedComponentEvidenceBuilder
         string licenseDirectory,
         string catalogPath,
         string nugetPackageRoot,
+        string productVersion,
         ManagedComponentEvidenceLimits limits)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(
@@ -122,13 +124,14 @@ internal static class ManagedComponentEvidenceBuilder
         ArgumentException.ThrowIfNullOrWhiteSpace(
             nugetPackageRoot,
             nameof(nugetPackageRoot));
+        ArgumentException.ThrowIfNullOrWhiteSpace(productVersion, nameof(productVersion));
         ValidateEvidenceLimits(limits);
 
         var catalogBytes = ReadRegularFile(
             catalogPath,
             MaximumCatalogBytes,
             "managed-component catalog");
-        var catalog = ParseCatalog(catalogBytes);
+        var catalog = ParseCatalog(catalogBytes, productVersion);
         var dependenciesPath = Path.Combine(
             publishDirectory,
             "GhostShell.deps.json");
@@ -189,7 +192,7 @@ internal static class ManagedComponentEvidenceBuilder
             [.. evidence.Files.OrderBy(file => file.RelativePath, StringComparer.Ordinal)]);
     }
 
-    private static CatalogDocument ParseCatalog(byte[] bytes)
+    private static CatalogDocument ParseCatalog(byte[] bytes, string productVersion)
     {
         try
         {
@@ -206,6 +209,7 @@ internal static class ManagedComponentEvidenceBuilder
                               bytes,
                               CatalogJsonOptions)
                           ?? throw CatalogError("document is empty");
+            BindProductVersion(catalog, productVersion);
             ValidateCatalog(catalog);
             return catalog;
         }
@@ -215,11 +219,87 @@ internal static class ManagedComponentEvidenceBuilder
         }
     }
 
+    private static void BindProductVersion(
+        CatalogDocument catalog,
+        string productVersion)
+    {
+        if (catalog.SchemaVersion != 2)
+        {
+            throw CatalogError("schemaVersion must be 2");
+        }
+
+        const string documentNameTemplate =
+            "GhostSHELL ${productVersion} managed-component evidence";
+        if (!string.Equals(
+                catalog.DocumentName,
+                documentNameTemplate,
+                StringComparison.Ordinal))
+        {
+            throw CatalogError(
+                $"documentName must be {documentNameTemplate}");
+        }
+
+        if (catalog.NamespaceBase is null
+            || !catalog.NamespaceBase.EndsWith(
+                $"/{ProductVersionPlaceholder}",
+                StringComparison.Ordinal))
+        {
+            throw CatalogError(
+                $"namespaceBase must end with /{ProductVersionPlaceholder}");
+        }
+
+        catalog.DocumentName = catalog.DocumentName.Replace(
+            ProductVersionPlaceholder,
+            productVersion,
+            StringComparison.Ordinal);
+        catalog.NamespaceBase = catalog.NamespaceBase.Replace(
+            ProductVersionPlaceholder,
+            productVersion,
+            StringComparison.Ordinal);
+
+        if (catalog.Dependencies is null)
+        {
+            throw CatalogError("dependencies must be an array");
+        }
+
+        foreach (var dependency in catalog.Dependencies)
+        {
+            var separator = dependency.Identity.LastIndexOf('/');
+            var name = separator > 0
+                ? dependency.Identity[..separator]
+                : dependency.Identity;
+            var isFirstParty = string.Equals(name, "GhostShell", StringComparison.Ordinal)
+                               || name.StartsWith("GhostShell.", StringComparison.Ordinal);
+            var hasPlaceholder = dependency.Identity.Contains(
+                ProductVersionPlaceholder,
+                StringComparison.Ordinal);
+            if (isFirstParty)
+            {
+                if (!string.Equals(dependency.Kind, "project", StringComparison.Ordinal)
+                    || !dependency.Identity.EndsWith(
+                        $"/{ProductVersionPlaceholder}",
+                        StringComparison.Ordinal))
+                {
+                    throw CatalogError(
+                        $"first-party component {dependency.Identity} must be a project "
+                        + $"whose identity version is {ProductVersionPlaceholder}");
+                }
+
+                dependency.Identity = $"{name}/{productVersion}";
+            }
+            else if (hasPlaceholder)
+            {
+                throw CatalogError(
+                    $"only first-party project identities may use {ProductVersionPlaceholder}");
+            }
+        }
+    }
+
     private static void ValidateCatalog(CatalogDocument catalog)
     {
-        if (catalog.SchemaVersion != 1)
+        if (catalog.SchemaVersion != 2)
         {
-            throw CatalogError("schemaVersion must be 1");
+            throw CatalogError("schemaVersion must be 2");
         }
 
         ValidateText(catalog.DocumentName, "documentName", 200);
@@ -2426,11 +2506,11 @@ string.Equals(component.Kind, "runtime"
     {
         public required int SchemaVersion { get; init; }
 
-        public required string DocumentName { get; init; }
+        public required string DocumentName { get; set; }
 
         public required string DocumentCreatedUtc { get; init; }
 
-        public required string NamespaceBase { get; init; }
+        public required string NamespaceBase { get; set; }
 
         public required List<string> ReleaseBlockers { get; init; }
 
@@ -2441,7 +2521,7 @@ string.Equals(component.Kind, "runtime"
 
     private sealed class CatalogDependency
     {
-        public required string Identity { get; init; }
+        public required string Identity { get; set; }
 
         public required string Kind { get; init; }
 

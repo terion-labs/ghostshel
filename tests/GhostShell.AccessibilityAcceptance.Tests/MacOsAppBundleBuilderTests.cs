@@ -184,6 +184,13 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         using (var document = JsonDocument.Parse(spdxText))
         {
             Assert.Equal(
+                "GhostSHELL 1.2.3 managed-component evidence",
+                document.RootElement.GetProperty("name").GetString());
+            Assert.StartsWith(
+                "https://ghostshell.test/spdx/managed-components/1.2.3/",
+                document.RootElement.GetProperty("documentNamespace").GetString(),
+                StringComparison.Ordinal);
+            Assert.Equal(
                 "Tool: GhostShell.Packaging-1.0.0",
                 document.RootElement
                     .GetProperty("creationInfo")
@@ -332,6 +339,33 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         Assert.False(Directory.Exists(output));
     }
 
+    [Fact]
+    public void Builder_rejects_a_fixed_first_party_version_in_the_reviewed_catalog()
+    {
+        var publish = CreatePublishPayload();
+        var catalogPath = _evidenceInputs[publish].CatalogPath;
+        var catalog = JsonNode.Parse(File.ReadAllText(catalogPath))!.AsObject();
+        var component = catalog["dependencies"]!
+            .AsArray()
+            .Select(node => node!.AsObject())
+            .Single(node => string.Equals(
+                node["identity"]!.GetValue<string>(),
+                "GhostShell.Core/${productVersion}",
+                StringComparison.Ordinal));
+        component["identity"] = "GhostShell.Core/1.2.3";
+        File.WriteAllText(catalogPath, catalog.ToJsonString());
+        var output = OutputPath();
+
+        var exception = Assert.Throws<InvalidDataException>(() =>
+            new MacOsAppBundleBuilder().Build(Request(publish, output)));
+
+        Assert.Contains(
+            "identity version is ${productVersion}",
+            exception.Message,
+            StringComparison.Ordinal);
+        Assert.False(Directory.Exists(output));
+    }
+
     [Theory]
     [InlineData(4, 100, 67_108_864L)]
     [InlineData(10, 2, 67_108_864L)]
@@ -350,6 +384,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
                 publish,
                 inputs.CatalogPath,
                 inputs.NuGetPackageRoot,
+                "1.2.3",
                 new ManagedComponentEvidenceLimits(
                     maximumFiles,
                     maximumEntries,
@@ -1587,7 +1622,11 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
                 });
             catalogDependencies.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
-                ["identity"] = identity,
+                ["identity"] = assemblyName.StartsWith(
+                    "GhostShell",
+                    StringComparison.Ordinal)
+                    ? $"{assemblyName}/${{productVersion}}"
+                    : identity,
                 ["kind"] = "project",
                 ["depsType"] = "project",
                 ["licenseDeclared"] = "NOASSERTION",
@@ -1727,11 +1766,12 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             JsonSerializer.Serialize(
                 new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
-                    ["schemaVersion"] = 1,
-                    ["documentName"] = "GhostSHELL test managed-component evidence",
+                    ["schemaVersion"] = 2,
+                    ["documentName"] =
+                        "GhostSHELL ${productVersion} managed-component evidence",
                     ["documentCreatedUtc"] = "2026-07-23T00:00:00Z",
                     ["namespaceBase"] =
-                        "https://ghostshell.test/spdx/managed-components/1.2.3",
+                        "https://ghostshell.test/spdx/managed-components/${productVersion}",
                     ["releaseBlockers"] = new[]
                     {
                         "SMBLibrary release evidence remains unresolved.",

@@ -623,6 +623,31 @@ public sealed class SqlLanguageWorkerPackagingTests
             RepositoryRoot,
             "licenses",
             "managed-components.json")));
+        Assert.Equal(
+            2,
+            managedCatalog.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(
+            "GhostSHELL ${productVersion} managed-component evidence",
+            managedCatalog.RootElement.GetProperty("documentName").GetString());
+        var firstPartyProjects = managedCatalog.RootElement
+            .GetProperty("dependencies")
+            .EnumerateArray()
+            .Where(dependency =>
+                string.Equals(
+                    dependency.GetProperty("kind").GetString(),
+                    "project",
+                    StringComparison.Ordinal)
+                && dependency.GetProperty("identity").GetString() is { } identity
+                && (identity.StartsWith("GhostShell.", StringComparison.Ordinal)
+                    || identity.StartsWith("GhostShell/", StringComparison.Ordinal)))
+            .ToArray();
+        Assert.NotEmpty(firstPartyProjects);
+        Assert.All(
+            firstPartyProjects,
+            dependency => Assert.EndsWith(
+                "/${productVersion}",
+                dependency.GetProperty("identity").GetString(),
+                StringComparison.Ordinal));
         var runtimeEvidence = Assert.Single(
             managedCatalog.RootElement.GetProperty("dependencies").EnumerateArray(),
             dependency => string.Equals(

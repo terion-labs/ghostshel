@@ -166,6 +166,7 @@ public sealed class MacOsAppBundleBuilder
                 licenseDirectory,
                 request.ComponentCatalogPath,
                 request.NuGetPackageRoot,
+                request.ProductVersion,
                 evidenceLimits);
             EnsureEvidenceDestinationsAreAvailable(
                 licenseDirectory,

@@ -195,6 +195,9 @@ bundle. Validation compares its complete `GhostShell.deps.json` closure with the
 content hashes, archive SHA-512 receipts, nuspec identity/version/license
 metadata, and resolved dependency graph. Unknown, missing, malformed,
 ambiguous, linked, or tampered evidence fails assembly.
+First-party project identities, the SPDX document name, and its namespace use
+the catalog's `${productVersion}` token, which the packager binds to the exact
+release version. Vendored project and NuGet versions remain fixed and exact.
 
 Terminal-font provenance separately checks the Ghostty dependency declaration,
 official JetBrains Mono 2.304 Zig package hash, four exact TTF sizes and hashes,
