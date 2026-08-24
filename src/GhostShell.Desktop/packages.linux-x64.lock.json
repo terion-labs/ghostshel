@@ -79,6 +79,11 @@
         "resolved": "0.0.22",
         "contentHash": "8vH1Xe39l+Fvn92eUW/5+ujHEDveNzJ/FWqcMP3cTWPkCZe5BFLTAUEpkjOYa6ZDEB1nHMJC8x7wgJgP6dGROw=="
       },
+      "AngleSharp": {
+        "type": "Transitive",
+        "resolved": "1.5.2",
+        "contentHash": "LVZ7rrr6GHbhERhTgVDarVygl1e6KwE96pronA90LBOMacDhxR4lB+xYLjn/vlnUu+xbOB2RM9fuCPEx5bdyWA=="
+      },
       "Avalonia.Angle.Windows.Natives": {
         "type": "Transitive",
         "resolved": "2.1.27548.20260419",
@@ -818,7 +823,8 @@
         "dependencies": {
           "Exclr8Cef.WebView": "[0.8.0, )",
           "FluentIcons.Avalonia": "[2.1.333, )",
-          "GhostShell.Application": "[1.0.0, )"
+          "GhostShell.Application": "[1.0.0, )",
+          "ReverseMarkdown": "[6.2.1, )"
         }
       },
       "ghostshell.core": {
@@ -1218,6 +1224,15 @@
         "contentHash": "ARvF8LQTu9qPK7O+i9Mb0bZPuYTt7tdBhhFdCq3FmghIEasJYN3hHToKX6uWaSI6SEOpe2kmhinV74RzdN6gJg==",
         "dependencies": {
           "Vanara.PInvoke.Kernel32": "4.2.1"
+        }
+      },
+      "ReverseMarkdown": {
+        "type": "CentralTransitive",
+        "requested": "[6.2.1, )",
+        "resolved": "6.2.1",
+        "contentHash": "4ef2AoeNdBHrKoMU6t04dxTQ72TXsNO3RfWU1YN5jaJjCIrQhvNo9nhfO+6z+j7UBZNadsdN2d4rzAFO27xUnw==",
+        "dependencies": {
+          "AngleSharp": "1.5.2"
         }
       },
       "SMBLibrary": {

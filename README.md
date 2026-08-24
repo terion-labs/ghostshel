@@ -63,10 +63,10 @@ have permanent download URLs. This first early-release artifact is unsigned;
 use the signing and notarization flow documented below before distributing
 outside a trusted tester group.
 
-Dependency updates must refresh every graph that CI consumes: the ordinary
-managed graph, the Windows-targeted managed graph, and both portable Linux
-release RIDs. Regenerate them deliberately, review the lock-file diffs, and
-then run the full gate:
+Dependency updates must refresh every graph that CI and release packaging
+consume: the ordinary and Windows-targeted managed graphs, every reviewed
+desktop RID, and the macOS Native AOT graph. Regenerate them deliberately,
+review the lock-file diffs, and then run the full gate:
 
 ```sh
 ./.dotnet/dotnet restore GhostShell.slnx --force-evaluate
@@ -76,6 +76,15 @@ then run the full gate:
   --runtime linux-x64 --force-evaluate
 ./.dotnet/dotnet restore src/GhostShell.Desktop/GhostShell.Desktop.csproj \
   --runtime linux-arm64 --force-evaluate
+./.dotnet/dotnet restore src/GhostShell.Desktop/GhostShell.Desktop.csproj \
+  --runtime osx-x64 --force-evaluate
+./.dotnet/dotnet restore src/GhostShell.Desktop/GhostShell.Desktop.csproj \
+  --runtime osx-arm64 --force-evaluate
+./.dotnet/dotnet restore src/GhostShell.Desktop/GhostShell.Desktop.csproj \
+  --runtime osx-arm64 --force-evaluate \
+  -p:GhostShellMacReleaseNativeAot=true
+./.dotnet/dotnet restore src/GhostShell.Desktop/GhostShell.Desktop.csproj \
+  --runtime win-x64 --force-evaluate
 ./scripts/check.sh --full
 ```
 

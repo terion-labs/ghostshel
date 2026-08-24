@@ -104,4 +104,29 @@ if grep -q '"vulnerabilities"[[:space:]]*:' "${audit_result}"; then
     exit 1
 fi
 
+# The solution restore validates the ordinary graph only. Release packaging
+# selects separate reviewed lock files, so validate each graph before a tag is
+# allowed to discover stale project or package dependencies.
+"${dotnet}" restore "${repository_dir}/GhostShell.slnx" \
+    -p:GhostShellWindowsBuild=true \
+    --locked-mode \
+    --verbosity quiet
+
+desktop_project="${repository_dir}/src/GhostShell.Desktop/GhostShell.Desktop.csproj"
+runtime_identifiers=(linux-x64 linux-arm64 osx-x64 osx-arm64 win-x64)
+for runtime_identifier in "${runtime_identifiers[@]}"; do
+    "${dotnet}" restore "${desktop_project}" \
+        --runtime "${runtime_identifier}" \
+        --locked-mode \
+        --verbosity quiet
+done
+"${dotnet}" restore "${desktop_project}" \
+    --runtime osx-arm64 \
+    --locked-mode \
+    --verbosity quiet \
+    -p:GhostShellMacReleaseNativeAot=true
+"${dotnet}" restore "${repository_dir}/GhostShell.slnx" \
+    --locked-mode \
+    --verbosity quiet
+
 echo "Dependency audit passed: lock files, central versions, and NuGet advisories are clean."

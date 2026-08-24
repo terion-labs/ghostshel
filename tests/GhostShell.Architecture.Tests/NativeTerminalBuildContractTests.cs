@@ -182,6 +182,29 @@ public sealed partial class NativeTerminalBuildContractTests
     }
 
     [Fact]
+    public void Dependency_audit_validates_every_release_lock_graph()
+    {
+        var script = File.ReadAllText(
+            Path.Combine(RepositoryRoot, "scripts", "audit-dependencies.sh"));
+
+        Assert.Contains(
+            "runtime_identifiers=(linux-x64 linux-arm64 osx-x64 osx-arm64 win-x64)",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "-p:GhostShellWindowsBuild=true",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "-p:GhostShellMacReleaseNativeAot=true",
+            script,
+            StringComparison.Ordinal);
+        Assert.Equal(
+            4,
+            script.Split("--locked-mode", StringSplitOptions.None).Length - 1);
+    }
+
+    [Fact]
     public void Repository_gate_provisions_macos_native_assets_before_managed_builds()
     {
         var workflow = File.ReadAllText(Path.Combine(
