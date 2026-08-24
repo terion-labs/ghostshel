@@ -377,7 +377,7 @@
                 SqlCompletionContext="{CompiledBinding #DatabaseWorkspaceRoot.((vm:ISqlQueryEditorHost)DataContext).SqlLanguageCompletionContext}"
                 SqlLanguageSession="{CompiledBinding #DatabaseWorkspaceRoot.((vm:ISqlQueryEditorHost)DataContext).SqlLanguageSession}"
                 SqlLanguageStatus="{CompiledBinding #DatabaseWorkspaceRoot.((vm:ISqlQueryEditorHost)DataContext).SqlLanguageStatus}"
-                Text="{CompiledBinding #DatabaseWorkspaceRoot.((vm:ISqlQueryEditorHost)DataContext).QueryText, Mode=TwoWay}"
+                Text="{CompiledBinding QueryText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                 Watermark="SELECT …"
                 EditorKeyDown="OnQueryEditorKeyDown"
                 AutomationProperties.Name="SQL statement" />
