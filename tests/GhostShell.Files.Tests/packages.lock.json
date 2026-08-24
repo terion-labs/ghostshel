@@ -4,9 +4,9 @@
     "net10.0": {
       "coverlet.collector": {
         "type": "Direct",
-        "requested": "[6.0.4, )",
-        "resolved": "6.0.4",
-        "contentHash": "lkhqpF8Pu2Y7IiN7OntbsTtdbpR1syMsm2F3IgX6ootA4ffRqWL5jF7XipHuZQTdVuWG/gVAAcf8mjk8Tz0xPg=="
+        "requested": "[10.0.1, )",
+        "resolved": "10.0.1",
+        "contentHash": "27jXSV/0DbVqF5jDrAxuQFZ9oaz6gmG03p8ttxAFk+X0M4woFYj7MoWDLCna5EGLb0CE6OE7X6ZH3Wt5smTtaA=="
       },
       "Meziantou.Analyzer": {
         "type": "Direct",
@@ -61,8 +61,8 @@
       },
       "AWSSDK.Core": {
         "type": "Transitive",
-        "resolved": "4.0.100.6",
-        "contentHash": "n5B+GywQ+B6E92ULn75KzF1Mn9USXZocgAkZ6NTDsYgHQFfXldC2+CBZgpg/by2OuuJ/TvEeRwHDCE+0xRBsFw=="
+        "resolved": "4.0.102.1",
+        "contentHash": "vsf+/o+S/euH/wG7bO1cha+OWaHvjgvpDeGFO6l3Vcdio9GlSfXkZDD2BogMuAJ+/jDyqqSgqmYVolPKV9ie/A=="
       },
       "BouncyCastle.Cryptography": {
         "type": "Transitive",
@@ -145,7 +145,7 @@
       "ghostshell.files": {
         "type": "Project",
         "dependencies": {
-          "AWSSDK.S3": "[4.0.101.3, )",
+          "AWSSDK.S3": "[4.0.102.4, )",
           "FluentFTP": "[54.2.0, )",
           "GhostShell.Application": "[1.0.0, )",
           "GhostShell.Core": "[1.0.0, )",
@@ -157,11 +157,11 @@
       },
       "AWSSDK.S3": {
         "type": "CentralTransitive",
-        "requested": "[4.0.101.3, )",
-        "resolved": "4.0.101.3",
-        "contentHash": "WT2Ae507GcFE2SFZwHpGNcGaCR0GvNS4Ea2+iuSTwYxlTid4YPVLjpUQlU34gB2CNII8TwdkvHWBbqh7va0ZWA==",
+        "requested": "[4.0.102.4, )",
+        "resolved": "4.0.102.4",
+        "contentHash": "rfUhmzlQifO7Uk3AErPweV1FbwZYI+OuogPjfS/7mbVKVWCYYCLkkLozh2mS/qaHPNGPGFeSFAR1NbWnQyd2pQ==",
         "dependencies": {
-          "AWSSDK.Core": "[4.0.100.6, 5.0.0)"
+          "AWSSDK.Core": "[4.0.102.1, 5.0.0)"
         }
       },
       "FluentFTP": {

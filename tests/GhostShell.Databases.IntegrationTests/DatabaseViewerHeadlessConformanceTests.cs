@@ -2330,7 +2330,9 @@ public sealed partial class DatabaseViewerConformanceTests
 
         public void RunSql(string sql)
         {
-            QueryEditor.Text = sql;
+            Assert.NotEmpty(sql);
+            QueryEditor.EditorForTesting.Document.Text = sql;
+            Dispatcher.UIThread.RunJobs();
             UpdateLayout();
             Click(RunQueryButton);
             Assert.Equal(sql, Panel.QueryText);

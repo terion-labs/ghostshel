@@ -84,6 +84,19 @@
         "resolved": "1.5.2",
         "contentHash": "LVZ7rrr6GHbhERhTgVDarVygl1e6KwE96pronA90LBOMacDhxR4lB+xYLjn/vlnUu+xbOB2RM9fuCPEx5bdyWA=="
       },
+      "Apache.Arrow": {
+        "type": "Transitive",
+        "resolved": "23.0.0",
+        "contentHash": "cU4Zm7byFwnb82Ea9ZRvVnq2nJNf/TF9j+rj/MHlvu9RBYMqYtu4sJaR1JmMh3MmSIuwMafVg7PfJxPAMv9dGw==",
+        "dependencies": {
+          "Apache.Arrow.Scalars": "23.0.0"
+        }
+      },
+      "Apache.Arrow.Scalars": {
+        "type": "Transitive",
+        "resolved": "23.0.0",
+        "contentHash": "i53VmQ505ASXsStf7y29Z5qvhN6PGgFGNb6UUU7z1WmbzEgSjKQuIJkKKVbh+K5rtXRiKyr1Ah3Rmvbeb2BEHQ=="
+      },
       "Avalonia.Angle.Windows.Natives": {
         "type": "Transitive",
         "resolved": "2.1.27548.20260419",
@@ -157,8 +170,8 @@
       },
       "AWSSDK.Core": {
         "type": "Transitive",
-        "resolved": "4.0.100.6",
-        "contentHash": "n5B+GywQ+B6E92ULn75KzF1Mn9USXZocgAkZ6NTDsYgHQFfXldC2+CBZgpg/by2OuuJ/TvEeRwHDCE+0xRBsFw=="
+        "resolved": "4.0.102.1",
+        "contentHash": "vsf+/o+S/euH/wG7bO1cha+OWaHvjgvpDeGFO6l3Vcdio9GlSfXkZDD2BogMuAJ+/jDyqqSgqmYVolPKV9ie/A=="
       },
       "Azure.Core": {
         "type": "Transitive",
@@ -258,8 +271,8 @@
       },
       "DuckDB.NET.Bindings.Full": {
         "type": "Transitive",
-        "resolved": "1.2.1",
-        "contentHash": "tdK+r/Omifx+VXYo6uLjocgaPcSEWoL0ZN26D9KbffmLGfeYirMMhyoaAwOiBwGbeYS1jlQSiVjmtFv6Squb7g=="
+        "resolved": "1.5.5",
+        "contentHash": "QIyg93jXN+ebHtsl3UhNmoKV+UoBlHxicycGUVY8cw/kwTGB8CrrULcLr7ngUkk5pftaPoyIHycxTgshBOalaA=="
       },
       "ExCSS": {
         "type": "Transitive",
@@ -391,44 +404,44 @@
       },
       "Microsoft.Extensions.Diagnostics": {
         "type": "Transitive",
-        "resolved": "8.0.0",
-        "contentHash": "3PZp/YSkIXrF7QK7PfC1bkyRYwqOHpWFad8Qx+4wkuumAeXo1NHaxpS9LboNA9OvNSAu+QOVlXbMyoY+pHSqcw==",
+        "resolved": "8.0.1",
+        "contentHash": "doVPCUUCY7c6LhBsEfiy3W1bvS7Mi6LkfQMS8nlC22jZWNxBv8VO8bdfeyvpYFst6Kxqk7HBC6lytmEoBssvSQ==",
         "dependencies": {
           "Microsoft.Extensions.Configuration": "8.0.0",
-          "Microsoft.Extensions.Diagnostics.Abstractions": "8.0.0",
+          "Microsoft.Extensions.Diagnostics.Abstractions": "8.0.1",
           "Microsoft.Extensions.Options.ConfigurationExtensions": "8.0.0"
         }
       },
       "Microsoft.Extensions.Diagnostics.Abstractions": {
         "type": "Transitive",
-        "resolved": "8.0.0",
-        "contentHash": "JHYCQG7HmugNYUhOl368g+NMxYE/N/AiclCYRNlgCY9eVyiBkOHMwK4x60RYMxv9EL3+rmj1mqHvdCiPpC+D4Q==",
+        "resolved": "8.0.1",
+        "contentHash": "elH2vmwNmsXuKmUeMQ4YW9ldXiF+gSGDgg1vORksob5POnpaI6caj1Hu8zaYbEuibhqCoWg0YRWDazBY3zjBfg==",
         "dependencies": {
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.0",
-          "Microsoft.Extensions.Options": "8.0.0"
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Options": "8.0.2"
         }
       },
       "Microsoft.Extensions.Http": {
         "type": "Transitive",
-        "resolved": "8.0.0",
-        "contentHash": "cWz4caHwvx0emoYe7NkHPxII/KkTI8R/LC9qdqJqnKv2poTJ4e2qqPGQqvRoQ5kaSA4FU5IV3qFAuLuOhoqULQ==",
+        "resolved": "8.0.1",
+        "contentHash": "kDYeKJUzh0qeg/AI+nSr3ffthmXYQTEb0nS9qRC7YhSbbuN4M4NPbaB77AJwtkTnCV9XZ7qYj3dkZaNcyl73EA==",
         "dependencies": {
           "Microsoft.Extensions.Configuration.Abstractions": "8.0.0",
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.0",
-          "Microsoft.Extensions.Diagnostics": "8.0.0",
-          "Microsoft.Extensions.Logging": "8.0.0",
-          "Microsoft.Extensions.Logging.Abstractions": "8.0.0",
-          "Microsoft.Extensions.Options": "8.0.0"
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Diagnostics": "8.0.1",
+          "Microsoft.Extensions.Logging": "8.0.1",
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Options": "8.0.2"
         }
       },
       "Microsoft.Extensions.Logging": {
         "type": "Transitive",
-        "resolved": "8.0.0",
-        "contentHash": "tvRkov9tAJ3xP51LCv3FJ2zINmv1P8Hi8lhhtcKGqM+ImiTCC84uOPEI4z8Cdq2C3o9e+Aa0Gw0rmrsJD77W+w==",
+        "resolved": "8.0.1",
+        "contentHash": "4x+pzsQEbqxhNf1QYRr5TDkLP9UsLT3A6MdRKDDEgrW7h1ljiEPgTNhKYUhNCCAaVpQECVQ+onA91PTPnIp6Lw==",
         "dependencies": {
-          "Microsoft.Extensions.DependencyInjection": "8.0.0",
-          "Microsoft.Extensions.Logging.Abstractions": "8.0.0",
-          "Microsoft.Extensions.Options": "8.0.0"
+          "Microsoft.Extensions.DependencyInjection": "8.0.1",
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Options": "8.0.2"
         }
       },
       "Microsoft.Extensions.ObjectPool": {
@@ -537,8 +550,8 @@
       },
       "NodaTime": {
         "type": "Transitive",
-        "resolved": "3.1.12",
-        "contentHash": "nDcUbG0jiEXmV8cOz7V8GnUKlmPJjqZm/R+E2JNnUSdlMoaQ19xSU8GXFLReGs/Nt8xdBfA8XfO77xVboWO1Vg=="
+        "resolved": "3.2.2",
+        "contentHash": "dmju5W0UYC3QP/UJM0juKAZkH0HSDMp0gH91A0+mT9M0kgyM2Jm67hUZPl/WRQLq8Lijjqmdk8kyAViWFWM7dA=="
       },
       "Onigwrap": {
         "type": "Transitive",
@@ -833,8 +846,8 @@
       "ghostshell.databases": {
         "type": "Project",
         "dependencies": {
-          "ClickHouse.Client": "[7.8.0, )",
-          "DuckDB.NET.Data.Full": "[1.2.1, )",
+          "ClickHouse.Client": "[7.14.0, )",
+          "DuckDB.NET.Data.Full": "[1.5.5, )",
           "FirebirdSql.Data.FirebirdClient": "[10.3.1, )",
           "GhostShell.Application": "[1.0.0, )",
           "GhostShell.Core": "[1.0.0, )",
@@ -862,7 +875,7 @@
       "ghostshell.files": {
         "type": "Project",
         "dependencies": {
-          "AWSSDK.S3": "[4.0.101.3, )",
+          "AWSSDK.S3": "[4.0.102.4, )",
           "FluentFTP": "[54.2.0, )",
           "GhostShell.Application": "[1.0.0, )",
           "GhostShell.Core": "[1.0.0, )",
@@ -1021,22 +1034,22 @@
       },
       "AWSSDK.S3": {
         "type": "CentralTransitive",
-        "requested": "[4.0.101.3, )",
-        "resolved": "4.0.101.3",
-        "contentHash": "WT2Ae507GcFE2SFZwHpGNcGaCR0GvNS4Ea2+iuSTwYxlTid4YPVLjpUQlU34gB2CNII8TwdkvHWBbqh7va0ZWA==",
+        "requested": "[4.0.102.4, )",
+        "resolved": "4.0.102.4",
+        "contentHash": "rfUhmzlQifO7Uk3AErPweV1FbwZYI+OuogPjfS/7mbVKVWCYYCLkkLozh2mS/qaHPNGPGFeSFAR1NbWnQyd2pQ==",
         "dependencies": {
-          "AWSSDK.Core": "[4.0.100.6, 5.0.0)"
+          "AWSSDK.Core": "[4.0.102.1, 5.0.0)"
         }
       },
       "ClickHouse.Client": {
         "type": "CentralTransitive",
-        "requested": "[7.8.0, )",
-        "resolved": "7.8.0",
-        "contentHash": "8uW+wzx1Jwby9Z5cOh+erc7GVf6E/lF5M+pKUI4YZTxx0lRMbxBkh/m4gaotd/Ma64X5Bxy9XlJ3LHtpI+E9+A==",
+        "requested": "[7.14.0, )",
+        "resolved": "7.14.0",
+        "contentHash": "7nrNoLppjM+2qNQP71oIeo3y6yhNgowg+lGZjk1x0XLcYs4R7maWTiAktlbmCtGZk/gqa4G0GXysVQzxIJdQaQ==",
         "dependencies": {
-          "Microsoft.Extensions.Http": "8.0.0",
+          "Microsoft.Extensions.Http": "8.0.1",
           "Microsoft.IO.RecyclableMemoryStream": "3.0.1",
-          "NodaTime": "3.1.12"
+          "NodaTime": "3.2.2"
         }
       },
       "Dock.Avalonia": {
@@ -1075,11 +1088,12 @@
       },
       "DuckDB.NET.Data.Full": {
         "type": "CentralTransitive",
-        "requested": "[1.2.1, )",
-        "resolved": "1.2.1",
-        "contentHash": "eUdXsYwpnIu4gKjX/T6vA/73rY+O16YB/4mKj/jsdLnmk9C/lwo+AOgejuZgWell5HB7vQaoX8qjYgMM5XTCyA==",
+        "requested": "[1.5.5, )",
+        "resolved": "1.5.5",
+        "contentHash": "M52jdLPafItTtfzwhvF+a87QHA39fMU6BOlaFLDuzGF6Gx1DSn34+UOEyCMArmw/gGoo1+Btbb/vh51IokVd0w==",
         "dependencies": {
-          "DuckDB.NET.Bindings.Full": "1.2.1"
+          "Apache.Arrow": "23.0.0",
+          "DuckDB.NET.Bindings.Full": "1.5.5"
         }
       },
       "FirebirdSql.Data.FirebirdClient": {
