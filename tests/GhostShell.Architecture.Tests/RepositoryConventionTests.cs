@@ -186,6 +186,21 @@ public sealed partial class RepositoryConventionTests
     }
 
     [Fact]
+    public void Macos_early_release_allows_native_payload_builds_to_finish()
+    {
+        var workflow = File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            ".github",
+            "workflows",
+            "repository-gate.yml"));
+        var releaseJob = workflow[workflow.IndexOf(
+            "  macos-early-release:",
+            StringComparison.Ordinal)..];
+
+        Assert.Contains("    timeout-minutes: 180", releaseJob, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Macos_packaging_keeps_vendored_project_versions_independent()
     {
         var packageScript = File.ReadAllText(
