@@ -28,7 +28,9 @@ public sealed class DockerLiveSmokeTests
             ConnectionStartup.Default,
             ConnectionKeepAlive.Disabled,
             SshHostKeyPolicy.Strict);
-        var executor = new ConnectionCommandExecutor(new SshRuntime(profile));
+        var executor = new ConnectionCommandExecutor(
+            new SshRuntime(profile),
+            new PathConnectionExecutableLocator());
         var client = new DockerEngineClient(executor, TimeProvider.System);
 
         var snapshotResult = await client.ReadSnapshotAsync(profile, CancellationToken.None);
@@ -54,7 +56,9 @@ public sealed class DockerLiveSmokeTests
             return;
         }
 
-        var executor = new ConnectionCommandExecutor(new LocalRuntime());
+        var executor = new ConnectionCommandExecutor(
+            new LocalRuntime(),
+            new PathConnectionExecutableLocator());
         var client = new DockerEngineClient(executor, TimeProvider.System);
 
         var result = await client.ReadVolumeUsageAsync(
@@ -78,7 +82,9 @@ public sealed class DockerLiveSmokeTests
 
         var containerName = Environment.GetEnvironmentVariable(
             "GHOSTSHELL_DOCKER_SMOKE_CONTAINER") ?? "dosvit-grafana-1";
-        var executor = new ConnectionCommandExecutor(new LocalRuntime());
+        var executor = new ConnectionCommandExecutor(
+            new LocalRuntime(),
+            new PathConnectionExecutableLocator());
         var client = new DockerEngineClient(executor, TimeProvider.System);
         var snapshotResult = await client.ReadSnapshotAsync(
             BuiltInConnections.Local,
@@ -144,7 +150,9 @@ public sealed class DockerLiveSmokeTests
         var containerName = Environment.GetEnvironmentVariable(
             "GHOSTSHELL_DOCKER_SMOKE_CONTAINER") ?? "dosvit-grafana-1";
         var client = new DockerEngineClient(
-            new ConnectionCommandExecutor(new LocalRuntime()),
+            new ConnectionCommandExecutor(
+                new LocalRuntime(),
+                new PathConnectionExecutableLocator()),
             TimeProvider.System);
         var snapshot = Assert.IsType<DockerResult<DockerEngineSnapshot>.Success>(
             await client.ReadSnapshotAsync(

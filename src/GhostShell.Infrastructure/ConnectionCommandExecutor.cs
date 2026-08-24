@@ -12,7 +12,9 @@ namespace GhostShell.Infrastructure;
 /// This deliberately reuses the connection runtime so credential brokerage and
 /// private host-key bindings are identical to interactive terminal sessions.
 /// </summary>
-public sealed class ConnectionCommandExecutor(IConnectionRuntime connectionRuntime)
+public sealed class ConnectionCommandExecutor(
+    IConnectionRuntime connectionRuntime,
+    IConnectionExecutableLocator executableLocator)
     : IConnectionCommandExecutor
 {
     private const int SshControlPersistSeconds = 15;
@@ -40,7 +42,7 @@ public sealed class ConnectionCommandExecutor(IConnectionRuntime connectionRunti
                 string.Empty);
         }
 
-        var start = CreateStartInfo(success.Value.Launch, request);
+        var start = CreateStartInfo(success.Value.Launch, request, executableLocator);
         using var process = new Process { StartInfo = start };
         try
         {
@@ -150,7 +152,7 @@ public sealed class ConnectionCommandExecutor(IConnectionRuntime connectionRunti
                 default);
         }
 
-        var start = CreateStartInfo(success.Value.Launch, request);
+        var start = CreateStartInfo(success.Value.Launch, request, executableLocator);
         using var process = new Process { StartInfo = start };
         try
         {
@@ -209,12 +211,13 @@ public sealed class ConnectionCommandExecutor(IConnectionRuntime connectionRunti
 
     private static ProcessStartInfo CreateStartInfo(
         TerminalLaunchRequest launch,
-        ConnectionCommand request)
+        ConnectionCommand request,
+        IConnectionExecutableLocator executableLocator)
     {
         var start = new ProcessStartInfo
         {
             FileName = request.Connection.ConnectionKind == ConnectionKind.Local
-                ? request.Executable
+                ? executableLocator.Find(request.Executable) ?? request.Executable
                 : launch.Executable
                     ?? throw new InvalidOperationException("The connection plan has no executable."),
             UseShellExecute = false,
@@ -238,12 +241,13 @@ public sealed class ConnectionCommandExecutor(IConnectionRuntime connectionRunti
 
     private static ProcessStartInfo CreateStartInfo(
         TerminalLaunchRequest launch,
-        ConnectionBinaryCommand request)
+        ConnectionBinaryCommand request,
+        IConnectionExecutableLocator executableLocator)
     {
         var start = new ProcessStartInfo
         {
             FileName = request.Connection.ConnectionKind == ConnectionKind.Local
-                ? request.Executable
+                ? executableLocator.Find(request.Executable) ?? request.Executable
                 : launch.Executable
                     ?? throw new InvalidOperationException("The connection plan has no executable."),
             UseShellExecute = false,

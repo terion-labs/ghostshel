@@ -14,7 +14,9 @@ public sealed class ConnectionCommandExecutorTests
         }
 
         var profile = ConnectionRuntimeTestSupport.Profile(new ConnectionEndpoint.Local());
-        var executor = new ConnectionCommandExecutor(new FixedRuntime(profile));
+        var executor = new ConnectionCommandExecutor(
+            new FixedRuntime(profile),
+            new PathConnectionExecutableLocator());
 
         var result = await executor.ExecuteAsync(
             new ConnectionCommand(
@@ -59,7 +61,9 @@ public sealed class ConnectionCommandExecutorTests
         }
 
         var profile = ConnectionRuntimeTestSupport.Profile(new ConnectionEndpoint.Local());
-        var executor = new ConnectionCommandExecutor(new FixedRuntime(profile));
+        var executor = new ConnectionCommandExecutor(
+            new FixedRuntime(profile),
+            new PathConnectionExecutableLocator());
 
         var result = await executor.ExecuteBinaryAsync(
             new ConnectionBinaryCommand(
@@ -98,6 +102,48 @@ public sealed class ConnectionCommandExecutorTests
         Assert.Equal("--", arguments[^3]);
         Assert.Equal("host.example", arguments[^2]);
         Assert.Equal("'ps' '-A'", arguments[^1]);
+    }
+
+    [Fact]
+    public async Task Local_commands_use_supplemental_executable_directories()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var directory = Directory.CreateTempSubdirectory(
+            "ghostshell-command-executor-");
+        try
+        {
+            var docker = Path.Combine(directory.FullName, "docker");
+            await File.WriteAllTextAsync(docker, "#!/bin/sh\nprintf supplemental");
+            File.SetUnixFileMode(
+                docker,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            var profile = ConnectionRuntimeTestSupport.Profile(new ConnectionEndpoint.Local());
+            var locator = new PathConnectionExecutableLocator(
+                "/usr/bin:/bin:/usr/sbin:/sbin",
+                [directory.FullName]);
+            var executor = new ConnectionCommandExecutor(new FixedRuntime(profile), locator);
+
+            var result = await executor.ExecuteAsync(
+                new ConnectionCommand(
+                    profile,
+                    "docker",
+                    ["version"],
+                    TimeSpan.FromSeconds(5),
+                    1024),
+                CancellationToken.None);
+
+            Assert.Equal(ConnectionCommandOutcome.Exited, result.Outcome);
+            Assert.Equal(0, result.ExitCode);
+            Assert.Equal("supplemental", result.StandardOutput);
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
     }
 
     [Fact]

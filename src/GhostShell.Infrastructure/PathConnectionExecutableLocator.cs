@@ -5,6 +5,25 @@ namespace GhostShell.Infrastructure;
 /// </summary>
 public sealed class PathConnectionExecutableLocator : IConnectionExecutableLocator
 {
+    private readonly string? _inheritedPath;
+    private readonly IReadOnlyList<string> _supplementalDirectories;
+
+    public PathConnectionExecutableLocator()
+        : this(
+            Environment.GetEnvironmentVariable("PATH"),
+            DefaultSupplementalDirectories())
+    {
+    }
+
+    internal PathConnectionExecutableLocator(
+        string? inheritedPath,
+        IReadOnlyList<string> supplementalDirectories)
+    {
+        ArgumentNullException.ThrowIfNull(supplementalDirectories);
+        _inheritedPath = inheritedPath;
+        _supplementalDirectories = supplementalDirectories;
+    }
+
     public string? Find(string executable)
     {
         if (string.IsNullOrWhiteSpace(executable) || executable.Contains('\0'))
@@ -17,13 +36,7 @@ public sealed class PathConnectionExecutableLocator : IConnectionExecutableLocat
             return ResolveCandidate(Path.GetFullPath(executable));
         }
 
-        var path = Environment.GetEnvironmentVariable("PATH");
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return null;
-        }
-
-        foreach (var directory in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        foreach (var directory in SearchDirectories())
         {
             foreach (var candidateName in CandidateNames(executable))
             {
@@ -36,6 +49,52 @@ public sealed class PathConnectionExecutableLocator : IConnectionExecutableLocat
         }
 
         return null;
+    }
+
+    private IEnumerable<string> SearchDirectories()
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        if (!string.IsNullOrWhiteSpace(_inheritedPath))
+        {
+            foreach (var directory in _inheritedPath.Split(
+                         Path.PathSeparator,
+                         StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                if (seen.Add(directory))
+                {
+                    yield return directory;
+                }
+            }
+        }
+
+        foreach (var directory in _supplementalDirectories)
+        {
+            if (!string.IsNullOrWhiteSpace(directory) && seen.Add(directory))
+            {
+                yield return directory;
+            }
+        }
+    }
+
+    private static IReadOnlyList<string> DefaultSupplementalDirectories()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return [];
+        }
+
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return Array.AsReadOnly(
+        [
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/opt/local/bin",
+            "/Applications/Docker.app/Contents/Resources/bin",
+            "/Applications/OrbStack.app/Contents/MacOS/xbin",
+            "/Applications/Rancher Desktop.app/Contents/Resources/resources/darwin/bin",
+            Path.Combine(userProfile, ".docker", "bin"),
+            Path.Combine(userProfile, ".orbstack", "bin"),
+        ]);
     }
 
     private static bool ContainsDirectorySeparator(string value) =>
