@@ -44,11 +44,11 @@ const faqs = [
   },
   {
     q: 'What does the agent actually control?',
-    a: 'Whatever you approve. Every mutating action needs a one-click approval, or an explicit time-bounded run window you grant for terminal actions. If you start typing in the terminal yourself, the agent loses its input lease immediately. You can watch every keystroke it sends.',
+    a: 'Whatever you approve. Every mutating action needs a one-click approval, or an explicit time-bounded run window you grant for terminal actions. If you start typing in the terminal yourself, the agent loses its input lease immediately. You can watch every keystroke it sends. In the browser it works from accessibility snapshots and element references, page content is treated as untrusted, and every mutation goes through the same approval.',
   },
   {
     q: 'What platforms are supported?',
-    a: 'macOS, Windows, and Linux from one codebase. The current early release ships a macOS Apple silicon build; on other platforms you build from source. The macOS build is not yet signed, so Gatekeeper will ask you to approve it manually.',
+    a: 'macOS, Windows, and Linux from one codebase. The current early release ships a signed, notarized macOS Apple-silicon build; on other platforms you build from source.',
   },
 ]
 
@@ -124,6 +124,7 @@ const open = ref<number | null>(0)
                 SSH connection, type the address. GhostSHELL routes the panel
                 through the tunnel and the page loads, private subnet
                 dashboards included. No VPN, no <code>ssh -L</code> ritual.
+                And the agent can browse those pages too.
               </p>
             </div>
             <div class="card" data-reveal>
@@ -168,6 +169,13 @@ const open = ref<number | null>(0)
                 wizards, not just run commands.
               </li>
               <li>
+                Drives the browser too. It reads the page as an
+                accessibility snapshot and clicks, fills, and checks
+                elements by reference, never blind coordinates. Point the
+                browser through an SSH tunnel and that includes your remote
+                internal web apps.
+              </li>
+              <li>
                 Nothing happens without you. Every change waits for your
                 one-click approval, or a run window you grant on your terms.
               </li>
@@ -180,8 +188,9 @@ const open = ref<number | null>(0)
                 in your OS vault.
               </li>
               <li>
-                Plug in your own tools over MCP, with the same approvals on
-                every call.
+                Searches the web when a task needs fresh information, and
+                plugs into your own tools over MCP. Same approvals on every
+                call.
               </li>
             </ul>
             <div class="providers">
@@ -367,8 +376,9 @@ const open = ref<number | null>(0)
           />
           <h2 data-reveal class="section-title download__title">Put a ghost in your shell</h2>
           <p data-reveal style="--rd: 1" class="section-lede download__lede">
-            Free early release. Unsigned macOS build for Apple silicon;
-            Windows and Linux build from source until their packages ship.
+            Free early release. Signed and notarized macOS build for Apple
+            silicon; Windows and Linux build from source until their
+            packages ship.
           </p>
           <div class="hero__ctas download__ctas">
             <a
