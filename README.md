@@ -1,15 +1,29 @@
-# GhostSHELL
+# ▵ GhostSHELL
 
-GhostSHELL is a cross-platform terminal workspace for local and remote sessions. Its agent foundation is native .NET: the provider-neutral kernel, provider adapters, and governed runtime run in-process and add neither a Node.js sidecar nor software to remote machines. Provider profiles cover Anthropic, OpenAI, Google, xAI, DeepSeek, Moonshot AI, OpenRouter, GitHub Copilot, Amazon Bedrock, Ollama, and custom OpenAI-compatible endpoints; credentials and OAuth sessions are stored behind OS-vault references, and protocols without a production adapter remain explicitly fail-closed. The agent is workspace-scoped in the desktop surface: it re-discovers supported live panels and rebuilds the tools supplied by the runtime's family contribution registry between rounds while preserving the workspace identity and revalidating every narrowed action. Terminal, browser, File Viewer, Process Monitor, Statistics, workspace-graph, and governed MCP operations all cross the session-host capability broker, policy, cancellation, and durable audit boundary. MCP supports both directly launched stdio servers and remote Streamable HTTP profiles. Browser snapshot, click, fill, and check contracts remain disabled in production pending native conformance and approval-context gates.
+A ghost in your shell. GhostSHELL is a native terminal workspace with an in-process AI agent that operates local and remote sessions. One window holds terminals, an embedded Chromium browser, files, databases, Redis, Docker, Git, and system monitors. The agent is plain .NET running inside the desktop process. There is no Node.js sidecar on your machine and nothing to install on remote hosts.
 
-The repository contains a runnable vertical slice of the Pencil terminal-workspace design:
+Website: [ghostshell.terion.name](https://ghostshell.terion.name). Early alpha. A macOS Apple-silicon build ships from [Releases](https://github.com/terion-labs/ghostshel/releases/latest); other platforms build from source.
 
-- durable workspaces, tabs, connections, screens, hosted terminal/File Viewer panels, live bounded local Statistics and Process Monitor panels, and metadata-only recent sessions;
-- a docked workspace agent with streaming reasoning summaries and token usage, bounded image input for capable providers, reasoning-effort selection, steering and queued follow-ups, active-tool state, one-action approvals, cancellation, and an explicitly confirmed run-only full-access window for terminal actions; the native kernel keeps model tool calls inert until the trusted runtime and session host authorize one typed action;
-- CEF off-screen browser panels composed as ordinary Avalonia content, with closed governed state/navigation contracts, fail-closed prompts and permissions, renderer-crash replacement, deterministic shutdown, and verified per-RID runtime packaging; semantic snapshot/click/fill/check integration is deferred to a separate agentic-browser pass;
-- a live local shell with one cross-platform libghostty-vt state engine, Porta.Pty transport, and ordinary Avalonia-managed renderer on macOS, Windows, and Linux;
-- keyboard/IME, mouse, focus, resize, clipboard, terminal-screen reads, typed waits, and executable programmatic terminal input with physical-human preemption of agent input;
-- deterministic domain, application, protocol, agent-kernel, terminal, provider, persistence, and architecture tests.
+## How the agent is kept on a leash
+
+The agent core is provider-neutral. Profiles cover Anthropic, OpenAI, Google, xAI, DeepSeek, Moonshot AI, OpenRouter, GitHub Copilot, Amazon Bedrock, Ollama, and custom OpenAI-compatible endpoints. Credentials and OAuth sessions live in the OS vault; the app passes opaque references around. A protocol without a production adapter refuses to run rather than degrading quietly.
+
+The agent is scoped to one workspace. It carries the full tool set in context and reads which panels exist and which tools apply to them; the runtime still revalidates every action against the current workspace state. Model tool calls start inert; nothing executes until the runtime and session host authorize one typed action. You approve each mutation individually, or grant an explicit, time-bounded run-only window for terminal actions. Typing in the terminal yourself revokes the agent's input lease immediately.
+
+Terminal, browser, File Viewer, Process Monitor, Statistics, workspace-graph, and MCP operations all pass through the same session-host boundary: capability checks, policy, cancellation, and a durable audit trail. MCP servers connect over stdio or Streamable HTTP with frozen run manifests. Browser snapshot/click/fill/check contracts exist in the codebase but stay disabled in production until their conformance and approval gates land.
+
+## What works today
+
+Early alpha, but the core loop is real:
+
+- Workspaces hold their own tabs, connections, and saved multi-panel layouts, and everything survives a restart. Recent-session history stores metadata only, never terminal contents.
+- Panels for the daily set: terminal, embedded Chromium browser, files, databases, Redis, Docker, Git, process monitor, and live system statistics.
+- The docked agent streams its reasoning and token usage, takes images where the provider supports them, and accepts steering and queued follow-ups mid-run. You approve each action, and you can cancel at any point.
+- The agent types into the same terminal you do. The moment you touch the keyboard, it stops.
+- The browser is CEF rendered off-screen straight into the UI. Permission prompts fail closed, and a crashed renderer gets replaced without taking the app down.
+- One terminal engine (libghostty-vt) and one input path on macOS, Windows, and Linux: IME, mouse, resize, clipboard, the lot. No per-platform terminal forks.
+
+Everything above sits under deterministic test suites, from domain logic down to architecture contracts that fail the build when a boundary is crossed.
 
 ## Stack
 
@@ -18,13 +32,13 @@ The repository contains a runnable vertical slice of the Pencil terminal-workspa
 - [libghostty-vt](https://github.com/ghostty-org/ghostty) through an isolated C ABI for canonical terminal state and protocol encoding
 - [Porta.Pty](https://github.com/IvanJosipovic/Porta.Pty) for PTY process transport on every supported desktop OS
 
-libghostty-vt's API is not stable yet. GhostSHELL pins Ghostty commit `08f039fbb3dea9c6b1cdb5ff4550666598122346`, applies a narrow reviewed patch overlay in a disposable checkout, and keeps every Ghostty C declaration private to `GhostShell.Terminal`. The overlay exposes normalized OSC 133 lifecycle events, canonical virtual Kitty placement geometry, and Ghostty-backed full-scrollback search; it also enables Ghostty's existing Wuffs PNG decoder and publishes an exact extension-ABI marker. Application-owned render DTOs carry damage, live cursor state, underline variants/colors, and Kitty image placement/lifecycle into the Avalonia control; no Ghostty or Porta.Pty type crosses into Core, Protocol, SessionHost, or App.
+libghostty-vt's API is not stable yet, so GhostSHELL pins Ghostty commit `08f039fbb3dea9c6b1cdb5ff4550666598122346` and applies a narrow, reviewed patch overlay in a disposable checkout. Every Ghostty C declaration stays private to `GhostShell.Terminal`. The overlay exposes normalized OSC 133 lifecycle events, canonical virtual Kitty placement geometry, and Ghostty-backed full-scrollback search. It also enables Ghostty's Wuffs PNG decoder and publishes an exact extension-ABI marker. Application-owned render DTOs carry damage, live cursor state, underline variants and colors, and Kitty image placement into the Avalonia control. No Ghostty or Porta.Pty type crosses into Core, Protocol, SessionHost, or App.
 
-The terminal is not a native child view. macOS, Windows, and Linux all use the same Avalonia presentation and input path; GhostSHELL does not embed Ghostty's `NSView`, use `NativeControlHost` for terminals, or use an IOSurface handoff. See [ADR 0040](./docs/adr/0040-cross-platform-libghostty-vt-terminal.md).
+The terminal is not a native child view. All three OSes share the same Avalonia presentation and input path; there is no embedded `NSView`, no `NativeControlHost`, no IOSurface handoff. [ADR 0040](./docs/adr/0040-cross-platform-libghostty-vt-terminal.md) explains why.
 
-## Run
+## Build and run
 
-Install the workspace-local .NET SDK, then build the pinned libghostty-vt runtime for the current host:
+Install the workspace-local .NET SDK, then build the pinned native runtimes for the current host:
 
 ```sh
 GHOSTSHELL_SKIP_NATIVE=1 ./scripts/bootstrap.sh
@@ -32,42 +46,32 @@ GHOSTSHELL_SKIP_NATIVE=1 ./scripts/bootstrap.sh
 ./scripts/build-cef-runtime.sh --rid osx-arm64
 ```
 
-The first native build downloads the pinned Zig toolchain and Ghostty source and can take several minutes. The build applies the reviewed overlay to a disposable checkout, runs Ghostty's patched VT tests, verifies every managed import plus the exact GhostSHELL extension ABI, and publishes the library, reviewed export manifest, license, receipt, and pinned Bash/Fish/Zsh integration resources under `native/artifacts/<rid>`. It also fetches the official JetBrains Mono 2.304 dependency declared by that Ghostty pin, verifies the regular/bold/italic/bold-italic faces and OFL by exact hash, and publishes their independently receipted cross-platform closure under `native/artifacts/common`.
+The first native build downloads the pinned Zig toolchain and Ghostty source, so expect several minutes. It applies the reviewed overlay to a disposable checkout, runs Ghostty's patched VT tests, verifies every managed import plus the exact GhostSHELL extension ABI, and publishes the library with its export manifest, license, and build receipt under `native/artifacts/<rid>`. It also fetches JetBrains Mono 2.304 as declared by the Ghostty pin, verifies all four faces and the OFL by exact hash, and publishes them under `native/artifacts/common`.
 
-Build, test, and run:
+Then build, test, and run:
 
 ```sh
 ./scripts/check.sh --full
 ./.dotnet/dotnet run --project src/GhostShell.Desktop/GhostShell.Desktop.csproj
 ```
 
-The repository gate is intentionally deterministic and warning-free. It uses
-the exact SDK in `global.json`, locked NuGet restores with central package
-versions and vulnerability auditing, `dotnet format`, all enabled compiler and
-security analyzers, architecture contracts, and the test projects in a stable
-sequence. `./scripts/check.sh --quick` runs the same restore, audit, formatting,
-build, and architecture checks for fast iteration. Bootstrap installs the
-checked-in pre-commit and pre-push hooks; they can be reinstalled with
-`./scripts/install-hooks.sh`.
+On macOS, `dotnet run` first assembles the framework-dependent build into a private development `.app` under `src/GhostShell.Desktop/obj`. CEF needs its `Contents/Frameworks` layout, and this preserves it without weakening the native-payload checks that release packaging relies on.
 
-GitHub Actions runs the managed suite as six functional sections in parallel
-on macOS, Linux, and Windows while retaining complete Release builds on every
-platform. A `v<major>.<minor>.<patch>` tag starts the repository gate, waits for
-those jobs, and then builds the verified native dependencies on an Apple
-Silicon runner. The workflow uploads `GhostShell-macOS-arm64.zip` and its
-SHA-256 checksum as a 30-day workflow artifact. Tag builds also publish those
-stable asset names in a GitHub Release marked latest, so the
-[application archive](https://github.com/terion-labs/ghostshel/releases/latest/download/GhostShell-macOS-arm64.zip)
-and [checksum](https://github.com/terion-labs/ghostshel/releases/latest/download/GhostShell-macOS-arm64.zip.sha256)
-have permanent download URLs. Tag releases fail closed unless the repository
-has the required Developer ID and App Store Connect secrets; the workflow
-signs, notarizes, staples, and Gatekeeper-validates the extracted archive before
-publishing it.
+To exercise the real PTY and libghostty-vt pipeline, split UTF-8 input, render damage, cursor and underline state, semantic shell events, PTY flush, and process exit:
 
-Dependency updates must refresh every graph that CI and release packaging
-consume: the ordinary and Windows-targeted managed graphs, every reviewed
-desktop RID, and the macOS Native AOT graph. Regenerate them deliberately,
-review the lock-file diffs, and then run the full gate:
+```sh
+./.dotnet/dotnet test tests/GhostShell.Terminal.Tests/GhostShell.Terminal.Tests.csproj
+```
+
+## The check gate
+
+The repository gate is deterministic and warning-free on purpose. It uses the exact SDK from `global.json`, locked NuGet restores with central package versions and vulnerability auditing, `dotnet format`, all compiler and security analyzers, architecture contract tests, and the test projects in a stable sequence. `./scripts/check.sh --quick` runs the restore, audit, formatting, build, and architecture parts for fast iteration. Bootstrap installs the checked-in pre-commit and pre-push hooks; `./scripts/install-hooks.sh` reinstalls them.
+
+On GitHub Actions the managed suite runs as six parallel sections on macOS, Linux, and Windows, with complete Release builds on every platform. Pushing a `v<major>.<minor>.<patch>` tag starts the repository gate, waits for those jobs, then builds the verified native dependencies on an Apple-silicon runner. Tag builds sign, notarize, staple, and Gatekeeper-validate the archive, then publish `GhostShell-macOS-arm64.zip` with its SHA-256 checksum in a GitHub Release marked latest, so the [archive](https://github.com/terion-labs/ghostshel/releases/latest/download/GhostShell-macOS-arm64.zip) and [checksum](https://github.com/terion-labs/ghostshel/releases/latest/download/GhostShell-macOS-arm64.zip.sha256) have permanent URLs. A tag release fails closed if the Developer ID and App Store Connect secrets are missing.
+
+## Updating dependencies
+
+A dependency bump has to refresh every lock graph that CI and release packaging read: the ordinary and Windows-targeted managed graphs, each reviewed desktop RID, and the macOS Native AOT graph. Regenerate them deliberately, review the lock-file diffs, then run the full gate:
 
 ```sh
 ./.dotnet/dotnet restore GhostShell.slnx --force-evaluate
@@ -89,39 +93,19 @@ review the lock-file diffs, and then run the full gate:
 ./scripts/check.sh --full
 ```
 
-GitHub Copilot device authorization uses GitHub's public first-party Copilot
-client identity by default. A distribution with its own registered GitHub OAuth
-app can override the public client ID before launching the desktop process:
+## Provider sign-in notes
+
+GitHub Copilot device authorization uses GitHub's public first-party Copilot client identity by default. A distribution with its own registered GitHub OAuth app can override it before launching the desktop process:
 
 ```sh
 export GHOSTSHELL_GITHUB_OAUTH_CLIENT_ID="your-ghostshell-oauth-app-client-id"
 ```
 
-OpenAI browser and device authorization likewise use OpenAI's public Codex
-client identity and need no additional environment variable. Browser login owns
-the registered `http://localhost:1455/auth/callback` listener for the bounded
-duration of the flow; if another process owns that port, login fails closed.
-GitHub's long-lived device token remains vault-only refresh material; GhostShell
-exchanges it for a bounded Copilot API token before provider traffic and repeats
-that exchange locally when the Copilot token expires.
+OpenAI browser and device authorization use OpenAI's public Codex client identity and need no variable. Browser login owns the registered `http://localhost:1455/auth/callback` listener for the duration of the flow; if another process holds that port, login fails closed. GitHub's long-lived device token stays in the vault as refresh material only. GhostSHELL exchanges it locally for a bounded Copilot API token before any provider traffic and repeats the exchange when that token expires.
 
-On macOS, `dotnet run` assembles the framework-dependent build into a private
-development `.app` under `src/GhostShell.Desktop/obj` before starting it. This
-preserves CEF's required `Contents/Frameworks` layout without weakening the
-verified native-payload checks used by release packaging.
+## macOS packaging
 
-Verify the real PTY/libghostty-vt pipeline, split UTF-8 input, render damage,
-terminal-controlled cursor and underline state, semantic shell events, PTY
-flush, and process exit. Governed provider-to-terminal coverage remains in the
-runtime/broker/session-host suites:
-
-```sh
-./.dotnet/dotnet test tests/GhostShell.Terminal.Tests/GhostShell.Terminal.Tests.csproj
-```
-
-Build a non-launching, ad-hoc sealed macOS arm64 Native AOT application-bundle candidate.
-Install LLVM's `ld64.lld` first; the packager also accepts its absolute path
-through `GHOSTSHELL_NATIVE_AOT_LINKER`:
+To build a non-launching, ad-hoc sealed macOS arm64 Native AOT bundle candidate, install LLVM's `ld64.lld` first (or point `GHOSTSHELL_NATIVE_AOT_LINKER` at it):
 
 ```sh
 mkdir -p artifacts/macos-arm64-rc
@@ -131,45 +115,47 @@ mkdir -p artifacts/macos-arm64-rc
   --output artifacts/macos-arm64-rc/GhostShell.app
 ```
 
-The packager emits a speed-optimized Native AOT executable with no managed
-application DLLs, `.deps.json`, runtime configuration, or JIT runtime in the
-bundle. It uses a separate locked self-contained publish only to validate the
-reviewed managed dependency catalog and produce license evidence. The packager
-refuses incomplete native payloads, dependency-catalog drift,
-tampered NuGet archives, and existing destinations. It validates the single
-published `libghostty-vt.dylib`, its reviewed export manifest, pinned build
-receipt, Ghostty license, and staged shell-integration manifest, emits deterministic SPDX 2.3 evidence
-for the managed dependency closure, separately validates the exact JetBrains
-Mono quartet, font manifest, source catalog, build receipt, and OFL, then
-validates the exact bundle identity
-through the acceptance fingerprint boundary. See the
-[macOS packaging guide](./docs/macos-packaging.md) for guarantees and the
-remaining native-license, signing, notarization, and named-host gates.
+The packager emits a speed-optimized Native AOT executable with no managed DLLs, `.deps.json`, runtime configuration, or JIT runtime in the bundle. A separate locked self-contained publish exists only to validate the reviewed dependency catalog and produce license evidence. The packager refuses incomplete native payloads, dependency-catalog drift, tampered NuGet archives, and existing destinations. It validates the published `libghostty-vt.dylib` against its export manifest, build receipt, and license, checks the JetBrains Mono quartet and OFL, emits deterministic SPDX 2.3 evidence for the managed dependency closure, and verifies the exact bundle identity. The [macOS packaging guide](./docs/macos-packaging.md) documents the guarantees and the remaining signing, notarization, and named-host gates.
 
-The desktop composition root selects one libghostty-vt/Porta.Pty engine and one Avalonia terminal presentation on macOS, Windows, and Linux. Packaged interactive-TUI rendering, physical input, IME, clipboard, mouse, resize, sleep/wake, and PTY lifecycle runs on named supported systems remain release acceptance requirements until their platform jobs have produced passing evidence. Use [`scripts/platform-terminal-acceptance.ps1`](./scripts/platform-terminal-acceptance.ps1) and the [platform acceptance guide](./docs/platform-terminal-acceptance.md) to capture host- and package-specific evidence without treating an unrun checklist as a pass.
+## Platform acceptance
 
-Physical keyboard and screen-reader acceptance is likewise an explicit named-host gate. Use [`scripts/platform-accessibility-acceptance.ps1`](./scripts/platform-accessibility-acceptance.ps1) with the [VoiceOver, Narrator, and Orca acceptance guide](./docs/platform-accessibility-acceptance.md); the runner binds observations to one package and reader identity, retains stable descendant identities through cleanup, and emits a strict sanitized receipt.
+Packaged interactive-TUI rendering, physical input, IME, clipboard, mouse, resize, sleep/wake, and PTY lifecycle must produce passing evidence on named host systems before a release claims them. [`scripts/platform-terminal-acceptance.ps1`](./scripts/platform-terminal-acceptance.ps1) and the [platform acceptance guide](./docs/platform-terminal-acceptance.md) capture that evidence per host and package; an unrun checklist never counts as a pass.
 
-OS-global Quick Terminal shortcuts use Carbon on macOS, `RegisterHotKey` on Windows, and `XGrabKey` in real X11 sessions. Wayland is reported as unsupported until a compositor-global portal backend can be implemented and verified safely.
+Physical keyboard and screen-reader acceptance works the same way. [`scripts/platform-accessibility-acceptance.ps1`](./scripts/platform-accessibility-acceptance.ps1) with the [VoiceOver, Narrator, and Orca guide](./docs/platform-accessibility-acceptance.md) binds observations to one package and one reader identity and emits a sanitized receipt.
 
-Unsafe terminal paste fails closed into an explicit in-terminal confirmation prompt. The managed surface supports bounded local scrollback, mouse selection, policy-gated clipboard gestures, and OSC 8 `http`/`https` activation through a revalidated confirmation prompt. Brokerless process-originated OSC 52 access fails closed.
+A few platform specifics worth knowing:
 
-## Solution
+- OS-global Quick Terminal shortcuts use Carbon on macOS, `RegisterHotKey` on Windows, and `XGrabKey` under real X11. Wayland reports as unsupported until a compositor-global portal backend can be built and verified safely.
+- A paste containing escape sequences stops in an explicit in-terminal confirmation prompt. OSC 8 `http`/`https` links open through a revalidated confirmation. Process-originated OSC 52 clipboard access without a broker fails closed.
 
-- `src/GhostShell.Core`: framework-independent IDs, definitions, invariants, and state machines.
-- `src/GhostShell.Application`: typed application/session operations, results, lifecycle, capability, attachment, input-lease, and engine ports.
-- `src/GhostShell.Protocol`: versioned transport envelopes and stream contracts.
-- `src/GhostShell.Agent`: provider-neutral native conversation loop, strict stream reduction, inert tool batches, bounded run events, reasoning/usage/image metadata, steering, cancellation fencing, atomic compaction, and idle checkpoint capture/restore.
-- `src/GhostShell.Agent.Providers`: bounded native provider adapters, request-local API-key/OAuth resolution, OpenAI browser/device and GitHub device authorization, HTTP/SSE parsing, model discovery, and governed-runtime bindings.
-- `src/GhostShell.Agent.Runtime`: workspace-scoped provider/tool orchestration with a family contribution registry filtered by live panels, sequential correlated tool batches, steering/follow-ups, and closed typed execution requests.
-- `src/GhostShell.Mcp`: governed stdio and remote Streamable HTTP MCP sessions, bounded discovery/calls, and frozen run manifests.
-- `src/GhostShell.SessionHost`: in-process runtime registry, ordered events, revisions, attachments, leases, browser action guards, and close policy.
-- `src/GhostShell.Terminal`: the cross-platform libghostty-vt state/input adapter and Porta.Pty process transport behind render-state, automation, typed input, and lifecycle ports.
-- `src/GhostShell.Monitoring`: package-free, cross-platform local resource sampling behind privacy-bounded statistics and process-session ports.
-- `src/GhostShell.App`: Avalonia presentation; it depends only on application ports and Core projections.
-- `src/GhostShell.Desktop`: executable composition root and platform adapter registrations.
-- `tools/GhostShell.Packaging`: fail-closed release-candidate bundle assembly.
-- `native/ghostty-vt`: the reviewed patch overlay and notices applied to the pinned libghostty-vt build.
-- `tests/*`: focused domain, application, protocol, terminal, session-host, provider, persistence, desktop, and architecture suites.
+## Solution map
 
-See [architecture.md](./docs/architecture.md) for boundaries and the implementation sequence.
+| Project | What it holds |
+| --- | --- |
+| `src/GhostShell.Core` | framework-independent IDs, definitions, invariants, and state machines |
+| `src/GhostShell.Application` | typed application and session operations, lifecycle, capability, attachment, input-lease, and engine ports |
+| `src/GhostShell.Protocol` | versioned transport envelopes and stream contracts |
+| `src/GhostShell.Agent` | the provider-neutral conversation loop: strict stream reduction, inert tool batches, steering, cancellation fencing, compaction, checkpoints |
+| `src/GhostShell.Agent.Providers` | native provider adapters, API-key and OAuth resolution, device/browser authorization, HTTP/SSE parsing, model discovery |
+| `src/GhostShell.Agent.Runtime` | workspace-scoped provider and tool orchestration; the full tool registry stays in context and actions validate against live panels |
+| `src/GhostShell.Mcp` | stdio and Streamable HTTP MCP sessions with bounded discovery and frozen run manifests |
+| `src/GhostShell.SessionHost` | the in-process runtime registry: ordered events, revisions, attachments, leases, browser action guards, close policy |
+| `src/GhostShell.Terminal` | the libghostty-vt state/input adapter and Porta.Pty transport behind render, automation, input, and lifecycle ports |
+| `src/GhostShell.Browser` | the CEF engine runtime and per-workspace browser profiles, including SSH-routed network contexts |
+| `src/GhostShell.Files` | file providers (local, SFTP, FTP, S3, WebDAV, SMB), transfer sessions, and the SSH tunnel factories |
+| `src/GhostShell.Databases` | the database panel client and SQL dialects for the supported engines |
+| `src/GhostShell.Redis` | Redis panel sessions |
+| `src/GhostShell.Docker` | the Docker engine client for local and remote daemons |
+| `src/GhostShell.Git` | the Git panel over a CLI adapter |
+| `src/GhostShell.Docking` | panel docking and layout |
+| `src/GhostShell.Monitoring` | package-free local resource sampling behind privacy-bounded statistics and process ports |
+| `src/GhostShell.Previews` | file content previews |
+| `src/GhostShell.Infrastructure` | encrypted persistence, OS vaults, startup protection, and platform adapters |
+| `src/GhostShell.App` | Avalonia presentation; depends only on application ports and Core projections |
+| `src/GhostShell.Desktop` | the executable composition root and platform registrations |
+| `tools/GhostShell.Packaging` | fail-closed release-candidate bundle assembly |
+| `native/ghostty-vt` | the reviewed patch overlay and notices for the pinned libghostty-vt build |
+| `website/` | the marketing site (Nuxt, deployed to GitHub Pages by `.github/workflows/website.yml`) |
+| `tests/*` | domain, application, protocol, terminal, session-host, provider, persistence, desktop, and architecture suites |
+
+[architecture.md](./docs/architecture.md) documents the boundaries and the implementation sequence.
