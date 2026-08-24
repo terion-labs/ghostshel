@@ -8,20 +8,37 @@ namespace GhostShell.Architecture.Tests;
 public sealed partial class RepositoryConventionTests
 {
     [Fact]
-    public void Github_actions_allocate_only_macos_runners()
+    public void Github_actions_use_only_reviewed_runners()
     {
         var workflowDirectory = Path.Combine(RepositoryRoot, ".github", "workflows");
-        var runnerDeclarations = Directory
+        var expectedRunners = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["database-viewer-integration.yml"] = "runs-on: macos-15",
+            ["repository-gate.yml"] = "runs-on: macos-15",
+            ["website.yml"] = "runs-on: ubuntu-latest",
+        };
+        var workflows = Directory
             .GetFiles(workflowDirectory, "*.yml")
-            .SelectMany(File.ReadLines)
-            .Select(line => line.Trim())
-            .Where(line => line.StartsWith("runs-on:", StringComparison.Ordinal))
+            .Order(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.NotEmpty(runnerDeclarations);
-        Assert.All(
-            runnerDeclarations,
-            declaration => Assert.Equal("runs-on: macos-15", declaration));
+        Assert.Equal(
+            expectedRunners.Keys.Order(StringComparer.Ordinal),
+            workflows.Select(Path.GetFileName),
+            StringComparer.Ordinal);
+        foreach (var workflow in workflows)
+        {
+            var runnerDeclarations = File.ReadLines(workflow)
+                .Select(line => line.Trim())
+                .Where(line => line.StartsWith("runs-on:", StringComparison.Ordinal))
+                .ToArray();
+            Assert.NotEmpty(runnerDeclarations);
+            Assert.All(
+                runnerDeclarations,
+                declaration => Assert.Equal(
+                    expectedRunners[Path.GetFileName(workflow)],
+                    declaration));
+        }
     }
 
     [Fact]
