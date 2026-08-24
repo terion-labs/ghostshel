@@ -22,3 +22,5 @@ native/artifacts/
 references
 .tmp
 .security
+.apple
+.env
