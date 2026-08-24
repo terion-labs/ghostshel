@@ -19,6 +19,41 @@ public sealed class GhosttyShellIntegrationLaunchAdapterTests : IDisposable
     }
 
     [Fact]
+    public void Packaged_bundle_resolves_shell_resources_outside_the_code_directory()
+    {
+        var executableDirectory = Path.Combine(
+            _resourceDirectory,
+            "GhostShell.app",
+            "Contents",
+            "MacOS");
+        var packagedResources = Path.Combine(
+            _resourceDirectory,
+            "GhostShell.app",
+            "Contents",
+            "Resources",
+            "ghostty");
+        Directory.CreateDirectory(executableDirectory);
+        Directory.CreateDirectory(packagedResources);
+
+        var resolved = GhosttyShellIntegrationLaunchAdapter.ResolveResourceDirectory(
+            executableDirectory);
+
+        Assert.Equal(packagedResources, resolved);
+    }
+
+    [Fact]
+    public void Development_output_resolves_adjacent_shell_resources()
+    {
+        var executableDirectory = Path.Combine(_resourceDirectory, "development");
+        Directory.CreateDirectory(executableDirectory);
+
+        var resolved = GhosttyShellIntegrationLaunchAdapter.ResolveResourceDirectory(
+            executableDirectory);
+
+        Assert.Equal(Path.Combine(executableDirectory, "ghostty"), resolved);
+    }
+
+    [Fact]
     public void Disabled_mode_leaves_the_process_launch_untouched()
     {
         var launch = Launch(

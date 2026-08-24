@@ -205,7 +205,7 @@ public sealed class SqlLanguageWorkerPackagingTests
             script,
             StringComparison.Ordinal);
         Assert.Contains(
-            "candidate_sql_language_directory}/build-receipt.json",
+            "candidate_sql_language_resources}/build-receipt.json",
             script,
             StringComparison.Ordinal);
         Assert.Contains(

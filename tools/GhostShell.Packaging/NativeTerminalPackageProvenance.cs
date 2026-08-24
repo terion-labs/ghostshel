@@ -49,6 +49,8 @@ internal static class NativeTerminalPackageProvenance
 
     public static void Validate(
         string executableDirectory,
+        string resourceDirectory,
+        string nativeMetadataDirectory,
         string licenseDirectory,
         string catalogPath,
         string receiptPath)
@@ -106,7 +108,7 @@ internal static class NativeTerminalPackageProvenance
             ExtensionAbiExport);
         RequireString(abi, "requiredExportsPath", RequiredExportsFileName);
         var requiredExportsPath = Path.Combine(
-            executableDirectory,
+            nativeMetadataDirectory,
             RequiredExportsFileName);
         ValidateFile(
             requiredExportsPath,
@@ -136,7 +138,7 @@ internal static class NativeTerminalPackageProvenance
             "manifestPath",
             ShellIntegrationManifest);
         var manifestPath = Path.Combine(
-            executableDirectory,
+            resourceDirectory,
             ShellIntegrationManifest.Replace('/', Path.DirectorySeparatorChar));
         ValidateFile(
             manifestPath,
@@ -149,7 +151,7 @@ internal static class NativeTerminalPackageProvenance
                 "The shell-integration receipt has an unexpected file count.");
         }
 
-        ValidateShellIntegrationFiles(executableDirectory, manifestPath);
+        ValidateShellIntegrationFiles(resourceDirectory, manifestPath);
 
         foreach (var retiredFile in new[]
                  {

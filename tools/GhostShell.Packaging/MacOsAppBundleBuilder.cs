@@ -51,6 +51,8 @@ public sealed class MacOsAppBundleBuilder
         "terminal-font-assets-build-receipt.json";
     private const string TerminalFontLicenseFileName =
         "JETBRAINS-MONO-OFL.txt";
+    private const string NativeResourcesDirectoryName = "Native";
+    private const string SqlLanguageResourcesDirectoryName = "SqlLanguage";
 
     private static readonly string[] RequiredRootFiles =
     [
@@ -158,6 +160,7 @@ public sealed class MacOsAppBundleBuilder
 
             CopyPublishPayload(
                 executableDirectory,
+                resourcesDirectory,
                 licenseDirectory,
                 sourceEntries);
             ValidateNativeProvenance();
@@ -202,11 +205,13 @@ public sealed class MacOsAppBundleBuilder
             {
                 NativeTerminalPackageProvenance.Validate(
                     executableDirectory,
+                    resourcesDirectory,
+                    Path.Combine(resourcesDirectory, NativeResourcesDirectoryName),
                     licenseDirectory,
                     request.NativeComponentCatalogPath,
                     request.NativeBuildReceiptPath);
                 TerminalFontPackageProvenance.Validate(
-                    executableDirectory,
+                    resourcesDirectory,
                     licenseDirectory,
                     request.FontAssetsCatalogPath,
                     request.FontAssetsBuildReceiptPath);
@@ -454,6 +459,7 @@ public sealed class MacOsAppBundleBuilder
 
     private static void CopyPublishPayload(
         string executableDirectory,
+        string resourcesDirectory,
         string licenseDirectory,
         IReadOnlyList<SourceEntry> entries)
     {
@@ -461,8 +467,9 @@ public sealed class MacOsAppBundleBuilder
                      .Where(entry => entry.IsDirectory)
                      .OrderBy(entry => PathDepth(entry.RelativePath)))
         {
-            Directory.CreateDirectory(Path.Combine(
+            Directory.CreateDirectory(ResolvePayloadDestination(
                 executableDirectory,
+                resourcesDirectory,
                 directory.RelativePath));
         }
 
@@ -471,12 +478,39 @@ public sealed class MacOsAppBundleBuilder
             var fileName = Path.GetFileName(file.RelativePath);
             var isRootFile =
                 string.IsNullOrEmpty(Path.GetDirectoryName(file.RelativePath));
-            var destination = isRootFile
+            string destination;
+            if (isRootFile
                 && LicenseDestinations.TryGetValue(
                     fileName,
-                    out var licenseDestination)
-                    ? Path.Combine(licenseDirectory, licenseDestination)
-                    : Path.Combine(executableDirectory, file.RelativePath);
+                    out var licenseDestination))
+            {
+                destination = Path.Combine(licenseDirectory, licenseDestination);
+            }
+            else if (string.Equals(
+                         file.RelativePath,
+                         "ghostty-vt-required-exports.txt",
+                         StringComparison.Ordinal))
+            {
+                destination = Path.Combine(
+                    resourcesDirectory,
+                    NativeResourcesDirectoryName,
+                    file.RelativePath);
+            }
+            else if (IsSqlLanguageMetadata(file.RelativePath))
+            {
+                destination = Path.Combine(
+                    resourcesDirectory,
+                    NativeResourcesDirectoryName,
+                    SqlLanguageResourcesDirectoryName,
+                    fileName);
+            }
+            else
+            {
+                destination = ResolvePayloadDestination(
+                    executableDirectory,
+                    resourcesDirectory,
+                    file.RelativePath);
+            }
             var destinationParent = Path.GetDirectoryName(destination)
                 ?? throw new InvalidDataException(
                     "A publish payload entry has no destination parent.");
@@ -508,6 +542,35 @@ public sealed class MacOsAppBundleBuilder
                 File.SetUnixFileMode(destination, unixMode);
             }
         }
+    }
+
+    private static string ResolvePayloadDestination(
+        string executableDirectory,
+        string resourcesDirectory,
+        string relativePath)
+    {
+        var topLevelDirectory = relativePath.Split(
+            Path.DirectorySeparatorChar,
+            2)[0];
+        var root = topLevelDirectory is "fonts" or "ghostty"
+            ? resourcesDirectory
+            : executableDirectory;
+        return Path.Combine(root, relativePath);
+    }
+
+    private static bool IsSqlLanguageMetadata(string relativePath)
+    {
+        var directory = Path.Combine("runtimes", "osx-arm64", "native");
+        var parent = Path.GetDirectoryName(relativePath);
+        if (!string.Equals(parent, directory, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return Path.GetFileName(relativePath) is
+            "THIRD-PARTY-NOTICES.md"
+            or "runtime-dependencies.txt"
+            or "build-receipt.json";
     }
 
     private static void ValidateFinalBudget(

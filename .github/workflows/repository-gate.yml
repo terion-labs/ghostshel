@@ -222,6 +222,62 @@ jobs:
           ./scripts/build-libghostty-vt.sh --rid osx-arm64
           ./scripts/build-sql-language-worker.sh --local --rid osx-arm64
           ./scripts/build-cef-runtime.sh --rid osx-arm64 --dotnet ./.dotnet/dotnet
+      - name: Configure Developer ID signing and notarization
+        env:
+          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_PRIVATE_KEY_BASE64: ${{ secrets.APPLE_NOTARY_PRIVATE_KEY_BASE64 }}
+        run: |
+          for required in \
+            APPLE_CERTIFICATE_P12_BASE64 \
+            APPLE_CERTIFICATE_PASSWORD \
+            APPLE_DEVELOPER_ID_APPLICATION \
+            APPLE_NOTARY_ISSUER_ID \
+            APPLE_NOTARY_KEY_ID \
+            APPLE_NOTARY_PRIVATE_KEY_BASE64; do
+            if [[ -z "${!required}" ]]; then
+              echo "Required release secret ${required} is not configured." >&2
+              exit 1
+            fi
+          done
+
+          signing_directory="${RUNNER_TEMP}/ghostshell-signing"
+          signing_keychain="${signing_directory}/release.keychain-db"
+          signing_password="$(uuidgen)"
+          mkdir -p "${signing_directory}"
+          echo "GHOSTSHELL_SIGNING_DIRECTORY=${signing_directory}" >> "${GITHUB_ENV}"
+          echo "GHOSTSHELL_SIGNING_KEYCHAIN=${signing_keychain}" >> "${GITHUB_ENV}"
+          printf '%s' "${APPLE_CERTIFICATE_P12_BASE64}" \
+            | /usr/bin/base64 -D > "${signing_directory}/certificate.p12"
+          printf '%s' "${APPLE_NOTARY_PRIVATE_KEY_BASE64}" \
+            | /usr/bin/base64 -D > "${signing_directory}/AuthKey.p8"
+
+          security create-keychain -p "${signing_password}" "${signing_keychain}"
+          security set-keychain-settings -lut 21600 "${signing_keychain}"
+          security unlock-keychain -p "${signing_password}" "${signing_keychain}"
+          security import "${signing_directory}/certificate.p12" \
+            -k "${signing_keychain}" \
+            -P "${APPLE_CERTIFICATE_PASSWORD}" \
+            -T /usr/bin/codesign
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -s \
+            -k "${signing_password}" \
+            "${signing_keychain}"
+          security list-keychains -d user -s "${signing_keychain}"
+          security default-keychain -d user -s "${signing_keychain}"
+          security find-identity -v -p codesigning "${signing_keychain}" \
+            | grep -Fq "${APPLE_DEVELOPER_ID_APPLICATION}"
+
+          xcrun notarytool store-credentials ghostshell-ci \
+            --keychain "${signing_keychain}" \
+            --key "${signing_directory}/AuthKey.p8" \
+            --key-id "${APPLE_NOTARY_KEY_ID}" \
+            --issuer "${APPLE_NOTARY_ISSUER_ID}"
+          echo "GHOSTSHELL_SIGNING_IDENTITY=${APPLE_DEVELOPER_ID_APPLICATION}" >> "${GITHUB_ENV}"
       - name: Assemble macOS application
         env:
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
@@ -231,6 +287,8 @@ jobs:
             --version "${RELEASE_VERSION}" \
             --build-version "${GITHUB_RUN_NUMBER}" \
             --runtime-identifier osx-arm64 \
+            --sign-identity "${GHOSTSHELL_SIGNING_IDENTITY}" \
+            --notary-profile ghostshell-ci \
             --output artifacts/macos-arm64/GhostShell.app
       - name: Archive release candidate
         run: |
@@ -240,6 +298,16 @@ jobs:
             macos-arm64/GhostShell.app \
             "${archive}"
           shasum -a 256 "${archive}" > "${archive}.sha256"
+          verification_directory="$(mktemp -d "${RUNNER_TEMP}/ghostshell-archive.XXXXXX")"
+          trap 'rm -rf -- "${verification_directory}"' EXIT
+          ditto -x -k "${archive}" "${verification_directory}"
+          codesign --verify --deep --strict --verbose=2 \
+            "${verification_directory}/GhostShell.app"
+          spctl --assess --type execute --verbose=2 \
+            "${verification_directory}/GhostShell.app"
+          test "$(plutil -extract CFBundleShortVersionString raw \
+            "${verification_directory}/GhostShell.app/Contents/Info.plist")" \
+            = "${{ steps.release.outputs.version }}"
       - name: Upload macOS release candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -262,6 +330,15 @@ jobs:
             --fail-on-no-commits \
             --generate-notes \
             --latest \
-            --notes "Early unsigned Apple Silicon build for trusted testing only. macOS may quarantine or block the app because it does not yet have a Developer ID signature or notarization." \
+            --notes "Developer ID signed and notarized Apple Silicon build. The stapled application is verified with codesign and Gatekeeper after archive extraction before publication." \
             --title "GhostShell ${RELEASE_VERSION} early macOS release" \
             --verify-tag
+      - name: Remove temporary signing credentials
+        if: always()
+        run: |
+          if [[ -n "${GHOSTSHELL_SIGNING_KEYCHAIN:-}" && -f "${GHOSTSHELL_SIGNING_KEYCHAIN}" ]]; then
+            security delete-keychain "${GHOSTSHELL_SIGNING_KEYCHAIN}"
+          fi
+          if [[ -n "${GHOSTSHELL_SIGNING_DIRECTORY:-}" && -d "${GHOSTSHELL_SIGNING_DIRECTORY}" ]]; then
+            rm -rf -- "${GHOSTSHELL_SIGNING_DIRECTORY}"
+          fi

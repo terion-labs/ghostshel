@@ -59,9 +59,10 @@ SHA-256 checksum as a 30-day workflow artifact. Tag builds also publish those
 stable asset names in a GitHub Release marked latest, so the
 [application archive](https://github.com/terion-labs/ghostshel/releases/latest/download/GhostShell-macOS-arm64.zip)
 and [checksum](https://github.com/terion-labs/ghostshel/releases/latest/download/GhostShell-macOS-arm64.zip.sha256)
-have permanent download URLs. This first early-release artifact is unsigned;
-use the signing and notarization flow documented below before distributing
-outside a trusted tester group.
+have permanent download URLs. Tag releases fail closed unless the repository
+has the required Developer ID and App Store Connect secrets; the workflow
+signs, notarizes, staples, and Gatekeeper-validates the extracted archive before
+publishing it.
 
 Dependency updates must refresh every graph that CI and release packaging
 consume: the ordinary and Windows-targeted managed graphs, every reviewed
@@ -118,7 +119,7 @@ runtime/broker/session-host suites:
 ./.dotnet/dotnet test tests/GhostShell.Terminal.Tests/GhostShell.Terminal.Tests.csproj
 ```
 
-Build a non-launching, unsigned macOS arm64 Native AOT application-bundle candidate.
+Build a non-launching, ad-hoc sealed macOS arm64 Native AOT application-bundle candidate.
 Install LLVM's `ld64.lld` first; the packager also accepts its absolute path
 through `GHOSTSHELL_NATIVE_AOT_LINKER`:
 

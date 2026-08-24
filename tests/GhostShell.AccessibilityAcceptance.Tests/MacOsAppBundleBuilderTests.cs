@@ -136,10 +136,24 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         Assert.True(File.Exists(Path.Combine(
             output,
             "Contents",
-            "MacOS",
+            "Resources",
             "fonts",
             "JetBrainsMono",
             "JetBrainsMono-BoldItalic.ttf")));
+        Assert.True(File.Exists(Path.Combine(
+            output,
+            "Contents",
+            "Resources",
+            "ghostty",
+            "shell-integration",
+            "fish",
+            "vendor_conf.d",
+            "ghostty-shell-integration.fish")));
+        Assert.False(Directory.Exists(Path.Combine(
+            output,
+            "Contents",
+            "MacOS",
+            "ghostty")));
         Assert.True(File.Exists(Path.Combine(
             output,
             "Contents",

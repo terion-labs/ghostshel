@@ -19,7 +19,8 @@ Usage:
 Signs the already-assembled managed-runtime native code, CEF framework, five
 helper apps, and outer GhostShell bundle in nested-code order. If a notary
 profile is provided, submits a temporary ZIP, staples the ticket, and validates
-it.
+it. Use identity '-' only for a locally trusted ad-hoc development build;
+ad-hoc builds cannot be notarized or distributed through a browser.
 EOF
 }
 
@@ -68,6 +69,10 @@ if [[ ! -f "${entitlements}" ]]; then
     echo "Chromium hardened-runtime entitlements are unavailable." >&2
     exit 1
 fi
+if [[ "${identity}" == "-" && -n "${notary_profile}" ]]; then
+    echo "Ad-hoc signatures cannot be notarized." >&2
+    exit 64
+fi
 
 frameworks="${app}/Contents/Frameworks"
 cef_framework="${frameworks}/Chromium Embedded Framework.framework"
@@ -90,22 +95,24 @@ for nested in "${required_nested[@]}"; do
 done
 
 sign_plain() {
-    /usr/bin/codesign \
-        --force \
-        --options runtime \
-        --timestamp \
-        --sign "${identity}" \
-        "$1"
+    local arguments=(--force)
+    if [[ "${identity}" != "-" ]]; then
+        arguments+=(--options runtime --timestamp)
+    fi
+    arguments+=(--sign "${identity}" "$1")
+    /usr/bin/codesign "${arguments[@]}"
 }
 
 sign_chromium_bundle() {
-    /usr/bin/codesign \
-        --force \
-        --options runtime \
-        --timestamp \
-        --entitlements "${entitlements}" \
-        --sign "${identity}" \
-        "$1"
+    local arguments=(
+        --force
+        --entitlements "${entitlements}"
+    )
+    if [[ "${identity}" != "-" ]]; then
+        arguments+=(--options runtime --timestamp)
+    fi
+    arguments+=(--sign "${identity}" "$1")
+    /usr/bin/codesign "${arguments[@]}"
 }
 
 # Sign leaf Mach-O libraries before the framework and app bundles that contain

@@ -78,8 +78,10 @@ Usage:
     [--sign-identity <Developer ID Application identity>] \
     [--notary-profile <notarytool keychain profile>]
 
-Creates a speed-optimized Native AOT macOS arm64 release candidate. Without --sign-identity
-the candidate is unsigned. --notary-profile requires signing. The destination
+Creates a speed-optimized Native AOT macOS arm64 release candidate. Without
+--sign-identity the candidate receives a complete ad-hoc seal for local use.
+Browser distribution requires a Developer ID identity and notarization.
+--notary-profile requires Developer ID signing. The destination
 must not already exist. The script never launches the application. Standalone
 CEF runtime builds retain separate osx-x64 support; the full application does
 not until its managed catalog and libghostty-vt receipt exist for that RID.
@@ -680,11 +682,12 @@ if [[ ! -x "${candidate}/Contents/MacOS/runtimes/osx-arm64/native/ghostshell-sql
     exit 1
 fi
 candidate_sql_language_directory="${candidate}/Contents/MacOS/runtimes/osx-arm64/native"
+candidate_sql_language_resources="${candidate}/Contents/Resources/Native/SqlLanguage"
 for required in \
     THIRD-PARTY-NOTICES.md \
     runtime-dependencies.txt \
     build-receipt.json; do
-    if [[ ! -f "${candidate_sql_language_directory}/${required}" ]]; then
+    if [[ ! -f "${candidate_sql_language_resources}/${required}" ]]; then
         echo "The packaged SQL language worker metadata is incomplete; missing ${required}." >&2
         exit 1
     fi
@@ -696,28 +699,33 @@ if [[ "${candidate_sql_language_sha}" != "${sql_language_expected_sha}" ]]; then
 fi
 if ! /usr/bin/cmp -s \
     "${sql_language_receipt}" \
-    "${candidate_sql_language_directory}/build-receipt.json"; then
+    "${candidate_sql_language_resources}/build-receipt.json"; then
     echo "The packaged SQL language worker receipt differs from the verified receipt." >&2
     exit 1
 fi
-candidate_sql_language_dependencies_sha="$(/usr/bin/shasum -a 256 "${candidate_sql_language_directory}/runtime-dependencies.txt" | /usr/bin/awk '{print $1}')"
-candidate_sql_language_notices_sha="$(/usr/bin/shasum -a 256 "${candidate_sql_language_directory}/THIRD-PARTY-NOTICES.md" | /usr/bin/awk '{print $1}')"
+candidate_sql_language_dependencies_sha="$(/usr/bin/shasum -a 256 "${candidate_sql_language_resources}/runtime-dependencies.txt" | /usr/bin/awk '{print $1}')"
+candidate_sql_language_notices_sha="$(/usr/bin/shasum -a 256 "${candidate_sql_language_resources}/THIRD-PARTY-NOTICES.md" | /usr/bin/awk '{print $1}')"
 if [[ "${candidate_sql_language_dependencies_sha}" != "${sql_language_expected_dependencies_sha}" \
     || "${candidate_sql_language_notices_sha}" != "${sql_language_expected_notices_sha}" ]]; then
     echo "The packaged SQL language worker legal files do not match its build receipt." >&2
     exit 1
 fi
 
-if [[ -n "${sign_identity}" ]]; then
-    sign_arguments=(
-        --app "${candidate}"
-        --identity "${sign_identity}"
-    )
-    if [[ -n "${notary_profile}" ]]; then
-        sign_arguments+=(--notary-profile "${notary_profile}")
+while IFS= read -r -d '' candidate_code_file; do
+    if [[ "$(/usr/bin/file -b "${candidate_code_file}")" != Mach-O* ]]; then
+        echo "Non-code payload was placed in Contents/MacOS: ${candidate_code_file#${candidate}/Contents/MacOS/}" >&2
+        exit 1
     fi
-    "${sign_notarize_macos}" "${sign_arguments[@]}"
+done < <(find "${candidate}/Contents/MacOS" -type f -print0)
+
+sign_arguments=(
+    --app "${candidate}"
+    --identity "${sign_identity:--}"
+)
+if [[ -n "${notary_profile}" ]]; then
+    sign_arguments+=(--notary-profile "${notary_profile}")
 fi
+"${sign_notarize_macos}" "${sign_arguments[@]}"
 
 "${dotnet}" run \
     --project \
@@ -736,6 +744,6 @@ if [[ -n "${notary_profile}" ]]; then
 elif [[ -n "${sign_identity}" ]]; then
     echo "Created signed macOS release candidate at ${output}."
 else
-    echo "Created unsigned macOS release candidate at ${output}."
+    echo "Created ad-hoc signed macOS development candidate at ${output}."
 fi
 echo "Created matching debug symbols at ${symbol_output}."

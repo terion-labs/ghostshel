@@ -80,7 +80,7 @@ internal static class TerminalFontPackageProvenance
         "30f0c136e3c88e422d0791acd97238870f9054a9729bc34cf2ff0d4ed8cac4ad");
 
     public static void Validate(
-        string executableDirectory,
+        string resourceDirectory,
         string licenseDirectory,
         string catalogPath,
         string receiptPath)
@@ -109,8 +109,8 @@ internal static class TerminalFontPackageProvenance
             Path.Combine(nativeLicenseDirectory, ReceiptFileName),
             "packaged terminal-font build receipt");
 
-        var packageDirectory = Resolve(executableDirectory, FontDirectory);
-        ValidateDirectoryClosure(executableDirectory, packageDirectory);
+        var packageDirectory = Resolve(resourceDirectory, FontDirectory);
+        ValidateDirectoryClosure(resourceDirectory, packageDirectory);
         ValidatePackagedAssets(packageDirectory);
         ValidateManifest(packageDirectory, receipt.RootElement);
         ValidateLicenseCopies(packageDirectory, licenseDirectory);

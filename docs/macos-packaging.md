@@ -1,7 +1,8 @@
 # macOS release-candidate packaging
 
 GhostSHELL can currently produce a Native AOT macOS arm64 application
-bundle for local release validation. Candidates are unsigned by default; the
+bundle for local release validation. Candidates are completely ad-hoc sealed by
+default; the
 same pipeline can apply nested Developer ID signatures and submit
 the finished application for notarization when release credentials are
 provided. Its
@@ -160,6 +161,21 @@ with both `stapler` and Gatekeeper. The profile must already exist in the
 login keychain; credentials are never accepted on the command line or written
 to package evidence.
 
+The tag workflow requires all six release secrets and fails before assembly if
+any are absent:
+
+- `APPLE_CERTIFICATE_P12_BASE64`;
+- `APPLE_CERTIFICATE_PASSWORD`;
+- `APPLE_DEVELOPER_ID_APPLICATION`;
+- `APPLE_NOTARY_ISSUER_ID`;
+- `APPLE_NOTARY_KEY_ID`;
+- `APPLE_NOTARY_PRIVATE_KEY_BASE64`.
+
+The certificate and App Store Connect private key are installed only in an
+ephemeral runner keychain, which is deleted after the release steps. The final
+ZIP is extracted and checked with strict `codesign` verification and Gatekeeper
+before GitHub Release publication.
+
 ## Validated payload
 
 The packager fails closed unless the Native AOT publish contains:
@@ -223,13 +239,16 @@ The bundle declares:
 - `libexclr8cef.dylib` in both `Contents/MacOS` for the managed host and
   `Contents/Frameworks` for helper-process `@rpath` resolution.
 
-The shell-integration runtime assets and their manifest remain under
-`Contents/MacOS/ghostty/shell-integration`, beside the Native AOT application
-that resolves them. The public terminal library remains beside the executable at
+The shell-integration runtime assets and their manifest live under
+`Contents/Resources/ghostty/shell-integration`, outside the executable-only
+code directory. The public terminal library remains beside the executable at
 `Contents/MacOS/libghostty-vt.dylib`.
 The inspectable font closure remains under
-`Contents/MacOS/fonts/JetBrainsMono`; Avalonia consumes the same verified
+`Contents/Resources/fonts/JetBrainsMono`; Avalonia consumes the same verified
 faces through its embedded-font collection.
+The SQL language worker remains executable code under
+`Contents/MacOS/runtimes/osx-arm64/native`; its receipt and legal metadata live
+under `Contents/Resources/Native/SqlLanguage`.
 
 ## Inspect without launching
 

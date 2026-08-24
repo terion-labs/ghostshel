@@ -15,7 +15,7 @@ internal sealed class GhosttyShellIntegrationLaunchAdapter
     private readonly string _resourceDirectory;
 
     public GhosttyShellIntegrationLaunchAdapter()
-        : this(Path.Combine(AppContext.BaseDirectory, "ghostty"))
+        : this(ResolveResourceDirectory(AppContext.BaseDirectory))
     {
     }
 
@@ -23,6 +23,19 @@ internal sealed class GhosttyShellIntegrationLaunchAdapter
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(resourceDirectory);
         _resourceDirectory = Path.GetFullPath(resourceDirectory);
+    }
+
+    internal static string ResolveResourceDirectory(string baseDirectory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(baseDirectory);
+        var adjacentResources = Path.GetFullPath(Path.Combine(
+            baseDirectory,
+            "..",
+            "Resources",
+            "ghostty"));
+        return Directory.Exists(adjacentResources)
+            ? adjacentResources
+            : Path.GetFullPath(Path.Combine(baseDirectory, "ghostty"));
     }
 
     public GhosttyShellIntegrationPreparation Prepare(TerminalLaunchRequest launch)

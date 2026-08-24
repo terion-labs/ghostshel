@@ -25,6 +25,8 @@ public sealed class NativeTerminalPackageProvenanceTests : IDisposable
         Assert.True(NativeTerminalPackageProvenance.IsCatalog(fixture.CatalogPath));
         NativeTerminalPackageProvenance.Validate(
             fixture.ExecutableDirectory,
+            fixture.ExecutableDirectory,
+            fixture.ExecutableDirectory,
             fixture.LicenseDirectory,
             fixture.CatalogPath,
             fixture.ReceiptPath);
@@ -40,6 +42,8 @@ public sealed class NativeTerminalPackageProvenanceTests : IDisposable
 
         Assert.Throws<InvalidDataException>(() =>
             NativeTerminalPackageProvenance.Validate(
+                fixture.ExecutableDirectory,
+                fixture.ExecutableDirectory,
                 fixture.ExecutableDirectory,
                 fixture.LicenseDirectory,
                 fixture.CatalogPath,
@@ -62,6 +66,8 @@ public sealed class NativeTerminalPackageProvenanceTests : IDisposable
         Assert.Throws<InvalidDataException>(() =>
             NativeTerminalPackageProvenance.Validate(
                 fixture.ExecutableDirectory,
+                fixture.ExecutableDirectory,
+                fixture.ExecutableDirectory,
                 fixture.LicenseDirectory,
                 fixture.CatalogPath,
                 fixture.ReceiptPath));
@@ -79,6 +85,8 @@ public sealed class NativeTerminalPackageProvenanceTests : IDisposable
 
         Assert.Throws<InvalidDataException>(() =>
             NativeTerminalPackageProvenance.Validate(
+                fixture.ExecutableDirectory,
+                fixture.ExecutableDirectory,
                 fixture.ExecutableDirectory,
                 fixture.LicenseDirectory,
                 fixture.CatalogPath,
@@ -114,6 +122,8 @@ public sealed class NativeTerminalPackageProvenanceTests : IDisposable
 
         Assert.Throws<InvalidDataException>(() =>
             NativeTerminalPackageProvenance.Validate(
+                fixture.ExecutableDirectory,
+                fixture.ExecutableDirectory,
                 fixture.ExecutableDirectory,
                 fixture.LicenseDirectory,
                 fixture.CatalogPath,
