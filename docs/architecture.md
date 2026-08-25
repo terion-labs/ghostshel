@@ -2290,14 +2290,24 @@ entries to depth 16 and 8 GiB, validates the complete plan before mutation,
 protects the configured active log and SQLite data/backups, and preserves each
 category root. Symlinks, reparse points, device nodes, FIFOs, other non-regular
 entries, unsafe selected-root ancestors, and reverse aliases through protected
-log/data boundaries fail closed before deletion. Cancellation has authority
-only before the first mutation; subsequent failures return path-free partial
-receipts, and the UI clears stale rows before attempting a refresh. Clear
-confirmation covers all eligible category files present when cleanup starts,
-and focus returns to Refresh afterward. Host-level non-reparse mount/SUBST
-aliases and a malicious same-user directory swap in the final syscall window
-are not claimed by this path-based desktop control; closing those cases would
-require platform-specific handle-relative deletion and filesystem identities.
+log/data boundaries fail closed before deletion. On the shipping macOS target,
+the bounded path walk is planning only: the mutator records Darwin device/inode,
+owner, type, and size identities; rejects protected-root identity aliases and
+device changes (including nested mount crossings); opens the selected root and
+every descendant with non-following directory descriptors; and resolves every
+mutation relative to those held descriptors. Each entry is atomically detached
+with `renameatx_np(RENAME_EXCL)` into a private mode-0700 staging directory under
+the held root, its detached identity is verified, and only then is it removed
+with `unlinkat`. This closes both directory/file replacement and the final
+`fstat`/unlink name-swap window without allowing an alternate namespace to reach
+the active log or durable root. Cancellation has authority only before the first
+artifact detach; subsequent failures return file-count/byte-count-only partial
+receipts, and recovery diagnostics contain neither paths nor content. The UI
+clears stale rows before attempting a refresh. Clear confirmation covers all
+eligible category files present when cleanup starts, and focus returns to
+Refresh afterward. Windows SUBST/reparse and Linux mount-alias guarantees remain
+deferred with those non-shipping ports; their existing path-based behavior is
+not represented as the macOS guarantee.
 
 Onboarding checks the configured local shell without launching it, reports the
 actual OS-vault persistence capability, links to definition import and bounded

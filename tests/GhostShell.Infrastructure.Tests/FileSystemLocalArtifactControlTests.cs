@@ -73,6 +73,7 @@ public sealed class FileSystemLocalArtifactControlTests
         Assert.False(File.Exists(cacheSecond));
         Assert.False(Directory.Exists(cacheNested));
         Assert.True(Directory.Exists(fixture.Paths.CacheDirectory));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(fixture.Paths.CacheDirectory));
         Assert.True(File.Exists(inactiveLog));
         Assert.True(File.Exists(activeLog));
         Assert.True(File.Exists(database));
@@ -340,6 +341,126 @@ public sealed class FileSystemLocalArtifactControlTests
     }
 
     [Fact]
+    public async Task MacOsFileIdentitySwapAfterPlanningFailsClosed()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        using var fixture = LocalArtifactFixture.Create();
+        var planned = fixture.WriteCache("planned-secret.cache", "planned-secret");
+        var displaced = Path.Combine(fixture.Paths.CacheDirectory, "displaced.cache");
+        var control = new FileSystemLocalArtifactControl(
+            fixture.Paths,
+            LocalArtifactScanLimits.Default,
+            () =>
+            {
+                File.Move(planned, displaced);
+                File.WriteAllText(planned, "replacement-secret");
+            });
+
+        var result = await control.ClearAsync(
+            LocalArtifactKind.Cache,
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(LocalArtifactControlErrorCode.UnsafeLayout, result.Error!.Code);
+        Assert.Equal(0, result.Error.FilesRemoved);
+        Assert.True(File.Exists(planned));
+        Assert.True(File.Exists(displaced));
+        Assert.DoesNotContain("planned-secret", result.Error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("replacement-secret", result.Error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task MacOsDirectoryIdentitySwapAfterPlanningFailsClosed()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        using var fixture = LocalArtifactFixture.Create();
+        var plannedDirectory = Path.Combine(fixture.Paths.CacheDirectory, "planned-directory");
+        var displacedDirectory = Path.Combine(fixture.Paths.CacheDirectory, "displaced-directory");
+        var plannedFile = fixture.Write(plannedDirectory, "planned.cache", "planned");
+        var replacementFile = Path.Combine(plannedDirectory, "replacement.cache");
+        var control = new FileSystemLocalArtifactControl(
+            fixture.Paths,
+            LocalArtifactScanLimits.Default,
+            () =>
+            {
+                Directory.Move(plannedDirectory, displacedDirectory);
+                Directory.CreateDirectory(plannedDirectory);
+                File.WriteAllText(replacementFile, "replacement");
+            });
+
+        var result = await control.ClearAsync(
+            LocalArtifactKind.Cache,
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(LocalArtifactControlErrorCode.UnsafeLayout, result.Error!.Code);
+        Assert.Equal(0, result.Error.FilesRemoved);
+        Assert.True(File.Exists(Path.Combine(displacedDirectory, Path.GetFileName(plannedFile))));
+        Assert.True(File.Exists(replacementFile));
+    }
+
+    [Fact]
+    public async Task MacOsHardLinkAliasToActiveLogRejectsWholePlan()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        using var fixture = LocalArtifactFixture.Create(activeLogFileName: "active.log");
+        var inactive = fixture.WriteLog("inactive.log", "inactive");
+        var active = fixture.WriteLog("active.log", "active-secret");
+        var alias = Path.Combine(fixture.Paths.ApplicationLogDirectory, "active-alias.log");
+        CreateHardLink(active, alias);
+        var control = new FileSystemLocalArtifactControl(fixture.Paths);
+
+        var result = await control.ClearAsync(
+            LocalArtifactKind.InactiveApplicationLogs,
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(LocalArtifactControlErrorCode.UnsafeLayout, result.Error!.Code);
+        Assert.Equal(0, result.Error.FilesRemoved);
+        Assert.True(File.Exists(inactive));
+        Assert.True(File.Exists(active));
+        Assert.True(File.Exists(alias));
+        Assert.DoesNotContain("active", result.Error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task MacOsCancellationAfterPlanningDoesNotInterruptMutation()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        using var fixture = LocalArtifactFixture.Create();
+        var planned = fixture.WriteCache("planned.cache", "planned");
+        using var cancellation = new CancellationTokenSource();
+        var control = new FileSystemLocalArtifactControl(
+            fixture.Paths,
+            LocalArtifactScanLimits.Default,
+            cancellation.Cancel);
+
+        var result = await control.ClearAsync(
+            LocalArtifactKind.Cache,
+            cancellation.Token);
+
+        Assert.True(result.IsSuccess, result.Error?.Message);
+        Assert.Equal(1, result.Value!.FilesRemoved);
+        Assert.False(File.Exists(planned));
+    }
+
+    [Fact]
     public async Task UndefinedArtifactKindReturnsTypedFailureWithoutScanning()
     {
         using var fixture = LocalArtifactFixture.Create();
@@ -529,6 +650,19 @@ public sealed class FileSystemLocalArtifactControlTests
             FileName = "/usr/bin/mkfifo",
             UseShellExecute = false,
             ArgumentList = { path },
+        });
+        Assert.NotNull(process);
+        process.WaitForExit();
+        Assert.Equal(0, process.ExitCode);
+    }
+
+    private static void CreateHardLink(string source, string destination)
+    {
+        using var process = Process.Start(new ProcessStartInfo
+        {
+            FileName = "/bin/ln",
+            UseShellExecute = false,
+            ArgumentList = { source, destination },
         });
         Assert.NotNull(process);
         process.WaitForExit();

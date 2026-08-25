@@ -8,7 +8,7 @@ namespace GhostShell.Infrastructure;
 /// construction. Scans are bounded and complete before a clear begins, so no
 /// file is removed from a partially validated tree.
 /// </summary>
-public sealed class FileSystemLocalArtifactControl : ILocalArtifactControl
+public sealed partial class FileSystemLocalArtifactControl : ILocalArtifactControl
 {
     private static readonly EnumerationOptions EnumerationOptions = new()
     {
@@ -20,6 +20,7 @@ public sealed class FileSystemLocalArtifactControl : ILocalArtifactControl
 
     private readonly LocalArtifactPaths _paths;
     private readonly LocalArtifactScanLimits _limits;
+    private readonly Action? _beforeFirstMutation;
 
     public FileSystemLocalArtifactControl(LocalArtifactPaths paths)
         : this(paths, LocalArtifactScanLimits.Default)
@@ -28,11 +29,13 @@ public sealed class FileSystemLocalArtifactControl : ILocalArtifactControl
 
     internal FileSystemLocalArtifactControl(
         LocalArtifactPaths paths,
-        LocalArtifactScanLimits limits)
+        LocalArtifactScanLimits limits,
+        Action? beforeFirstMutation = null)
     {
         _paths = paths ?? throw new ArgumentNullException(nameof(paths));
         limits.Validate();
         _limits = limits;
+        _beforeFirstMutation = beforeFirstMutation;
     }
 
     public async ValueTask<LocalArtifactControlResult<LocalArtifactInventory>> InspectAsync(
@@ -137,7 +140,10 @@ public sealed class FileSystemLocalArtifactControl : ILocalArtifactControl
                 "The local artifact directory could not be inspected.");
         }
 
-        return ExecutePlan(plan);
+        _beforeFirstMutation?.Invoke();
+        return OperatingSystem.IsMacOS()
+            ? ExecuteMacOsPlan(plan)
+            : ExecutePlan(plan);
     }
 
     private ArtifactPlan Scan(
@@ -151,7 +157,7 @@ public sealed class FileSystemLocalArtifactControl : ILocalArtifactControl
         var rootState = GetRootState(root);
         if (rootState == ArtifactRootState.Absent)
         {
-            return new ArtifactPlan(kind, root, [], [], 0);
+            return new ArtifactPlan(kind, root, [], [], 0, Identity: null);
         }
 
         if (rootState != ArtifactRootState.Directory)
@@ -159,6 +165,8 @@ public sealed class FileSystemLocalArtifactControl : ILocalArtifactControl
             throw UnsafeEntry();
         }
 
+        var rootIdentity = ReadMacOsIdentity(root);
+        var protectedIdentities = CaptureMacOsProtectedIdentities(kind, rootIdentity);
         var files = new List<PlannedFile>();
         var directories = new List<PlannedDirectory>();
         var pending = new Stack<PendingDirectory>();
@@ -194,7 +202,9 @@ public sealed class FileSystemLocalArtifactControl : ILocalArtifactControl
                         throw UnsafeEntry();
                     }
 
-                    directories.Add(new PlannedDirectory(entryPath, depth));
+                    var identity = ReadMacOsIdentity(entryPath);
+                    ValidateMacOsPlannedIdentity(rootIdentity, identity, protectedIdentities);
+                    directories.Add(new PlannedDirectory(entryPath, depth, identity));
                     pending.Push(new PendingDirectory(entryPath, depth));
                     continue;
                 }
@@ -209,15 +219,18 @@ public sealed class FileSystemLocalArtifactControl : ILocalArtifactControl
                     throw UnsafeEntry();
                 }
 
+                var fileIdentity = ReadMacOsIdentity(entryPath);
                 if (_paths.IsProtectedActiveLog(entryPath))
                 {
                     continue;
                 }
 
-                var length = file.Length;
+                ValidateMacOsPlannedIdentity(rootIdentity, fileIdentity, protectedIdentities);
+
+                var length = fileIdentity?.Size ?? file.Length;
                 budget.AddBytes(length);
                 totalBytes = checked(totalBytes + length);
-                files.Add(new PlannedFile(entryPath, length));
+                files.Add(new PlannedFile(entryPath, length, fileIdentity));
             }
         }
 
@@ -230,7 +243,7 @@ public sealed class FileSystemLocalArtifactControl : ILocalArtifactControl
                 ? depthComparison
                 : StringComparer.Ordinal.Compare(left.Path, right.Path);
         });
-        return new ArtifactPlan(kind, root, files, directories, totalBytes);
+        return new ArtifactPlan(kind, root, files, directories, totalBytes, rootIdentity);
     }
 
     private LocalArtifactControlResult<LocalArtifactClearReceipt> ExecutePlan(
@@ -544,9 +557,15 @@ public sealed class FileSystemLocalArtifactControl : ILocalArtifactControl
         Unsafe,
     }
 
-    private sealed record PlannedFile(string Path, long Length);
+    private sealed record PlannedFile(
+        string Path,
+        long Length,
+        MacOsFileIdentity? Identity);
 
-    private sealed record PlannedDirectory(string Path, int Depth);
+    private sealed record PlannedDirectory(
+        string Path,
+        int Depth,
+        MacOsFileIdentity? Identity);
 
     private sealed record PendingDirectory(string Path, int Depth);
 
@@ -555,7 +574,8 @@ public sealed class FileSystemLocalArtifactControl : ILocalArtifactControl
         string Root,
         IReadOnlyList<PlannedFile> Files,
         IReadOnlyList<PlannedDirectory> Directories,
-        long TotalBytes)
+        long TotalBytes,
+        MacOsFileIdentity? Identity)
     {
         internal LocalArtifactSummary ToSummary() =>
             new(Kind, Files.Count, TotalBytes);
