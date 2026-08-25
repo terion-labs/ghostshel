@@ -174,10 +174,41 @@ public sealed partial class GovernedAgentRuntime
                 request,
                 available.Candidate);
             _capabilityRequestAwaiter = awaiter;
+        }
+
+        var requestAuditError = await _broker.RecordCapabilityRequestAuditAsync(
+                new AgentCapabilityRequestAuditEvent.Requested(
+                    awaiter.Request.Id,
+                    awaiter.Request.RunId,
+                    awaiter.Request.Capability,
+                    awaiter.Request.Target,
+                    awaiter.Request.PolicyGeneration),
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (requestAuditError is not null)
+        {
+            CancelCapabilityRequestAwaiter(
+                awaiter,
+                "audit_unavailable",
+                "The capability request audit could not be persisted.");
+            await QuarantineCapabilityPolicyFailureAsync("audit_unavailable")
+                .ConfigureAwait(false);
+            return CreateIntrinsicFailureResult(proposal, "audit_unavailable");
+        }
+
+        lock (_gate)
+        {
+            if (!ReferenceEquals(_capabilityRequestAwaiter, awaiter)
+                || _turnCancellation is null
+                || _turnCancellation.IsCancellationRequested)
+            {
+                throw new OperationCanceledException(cancellationToken);
+            }
+
             _snapshot = _snapshot with
             {
                 State = GovernedAgentState.AwaitingCapabilityDecision,
-                PendingCapabilityRequest = request,
+                PendingCapabilityRequest = awaiter.Request,
                 PendingApproval = null,
                 PendingQuestion = null,
                 ActiveTool = null,
@@ -202,6 +233,12 @@ public sealed partial class GovernedAgentRuntime
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
         {
+            await RecordCapabilityTerminalAsync(
+                    awaiter,
+                    AgentCapabilityRequestAuditDecision.Cancelled,
+                    GetOrCreateAgent(),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
             CancelCapabilityRequestAwaiter(
                 awaiter,
                 "capability_request_cancelled",
@@ -211,6 +248,19 @@ public sealed partial class GovernedAgentRuntime
 
         if (decision is null)
         {
+            var auditError = await RecordCapabilityTerminalAsync(
+                    awaiter,
+                    AgentCapabilityRequestAuditDecision.Expired,
+                    GetOrCreateAgent(),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            if (auditError is not null)
+            {
+                await QuarantineCapabilityPolicyFailureAsync("audit_unavailable")
+                    .ConfigureAwait(false);
+                return CreateIntrinsicFailureResult(proposal, "audit_unavailable");
+            }
+
             CompleteCapabilityRequestAwaiter(
                 awaiter,
                 CapabilityDecisionFailure(
@@ -229,6 +279,19 @@ public sealed partial class GovernedAgentRuntime
         cancellationToken.ThrowIfCancellationRequested();
         if (postflight is CapabilityCandidateInspection.TargetChanged)
         {
+            var auditError = await RecordCapabilityTerminalAsync(
+                    awaiter,
+                    AgentCapabilityRequestAuditDecision.TargetChanged,
+                    GetOrCreateAgent(),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            if (auditError is not null)
+            {
+                await QuarantineCapabilityPolicyFailureAsync("audit_unavailable")
+                    .ConfigureAwait(false);
+                return CreateIntrinsicFailureResult(proposal, "audit_unavailable");
+            }
+
             CompleteCapabilityRequestAwaiter(
                 awaiter,
                 CapabilityDecisionFailure(
@@ -246,6 +309,19 @@ public sealed partial class GovernedAgentRuntime
                 awaiter.Candidate,
                 postflightCandidate))
         {
+            var auditError = await RecordCapabilityTerminalAsync(
+                    awaiter,
+                    AgentCapabilityRequestAuditDecision.CapabilityUnavailable,
+                    GetOrCreateAgent(),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            if (auditError is not null)
+            {
+                await QuarantineCapabilityPolicyFailureAsync("audit_unavailable")
+                    .ConfigureAwait(false);
+                return CreateIntrinsicFailureResult(proposal, "audit_unavailable");
+            }
+
             CompleteCapabilityRequestAwaiter(
                 awaiter,
                 CapabilityDecisionFailure(
@@ -257,24 +333,54 @@ public sealed partial class GovernedAgentRuntime
                 "capability_request_unavailable");
         }
 
+        var policyChanged = false;
         lock (_gate)
         {
             if (_policyGeneration != awaiter.Request.PolicyGeneration)
             {
-                CompleteCapabilityRequestAwaiterUnsafe(
-                    awaiter,
-                    CapabilityDecisionFailure(
-                        "policy_changed",
-                        "The run policy changed before the decision could be applied."),
-                    "The run policy changed; the capability decision was discarded.");
-                return CreateIntrinsicFailureResult(
-                    proposal,
-                    "policy_changed");
+                policyChanged = true;
             }
+        }
+
+        if (policyChanged)
+        {
+            var auditError = await RecordCapabilityTerminalAsync(
+                    awaiter,
+                    AgentCapabilityRequestAuditDecision.PolicyChanged,
+                    GetOrCreateAgent(),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            if (auditError is not null)
+            {
+                await QuarantineCapabilityPolicyFailureAsync("audit_unavailable")
+                    .ConfigureAwait(false);
+                return CreateIntrinsicFailureResult(proposal, "audit_unavailable");
+            }
+
+            CompleteCapabilityRequestAwaiter(
+                awaiter,
+                CapabilityDecisionFailure(
+                    "policy_changed",
+                    "The run policy changed before the decision could be applied."),
+                "The run policy changed; the capability decision was discarded.");
+            return CreateIntrinsicFailureResult(proposal, "policy_changed");
         }
 
         if (decision is GovernedAgentCapabilityDecision.KeepOff)
         {
+            var auditError = await RecordCapabilityTerminalAsync(
+                    awaiter,
+                    AgentCapabilityRequestAuditDecision.Denied,
+                    _approvalActor,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            if (auditError is not null)
+            {
+                await QuarantineCapabilityPolicyFailureAsync("audit_unavailable")
+                    .ConfigureAwait(false);
+                return CreateIntrinsicFailureResult(proposal, "audit_unavailable");
+            }
+
             CompleteCapabilityRequestAwaiter(
                 awaiter,
                 new GovernedAgentCapabilityDecisionResult(
@@ -293,6 +399,16 @@ public sealed partial class GovernedAgentRuntime
             .ConfigureAwait(false);
         if (updateError is not null)
         {
+            await RecordCapabilityTerminalAsync(
+                    awaiter,
+                    updateError.Code == AgentAuthorizationErrorCode.RunCancelled
+                        ? AgentCapabilityRequestAuditDecision.Cancelled
+                        : updateError.Code == AgentAuthorizationErrorCode.AuditUnavailable
+                            ? AgentCapabilityRequestAuditDecision.AuditFailed
+                            : AgentCapabilityRequestAuditDecision.PolicyChanged,
+                    GetOrCreateAgent(),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
             var stableCode = StableCode(updateError.Code);
             await QuarantineCapabilityPolicyFailureAsync(
                     stableCode)
@@ -304,6 +420,25 @@ public sealed partial class GovernedAgentRuntime
                     "The capability policy update could not be confirmed."),
                 "The capability update failed closed; the run was stopped.");
             return CreateIntrinsicFailureResult(proposal, stableCode);
+        }
+
+        var allowedAuditError = await RecordCapabilityTerminalAsync(
+                awaiter,
+                AgentCapabilityRequestAuditDecision.Allowed,
+                _approvalActor,
+                CancellationToken.None)
+            .ConfigureAwait(false);
+        if (allowedAuditError is not null)
+        {
+            await QuarantineCapabilityPolicyFailureAsync("audit_unavailable")
+                .ConfigureAwait(false);
+            CompleteCapabilityRequestAwaiter(
+                awaiter,
+                CapabilityDecisionFailure(
+                    "audit_unavailable",
+                    "The capability decision audit could not be confirmed."),
+                "The capability update failed closed; the run was stopped.");
+            return CreateIntrinsicFailureResult(proposal, "audit_unavailable");
         }
 
         CompleteCapabilityRequestAwaiter(
@@ -418,7 +553,8 @@ public sealed partial class GovernedAgentRuntime
                 awaiter.Request.RunId,
                 nextRunPolicy,
                 nextGeneration,
-                _approvalActor);
+                _approvalActor,
+                capabilityRequestId: awaiter.Request.Id);
             _policyChangeInFlight = true;
         }
 
@@ -542,6 +678,33 @@ public sealed partial class GovernedAgentRuntime
             "question_cancelled",
             "The agent question was cancelled.");
         NotifyChanged();
+    }
+
+    private async ValueTask<AgentAuthorizationError?>
+        RecordCapabilityTerminalAsync(
+            CapabilityRequestAwaiter awaiter,
+            AgentCapabilityRequestAuditDecision decision,
+            ActorDescriptor actor,
+            CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _broker.RecordCapabilityRequestAuditAsync(
+                    new AgentCapabilityRequestAuditEvent.Terminal(
+                        awaiter.Request.Id,
+                        awaiter.Request.RunId,
+                        decision,
+                        actor),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            _ = exception;
+            return new AgentAuthorizationError(
+                AgentAuthorizationErrorCode.AuditUnavailable,
+                "The capability request audit could not be confirmed.");
+        }
     }
 
     private ImmutableArray<AgentToolDefinition>
@@ -744,6 +907,22 @@ public sealed partial class GovernedAgentRuntime
         awaiter.Decision.TrySetCanceled();
         awaiter.Applied.TrySetResult(
             CapabilityDecisionFailure(stableCode, message));
+    }
+
+    private async ValueTask AuditDetachedCapabilityRequestCancellationAsync(
+        CapabilityRequestAwaiter? awaiter)
+    {
+        if (awaiter is null || awaiter.DecisionStarted)
+        {
+            return;
+        }
+
+        await RecordCapabilityTerminalAsync(
+                awaiter,
+                AgentCapabilityRequestAuditDecision.Cancelled,
+                GetOrCreateAgent(),
+                CancellationToken.None)
+            .ConfigureAwait(false);
     }
 
     private static GovernedAgentCapabilityDecisionResult

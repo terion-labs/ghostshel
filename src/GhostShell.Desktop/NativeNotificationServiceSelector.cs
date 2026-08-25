@@ -29,9 +29,9 @@ internal static class NativeNotificationServiceSelector
             // Native notifications are an optional presentation effect. A
             // missing portal, app identity, or platform runtime must not keep
             // the shell from starting with its in-app unread indicators.
-            Console.Error.WriteLine(
-                "[ghostshell:notifications] Native service unavailable: "
-                + exception.Message);
+            GhostShell.Application.SecretSafeDiagnosticProjection.WriteStandardError(
+                "notifications.native-service.unavailable",
+                exception);
         }
 
         return UnavailableNativeNotificationService.Instance;

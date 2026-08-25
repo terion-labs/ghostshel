@@ -124,8 +124,25 @@
           "GhostShell.Packaging": "[1.0.0, )"
         }
       },
+      "ghostshell.application": {
+        "type": "Project",
+        "dependencies": {
+          "GhostShell.Core": "[1.0.0, )"
+        }
+      },
+      "ghostshell.core": {
+        "type": "Project"
+      },
       "ghostshell.packaging": {
         "type": "Project"
+      },
+      "ghostshell.securitycampaign": {
+        "type": "Project",
+        "dependencies": {
+          "GhostShell.AccessibilityAcceptance": "[1.0.0, )",
+          "GhostShell.Application": "[1.0.0, )",
+          "GhostShell.Packaging": "[1.0.0, )"
+        }
       }
     }
   }

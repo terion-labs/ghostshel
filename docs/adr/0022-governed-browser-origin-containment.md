@@ -26,6 +26,24 @@ renderer boundary.
 
 ## Decision
 
+### 2026-08-25 peer-binding amendment
+
+The shipped CEF adapter cannot attest or bind policy to the actual connected
+peer. GhostSHELL therefore does not rely on this historical top-level origin
+guard as SSRF containment. Every model-governed CEF operation capable of
+causing network activity now fails before native dispatch, including
+navigation/history/reload, element interaction, low-level automation, and the
+detached rendered web-read/search paths. No governed redirect, frame,
+subresource, service-worker, or download request is created. Human browsing
+uses its separate authenticated chrome path, and bounded observations may read
+content already loaded by the human.
+
+Re-enabling governed CEF dispatch requires a first-party request-scoped proxy
+or equivalent transport boundary that preserves hostname TLS validation while
+checking every actual peer, redirect, and subresource. SSH routing additionally
+requires a separately named exact capability and enforcement at the remote
+resolution and connection boundary.
+
 ### 2026-08-16 amendment
 
 GhostSHELL no longer treats the current site origin as a browsing allowlist.
@@ -136,6 +154,10 @@ introduced.
 
 ## Consequences
 
+The following consequences describe the retained origin-guard machinery and
+its conformance fixtures. They are not a claim that the shipped CEF adapter
+dispatches model-governed network operations.
+
 - Every synchronously observed and cancellable top-level start in a governed
   request and redirect chain remains inside one exact origin.
 - The broker records success only after final native completion, rather than
@@ -153,9 +175,10 @@ introduced.
 
 ## Limits and required evidence
 
-- The guard applies to top-level navigation, not subresources, frames, service
-  workers, downloads, or new-window creation. New windows remain blocked by
-  ADR 0020.
+- The historical origin guard applies to top-level navigation, not
+  subresources, frames, service workers, downloads, or new-window creation.
+  This is why it is insufficient to re-enable governed CEF dispatch. New
+  windows remain blocked by ADR 0020.
 - A same-origin page-initiated navigation is indistinguishable from a
   same-origin redirect on engines without a portable navigation identifier.
   The local generation deliberately treats such interleaved starts as one

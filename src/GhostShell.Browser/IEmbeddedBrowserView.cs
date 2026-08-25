@@ -15,6 +15,12 @@ internal interface IEmbeddedBrowserView : IDisposable
 
     bool CanGoForward { get; }
 
+    /// <summary>
+    /// True only when the view's transport binds policy admission to the
+    /// actual connected peer for every redirect and subresource.
+    /// </summary>
+    bool SupportsPeerBoundTransport { get; }
+
     void SetAgentActivity(bool isActive);
 
     /// <summary>

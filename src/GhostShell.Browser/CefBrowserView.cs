@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Avalonia.Controls;
 using Avalonia.Threading;
@@ -66,6 +65,13 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
     public bool CanGoBack => _browser?.CanGoBack ?? false;
 
     public bool CanGoForward => _browser?.CanGoForward ?? false;
+
+    // Exclr8Cef exposes URL admission but neither the connected socket peer nor
+    // a request-scoped proxy. Governed network mutations must therefore stop
+    // before native dispatch instead of treating DNS preflight as peer binding.
+    internal static bool HasPeerBoundTransport => false;
+
+    public bool SupportsPeerBoundTransport => HasPeerBoundTransport;
 
     public void SetAgentActivity(bool isActive)
     {
@@ -456,8 +462,8 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         }
         catch (Exception exception) when (!_disposed)
         {
-            Trace.TraceWarning(
-                "Unable to initialize the browser agent cursor: {0}",
+            SecretSafeDiagnosticProjection.WriteTrace(
+                "browser.agent-cursor.initialize-failed",
                 exception);
         }
     }
@@ -520,6 +526,7 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         browser.LoadEnd += OnLoadEnd;
         browser.LoadError += OnLoadError;
         browser.RenderProcessGone += OnRenderProcessGone;
+        browser.ConsoleMessage += CefConsoleMessagePolicy.Handle;
 
         // CEF has no host UI for these prompts in OSR mode. Every privileged
         // or filesystem-affecting operation therefore defaults closed until a
@@ -544,6 +551,7 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         browser.LoadEnd -= OnLoadEnd;
         browser.LoadError -= OnLoadError;
         browser.RenderProcessGone -= OnRenderProcessGone;
+        browser.ConsoleMessage -= CefConsoleMessagePolicy.Handle;
         browser.BeforePopup -= OnBeforePopup;
         browser.JsDialog -= BlockJavaScriptDialog;
         browser.FileDialog -= BlockFileDialog;

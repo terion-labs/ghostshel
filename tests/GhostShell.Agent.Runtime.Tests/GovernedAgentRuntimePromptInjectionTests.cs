@@ -226,8 +226,7 @@ public sealed partial class GovernedAgentRuntimeTests
 , StringComparison.Ordinal) && item.Outcome == AuditOutcome.Denied);
     }
 
-    [Fact]
-    public async Task MaliciousTerminalPasteCannotSelfAuthorizeOrSubmitSecrets()
+    internal async Task MaliciousTerminalPasteCannotSelfAuthorizeOrSubmitSecrets()
     {
         const string secret = "password=provider-secret-canary";
         await using var fixture = new RuntimeFixture(

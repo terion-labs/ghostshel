@@ -1248,6 +1248,152 @@ public sealed class AgentCapabilityBrokerTests
                 item.Details is AuditDetails.AgentRunPolicyTransitionDetails);
     }
 
+    [Fact(DisplayName = "lifecycle.request-audit-failure suspends authority until exact retry")]
+    [Trait("SecurityCampaignCase", "lifecycle.request-audit-failure")]
+    public async Task CapabilityRequestAuditAmbiguityFailsClosedAndTerminalIsExactOnce()
+    {
+        var disabledPolicy = AgentPolicy.Default with
+        {
+            Permissions = AgentPolicy.Default.Permissions.SetItem(
+                AgentCapability.RunCommands,
+                AgentPermission.Off),
+        };
+        var audit = new RecordingAuditStore
+        {
+            FailurePredicate = item => string.Equals(
+                item.Action,
+                "agent.capability.request",
+                StringComparison.Ordinal),
+        };
+        await using var broker = await CreateRegisteredBrokerAsync(
+            audit,
+            disabledPolicy);
+        var requestId = new AgentCapabilityRequestId("capability-request-1");
+        var requested = new AgentCapabilityRequestAuditEvent.Requested(
+            requestId,
+            RunId(),
+            AgentCapability.RunCommands,
+            WorkspaceTarget(),
+            policyGeneration: 1);
+
+        var failed = await broker.RecordCapabilityRequestAuditAsync(
+            requested,
+            CancellationToken.None);
+        var blocked = await broker.RequestAsync(
+            Proposal(BuiltInAgentTools.TerminalReadScreen),
+            CancellationToken.None);
+        audit.FailurePredicate = null;
+        var retried = await broker.RecordCapabilityRequestAuditAsync(
+            requested,
+            CancellationToken.None);
+        var denied = await broker.RecordCapabilityRequestAuditAsync(
+            new AgentCapabilityRequestAuditEvent.Terminal(
+                requestId,
+                RunId(),
+                AgentCapabilityRequestAuditDecision.Denied,
+                Human()),
+            CancellationToken.None);
+        var secondTerminal = await broker.RecordCapabilityRequestAuditAsync(
+            new AgentCapabilityRequestAuditEvent.Terminal(
+                requestId,
+                RunId(),
+                AgentCapabilityRequestAuditDecision.Allowed,
+                Human()),
+            CancellationToken.None);
+
+        Assert.Equal(AgentAuthorizationErrorCode.AuditUnavailable, failed!.Code);
+        Assert.Equal(
+            AgentAuthorizationErrorCode.RunSuspended,
+            Assert.IsType<AgentAuthorizationResult.Denied>(blocked).Error.Code);
+        Assert.Null(retried);
+        Assert.Null(denied);
+        Assert.Equal(
+            AgentAuthorizationErrorCode.AlreadyCompleted,
+            secondTerminal!.Code);
+        var capabilityEvents = audit.Events.Where(item => string.Equals(
+            item.Action,
+            "agent.capability.request",
+            StringComparison.Ordinal));
+        Assert.Equal(
+            [AuditOutcome.Requested, AuditOutcome.Denied],
+            capabilityEvents.Select(item => item.Outcome));
+        Assert.Equal(
+            2,
+            capabilityEvents.Select(item => item.EventId).Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Fact]
+    public async Task CapabilityPolicyAuditAmbiguityAcceptsOnlyTheExactCorrelatedRetry()
+    {
+        var disabledPolicy = AgentPolicy.Default with
+        {
+            Permissions = AgentPolicy.Default.Permissions.SetItem(
+                AgentCapability.RunCommands,
+                AgentPermission.Off),
+        };
+        var audit = new RecordingAuditStore();
+        await using var broker = await CreateRegisteredBrokerAsync(
+            audit,
+            disabledPolicy);
+        var requestId = new AgentCapabilityRequestId("capability-request-1");
+        Assert.Null(await broker.RecordCapabilityRequestAuditAsync(
+            new AgentCapabilityRequestAuditEvent.Requested(
+                requestId,
+                RunId(),
+                AgentCapability.RunCommands,
+                WorkspaceTarget(),
+                policyGeneration: 1),
+            CancellationToken.None));
+        var askPolicy = disabledPolicy with
+        {
+            Permissions = disabledPolicy.Permissions.SetItem(
+                AgentCapability.RunCommands,
+                AgentPermission.Ask),
+        };
+        var update = new AgentRunPolicyUpdate(
+            RunId(),
+            askPolicy,
+            policyGeneration: 2,
+            Human(),
+            capabilityRequestId: requestId);
+        audit.FailurePredicate = item =>
+            item.Details is AuditDetails.AgentRunPolicyTransitionDetails;
+
+        var failed = await broker.UpdateRunPolicyAsync(
+            update,
+            CancellationToken.None);
+        audit.FailurePredicate = null;
+        var changedRetry = await broker.UpdateRunPolicyAsync(
+            new AgentRunPolicyUpdate(
+                RunId(),
+                askPolicy,
+                policyGeneration: 2,
+                Human()),
+            CancellationToken.None);
+        var exactRetry = await broker.UpdateRunPolicyAsync(
+            update,
+            CancellationToken.None);
+        var terminal = await broker.RecordCapabilityRequestAuditAsync(
+            new AgentCapabilityRequestAuditEvent.Terminal(
+                requestId,
+                RunId(),
+                AgentCapabilityRequestAuditDecision.Allowed,
+                Human()),
+            CancellationToken.None);
+
+        Assert.Equal(AgentAuthorizationErrorCode.AuditUnavailable, failed!.Code);
+        Assert.Equal(AgentAuthorizationErrorCode.RunSuspended, changedRetry!.Code);
+        Assert.Null(exactRetry);
+        Assert.Null(terminal);
+        var policyEvent = Assert.Single(
+            audit.Events,
+            item => item.Details is AuditDetails.AgentRunPolicyTransitionDetails);
+        Assert.Equal(
+            requestId,
+            Assert.IsType<AuditDetails.AgentRunPolicyTransitionDetails>(
+                policyEvent.Details).CapabilityRequestId);
+    }
+
     [Fact]
     public async Task OnlyTheBoundDesktopClientCanApproveOrChangePolicy()
     {

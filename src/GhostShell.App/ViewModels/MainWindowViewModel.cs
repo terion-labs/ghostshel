@@ -1293,9 +1293,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            Console.Error.WriteLine(
-                "[ghostshell:notifications] Activation failed: "
-                + exception.Message);
+            SecretSafeDiagnostics.WriteTraceAndStandardError(
+                "notifications.activation.failed",
+                exception);
         }
     }
 
@@ -1416,7 +1416,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     /// is not worth a line.
     /// </summary>
     private static void ReportSwitchPhases(
-        string workspace,
+        string _,
         long autoSaveMilliseconds,
         long activationMilliseconds,
         long snapshotMilliseconds)
@@ -1428,11 +1428,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             return;
         }
 
-        Console.Error.WriteLine(
-            $"[ghostshell:perf] bringing '{workspace}' forward took {total} ms — "
-            + $"autosave flush {autoSaveMilliseconds} ms, activation "
-            + $"{activationMilliseconds} ms, recovery snapshot "
-            + $"{snapshotMilliseconds} ms");
+        SecretSafeDiagnosticProjection.WriteStandardError(
+            "workspace.activation.performance-budget-exceeded",
+            SecretSafeDiagnosticKind.Unexpected);
     }
 
     /// <summary>
@@ -3676,15 +3674,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _ = await LoadTerminalMultiplexingAsync(cancellationToken);
         if (_sessionRestoreCoordinator is null)
         {
-            Console.Error.WriteLine(
-                "[ghostshell:recovery] Startup session restore is unavailable.");
+            SecretSafeDiagnosticProjection.WriteStandardError(
+                "recovery.startup.unavailable",
+                SecretSafeDiagnosticKind.Unexpected);
             return false;
         }
 
         if (!await LoadSessionRestorePreferenceAsync(cancellationToken))
         {
-            Console.Error.WriteLine(
-                "[ghostshell:recovery] Startup session restore preference could not be loaded.");
+            SecretSafeDiagnosticProjection.WriteStandardError(
+                "recovery.startup-preference.load-failed",
+                SecretSafeDiagnosticKind.Unexpected);
             return false;
         }
 
@@ -3699,9 +3699,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             cancellationToken);
         if (!result.IsSuccess)
         {
-            Console.Error.WriteLine(
-                $"[ghostshell:recovery] Previous session lookup failed: "
-                + $"{result.Error!.Code}: {result.Error.Message}");
+            SecretSafeDiagnosticProjection.WriteStandardError(
+                "recovery.previous-session.lookup-failed",
+                SecretSafeDiagnosticKind.Unexpected);
             SetError("The previous session could not be loaded.");
             return false;
         }
@@ -3739,8 +3739,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 out var payload,
                 out var error))
         {
-            Console.Error.WriteLine(
-                $"[ghostshell:recovery] Previous session payload was rejected: {error}");
+            SecretSafeDiagnosticProjection.WriteStandardError(
+                "recovery.previous-session.payload-rejected",
+                SecretSafeDiagnosticKind.Unexpected);
             SetError(error ?? "Runtime recovery state could not be read.");
             return false;
         }
@@ -3759,8 +3760,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             runtime = RestoreWorkspace(payload.Workspace);
             if (!await RegisterRuntimeWorkspaceAsync(runtime, cancellationToken))
             {
-                Console.Error.WriteLine(
-                    "[ghostshell:recovery] The restored workspace was rejected by the session host.");
+                SecretSafeDiagnosticProjection.WriteStandardError(
+                    "recovery.workspace.registration-rejected",
+                    SecretSafeDiagnosticKind.Unexpected);
                 return false;
             }
 
@@ -3790,15 +3792,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         }
         catch (ArgumentException exception)
         {
-            Console.Error.WriteLine(
-                $"[ghostshell:recovery] Runtime recovery target was invalid: {exception}");
+            SecretSafeDiagnostics.WriteTraceAndStandardError(
+                "recovery.target.invalid",
+                exception);
             SetError("Runtime recovery state contains an invalid target.");
             return false;
         }
         catch (InvalidOperationException exception)
         {
-            Console.Error.WriteLine(
-                $"[ghostshell:recovery] Runtime recovery could not be applied: {exception}");
+            SecretSafeDiagnostics.WriteTraceAndStandardError(
+                "recovery.apply.failed",
+                exception);
             SetError("Runtime recovery state could not be applied.");
             return false;
         }
@@ -7455,10 +7459,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     public void SetError(string message)
     {
         OperationError = message;
-        if (!string.IsNullOrWhiteSpace(message))
-        {
-            Console.Error.WriteLine($"[ghostshell:error] {message}");
-        }
     }
 
     public void SetDefinitionBundleStatus(string message)
@@ -7924,8 +7924,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 or InvalidOperationException
                 or System.Text.Json.JsonException)
         {
-            Console.Error.WriteLine(
-                $"[ghostshell:recovery] Runtime recovery snapshot preparation failed: {exception}");
+            SecretSafeDiagnostics.WriteTraceAndStandardError(
+                "recovery.snapshot-prepare.failed",
+                exception);
             // The reason, not just the fact. Every message this can carry is one
             // of the codec's own validation sentences — no paths, no session
             // content — and without it the banner names a subsystem and leaves
@@ -7951,9 +7952,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         RuntimeRecoveryWriteFailedEventArgs eventArgs)
     {
         _ = sender;
-        Console.Error.WriteLine(
-            $"[ghostshell:recovery] Runtime recovery write failed: "
-            + $"{eventArgs.Error.Code}: {eventArgs.Error.Message}");
+        SecretSafeDiagnosticProjection.WriteStandardError(
+            "recovery.runtime-write.failed",
+            SecretSafeDiagnosticKind.Unexpected);
         void Apply() => SetError($"Runtime recovery is unavailable ({eventArgs.Error.Code}).");
 
         if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
@@ -8060,8 +8061,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         catch (Exception exception) when (exception is
             ArgumentException or InvalidOperationException or FormatException)
         {
-            Console.Error.WriteLine(
-                $"[ghostshell:autosave] Workspace capture failed: {exception}");
+            SecretSafeDiagnostics.WriteTraceAndStandardError(
+                "autosave.workspace-capture.failed",
+                exception);
             return;
         }
 
@@ -8086,8 +8088,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         // rather than surfaced — autosave must not nag while the user works.
         if (error.Code != DefinitionStoreErrorCode.RevisionConflict)
         {
-            Console.Error.WriteLine(
-                $"[ghostshell:autosave] Workspace autosave failed: {error.Code}: {error.Message}");
+            SecretSafeDiagnosticProjection.WriteStandardError(
+                "workspace.autosave.failed",
+                SecretSafeDiagnosticKind.Unexpected);
         }
     }
 
@@ -8904,9 +8907,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             _activation = null;
         }
 
-        if (activation.TryDescribe(ActivationBudgetMilliseconds, out var description))
+        if (activation.TryDescribe(ActivationBudgetMilliseconds, out _))
         {
-            Console.Error.WriteLine($"[ghostshell:perf] activation — {description}");
+            SecretSafeDiagnosticProjection.WriteStandardError(
+                "activation.performance-budget-exceeded",
+                SecretSafeDiagnosticKind.Unexpected);
         }
     }
 
@@ -10388,9 +10393,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                         // notification, not this one. Nothing was lost, and
                         // the exit report must stay a report of loss to mean
                         // anything.
-                        Console.Error.WriteLine(
-                            "[ghostshell:history] A completion arrived for a session "
-                            + "that had already ended; the recorded outcome stands.");
+                        SecretSafeDiagnosticProjection.WriteStandardError(
+                            "history.late-completion.ignored",
+                            SecretSafeDiagnosticKind.Unexpected);
                         continue;
                     }
 
@@ -10446,8 +10451,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             var error = new RecentSessionStoreError(
                 RecentSessionStoreErrorCode.StorageFailure,
                 $"Recent-session metadata is temporarily unavailable ({exception.GetType().Name}).");
-            Console.Error.WriteLine(
-                $"[ghostshell:history] queued history operation failed: {exception}");
+            SecretSafeDiagnostics.WriteTraceAndStandardError(
+                "history.queued-operation.failed",
+                exception);
             ApplyRecentSessionPersistenceFailure(error);
         }
     }

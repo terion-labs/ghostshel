@@ -53,12 +53,12 @@ public sealed class CefPresentationShutdownContractTests
             "BrowserEngineRuntime.Initialize(CreateBrowserEngineOptions());");
         var chromiumFailure = RequiredIndexOf(
             program,
-            "GhostSHELL's embedded Chromium runtime failed:",
+            "desktop.cef-initialize.failed",
             initialization);
         var lifetime = RequiredIndexOf(program, "lifetime.Start(args)", chromiumFailure);
         var desktopFailure = RequiredIndexOf(
             program,
-            "GhostSHELL's desktop runtime failed:",
+            "desktop.runtime.failed",
             lifetime);
 
         Assert.True(initialization < chromiumFailure);

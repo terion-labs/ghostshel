@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostshell.app/schemas/security-campaign-receipt-v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "evidenceKind", "evidenceClass", "releaseScope",
+    "source", "definition", "cases", "secrecy", "candidate", "dependencies",
+    "components", "signing", "limitations", "overall"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "evidenceKind": { "const": "ghostshell-security-campaign-receipt-v1" },
+    "evidenceClass": { "enum": ["source-only", "release-candidate"] },
+    "releaseScope": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "$ref": "#/$defs/platform" }
+    },
+    "source": { "$ref": "#/$defs/source" },
+    "definition": { "$ref": "#/$defs/definition" },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "items": { "$ref": "#/$defs/case" }
+    },
+    "secrecy": { "$ref": "#/$defs/secrecy" },
+    "candidate": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/candidate" }] },
+    "dependencies": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/dependencies" }] },
+    "components": {
+      "type": "array",
+      "maxItems": 32,
+      "items": { "$ref": "#/$defs/file" }
+    },
+    "signing": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/signing" }] },
+    "limitations": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 16,
+      "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,127}$" }
+    },
+    "overall": { "enum": ["pass", "notEvaluated"] }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platform", "rid", "status", "reasonCode"],
+      "properties": {
+        "platform": { "enum": ["macOS", "Windows", "Linux"] },
+        "rid": { "enum": ["osx-arm64", "win-*", "linux-*"] },
+        "status": { "enum": ["inScope", "notApplicable"] },
+        "reasonCode": { "enum": ["desktop-v1-release-target", "porting-deferred"] }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "commit", "tree", "sourceArchiveSha256", "sourceSealSha256", "sourceManifestSha256", "tag", "workflowSha256", "runId", "runAttempt"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "tree": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "sourceArchiveSha256": { "$ref": "#/$defs/sha256" },
+        "sourceSealSha256": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/sha256" }] },
+        "sourceManifestSha256": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/sha256" }] },
+        "tag": { "type": ["string", "null"], "maxLength": 128 },
+        "workflowSha256": { "$ref": "#/$defs/sha256" },
+        "runId": { "type": ["string", "null"], "maxLength": 32 },
+        "runAttempt": { "type": ["string", "null"], "maxLength": 16 }
+      }
+    },
+    "definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registrySha256", "receiptSchemaSha256", "toolCatalogSha256"],
+      "properties": {
+        "registrySha256": { "$ref": "#/$defs/sha256" },
+        "receiptSchemaSha256": { "$ref": "#/$defs/sha256" },
+        "toolCatalogSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "testName", "trxSha256", "result"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,159}$" },
+        "testName": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "trxSha256": { "$ref": "#/$defs/sha256" },
+        "result": { "const": "pass" }
+      }
+    },
+    "secrecy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canarySetSha256", "canaryCount", "secrecyCaseCount", "zeroMatchCaseCount"],
+      "properties": {
+        "canarySetSha256": { "const": "7fcd5c19c8906d9fb161e377897314678db04fc4dfb22bbce735a2949eae3e66" },
+        "canaryCount": { "const": 2 },
+        "secrecyCaseCount": { "const": 5 },
+        "zeroMatchCaseCount": { "const": 5 }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["archiveName", "archiveBytes", "archiveSha256", "packageManifestSha256", "packageFileCount", "executableName", "executableBytes", "executableSha256", "sourceSealSha256", "sourceManifestSha256", "buildIdentitySha256", "bundleIdentifier", "productVersion"],
+      "properties": {
+        "archiveName": { "const": "GhostShell-macOS-arm64.zip" },
+        "archiveBytes": { "type": "integer", "minimum": 1 },
+        "archiveSha256": { "$ref": "#/$defs/sha256" },
+        "packageManifestSha256": { "$ref": "#/$defs/sha256" },
+        "packageFileCount": { "type": "integer", "minimum": 1, "maximum": 20000 },
+        "executableName": { "const": "GhostShell" },
+        "executableBytes": { "type": "integer", "minimum": 1 },
+        "executableSha256": { "$ref": "#/$defs/sha256" },
+        "sourceSealSha256": { "$ref": "#/$defs/sha256" },
+        "sourceManifestSha256": { "$ref": "#/$defs/sha256" },
+        "buildIdentitySha256": { "$ref": "#/$defs/sha256" },
+        "bundleIdentifier": { "const": "app.ghostshell" },
+        "productVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" }
+      }
+    },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "relativePath", "bytes", "sha256"],
+      "properties": {
+        "kind": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "relativePath": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "dependencies": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "sourceCommit", "status", "inputs", "untriagedAdvisories", "releaseBlockingAdvisories"],
+      "properties": {
+        "format": { "const": "ghostshell-dependency-security-evidence-v1" },
+        "sourceCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "status": { "const": "pass" },
+        "inputs": { "type": "array", "minItems": 2, "maxItems": 16, "items": { "$ref": "#/$defs/file" } },
+        "untriagedAdvisories": { "const": 0 },
+        "releaseBlockingAdvisories": { "const": 0 }
+      }
+    },
+    "signing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "notarizationId", "notarizationStatus", "teamIdentifier", "certificateSha256", "codeSignatureValid", "stapleValid", "gatekeeperAccepted"],
+      "properties": {
+        "format": { "const": "ghostshell-macos-signing-evidence-v1" },
+        "notarizationId": { "type": "string", "format": "uuid" },
+        "notarizationStatus": { "const": "Accepted" },
+        "teamIdentifier": { "type": "string", "pattern": "^[A-Za-z0-9]{1,32}$" },
+        "certificateSha256": { "$ref": "#/$defs/sha256" },
+        "codeSignatureValid": { "const": true },
+        "stapleValid": { "const": true },
+        "gatekeeperAccepted": { "const": true }
+      }
+    }
+  }
+}

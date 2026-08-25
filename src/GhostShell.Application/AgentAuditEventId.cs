@@ -23,4 +23,21 @@ internal static class AgentAuditEventId
     // exact ID while retrying one ambiguous audit commit.
     public static string NewPolicyTransition() =>
         $"agent-policy-{Guid.CreateVersion7():N}";
+
+    public static string ForCapabilityRequestRequested(
+        AgentCapabilityRequestId requestId) =>
+        ForCapabilityRequest(requestId, "requested");
+
+    public static string ForCapabilityRequestTerminal(
+        AgentCapabilityRequestId requestId) =>
+        ForCapabilityRequest(requestId, "terminal");
+
+    private static string ForCapabilityRequest(
+        AgentCapabilityRequestId requestId,
+        string phase)
+    {
+        var digest = AgentActionDigest.FromUtf8(
+            $"ghostshell-capability-request-audit-v1\0{requestId.Value}\0{phase}");
+        return $"agent-capability-{digest.Value}";
+    }
 }

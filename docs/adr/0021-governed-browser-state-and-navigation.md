@@ -97,6 +97,22 @@ The ordinary browser-session API remains a human chrome path. It requires the
 exact interactive `Human` actor/client and does not accept an `Agent` actor as a
 shortcut around the broker. Agents use only the governed browser bridge.
 
+The current first-party CEF boundary exposes URL admission but neither the
+actual connected socket peer nor a request-context proxy that GhostShell can
+bind to one browser action. Repeating DNS resolution before CEF dispatch does
+not close that check/use gap. Consequently every model-governed CEF navigation,
+history movement, reload, element mutation, and low-level automation request
+fails closed with `NavigationPolicyDenied` before native dispatch. Detached CEF
+web-read and web-search execution likewise returns a closed destination denial
+before constructing a CEF browser. Because no governed request is dispatched,
+redirect and subresource requests cannot be created by these paths. Human
+browser chrome remains a separate explicit path. SSH-routed governed HTTP(S)
+also fails closed: remote
+loopback, link-local, private, and metadata access requires a future separate
+exact capability and approval plus remote-peer enforcement. A future transport
+may re-enable these tools only when it preserves hostname TLS validation while
+binding policy to every actual peer.
+
 Every consumed authorization receives exactly one `succeeded`, `failed`, or
 `cancelled` completion through the existing broker audit and quarantine
 mechanism. A completion retry never redispatches the browser operation. Once
@@ -128,8 +144,9 @@ activation verification, as recorded in
 [ADR 0027](0027-governed-browser-element-check.md).
 
 The production capability profile advertises read-state, guarded navigation,
-and stop. Snapshot, click, fill, and check remain in the explicit full-automation
-candidate profile until the named native adapter satisfies
+and stop, but the shipped CEF renderer denies the governed mutation at dispatch
+because it cannot attest the transport peer. Snapshot, click, fill, and check
+remain in the explicit full-automation candidate profile until the named native adapter satisfies
 [ADR 0026](0026-native-browser-capability-conformance-gate.md).
 
 ### Browser action authorization
@@ -179,10 +196,11 @@ application and session-host ports.
 
 ## Consequences
 
-- Production agents can read state, capture semantic snapshots, wait, and
-  perform guarded navigation and bounded input in the same embedded browser
-  the user sees, including while its panel is in an inactive tab. The renderer
-  attachment follows panel lifetime rather than visual-tree lifetime.
+- Production agents can read state and inspect already-loaded content through
+  bounded observation contracts. With the shipped CEF adapter they cannot
+  navigate, interact with elements, dispatch low-level input/evaluation, or use
+  detached rendered web-read/search because those paths fail before native
+  dispatch. Ordinary human browsing remains available.
 - Browser data and navigation can be configured and audited independently.
 - Broad Workspace and internal `OpenTab` scopes remain explicit at the provider
   schema, refresh eligible topology between rounds, and are narrowed to one

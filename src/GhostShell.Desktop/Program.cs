@@ -43,9 +43,9 @@ internal static class Program
         }
         catch (Exception error)
         {
-            Console.Error.WriteLine(
-                "GhostSHELL could not start its embedded Chromium runtime: "
-                + error.Message);
+            SecretSafeDiagnosticProjection.WriteStandardError(
+                "desktop.cef-subprocess.failed",
+                error);
             Environment.ExitCode = 1;
             return;
         }
@@ -101,9 +101,9 @@ internal static class Program
                 }
                 catch (Exception error)
                 {
-                    Console.Error.WriteLine(
-                        "GhostSHELL's embedded Chromium runtime failed: "
-                        + error.Message);
+                    SecretSafeDiagnosticProjection.WriteStandardError(
+                        "desktop.cef-initialize.failed",
+                        error);
                     Environment.ExitCode = 1;
                     return;
                 }
@@ -117,9 +117,9 @@ internal static class Program
             }
             catch (Exception error)
             {
-                Console.Error.WriteLine(
-                    "GhostSHELL's desktop runtime failed: "
-                    + error.Message);
+                SecretSafeDiagnosticProjection.WriteStandardError(
+                    "desktop.runtime.failed",
+                    error);
                 Environment.ExitCode = 1;
             }
             finally
@@ -158,9 +158,9 @@ internal static class Program
         }
         catch (Exception error)
         {
-            Console.Error.WriteLine(
-                "GhostSHELL could not release its presentation surfaces: "
-                + error.Message);
+            SecretSafeDiagnosticProjection.WriteStandardError(
+                "desktop.presentation-teardown.failed",
+                error);
             Environment.ExitCode = 1;
         }
     }
@@ -208,8 +208,9 @@ internal static class Program
                 CancellationToken.None);
             if (encryption.StartupError is { } encryptionError)
             {
-                Console.Error.WriteLine(
-                    $"GhostSHELL cannot open this profile: {encryptionError}");
+                SecretSafeDiagnosticProjection.WriteStandardError(
+                    "desktop.profile-open.failed",
+                    SecretSafeDiagnosticKind.Unexpected);
                 Environment.ExitCode = 1;
                 DesktopStartupFailurePresenter.TryShow(
                     "GhostSHELL cannot open this profile",
@@ -276,9 +277,9 @@ internal static class Program
             .RecoverAsync(CancellationToken.None);
         if (!agentAuditRecovery.IsSuccess)
         {
-            Console.Error.WriteLine(
-                $"GhostSHELL could not reconcile its agent audit trail "
-                + $"({agentAuditRecovery.Error!.Code}).");
+            SecretSafeDiagnosticProjection.WriteStandardError(
+                "desktop.agent-audit-recovery.failed",
+                SecretSafeDiagnosticKind.Unexpected);
             return "The local agent audit trail is unavailable or invalid.";
         }
 
@@ -286,11 +287,11 @@ internal static class Program
         var catalogResult = await catalog.InitializeAsync(CancellationToken.None);
         if (!catalogResult.IsSuccess)
         {
-            Console.Error.WriteLine(
-                $"GhostSHELL could not load its durable definitions "
-                + $"({catalogResult.Error!.Code}).");
+            SecretSafeDiagnosticProjection.WriteStandardError(
+                "desktop.definition-catalog.load-failed",
+                SecretSafeDiagnosticKind.Unexpected);
             return $"Saved connections and workspaces are unavailable "
-                + $"({catalogResult.Error.Code}).";
+                + $"({catalogResult.Error!.Code}).";
         }
 
         // Failure-tolerant by design: unreadable settings mean the
@@ -347,7 +348,10 @@ internal static class Program
         }
 
         DockSettings.EnableDiagnosticsLogging = true;
-        DockSettings.DiagnosticsLogHandler = Console.Error.WriteLine;
+        DockSettings.DiagnosticsLogHandler = _ =>
+            SecretSafeDiagnosticProjection.WriteStandardError(
+                "desktop.dock-diagnostic",
+                SecretSafeDiagnosticKind.Unexpected);
     }
 
     internal static AppBuilder BuildAvaloniaApp(IServiceProvider services) =>
@@ -357,8 +361,7 @@ internal static class Program
             .WithInterFont()
             .ConfigureFonts(fontManager =>
                 fontManager.AddFontCollection(new GhostShellTerminalFontCollection()))
-            .SetDragPreviewOpacity(0.9)
-            .LogToTrace();
+            .SetDragPreviewOpacity(0.9);
 
     private static BrowserEngineRuntimeOptions CreateBrowserEngineOptions()
     {
@@ -375,8 +378,11 @@ internal static class Program
         string operation,
         ApplicationRunError error)
     {
-        Console.Error.WriteLine(
-            $"GhostSHELL could not {operation} ({error.Code}): {error.Message}");
+        _ = operation;
+        _ = error;
+        SecretSafeDiagnosticProjection.WriteStandardError(
+            "desktop.lifecycle.failed",
+            SecretSafeDiagnosticKind.Unexpected);
         Environment.ExitCode = 1;
     }
 
@@ -385,7 +391,10 @@ internal static class Program
         string message,
         string[] args)
     {
-        Console.Error.WriteLine($"GhostSHELL could not start ({stableCode}).");
+        _ = stableCode;
+        SecretSafeDiagnosticProjection.WriteStandardError(
+            "desktop.startup.failed",
+            SecretSafeDiagnosticKind.Unexpected);
         Environment.ExitCode = 1;
         DesktopStartupFailurePresenter.TryShow(
             "GhostSHELL could not start",

@@ -1,8 +1,8 @@
 using System.Collections.Concurrent;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
+using GhostShell.Application;
 
 namespace GhostShell.Desktop;
 
@@ -79,9 +79,9 @@ internal sealed class WindowsHotkeyMessageLoop : IWindowsHotkeyLoop
         if (_thread.IsAlive
             && !PostThreadMessageW(_threadId, WindowMessageQuit, UIntPtr.Zero, IntPtr.Zero))
         {
-            Trace.TraceError(
-                "Unable to stop the Windows global hot-key loop (Win32 error {0}).",
-                Marshal.GetLastPInvokeError());
+            SecretSafeDiagnosticProjection.WriteTrace(
+                "desktop.hotkey.windows-loop-stop.failed",
+                SecretSafeDiagnosticKind.Unexpected);
         }
 
         if (Environment.CurrentManagedThreadId != _thread.ManagedThreadId)
@@ -157,7 +157,9 @@ internal sealed class WindowsHotkeyMessageLoop : IWindowsHotkeyLoop
                 }
                 catch (Exception exception)
                 {
-                    Trace.TraceError("Global hot-key callback failed: {0}", exception);
+                    GhostShell.Application.SecretSafeDiagnosticProjection.WriteTrace(
+                        "desktop.hotkey.windows-callback.failed",
+                        exception);
                 }
             }
         }

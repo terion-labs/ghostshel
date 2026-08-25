@@ -568,6 +568,11 @@ public sealed partial class BrowserSurface :
             return Cancelled();
         }
 
+        if (!_nativeView.SupportsPeerBoundTransport)
+        {
+            return PeerBoundTransportUnavailable<BrowserSessionState>();
+        }
+
         try
         {
             if (request is BrowserOriginConstrainedNavigationRequest.Navigate navigate
@@ -680,6 +685,11 @@ public sealed partial class BrowserSurface :
             return ClickCancelled();
         }
 
+        if (!_nativeView.SupportsPeerBoundTransport)
+        {
+            return PeerBoundTransportUnavailable<BrowserClickReceipt>();
+        }
+
         try
         {
             Task<BrowserResult<BrowserClickReceipt>> completion;
@@ -734,6 +744,11 @@ public sealed partial class BrowserSurface :
             return FillCancelled();
         }
 
+        if (!_nativeView.SupportsPeerBoundTransport)
+        {
+            return PeerBoundTransportUnavailable<BrowserFillReceipt>();
+        }
+
         try
         {
             Task<BrowserResult<BrowserFillReceipt>> completion;
@@ -785,6 +800,11 @@ public sealed partial class BrowserSurface :
         if (cancellationToken.IsCancellationRequested)
         {
             return CheckCancelled();
+        }
+
+        if (!_nativeView.SupportsPeerBoundTransport)
+        {
+            return PeerBoundTransportUnavailable<BrowserCheckReceipt>();
         }
 
         try
@@ -3770,6 +3790,12 @@ public sealed partial class BrowserSurface :
 
     private static BrowserResult<BrowserSessionState> PolicyDenied() =>
         BrowserResult<BrowserSessionState>.Failure(PolicyError());
+
+    private static BrowserResult<T> PeerBoundTransportUnavailable<T>() =>
+        BrowserResult<T>.Failure(
+            BrowserError.Create(
+                BrowserErrorCode.NavigationPolicyDenied,
+                "Governed browser interaction is unavailable because the native transport cannot bind policy to the connected peer."));
 
     private bool AllowsGovernedDestination(
         BrowserNavigationOrigin allowedOrigin,

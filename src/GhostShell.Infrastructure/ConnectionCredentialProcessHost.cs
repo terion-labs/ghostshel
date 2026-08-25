@@ -85,7 +85,9 @@ public static class ConnectionCredentialProcessHost
             .ConfigureAwait(false);
         if (claimResult is not ConnectionCredentialClaimResult.Success success)
         {
-            await WriteFixedErrorAsync("GhostSHELL could not obtain the connection credential.")
+            await SecretSafeDiagnosticProjection.WriteStandardErrorAsync(
+                    "connection-credential.claim.failed",
+                    SecretSafeDiagnosticKind.Unexpected)
                 .ConfigureAwait(false);
             return CredentialUnavailableExitCode;
         }
@@ -106,7 +108,9 @@ public static class ConnectionCredentialProcessHost
                             entry.EnvironmentVariableName,
                             DecodeEnvironmentValue(entry.Material)))
                     {
-                        await WriteFixedErrorAsync("GhostSHELL rejected an invalid connection credential.")
+                        await SecretSafeDiagnosticProjection.WriteStandardErrorAsync(
+                                "connection-credential.invalid",
+                                SecretSafeDiagnosticKind.Unexpected)
                             .ConfigureAwait(false);
                         return CredentialUnavailableExitCode;
                     }
@@ -208,7 +212,9 @@ public static class ConnectionCredentialProcessHost
 
             if (process is null)
             {
-                await WriteFixedErrorAsync("GhostSHELL could not start the connection process.")
+                await SecretSafeDiagnosticProjection.WriteStandardErrorAsync(
+                        "connection-credential.process-start.failed",
+                        SecretSafeDiagnosticKind.Unexpected)
                     .ConfigureAwait(false);
                 return ProcessFailureExitCode;
             }
@@ -234,7 +240,9 @@ public static class ConnectionCredentialProcessHost
         catch (Exception exception) when (exception is
             ArgumentException or IOException or UnauthorizedAccessException or DecoderFallbackException)
         {
-            await WriteFixedErrorAsync("GhostSHELL could not prepare the connection credential.")
+            await SecretSafeDiagnosticProjection.WriteStandardErrorAsync(
+                    "connection-credential.prepare.failed",
+                    SecretSafeDiagnosticKind.Unexpected)
                 .ConfigureAwait(false);
             return CredentialUnavailableExitCode;
         }
@@ -467,8 +475,4 @@ public static class ConnectionCredentialProcessHost
         }
     }
 
-    private static async ValueTask WriteFixedErrorAsync(string message)
-    {
-        await Console.Error.WriteLineAsync(message).ConfigureAwait(false);
-    }
 }

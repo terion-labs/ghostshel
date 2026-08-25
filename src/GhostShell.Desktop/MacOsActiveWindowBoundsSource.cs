@@ -44,9 +44,9 @@ internal sealed class MacOsActiveWindowBoundsSource : IActiveWindowBoundsSource
             or ExternalException
             or OverflowException)
         {
-            Trace.TraceWarning(
-                "Unable to inspect the active macOS window bounds: {0}",
-                exception.Message);
+            GhostShell.Application.SecretSafeDiagnosticProjection.WriteTrace(
+                "desktop.active-window.macos-read.failed",
+                exception);
             return null;
         }
     }

@@ -106,9 +106,9 @@ internal sealed class MacOsNativeNotificationService :
     {
         try
         {
-            Console.Error.WriteLine(
-                "[ghostshell:notifications] "
-                + $"macOS activation subscriber failed: {exception.Message}");
+            GhostShell.Application.SecretSafeDiagnosticProjection.WriteStandardError(
+                "notifications.macos-subscriber.failed",
+                exception);
         }
         catch
         {

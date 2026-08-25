@@ -325,6 +325,10 @@ public interface IAgentCapabilityBroker : IAgentAuthorizationConsumer
         AgentRunPolicyUpdate update,
         CancellationToken cancellationToken);
 
+    ValueTask<AgentAuthorizationError?> RecordCapabilityRequestAuditAsync(
+        AgentCapabilityRequestAuditEvent auditEvent,
+        CancellationToken cancellationToken);
+
     ValueTask<AgentAuthorizationError?> CancelRunAsync(
         AgentRunCancellation cancellation,
         CancellationToken cancellationToken);

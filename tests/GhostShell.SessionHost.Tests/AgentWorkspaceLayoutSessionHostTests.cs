@@ -123,6 +123,106 @@ public sealed class AgentWorkspaceLayoutSessionHostTests
             fixture.Authorization.Completions).StableCode);
     }
 
+    internal async Task SecurityCampaignDispatchesExactLayoutToolAsync(
+        string toolName)
+    {
+        await using var fixture = await LayoutFixture.CreateAsync();
+        var extraTabId = new TabInstanceId("layout-extra-tab");
+        var extraPanelId = new PanelInstanceId("layout-extra-panel");
+        if (toolName is BuiltInAgentTools.TabClose
+            or BuiltInAgentTools.PanelClose)
+        {
+            var tabs = toolName == BuiltInAgentTools.TabClose
+                ? new[]
+                {
+                    new TabInstance(
+                        fixture.TabId,
+                        "Tab",
+                        [new PanelInstance(
+                            fixture.PanelId,
+                            PanelKind.Statistics,
+                            "Panel")],
+                        fixture.PanelId),
+                    new TabInstance(
+                        extraTabId,
+                        "Extra",
+                        [new PanelInstance(
+                            extraPanelId,
+                            PanelKind.Statistics,
+                            "Extra")],
+                        extraPanelId),
+                }
+                :
+                [
+                    new TabInstance(
+                        fixture.TabId,
+                        "Tab",
+                        [
+                            new PanelInstance(
+                                fixture.PanelId,
+                                PanelKind.Statistics,
+                                "Panel"),
+                            new PanelInstance(
+                                extraPanelId,
+                                PanelKind.Statistics,
+                                "Extra"),
+                        ],
+                        fixture.PanelId),
+                ];
+            var before = await fixture.GraphAsync();
+            _ = (await fixture.Client.RegisterWorkspaceGraphAsync(
+                new RegisterWorkspaceGraphRequest(
+                    fixture.WindowId,
+                    new WorkspaceInstance(
+                        fixture.WorkspaceId,
+                        "Workspace",
+                        tabs,
+                        fixture.TabId)),
+                fixture.HumanContext(before.Revision),
+                default)).Value();
+        }
+
+        AgentWorkspaceLayoutRequest request = toolName switch
+        {
+            BuiltInAgentTools.TabClose =>
+                new AgentWorkspaceLayoutRequest.TabClose(extraTabId),
+            BuiltInAgentTools.PanelConnect =>
+                new AgentWorkspaceLayoutRequest.PanelConnect(
+                    fixture.PanelId,
+                    "connection_test"),
+            BuiltInAgentTools.PanelAdd =>
+                new AgentWorkspaceLayoutRequest.PanelAdd(
+                    fixture.TabId,
+                    PanelKind.Statistics),
+            BuiltInAgentTools.PanelClose =>
+                new AgentWorkspaceLayoutRequest.PanelClose(extraPanelId),
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(toolName),
+                toolName,
+                null),
+        };
+        var action = await fixture.PrepareAsync(request);
+
+        var forged = await fixture.Client.RunAgentWorkspaceLayoutActionAsync(
+            AgentAuthorizationId.New(),
+            action,
+            fixture.Port,
+            default);
+
+        Assert.Equal(HostErrorCode.EngineFailed, forged.Error().Code);
+        Assert.Equal(0, fixture.Port.CallCount);
+
+        var result = await fixture.Client.RunAgentWorkspaceLayoutActionAsync(
+            fixture.Authorization.Arm(action.Proposal),
+            action,
+            fixture.Port,
+            default);
+
+        Assert.Equal(toolName, result.Value().Operation);
+        Assert.Equal(1, fixture.Port.CallCount);
+        Assert.Single(fixture.Authorization.Completions);
+    }
+
     private sealed class LayoutFixture : IAsyncDisposable
     {
         private LayoutFixture()
@@ -257,30 +357,58 @@ public sealed class AgentWorkspaceLayoutSessionHostTests
             }
 
             var before = await fixture.GraphAsync();
-            var tabId = new TabInstanceId("created-tab");
-            var panelId = new PanelInstanceId("created-panel");
-            var (workspace, appliedTabId, kind) = request switch
+            var createdTabId = new TabInstanceId("created-tab");
+            var createdPanelId = new PanelInstanceId("created-panel");
+            WorkspaceInstance workspace;
+            TabInstanceId? appliedTabId = null;
+            PanelInstanceId? appliedPanelId = null;
+            PanelKind? kind = null;
+            switch (request)
             {
-                AgentWorkspaceLayoutRequest.TabCreate create => (
-                    new WorkspaceInstance(
+                case AgentWorkspaceLayoutRequest.TabCreate create:
+                    workspace = new WorkspaceInstance(
                         fixture.WorkspaceId,
                         before.Workspace.Title,
                         before.Workspace.Tabs.Concat(
                         [
                             new TabInstance(
-                                tabId,
+                                createdTabId,
                                 "Created",
                                 [new PanelInstance(
-                                    panelId,
+                                    createdPanelId,
                                     create.Kind,
                                     "Created")],
-                                panelId),
+                                createdPanelId),
                         ]),
-                        tabId),
-                    tabId,
-                    create.Kind),
-                AgentWorkspaceLayoutRequest.PanelSplit split => (
-                    new WorkspaceInstance(
+                        createdTabId);
+                    appliedTabId = createdTabId;
+                    appliedPanelId = createdPanelId;
+                    kind = create.Kind;
+                    break;
+                case AgentWorkspaceLayoutRequest.PanelAdd add:
+                    workspace = new WorkspaceInstance(
+                        fixture.WorkspaceId,
+                        before.Workspace.Title,
+                        before.Workspace.Tabs.Select(tab => tab.Id == add.TabId
+                            ? new TabInstance(
+                                tab.Id,
+                                tab.Title,
+                                tab.Panels.Concat(
+                                [
+                                    new PanelInstance(
+                                        createdPanelId,
+                                        add.Kind,
+                                        "Created"),
+                                ]),
+                                createdPanelId)
+                            : tab),
+                        add.TabId);
+                    appliedTabId = add.TabId;
+                    appliedPanelId = createdPanelId;
+                    kind = add.Kind;
+                    break;
+                case AgentWorkspaceLayoutRequest.PanelSplit split:
+                    workspace = new WorkspaceInstance(
                         fixture.WorkspaceId,
                         before.Workspace.Title,
                         before.Workspace.Tabs.Select(tab => tab.Id == fixture.TabId
@@ -290,18 +418,51 @@ public sealed class AgentWorkspaceLayoutSessionHostTests
                                 tab.Panels.Concat(
                                 [
                                     new PanelInstance(
-                                        panelId,
+                                        createdPanelId,
                                         split.Kind,
                                         "Created"),
                                 ]),
-                                panelId)
+                                createdPanelId)
                             : tab),
-                        fixture.TabId),
-                    fixture.TabId,
-                    split.Kind),
-                _ => throw new InvalidOperationException(
-                    "The layout test port received an unsupported request."),
-            };
+                        fixture.TabId);
+                    appliedTabId = fixture.TabId;
+                    appliedPanelId = createdPanelId;
+                    kind = split.Kind;
+                    break;
+                case AgentWorkspaceLayoutRequest.TabClose close:
+                    workspace = new WorkspaceInstance(
+                        fixture.WorkspaceId,
+                        before.Workspace.Title,
+                        before.Workspace.Tabs.Where(tab => tab.Id != close.TabId),
+                        fixture.TabId);
+                    appliedTabId = close.TabId;
+                    break;
+                case AgentWorkspaceLayoutRequest.PanelClose close:
+                    workspace = new WorkspaceInstance(
+                        fixture.WorkspaceId,
+                        before.Workspace.Title,
+                        before.Workspace.Tabs.Select(tab => new TabInstance(
+                            tab.Id,
+                            tab.Title,
+                            tab.Panels.Where(panel => panel.Id != close.PanelId),
+                            tab.ActivePanelId == close.PanelId
+                                ? tab.Panels.First(panel =>
+                                    panel.Id != close.PanelId).Id
+                                : tab.ActivePanelId)),
+                        before.Workspace.ActiveTabId);
+                    appliedPanelId = close.PanelId;
+                    break;
+                case AgentWorkspaceLayoutRequest.PanelConnect connect:
+                    workspace = before.Workspace;
+                    appliedPanelId = connect.PanelId;
+                    kind = before.Workspace.Tabs
+                        .SelectMany(tab => tab.Panels)
+                        .Single(panel => panel.Id == connect.PanelId).Kind;
+                    break;
+                default:
+                    throw new InvalidOperationException(
+                        "The layout test port received an unsupported request.");
+            }
             var snapshot = (await fixture.Client.RegisterWorkspaceGraphAsync(
                 new RegisterWorkspaceGraphRequest(fixture.WindowId, workspace),
                 fixture.HumanContext(expectedWorkspaceRevision),
@@ -317,7 +478,7 @@ public sealed class AgentWorkspaceLayoutSessionHostTests
             return new AgentWorkspaceLayoutMutationResult.Applied(
                 snapshot,
                 appliedTabId,
-                panelId,
+                appliedPanelId,
                 kind);
         }
     }

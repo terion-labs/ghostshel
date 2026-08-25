@@ -53,6 +53,62 @@ public sealed class AgentMcpSessionHostTests
         }
     }
 
+    [Fact(DisplayName = "lifecycle.profile-drift")]
+    [Trait("SecurityCampaignCase", "lifecycle.profile-drift")]
+    public async Task SecurityCampaignProfileDriftRejectsApprovedCallBeforeConsumeAsync()
+    {
+        var markerRoot = Path.Combine(
+            Path.GetTempPath(),
+            "ghostshell-mcp-profile-drift-" + Guid.NewGuid().ToString("N"));
+        var startedPath = markerRoot + ".started";
+        var closedPath = markerRoot + ".closed";
+        var calledPath = markerRoot + ".called";
+        try
+        {
+            var fixture = await HostFixture.CreateAsync(
+                mode: "lifecycle-marker",
+                hostArguments:
+                [
+                    startedPath,
+                    closedPath,
+                    calledPath,
+                ],
+                shutdownGracePeriod: TimeSpan.FromSeconds(2));
+            await using (fixture)
+            {
+                var tool = Assert.Single((await fixture.OpenAsync()).Tools);
+                var action = fixture.Prepare(
+                    tool,
+                    """{"value":"must-not-dispatch"}""");
+                var authorizationId = await fixture.AuthorizeAsync(action);
+
+                PublishProfileChange(fixture, McpProfileChange.Edit);
+                await WaitForFileAsync(closedPath);
+                var result = Assert.IsType<
+                    AgentMcpHostResult<AgentMcpToolCallReceipt>.Failure>(
+                    await fixture.Host.RunToolAsync(
+                        authorizationId,
+                        action,
+                        default));
+
+                Assert.Equal("mcp_run_not_found", result.Error.StableCode);
+                Assert.False(File.Exists(calledPath));
+                Assert.Equal(
+                    [AuditOutcome.Requested, AuditOutcome.Approved],
+                    fixture.Audit.Events.Where(item => string.Equals(
+                        item.CorrelationId,
+                        action.Proposal.Id.Value,
+                        StringComparison.Ordinal)).Select(item => item.Outcome));
+            }
+        }
+        finally
+        {
+            File.Delete(startedPath);
+            File.Delete(closedPath);
+            File.Delete(calledPath);
+        }
+    }
+
     [Fact]
     public async Task CatalogEventWithSameAuthorityFingerprintKeepsRunOpen()
     {
@@ -214,6 +270,63 @@ public sealed class AgentMcpSessionHostTests
                         AgentMcpRunManifest>.Failure>(
                     forged).Error.StableCode);
             Assert.Empty(fixture.Vault.Purposes);
+        }
+    }
+
+    [Fact(DisplayName = "authority.mcp.call broker host and sink")]
+    [Trait("SecurityCampaignCase", "authority.mcp.call")]
+    public async Task SecurityCampaignMcpCallRequiresExactOneUseAuthorityAsync()
+    {
+        var fixture = await HostFixture.CreateAsync(mode: "normal");
+        await using (fixture)
+        {
+            var tool = Assert.Single((await fixture.OpenAsync()).Tools);
+            var action = fixture.Prepare(tool, """{"value":"campaign"}""");
+
+            var forged = Assert.IsType<
+                AgentMcpHostResult<AgentMcpToolCallReceipt>.Failure>(
+                await fixture.Host.RunToolAsync(
+                    new AgentAuthorizationId("forged-authorization"),
+                    action,
+                    default));
+
+            Assert.Equal("authorization_rejected", forged.Error.StableCode);
+            Assert.DoesNotContain(
+                fixture.Audit.Events,
+                item => string.Equals(
+                    item.CorrelationId,
+                    action.Proposal.Id.Value,
+                    StringComparison.Ordinal)
+                    && item.Outcome == AuditOutcome.Started);
+
+            var authorizationId = await fixture.AuthorizeAsync(action);
+            Assert.IsType<AgentMcpHostResult<AgentMcpToolCallReceipt>.Success>(
+                await fixture.Host.RunToolAsync(
+                    authorizationId,
+                    action,
+                    default));
+            var replay = Assert.IsType<
+                AgentMcpHostResult<AgentMcpToolCallReceipt>.Failure>(
+                await fixture.Host.RunToolAsync(
+                    authorizationId,
+                    action,
+                    default));
+
+            Assert.Equal("authorization_rejected", replay.Error.StableCode);
+            Assert.Single(
+                fixture.Audit.Events,
+                item => string.Equals(
+                    item.CorrelationId,
+                    action.Proposal.Id.Value,
+                    StringComparison.Ordinal)
+                    && item.Outcome == AuditOutcome.Started);
+            Assert.Single(
+                fixture.Audit.Events,
+                item => string.Equals(
+                    item.CorrelationId,
+                    action.Proposal.Id.Value,
+                    StringComparison.Ordinal)
+                    && item.Outcome == AuditOutcome.Succeeded);
         }
     }
 

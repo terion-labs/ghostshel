@@ -37,6 +37,12 @@
     <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(GhostShellFirstPartyProject)' == 'True' and '$(GhostShellReleaseSourceManifestSha256)' != ''">
+    <AssemblyMetadata
+        Include="GhostShellReleaseSourceManifestSha256"
+        Value="$(GhostShellReleaseSourceManifestSha256)" />
+  </ItemGroup>
+
   <ItemGroup Condition="'$(MSBuildProjectName)' == 'GhostShell.Core' or
                         '$(MSBuildProjectName)' == 'GhostShell.Protocol' or
                         '$(MSBuildProjectName)' == 'GhostShell.Application' or

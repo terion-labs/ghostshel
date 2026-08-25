@@ -18,6 +18,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 final class LegalClosurePolicyTest {
+    private static final int RUNTIME_DEPENDENCY_COUNT = 45;
     private static final String GENERATED_MANIFEST_PROPERTY = "legal.runtimeDependencies";
     private static final String GENERATED_NOTICES_PROPERTY = "legal.thirdPartyNotices";
     private static final String GENERATED_METADATA_PROPERTY = "legal.metadata";
@@ -32,7 +33,10 @@ final class LegalClosurePolicyTest {
         assertSortedAndUnique(sourceRows, "legal source manifest");
         assertSortedAndUnique(policyRows, "runtime license policy");
         assertSortedAndUnique(legalReviewRows, "legal review manifest");
-        assertEquals(48, policyRows.size(), "the pinned runtime graph must be reviewed coordinate by coordinate");
+        assertEquals(
+                RUNTIME_DEPENDENCY_COUNT,
+                policyRows.size(),
+                "the pinned runtime graph must be reviewed coordinate by coordinate");
 
         Set<String> declaredPaths = new HashSet<>();
         for (String row : sourceRows) {
@@ -73,6 +77,9 @@ final class LegalClosurePolicyTest {
         assertTrue(coordinates.contains("org.apache.calcite:calcite-core:1.42.0"));
         assertTrue(coordinates.contains("org.apache.calcite:calcite-babel:1.42.0"));
         assertTrue(coordinates.contains("com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava"));
+        assertTrue(coordinates.contains("com.fasterxml.jackson.core:jackson-databind:2.18.9"));
+        assertTrue(coordinates.contains("org.apache.commons:commons-lang3:3.18.0"));
+        assertFalse(coordinates.stream().anyMatch(coordinate -> coordinate.startsWith("org.apache.httpcomponents:")));
         assertEquals(1, legalReviewRows.size());
         for (String row : legalReviewRows) {
             String[] fields = row.split("\\t", -1);
@@ -97,7 +104,7 @@ final class LegalClosurePolicyTest {
         Path notices = Path.of(noticesProperty);
         Path metadata = Path.of(metadataProperty);
         List<String> dependencies = Files.readAllLines(manifest);
-        assertEquals(48, dependencies.size());
+        assertEquals(RUNTIME_DEPENDENCY_COUNT, dependencies.size());
         assertSortedAndUnique(dependencies, "generated runtime dependency manifest");
 
         List<String> expectedPolicyKeys = dependencies.stream().map(LegalClosurePolicyTest::policyKey).toList();
@@ -109,7 +116,7 @@ final class LegalClosurePolicyTest {
 
         String noticeText = Files.readString(notices);
         assertTrue(noticeText.contains("Legal closure format: 1"));
-        assertTrue(noticeText.contains("Runtime dependency count: 48"));
+        assertTrue(noticeText.contains("Runtime dependency count: " + RUNTIME_DEPENDENCY_COUNT));
         assertTrue(noticeText.contains("Dependencies requiring legal review: 1"));
         for (String coordinate : expectedPolicyKeys) {
             assertTrue(noticeText.contains("### `" + coordinate + "`"), "missing notice index row: " + coordinate);
@@ -120,10 +127,11 @@ final class LegalClosurePolicyTest {
         assertTrue(calciteSection.contains("`META-INF/LICENSE` (embedded in JAR)"));
         assertTrue(calciteSection.contains("`META-INF/NOTICE` (embedded in JAR)"));
         String jacksonCoreSection = dependencySection(
-                noticeText, "com.fasterxml.jackson.core:jackson-core:2.18.6");
+                noticeText, "com.fasterxml.jackson.core:jackson-core:2.18.9");
         assertTrue(jacksonCoreSection.contains("`META-INF/FastDoubleParser-LICENSE` (embedded in JAR)"));
-        assertTrue(jacksonCoreSection.contains("`META-INF/FastDoubleParser-NOTICE` (embedded in JAR)"));
-        assertTrue(jacksonCoreSection.contains("`META-INF/thirdparty-LICENSE` (embedded in JAR)"));
+        assertTrue(jacksonCoreSection.contains("`META-INF/FastDoubleParser-ThirdParty-LICENSE` (embedded in JAR)"));
+        assertTrue(jacksonCoreSection.contains("`META-INF/Schubfach-LICENSE` (embedded in JAR)"));
+        assertTrue(jacksonCoreSection.contains("`META-INF/NOTICE` (embedded in JAR)"));
         assertTrue(jacksonCoreSection.contains("licenses/fast-double-parser-07d9189-bsl-1.0.txt"));
         assertTrue(jacksonCoreSection.contains("licenses/fastdoubleparser-522be16-mit.txt"));
         String commonsMathSection = dependencySection(noticeText, "org.apache.commons:commons-math3:3.6.1");
@@ -138,7 +146,7 @@ final class LegalClosurePolicyTest {
             properties.load(input);
         }
         assertEquals("1", properties.getProperty("formatVersion"));
-        assertEquals("48", properties.getProperty("runtimeDependencyCount"));
+        assertEquals(Integer.toString(RUNTIME_DEPENDENCY_COUNT), properties.getProperty("runtimeDependencyCount"));
         assertEquals("1", properties.getProperty("legalReviewRequiredCount"));
         assertTrue(Integer.parseInt(properties.getProperty("legalDocumentCount")) >= 30);
         assertEquals(sha256(manifest), properties.getProperty("runtimeDependenciesSha256"));

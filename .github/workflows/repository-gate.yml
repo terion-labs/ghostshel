@@ -174,13 +174,10 @@ jobs:
       - name: Run the fast repository gate
         run: ./scripts/check.sh --quick
 
-  macos-early-release:
-    name: macOS arm64 early release
-    needs: [managed-conformance, macos-release-build, format-and-boundaries]
-    runs-on: macos-26
-    timeout-minutes: 180
-    permissions:
-      contents: write
+  dependency-security-evidence:
+    name: Exact dependency security evidence
+    runs-on: macos-15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -192,6 +189,142 @@ jobs:
         run: |
           mkdir -p .dotnet
           ln -s "$(command -v dotnet)" .dotnet/dotnet
+      - name: Restore the locked dependency graph
+        run: dotnet restore GhostShell.slnx --locked-mode
+      - name: Scan NuGet dependency graph
+        run: |
+          mkdir -p artifacts/dependency-scan
+          dotnet package list \
+            --project GhostShell.slnx \
+            --vulnerable \
+            --include-transitive \
+            --format json \
+            --output-version 1 \
+            --no-restore > artifacts/dependency-scan/nuget-audit.json
+      - name: Scan Maven dependency graph
+        run: |
+          scanner_directory="${RUNNER_TEMP}/ghostshell-grype"
+          scanner_archive="${scanner_directory}/grype_0.117.0_darwin_arm64.tar.gz"
+          locked_maven_repository="${RUNNER_TEMP}/ghostshell-locked-maven"
+          mkdir -p "${scanner_directory}" artifacts/dependency-scan/grype-cache
+          ./scripts/prepare-locked-maven-repository.py \
+            native/sql-language-worker/maven-content-lock.json \
+            "${locked_maven_repository}"
+          (
+            cd native/sql-language-worker
+            mvn -B --offline \
+              "-Dmaven.repo.local=${locked_maven_repository}" \
+              clean \
+              org.apache.maven.plugins:maven-dependency-plugin:3.8.1:list \
+              -DincludeScope=runtime \
+              -DoutputFile=target/runtime-dependencies.raw.txt \
+              -DappendOutput=false \
+              org.apache.maven.plugins:maven-dependency-plugin:3.8.1:copy-dependencies \
+              -DincludeScope=runtime \
+              -DoutputDirectory=target/runtime-jars \
+              -DoverWriteReleases=true \
+              -DoverWriteSnapshots=true \
+              -DoverWriteIfNewer=true
+            ./generate-third-party-notices.sh \
+              --dependency-list target/runtime-dependencies.raw.txt \
+              --jar-directory target/runtime-jars \
+              --manifest target/runtime-dependencies.txt \
+              --output target/THIRD-PARTY-NOTICES.md \
+              --metadata target/legal-closure.properties
+          )
+          curl --fail --location --silent --show-error \
+            https://github.com/anchore/grype/releases/download/v0.117.0/grype_0.117.0_darwin_arm64.tar.gz \
+            --output "${scanner_archive}"
+          echo "bfcefa3f3b1690d9c77d847841b32ebd6106ab0e0e32f810924707e704d53584  ${scanner_archive}" \
+            | shasum -a 256 -c -
+          tar -xzf "${scanner_archive}" -C "${scanner_directory}" grype
+          GRYPE_DB_CACHE_DIR="$PWD/artifacts/dependency-scan/grype-cache" \
+            "${scanner_directory}/grype" dir:native/sql-language-worker/target/runtime-jars \
+            --output json \
+            --file artifacts/dependency-scan/maven-audit.json \
+            --fail-on low
+      - name: Assemble closed dependency evidence
+        run: >-
+          ./.dotnet/dotnet run
+          --project tools/GhostShell.SecurityCampaign/GhostShell.SecurityCampaign.csproj
+          --configuration Release
+          --
+          assemble-dependency-evidence
+          --source-commit "${GITHUB_SHA}"
+          --nuget artifacts/dependency-scan/nuget-audit.json
+          --maven artifacts/dependency-scan/maven-audit.json
+          --output artifacts/dependency-security-evidence
+      - name: Upload dependency evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dependency-security-evidence
+          path: artifacts/dependency-security-evidence
+          if-no-files-found: error
+          retention-days: 30
+
+  macos-early-release:
+    name: macOS arm64 early release
+    needs: [managed-conformance, macos-release-build, format-and-boundaries, dependency-security-evidence]
+    runs-on: macos-26
+    timeout-minutes: 180
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - name: Seal exact tagged source before any release build
+        shell: bash
+        run: |
+          sealed_source="${RUNNER_TEMP}/ghostshell-sealed-source"
+          campaign_tool="${RUNNER_TEMP}/ghostshell-security-campaign-tool"
+          campaign_build="${RUNNER_TEMP}/ghostshell-security-campaign-build"
+          source_seal="${RUNNER_TEMP}/ghostshell-source-seal"
+          release_artifacts="${RUNNER_TEMP}/ghostshell-release-artifacts"
+          build_artifacts="${RUNNER_TEMP}/ghostshell-release-build"
+          nuget_packages="${RUNNER_TEMP}/ghostshell-release-nuget"
+          source_tree="$(git rev-parse "${GITHUB_SHA}^{tree}")"
+          test ! -e "${sealed_source}"
+          mkdir -p "${sealed_source}" "${campaign_tool}" "${release_artifacts}" \
+            "${build_artifacts}" "${nuget_packages}"
+          git archive --format=tar "${GITHUB_SHA}" | tar -xf - -C "${sealed_source}"
+          NUGET_PACKAGES="${nuget_packages}" dotnet publish \
+            "${sealed_source}/tools/GhostShell.SecurityCampaign/GhostShell.SecurityCampaign.csproj" \
+            --configuration Release \
+            --artifacts-path "${campaign_build}" \
+            --output "${campaign_tool}"
+          dotnet "${campaign_tool}/GhostShell.SecurityCampaign.dll" \
+            seal-release-source \
+            --repository "${GITHUB_WORKSPACE}" \
+            --source-root "${sealed_source}" \
+            --source-commit "${GITHUB_SHA}" \
+            --source-tree "${source_tree}" \
+            --tag "${GITHUB_REF_NAME}" \
+            --output "${source_seal}"
+          mkdir -p \
+            "${sealed_source}/.deps" \
+            "${sealed_source}/native/artifacts" \
+            "${sealed_source}/native/sql-language-worker/target"
+          chmod -R a-w "${sealed_source}"
+          chmod -R u+rwX \
+            "${sealed_source}/.deps" \
+            "${sealed_source}/native/artifacts" \
+            "${sealed_source}/native/sql-language-worker/target"
+          {
+            echo "GHOSTSHELL_RELEASE_SOURCE_ROOT=${sealed_source}"
+            echo "GHOSTSHELL_RELEASE_SOURCE_SEAL=${source_seal}"
+            echo "GHOSTSHELL_SECURITY_CAMPAIGN_TOOL=${campaign_tool}/GhostShell.SecurityCampaign.dll"
+            echo "GHOSTSHELL_RELEASE_ARTIFACTS=${release_artifacts}"
+            echo "GHOSTSHELL_BUILD_ARTIFACTS_ROOT=${build_artifacts}"
+            echo "GHOSTSHELL_DOTNET=$(command -v dotnet)"
+            echo "GHOSTSHELL_RELEASE_SOURCE_COMMIT=${GITHUB_SHA}"
+            echo "GHOSTSHELL_RELEASE_SOURCE_TREE=${source_tree}"
+            echo "GHOSTSHELL_RELEASE_SOURCE_TAG=${GITHUB_REF_NAME}"
+            echo "NUGET_PACKAGES=${nuget_packages}"
+          } >> "${GITHUB_ENV}"
       - name: Set up the pinned Native Image toolchain
         uses: graalvm/setup-graalvm@5298d94fb55a4f185c602eeac5de1b553882abe2 # v1.6.4
         with:
@@ -219,15 +352,17 @@ jobs:
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
       - name: Verify macOS legal publication clearance
         if: startsWith(github.ref, 'refs/tags/v')
-        run: >-
-          ./.dotnet/dotnet run
-          --project tools/GhostShell.Packaging/GhostShell.Packaging.csproj
-          --configuration Release
-          --
-          macos-release-legal
-          --record licenses/macos-release-legal.json
-          --source-root .
-          --require-clearance
+        run: |
+          cd "${GHOSTSHELL_RELEASE_SOURCE_ROOT}"
+          dotnet run \
+            --project tools/GhostShell.Packaging/GhostShell.Packaging.csproj \
+            --configuration Release \
+            --artifacts-path "${GHOSTSHELL_BUILD_ARTIFACTS_ROOT}/legal" \
+            -- \
+            macos-release-legal \
+            --record licenses/macos-release-legal.json \
+            --source-root . \
+            --require-clearance
       - name: Select full Xcode 26 for adaptive icon compilation
         shell: bash
         run: |
@@ -255,9 +390,21 @@ jobs:
           echo "DEVELOPER_DIR=${developer_directory}" >> "${GITHUB_ENV}"
       - name: Build verified native payloads
         run: |
+          cd "${GHOSTSHELL_RELEASE_SOURCE_ROOT}"
           ./scripts/build-libghostty-vt.sh --rid osx-arm64
           ./scripts/build-sql-language-worker.sh --local --rid osx-arm64
-          ./scripts/build-cef-runtime.sh --rid osx-arm64 --dotnet ./.dotnet/dotnet
+          ./scripts/build-cef-runtime.sh --rid osx-arm64 --dotnet "${GHOSTSHELL_DOTNET}"
+      - name: Download campaign test results
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: test-results-*
+          path: ${{ runner.temp }}/ghostshell-release-artifacts/campaign-test-results
+          merge-multiple: true
+      - name: Download dependency security evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dependency-security-evidence
+          path: ${{ runner.temp }}/ghostshell-release-artifacts/dependency-security-evidence
       - name: Configure Developer ID signing and notarization
         env:
           APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
@@ -318,24 +465,30 @@ jobs:
         env:
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
         run: |
-          mkdir -p artifacts/macos-arm64
+          mkdir -p "${GHOSTSHELL_RELEASE_ARTIFACTS}/macos-arm64"
+          cd "${GHOSTSHELL_RELEASE_SOURCE_ROOT}"
           ./scripts/package-macos.sh \
             --version "${RELEASE_VERSION}" \
             --build-version "${GITHUB_RUN_NUMBER}" \
             --runtime-identifier osx-arm64 \
             --sign-identity "${GHOSTSHELL_SIGNING_IDENTITY}" \
             --notary-profile ghostshell-ci \
-            --output artifacts/macos-arm64/GhostShell.app
+            --release-evidence-dir "${GHOSTSHELL_RELEASE_ARTIFACTS}/release-evidence" \
+            --source-seal "${GHOSTSHELL_RELEASE_SOURCE_SEAL}" \
+            --security-campaign-tool "${GHOSTSHELL_SECURITY_CAMPAIGN_TOOL}" \
+            --build-artifacts-root "${GHOSTSHELL_BUILD_ARTIFACTS_ROOT}/package" \
+            --output "${GHOSTSHELL_RELEASE_ARTIFACTS}/macos-arm64/GhostShell.app"
       - name: Archive release candidate
         run: |
           archive="GhostShell-macOS-arm64.zip"
-          cd artifacts
+          cd "${GHOSTSHELL_RELEASE_ARTIFACTS}"
           ditto -c -k --sequesterRsrc --keepParent \
             macos-arm64/GhostShell.app \
             "${archive}"
           shasum -a 256 "${archive}" > "${archive}.sha256"
-          verification_directory="$(mktemp -d "${RUNNER_TEMP}/ghostshell-archive.XXXXXX")"
-          trap 'rm -rf -- "${verification_directory}"' EXIT
+          verification_directory="${RUNNER_TEMP}/ghostshell-archive"
+          test ! -e "${verification_directory}"
+          mkdir -p "${verification_directory}"
           ditto -x -k "${archive}" "${verification_directory}"
           codesign --verify --deep --strict --verbose=2 \
             "${verification_directory}/GhostShell.app"
@@ -354,13 +507,57 @@ jobs:
           assetutil --info "${assets_car}" > "${verification_directory}/Assets.info.json"
           grep -Fq '"AssetType" : "Icon Image"' "${verification_directory}/Assets.info.json"
           grep -Fq '"Name" : "GhostShell"' "${verification_directory}/Assets.info.json"
+          echo "GHOSTSHELL_EXTRACTED_APP=${verification_directory}/GhostShell.app" >> "${GITHUB_ENV}"
+      - name: Assemble exact release-candidate evidence
+        run: |
+          dotnet "${GHOSTSHELL_SECURITY_CAMPAIGN_TOOL}" \
+            assemble-release-evidence \
+            --repository "${GHOSTSHELL_RELEASE_SOURCE_ROOT}" \
+            --source-commit "${GITHUB_SHA}" \
+            --source-tree "${GHOSTSHELL_RELEASE_SOURCE_TREE}" \
+            --tag "${GITHUB_REF_NAME}" \
+            --run-id "${GITHUB_RUN_ID}" \
+            --run-attempt "${GITHUB_RUN_ATTEMPT}" \
+            --source-seal "${GHOSTSHELL_RELEASE_SOURCE_SEAL}" \
+            --build-identity "${GHOSTSHELL_RELEASE_ARTIFACTS}/release-evidence/release-build-identity.json" \
+            --archive "${GHOSTSHELL_RELEASE_ARTIFACTS}/GhostShell-macOS-arm64.zip" \
+            --package "${GHOSTSHELL_EXTRACTED_APP}" \
+            --test-results "${GHOSTSHELL_RELEASE_ARTIFACTS}/campaign-test-results" \
+            --dependency-evidence "${GHOSTSHELL_RELEASE_ARTIFACTS}/dependency-security-evidence/evidence.json" \
+            --notarization-evidence "${GHOSTSHELL_RELEASE_ARTIFACTS}/release-evidence/notarization.json" \
+            --output "${GHOSTSHELL_RELEASE_ARTIFACTS}/security-campaign"
+      - name: Revalidate exact release-candidate evidence
+        run: |
+          dotnet "${GHOSTSHELL_SECURITY_CAMPAIGN_TOOL}" \
+            validate-release-evidence \
+            --repository "${GHOSTSHELL_RELEASE_SOURCE_ROOT}" \
+            --source-commit "${GITHUB_SHA}" \
+            --source-tree "${GHOSTSHELL_RELEASE_SOURCE_TREE}" \
+            --tag "${GITHUB_REF_NAME}" \
+            --run-id "${GITHUB_RUN_ID}" \
+            --run-attempt "${GITHUB_RUN_ATTEMPT}" \
+            --source-seal "${GHOSTSHELL_RELEASE_SOURCE_SEAL}" \
+            --build-identity "${GHOSTSHELL_RELEASE_ARTIFACTS}/release-evidence/release-build-identity.json" \
+            --archive "${GHOSTSHELL_RELEASE_ARTIFACTS}/GhostShell-macOS-arm64.zip" \
+            --package "${GHOSTSHELL_EXTRACTED_APP}" \
+            --test-results "${GHOSTSHELL_RELEASE_ARTIFACTS}/campaign-test-results" \
+            --dependency-evidence "${GHOSTSHELL_RELEASE_ARTIFACTS}/dependency-security-evidence/evidence.json" \
+            --notarization-evidence "${GHOSTSHELL_RELEASE_ARTIFACTS}/release-evidence/notarization.json" \
+            --evidence "${GHOSTSHELL_RELEASE_ARTIFACTS}/security-campaign"
       - name: Upload macOS release candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ghostshell-macos-arm64
           path: |
-            artifacts/GhostShell-macOS-arm64.zip
-            artifacts/GhostShell-macOS-arm64.zip.sha256
+            ${{ runner.temp }}/ghostshell-release-artifacts/GhostShell-macOS-arm64.zip
+            ${{ runner.temp }}/ghostshell-release-artifacts/GhostShell-macOS-arm64.zip.sha256
+            ${{ runner.temp }}/ghostshell-release-artifacts/security-campaign/receipt.json
+            ${{ runner.temp }}/ghostshell-release-artifacts/security-campaign/receipt.json.sha256
+            ${{ runner.temp }}/ghostshell-release-artifacts/security-campaign/receipt.md
+            ${{ runner.temp }}/ghostshell-release-artifacts/dependency-security-evidence/evidence.json
+            ${{ runner.temp }}/ghostshell-release-artifacts/release-evidence/release-build-identity.json
+            ${{ runner.temp }}/ghostshell-source-seal/source-seal.json
+            ${{ runner.temp }}/ghostshell-source-seal/source-seal.json.sha256
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
@@ -371,8 +568,15 @@ jobs:
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
         run: |
           gh release create "${GITHUB_REF_NAME}" \
-            artifacts/GhostShell-macOS-arm64.zip \
-            artifacts/GhostShell-macOS-arm64.zip.sha256 \
+            "${GHOSTSHELL_RELEASE_ARTIFACTS}/GhostShell-macOS-arm64.zip" \
+            "${GHOSTSHELL_RELEASE_ARTIFACTS}/GhostShell-macOS-arm64.zip.sha256" \
+            "${GHOSTSHELL_RELEASE_ARTIFACTS}/security-campaign/receipt.json" \
+            "${GHOSTSHELL_RELEASE_ARTIFACTS}/security-campaign/receipt.json.sha256" \
+            "${GHOSTSHELL_RELEASE_ARTIFACTS}/security-campaign/receipt.md" \
+            "${GHOSTSHELL_RELEASE_ARTIFACTS}/dependency-security-evidence/evidence.json" \
+            "${GHOSTSHELL_RELEASE_ARTIFACTS}/release-evidence/release-build-identity.json" \
+            "${GHOSTSHELL_RELEASE_SOURCE_SEAL}/source-seal.json" \
+            "${GHOSTSHELL_RELEASE_SOURCE_SEAL}/source-seal.json.sha256" \
             --fail-on-no-commits \
             --generate-notes \
             --latest \

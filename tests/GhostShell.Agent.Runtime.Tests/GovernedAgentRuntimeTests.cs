@@ -4206,6 +4206,11 @@ public sealed partial class GovernedAgentRuntimeTests
             CancellationToken cancellationToken) =>
             inner.UpdateRunPolicyAsync(update, cancellationToken);
 
+        public ValueTask<AgentAuthorizationError?> RecordCapabilityRequestAuditAsync(
+            AgentCapabilityRequestAuditEvent auditEvent,
+            CancellationToken cancellationToken) =>
+            inner.RecordCapabilityRequestAuditAsync(auditEvent, cancellationToken);
+
         public ValueTask<AgentAuthorizationError?> CancelRunAsync(
             AgentRunCancellation cancellation,
             CancellationToken cancellationToken) =>

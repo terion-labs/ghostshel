@@ -152,6 +152,11 @@ public sealed partial class BrowserSurface
             return AutomationCancelled();
         }
 
+        if (!_nativeView.SupportsPeerBoundTransport)
+        {
+            return PeerBoundTransportUnavailable<NativeAutomationCompletion>();
+        }
+
         NativeBrowserViewport nativeViewport;
         try
         {

@@ -239,7 +239,9 @@ internal sealed class X11HotkeyMessageLoop : IX11HotkeyLoop
                 }
                 catch (Exception exception)
                 {
-                    Trace.TraceError("X11 global hot-key callback failed: {0}", exception);
+                    GhostShell.Application.SecretSafeDiagnosticProjection.WriteTrace(
+                        "desktop.hotkey.x11-callback.failed",
+                        exception);
                 }
 
                 break;

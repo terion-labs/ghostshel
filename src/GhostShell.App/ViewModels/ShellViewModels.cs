@@ -3012,8 +3012,9 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
                     // A transient transport failure must not permanently mute an
                     // otherwise healthy terminal. The cursor makes a resumed
                     // replay idempotent when the host retains recent events.
-                    Console.Error.WriteLine(
-                        $"[ghostshell:notifications] Watch for {sessionId} ended: {exception.Message}");
+                    SecretSafeDiagnostics.WriteTraceAndStandardError(
+                        "notifications.session-watch.failed",
+                        exception);
                 }
 
                 await Task.Delay(NotificationWatchRetryDelay, watch.Token)
@@ -3052,9 +3053,9 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
             {
                 // A producer event has no host-side replay. One observer must
                 // never consume it on behalf of every later shell observer.
-                Console.Error.WriteLine(
-                    "[ghostshell:notifications] Terminal subscriber failed: "
-                    + exception.Message);
+                SecretSafeDiagnostics.WriteTraceAndStandardError(
+                    "notifications.terminal-subscriber.failed",
+                    exception);
             }
         }
     }
@@ -3773,9 +3774,9 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
         }
         catch (Exception exception)
         {
-            Console.Error.WriteLine(
-                "[ghostshell:connections] Preparing terminal session failed: "
-                + exception);
+            SecretSafeDiagnostics.WriteTraceAndStandardError(
+                "connections.terminal-prepare.failed",
+                exception);
             result = ConnectionRuntimeResult<ConnectionOpenPlan>.Fail(
                 ConnectionRuntimeError.Create(ConnectionRuntimeErrorCode.ProcessFailed));
         }

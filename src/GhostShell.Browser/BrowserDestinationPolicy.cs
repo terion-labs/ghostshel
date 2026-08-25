@@ -5,9 +5,9 @@ using GhostShell.Application;
 namespace GhostShell.Browser;
 
 /// <summary>
-/// Restricts model-governed navigation on the local network route. SSH-routed
-/// browsers resolve names on the remote host, so applying the desktop's DNS
-/// answer there would enforce the wrong trust boundary.
+/// Restricts model-governed navigation. SSH-routed browsers have no remote-peer
+/// attestation or separately approved private-network capability, so governed
+/// HTTP traffic on that route fails closed.
 /// </summary>
 internal sealed class BrowserDestinationPolicy
 {
@@ -63,10 +63,14 @@ internal sealed class BrowserDestinationPolicy
             return false;
         }
 
-        if (_routeKind is BrowserNetworkRouteKind.SshRouted
-            || !IsHttp(address.Value))
+        if (!IsHttp(address.Value))
         {
             return true;
+        }
+
+        if (_routeKind is BrowserNetworkRouteKind.SshRouted)
+        {
+            return false;
         }
 
         var host = address.Value.IdnHost;
@@ -94,17 +98,20 @@ internal sealed class BrowserDestinationPolicy
     }
 
     /// <summary>
-    /// Synchronous CEF navigation callbacks cannot safely perform DNS. This
-    /// check rejects literal destinations on every leg; the asynchronous CEF
-    /// request gate resolves hostnames again, but does not pin Chromium's peer.
+    /// Synchronous navigation admission rejects destinations that cannot be
+    /// governed at the route's actual trust boundary.
     /// </summary>
     public bool AllowsNavigationStart(BrowserAddress address)
     {
         ArgumentNullException.ThrowIfNull(address);
-        if (_routeKind is BrowserNetworkRouteKind.SshRouted
-            || !IsHttp(address.Value))
+        if (!IsHttp(address.Value))
         {
             return true;
+        }
+
+        if (_routeKind is BrowserNetworkRouteKind.SshRouted)
+        {
+            return false;
         }
 
         var host = CanonicalHost(address.Value);
@@ -115,6 +122,21 @@ internal sealed class BrowserDestinationPolicy
 
         return !IPAddress.TryParse(host, out var literal)
             || IsPublicAddress(literal);
+    }
+
+    /// <summary>
+    /// CEF currently exposes URL admission but not the actual socket peer.
+    /// Network requests therefore fail closed at the native request callback;
+    /// non-network internal documents retain their existing policy.
+    /// </summary>
+    public ValueTask<bool> AllowsCefTransportAsync(
+        BrowserAddress address,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(
+            !IsHttp(address.Value) && AllowsNavigationStart(address));
     }
 
     internal static bool IsPublicAddress(IPAddress address)

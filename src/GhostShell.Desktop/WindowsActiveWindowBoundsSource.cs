@@ -21,9 +21,9 @@ internal sealed class WindowsActiveWindowBoundsSource : IActiveWindowBoundsSourc
             or EntryPointNotFoundException
             or ExternalException)
         {
-            Trace.TraceWarning(
-                "Unable to inspect the active Windows window bounds: {0}",
-                exception.Message);
+            GhostShell.Application.SecretSafeDiagnosticProjection.WriteTrace(
+                "desktop.active-window.windows-read.failed",
+                exception);
             return null;
         }
     }

@@ -262,9 +262,9 @@ internal sealed partial class MacOsUserNotificationCenter
     {
         try
         {
-            Console.Error.WriteLine(
-                "[ghostshell:notifications] "
-                + $"macOS callback failed: {exception.Message}");
+            GhostShell.Application.SecretSafeDiagnosticProjection.WriteStandardError(
+                "notifications.macos-callback.failed",
+                exception);
         }
         catch
         {

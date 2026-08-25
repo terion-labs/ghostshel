@@ -101,7 +101,8 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.IsType<AgentRequestCapabilityParseResult.Unavailable>(result);
     }
 
-    [Fact]
+    [Fact(DisplayName = "lifecycle.capability-request-correlation closes request before ordinary approval")]
+    [Trait("SecurityCampaignCase", "lifecycle.capability-request-correlation")]
     public async Task AllowAskCommitsAuditedRunPolicyBeforeOrdinaryActionApproval()
     {
         var provider = new ProviderRound((call, _) => call switch
@@ -172,6 +173,21 @@ public sealed partial class GovernedAgentRuntimeTests
             fixture.Audit.Events,
             auditEvent => string.Equals(auditEvent.Action, "agent.run.policy", StringComparison.Ordinal));
         Assert.Equal(AuditOutcome.Succeeded, policyAudit.Outcome);
+        var policyDetails = Assert.IsType<AuditDetails.AgentRunPolicyTransitionDetails>(
+            policyAudit.Details);
+        Assert.Equal(pending.Id, policyDetails.CapabilityRequestId);
+        var capabilityEvents = fixture.Audit.Events
+            .Where(auditEvent => string.Equals(
+                auditEvent.Action,
+                "agent.capability.request",
+                StringComparison.Ordinal))
+            .ToArray();
+        Assert.Equal(2, capabilityEvents.Length);
+        Assert.All(
+            capabilityEvents,
+            auditEvent => Assert.Equal(pending.Id.Value, auditEvent.CorrelationId));
+        Assert.Equal(AuditOutcome.Requested, capabilityEvents[0].Outcome);
+        Assert.Equal(AuditOutcome.Approved, capabilityEvents[1].Outcome);
         Assert.DoesNotContain(
             fixture.Audit.Events,
             auditEvent => string.Equals(auditEvent.Action
@@ -252,7 +268,9 @@ public sealed partial class GovernedAgentRuntimeTests
             fixture.Runtime.Snapshot.EffectivePolicy!
                 .GetPermission(AgentCapability.RunCommands));
         Assert.Empty(fixture.Terminal.Actions);
-        Assert.Empty(fixture.Audit.Events);
+        Assert.Equal(2, fixture.Audit.Events.Count);
+        Assert.Equal(AuditOutcome.Requested, fixture.Audit.Events[0].Outcome);
+        Assert.Equal(AuditOutcome.Denied, fixture.Audit.Events[1].Outcome);
     }
 
     [Fact]
@@ -285,7 +303,13 @@ public sealed partial class GovernedAgentRuntimeTests
             """{"ok":false,"error":{"code":"capability_request_expired","retryable":false}}""",
             result.Value.Content);
         Assert.Empty(fixture.Terminal.Actions);
-        Assert.Empty(fixture.Audit.Events);
+        Assert.Equal(2, fixture.Audit.Events.Count);
+        Assert.Equal(AuditOutcome.Requested, fixture.Audit.Events[0].Outcome);
+        Assert.Equal(AuditOutcome.Cancelled, fixture.Audit.Events[1].Outcome);
+        Assert.Equal(
+            AgentCapabilityRequestAuditDecision.Expired,
+            Assert.IsType<AuditDetails.AgentCapabilityRequestDetails>(
+                fixture.Audit.Events[1].Details).Decision);
         var late = await fixture.Runtime.DecideCapabilityRequestAsync(
             pending.Id,
             new GovernedAgentCapabilityDecision.AllowAsk(),
@@ -336,7 +360,9 @@ public sealed partial class GovernedAgentRuntimeTests
             ToolResultForCall(
                 provider,
                 "first-capability-request").StableCode);
-        Assert.Empty(fixture.Audit.Events);
+        Assert.Equal(2, fixture.Audit.Events.Count);
+        Assert.Equal(AuditOutcome.Requested, fixture.Audit.Events[0].Outcome);
+        Assert.Equal(AuditOutcome.Denied, fixture.Audit.Events[1].Outcome);
     }
 
     [Fact]
@@ -378,7 +404,13 @@ public sealed partial class GovernedAgentRuntimeTests
             AgentPermission.Off,
             fixture.Runtime.Snapshot.EffectivePolicy!
                 .GetPermission(AgentCapability.RunCommands));
-        Assert.Empty(fixture.Audit.Events);
+        Assert.Equal(
+            [AuditOutcome.Requested, AuditOutcome.Failed],
+            fixture.Audit.Events.Select(item => item.Outcome));
+        Assert.Equal(
+            AgentCapabilityRequestAuditDecision.CapabilityUnavailable,
+            Assert.IsType<AuditDetails.AgentCapabilityRequestDetails>(
+                fixture.Audit.Events[1].Details).Decision);
     }
 
     [Fact]
@@ -408,7 +440,13 @@ public sealed partial class GovernedAgentRuntimeTests
         Assert.Equal(
             "target_changed",
             ToolResultForCall(provider, "target-drift").StableCode);
-        Assert.Empty(fixture.Audit.Events);
+        Assert.Equal(
+            [AuditOutcome.Requested, AuditOutcome.Failed],
+            fixture.Audit.Events.Select(item => item.Outcome));
+        Assert.Equal(
+            AgentCapabilityRequestAuditDecision.TargetChanged,
+            Assert.IsType<AuditDetails.AgentCapabilityRequestDetails>(
+                fixture.Audit.Events[1].Details).Decision);
     }
 
     [Fact]
@@ -929,6 +967,11 @@ public sealed partial class GovernedAgentRuntimeTests
                     CancellationToken.None)
                 : null;
         }
+
+        public ValueTask<AgentAuthorizationError?> RecordCapabilityRequestAuditAsync(
+            AgentCapabilityRequestAuditEvent auditEvent,
+            CancellationToken cancellationToken) =>
+            inner.RecordCapabilityRequestAuditAsync(auditEvent, cancellationToken);
 
         public ValueTask<AgentAuthorizationError?> CancelRunAsync(
             AgentRunCancellation cancellation,

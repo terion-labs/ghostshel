@@ -5,6 +5,19 @@ namespace GhostShell.Browser.Tests;
 public sealed class CefAgentWebReaderTests
 {
     [Fact]
+    public async Task GovernedCefReaderFailsBeforeNativeDispatchWithoutPeerBinding()
+    {
+        var result = await new CefAgentWebReader().ReadAsync(
+            new AgentWebReadRequest(
+                "https://example.test/article",
+                AgentWebReadFormat.Markdown),
+            CancellationToken.None);
+
+        var failure = Assert.IsType<AgentWebToolExecutionResult.Failed>(result);
+        Assert.Equal(AgentWebToolErrorCode.DestinationDenied, failure.Code);
+    }
+
+    [Fact]
     public async Task MarkdownModeConvertsReadableArticleHtml()
     {
         var paragraph = string.Join(' ', Enumerable.Repeat(

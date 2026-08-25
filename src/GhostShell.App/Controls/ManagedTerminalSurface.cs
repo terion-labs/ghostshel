@@ -2809,7 +2809,9 @@ public sealed class ManagedTerminalSurface : Control
         }
         catch (Exception exception)
         {
-            Trace.TraceError("Managed terminal input failed: {0}", exception);
+            SecretSafeDiagnostics.WriteTrace(
+                "terminal.input.failed",
+                exception);
             InputFailed?.Invoke(this, new TerminalInputFailureEventArgs(exception));
         }
     }

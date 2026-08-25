@@ -116,7 +116,8 @@ public abstract record AuditDetails
         AgentRunPolicyTransition transition,
         long policyGeneration,
         AgentActionDigest targetIdentityDigest,
-        DateTimeOffset? yoloExpiresAtUtc = null)
+        DateTimeOffset? yoloExpiresAtUtc = null,
+        AgentCapabilityRequestId? capabilityRequestId = null)
     {
         AgentRunRegistration.ValidateRunId(runId);
         if (!Enum.IsDefined(transition))
@@ -140,12 +141,57 @@ public abstract record AuditDetails
                 nameof(yoloExpiresAtUtc));
         }
 
+        if (capabilityRequestId is { } requestId
+            && (string.IsNullOrWhiteSpace(requestId.Value)
+                || requestId.Value.Any(char.IsControl)
+                || requestId.Value.Length > 256))
+        {
+            throw new ArgumentException(
+                "A capability request identifier must be printable and bounded.",
+                nameof(capabilityRequestId));
+        }
+
         return new AgentRunPolicyTransitionDetails(
             runId,
             transition,
             policyGeneration,
             targetIdentityDigest,
-            yoloExpiresAtUtc);
+            yoloExpiresAtUtc,
+            capabilityRequestId);
+    }
+
+    public static AuditDetails ForAgentCapabilityRequest(
+        AgentRunId runId,
+        AgentCapability capability,
+        long policyGeneration,
+        AgentActionDigest targetIdentityDigest,
+        AgentCapabilityRequestAuditDecision? decision = null)
+    {
+        AgentRunRegistration.ValidateRunId(runId);
+        if (!Enum.IsDefined(capability))
+        {
+            throw new ArgumentOutOfRangeException(nameof(capability));
+        }
+
+        ArgumentOutOfRangeException.ThrowIfNegative(policyGeneration);
+        if (string.IsNullOrWhiteSpace(targetIdentityDigest.Value))
+        {
+            throw new ArgumentException(
+                "A capability-request audit record requires a target digest.",
+                nameof(targetIdentityDigest));
+        }
+
+        if (decision is { } value && !Enum.IsDefined(value))
+        {
+            throw new ArgumentOutOfRangeException(nameof(decision));
+        }
+
+        return new AgentCapabilityRequestDetails(
+            runId,
+            capability,
+            policyGeneration,
+            targetIdentityDigest,
+            decision);
     }
 
     public sealed record EmptyDetails : AuditDetails
@@ -239,13 +285,15 @@ public abstract record AuditDetails
             AgentRunPolicyTransition transition,
             long policyGeneration,
             AgentActionDigest targetIdentityDigest,
-            DateTimeOffset? yoloExpiresAtUtc)
+            DateTimeOffset? yoloExpiresAtUtc,
+            AgentCapabilityRequestId? capabilityRequestId)
         {
             RunId = runId;
             Transition = transition;
             PolicyGeneration = policyGeneration;
             TargetIdentityDigest = targetIdentityDigest;
             YoloExpiresAtUtc = yoloExpiresAtUtc;
+            CapabilityRequestId = capabilityRequestId;
         }
 
         public AgentRunId RunId { get; }
@@ -257,6 +305,35 @@ public abstract record AuditDetails
         public AgentActionDigest TargetIdentityDigest { get; }
 
         public DateTimeOffset? YoloExpiresAtUtc { get; }
+
+        public AgentCapabilityRequestId? CapabilityRequestId { get; }
+    }
+
+    public sealed record AgentCapabilityRequestDetails : AuditDetails
+    {
+        internal AgentCapabilityRequestDetails(
+            AgentRunId runId,
+            AgentCapability capability,
+            long policyGeneration,
+            AgentActionDigest targetIdentityDigest,
+            AgentCapabilityRequestAuditDecision? decision)
+        {
+            RunId = runId;
+            Capability = capability;
+            PolicyGeneration = policyGeneration;
+            TargetIdentityDigest = targetIdentityDigest;
+            Decision = decision;
+        }
+
+        public AgentRunId RunId { get; }
+
+        public AgentCapability Capability { get; }
+
+        public long PolicyGeneration { get; }
+
+        public AgentActionDigest TargetIdentityDigest { get; }
+
+        public AgentCapabilityRequestAuditDecision? Decision { get; }
     }
 }
 

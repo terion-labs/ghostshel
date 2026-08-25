@@ -3,79 +3,59 @@
   "repository": "https://repo.maven.apache.org/maven2/",
   "artifacts": [
     {
-      "path": "aopalliance/aopalliance/1.0/aopalliance-1.0.jar",
-      "size": 4467,
-      "sha256": "0addec670fedcd3f113c5c8091d783280d23f75e3acb841b61a9cdb079376a08"
+      "path": "com/fasterxml/jackson/core/jackson-annotations/2.18.9/jackson-annotations-2.18.9.jar",
+      "size": 78411,
+      "sha256": "798c85b86e7420d0b4eb91e7b3e37d4bee673c61de37a616ba51a7539631e6b7"
     },
     {
-      "path": "aopalliance/aopalliance/1.0/aopalliance-1.0.pom",
-      "size": 363,
-      "sha256": "26e82330157d6b844b67a8064945e206581e772977183e3e31fec6058aa9a59b"
-    },
-    {
-      "path": "avalon-framework/avalon-framework/4.1.3/avalon-framework-4.1.3.pom",
-      "size": 167,
-      "sha256": "c6c971b146ec8e596e660e64d5517aae02e34c3cce240de44bb92ccd98f046bf"
-    },
-    {
-      "path": "classworlds/classworlds/1.1-alpha-2/classworlds-1.1-alpha-2.pom",
-      "size": 3128,
-      "sha256": "0cc647963b74ad1d7a37c9868e9e5a8f474e49297e1863582253a08a4c719cb1"
-    },
-    {
-      "path": "com/fasterxml/jackson/core/jackson-annotations/2.18.6/jackson-annotations-2.18.6.jar",
-      "size": 78412,
-      "sha256": "face5c37bee1f0768f5f198d077fc29d163becca95de9e0f13962c84d1047662"
-    },
-    {
-      "path": "com/fasterxml/jackson/core/jackson-annotations/2.18.6/jackson-annotations-2.18.6.pom",
+      "path": "com/fasterxml/jackson/core/jackson-annotations/2.18.9/jackson-annotations-2.18.9.pom",
       "size": 6804,
-      "sha256": "76a0101fecf99fcf3d0920e692c1d263ef32e3dad014dc3ba9f2c769e553d852"
+      "sha256": "1b8c49e135d294415736966cd54d872034adb9116ec3c277ff58b22acb7d8774"
     },
     {
-      "path": "com/fasterxml/jackson/core/jackson-core/2.18.6/jackson-core-2.18.6.jar",
-      "size": 589904,
-      "sha256": "e7e1bfa50f0a79db37e6aa37db111cf03aebf4a484b359d21127ab43ab2398c6"
+      "path": "com/fasterxml/jackson/core/jackson-core/2.18.9/jackson-core-2.18.9.jar",
+      "size": 588002,
+      "sha256": "e03144f48c8d5307da2894570b4972aab8c72f22440f8dcdb745be2485ce2024"
     },
     {
-      "path": "com/fasterxml/jackson/core/jackson-core/2.18.6/jackson-core-2.18.6.pom",
-      "size": 9897,
-      "sha256": "58232cda77c9d6ff66d173aa261fe717e59ff59d241dea913adcaabdcc3c9b05"
+      "path": "com/fasterxml/jackson/core/jackson-core/2.18.9/jackson-core-2.18.9.pom",
+      "size": 9574,
+      "sha256": "178a2c07cf2c354bb558b0129fb9696cf3431cbb2441cab876695b47a306d73d"
     },
     {
-      "path": "com/fasterxml/jackson/core/jackson-databind/2.18.6/jackson-databind-2.18.6.jar",
-      "size": 1659211,
-      "sha256": "45d124736ea29dc374171fc1a8a9958e0f44407c1e0aae0297d8eee267fb592e"
+      "path": "com/fasterxml/jackson/core/jackson-databind/2.18.9/jackson-databind-2.18.9.jar",
+      "size": 1662872,
+      "sha256": "71595a3f7ff58344ec0496a9f9ec9f623ef7b85b45402d88f1ca261f1bc4b42c"
     },
     {
-      "path": "com/fasterxml/jackson/core/jackson-databind/2.18.6/jackson-databind-2.18.6.pom",
+      "path": "com/fasterxml/jackson/core/jackson-databind/2.18.9/jackson-databind-2.18.9.pom",
       "size": 21077,
-      "sha256": "e313176ad23828499be8ad12141c72ff1337dca476b2209a6c2eefff96d59ffd"
+      "sha256": "dd1cde47b5d6dee487b0dda67bbf09d94a002e72759326182a5540f2f25eb98a"
     },
     {
-      "path": "com/fasterxml/jackson/dataformat/jackson-dataformat-yaml/2.18.6/jackson-dataformat-yaml-2.18.6.jar",
+      "path": "com/fasterxml/jackson/dataformat/jackson-dataformat-yaml/2.18.9/jackson-dataformat-yaml-2.18.9.jar",
       "size": 55580,
-      "sha256": "5ccff29fb15d49ffa0d920a78d085eefb8b56c9ebe70d14a26e69c90f4acf43c"
+      "sha256": "0842c09ea5d21a7a4a604aafe1c9f5f206bdfaf4b2df7008c09bf5190639df9a"
     },
     {
-      "path": "com/fasterxml/jackson/dataformat/jackson-dataformat-yaml/2.18.6/jackson-dataformat-yaml-2.18.6.pom",
+      "path": "com/fasterxml/jackson/dataformat/jackson-dataformat-yaml/2.18.9/jackson-dataformat-yaml-2.18.9.pom",
       "size": 2631,
-      "sha256": "22c3d0e69e6f6e7d0758fae7e5dd34d4c6b64c683e8529afe7275dbe5fba3ad7"
+      "sha256": "cd0868d9b5de09729240806f8489eaaa85b596892607c57777d6365027f82f87"
     },
     {
-      "path": "com/fasterxml/jackson/dataformat/jackson-dataformats-text/2.18.6/jackson-dataformats-text-2.18.6.pom",
-      "size": 3718,
-      "sha256": "03639237d5364f39ba9c2885d97e650cbe81a36d4d33f66fef76a0163b3e0629"
+      "path": "com/fasterxml/jackson/dataformat/jackson-dataformats-text/2.18.9/jackson-dataformats-text-2.18.9.pom",
+      "size": 3717,
+      "sha256": "0524286d0e94ec23d3adb787a68212a9afa62048deae6be730ca5c5ff81fe633"
     },
     {
-      "path": "com/fasterxml/jackson/jackson-base/2.18.6/jackson-base-2.18.6.pom",
+      "path": "com/fasterxml/jackson/jackson-base/2.18.9/jackson-base-2.18.9.pom",
       "size": 11982,
-      "sha256": "61d86ef235fca52e6bd11af1de251b95eb069e716fdc4600a5f182091fc9162a"
+      "sha256": "585960c8dfbafb01088d596162186022190781a81380abc204cf2804a6a0a120"
     },
     {
-      "path": "com/fasterxml/jackson/jackson-bom/2.18.6/jackson-bom-2.18.6.pom",
+      "path": "com/fasterxml/jackson/jackson-bom/2.18.9/jackson-bom-2.18.9.pom",
       "size": 19145,
-      "sha256": "7dbb3b94217cd701dc1befbb05724a276f917721da572ea7e9f3e7985727c8ab"
+      "sha256": "ef1f91d82ed18a1c3567c3288432a2d6f50b6bbeba18ebed92c21fcb10f28ad4"
     },
     {
       "path": "com/fasterxml/jackson/jackson-parent/2.18.4/jackson-parent-2.18.4.pom",
@@ -118,16 +98,6 @@
       "sha256": "dfd2fa7b1d23939216902f844fa5e86a79cdfb9209760e4c04242b5a58d49490"
     },
     {
-      "path": "com/google/collections/google-collections/1.0/google-collections-1.0.jar",
-      "size": 639592,
-      "sha256": "81b8d638af0083c4b877099d56aa0fee714485cd2ace1b6a09cab867cadb375d"
-    },
-    {
-      "path": "com/google/collections/google-collections/1.0/google-collections-1.0.pom",
-      "size": 2478,
-      "sha256": "893d56afcea1b22f83220fd7e49a6668c5b8901e39bd59dc57b42f55673721ce"
-    },
-    {
       "path": "com/google/errorprone/error_prone_annotations/2.36.0/error_prone_annotations-2.36.0.jar",
       "size": 19401,
       "sha256": "77440e270b0bc9a249903c5a076c36a722c4886ca4f42675f2903a1c53ed61a5"
@@ -143,11 +113,6 @@
       "sha256": "3a4cfc8a6bed61eb48e969796fc31ea0d270b63e670599946a61883adb7094dc"
     },
     {
-      "path": "com/google/google/1/google-1.pom",
-      "size": 1554,
-      "sha256": "cd6db17a11a31ede794ccbd1df0e4d9750f640234731f21cff885a9997277e81"
-    },
-    {
       "path": "com/google/guava/failureaccess/1.0.3/failureaccess-1.0.3.jar",
       "size": 10763,
       "sha256": "cbfc3906b19b8f55dd7cfd6dfe0aa4532e834250d7f080bd8d211a3e246b59cb"
@@ -161,11 +126,6 @@
       "path": "com/google/guava/guava-parent/14.0-rc1/guava-parent-14.0-rc1.pom",
       "size": 2557,
       "sha256": "180bf60763bb6ea40b794abd1a76477061c424da6049363d1aa3b88940e54378"
-    },
-    {
-      "path": "com/google/guava/guava-parent/16.0.1/guava-parent-16.0.1.pom",
-      "size": 7336,
-      "sha256": "2c98892cbf7c606b91b4f0f0d1d91da26746bbf5f8595626f5b4d6a5a1914824"
     },
     {
       "path": "com/google/guava/guava-parent/26.0-android/guava-parent-26.0-android.pom",
@@ -186,16 +146,6 @@
       "path": "com/google/guava/guava/14.0-rc1/guava-14.0-rc1.pom",
       "size": 5259,
       "sha256": "f0436fb01bfb28026c8f33c7e5fa8c0512c7c5655ba56057752309d36920a22e"
-    },
-    {
-      "path": "com/google/guava/guava/16.0.1/guava-16.0.1.jar",
-      "size": 2228009,
-      "sha256": "a896857d07845d38c7dc5bbc0457b6d9b0f62ecffda010e5e9ec12d561f676d3"
-    },
-    {
-      "path": "com/google/guava/guava/16.0.1/guava-16.0.1.pom",
-      "size": 6102,
-      "sha256": "c676575845fc8ad6dcfeca0827f405066a140f5fa5434715598179c8ba1c0817"
     },
     {
       "path": "com/google/guava/guava/33.4.8-jre/guava-33.4.8-jre.jar",
@@ -293,391 +243,6 @@
       "sha256": "c850fbad0b05eada85ca1bce22409a75f758aea0ca1e47a828c6a505ad361fab"
     },
     {
-      "path": "com/vladsch/flexmark/flexmark-all/0.42.14/flexmark-all-0.42.14.jar",
-      "size": 2154,
-      "sha256": "b4b221c5515d70ed258de75e44dd79d851794afd83d223595a4a8bca4fd4647e"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-all/0.42.14/flexmark-all-0.42.14.pom",
-      "size": 8963,
-      "sha256": "012682ac92c1d65963c77cb86a4ac41bb29a9d7d3f8d46a47920e2cc8bfb8eb4"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-abbreviation/0.42.14/flexmark-ext-abbreviation-0.42.14.jar",
-      "size": 35260,
-      "sha256": "6c11c50d91a73e5ee83e58c25b124acf5fdfcec8006357c100aa5daa1a40a036"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-abbreviation/0.42.14/flexmark-ext-abbreviation-0.42.14.pom",
-      "size": 2545,
-      "sha256": "cc8ee9be82ea7ba12b8ea50d470e82482b1efb3ebc3242ad1d8eb94815025c70"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-admonition/0.42.14/flexmark-ext-admonition-0.42.14.jar",
-      "size": 34474,
-      "sha256": "1c919c8cb3db778ce63c1cceb121e06492ffc5c2f8cdd1508b6a88d2060d77c7"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-admonition/0.42.14/flexmark-ext-admonition-0.42.14.pom",
-      "size": 1490,
-      "sha256": "b721146794cd70067282c80a6717fd0d5a554be89c733753762af70871ff4ede"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-anchorlink/0.42.14/flexmark-ext-anchorlink-0.42.14.jar",
-      "size": 16704,
-      "sha256": "49bb421d40d45dad315a68b691ecfee8b80a843bf1626d52b945743a6a656ca1"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-anchorlink/0.42.14/flexmark-ext-anchorlink-0.42.14.pom",
-      "size": 1601,
-      "sha256": "1801d4095d1c3217184c1da4ab7f49978f1af5abd0aac2df52cacee8a683bf15"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-aside/0.42.14/flexmark-ext-aside-0.42.14.jar",
-      "size": 16187,
-      "sha256": "b568313f16bdeb0338e72d64b32974be18c7abc5ee84331a6db02f04c08ffaae"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-aside/0.42.14/flexmark-ext-aside-0.42.14.pom",
-      "size": 1475,
-      "sha256": "dc11fae82921f799dc4facad04fdc11589167bbaae3ed38edf5e34239e93a51d"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-attributes/0.42.14/flexmark-ext-attributes-0.42.14.jar",
-      "size": 35726,
-      "sha256": "ee64456a07cf1c06597bede3afccfbdc014688ce66328d863b4cf4055abc8eb0"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-attributes/0.42.14/flexmark-ext-attributes-0.42.14.pom",
-      "size": 2600,
-      "sha256": "757209ad04df4609e394d0789746893cb1741dddaa36694f7f0b12d0bb6e6afc"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-autolink/0.42.14/flexmark-ext-autolink-0.42.14.jar",
-      "size": 9354,
-      "sha256": "99e84fbccc0d75e476e16d3df4466f666ed5446a1c2e9f382ec1b8fb834def8e"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-autolink/0.42.14/flexmark-ext-autolink-0.42.14.pom",
-      "size": 1829,
-      "sha256": "2c833260f0492318fb165fe646c22c0a1fd45d656f6ce10a4e15f3ac2cb8abd7"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-definition/0.42.14/flexmark-ext-definition-0.42.14.jar",
-      "size": 39846,
-      "sha256": "28d7739d1e922fbc391942dfc2e4061a65ca864c48577bc82a23fc7576be118e"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-definition/0.42.14/flexmark-ext-definition-0.42.14.pom",
-      "size": 1292,
-      "sha256": "dedb9bb500e308ec82cd9d0fc048d473cb6eeb86a3969cb543b47555599406d0"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-emoji/0.42.14/flexmark-ext-emoji-0.42.14.jar",
-      "size": 73376,
-      "sha256": "9aef7c6edf2128731e7a438a4b4c65ed4a39699bd21ff3d2c6cda4805ec0e019"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-emoji/0.42.14/flexmark-ext-emoji-0.42.14.pom",
-      "size": 1516,
-      "sha256": "7b351cd9d7e0de6a272f1929268fe02edcade3b8901d56feae3031c88fbb8ceb"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-enumerated-reference/0.42.14/flexmark-ext-enumerated-reference-0.42.14.jar",
-      "size": 66414,
-      "sha256": "ccbdb429d3bbad3bca0ba1282ba41c48325d3eefff0879c7f0e0623cb0046451"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-enumerated-reference/0.42.14/flexmark-ext-enumerated-reference-0.42.14.pom",
-      "size": 1673,
-      "sha256": "04c9f4d06de4f4338a101d94698867c3887ba6a34ef82481022f18ea20363338"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-escaped-character/0.42.14/flexmark-ext-escaped-character-0.42.14.jar",
-      "size": 12787,
-      "sha256": "2513d4fde1af9fb8a81cbddb1d473807cab07908b0fea9e3b32b628f7b9b4126"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-escaped-character/0.42.14/flexmark-ext-escaped-character-0.42.14.pom",
-      "size": 1313,
-      "sha256": "b8cab029ebdea4b8871f5bd97712a820319447f6621e993d0c2b5d5549a8c30f"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-footnotes/0.42.14/flexmark-ext-footnotes-0.42.14.jar",
-      "size": 41055,
-      "sha256": "bc883ca8fa1c0593da7d3e18864315ae5455d72707af335da7d222e79ec96557"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-footnotes/0.42.14/flexmark-ext-footnotes-0.42.14.pom",
-      "size": 1328,
-      "sha256": "f77c39fbf160fc060b80a050540290be50786f38233dd54b8008223ad20f383a"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-gfm-issues/0.42.14/flexmark-ext-gfm-issues-0.42.14.jar",
-      "size": 15639,
-      "sha256": "8c7deb8f8d65addbb7ebc5fb7f1f2b4c145a46a2608f6830318a6c2cd3b56012"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-gfm-issues/0.42.14/flexmark-ext-gfm-issues-0.42.14.pom",
-      "size": 1310,
-      "sha256": "18a72d312dd61483f17667e7a72bbf7b5bd216d3dc8779072e7026f98adf0161"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-gfm-strikethrough/0.42.14/flexmark-ext-gfm-strikethrough-0.42.14.jar",
-      "size": 28538,
-      "sha256": "141d0056dafb323ece1c75933fd88bdbea7617f94f76cc374ee5c76cd1958904"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-gfm-strikethrough/0.42.14/flexmark-ext-gfm-strikethrough-0.42.14.pom",
-      "size": 1345,
-      "sha256": "5e57293770c47a8ebaf882c9a2e0798ad834d0110034142d5e440ae3c2326299"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-gfm-tables/0.42.14/flexmark-ext-gfm-tables-0.42.14.jar",
-      "size": 33138,
-      "sha256": "808bc5ddbc8936cb31555731f5e9962bf21a164abc11977ef40af049d4b6c4e9"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-gfm-tables/0.42.14/flexmark-ext-gfm-tables-0.42.14.pom",
-      "size": 1332,
-      "sha256": "98b119fb9b02f56c7cf641694f562305a8f8981b924d90a398441a02769b34bf"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-gfm-tasklist/0.42.14/flexmark-ext-gfm-tasklist-0.42.14.jar",
-      "size": 27903,
-      "sha256": "1b73d98bee812030d139f90fd7cdb95a6bead5f04a79a5f020d619dc23a47e69"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-gfm-tasklist/0.42.14/flexmark-ext-gfm-tasklist-0.42.14.pom",
-      "size": 1381,
-      "sha256": "b44fde69e7f266b5b1b3d9412d86419d6a99ca65f682df68a5ebc45b91359766"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-gfm-users/0.42.14/flexmark-ext-gfm-users-0.42.14.jar",
-      "size": 15817,
-      "sha256": "625ac18ae795a55bad0d99dcf84385d17c2a5acdc82dbd59ae71553fbe6dad04"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-gfm-users/0.42.14/flexmark-ext-gfm-users-0.42.14.pom",
-      "size": 1307,
-      "sha256": "d02a66d549ccfef9e672f88fb32935f4976e5c64443e424d5543503948f262af"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-gitlab/0.42.14/flexmark-ext-gitlab-0.42.14.jar",
-      "size": 42429,
-      "sha256": "9e658f078109772daaae325c28a83abd14f9e733c52967506326aa25ac0612c5"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-gitlab/0.42.14/flexmark-ext-gitlab-0.42.14.pom",
-      "size": 1318,
-      "sha256": "35d932e6bd7b837f61688243f85e39ffaa592ef96777e259861d0111d9acbc36"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-ins/0.42.14/flexmark-ext-ins-0.42.14.jar",
-      "size": 12996,
-      "sha256": "5b49b1c81093a6efaef384376c063ff69b019c6e11a21509799bd023aff12e98"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-ins/0.42.14/flexmark-ext-ins-0.42.14.pom",
-      "size": 1271,
-      "sha256": "14d9003ffe46c11bf89882072c10ed252e7f6cf882bfa0a32da23fb9c2d68b6c"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-jekyll-front-matter/0.42.14/flexmark-ext-jekyll-front-matter-0.42.14.jar",
-      "size": 18227,
-      "sha256": "6d8ebded61a9667a1daaa47ed0014693204eabb57ee17a4c54e0b677ec1b7d3f"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-jekyll-front-matter/0.42.14/flexmark-ext-jekyll-front-matter-0.42.14.pom",
-      "size": 1482,
-      "sha256": "4c8d3b57574e99f9491b70535a134b1f5985e040fdb135fa9e879b2964f5d27c"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-jekyll-tag/0.42.14/flexmark-ext-jekyll-tag-0.42.14.jar",
-      "size": 21132,
-      "sha256": "6d648333da0645814d7ad0f2b990770cb051a948ef3aa8e9c7493313b50bb0e3"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-jekyll-tag/0.42.14/flexmark-ext-jekyll-tag-0.42.14.pom",
-      "size": 1308,
-      "sha256": "0f07b311d7808c5860280943dbf7b978665a4aba28c3dfa6e30dc70c5a8bef4f"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-macros/0.42.14/flexmark-ext-macros-0.42.14.jar",
-      "size": 35050,
-      "sha256": "9916cd2470331b4f1ec01f830d52d4302ad1b19770ea15250a97658cdd6b8181"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-macros/0.42.14/flexmark-ext-macros-0.42.14.pom",
-      "size": 1638,
-      "sha256": "e722196c75eafabb7978b322a769dbc750752eb8986802496c5b39f52bc7f482"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-media-tags/0.42.14/flexmark-ext-media-tags-0.42.14.jar",
-      "size": 25060,
-      "sha256": "4181f97ba125999941ec558b51e5e73e7d19fad2880f370393a8f5ee992acee2"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-media-tags/0.42.14/flexmark-ext-media-tags-0.42.14.pom",
-      "size": 1025,
-      "sha256": "3997f1ad945a7dd38b9bc9cba06a5e787494090afbfd8917592db03261f898a7"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-superscript/0.42.14/flexmark-ext-superscript-0.42.14.jar",
-      "size": 13324,
-      "sha256": "bd41751827b5359a44bc69ef67c75fbd87057f699a61e1d996f0ad38e61f0f11"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-superscript/0.42.14/flexmark-ext-superscript-0.42.14.pom",
-      "size": 1295,
-      "sha256": "9417e7c64a85fe77854c238dde39f54ae13da4e10d4adfaf7212c0706d6b38af"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-tables/0.42.14/flexmark-ext-tables-0.42.14.jar",
-      "size": 76290,
-      "sha256": "d33267faac807ed9b3b9cc0eba7964659bbcd32e7a9aaf1c2440fc7377c4da0d"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-tables/0.42.14/flexmark-ext-tables-0.42.14.pom",
-      "size": 1539,
-      "sha256": "8755db14f5235fca17156ab5d837e18ebfed788127873002c1f376f3615a4e2a"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-toc/0.42.14/flexmark-ext-toc-0.42.14.jar",
-      "size": 90606,
-      "sha256": "a2682d036948fc008a1cf765a917d9b64df413bddd12a0f4c3e73d3c1daa4cf6"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-toc/0.42.14/flexmark-ext-toc-0.42.14.pom",
-      "size": 1460,
-      "sha256": "88842f9f25c714c9b2c8e500395074bfbdc0a896bbbd8e81d3557f7d00a15667"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-typographic/0.42.14/flexmark-ext-typographic-0.42.14.jar",
-      "size": 22043,
-      "sha256": "423ee0ff4d3656b1eb348e23ac8982540717fbd90474c3b3158daf1fa162a503"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-typographic/0.42.14/flexmark-ext-typographic-0.42.14.pom",
-      "size": 1295,
-      "sha256": "9fa16321cdc656f51c912ab062e55a146d6dfe4c516fecc2b10e3aac6f9f2d2a"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-wikilink/0.42.14/flexmark-ext-wikilink-0.42.14.jar",
-      "size": 25543,
-      "sha256": "a9a0865d7fbd10e6705dcacf846aa5efc242c6e5198b918875a5e72db094607c"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-wikilink/0.42.14/flexmark-ext-wikilink-0.42.14.pom",
-      "size": 1506,
-      "sha256": "3e1e60ced3cdcc9fb5cf8e50fdfa63dc9f36607f2960e7e7e391e6cbd1012114"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-xwiki-macros/0.42.14/flexmark-ext-xwiki-macros-0.42.14.jar",
-      "size": 30921,
-      "sha256": "d96cddc45be4ba3b61f5e4b1e00137ddeef27fc1f9f31f13706a8bffddb5f6df"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-xwiki-macros/0.42.14/flexmark-ext-xwiki-macros-0.42.14.pom",
-      "size": 1340,
-      "sha256": "f5509f7d252947fc14c3f594a5beeed42eaf0f6dfc688efbf4f8b839f99d3dc4"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-yaml-front-matter/0.42.14/flexmark-ext-yaml-front-matter-0.42.14.jar",
-      "size": 18286,
-      "sha256": "211e75e9ea83127840405d115d392aea7eb3a7c04d92d016a1fe2f2032be358f"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-yaml-front-matter/0.42.14/flexmark-ext-yaml-front-matter-0.42.14.pom",
-      "size": 1314,
-      "sha256": "04e0ea1abb22ffdc3aba548e233c94c76da4fbf83e6a3bae40ba9a20cd4b2009"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-youtube-embedded/0.42.14/flexmark-ext-youtube-embedded-0.42.14.jar",
-      "size": 12544,
-      "sha256": "3ffcd2a138bc98579cc46edbae894939ccb9b15bdbf3251b2483edf00ad76756"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-ext-youtube-embedded/0.42.14/flexmark-ext-youtube-embedded-0.42.14.pom",
-      "size": 883,
-      "sha256": "1e2e2bc72d3f1a34f85164ecfaec1342e5355a802fe7bb2d7a8aa175d9667d66"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-formatter/0.42.14/flexmark-formatter-0.42.14.jar",
-      "size": 97436,
-      "sha256": "ef152baa6dbba7bcf814595b1919ecde7d3fae2f98f5b5bb760b9fd3d8384d0a"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-formatter/0.42.14/flexmark-formatter-0.42.14.pom",
-      "size": 1134,
-      "sha256": "4fc5ea098827d9620a5410e7bdc6b816ede746358f21ff45a63f8eef01fb43c4"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-html-parser/0.42.14/flexmark-html-parser-0.42.14.jar",
-      "size": 44589,
-      "sha256": "6f7803127310a9f52203a71ed6a38fd06832df57dc5fadd140441982678fbc01"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-html-parser/0.42.14/flexmark-html-parser-0.42.14.pom",
-      "size": 1459,
-      "sha256": "d8fb093d9480e391094705d31224fc187a1dbe96dc5823bd2229695551ce0a0f"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-java/0.42.14/flexmark-java-0.42.14.pom",
-      "size": 19981,
-      "sha256": "78b84ba9fd4566e092f5aa7c65032f03f1467bf93b96a2caf84c9db1cfc6fde8"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-jira-converter/0.42.14/flexmark-jira-converter-0.42.14.jar",
-      "size": 39805,
-      "sha256": "2f0a689a5e34acf54a754fe6bab63ab9f949f7155d130bb257f4284bb9e27fd1"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-jira-converter/0.42.14/flexmark-jira-converter-0.42.14.pom",
-      "size": 2107,
-      "sha256": "9d3b5dc67c2b3ffc1f9d64a66094c58f69ad973695347da69dadba47b6beda6e"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-profile-pegdown/0.42.14/flexmark-profile-pegdown-0.42.14.jar",
-      "size": 6294,
-      "sha256": "b604e9868583f6fbc2c5ae2e82c8a4fd0613b30f634f3abfcfc211a3b0118f65"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-profile-pegdown/0.42.14/flexmark-profile-pegdown-0.42.14.pom",
-      "size": 4028,
-      "sha256": "b74df938c0ffdc1317130e59a2c88c6ad020d4a76e0e19c96461cb324d9ce0ed"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-util/0.42.14/flexmark-util-0.42.14.jar",
-      "size": 385068,
-      "sha256": "c3bf31fd86312df7a0ca2fe686d5c628941872be596c5a0182f39cadd541b76e"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-util/0.42.14/flexmark-util-0.42.14.pom",
-      "size": 792,
-      "sha256": "6922fa9bf36ad6eb0ed22433aa7d2d17a49aea33a55501d48b617c899d67a0e1"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-youtrack-converter/0.42.14/flexmark-youtrack-converter-0.42.14.jar",
-      "size": 40903,
-      "sha256": "58293f598b6a5c810ffcb46c3eaeded783a72ddc10371e058acddc7009812ce1"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark-youtrack-converter/0.42.14/flexmark-youtrack-converter-0.42.14.pom",
-      "size": 1661,
-      "sha256": "33e4f996d19ec5a311bbdaa1afa788d37ad077ac983e5b102c7b05c2060a6c0e"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark/0.42.14/flexmark-0.42.14.jar",
-      "size": 388623,
-      "sha256": "0f317b4487f1728bd774484294ca2c6bda47222bf6798d2e3180d19fb943176c"
-    },
-    {
-      "path": "com/vladsch/flexmark/flexmark/0.42.14/flexmark-0.42.14.pom",
-      "size": 2540,
-      "sha256": "0f8b86a0e790bd8c254d5107baa1a80bdbe1068d116173e08faf0a10b0142670"
-    },
-    {
       "path": "com/yahoo/datasketches/memory/0.9.0/memory-0.9.0.jar",
       "size": 30383,
       "sha256": "c7d22ca0298753de7a5c85edc9b926892936e978595fe44375159b8ada15fdfc"
@@ -703,21 +268,6 @@
       "sha256": "0f20a5ba996f445ae876339e26ef8af77c1794ee524496a3bdd6b32562fae168"
     },
     {
-      "path": "commons-beanutils/commons-beanutils/1.6/commons-beanutils-1.6.pom",
-      "size": 2310,
-      "sha256": "f1309fdb6c64284485bc39188e55d0a30ddbb9311e4d4b6ee08bb038fa4b556d"
-    },
-    {
-      "path": "commons-beanutils/commons-beanutils/1.7.0/commons-beanutils-1.7.0.jar",
-      "size": 188671,
-      "sha256": "24bcaa20ccbdc7c856ce0c0aea144566943403e2e9f27bd9779cda1d76823ef4"
-    },
-    {
-      "path": "commons-beanutils/commons-beanutils/1.7.0/commons-beanutils-1.7.0.pom",
-      "size": 357,
-      "sha256": "b6aca6465a28b027686f025d57702f90ad0d128e14d1cfceca0bd871f0084ad9"
-    },
-    {
       "path": "commons-beanutils/commons-beanutils/1.8.3/commons-beanutils-1.8.3.pom",
       "size": 11198,
       "sha256": "552ad56800bc6010f1e6ea8c7638f24c74230e9991a52568df20d5b5aa5c4b20"
@@ -731,26 +281,6 @@
       "path": "commons-beanutils/commons-beanutils/1.9.4/commons-beanutils-1.9.4.pom",
       "size": 18005,
       "sha256": "c35cca7b61d4678d9578cbc0b901b8717b539abf9254441da78b8fe60de064d0"
-    },
-    {
-      "path": "commons-chain/commons-chain/1.1/commons-chain-1.1.jar",
-      "size": 90001,
-      "sha256": "e408f72da5ed4c5db6ae19e8c3b7ee36259c36c05f7a77f15509a014bfe7bcaa"
-    },
-    {
-      "path": "commons-chain/commons-chain/1.1/commons-chain-1.1.pom",
-      "size": 6013,
-      "sha256": "cf0c15c4e843507d95be11114039794494d6fc6259118581a90e03b2db5f5acb"
-    },
-    {
-      "path": "commons-codec/commons-codec/1.11/commons-codec-1.11.jar",
-      "size": 335042,
-      "sha256": "e599d5318e97aa48f42136a2927e6dfa4e8881dff0e6c8e3109ddbbff51d7b7d"
-    },
-    {
-      "path": "commons-codec/commons-codec/1.11/commons-codec-1.11.pom",
-      "size": 13966,
-      "sha256": "c1e7140d1dea8fdf3528bc1e3c5444ac0b541297311f45f9806c213ec3ee9a10"
     },
     {
       "path": "commons-codec/commons-codec/1.16.0/commons-codec-1.16.0.jar",
@@ -793,26 +323,6 @@
       "sha256": "e0f3269fa23de0c83130c5659f5f9514cc5422c0bcdf45f2eae004a78b9fca34"
     },
     {
-      "path": "commons-collections/commons-collections/2.0/commons-collections-2.0.pom",
-      "size": 171,
-      "sha256": "dafa5cd143542dca7ec092ef4c670a3fd285dfc02b00e790cbe25687bef513cc"
-    },
-    {
-      "path": "commons-collections/commons-collections/2.1/commons-collections-2.1.pom",
-      "size": 3336,
-      "sha256": "f8a93d50bfaf6fc0720eee8fde6e8fde20da33238ba296e9b1b7cba50ca6d772"
-    },
-    {
-      "path": "commons-collections/commons-collections/3.1/commons-collections-3.1.pom",
-      "size": 6084,
-      "sha256": "59c9e5fc75e5790e56976c166a89f2cbdad99f76c49b92f74a1749689af726a2"
-    },
-    {
-      "path": "commons-collections/commons-collections/3.2.1/commons-collections-3.2.1.pom",
-      "size": 12505,
-      "sha256": "1f9626cbaa584ed5d86021866e4e367e26fe5efc248382652be68beeb43e7416"
-    },
-    {
       "path": "commons-collections/commons-collections/3.2.2/commons-collections-3.2.2.jar",
       "size": 588337,
       "sha256": "eeeae917917144a68a741d4c0dff66aa5c5c5fd85593ff217bced3fc8ca783b8"
@@ -821,26 +331,6 @@
       "path": "commons-collections/commons-collections/3.2.2/commons-collections-3.2.2.pom",
       "size": 12403,
       "sha256": "d5d81fcc288c0d8c711c302007cada4aa9a226ed1a112d4baa64cb1d6322170b"
-    },
-    {
-      "path": "commons-collections/commons-collections/3.2/commons-collections-3.2.pom",
-      "size": 11034,
-      "sha256": "6da6d5e61be60d77a7eea6c7d0b8ac3cc35ca73cef3cbff97d5982006553786d"
-    },
-    {
-      "path": "commons-digester/commons-digester/1.6/commons-digester-1.6.pom",
-      "size": 974,
-      "sha256": "9ef0db04ffe98d03eb9a921337364be7d123d58d66dcaff3eac763f0b0c63d48"
-    },
-    {
-      "path": "commons-digester/commons-digester/1.8/commons-digester-1.8.jar",
-      "size": 143602,
-      "sha256": "05662373044f3dff112567b7bb5dfa1174e91e074c0c727b4412788013f49d56"
-    },
-    {
-      "path": "commons-digester/commons-digester/1.8/commons-digester-1.8.pom",
-      "size": 7004,
-      "sha256": "c10144f223d7ab697ccea7da0e753b75603ea7fbc4e35570068e6c477068e9b5"
     },
     {
       "path": "commons-io/commons-io/2.11.0/commons-io-2.11.0.jar",
@@ -893,44 +383,9 @@
       "sha256": "28ebb2998bc7d7acb25078526971640892000f3413586ff42d611f1043bfec30"
     },
     {
-      "path": "commons-io/commons-io/2.6/commons-io-2.6.jar",
-      "size": 214788,
-      "sha256": "f877d304660ac2a142f3865badfc971dec7ed73c747c7f8d5d2f5139ca736513"
-    },
-    {
-      "path": "commons-io/commons-io/2.6/commons-io-2.6.pom",
-      "size": 14256,
-      "sha256": "0c23863893a2291f5a7afdbd8d15923b3948afd87e563fa341cdcf6eae338a60"
-    },
-    {
-      "path": "commons-lang/commons-lang/2.4/commons-lang-2.4.jar",
-      "size": 261809,
-      "sha256": "2c73b940c91250bc98346926270f13a6a10bb6e29d2c9316a70d134e382c873e"
-    },
-    {
-      "path": "commons-lang/commons-lang/2.4/commons-lang-2.4.pom",
-      "size": 13976,
-      "sha256": "90306278d39ed5a50dafa468adee4d272b635d54c4f7295e293e42bbdb8ad666"
-    },
-    {
-      "path": "commons-logging/commons-logging/1.0.3/commons-logging-1.0.3.pom",
-      "size": 866,
-      "sha256": "8c23c6e92f1df7f58b455cd2caa009dcc87a2fe64976e6ce461522e635aea41e"
-    },
-    {
-      "path": "commons-logging/commons-logging/1.0/commons-logging-1.0.pom",
-      "size": 163,
-      "sha256": "52b3caa59ca5e8f6279421ecb517a0b24571d666ea86bb145462076760026a6f"
-    },
-    {
       "path": "commons-logging/commons-logging/1.1.1/commons-logging-1.1.1.pom",
       "size": 18365,
       "sha256": "d0f2e16d054e8bb97add9ca26525eb2346f692809fcd2a28787da8ceb3c35ee8"
-    },
-    {
-      "path": "commons-logging/commons-logging/1.1/commons-logging-1.1.pom",
-      "size": 6182,
-      "sha256": "1f68425fce1007c3343343a27c27057f1427970682cb6d33e493c111721f7cb6"
     },
     {
       "path": "commons-logging/commons-logging/1.2/commons-logging-1.2.jar",
@@ -951,16 +406,6 @@
       "path": "commons-logging/commons-logging/1.3.5/commons-logging-1.3.5.pom",
       "size": 32210,
       "sha256": "ccf4a30346f5027b9496abd56290ac26d159abf2be64df1265611dc9400b9d68"
-    },
-    {
-      "path": "dom4j/dom4j/1.1/dom4j-1.1.jar",
-      "size": 456913,
-      "sha256": "50bd5c21b5fbd27b8bbb5f8050544b53f49a4480fd347ce9c46d55c706015156"
-    },
-    {
-      "path": "dom4j/dom4j/1.1/dom4j-1.1.pom",
-      "size": 142,
-      "sha256": "03c18c93b1df85cbce3a21a17d9b27e399e27478c1421071f5348c58bd0ab61f"
     },
     {
       "path": "io/airlift/airbase/112/airbase-112.pom",
@@ -988,26 +433,6 @@
       "sha256": "383826c1092fb7677f87d560256245b0fa5b2f94a895301d321f2369ddb60c55"
     },
     {
-      "path": "javax/annotation/javax.annotation-api/1.2/javax.annotation-api-1.2.jar",
-      "size": 26366,
-      "sha256": "5909b396ca3a2be10d0eea32c74ef78d816e1b4ead21de1d78de1f890d033e04"
-    },
-    {
-      "path": "javax/annotation/javax.annotation-api/1.2/javax.annotation-api-1.2.pom",
-      "size": 13432,
-      "sha256": "52d73f35f7e638ce3cb56546f879c20e7f7019f72aa20cde1fa80e97865dfd40"
-    },
-    {
-      "path": "javax/enterprise/cdi-api/1.2/cdi-api-1.2.jar",
-      "size": 71075,
-      "sha256": "cc5ce2cbc62fe96bf59af00bba00bde823a1094462b4364747863510b76c0518"
-    },
-    {
-      "path": "javax/enterprise/cdi-api/1.2/cdi-api-1.2.pom",
-      "size": 6276,
-      "sha256": "d7d713c993363764ba1667296b835ee914e19b2e70921eafe96b37f0d5b4088f"
-    },
-    {
       "path": "javax/inject/javax.inject/1/javax.inject-1.jar",
       "size": 2497,
       "sha256": "91c77044a50c481636c32d916fd89c9118a72195390452c81065080f957de7ff"
@@ -1016,31 +441,6 @@
       "path": "javax/inject/javax.inject/1/javax.inject-1.pom",
       "size": 612,
       "sha256": "943e12b100627804638fa285805a0ab788a680266531e650921ebfe4621a8bfa"
-    },
-    {
-      "path": "javax/servlet/javax.servlet-api/3.1.0/javax.servlet-api-3.1.0.jar",
-      "size": 95806,
-      "sha256": "af456b2dd41c4e82cf54f3e743bc678973d9fe35bd4d3071fa05c7e5333b8482"
-    },
-    {
-      "path": "javax/servlet/javax.servlet-api/3.1.0/javax.servlet-api-3.1.0.pom",
-      "size": 13527,
-      "sha256": "b31109e22ea3f2df1ad7955432e718a35def50ae6c19698034afa8a0cf9e9069"
-    },
-    {
-      "path": "junit/junit/3.8.1/junit-3.8.1.pom",
-      "size": 998,
-      "sha256": "e68f33343d832398f3c8aa78afcd808d56b7c1020de4d3ad8ce47909095ee904"
-    },
-    {
-      "path": "log4j/log4j/1.2.12/log4j-1.2.12.pom",
-      "size": 145,
-      "sha256": "cb54dedc5d8c4510148dfa792701cbac1a84c383a84f48f5a32e6d7e460bbb72"
-    },
-    {
-      "path": "logkit/logkit/1.0.1/logkit-1.0.1.pom",
-      "size": 147,
-      "sha256": "3de328dfa1b563ba6dfc5829774cf2f8dab0dc9528ed2731c35251ab7fd6c4c6"
     },
     {
       "path": "net/hydromatic/aggdesigner-algorithm/6.1/aggdesigner-algorithm-6.1.jar",
@@ -1056,11 +456,6 @@
       "path": "net/hydromatic/aggdesigner/6.1/aggdesigner-6.1.pom",
       "size": 12300,
       "sha256": "3ace0f7a6261dbceb9c23b5cf64ae37da482de658a3bd37ee4e01249d4716d2f"
-    },
-    {
-      "path": "net/java/jvnet-parent/3/jvnet-parent-3.pom",
-      "size": 4789,
-      "sha256": "30f5789efa39ddbf96095aada3fc1260c4561faf2f714686717cb2dc5049475a"
     },
     {
       "path": "net/minidev/accessors-smart/2.6.0/accessors-smart-2.6.0.jar",
@@ -1086,11 +481,6 @@
       "path": "org/apache/apache/13/apache-13.pom",
       "size": 13974,
       "sha256": "ff513db0361fd41237bef4784968bc15aae478d4ec0a9496f811072ccaf3841d"
-    },
-    {
-      "path": "org/apache/apache/15/apache-15.pom",
-      "size": 15236,
-      "sha256": "36c2f2f979ac67b450c0cb480e4e9baf6b40f3a681f22ba9692287d1139ad494"
     },
     {
       "path": "org/apache/apache/16/apache-16.pom",
@@ -1168,11 +558,6 @@
       "sha256": "9e9323a26ba8eb2394efef0c96d31b70df570808630dc147cab1e73541cc5194"
     },
     {
-      "path": "org/apache/apache/5/apache-5.pom",
-      "size": 4097,
-      "sha256": "1933a6037439b389bda2feaccfc0113880fd8d88f7d240d2052b91108dd5ae89"
-    },
-    {
       "path": "org/apache/apache/6/apache-6.pom",
       "size": 12796,
       "sha256": "12edb5096e13f40c362d0bd40902589fa9586505123fa26799ce50b116fa5bb3"
@@ -1238,21 +623,6 @@
       "sha256": "df22f1a4061de8629c45e58a85ae946dca1ffe4345c9d242dbc607fd7cc5d1dc"
     },
     {
-      "path": "org/apache/commons/commons-compress/1.20/commons-compress-1.20.jar",
-      "size": 632424,
-      "sha256": "0aeb625c948c697ea7b205156e112363b59ed5e2551212cd4e460bdb72c7c06e"
-    },
-    {
-      "path": "org/apache/commons/commons-compress/1.20/commons-compress-1.20.pom",
-      "size": 18268,
-      "sha256": "d95678e3af56b17c7db6cff9645efad5eb59be9f3c1caaaf5f0146edf04691d7"
-    },
-    {
-      "path": "org/apache/commons/commons-compress/1.21/commons-compress-1.21.pom",
-      "size": 19684,
-      "sha256": "675bb023c9beedde3232949979b9742a5fea946280a55a1b462d4ca7801088cd"
-    },
-    {
       "path": "org/apache/commons/commons-compress/1.26.1/commons-compress-1.26.1.jar",
       "size": 1079377,
       "sha256": "27bb5d40f37c3bb7205b4a0540247df057715e9f6cbbd97d626ab8b50318bb04"
@@ -1301,11 +671,6 @@
       "path": "org/apache/commons/commons-digester3/3.2/commons-digester3-3.2.pom",
       "size": 17589,
       "sha256": "5bb8a198adb597c30204b4f1c336fdb3d2816536403e9ad3349ab200032e5445"
-    },
-    {
-      "path": "org/apache/commons/commons-lang3/3.1/commons-lang3-3.1.jar",
-      "size": 315805,
-      "sha256": "131f0519a8e4602e47cf024bfd7e0834bcf5592a7207f9a2fdb711d4f5afc166"
     },
     {
       "path": "org/apache/commons/commons-lang3/3.1/commons-lang3-3.1.pom",
@@ -1368,21 +733,6 @@
       "sha256": "aa254b373b6f6d46bc9dca86331b072a8ab86eb25ea9921fd439618392e98a16"
     },
     {
-      "path": "org/apache/commons/commons-lang3/3.7/commons-lang3-3.7.pom",
-      "size": 27535,
-      "sha256": "16bf63e86f5ea0404e89ed0f654b0915bea0030129aea9531d74369b71f764da"
-    },
-    {
-      "path": "org/apache/commons/commons-lang3/3.8.1/commons-lang3-3.8.1.jar",
-      "size": 501879,
-      "sha256": "dac807f65b07698ff39b1b07bfef3d87ae3fd46d91bbf8a2bc02b2a831616f68"
-    },
-    {
-      "path": "org/apache/commons/commons-lang3/3.8.1/commons-lang3-3.8.1.pom",
-      "size": 27888,
-      "sha256": "ec8e09f75411685205bd0d9d7872cc3622e67c76df44a0a227b278bea04458d5"
-    },
-    {
       "path": "org/apache/commons/commons-math3/3.6.1/commons-math3-3.6.1.jar",
       "size": 2213560,
       "sha256": "1e56d7b058d28b65abd256b8458e3885b674c1d588fa43cd7d1cbb9c7ef2b308"
@@ -1413,24 +763,9 @@
       "sha256": "87cd27e1a02a5c3eb6d85059ce98696bb1b44c2b8b650f0567c86df60fa61da7"
     },
     {
-      "path": "org/apache/commons/commons-parent/42/commons-parent-42.pom",
-      "size": 67956,
-      "sha256": "cd313494c670b483ec256972af1698b330e598f807002354eb765479f604b09c"
-    },
-    {
-      "path": "org/apache/commons/commons-parent/45/commons-parent-45.pom",
-      "size": 73127,
-      "sha256": "9c88623ecfa91f012c673ee4622c0eeb4367e5e0d222d960f76cd208b1a4fda6"
-    },
-    {
       "path": "org/apache/commons/commons-parent/47/commons-parent-47.pom",
       "size": 77562,
       "sha256": "8a8ecb570553bf9f1ffae211a8d4ca9ee630c17afe59293368fba7bd9b42fcb7"
-    },
-    {
-      "path": "org/apache/commons/commons-parent/48/commons-parent-48.pom",
-      "size": 72034,
-      "sha256": "1e1f7de9370a7b7901f128f1dacd1422be74e3f47f9558b0f79e04c0637ca0b4"
     },
     {
       "path": "org/apache/commons/commons-parent/5/commons-parent-5.pom",
@@ -1503,11 +838,6 @@
       "sha256": "d189ff2c0027e96bb65d31e6f227ed2af966169b36af1e973dd5ba08926dc7b5"
     },
     {
-      "path": "org/apache/commons/commons-parent/9/commons-parent-9.pom",
-      "size": 21930,
-      "sha256": "5331b7d3e0aed59728c80f1118e4dbf78565d4109e81d16602c9cadbdb23a128"
-    },
-    {
       "path": "org/apache/commons/commons-pool2/2.12.0/commons-pool2-2.12.0.jar",
       "size": 150048,
       "sha256": "6d3bd18df8410f3e31b031aca582cc109342358a62a2759ebd0c4cdf30d06f8b"
@@ -1538,49 +868,14 @@
       "sha256": "b2d4341c921981cb35d5570f4fc9732a08a34b1528dee84c0507c7f2719a334f"
     },
     {
-      "path": "org/apache/commons/commons-text/1.3/commons-text-1.3.jar",
-      "size": 182954,
-      "sha256": "8185b3a5311092d83ed1f184c2d093b3105d726bbd76867c32b3511542bb99a8"
-    },
-    {
-      "path": "org/apache/commons/commons-text/1.3/commons-text-1.3.pom",
-      "size": 14261,
-      "sha256": "deeb2ba9701e495dc31d32633eb86b94b24b0a96e0dc67fb87e7062f153027aa"
-    },
-    {
-      "path": "org/apache/geronimo/genesis/genesis-default-flava/2.0/genesis-default-flava-2.0.pom",
-      "size": 17810,
-      "sha256": "08e6e146f4e245266dff9dd800b12875dd2367d3f67a34ab660a126c811215f8"
-    },
-    {
-      "path": "org/apache/geronimo/genesis/genesis-java5-flava/2.0/genesis-java5-flava-2.0.pom",
-      "size": 5483,
-      "sha256": "e7c5358bbbbc27daa5b327f63bc12650a75ddc9f9ac6d4bfa12789be1f2c29db"
-    },
-    {
-      "path": "org/apache/geronimo/genesis/genesis/2.0/genesis-2.0.pom",
-      "size": 18418,
-      "sha256": "b9ed2f9dd434631158d77308ee5648622c229ccece1722c5e377a4296923dae6"
-    },
-    {
       "path": "org/apache/httpcomponents/client5/httpclient5-parent/5.5/httpclient5-parent-5.5.pom",
       "size": 16674,
       "sha256": "2252d98cf2626d319ea73c0f3696575114f1739504bb06a3bc952bb75a29c9a4"
     },
     {
-      "path": "org/apache/httpcomponents/client5/httpclient5/5.5/httpclient5-5.5.jar",
-      "size": 954979,
-      "sha256": "496b4b0e8d5f3a8139a5d2638486d304758bac3a9c39d76989f663cfd9354fc9"
-    },
-    {
       "path": "org/apache/httpcomponents/client5/httpclient5/5.5/httpclient5-5.5.pom",
       "size": 6074,
       "sha256": "5fb667ec07dc8dfed8f6bb146a1adeb0b7afdf8e7df36e882daaeddb0adc777f"
-    },
-    {
-      "path": "org/apache/httpcomponents/core5/httpcore5-h2/5.3.4/httpcore5-h2-5.3.4.jar",
-      "size": 241692,
-      "sha256": "1fb4f34e4b612e7c127ad693335583587850b17ce9b1c366f9de1ca49fe2c781"
     },
     {
       "path": "org/apache/httpcomponents/core5/httpcore5-h2/5.3.4/httpcore5-h2-5.3.4.pom",
@@ -1603,44 +898,9 @@
       "sha256": "34cb10a9ff82cd3fb205f6ac76c7e91eb6b31f22f8c2748952dbdb9b6657a5b7"
     },
     {
-      "path": "org/apache/httpcomponents/core5/httpcore5/5.3.5/httpcore5-5.3.5.jar",
-      "size": 909394,
-      "sha256": "34ce80396dcf2927406ddcd7c1c9063879220952ad0a2121c10103d3ad2cc3a4"
-    },
-    {
       "path": "org/apache/httpcomponents/core5/httpcore5/5.3.5/httpcore5-5.3.5.pom",
       "size": 3946,
       "sha256": "0b28f34bf083c9b0a430f5025ff559e7b4f9aca310b177f2059ff1bcced338bc"
-    },
-    {
-      "path": "org/apache/httpcomponents/httpclient/4.5.13/httpclient-4.5.13.jar",
-      "size": 780321,
-      "sha256": "6fe9026a566c6a5001608cf3fc32196641f6c1e5e1986d1037ccdbd5f31ef743"
-    },
-    {
-      "path": "org/apache/httpcomponents/httpclient/4.5.13/httpclient-4.5.13.pom",
-      "size": 6609,
-      "sha256": "78eb9ada74929fcd63d07adc4f49236841a45cc29d5f817bf45801f513fd7e6c"
-    },
-    {
-      "path": "org/apache/httpcomponents/httpcomponents-client/4.5.13/httpcomponents-client-4.5.13.pom",
-      "size": 16382,
-      "sha256": "9cba594c08db7271d0c20e9845d622bb39e69583910b45e7d5df82f6058d4dd9"
-    },
-    {
-      "path": "org/apache/httpcomponents/httpcomponents-core/4.4.13/httpcomponents-core-4.4.13.pom",
-      "size": 13167,
-      "sha256": "c554e7008e4517c7ef54e005cc8b74f4c87a54a0ea2c6f57be5d0569df51936b"
-    },
-    {
-      "path": "org/apache/httpcomponents/httpcomponents-core/4.4.14/httpcomponents-core-4.4.14.pom",
-      "size": 13160,
-      "sha256": "209ed931cb57998252dfe027caa9c03ada620613642329679131165f8b1cbad1"
-    },
-    {
-      "path": "org/apache/httpcomponents/httpcomponents-parent/11/httpcomponents-parent-11.pom",
-      "size": 34695,
-      "sha256": "a901f87b115c55070c7ee43efff63e20e7b02d30af2443ae292bf1f4e532d3aa"
     },
     {
       "path": "org/apache/httpcomponents/httpcomponents-parent/13/httpcomponents-parent-13.pom",
@@ -1653,31 +913,6 @@
       "sha256": "5dceb6ab206a419179273f15d0d2b472f9472bbb747c6c8b7e96daaf78cc4527"
     },
     {
-      "path": "org/apache/httpcomponents/httpcore/4.4.13/httpcore-4.4.13.pom",
-      "size": 4968,
-      "sha256": "8f812d9fa7b72a3d4aa7f825278932a5df344b42a6d8398905879431a1bf9a97"
-    },
-    {
-      "path": "org/apache/httpcomponents/httpcore/4.4.14/httpcore-4.4.14.jar",
-      "size": 328436,
-      "sha256": "f956209e450cb1d0c51776dfbd23e53e9dd8db9a1298ed62b70bf0944ba63b28"
-    },
-    {
-      "path": "org/apache/httpcomponents/httpcore/4.4.14/httpcore-4.4.14.pom",
-      "size": 4967,
-      "sha256": "55716398a978f10203f9e25c8aefc0580daf7f0907c6ed0aead81ec5fb6b7fd8"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-core/1.11.1/doxia-core-1.11.1.jar",
-      "size": 218021,
-      "sha256": "d79801594566bdd7168b1adf927c3cc40cf17a95dd4480b4151e45eb30128cd7"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-core/1.11.1/doxia-core-1.11.1.pom",
-      "size": 4526,
-      "sha256": "d22567378e3481adfa8d06ee2a6e882533c2c270c5b8653f1c159fd2de05b168"
-    },
-    {
       "path": "org/apache/maven/doxia/doxia-core/2.0.0/doxia-core-2.0.0.jar",
       "size": 168106,
       "sha256": "939183cf5ced6741745b2475a4adf78ca85885ee0dad6dae28dd3f25bd447ff3"
@@ -1686,26 +921,6 @@
       "path": "org/apache/maven/doxia/doxia-core/2.0.0/doxia-core-2.0.0.pom",
       "size": 3908,
       "sha256": "f3e804d91571075e6367cff9020641d79d66bc46a6c13a62fcba1d369cd8936d"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-decoration-model/1.11.1/doxia-decoration-model-1.11.1.jar",
-      "size": 59774,
-      "sha256": "411fc167774f2e3573f280c57a278fbe7bae677ee596a8ad24bd6c6bb2c5bbce"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-decoration-model/1.11.1/doxia-decoration-model-1.11.1.pom",
-      "size": 3405,
-      "sha256": "fd2040e074d6b00c595562c7fc8117f4d378038aa0c5c2bc8fb84c2b8e6246fb"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-integration-tools/1.11.1/doxia-integration-tools-1.11.1.jar",
-      "size": 46741,
-      "sha256": "eee789dcb86f37f290c6c22198ea56bf529edf21590294e549a77a490ed21dbe"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-integration-tools/1.11.1/doxia-integration-tools-1.11.1.pom",
-      "size": 6040,
-      "sha256": "1ad03814f59e835fbe6ba81d214b7f27cc6a8a688ac80791c2baa036ca53ec12"
     },
     {
       "path": "org/apache/maven/doxia/doxia-integration-tools/2.0.0/doxia-integration-tools-2.0.0.jar",
@@ -1718,26 +933,6 @@
       "sha256": "b3707bdb06778745b0304985c340a9847eeda20f4ca7f2902faf6c266cc29653"
     },
     {
-      "path": "org/apache/maven/doxia/doxia-logging-api/1.11.1/doxia-logging-api-1.11.1.jar",
-      "size": 11731,
-      "sha256": "243c66f842cd2b3ded7c6d2c36b177a65c3f5d94800cef988ba3e29ec8cf60c9"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-logging-api/1.11.1/doxia-logging-api-1.11.1.pom",
-      "size": 1582,
-      "sha256": "89001fcd98d29ab1c3102b14e7ddf5a3eb8cc3fce38558b485772bfc694c8600"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-module-apt/1.11.1/doxia-module-apt-1.11.1.jar",
-      "size": 54512,
-      "sha256": "90b63fa6add0da37b5e81339f1c17fd5d6d50faf90695bb42b56108f3f1818bb"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-module-apt/1.11.1/doxia-module-apt-1.11.1.pom",
-      "size": 2071,
-      "sha256": "64dbc0f530a89df1da15999a21d955565d3e62dcdcc66d621a281e21a37f28ca"
-    },
-    {
       "path": "org/apache/maven/doxia/doxia-module-apt/2.0.0/doxia-module-apt-2.0.0.jar",
       "size": 53877,
       "sha256": "f4a846c448ca85358279184a310f6ee3f46fa39688f74a72961c1bfe222f28a6"
@@ -1746,66 +941,6 @@
       "path": "org/apache/maven/doxia/doxia-module-apt/2.0.0/doxia-module-apt-2.0.0.pom",
       "size": 2861,
       "sha256": "15d5d2bcd6fe003c4d181f1b9e88b3e09611e85385246105fc5977301f2c7e96"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-module-confluence/1.11.1/doxia-module-confluence-1.11.1.jar",
-      "size": 58105,
-      "sha256": "70015b7593c961bbfce4947b9f7eae8528708ae204a7a073c5e235a936d6f627"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-module-confluence/1.11.1/doxia-module-confluence-1.11.1.pom",
-      "size": 2186,
-      "sha256": "f0218c6e205a013fb212e149b79c889e7a5ef6fc929061c28445f4ff59d75338"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-module-docbook-simple/1.11.1/doxia-module-docbook-simple-1.11.1.jar",
-      "size": 128163,
-      "sha256": "f7225cd90b02360459bf3b8bac1721b359c1d086a067068a09241c3097ee0046"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-module-docbook-simple/1.11.1/doxia-module-docbook-simple-1.11.1.pom",
-      "size": 2010,
-      "sha256": "e5aa29219b8ce2d4805d6bd90a1468aaf90301b67b0e295235191a25b626caed"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-module-fml/1.11.1/doxia-module-fml-1.11.1.jar",
-      "size": 38470,
-      "sha256": "60cb34c21d9f9d1b7728711ef268bd68bde07f228167555800d098b69ce76f57"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-module-fml/1.11.1/doxia-module-fml-1.11.1.pom",
-      "size": 4378,
-      "sha256": "20fb68018577e94c76a76e370cb1e862d1eca02727620a52973b93a1531f4042"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-module-markdown/1.11.1/doxia-module-markdown-1.11.1.jar",
-      "size": 17886,
-      "sha256": "1d3367a26d1d33aa14ecb55e052989df4bc99d6b39be45548e5da9d9aa3c5b75"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-module-markdown/1.11.1/doxia-module-markdown-1.11.1.pom",
-      "size": 5375,
-      "sha256": "de3f025da056c788a45dd52d11e8477684613f3d16a2508bab4f6bdd4d8355d9"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-module-twiki/1.11.1/doxia-module-twiki-1.11.1.jar",
-      "size": 72510,
-      "sha256": "a7e31a73a8cb6d72a25bd1f221b9a8a65dd399a794cb246d065713ff05f291f2"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-module-twiki/1.11.1/doxia-module-twiki-1.11.1.pom",
-      "size": 2118,
-      "sha256": "5cc7957f70ccfe4320c25c7aabaf72b23c6facf2dc5c28990183ba05ad628417"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-module-xdoc/1.11.1/doxia-module-xdoc-1.11.1.jar",
-      "size": 37103,
-      "sha256": "b223389f551590c49ae1ad4b0521dc50ed5239b00e60ab535791752d246091e2"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-module-xdoc/1.11.1/doxia-module-xdoc-1.11.1.pom",
-      "size": 4474,
-      "sha256": "eb9f2f54d306f2ea807d7745245bf10ac5972758cdfc9f26885916751f1d075b"
     },
     {
       "path": "org/apache/maven/doxia/doxia-module-xdoc/2.0.0/doxia-module-xdoc-2.0.0.jar",
@@ -1818,26 +953,6 @@
       "sha256": "c2e591fac5e62327c13a267c41ec21d1330e5fcbb943c56fbd6803132e7b1115"
     },
     {
-      "path": "org/apache/maven/doxia/doxia-module-xhtml/1.11.1/doxia-module-xhtml-1.11.1.jar",
-      "size": 17380,
-      "sha256": "3d298e2da1e11dba952cf4e5d750fafc41713470767b57c4f6969123c0892a23"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-module-xhtml/1.11.1/doxia-module-xhtml-1.11.1.pom",
-      "size": 1978,
-      "sha256": "9613c4b89005fa005c0f57e37a5b4129a345f55250ef951cdca1b4deb3d9336b"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-module-xhtml5/1.11.1/doxia-module-xhtml5-1.11.1.jar",
-      "size": 17848,
-      "sha256": "3583ae17f9ae97db41da038dc67552a386e7a9f850f45fa6fdb0d2b9ef36a31c"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-module-xhtml5/1.11.1/doxia-module-xhtml5-1.11.1.pom",
-      "size": 1984,
-      "sha256": "a322ee9d8b5b300f337994c710be006dd8b05f2d83e07a9bef64c2530ac9282b"
-    },
-    {
       "path": "org/apache/maven/doxia/doxia-module-xhtml5/2.0.0/doxia-module-xhtml5-2.0.0.jar",
       "size": 17036,
       "sha256": "c91557679a0eb9fde3175055628ceb7b8fd5ab6d308340770d236fb06265dc26"
@@ -1848,29 +963,9 @@
       "sha256": "3c6bff4151d35b94c3afb4a0c9377c262ced4eb2dd1009970396d4c79eb73e6e"
     },
     {
-      "path": "org/apache/maven/doxia/doxia-modules/1.11.1/doxia-modules-1.11.1.pom",
-      "size": 2742,
-      "sha256": "d6c12f3529a45ec1a757455267d3ec450af1a7e72b53ccc19e1452611b806866"
-    },
-    {
       "path": "org/apache/maven/doxia/doxia-modules/2.0.0/doxia-modules-2.0.0.pom",
       "size": 2508,
       "sha256": "9c56654ceff62d08b19b802d7d4d77dca54b17548b9802a0ba493f72f2adaf34"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-sink-api/1.0/doxia-sink-api-1.0.pom",
-      "size": 1387,
-      "sha256": "50d699f86369802baf2cd16c31d936ad8f0c1a8976120cd1dc3dc70c8abed99a"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-sink-api/1.11.1/doxia-sink-api-1.11.1.jar",
-      "size": 11610,
-      "sha256": "39ac38bb7d752ea003be17a0065522e4e1b076a4f7e374bea55259f3e133f28f"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-sink-api/1.11.1/doxia-sink-api-1.11.1.pom",
-      "size": 1577,
-      "sha256": "780f9b25ba1a38ef6494f32236a59f1ba5b5298724ab4ff3419e9aa3195b9858"
     },
     {
       "path": "org/apache/maven/doxia/doxia-sink-api/2.0.0/doxia-sink-api-2.0.0.jar",
@@ -1893,16 +988,6 @@
       "sha256": "25a17abcbd162cf65dfae5bd7400611d19e424d679e132e9a9228346c6d78d42"
     },
     {
-      "path": "org/apache/maven/doxia/doxia-site-renderer/1.11.1/doxia-site-renderer-1.11.1.jar",
-      "size": 65181,
-      "sha256": "f279a087910d3e0728daad9114da8f3211cfb49b5e8457d05ee9ee5f04284527"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-site-renderer/1.11.1/doxia-site-renderer-1.11.1.pom",
-      "size": 7695,
-      "sha256": "bd9ac2f023c8fbf7fc2ab00cee25dffbc18249870ce0da2ec46ba6689066184f"
-    },
-    {
       "path": "org/apache/maven/doxia/doxia-site-renderer/2.0.0/doxia-site-renderer-2.0.0.jar",
       "size": 43622,
       "sha256": "6cdee370194f4b9f742d12ef46528042f480d9bdf3de832de2792e1ae9ffc68d"
@@ -1913,24 +998,9 @@
       "sha256": "3add9e92edb232902aaf8f663b48d9f8dbec1792436f4f9c36f3665b86266d8d"
     },
     {
-      "path": "org/apache/maven/doxia/doxia-sitetools/1.11.1/doxia-sitetools-1.11.1.pom",
-      "size": 13594,
-      "sha256": "1ee7c5b411e6c91b70a19683ef96ac6fd273f9323d3f4a396e201949f48aa748"
-    },
-    {
       "path": "org/apache/maven/doxia/doxia-sitetools/2.0.0/doxia-sitetools-2.0.0.pom",
       "size": 11966,
       "sha256": "ad3dcd30a40d45148350f066f2312ed9f946b7fd94f9c197ede0f3b9558b80a3"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-skin-model/1.11.1/doxia-skin-model-1.11.1.jar",
-      "size": 16330,
-      "sha256": "5337efbe45413d24b71422d145062f84bde96271dab9f3a5caa3fab461974bf4"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia-skin-model/1.11.1/doxia-skin-model-1.11.1.pom",
-      "size": 3038,
-      "sha256": "358009924c031e858910e19dcfee1eddb9c352add9e3172e09a06f2afdcbf201"
     },
     {
       "path": "org/apache/maven/doxia/doxia-skin-model/2.0.0/doxia-skin-model-2.0.0.jar",
@@ -1943,44 +1013,9 @@
       "sha256": "10bbc5674fab0fa2bbcf8f7696796d3e1b92ab31525330921fbdb8da74fe1472"
     },
     {
-      "path": "org/apache/maven/doxia/doxia/1.0/doxia-1.0.pom",
-      "size": 9644,
-      "sha256": "38246291439393fd08f54c6d7fedde2db0fd5c94d0910f17b99e8d59a2858e98"
-    },
-    {
-      "path": "org/apache/maven/doxia/doxia/1.11.1/doxia-1.11.1.pom",
-      "size": 18034,
-      "sha256": "784c41e3398c840f01d755a8abb1049c708caff55820ef68eb65719be8feabba"
-    },
-    {
       "path": "org/apache/maven/doxia/doxia/2.0.0/doxia-2.0.0.pom",
       "size": 17220,
       "sha256": "59f40c92b9f525bb6ca6f8845ec63b13dab18c3c1da93d17620cb8d2ea4c61b8"
-    },
-    {
-      "path": "org/apache/maven/maven-aether-provider/3.1.1/maven-aether-provider-3.1.1.pom",
-      "size": 4094,
-      "sha256": "8cf9cb82df95d5e8f66643d277c24216e9c0ed8b423c4fa52e7884243af76204"
-    },
-    {
-      "path": "org/apache/maven/maven-aether-provider/3.2.5/maven-aether-provider-3.2.5.jar",
-      "size": 65761,
-      "sha256": "703944b922d5351aad53b842f7dd38439b7213425f13c6c7f034b8b699b7d578"
-    },
-    {
-      "path": "org/apache/maven/maven-aether-provider/3.2.5/maven-aether-provider-3.2.5.pom",
-      "size": 4250,
-      "sha256": "317d515c5c69278a980c6219901d327efb4210ca44ae1f07c2a304d487ec7cae"
-    },
-    {
-      "path": "org/apache/maven/maven-archiver/3.5.2/maven-archiver-3.5.2.jar",
-      "size": 26163,
-      "sha256": "8d0a075ba6662041287b6807a8ea14b66b5e1b7da7db96ea322849672c536ca2"
-    },
-    {
-      "path": "org/apache/maven/maven-archiver/3.5.2/maven-archiver-3.5.2.pom",
-      "size": 5545,
-      "sha256": "437e59037792c8c7300666f720b2fc44e069e3161b8f1a331e1c755ef6f6965e"
     },
     {
       "path": "org/apache/maven/maven-archiver/3.6.2/maven-archiver-3.6.2.jar",
@@ -1993,94 +1028,9 @@
       "sha256": "8b117b0dc205a71abda33463f8c7ff891513cfb92241d8a011f9e8ac5ea21e77"
     },
     {
-      "path": "org/apache/maven/maven-artifact/2.2.1/maven-artifact-2.2.1.pom",
-      "size": 1581,
-      "sha256": "f658a628efd6e0efe416b977638ba144af660fe6413f3637a4d03feb6a1ce806"
-    },
-    {
-      "path": "org/apache/maven/maven-artifact/3.0/maven-artifact-3.0.pom",
-      "size": 1928,
-      "sha256": "c56a0dbd90cea691f83e58fa9a6388fb3ac6bc3c14b8c04d2e112544651fa528"
-    },
-    {
-      "path": "org/apache/maven/maven-artifact/3.1.1/maven-artifact-3.1.1.pom",
-      "size": 1970,
-      "sha256": "fc2f1304677f0eb6ba58cd305357f62c013488b364bff9a8ba13b97553bcd980"
-    },
-    {
-      "path": "org/apache/maven/maven-artifact/3.2.5/maven-artifact-3.2.5.jar",
-      "size": 55092,
-      "sha256": "270385907ecfbcb256fe5afb883869fd57a5c021b5242693743ef787605c6335"
-    },
-    {
-      "path": "org/apache/maven/maven-artifact/3.2.5/maven-artifact-3.2.5.pom",
-      "size": 2348,
-      "sha256": "4e7f1161d5e955492198699b47a413ae1059e9ba187de2970a75aa655a8cfd21"
-    },
-    {
-      "path": "org/apache/maven/maven-core/3.1.1/maven-core-3.1.1.pom",
-      "size": 7270,
-      "sha256": "8b420bd2a6df3a945846c65759efc5c536a0dcb671c7c2086027aa9b7087adb3"
-    },
-    {
-      "path": "org/apache/maven/maven-core/3.2.5/maven-core-3.2.5.jar",
-      "size": 608173,
-      "sha256": "4f1a0af8997e1daf778b91c5ae9e973f92df699439d909fdec7fc6055c09de12"
-    },
-    {
-      "path": "org/apache/maven/maven-core/3.2.5/maven-core-3.2.5.pom",
-      "size": 8063,
-      "sha256": "88ffe6ab7548bda1a711d434a67cfb1599bfb38497f65b36d106a6e98f6eb955"
-    },
-    {
-      "path": "org/apache/maven/maven-model-builder/3.1.1/maven-model-builder-3.1.1.pom",
-      "size": 2809,
-      "sha256": "c00d46f20eef519f2a7f9fea161252ec21c1c73059159cf66d8fefef7a18dadd"
-    },
-    {
-      "path": "org/apache/maven/maven-model-builder/3.2.5/maven-model-builder-3.2.5.jar",
-      "size": 170179,
-      "sha256": "cc5321269d080ad6694458f53186be5391a21c488ab3a7d6dd73123c7681879d"
-    },
-    {
-      "path": "org/apache/maven/maven-model-builder/3.2.5/maven-model-builder-3.2.5.pom",
-      "size": 2993,
-      "sha256": "ebf1341d424e9faa3e8d02c5e91a30868be6583ecb753c72208634f5c05f0738"
-    },
-    {
-      "path": "org/apache/maven/maven-model/2.2.1/maven-model-2.2.1.pom",
-      "size": 3240,
-      "sha256": "62dd8e35a2c4432bb22f8250bbfe08639635599b4064d5d747bd24cf3c02fac5"
-    },
-    {
       "path": "org/apache/maven/maven-model/3.0/maven-model-3.0.pom",
       "size": 3892,
       "sha256": "3d6fdeb72b2967f1fa2784134fb832d08d8d6e879b7ace7712f2c7281994fc1e"
-    },
-    {
-      "path": "org/apache/maven/maven-model/3.1.1/maven-model-3.1.1.pom",
-      "size": 4141,
-      "sha256": "6c8cea0b1892cb11ee242ddf8ffc6f0edf757a993492945d104da2d101a2eff2"
-    },
-    {
-      "path": "org/apache/maven/maven-model/3.2.5/maven-model-3.2.5.jar",
-      "size": 160786,
-      "sha256": "8d439cc1661349dab1c69eed0f831336d187e162cc6d68aa4deefcff57ee0624"
-    },
-    {
-      "path": "org/apache/maven/maven-model/3.2.5/maven-model-3.2.5.pom",
-      "size": 4247,
-      "sha256": "b789b821c0b7a436d9dc4c167c1947188a18194c7d41ed5e59b0f5db3dbaaca9"
-    },
-    {
-      "path": "org/apache/maven/maven-parent/10/maven-parent-10.pom",
-      "size": 31635,
-      "sha256": "81fe14cb9779d36e0c610e1049e5b32a6b9974957f257921acf628b31c5486c8"
-    },
-    {
-      "path": "org/apache/maven/maven-parent/11/maven-parent-11.pom",
-      "size": 32409,
-      "sha256": "7450c3330cf06c254db9f0dc5ef49eac15502311cf19e0208ba473076ee043d6"
     },
     {
       "path": "org/apache/maven/maven-parent/15/maven-parent-15.pom",
@@ -2088,19 +1038,9 @@
       "sha256": "e25770d5d46dcdfdbb9e38ca04f272c5bdf476d88392ab4044ba90678e616d54"
     },
     {
-      "path": "org/apache/maven/maven-parent/16/maven-parent-16.pom",
-      "size": 23272,
-      "sha256": "70cef83d246309a2aa355c38f2004edda3621ae0bc5c55a7a139eaeef4d1231a"
-    },
-    {
       "path": "org/apache/maven/maven-parent/23/maven-parent-23.pom",
       "size": 32586,
       "sha256": "5425501edd9e0bd7b01eca53cc92e06836d24851151304f9c6759e1713541685"
-    },
-    {
-      "path": "org/apache/maven/maven-parent/25/maven-parent-25.pom",
-      "size": 37440,
-      "sha256": "3e66146707bc76e9d5b6cd8c98cf77d931c0894e7955a8e7f104f6790769abf1"
     },
     {
       "path": "org/apache/maven/maven-parent/30/maven-parent-30.pom",
@@ -2153,94 +1093,14 @@
       "sha256": "94fe869eb9b4ce9fce3995d05ea86b168c85d927f9d17beb814a1960c76d7e6f"
     },
     {
-      "path": "org/apache/maven/maven-plugin-api/2.2.1/maven-plugin-api-2.2.1.pom",
-      "size": 1459,
-      "sha256": "c10d0460c2d5c5076304598965991d6257d1bf31bdef921a17ce3d059bce654e"
-    },
-    {
       "path": "org/apache/maven/maven-plugin-api/3.0/maven-plugin-api-3.0.pom",
       "size": 2288,
       "sha256": "8a722af2564205ae996f9035cc04670d3e9e4ae592f5a643c58fb7b0f43e1501"
     },
     {
-      "path": "org/apache/maven/maven-plugin-api/3.1.1/maven-plugin-api-3.1.1.pom",
-      "size": 3382,
-      "sha256": "92c7e701085099646097d38c39eb5334058b0f0226915e5553cdeaff019ab473"
-    },
-    {
-      "path": "org/apache/maven/maven-plugin-api/3.2.5/maven-plugin-api-3.2.5.jar",
-      "size": 46108,
-      "sha256": "194a6f0ce889ed3b0d8a9bc4d3c79541e878098b7e303e4ac76c1031850772c3"
-    },
-    {
-      "path": "org/apache/maven/maven-plugin-api/3.2.5/maven-plugin-api-3.2.5.pom",
-      "size": 3027,
-      "sha256": "2c3ba62ee26ffc694cfb2fc6132e4ccd7b4acf553aa86d9143dc0f77822f68ec"
-    },
-    {
-      "path": "org/apache/maven/maven-repository-metadata/3.1.1/maven-repository-metadata-3.1.1.pom",
-      "size": 2229,
-      "sha256": "0c6a6ba1251b80b13065d521aab5db1a587de08292b241c27c0908b5b5a4e1bd"
-    },
-    {
-      "path": "org/apache/maven/maven-repository-metadata/3.2.5/maven-repository-metadata-3.2.5.jar",
-      "size": 25962,
-      "sha256": "62b517b77f24edebdee0e382ecddb44bb6632b7c08c528d625aed7d2980df12b"
-    },
-    {
-      "path": "org/apache/maven/maven-repository-metadata/3.2.5/maven-repository-metadata-3.2.5.pom",
-      "size": 2229,
-      "sha256": "171c98a1e2a5a2445b0ddd83ee15cb53122b82c44bec045fd00d817c72948b1e"
-    },
-    {
-      "path": "org/apache/maven/maven-settings-builder/3.1.1/maven-settings-builder-3.1.1.pom",
-      "size": 2596,
-      "sha256": "5160f41caa8e0dae988bdf9153bd19702a67cdbbeb4bbccffc7c25260f9e0345"
-    },
-    {
-      "path": "org/apache/maven/maven-settings-builder/3.2.5/maven-settings-builder-3.2.5.jar",
-      "size": 43652,
-      "sha256": "9c5a014ceb8abb55e997dcc41d17bbe0ae145db574be6b7186e75950c241269f"
-    },
-    {
-      "path": "org/apache/maven/maven-settings-builder/3.2.5/maven-settings-builder-3.2.5.pom",
-      "size": 2596,
-      "sha256": "c1837d6691e39a614c9179bbafaa2c4327457763cf71ffd8f67b7f81ce3084eb"
-    },
-    {
-      "path": "org/apache/maven/maven-settings/3.1.1/maven-settings-3.1.1.pom",
-      "size": 2171,
-      "sha256": "8535c8c80f0db52fbed39f267a545d4a5242a82597f3f1bca9dafda8c1a74890"
-    },
-    {
-      "path": "org/apache/maven/maven-settings/3.2.5/maven-settings-3.2.5.jar",
-      "size": 43033,
-      "sha256": "1874d4ee660b935675a60bdb2ef63e0ff5a81769f4fc04a035fa9d4c4e238224"
-    },
-    {
-      "path": "org/apache/maven/maven-settings/3.2.5/maven-settings-3.2.5.pom",
-      "size": 2171,
-      "sha256": "244564951300444c0c4c4a1a3f870756a110cb9a40405aed4ceccc3e33f5182f"
-    },
-    {
-      "path": "org/apache/maven/maven/2.2.1/maven-2.2.1.pom",
-      "size": 22409,
-      "sha256": "d135cff96dcbbc8a5fab30180e557cae620373cf26941d4c738a88896a2d98ed"
-    },
-    {
       "path": "org/apache/maven/maven/3.0/maven-3.0.pom",
       "size": 21885,
       "sha256": "28fc63720c4a5ff92bf0e358ed55a6f24626f35bccc13cc3e194231e158848f6"
-    },
-    {
-      "path": "org/apache/maven/maven/3.1.1/maven-3.1.1.pom",
-      "size": 22095,
-      "sha256": "967c2f0b551e6f11bff8046cbb8b2e205cff274907b626b60d13d9f96c53be07"
-    },
-    {
-      "path": "org/apache/maven/maven/3.2.5/maven-3.2.5.pom",
-      "size": 22371,
-      "sha256": "75f8135d0a9ae8d63c3553f2eaefe25f1b0a01d7676e07f561835b95a88aedf5"
     },
     {
       "path": "org/apache/maven/plugins/maven-clean-plugin/3.4.1/maven-clean-plugin-3.4.1.jar",
@@ -2273,26 +1133,6 @@
       "sha256": "4ad37e717dc713cec048b143f0de8fdd37d037f7d15be63f130cf96430caa808"
     },
     {
-      "path": "org/apache/maven/plugins/maven-deploy-plugin/3.1.2/maven-deploy-plugin-3.1.2.jar",
-      "size": 39537,
-      "sha256": "cb3850b77fb0b4ee9330a22fee7c9a73e8036b8a532363147cdf4986c890d7f9"
-    },
-    {
-      "path": "org/apache/maven/plugins/maven-deploy-plugin/3.1.2/maven-deploy-plugin-3.1.2.pom",
-      "size": 9587,
-      "sha256": "fe044f57bad86ad0d5afc50957b80b8bd5ddf0e2014e352132d9249a307ad0d1"
-    },
-    {
-      "path": "org/apache/maven/plugins/maven-install-plugin/3.1.2/maven-install-plugin-3.1.2.jar",
-      "size": 32377,
-      "sha256": "3541e043252daf4e73b9e0e8badcc74a89bd6855419622d7739873fc9324feac"
-    },
-    {
-      "path": "org/apache/maven/plugins/maven-install-plugin/3.1.2/maven-install-plugin-3.1.2.pom",
-      "size": 8481,
-      "sha256": "4b2a190117c3d03e73e866d482d466aec4e28eafc4d211485df6a12e713bded9"
-    },
-    {
       "path": "org/apache/maven/plugins/maven-jar-plugin/3.4.2/maven-jar-plugin-3.4.2.jar",
       "size": 34029,
       "sha256": "e02b19fb8e7ea10baed4878a8c51e4ea21f16ef927efcfb2681a8faea86c7abb"
@@ -2301,11 +1141,6 @@
       "path": "org/apache/maven/plugins/maven-jar-plugin/3.4.2/maven-jar-plugin-3.4.2.pom",
       "size": 7683,
       "sha256": "1b6e93c9c1d87b893808d9efc07f56638e60909d501558b11838659b937157af"
-    },
-    {
-      "path": "org/apache/maven/plugins/maven-plugins/36/maven-plugins-36.pom",
-      "size": 9902,
-      "sha256": "b0020d55af2afd9bff042d627dd52b7a4828243014ded0ae89412e1717582056"
     },
     {
       "path": "org/apache/maven/plugins/maven-plugins/39/maven-plugins-39.pom",
@@ -2348,16 +1183,6 @@
       "sha256": "82905ad247ff139e317737a031979b5c3937bf88b8eb05af6a93bfc619842b77"
     },
     {
-      "path": "org/apache/maven/plugins/maven-site-plugin/3.12.1/maven-site-plugin-3.12.1.jar",
-      "size": 118801,
-      "sha256": "f7bd8e943977ca85022e1252d52575b769d12d49565375550251d2f471aa350c"
-    },
-    {
-      "path": "org/apache/maven/plugins/maven-site-plugin/3.12.1/maven-site-plugin-3.12.1.pom",
-      "size": 19881,
-      "sha256": "6ca9fd4c6bb967bdb44ba03b3de42a79f81ea71dd13404d08fd7a72e3f5d1219"
-    },
-    {
       "path": "org/apache/maven/plugins/maven-surefire-plugin/3.5.3/maven-surefire-plugin-3.5.3.jar",
       "size": 46123,
       "sha256": "5b5b35523b04916eee85ad6d898b0353dd2ac00793b90d9e7befb79197873d9d"
@@ -2368,26 +1193,6 @@
       "sha256": "eb52f2f868ac123d408ceefe32dc8d1647383d8035245374dd16cf93479b6c59"
     },
     {
-      "path": "org/apache/maven/reporting/maven-reporting-api/3.0/maven-reporting-api-3.0.pom",
-      "size": 2373,
-      "sha256": "efaa4fc4832aad9703df46b89cb02845dbf4db6f6ac88534b7824c4956a3a5fb"
-    },
-    {
-      "path": "org/apache/maven/reporting/maven-reporting-api/3.1.0/maven-reporting-api-3.1.0.pom",
-      "size": 3764,
-      "sha256": "51890c95e76678446989fc0b5fb46546ed5782fab4dd814846fa47e2f1c7f70e"
-    },
-    {
-      "path": "org/apache/maven/reporting/maven-reporting-api/3.1.1/maven-reporting-api-3.1.1.jar",
-      "size": 10563,
-      "sha256": "25be6603c97d28fa3dcd122073054271c8fcaf667d220dce7a26a61a6f3cffd1"
-    },
-    {
-      "path": "org/apache/maven/reporting/maven-reporting-api/3.1.1/maven-reporting-api-3.1.1.pom",
-      "size": 3763,
-      "sha256": "74903e91bafbc97bfd43a73daf64e2ee86045563cef43ee8713b588946b1a16c"
-    },
-    {
       "path": "org/apache/maven/reporting/maven-reporting-api/4.0.0/maven-reporting-api-4.0.0.jar",
       "size": 9763,
       "sha256": "cb2cbde3c9c7288f7398a250dcf3c90cf92714cff301f22b298e1091b5def33c"
@@ -2396,16 +1201,6 @@
       "path": "org/apache/maven/reporting/maven-reporting-api/4.0.0/maven-reporting-api-4.0.0.pom",
       "size": 2793,
       "sha256": "2032531f05994121c2fdb5df7235ed548f53d294d0b7ac45e797148d85a30ee2"
-    },
-    {
-      "path": "org/apache/maven/reporting/maven-reporting-exec/1.6.0/maven-reporting-exec-1.6.0.jar",
-      "size": 31473,
-      "sha256": "6606c53b2087a4f5f535db5ec80d151e743b99cf4e6d9f87c3e307c0c97a7a86"
-    },
-    {
-      "path": "org/apache/maven/reporting/maven-reporting-exec/1.6.0/maven-reporting-exec-1.6.0.pom",
-      "size": 13889,
-      "sha256": "bea77c68cd5203a7dc0f023414797188a01556ac08a85766a3cfc5f6022c93c6"
     },
     {
       "path": "org/apache/maven/reporting/maven-reporting-impl/4.0.0/maven-reporting-impl-4.0.0.jar",
@@ -2428,16 +1223,6 @@
       "sha256": "335513ce1dd2cf4c7d1dbfa1b8aa14656d9be5f9f3f0d0875ac528893c9f0f06"
     },
     {
-      "path": "org/apache/maven/resolver/maven-resolver-api/1.9.18/maven-resolver-api-1.9.18.jar",
-      "size": 157111,
-      "sha256": "ebfb9e1dfeea3c2017905184581e007874b4eaac9d28bfffcfe5133d70ac6339"
-    },
-    {
-      "path": "org/apache/maven/resolver/maven-resolver-api/1.9.18/maven-resolver-api-1.9.18.pom",
-      "size": 2679,
-      "sha256": "8290daa0cd7fbba0767b07368669228387cabae99a13c3433fbd4570629ae384"
-    },
-    {
       "path": "org/apache/maven/resolver/maven-resolver-util/1.4.1/maven-resolver-util-1.4.1.jar",
       "size": 167529,
       "sha256": "6b2184872fa7cc2ef5a90481b56af9711c15b371e69ab52f0f31bf24e910dd82"
@@ -2448,24 +1233,9 @@
       "sha256": "a58c932e967e85e7bcb8d4adaedd14a5221a1750a1d089c5086c4d73df505155"
     },
     {
-      "path": "org/apache/maven/resolver/maven-resolver-util/1.9.18/maven-resolver-util-1.9.18.jar",
-      "size": 196023,
-      "sha256": "2eb0ea667bc489384478231dda7516407d4b5b22a138077229871de9362a7ae2"
-    },
-    {
-      "path": "org/apache/maven/resolver/maven-resolver-util/1.9.18/maven-resolver-util-1.9.18.pom",
-      "size": 2856,
-      "sha256": "a98e6af5cdf1b2456486ae0bb8128e52fee8d6996629af60606bbc9c1aadf8ec"
-    },
-    {
       "path": "org/apache/maven/resolver/maven-resolver/1.4.1/maven-resolver-1.4.1.pom",
       "size": 18177,
       "sha256": "831c3849751101226495acfe9119582feb734a4539b070e0fbd9e85b03b501ce"
-    },
-    {
-      "path": "org/apache/maven/resolver/maven-resolver/1.9.18/maven-resolver-1.9.18.pom",
-      "size": 22324,
-      "sha256": "fb1dd4e554cd2dbcede9615294921e70b183533f467913acd9a3787ffdd6943b"
     },
     {
       "path": "org/apache/maven/shared/file-management/3.1.0/file-management-3.1.0.jar",
@@ -2533,11 +1303,6 @@
       "sha256": "a1d90278a9c3effef6c45db86c660749d2910d8d7361ed81983565950f667e85"
     },
     {
-      "path": "org/apache/maven/shared/maven-shared-components/15/maven-shared-components-15.pom",
-      "size": 9337,
-      "sha256": "6a58eb24291600f75ce0fe369b73fe6700f575ace4b664724d3cd0a6b85b63ee"
-    },
-    {
       "path": "org/apache/maven/shared/maven-shared-components/19/maven-shared-components-19.pom",
       "size": 6359,
       "sha256": "d82408269aada2eb1521ee8ff17f7c67333684f8ed2a09a9e35badd2e7575957"
@@ -2596,21 +1361,6 @@
       "path": "org/apache/maven/shared/maven-shared-utils/3.1.0/maven-shared-utils-3.1.0.pom",
       "size": 4979,
       "sha256": "68f9fdef85d2c89f53c63cbc559920e0115bd30eb6f7076c9854931d3829027b"
-    },
-    {
-      "path": "org/apache/maven/shared/maven-shared-utils/3.3.3/maven-shared-utils-3.3.3.pom",
-      "size": 5773,
-      "sha256": "34564d462b074de2650b855be723de8f5593e590cb9132bae34d9db1dffb5be7"
-    },
-    {
-      "path": "org/apache/maven/shared/maven-shared-utils/3.3.4/maven-shared-utils-3.3.4.jar",
-      "size": 153143,
-      "sha256": "7925d9c5a0e2040d24b8fae3f612eb399cbffe5838b33ba368777dc7bddf6dda"
-    },
-    {
-      "path": "org/apache/maven/shared/maven-shared-utils/3.3.4/maven-shared-utils-3.3.4.pom",
-      "size": 5831,
-      "sha256": "bf83482d96f76d63699d63e125e64f4ac73c8178985733662dbd69af9c60339e"
     },
     {
       "path": "org/apache/maven/shared/maven-shared-utils/3.4.2/maven-shared-utils-3.4.2.jar",
@@ -2773,46 +1523,6 @@
       "sha256": "943a046c1fe36b28b3cea11fb0d34e8b836b245433087f8fa916c0a752393181"
     },
     {
-      "path": "org/apache/velocity/velocity-tools/2.0/velocity-tools-2.0.jar",
-      "size": 346580,
-      "sha256": "b174eb36bc48c25dce10571c7d3d5dca4e4c1b3e2e31a92b9ed68fe9dea688d9"
-    },
-    {
-      "path": "org/apache/velocity/velocity-tools/2.0/velocity-tools-2.0.pom",
-      "size": 18200,
-      "sha256": "b12f13ab462281d48c573acabf124e067a9d49e65ec72b27597db9e91f721b95"
-    },
-    {
-      "path": "org/apache/velocity/velocity/1.6.2/velocity-1.6.2.pom",
-      "size": 10620,
-      "sha256": "f663422e0b92069dcb30d58a2652660b727252ae94e40e8616e710723c64cdec"
-    },
-    {
-      "path": "org/apache/velocity/velocity/1.7/velocity-1.7.jar",
-      "size": 449505,
-      "sha256": "ec92dae810034f4b46dbb16ef4364a4013b0efb24a8c5dd67435cae46a290d8e"
-    },
-    {
-      "path": "org/apache/velocity/velocity/1.7/velocity-1.7.pom",
-      "size": 10857,
-      "sha256": "a3f97ceab5f073ed93ef8fe6304e35252d83ecf2442c83fe0492b8b73da3b40b"
-    },
-    {
-      "path": "org/apache/xbean/xbean-reflect/3.7/xbean-reflect-3.7.jar",
-      "size": 148098,
-      "sha256": "104e5e9bb5a669f86722f32281960700f7ec8e3209ef51b23eb9b6d23d1629cb"
-    },
-    {
-      "path": "org/apache/xbean/xbean-reflect/3.7/xbean-reflect-3.7.pom",
-      "size": 5092,
-      "sha256": "9795c15322c5d19af336eebd9e164fa7d5897c4b004a7d66e21635a173e748a9"
-    },
-    {
-      "path": "org/apache/xbean/xbean/3.7/xbean-3.7.pom",
-      "size": 15438,
-      "sha256": "ea717132de8404b62fc9097a1f3215c705d525d457be9a5f12653adc68c33ab7"
-    },
-    {
       "path": "org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar",
       "size": 6806,
       "sha256": "b509448ac506d607319f182537f0b35d71007582ec741832a1f111e5b5b70b38"
@@ -2868,16 +1578,6 @@
       "sha256": "93ca001fd33da53d38b74f6daf19e71bc9736ed6143091ff9003cd4c05ace6c9"
     },
     {
-      "path": "org/codehaus/plexus/plexus-archiver/4.2.7/plexus-archiver-4.2.7.jar",
-      "size": 194855,
-      "sha256": "5e0c49de4c56a25aa242e2de2b5fea1c0368826c2a8ab73764a0c91d3631633b"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus-archiver/4.2.7/plexus-archiver-4.2.7.pom",
-      "size": 4911,
-      "sha256": "2f8d25a75154d59d3469484320e254f5cc863b8255e470c1a1eb8898ff5ae821"
-    },
-    {
       "path": "org/codehaus/plexus/plexus-archiver/4.9.2/plexus-archiver-4.9.2.jar",
       "size": 224755,
       "sha256": "a837bd7d73291564dc8e8c826de0fede75896527a35bdcddb77b0545ee656a4c"
@@ -2888,29 +1588,9 @@
       "sha256": "7b4a569c92f60c859ae69594f8935d11bcbb940d86c518742c30f0925a48ba9f"
     },
     {
-      "path": "org/codehaus/plexus/plexus-classworlds/1.2-alpha-9/plexus-classworlds-1.2-alpha-9.pom",
-      "size": 3223,
-      "sha256": "224fe4d0c650f085c012f0a03c1995c598c7b5c506bc5350b727c75874330f00"
-    },
-    {
       "path": "org/codehaus/plexus/plexus-classworlds/2.2.3/plexus-classworlds-2.2.3.pom",
       "size": 3997,
       "sha256": "a2d14b6752e30a100a6cb03c040d0160b71b61928daf8ea97cabfb4a3335b213"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus-classworlds/2.5.1/plexus-classworlds-2.5.1.pom",
-      "size": 5009,
-      "sha256": "bc1f058e3aa1596fd67a203b3359ea42cd88b8d7cd2e1008ebf46cec1f61a769"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus-classworlds/2.5.2/plexus-classworlds-2.5.2.jar",
-      "size": 52684,
-      "sha256": "b2931d41740490a8d931cbe0cfe9ac20deb66cca606e679f52522f7f534c9fd7"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus-classworlds/2.5.2/plexus-classworlds-2.5.2.pom",
-      "size": 7305,
-      "sha256": "89811897b815beefa094c39b4603e3f60c42276a2cd5d80b924ab19183629925"
     },
     {
       "path": "org/codehaus/plexus/plexus-classworlds/2.6.0/plexus-classworlds-2.6.0.jar",
@@ -2983,59 +1663,9 @@
       "sha256": "0670b605255f7dc9a454daaec7912918ccf1b5475cbfca374363b51fcfd4ea00"
     },
     {
-      "path": "org/codehaus/plexus/plexus-component-annotations/2.1.1/plexus-component-annotations-2.1.1.jar",
-      "size": 4102,
-      "sha256": "623711b3db0d3c6beaaf22578aea8b2706baee8b26ea328dfe94d96cbe2835dd"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus-component-annotations/2.1.1/plexus-component-annotations-2.1.1.pom",
-      "size": 770,
-      "sha256": "2389d533bb8e0bc90f45016342cf8af9ec80caa28b44922a91ebcccceef8a51d"
-    },
-    {
       "path": "org/codehaus/plexus/plexus-components/1.1.12/plexus-components-1.1.12.pom",
       "size": 3003,
       "sha256": "a854365061c28821ddf1a520b8a197991613fd1d56f50f42c468b789b4714f20"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus-components/1.3.1/plexus-components-1.3.1.pom",
-      "size": 3064,
-      "sha256": "8cbcb2aacd7f4a7759866ce91b2f910310fbe5a586b5fc7b9bdb76af9257e7c4"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus-components/4.0/plexus-components-4.0.pom",
-      "size": 2657,
-      "sha256": "1a5c0f95f65ed3e98edcf4f3b27c21cbcb14567384d9e4cf07f83a49675347ed"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus-container-default/1.0-alpha-30/plexus-container-default-1.0-alpha-30.pom",
-      "size": 3477,
-      "sha256": "8858248de2cab772fa26741b8972137058a6f4457b0a2b3e7cd8771d03d9373b"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus-container-default/1.0-alpha-9-stable-1/plexus-container-default-1.0-alpha-9-stable-1.pom",
-      "size": 3949,
-      "sha256": "ef71d45a49edfe76be0f520312a76bc2aae73ec0743a5ffffe10d30122c6e2b2"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus-container-default/2.1.0/plexus-container-default-2.1.0.jar",
-      "size": 229979,
-      "sha256": "6dceb1246b188153bdcb6f962d543d51ddb672cca07cad94a78fbabc9edf0a39"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus-container-default/2.1.0/plexus-container-default-2.1.0.pom",
-      "size": 2964,
-      "sha256": "8b8c20e630bdcc795cc985024c4c1045c147be116052c2c975e30c608f7f3b45"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus-containers/1.0-alpha-30/plexus-containers-1.0-alpha-30.pom",
-      "size": 1894,
-      "sha256": "74b039c9d08454c6abcf2f2581e0cfddfabd01360480876039c8de5104878d3b"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus-containers/1.0.3/plexus-containers-1.0.3.pom",
-      "size": 492,
-      "sha256": "7c75075badcb014443ee94c8c4cad2f4a9905be3ce9430fe7b220afc7fa3a80f"
     },
     {
       "path": "org/codehaus/plexus/plexus-containers/1.5.4/plexus-containers-1.5.4.pom",
@@ -3053,11 +1683,6 @@
       "sha256": "94d5aedb3c46023265396527cf8ce7fc944b7bd79e4ebab907386418eb5a08d7"
     },
     {
-      "path": "org/codehaus/plexus/plexus-containers/2.1.1/plexus-containers-2.1.1.pom",
-      "size": 6037,
-      "sha256": "c129ae94bc6de8ba2596fcdad4b3fcfe4f67640a4cb6d76a5540182214aa833c"
-    },
-    {
       "path": "org/codehaus/plexus/plexus-i18n/1.0-beta-10/plexus-i18n-1.0-beta-10.jar",
       "size": 11931,
       "sha256": "b87f25b512ffafcafbf4a05ab943812e9c6915291370c6b46016eb3836886c41"
@@ -3066,16 +1691,6 @@
       "path": "org/codehaus/plexus/plexus-i18n/1.0-beta-10/plexus-i18n-1.0-beta-10.pom",
       "size": 2075,
       "sha256": "4073a94aadf4d511d85bce597c09f8e9355a458ccbb07f2ed82f4c39303fe374"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus-interpolation/1.19/plexus-interpolation-1.19.pom",
-      "size": 1029,
-      "sha256": "753f2729f78f541d959b15630156a08f15a05e540e9f63cd8289564f078d1892"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus-interpolation/1.21/plexus-interpolation-1.21.pom",
-      "size": 1540,
-      "sha256": "e078ac8780c6f2da5c11c5d2164bf2c2262112a89a82884de9c9886333267f7d"
     },
     {
       "path": "org/codehaus/plexus/plexus-interpolation/1.26/plexus-interpolation-1.26.jar",
@@ -3096,16 +1711,6 @@
       "path": "org/codehaus/plexus/plexus-interpolation/1.27/plexus-interpolation-1.27.pom",
       "size": 3021,
       "sha256": "d54fbcbc4399e352322874a4128b9d28fe9fe1583f89ec361de242ea38d33f9b"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus-io/3.2.0/plexus-io-3.2.0.jar",
-      "size": 75557,
-      "sha256": "15cf8cbd9e014b7156482bbb48e515613158bdd9b4b908d21e6b900f7876f6ff"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus-io/3.2.0/plexus-io-3.2.0.pom",
-      "size": 4546,
-      "sha256": "726b07803e7aea9e03cc1da166b7c5d90d681b5b0c292f57a93cf5b07eaf7f80"
     },
     {
       "path": "org/codehaus/plexus/plexus-io/3.4.2/plexus-io-3.4.2.jar",
@@ -3148,21 +1753,6 @@
       "sha256": "2bc01c343a5cc9a2fdffc6b9b83d4cc03fbe8fd51ba09e94d2139106649a66d4"
     },
     {
-      "path": "org/codehaus/plexus/plexus-utils/3.3.0/plexus-utils-3.3.0.pom",
-      "size": 5182,
-      "sha256": "79c9792073fdee3cdbebd61a76ba8c2dd11624a9f85d128bae56bda19e20475c"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus-utils/3.4.2/plexus-utils-3.4.2.jar",
-      "size": 267326,
-      "sha256": "f957f13604ea1686de805801862f339dbbb6eab9a66f9cc7e4a5c5b27e4fcecc"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus-utils/3.4.2/plexus-utils-3.4.2.pom",
-      "size": 8216,
-      "sha256": "0515626f5abaa0bdb5ad87d291953eae358b97e2d10d6ecab84aca0d486063bf"
-    },
-    {
       "path": "org/codehaus/plexus/plexus-utils/3.5.0/plexus-utils-3.5.0.pom",
       "size": 8012,
       "sha256": "aa4ea451bb6fa92e9cc96654eef53e334ff4d36a946633e01765fed41e845e03"
@@ -3188,16 +1778,6 @@
       "sha256": "bc4235a95cd1ebae42644c81ebba9c1d4c52565f81e96ab204b6e56e3e378cc1"
     },
     {
-      "path": "org/codehaus/plexus/plexus-velocity/1.2/plexus-velocity-1.2.jar",
-      "size": 8087,
-      "sha256": "b4c4a0dbeacad54306a1ae230eff5ab45d58e3ab88c86ab7245d3a0772be57ab"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus-velocity/1.2/plexus-velocity-1.2.pom",
-      "size": 2821,
-      "sha256": "508a1682a95da8220e9bd582e2a9e1629d016cfe67c4769ee0b1755279ff5fd6"
-    },
-    {
       "path": "org/codehaus/plexus/plexus-velocity/2.2.0/plexus-velocity-2.2.0.jar",
       "size": 5671,
       "sha256": "3e7e902f492c973cf210ddb8267843a3b65e83f5067467e2f4d9af0051f6b8b9"
@@ -3206,16 +1786,6 @@
       "path": "org/codehaus/plexus/plexus-velocity/2.2.0/plexus-velocity-2.2.0.pom",
       "size": 4055,
       "sha256": "6f6a9b05f40e8e84af4aa9576f6b1e435ded6d5b56931b2a269b697bf72ce49d"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus-xml/3.0.0/plexus-xml-3.0.0.jar",
-      "size": 93014,
-      "sha256": "d2622dc9339b16f5b8c9cad2add440e965831d0e16f19ae1de24e1202b0de536"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus-xml/3.0.0/plexus-xml-3.0.0.pom",
-      "size": 3738,
-      "sha256": "c07d67161cdf7f8fdce4cd921be5d3cccb9e2c259105ca1afeb772cbcb0cbec5"
     },
     {
       "path": "org/codehaus/plexus/plexus-xml/3.0.1/plexus-xml-3.0.1.jar",
@@ -3233,24 +1803,9 @@
       "sha256": "09b999a969e73525a6cc3ad2868ea744766e1d93b25c6c656d61a5ff9c881da9"
     },
     {
-      "path": "org/codehaus/plexus/plexus/1.0.11/plexus-1.0.11.pom",
-      "size": 8969,
-      "sha256": "5197630dcd2336f5b4ab8e6d26e5b8675f5ebd83bd8c91d6aba431b09627d626"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus/1.0.4/plexus-1.0.4.pom",
-      "size": 5737,
-      "sha256": "2242fd02d12b1ca73267fb3d89863025517200e7a4ee426cba4667d0172c74c3"
-    },
-    {
       "path": "org/codehaus/plexus/plexus/10/plexus-10.pom",
       "size": 25398,
       "sha256": "bba9c521064b9ca132ce97cc1cc7eb4afc2dbe32bc88cb872c88e99f6162301f"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus/13/plexus-13.pom",
-      "size": 27377,
-      "sha256": "575945dc08966c66eb03d5bae9135bd22ca3920a1865bb99d3ecd93bef55abd3"
     },
     {
       "path": "org/codehaus/plexus/plexus/16/plexus-16.pom",
@@ -3288,209 +1843,14 @@
       "sha256": "a7b594b002fc791733c8e94470d09045f4fd69a93ad5c375752f2057f84633b4"
     },
     {
-      "path": "org/codehaus/plexus/plexus/3.3.1/plexus-3.3.1.pom",
-      "size": 20446,
-      "sha256": "6ec96f889bc29250f90b167c14e547f1b05aa23565c63f9079595befbde816bb"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus/4.0/plexus-4.0.pom",
-      "size": 21500,
-      "sha256": "0a1b692d7fcc90d6a45dae2e50f4660d48f7a44504f174aa60ef34fbe1327f6a"
-    },
-    {
       "path": "org/codehaus/plexus/plexus/5.1/plexus-5.1.pom",
       "size": 22504,
       "sha256": "a343e44ff5796aed0ea60be11454c935ce20ab1c5f164acc8da574482dcbc7e9"
     },
     {
-      "path": "org/codehaus/plexus/plexus/6.5/plexus-6.5.pom",
-      "size": 25713,
-      "sha256": "737ff2200498dd54c920712404caa4426d38639d05014ff3ef1b3e7c5bd91397"
-    },
-    {
-      "path": "org/codehaus/plexus/plexus/8/plexus-8.pom",
-      "size": 25441,
-      "sha256": "ffa349db04e7abf65885bdc5a2062f4197c0ff9d3f1f4e2aa5720b77233f742c"
-    },
-    {
-      "path": "org/eclipse/aether/aether-api/0.9.0.M2/aether-api-0.9.0.M2.pom",
-      "size": 1737,
-      "sha256": "579403170312127a59f7192cc61096ab17b7be7c3178db54a9c5bf713fbcf594"
-    },
-    {
-      "path": "org/eclipse/aether/aether-api/1.0.0.v20140518/aether-api-1.0.0.v20140518.jar",
-      "size": 136299,
-      "sha256": "84b98521684ab22f9528470fa6d8ab68a230e1b211623c989ba7016c306eb773"
-    },
-    {
-      "path": "org/eclipse/aether/aether-api/1.0.0.v20140518/aether-api-1.0.0.v20140518.pom",
-      "size": 1896,
-      "sha256": "2cbb6b666dd1518153afd4939b126c2336506cf3b1bc4541263c09ba87c34b96"
-    },
-    {
-      "path": "org/eclipse/aether/aether-impl/0.9.0.M2/aether-impl-0.9.0.M2.pom",
-      "size": 3348,
-      "sha256": "0b75783fe703358930e2f3df3c1adbba911d65913f9f3a582159f7a5da3f9c19"
-    },
-    {
-      "path": "org/eclipse/aether/aether-impl/1.0.0.v20140518/aether-impl-1.0.0.v20140518.jar",
-      "size": 171738,
-      "sha256": "9a9b60e685385225f08e662cb9f60d96610b0987f0f47bbf3f0c92df8a897d00"
-    },
-    {
-      "path": "org/eclipse/aether/aether-impl/1.0.0.v20140518/aether-impl-1.0.0.v20140518.pom",
-      "size": 3473,
-      "sha256": "5a80a73241d6cf2e982688b0fe0dacd238d920d81d84fa9435d6d2dd595184e4"
-    },
-    {
-      "path": "org/eclipse/aether/aether-spi/0.9.0.M2/aether-spi-0.9.0.M2.pom",
-      "size": 1759,
-      "sha256": "699bd0427835c5e788f972473c2637b587ef79777fa8bd97d7189b956a619cf5"
-    },
-    {
-      "path": "org/eclipse/aether/aether-spi/1.0.0.v20140518/aether-spi-1.0.0.v20140518.jar",
-      "size": 30731,
-      "sha256": "a3266d127a4e9f4aa9c4fa0986e31eec784e866f79112e1840d1667e17c10fb2"
-    },
-    {
-      "path": "org/eclipse/aether/aether-spi/1.0.0.v20140518/aether-spi-1.0.0.v20140518.pom",
-      "size": 2052,
-      "sha256": "7d547087459c89b8717ec5081aa45922d605299da39e32a811041db1b7e2514e"
-    },
-    {
-      "path": "org/eclipse/aether/aether-util/0.9.0.M2/aether-util-0.9.0.M2.pom",
-      "size": 2035,
-      "sha256": "8e1f27e5463f12e4e1d7b242562239c42065e9bcdbf01629399e265035606986"
-    },
-    {
-      "path": "org/eclipse/aether/aether-util/1.0.0.v20140518/aether-util-1.0.0.v20140518.jar",
-      "size": 145829,
-      "sha256": "aff0951639837c4e3a4699a421fa79f410032f603f5c6a5bba435e98531f3984"
-    },
-    {
-      "path": "org/eclipse/aether/aether-util/1.0.0.v20140518/aether-util-1.0.0.v20140518.pom",
-      "size": 2194,
-      "sha256": "5c8b507a80901fcdaef89f50c639176b516e8866c6bf07be1ab8ab9da5a4877f"
-    },
-    {
-      "path": "org/eclipse/aether/aether/0.9.0.M2/aether-0.9.0.M2.pom",
-      "size": 27870,
-      "sha256": "30bf8c64ccf77ebbf52b04ec576a0fa77b16b26eaf348519b1684263450d39ce"
-    },
-    {
-      "path": "org/eclipse/aether/aether/1.0.0.v20140518/aether-1.0.0.v20140518.pom",
-      "size": 30152,
-      "sha256": "606b5fa03b171d8204aac0fbace11ee28e71175a0f869bd45f09c9319e7e88dc"
-    },
-    {
       "path": "org/eclipse/ee4j/project/1.0.5/project-1.0.5.pom",
       "size": 13168,
       "sha256": "916b4794d8d8220a59a3fdf6a64dbe794aeb23395e888b81ae36a9b5a2c591a6"
-    },
-    {
-      "path": "org/eclipse/jetty/jetty-http/9.4.46.v20220331/jetty-http-9.4.46.v20220331.jar",
-      "size": 224851,
-      "sha256": "9ef45ccee991c35ce50bb78f0733aab5e8bceb770c4abecef95c52c42753e4f6"
-    },
-    {
-      "path": "org/eclipse/jetty/jetty-http/9.4.46.v20220331/jetty-http-9.4.46.v20220331.pom",
-      "size": 4028,
-      "sha256": "fddfe6a316a6b772e739ad914428efe3e0855f11dd9de3a8fbb1e06092694718"
-    },
-    {
-      "path": "org/eclipse/jetty/jetty-io/9.4.46.v20220331/jetty-io-9.4.46.v20220331.jar",
-      "size": 183541,
-      "sha256": "72b060ab6afa645660212880a7c073315cd4ca5022be85a16c749dac4e2f9726"
-    },
-    {
-      "path": "org/eclipse/jetty/jetty-io/9.4.46.v20220331/jetty-io-9.4.46.v20220331.pom",
-      "size": 1238,
-      "sha256": "1be579f3e68fbe1aca8c22f03e2adc22b8c3490fa445f9abeaed047dcb612fc0"
-    },
-    {
-      "path": "org/eclipse/jetty/jetty-project/9.4.46.v20220331/jetty-project-9.4.46.v20220331.pom",
-      "size": 70902,
-      "sha256": "1263bdb15a69851279433ab7d3e7283244f73c79006edc3a15af6f94146766ae"
-    },
-    {
-      "path": "org/eclipse/jetty/jetty-security/9.4.46.v20220331/jetty-security-9.4.46.v20220331.jar",
-      "size": 119111,
-      "sha256": "ee01b1b6e926b9f2da3b49b0828b618c96e4b153b97c63b357788924d1a8fe04"
-    },
-    {
-      "path": "org/eclipse/jetty/jetty-security/9.4.46.v20220331/jetty-security-9.4.46.v20220331.pom",
-      "size": 2097,
-      "sha256": "63a34cf8b989189490d8a478bbd9de3e83037da644420d7d45a190deb128e16c"
-    },
-    {
-      "path": "org/eclipse/jetty/jetty-server/9.4.46.v20220331/jetty-server-9.4.46.v20220331.jar",
-      "size": 733174,
-      "sha256": "da8100240eef4b493c6bdb6a794bbc26bca1dbd115ca35d15764fb3a4220e533"
-    },
-    {
-      "path": "org/eclipse/jetty/jetty-server/9.4.46.v20220331/jetty-server-9.4.46.v20220331.pom",
-      "size": 3419,
-      "sha256": "37c649cadb98948df82d525964498a2639e65bc38d9dd30d4a640c0e29d4f779"
-    },
-    {
-      "path": "org/eclipse/jetty/jetty-servlet/9.4.46.v20220331/jetty-servlet-9.4.46.v20220331.jar",
-      "size": 146785,
-      "sha256": "02c12885ac250e685eafe7130846077222a7ec1776123f13c2c04f086abdb995"
-    },
-    {
-      "path": "org/eclipse/jetty/jetty-servlet/9.4.46.v20220331/jetty-servlet-9.4.46.v20220331.pom",
-      "size": 2271,
-      "sha256": "3e34b550753cd881eb2d1a09d9c58ee2411b41aa2ee9c6c95422a269e2683d11"
-    },
-    {
-      "path": "org/eclipse/jetty/jetty-util-ajax/9.4.46.v20220331/jetty-util-ajax-9.4.46.v20220331.jar",
-      "size": 66940,
-      "sha256": "45fa58ac969758ad96b2636df91f588596cc35c8a0abeb0710e776cfc64d0cb4"
-    },
-    {
-      "path": "org/eclipse/jetty/jetty-util-ajax/9.4.46.v20220331/jetty-util-ajax-9.4.46.v20220331.pom",
-      "size": 1256,
-      "sha256": "3cfa51dbeaf386377b1628882c6cb67112d1316949f70f5f19bff466afcd90c5"
-    },
-    {
-      "path": "org/eclipse/jetty/jetty-util/9.4.46.v20220331/jetty-util-9.4.46.v20220331.jar",
-      "size": 585886,
-      "sha256": "09410f674d2a2bb532b1bf92f80ad5b8412317589308da13bf9362fbedf1d572"
-    },
-    {
-      "path": "org/eclipse/jetty/jetty-util/9.4.46.v20220331/jetty-util-9.4.46.v20220331.pom",
-      "size": 4033,
-      "sha256": "fb55b3fdd238b867ea096f348987cccfd1988e97046e518d724740995c9baa34"
-    },
-    {
-      "path": "org/eclipse/jetty/jetty-webapp/9.4.46.v20220331/jetty-webapp-9.4.46.v20220331.jar",
-      "size": 140595,
-      "sha256": "4cca9a1e25ad0de5ef85aeba29a28f851442119af3090fa3c3a4e16f673fd234"
-    },
-    {
-      "path": "org/eclipse/jetty/jetty-webapp/9.4.46.v20220331/jetty-webapp-9.4.46.v20220331.pom",
-      "size": 3175,
-      "sha256": "37d14d2674bc8d119486bd48f2a7d6a00387a5a1573221d051c6dbc6faa37ef6"
-    },
-    {
-      "path": "org/eclipse/jetty/jetty-xml/9.4.46.v20220331/jetty-xml-9.4.46.v20220331.jar",
-      "size": 68569,
-      "sha256": "ae42e2a0e7ac6bb13cb1b7e1895572b6a1a2c38193786a0ea070eb35147ac480"
-    },
-    {
-      "path": "org/eclipse/jetty/jetty-xml/9.4.46.v20220331/jetty-xml-9.4.46.v20220331.pom",
-      "size": 1671,
-      "sha256": "ded2ff4c9db9f10ac24bf34dfd8675afab692277424a78f02c68200d06ee3a7e"
-    },
-    {
-      "path": "org/eclipse/sisu/org.eclipse.sisu.inject/0.3.5/org.eclipse.sisu.inject-0.3.5.jar",
-      "size": 379348,
-      "sha256": "c5994010bcdce1d2bd603a4d50c47191ddbd7875d1157b23aaa26d33c82fda13"
-    },
-    {
-      "path": "org/eclipse/sisu/org.eclipse.sisu.inject/0.3.5/org.eclipse.sisu.inject-0.3.5.pom",
-      "size": 2625,
-      "sha256": "c2976972b4242ffd8604716d8475f56755da0fa28618344ec4e5327810696d71"
     },
     {
       "path": "org/eclipse/sisu/org.eclipse.sisu.inject/0.9.0.M3/org.eclipse.sisu.inject-0.9.0.M3.jar",
@@ -3503,16 +1863,6 @@
       "sha256": "57ed17e057ba716cc1f1e5b2d4e014a68c3d50bd33498227a90f712519334dd4"
     },
     {
-      "path": "org/eclipse/sisu/org.eclipse.sisu.plexus/0.3.5/org.eclipse.sisu.plexus-0.3.5.jar",
-      "size": 205307,
-      "sha256": "7e4c61096d70826f20f7a7d55c59a5528e7aa5ad247ee2dfe544e4dd25f6a784"
-    },
-    {
-      "path": "org/eclipse/sisu/org.eclipse.sisu.plexus/0.3.5/org.eclipse.sisu.plexus-0.3.5.pom",
-      "size": 4285,
-      "sha256": "786523c9d78258a74aa13447a1676c2172acfdf432165d7adae2b7876d2d83d3"
-    },
-    {
       "path": "org/eclipse/sisu/org.eclipse.sisu.plexus/0.9.0.M3/org.eclipse.sisu.plexus-0.9.0.M3.jar",
       "size": 216303,
       "sha256": "c99674d3773e26154885661711f0b6d63aa5008f5cc99227a236756d4ad9de5e"
@@ -3523,29 +1873,9 @@
       "sha256": "70596c950b0b5e99ef7942a5cfbd07dc3e76475b3332be3400a0741a7eb77458"
     },
     {
-      "path": "org/eclipse/sisu/sisu-inject/0.3.5/sisu-inject-0.3.5.pom",
-      "size": 14407,
-      "sha256": "5f32ecab9c8f6dff1f9e41b853e40d8f23a2508219154ef67cc00d4556f5f5dd"
-    },
-    {
       "path": "org/eclipse/sisu/sisu-inject/0.9.0.M3/sisu-inject-0.9.0.M3.pom",
       "size": 23511,
       "sha256": "2e436563d5caea351bce5f0863ebc6376405cb65a6f664b255faad9e72e3b854"
-    },
-    {
-      "path": "org/eclipse/sisu/sisu-plexus/0.3.5/sisu-plexus-0.3.5.pom",
-      "size": 13726,
-      "sha256": "6eba0902efd899aec0d8d19ac3cbc53123cd41139fe0e1d29cc5c874a791b9de"
-    },
-    {
-      "path": "org/infinispan/infinispan-bom/11.0.15.Final/infinispan-bom-11.0.15.Final.pom",
-      "size": 18820,
-      "sha256": "07386ee62c8464618770d209f8c060da8e51f56e76314d1b29caec9c302130e9"
-    },
-    {
-      "path": "org/infinispan/infinispan-build-configuration-parent/11.0.15.Final/infinispan-build-configuration-parent-11.0.15.Final.pom",
-      "size": 13309,
-      "sha256": "b2f82dd670e70f378a780efea1053f0e660a825dbbfe8c6ca8ca996dfde3aaa0"
     },
     {
       "path": "org/iq80/snappy/snappy/0.4/snappy-0.4.jar",
@@ -3556,16 +1886,6 @@
       "path": "org/iq80/snappy/snappy/0.4/snappy-0.4.pom",
       "size": 14537,
       "sha256": "a709ce17111e4149d9b79a5295644e0cd5a8355aec4b2ef4c0436aba7b25d08a"
-    },
-    {
-      "path": "org/jboss/jboss-parent/36/jboss-parent-36.pom",
-      "size": 65794,
-      "sha256": "000dd616298aebd21a9d5731874df083d7298424b91e037b73cbdd07ebc83e0e"
-    },
-    {
-      "path": "org/jboss/weld/weld-parent/26/weld-parent-26.pom",
-      "size": 32327,
-      "sha256": "13023471418b890557b982e4cbab2b5f6967adf1cebe54bf630fe201a63963cc"
     },
     {
       "path": "org/jdom/jdom2/2.0.6.1/jdom2-2.0.6.1.jar",
@@ -3591,16 +1911,6 @@
       "path": "org/jooq/joou-java-6/0.9.5/joou-java-6-0.9.5.pom",
       "size": 14728,
       "sha256": "1b3681cd0e62d32635ffcdfe74ef785fa3ec7a83ad07eb04a6feedb00d8d8fbc"
-    },
-    {
-      "path": "org/jsoup/jsoup/1.10.2/jsoup-1.10.2.jar",
-      "size": 350645,
-      "sha256": "6ebe6abd7775c10a49407ae22db45c840cd2cdaf715866a5b0b5af70941c3f4a"
-    },
-    {
-      "path": "org/jsoup/jsoup/1.10.2/jsoup-1.10.2.pom",
-      "size": 7292,
-      "sha256": "01a3888febaafeddfc9ce65ca696554a013abf927bfb555a502f367a6d7ec113"
     },
     {
       "path": "org/jspecify/jspecify/1.0.0/jspecify-1.0.0.jar",
@@ -3681,11 +1991,6 @@
       "path": "org/junit/junit-bom/5.8.0-M1/junit-bom-5.8.0-M1.pom",
       "size": 5686,
       "sha256": "77144432ffc68bd98a790ab1069619d91032cfc0e4e13c08163aa03da36fd6e2"
-    },
-    {
-      "path": "org/junit/junit-bom/5.8.2/junit-bom-5.8.2.pom",
-      "size": 5630,
-      "sha256": "836069ca9e8ee3c56e48376222da291263f137bd3fd16d84fdd47efcc3f286e2"
     },
     {
       "path": "org/junit/junit-bom/5.9.3/junit-bom-5.9.3.pom",
@@ -3838,16 +2143,6 @@
       "sha256": "b33bfff63a505cc5c6dac7de7800562e5d8da06b6b69dffa80c0897e0d4231f2"
     },
     {
-      "path": "org/nibor/autolink/autolink/0.6.0/autolink-0.6.0.jar",
-      "size": 16098,
-      "sha256": "a80be030f6386f18111cad9161c0b6983157352a1b59a59e6002172f0d321c04"
-    },
-    {
-      "path": "org/nibor/autolink/autolink/0.6.0/autolink-0.6.0.pom",
-      "size": 9167,
-      "sha256": "916755647a34ccb367e11834d28380198c834adfcf660e0d983e375b8f5c28f2"
-    },
-    {
       "path": "org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar",
       "size": 14304,
       "sha256": "48e2df636cab6563ced64dcdff8abb2355627cb236ef0bf37598682ddf742f1b"
@@ -3988,21 +2283,6 @@
       "sha256": "95cd71e852dfdb29126e58b7b939d57ec2b2e6024391852e0b545dee082bbf3b"
     },
     {
-      "path": "org/sonatype/forge/forge-parent/10/forge-parent-10.pom",
-      "size": 13560,
-      "sha256": "c14fb9c32b59cc03251f609416db7c0cff01f811edcccb4f6a865d6e7046bd0b"
-    },
-    {
-      "path": "org/sonatype/forge/forge-parent/38/forge-parent-38.pom",
-      "size": 18740,
-      "sha256": "a406af6d1f345158b4d37c0f80bc6ba7c2b1da7cd34d1be9ef118d5fe00f020f"
-    },
-    {
-      "path": "org/sonatype/forge/forge-parent/4/forge-parent-4.pom",
-      "size": 8397,
-      "sha256": "1838d132479005b4b7459b798e9d9915515090c288082fdcd86db0b10983a24c"
-    },
-    {
       "path": "org/sonatype/forge/forge-parent/5/forge-parent-5.pom",
       "size": 8363,
       "sha256": "e56188aa8ce51278006aa90bc7e0f304a81e2f1219f462e7d21f262535cd2795"
@@ -4033,34 +2313,9 @@
       "sha256": "e067317a47ed9e84b2ba85a76d3cf72980e2b0dc873a90b9cbfe74fe80c37c17"
     },
     {
-      "path": "org/sonatype/plexus/plexus-cipher/1.4/plexus-cipher-1.4.jar",
-      "size": 13494,
-      "sha256": "5a15fdba22669e0fdd06e10dcce6320879e1f7398fbc910cd0677b50672a78c4"
-    },
-    {
-      "path": "org/sonatype/plexus/plexus-cipher/1.4/plexus-cipher-1.4.pom",
-      "size": 2065,
-      "sha256": "a63a2e23988cca7fac6c93886d6f0506fd26d88d7e8cc0cb89b9c6e0d6c994ad"
-    },
-    {
-      "path": "org/sonatype/plexus/plexus-sec-dispatcher/1.3/plexus-sec-dispatcher-1.3.jar",
-      "size": 28555,
-      "sha256": "3b0559bb8432f28937efe6ca193ef54a8506d0075d73fd7406b9b116c6a11063"
-    },
-    {
-      "path": "org/sonatype/plexus/plexus-sec-dispatcher/1.3/plexus-sec-dispatcher-1.3.pom",
-      "size": 2961,
-      "sha256": "d5e650c50ef6958c028ed024b59af04cf3d38e1453a77d542b6b484bc0f4ca0b"
-    },
-    {
       "path": "org/sonatype/sisu/inject/guice-bean/1.4.2/guice-bean-1.4.2.pom",
       "size": 2606,
       "sha256": "d2ee7efbcdc82206c69559548aef86a99add95378f03cc58b4d9696b3969c8bb"
-    },
-    {
-      "path": "org/sonatype/sisu/inject/guice-parent/3.2.3/guice-parent-3.2.3.pom",
-      "size": 13473,
-      "sha256": "5aa8d98b590478df88a349bd1dbe11d0620bfe2bdf11c4e52d51b27fe31d6168"
     },
     {
       "path": "org/sonatype/sisu/inject/guice-plexus/1.4.2/guice-plexus-1.4.2.pom",
@@ -4071,16 +2326,6 @@
       "path": "org/sonatype/sisu/sisu-guice/2.1.7/sisu-guice-2.1.7.pom",
       "size": 11061,
       "sha256": "2b3f02f2d0ec3e95884f9ab415596ce627492469c2d8fd75e3fb00fb69532c44"
-    },
-    {
-      "path": "org/sonatype/sisu/sisu-guice/3.2.3/sisu-guice-3.2.3-no_aop.jar",
-      "size": 397831,
-      "sha256": "004af7012b6d11ab585ae841130ff091dcad6531d7bf13db4d7deac91589eef4"
-    },
-    {
-      "path": "org/sonatype/sisu/sisu-guice/3.2.3/sisu-guice-3.2.3.pom",
-      "size": 10936,
-      "sha256": "4a14ec03fa5fdfef34b595d3fabb83832423a5d6e9b31571e44c8a48304014df"
     },
     {
       "path": "org/sonatype/sisu/sisu-inject-bean/1.4.2/sisu-inject-bean-1.4.2.pom",
@@ -4103,24 +2348,9 @@
       "sha256": "abb04084d0885319fd0b372d77655f8feb8aa8bb091699fcd99b45798a9587d5"
     },
     {
-      "path": "org/sonatype/spice/spice-parent/12/spice-parent-12.pom",
-      "size": 6798,
-      "sha256": "21a19b26dbe5c38ddb5114cf4eadbf5ccb411bc6b128fdd5949b1ccb12f3683e"
-    },
-    {
       "path": "org/sonatype/spice/spice-parent/15/spice-parent-15.pom",
       "size": 8358,
       "sha256": "13d15ddfe9946b8427bb7b4b081ab63962285eed0bf6fa5142aea25a46e15814"
-    },
-    {
-      "path": "org/sonatype/spice/spice-parent/17/spice-parent-17.pom",
-      "size": 6759,
-      "sha256": "9151f9a5b33ec36ee8778842fc56144fb0242d39cbcc42061b053b8909969bdf"
-    },
-    {
-      "path": "org/testcontainers/testcontainers-bom/1.16.1/testcontainers-bom-1.16.1.pom",
-      "size": 7224,
-      "sha256": "5061ba84c98536e5a6b4ce280fbcecb00e335f3b04c5d484629162fcb4624778"
     },
     {
       "path": "org/tukaani/xz/1.9/xz-1.9.jar",
@@ -4151,21 +2381,6 @@
       "path": "org/yaml/snakeyaml/2.3/snakeyaml-2.3.pom",
       "size": 21712,
       "sha256": "0f5a265a06331b0049e352be32ca322de18b17f3d4dbb70635d40da692e3582f"
-    },
-    {
-      "path": "oro/oro/2.0.8/oro-2.0.8.jar",
-      "size": 65261,
-      "sha256": "e00ccdad5df7eb43fdee44232ef64602bf63807c2d133a7be83ba09fd49af26e"
-    },
-    {
-      "path": "oro/oro/2.0.8/oro-2.0.8.pom",
-      "size": 140,
-      "sha256": "9aa9dfeb2e85e1d5e7932c87140697cecc2b0fadd933d679fd420a2e43831a82"
-    },
-    {
-      "path": "xml-apis/xml-apis/1.0.b2/xml-apis-1.0.b2.pom",
-      "size": 2249,
-      "sha256": "7bc38e7a0f8ca20b0caed607e00cbb144dc8d006ebec4aa193f55dcf391bad50"
     }
   ]
 }

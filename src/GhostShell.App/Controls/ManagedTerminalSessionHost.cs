@@ -805,10 +805,9 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
                         Retryable: true)));
             }
 
-            Console.Error.WriteLine(
-                "[ghostshell:terminal] Unable to attach the managed terminal session: "
-                + exception);
-            Trace.TraceError("Unable to attach the managed terminal session: {0}", exception);
+            SecretSafeDiagnostics.WriteTraceAndStandardError(
+                "terminal.renderer-attachment.failed",
+                exception);
         }
         finally
         {
@@ -941,7 +940,7 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
 
             _pollTimer.Stop();
             SetState(TerminalHostState.Error, exception.Message);
-            Trace.TraceError("Unable to poll the managed terminal: {0}", exception);
+            SecretSafeDiagnostics.WriteTrace("terminal.poll.failed", exception);
         }
         catch (Exception exception)
         {
@@ -953,7 +952,7 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
             }
 
             SetState(TerminalHostState.Error, exception.Message);
-            Trace.TraceError("Unable to poll the managed terminal: {0}", exception);
+            SecretSafeDiagnostics.WriteTrace("terminal.poll.failed", exception);
         }
         finally
         {
@@ -999,8 +998,8 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
         }
         catch (Exception exception)
         {
-            Trace.TraceError(
-                "Unable to confirm whether the terminal session closed while polling: {0}",
+            SecretSafeDiagnostics.WriteTrace(
+                "terminal.poll-close-confirmation.failed",
                 exception);
             return false;
         }
@@ -1111,7 +1110,7 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
         }
         catch (Exception exception)
         {
-            Trace.TraceError("Unable to focus the managed terminal session: {0}", exception);
+            SecretSafeDiagnostics.WriteTrace("terminal.focus.failed", exception);
         }
     }
 
@@ -1136,7 +1135,7 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
         }
         catch (Exception exception)
         {
-            Trace.TraceError("Unable to blur the managed terminal session: {0}", exception);
+            SecretSafeDiagnostics.WriteTrace("terminal.blur.failed", exception);
         }
     }
 
@@ -1209,7 +1208,7 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
         }
         catch (Exception exception)
         {
-            Trace.TraceError("Unable to resize the managed terminal session: {0}", exception);
+            SecretSafeDiagnostics.WriteTrace("terminal.resize.failed", exception);
         }
         finally
         {
@@ -1288,9 +1287,9 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
         }
         catch (Exception exception)
         {
-            Trace.TraceError(
-                "The startup-command dispatcher failed before returning a typed result: {0}",
-                exception.GetType().Name);
+            SecretSafeDiagnostics.WriteTrace(
+                "terminal.startup-command-dispatch.failed",
+                exception);
         }
     }
 
@@ -1400,7 +1399,9 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
         }
         catch (Exception exception)
         {
-            Trace.TraceError("Unable to detach the managed terminal renderer: {0}", exception);
+            SecretSafeDiagnostics.WriteTrace(
+                "terminal.renderer-detach.failed",
+                exception);
         }
     }
 
@@ -1419,7 +1420,9 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
         }
         catch (Exception exception)
         {
-            Trace.TraceError("Unable to detach a superseded managed renderer: {0}", exception);
+            SecretSafeDiagnostics.WriteTrace(
+                "terminal.stale-renderer-detach.failed",
+                exception);
         }
     }
 

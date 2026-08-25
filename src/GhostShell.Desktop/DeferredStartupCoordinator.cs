@@ -40,7 +40,10 @@ internal static class DeferredStartupCoordinator
             }
             catch (Exception exception)
             {
-                error = $"Deferred startup failed unexpectedly: {exception.Message}";
+                SecretSafeDiagnosticProjection.WriteStandardError(
+                    "desktop.deferred-startup.failed",
+                    exception);
+                error = "Deferred startup failed unexpectedly.";
             }
 
             if (error is null)
@@ -48,7 +51,9 @@ internal static class DeferredStartupCoordinator
                 return;
             }
 
-            Console.Error.WriteLine($"GhostSHELL could not open this profile: {error}");
+            SecretSafeDiagnosticProjection.WriteStandardError(
+                "desktop.deferred-profile-open.failed",
+                SecretSafeDiagnosticKind.Unexpected);
             Environment.ExitCode = 1;
             await Dispatcher.UIThread.InvokeAsync(() =>
             {

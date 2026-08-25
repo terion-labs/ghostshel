@@ -1,4 +1,5 @@
 using Exclr8Cef;
+using GhostShell.SecurityCampaign.Tests;
 
 namespace GhostShell.Browser.Tests;
 
@@ -76,6 +77,29 @@ public sealed class BrowserEngineRuntimeTests
         Assert.Null(settings.CachePath);
         Assert.False(settings.PersistSessionCookies);
         Assert.Equal(options.ProfileDirectory, settings.RootCachePath);
+        Assert.Equal(Cef.CefLogSeverity.Disable, settings.LogSeverity);
+    }
+
+    [Fact(DisplayName = "secrecy.cef-console-adapter managed CEF callback redacts shared canaries")]
+    [Trait("SecurityCampaignCase", "secrecy.cef-console-adapter")]
+    public void ConsoleCallbackDropsPageControlledCanaries()
+    {
+        var diagnostics = new List<string>();
+        var message = new ConsoleMessageEventArgs(
+            Cef.CefLogSeverity.Warning,
+            SecurityCampaignCanaries.Joined,
+            $"https://example.test/{SecurityCampaignCanaries.Joined}",
+            42);
+
+        CefConsoleMessagePolicy.Handle(message, diagnostics.Add);
+
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(
+            "[ghostshell:browser-console] code=browser.console.warning line=42",
+            diagnostic);
+        Assert.All(
+            SecurityCampaignCanaries.Values,
+            canary => Assert.DoesNotContain(canary, diagnostic, StringComparison.Ordinal));
     }
 
     [Fact]

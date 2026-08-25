@@ -12,6 +12,10 @@ shell_integration_notice="${repository_dir}/native/ghostty-vt/SHELL-INTEGRATION-
 required_exports_manifest="${repository_dir}/native/ghostty-vt/required-exports.txt"
 extension_abi_probe_source="${repository_dir}/native/ghostty-vt/extension-abi-probe.c"
 dotnet="${GHOSTSHELL_DOTNET:-${repository_dir}/.dotnet/dotnet}"
+dotnet_artifacts_arguments=()
+if [[ -n "${GHOSTSHELL_BUILD_ARTIFACTS_ROOT:-}" ]]; then
+    dotnet_artifacts_arguments=(--artifacts-path "${GHOSTSHELL_BUILD_ARTIFACTS_ROOT}")
+fi
 
 ghostty_repository="https://github.com/ghostty-org/ghostty.git"
 ghostty_commit="08f039fbb3dea9c6b1cdb5ff4550666598122346"
@@ -485,6 +489,7 @@ printf '%s\n' \
 "${dotnet}" run \
     --project "${repository_dir}/tools/GhostShell.Packaging/GhostShell.Packaging.csproj" \
     --configuration Release \
+    "${dotnet_artifacts_arguments[@]}" \
     -- \
     native-publish-artifacts \
     --staged-directory "${artifact_dir}" \

@@ -2261,7 +2261,10 @@ Exit criteria:
 - An agent can operate a test interactive TUI through screen reads and exact keys, with user interruption and cancellation.
 - An agent can inspect and manipulate a test page using stable snapshot references.
 - `Off`, `Ask`, `Auto`, and `YOLO` are enforced session-host-side, not merely reflected in disabled UI; YOLO confirmation, indicator, audit, and immediate disable behavior are tested.
-- Secrets never appear in prompts, tool output, SQLite, diagnostics bundles, or normal logs.
+- Application-managed and vault-resolved secret values never appear in prompts,
+  tool output, SQLite, diagnostics bundles, or normal logs. Text a user
+  deliberately enters into provider instructions remains intentional prompt
+  content and is not treated as a vault-secret disclosure boundary.
 
 ### M4 — Desktop hardening and release readiness
 

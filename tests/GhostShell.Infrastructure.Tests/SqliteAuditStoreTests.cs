@@ -365,9 +365,15 @@ public sealed class SqliteAuditStoreTests
                 AuditOutcome.Requested,
                 AuditOutcome.Approved,
                 AuditOutcome.Started,
-                AuditOutcome.Cancelled,
+                AuditOutcome.Failed,
             ],
             trail.Value!.Select(item => item.Outcome));
+        var recovered = Assert.IsType<AuditDetails.AgentActionDetails>(
+            trail.Value![^1].Details);
+        Assert.Null(recovered.ErrorCode);
+        Assert.Equal(
+            "application_restart_outcome_unknown",
+            recovered.ResultCode);
     }
 
     [Fact]

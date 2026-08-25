@@ -245,6 +245,9 @@ public sealed partial class NativeTerminalBuildContractTests
                 StringSplitOptions.None).Length - 1,
             workflow.Split(
                 "name: Expose the SDK at the repository-local path",
+                StringSplitOptions.None).Length - 1
+            + workflow.Split(
+                "name: Seal exact tagged source before any release build",
                 StringSplitOptions.None).Length - 1);
         Assert.Equal(
             1,

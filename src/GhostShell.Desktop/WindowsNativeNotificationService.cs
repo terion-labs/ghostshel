@@ -117,9 +117,9 @@ public sealed class WindowsNativeNotificationService :
                 // This runs on the Windows App SDK callback. A consumer failure
                 // must not escape into the native dispatcher or starve the
                 // remaining activation consumers.
-                Console.Error.WriteLine(
-                    "[ghostshell:notifications] Windows activation subscriber failed: "
-                    + exception.Message);
+                GhostShell.Application.SecretSafeDiagnosticProjection.WriteStandardError(
+                    "notifications.windows-subscriber.failed",
+                    exception);
             }
         }
     }

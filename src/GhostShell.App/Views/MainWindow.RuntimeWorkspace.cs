@@ -440,13 +440,11 @@ public sealed partial class MainWindow
 
         public static RuntimeSwitchStall Begin() => new(Stopwatch.StartNew());
 
-        public void ReportWhenDrained(string? workspace)
+        public void ReportWhenDrained(string? _)
         {
-            var viewModelMilliseconds = _clock.ElapsedMilliseconds;
             Avalonia.Threading.Dispatcher.UIThread.Post(
                 () =>
                 {
-                    var layoutMilliseconds = _clock.ElapsedMilliseconds;
                     Avalonia.Threading.Dispatcher.UIThread.Post(
                         () =>
                         {
@@ -457,12 +455,9 @@ public sealed partial class MainWindow
                                 return;
                             }
 
-                            Console.Error.WriteLine(
-                                $"[ghostshell:perf] switching to '{workspace ?? "nothing"}' held "
-                                + $"the window for {total} ms — view model "
-                                + $"{viewModelMilliseconds} ms, layout and attach "
-                                + $"{layoutMilliseconds - viewModelMilliseconds} ms, "
-                                + $"first frame {total - layoutMilliseconds} ms");
+                            SecretSafeDiagnosticProjection.WriteStandardError(
+                                "workspace.switch.performance-budget-exceeded",
+                                SecretSafeDiagnosticKind.Unexpected);
                         },
                         Avalonia.Threading.DispatcherPriority.Background);
                 },
@@ -2551,10 +2546,9 @@ public sealed partial class MainWindow
                 // panel that was merely still being built.
                 if (activePanel is TerminalRuntimePanelViewModel)
                 {
-                    Console.Error.WriteLine(
-                        "[ghostshell:input] focus fell back to a non-terminal control for "
-                        + $"panel {activePanel.Id}; its terminal surface was not found in "
-                        + "the visual tree, so the keyboard has left the terminal");
+                    SecretSafeDiagnosticProjection.WriteStandardError(
+                        "terminal.focus.fallback",
+                        SecretSafeDiagnosticKind.Unexpected);
                 }
 
                 this.GetVisualDescendants()

@@ -61,7 +61,10 @@ public sealed partial class GovernedAgentRuntimeProcessTests
             "List local processes",
             Assert.Single(capabilityRequest.AffectedToolTitles));
         Assert.Empty(fixture.Processes.Actions);
-        Assert.Empty(fixture.Audit.Events);
+        var requestedAudit = Assert.Single(fixture.Audit.Events);
+        Assert.Equal("agent.capability.request", requestedAudit.Action);
+        Assert.Equal(AuditOutcome.Requested, requestedAudit.Outcome);
+        Assert.Equal(capabilityRequest.Id.Value, requestedAudit.CorrelationId);
         var initialRequest = provider.Requests.ToArray()[0];
         var intrinsic = Assert.Single(
             initialRequest.Tools,

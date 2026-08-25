@@ -286,10 +286,9 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        Console.Error.WriteLine(
-            $"[ghostshell:appearance] backdrop incomplete — title bar "
-            + $"{titleBar}, transparency {negotiated}, decoration margin "
-            + $"{WindowDecorationMargin.Top:0}");
+        SecretSafeDiagnosticProjection.WriteStandardError(
+            "appearance.backdrop.incomplete",
+            SecretSafeDiagnosticKind.Unexpected);
     }
 
     private void LetTheBackdropThrough() => Background = Brushes.Transparent;

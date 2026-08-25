@@ -32,8 +32,9 @@ internal static class BrowserNativeCheckboxProbe
                 "GhostSHELL Helper");
             if (OperatingSystem.IsMacOS() && helperPath is null)
             {
-                Console.Error.WriteLine(
-                    "Native checkbox probe: CEF helper bundle is missing.");
+                SecretSafeDiagnosticProjection.WriteStandardError(
+                    "browser.native-checkbox-probe.helper-missing",
+                    SecretSafeDiagnosticKind.Unexpected);
                 return 2;
             }
 
@@ -60,8 +61,9 @@ internal static class BrowserNativeCheckboxProbe
                 "about:blank");
             if (browser is null)
             {
-                Console.Error.WriteLine(
-                    "Native checkbox probe: browser creation failed.");
+                SecretSafeDiagnosticProjection.WriteStandardError(
+                    "browser.native-checkbox-probe.create-failed",
+                    SecretSafeDiagnosticKind.Unexpected);
                 return 3;
             }
 
@@ -83,8 +85,9 @@ internal static class BrowserNativeCheckboxProbe
                 + "</body></html>");
             if (!PumpUntil(() => loaded, TimeSpan.FromSeconds(10)))
             {
-                Console.Error.WriteLine(
-                    "Native checkbox probe: fixture did not load.");
+                SecretSafeDiagnosticProjection.WriteStandardError(
+                    "browser.native-checkbox-probe.load-failed",
+                    SecretSafeDiagnosticKind.Timeout);
                 return 4;
             }
 
@@ -106,8 +109,9 @@ internal static class BrowserNativeCheckboxProbe
                     StringComparison.Ordinal));
             if (checkbox?.Handle is null)
             {
-                Console.Error.WriteLine(
-                    "Native checkbox probe: checkbox reference was absent.");
+                SecretSafeDiagnosticProjection.WriteStandardError(
+                    "browser.native-checkbox-probe.checkbox-missing",
+                    SecretSafeDiagnosticKind.Unexpected);
                 return 5;
             }
 
@@ -121,8 +125,9 @@ internal static class BrowserNativeCheckboxProbe
         }
         catch (Exception error)
         {
-            Console.Error.WriteLine(
-                "Native checkbox probe failed: " + error);
+            SecretSafeDiagnosticProjection.WriteStandardError(
+                "browser.native-checkbox-probe.failed",
+                error);
             return 7;
         }
         finally

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostshell.app/schemas/release-build-identity-v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "format", "sourceSealSha256", "sealedManifestSha256",
+    "observedManifestSha256", "status"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "format": { "const": "ghostshell-release-build-identity-v1" },
+    "sourceSealSha256": { "$ref": "#/$defs/sha256" },
+    "sealedManifestSha256": { "$ref": "#/$defs/sha256" },
+    "observedManifestSha256": { "$ref": "#/$defs/sha256" },
+    "status": { "enum": ["pass", "mismatch"] }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

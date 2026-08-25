@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Exclr8Cef;
+using GhostShell.Application;
 
 namespace GhostShell.Browser;
 
@@ -52,8 +53,8 @@ internal sealed class CefBrowserDomActivityTracker : IDisposable
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            Trace.TraceWarning(
-                "Unable to begin CEF DOM activity observation: {0}",
+            SecretSafeDiagnosticProjection.WriteTrace(
+                "browser.dom-observation.start-failed",
                 exception);
             return false;
         }
@@ -240,8 +241,8 @@ internal sealed class CefBrowserDomActivityTracker : IDisposable
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            Trace.TraceWarning(
-                "Unable to refresh the observed CEF DOM document: {0}",
+            SecretSafeDiagnosticProjection.WriteTrace(
+                "browser.dom-observation.refresh-failed",
                 exception);
         }
     }
@@ -300,8 +301,8 @@ internal sealed class CefBrowserDomActivityTracker : IDisposable
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            Trace.TraceWarning(
-                "Unable to end CEF DOM activity observation: {0}",
+            SecretSafeDiagnosticProjection.WriteTrace(
+                "browser.dom-observation.stop-failed",
                 exception);
         }
     }

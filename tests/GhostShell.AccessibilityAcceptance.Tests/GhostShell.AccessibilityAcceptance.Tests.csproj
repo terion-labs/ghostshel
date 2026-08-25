@@ -19,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\tools\GhostShell.AccessibilityAcceptance\GhostShell.AccessibilityAcceptance.csproj" />
     <ProjectReference Include="..\..\tools\GhostShell.Packaging\GhostShell.Packaging.csproj" />
+    <ProjectReference Include="..\..\tools\GhostShell.SecurityCampaign\GhostShell.SecurityCampaign.csproj" />
   </ItemGroup>
 
 </Project>

@@ -105,6 +105,85 @@ public sealed class AgentCapabilityBrokerPersistenceTests
         Assert.Equal(2, transitions.Select(item => item.EventId).Distinct(StringComparer.Ordinal).Count());
     }
 
+    [Fact]
+    public async Task CapabilityRequestChainAndPolicyCorrelationSurviveSqliteReopen()
+    {
+        await using var temporary = TemporaryDatabase.Create();
+        var requestId = new AgentCapabilityRequestId("capability-request-1");
+        var disabledPolicy = AgentPolicy.Default with
+        {
+            Permissions = AgentPolicy.Default.Permissions.SetItem(
+                AgentCapability.RunCommands,
+                AgentPermission.Off),
+        };
+        var registration = new AgentRunRegistration(
+            Registration().RunId,
+            Agent(),
+            new ClientId("client-1"),
+            Target(),
+            disabledPolicy,
+            policyGeneration: 1);
+        await using (var broker = new AgentCapabilityBroker(
+            BuiltInAgentTools.Catalog,
+            new SqliteAuditStore(temporary.Database),
+            new FixedTimeProvider(Now)))
+        {
+            Assert.Null(await broker.RegisterRunAsync(
+                registration,
+                CancellationToken.None));
+            Assert.Null(await broker.RecordCapabilityRequestAuditAsync(
+                new AgentCapabilityRequestAuditEvent.Requested(
+                    requestId,
+                    registration.RunId,
+                    AgentCapability.RunCommands,
+                    registration.Target,
+                    registration.PolicyGeneration),
+                CancellationToken.None));
+            var askPolicy = disabledPolicy with
+            {
+                Permissions = disabledPolicy.Permissions.SetItem(
+                    AgentCapability.RunCommands,
+                    AgentPermission.Ask),
+            };
+            Assert.Null(await broker.UpdateRunPolicyAsync(
+                new AgentRunPolicyUpdate(
+                    registration.RunId,
+                    askPolicy,
+                    policyGeneration: 2,
+                    Human(),
+                    capabilityRequestId: requestId),
+                CancellationToken.None));
+            Assert.Null(await broker.RecordCapabilityRequestAuditAsync(
+                new AgentCapabilityRequestAuditEvent.Terminal(
+                    requestId,
+                    registration.RunId,
+                    AgentCapabilityRequestAuditDecision.Allowed,
+                    Human()),
+                CancellationToken.None));
+        }
+
+        var reopened = new SqliteAuditStore(temporary.Database);
+        var requestTrail = await reopened.ListByCorrelationAsync(
+            requestId.Value,
+            CancellationToken.None);
+        var policyTrail = await reopened.ListByCorrelationAsync(
+            registration.RunId.Value,
+            CancellationToken.None);
+
+        Assert.True(requestTrail.IsSuccess, requestTrail.Error?.Message);
+        Assert.Equal(
+            [AuditOutcome.Requested, AuditOutcome.Approved],
+            requestTrail.Value!.Select(item => item.Outcome));
+        Assert.All(
+            requestTrail.Value!,
+            item => Assert.IsType<AuditDetails.AgentCapabilityRequestDetails>(
+                item.Details));
+        Assert.Equal(
+            requestId,
+            Assert.IsType<AuditDetails.AgentRunPolicyTransitionDetails>(
+                Assert.Single(policyTrail.Value!).Details).CapabilityRequestId);
+    }
+
     private static AgentRunRegistration Registration() =>
         new(
             new AgentRunId("run-1"),

@@ -91,7 +91,7 @@
     },
     {
       "path": "native/sql-language-worker/src/legal/runtime-license-map.tsv",
-      "sha256": "60045741209b29344ed59681ffe61fc1e626a0e312b76dfb05bbb9f80acf3be1"
+      "sha256": "a3cb4819a1088f7d720fa3cc5aceaecd35c6fd0ea8f5f0022065bde07da3d3fd"
     }
   ]
 }

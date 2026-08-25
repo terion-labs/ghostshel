@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostshell.app/schemas/release-source-seal-v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "format", "repository", "tag", "commit", "tree",
+    "sourceArchiveSha256", "sealSchemaSha256", "manifestSha256", "files",
+    "generatedRoots"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "format": { "const": "ghostshell-release-source-seal-v1" },
+    "repository": { "const": "https://github.com/terion-labs/ghostshell" },
+    "tag": { "type": "string", "pattern": "^v[0-9]{1,9}\\.[0-9]{1,9}\\.[0-9]{1,9}$" },
+    "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "tree": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "sourceArchiveSha256": { "$ref": "#/$defs/sha256" },
+    "sealSchemaSha256": { "$ref": "#/$defs/sha256" },
+    "manifestSha256": { "$ref": "#/$defs/sha256" },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20000,
+      "items": { "$ref": "#/$defs/file" }
+    },
+    "generatedRoots": {
+      "const": [
+        ".deps",
+        "native/artifacts",
+        "native/sql-language-worker/target"
+      ]
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relativePath", "mode", "bytes", "sha256"],
+      "properties": {
+        "relativePath": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "mode": { "enum": ["100644", "100755"] },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  }
+}

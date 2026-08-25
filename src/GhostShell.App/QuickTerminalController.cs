@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
@@ -525,17 +524,17 @@ public sealed class QuickTerminalController : IDisposable
                 CloseScopeRequest.Session(sessionId, CloseDecision.Confirm),
                 OperationContext.ForHuman(clientId),
                 CancellationToken.None);
-            if (result is HostResult<CloseScopeResult>.Failure failure)
+            if (result is HostResult<CloseScopeResult>.Failure)
             {
-                Trace.TraceError(
-                    "The session host could not close a discarded Quick Terminal session: {0}",
-                    failure.Error.StableCode);
+                SecretSafeDiagnosticProjection.WriteTrace(
+                    "quick-terminal.discard-close.failed",
+                    SecretSafeDiagnosticKind.Unexpected);
             }
         }
         catch (Exception exception)
         {
-            Trace.TraceError(
-                "Unable to close a Quick Terminal session that was configured not to restore: {0}",
+            SecretSafeDiagnostics.WriteTrace(
+                "quick-terminal.discarded-session.close-failed",
                 exception);
         }
     }
@@ -667,15 +666,17 @@ public sealed class QuickTerminalController : IDisposable
                 }
                 else if (!result.IsSuccess)
                 {
-                    Trace.TraceError(
-                        "Unable to load Quick Terminal startup recovery: {0}",
-                        result.Error?.Code.ToString() ?? "quick-terminal-recovery-load-failed");
+                    SecretSafeDiagnosticProjection.WriteTrace(
+                        "quick-terminal.recovery-load.failed",
+                        SecretSafeDiagnosticKind.Unexpected);
                 }
             }
         }
         catch (Exception exception)
         {
-            Trace.TraceError("Unable to restore Quick Terminal on startup: {0}", exception);
+            SecretSafeDiagnostics.WriteTrace(
+                "quick-terminal.startup-restore.failed",
+                exception);
         }
         finally
         {
@@ -704,9 +705,9 @@ public sealed class QuickTerminalController : IDisposable
             QuickTerminalRecoveryCodec.Serialize(_viewModel));
         if (!queued.IsSuccess)
         {
-            Trace.TraceError(
-                "Unable to persist Quick Terminal recovery: {0}",
-                queued.Error?.Code.ToString() ?? "quick-terminal-recovery-save-failed");
+            SecretSafeDiagnosticProjection.WriteTrace(
+                "quick-terminal.recovery-save.failed",
+                SecretSafeDiagnosticKind.Unexpected);
         }
     }
 
@@ -850,9 +851,9 @@ public sealed class QuickTerminalController : IDisposable
                     CancellationToken.None);
                 if (!result.IsSuccess || result.Value is null)
                 {
-                    Trace.TraceError(
-                        "Unable to save the resized Quick Terminal height: {0}",
-                        result.Error?.Code.ToString() ?? "quick-terminal-height-save-failed");
+                    SecretSafeDiagnosticProjection.WriteTrace(
+                        "quick-terminal.height-save.failed",
+                        SecretSafeDiagnosticKind.Unexpected);
                     return;
                 }
 
@@ -862,7 +863,9 @@ public sealed class QuickTerminalController : IDisposable
         }
         catch (Exception exception)
         {
-            Trace.TraceError("Unable to save the resized Quick Terminal height: {0}", exception);
+            SecretSafeDiagnostics.WriteTrace(
+                "quick-terminal.height-save.failed",
+                exception);
         }
         finally
         {

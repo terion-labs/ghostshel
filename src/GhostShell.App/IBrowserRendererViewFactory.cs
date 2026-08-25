@@ -256,8 +256,8 @@ public sealed class BrowserRendererView(
         }
         catch (Exception exception)
         {
-            System.Diagnostics.Trace.TraceError(
-                "Unable to detach a failed browser renderer attachment: {0}",
+            SecretSafeDiagnostics.WriteTrace(
+                "browser.attachment.detach-failed",
                 exception);
         }
     }

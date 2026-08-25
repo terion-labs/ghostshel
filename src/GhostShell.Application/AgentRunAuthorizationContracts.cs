@@ -107,7 +107,8 @@ public sealed record AgentRunPolicyUpdate
         AgentPolicy policy,
         long policyGeneration,
         ActorDescriptor changedBy,
-        AgentYoloConfirmation? yoloConfirmation = null)
+        AgentYoloConfirmation? yoloConfirmation = null,
+        AgentCapabilityRequestId? capabilityRequestId = null)
     {
         AgentRunRegistration.ValidateRunId(runId);
         Policy = AgentRunRegistration.ValidatePolicy(policy);
@@ -116,6 +117,7 @@ public sealed record AgentRunPolicyUpdate
         RunId = runId;
         PolicyGeneration = policyGeneration;
         YoloConfirmation = yoloConfirmation;
+        CapabilityRequestId = capabilityRequestId;
     }
 
     public AgentRunId RunId { get; }
@@ -127,6 +129,8 @@ public sealed record AgentRunPolicyUpdate
     public ActorDescriptor ChangedBy { get; }
 
     public AgentYoloConfirmation? YoloConfirmation { get; }
+
+    public AgentCapabilityRequestId? CapabilityRequestId { get; }
 
     internal static ActorDescriptor ValidateHuman(
         ActorDescriptor actor,

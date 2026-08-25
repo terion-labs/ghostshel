@@ -8,7 +8,8 @@ namespace GhostShell.Application;
 /// </summary>
 public sealed class AgentAuditRecovery
 {
-    public const string RecoveryResultCode = "application_restart";
+    public const string RecoveryResultCode =
+        "application_restart_outcome_unknown";
     private readonly IAuditStore _auditStore;
     private readonly TimeProvider _timeProvider;
 
@@ -45,12 +46,12 @@ public sealed class AgentAuditRecovery
             var terminal = new AuditEventRecord(
                 AgentAuditEventId.ForPhase(
                     new AgentActionId(started.CorrelationId),
-                    AuditOutcome.Cancelled),
+                    AuditOutcome.Failed),
                 started.CorrelationId,
                 SystemActor(),
                 started.Action,
                 started.Target,
-                AuditOutcome.Cancelled,
+                AuditOutcome.Failed,
                 AuditDetails.ForAgentAction(
                     details.RunId,
                     details.Capability,
@@ -59,9 +60,9 @@ public sealed class AgentAuditRecovery
                     details.Decision,
                     details.ArgumentDigest,
                     details.AuthorizationSource,
-                    AgentAuthorizationErrorCode.Cancelled,
-                    RecoveryResultCode,
-                    details.Binding.WithExecutionDuration(
+                    errorCode: null,
+                    resultCode: RecoveryResultCode,
+                    binding: details.Binding.WithExecutionDuration(
                         _timeProvider.GetUtcNow() - started.OccurredAt)),
                 _timeProvider.GetUtcNow());
             var append = await _auditStore

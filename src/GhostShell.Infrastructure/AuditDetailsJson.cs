@@ -13,13 +13,15 @@ namespace GhostShell.Infrastructure;
 internal static class AuditDetailsJson
 {
     private const int PreviousSchemaVersion = 1;
-    private const int CurrentSchemaVersion = 2;
+    private const int IntermediateSchemaVersion = 2;
+    private const int CurrentSchemaVersion = 3;
     private const int MaximumEncodedLength = 2 * 1024;
     private const string EmptyKind = "none";
     private const string SecretAccessKind = "secret-access";
     private const string TerminalStartupCommandsKind = "terminal-startup-commands";
     private const string AgentActionKind = "agent-action";
     private const string AgentRunPolicyTransitionKind = "agent-run-policy-transition";
+    private const string AgentCapabilityRequestKind = "agent-capability-request";
 
     public static string Serialize(AuditDetails details)
     {
@@ -130,6 +132,22 @@ internal static class AuditDetailsJson
                     writer,
                     "yoloExpiresAtUtc",
                     policyTransition.YoloExpiresAtUtc);
+                WriteNullableString(
+                    writer,
+                    "capabilityRequestId",
+                    policyTransition.CapabilityRequestId?.Value);
+                break;
+            case AuditDetails.AgentCapabilityRequestDetails capabilityRequest:
+                writer.WriteString("kind", AgentCapabilityRequestKind);
+                writer.WriteString("runId", capabilityRequest.RunId.Value);
+                writer.WriteString("capability", capabilityRequest.Capability.ToString());
+                writer.WriteNumber(
+                    "policyGeneration",
+                    capabilityRequest.PolicyGeneration);
+                writer.WriteString(
+                    "targetIdentityDigest",
+                    capabilityRequest.TargetIdentityDigest.Value);
+                WriteNullableEnum(writer, "decision", capabilityRequest.Decision);
                 break;
             default:
                 throw new ArgumentOutOfRangeException(
@@ -206,6 +224,11 @@ internal static class AuditDetailsJson
             return TryReadAgentRunPolicyTransition(root, schemaVersion, out details);
         }
 
+        if (string.Equals(kind, AgentCapabilityRequestKind, StringComparison.Ordinal))
+        {
+            return TryReadAgentCapabilityRequest(root, schemaVersion, out details);
+        }
+
         if (!string.Equals(kind, TerminalStartupCommandsKind
 , StringComparison.Ordinal) || root.GetPropertyCount() != 4
             || !TryReadPositiveInt(root, "commandCount", out var commandCount)
@@ -227,8 +250,9 @@ internal static class AuditDetailsJson
         out AuditDetails? details)
     {
         details = null;
-        if (schemaVersion != CurrentSchemaVersion
-            || root.GetPropertyCount() != 7
+        var hasRequestId = schemaVersion == CurrentSchemaVersion;
+        if (schemaVersion is not (IntermediateSchemaVersion or CurrentSchemaVersion)
+            || root.GetPropertyCount() != (hasRequestId ? 8 : 7)
             || !TryReadString(root, "runId", out var runId)
             || !TryReadEnum(
                 root,
@@ -245,19 +269,79 @@ internal static class AuditDetailsJson
             || !TryReadNullableDateTime(
                 root,
                 "yoloExpiresAtUtc",
-                out var yoloExpiresAtUtc))
+                out var yoloExpiresAtUtc)
+            || hasRequestId
+                && !TryReadNullableString(
+                    root,
+                    "capabilityRequestId",
+                    out _))
         {
             return false;
         }
 
         try
         {
+            string? capabilityRequestId = null;
+            if (hasRequestId
+                && !TryReadNullableString(
+                    root,
+                    "capabilityRequestId",
+                    out capabilityRequestId))
+            {
+                return false;
+            }
+
             details = AuditDetails.ForAgentRunPolicyTransition(
                 new AgentRunId(runId!),
                 transition,
                 policyGeneration,
                 new AgentActionDigest(targetIdentityDigest!),
-                yoloExpiresAtUtc);
+                yoloExpiresAtUtc,
+                capabilityRequestId is null
+                    ? null
+                    : new AgentCapabilityRequestId(capabilityRequestId));
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryReadAgentCapabilityRequest(
+        JsonElement root,
+        int schemaVersion,
+        out AuditDetails? details)
+    {
+        details = null;
+        if (schemaVersion != CurrentSchemaVersion
+            || root.GetPropertyCount() != 7
+            || !TryReadString(root, "runId", out var runId)
+            || !TryReadEnum(root, "capability", out AgentCapability capability)
+            || !TryReadNonNegativeLong(
+                root,
+                "policyGeneration",
+                out var policyGeneration)
+            || !TryReadString(
+                root,
+                "targetIdentityDigest",
+                out var targetIdentityDigest)
+            || !TryReadNullableEnum(
+                root,
+                "decision",
+                out AgentCapabilityRequestAuditDecision? decision))
+        {
+            return false;
+        }
+
+        try
+        {
+            details = AuditDetails.ForAgentCapabilityRequest(
+                new AgentRunId(runId!),
+                capability,
+                policyGeneration,
+                new AgentActionDigest(targetIdentityDigest!),
+                decision);
             return true;
         }
         catch (ArgumentException)
@@ -391,7 +475,9 @@ internal static class AuditDetailsJson
         return root.TryGetProperty("schemaVersion", out var property)
             && property.ValueKind == JsonValueKind.Number
             && property.TryGetInt32(out schemaVersion)
-            && schemaVersion is PreviousSchemaVersion or CurrentSchemaVersion;
+            && schemaVersion is PreviousSchemaVersion
+                or IntermediateSchemaVersion
+                or CurrentSchemaVersion;
     }
 
     private static bool TryReadString(

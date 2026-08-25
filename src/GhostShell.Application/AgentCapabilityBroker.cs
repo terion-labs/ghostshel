@@ -25,6 +25,7 @@ public sealed class AgentCapabilityBroker :
     private const int MaximumCancelledRunCount = 8192;
     private const string AuditTargetKind = "agent-target-fingerprint";
     private const string PolicyAuditAction = "agent.run.policy";
+    private const string CapabilityRequestAuditAction = "agent.capability.request";
 
     private readonly AgentToolCatalog _tools;
     private readonly IAuditStore _auditStore;
@@ -312,7 +313,19 @@ public sealed class AgentCapabilityBroker :
             var retryingSuspendedUpdate = run.PendingPolicyAuditEvent is not null
                 && update.PolicyGeneration == run.PolicyGeneration
                 && update.Policy == run.Policy
-                && update.YoloConfirmation == run.YoloConfirmation;
+                && update.YoloConfirmation == run.YoloConfirmation
+                && run.PendingPolicyAuditEvent.Details
+                    is AuditDetails.AgentRunPolicyTransitionDetails pendingPolicyDetails
+                && pendingPolicyDetails.CapabilityRequestId
+                    == update.CapabilityRequestId;
+            if (!retryingSuspendedUpdate)
+            {
+                var capabilityUpdateError = ValidateCapabilityPolicyUpdate(run, update);
+                if (capabilityUpdateError is not null)
+                {
+                    return capabilityUpdateError;
+                }
+            }
             if (run.Suspended && !retryingSuspendedUpdate)
             {
                 return RunSuspended();
@@ -400,6 +413,59 @@ public sealed class AgentCapabilityBroker :
         return result;
     }
 
+    public async ValueTask<AgentAuthorizationError?> RecordCapabilityRequestAuditAsync(
+        AgentCapabilityRequestAuditEvent auditEvent,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(auditEvent);
+        if (!await EnterGateAsync(cancellationToken).ConfigureAwait(false))
+        {
+            return Cancelled();
+        }
+
+        try
+        {
+            if (_disposed)
+            {
+                return BrokerDisposed();
+            }
+
+            var runId = auditEvent switch
+            {
+                AgentCapabilityRequestAuditEvent.Requested requested => requested.RunId,
+                AgentCapabilityRequestAuditEvent.Terminal terminal => terminal.RunId,
+                _ => throw new ArgumentOutOfRangeException(nameof(auditEvent)),
+            };
+            if (!_runs.TryGetValue(runId, out var run))
+            {
+                return _cancelledRuns.ContainsKey(runId)
+                    ? RunCancelled()
+                    : RunNotFound();
+            }
+
+            return auditEvent switch
+            {
+                AgentCapabilityRequestAuditEvent.Requested requested =>
+                    await RecordCapabilityRequestedAsync(
+                            run,
+                            requested,
+                            cancellationToken)
+                        .ConfigureAwait(false),
+                AgentCapabilityRequestAuditEvent.Terminal terminal =>
+                    await RecordCapabilityTerminalAsync(
+                            run,
+                            terminal,
+                            cancellationToken)
+                        .ConfigureAwait(false),
+                _ => throw new ArgumentOutOfRangeException(nameof(auditEvent)),
+            };
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async ValueTask<AgentAuthorizationError?> CancelRunAsync(
         AgentRunCancellation cancellation,
         CancellationToken cancellationToken)
@@ -435,6 +501,14 @@ public sealed class AgentCapabilityBroker :
                 return Error(
                     AgentAuthorizationErrorCode.RunActorMismatch,
                     "The cancellation actor does not own this agent run.");
+            }
+
+            if (run.PendingCapabilityRequest is not null)
+            {
+                run.Suspended = true;
+                return Error(
+                    AgentAuthorizationErrorCode.AuditUnavailable,
+                    "The run remains quarantined until its capability-request audit is closed.");
             }
 
             var now = _timeProvider.GetUtcNow();
@@ -1924,6 +1998,239 @@ public sealed class AgentCapabilityBroker :
             : MapAuditError(append.Error);
     }
 
+    private async ValueTask<AgentAuthorizationError?> RecordCapabilityRequestedAsync(
+        RunAuthority run,
+        AgentCapabilityRequestAuditEvent.Requested requested,
+        CancellationToken cancellationToken)
+    {
+        if (run.Cancelled)
+        {
+            return RunCancelled();
+        }
+
+        var targetIdentity = AgentTargetIdentity.Create(requested.Target);
+        if (requested.RunId != run.RunId
+            || requested.PolicyGeneration != run.PolicyGeneration
+            || targetIdentity != AgentTargetIdentity.Create(run.Target)
+            || run.Policy.GetPermission(requested.Capability) != AgentPermission.Off)
+        {
+            return Error(
+                AgentAuthorizationErrorCode.PolicyChanged,
+                "The capability request does not match current run authority.");
+        }
+
+        if (run.PendingCapabilityRequest is { } existing)
+        {
+            if (existing.RequestId != requested.RequestId
+                || existing.Capability != requested.Capability
+                || existing.PolicyGeneration != requested.PolicyGeneration
+                || existing.TargetIdentity != targetIdentity)
+            {
+                return Error(
+                    AgentAuthorizationErrorCode.AlreadyCompleted,
+                    "The run already has a different capability request.");
+            }
+
+            var retryError = await AppendPolicyTransitionAuditAsync(
+                    existing.RequestedEvent,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (retryError is null)
+            {
+                existing.RequestedDurable = true;
+                run.Suspended = false;
+            }
+
+            return retryError;
+        }
+
+        if (run.Suspended)
+        {
+            return RunSuspended();
+        }
+
+        var auditRecord = new AuditEventRecord(
+            AgentAuditEventId.ForCapabilityRequestRequested(requested.RequestId),
+            requested.RequestId.Value,
+            run.Agent,
+            CapabilityRequestAuditAction,
+            new AuditTarget(AuditTargetKind, targetIdentity.Value),
+            AuditOutcome.Requested,
+            AuditDetails.ForAgentCapabilityRequest(
+                run.RunId,
+                requested.Capability,
+                requested.PolicyGeneration,
+                targetIdentity),
+            _timeProvider.GetUtcNow().ToUniversalTime());
+        var pending = new PendingCapabilityRequestAudit(
+            requested.RequestId,
+            requested.Capability,
+            requested.PolicyGeneration,
+            targetIdentity,
+            auditRecord);
+        run.PendingCapabilityRequest = pending;
+        var error = await AppendPolicyTransitionAuditAsync(
+                auditRecord,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (error is null)
+        {
+            pending.RequestedDurable = true;
+        }
+        else
+        {
+            run.Suspended = true;
+        }
+
+        return error;
+    }
+
+    private async ValueTask<AgentAuthorizationError?> RecordCapabilityTerminalAsync(
+        RunAuthority run,
+        AgentCapabilityRequestAuditEvent.Terminal terminal,
+        CancellationToken cancellationToken)
+    {
+        var pending = run.PendingCapabilityRequest;
+        if (pending is null
+            || pending.RequestId != terminal.RequestId
+            || terminal.RunId != run.RunId)
+        {
+            return Error(
+                AgentAuthorizationErrorCode.AlreadyCompleted,
+                "The capability request is not pending.");
+        }
+
+        if (!IsCapabilityDecisionActorValid(run, terminal))
+        {
+            return Error(
+                AgentAuthorizationErrorCode.ApprovalActorMismatch,
+                "The capability decision actor does not own this run.");
+        }
+
+        if (!pending.RequestedDurable)
+        {
+            var requestedError = await AppendPolicyTransitionAuditAsync(
+                    pending.RequestedEvent,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (requestedError is not null)
+            {
+                run.Suspended = true;
+                return requestedError;
+            }
+
+            pending.RequestedDurable = true;
+        }
+
+        pending.TerminalEvent ??= new AuditEventRecord(
+            AgentAuditEventId.ForCapabilityRequestTerminal(terminal.RequestId),
+            terminal.RequestId.Value,
+            terminal.Actor,
+            CapabilityRequestAuditAction,
+            new AuditTarget(AuditTargetKind, pending.TargetIdentity.Value),
+            CapabilityRequestOutcome(terminal.Decision),
+            AuditDetails.ForAgentCapabilityRequest(
+                run.RunId,
+                pending.Capability,
+                pending.PolicyGeneration,
+                pending.TargetIdentity,
+                terminal.Decision),
+            _timeProvider.GetUtcNow().ToUniversalTime());
+        var recordedDecision = ((AuditDetails.AgentCapabilityRequestDetails)
+            pending.TerminalEvent.Details).Decision;
+        if (recordedDecision != terminal.Decision)
+        {
+            run.Suspended = true;
+            return Error(
+                AgentAuthorizationErrorCode.AlreadyCompleted,
+                "The capability request already has a different terminal outcome.");
+        }
+
+        var error = await AppendPolicyTransitionAuditAsync(
+                pending.TerminalEvent,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (error is null)
+        {
+            run.PendingCapabilityRequest = null;
+            run.Suspended = false;
+        }
+        else
+        {
+            run.Suspended = true;
+        }
+
+        return error;
+    }
+
+    private static AuditOutcome CapabilityRequestOutcome(
+        AgentCapabilityRequestAuditDecision decision) =>
+        decision switch
+        {
+            AgentCapabilityRequestAuditDecision.Allowed => AuditOutcome.Approved,
+            AgentCapabilityRequestAuditDecision.Denied => AuditOutcome.Denied,
+            AgentCapabilityRequestAuditDecision.Expired or
+                AgentCapabilityRequestAuditDecision.Cancelled => AuditOutcome.Cancelled,
+            AgentCapabilityRequestAuditDecision.TargetChanged or
+                AgentCapabilityRequestAuditDecision.CapabilityUnavailable or
+                AgentCapabilityRequestAuditDecision.PolicyChanged or
+                AgentCapabilityRequestAuditDecision.AuditFailed => AuditOutcome.Failed,
+            _ => throw new ArgumentOutOfRangeException(nameof(decision)),
+        };
+
+    private static bool IsCapabilityDecisionActorValid(
+        RunAuthority run,
+        AgentCapabilityRequestAuditEvent.Terminal terminal)
+    {
+        if (terminal.Decision is
+            AgentCapabilityRequestAuditDecision.Allowed or
+            AgentCapabilityRequestAuditDecision.Denied)
+        {
+            return terminal.Actor.Kind == ActorKind.Human
+                && terminal.Actor.ClientId == run.ApprovingClientId;
+        }
+
+        return terminal.Actor == run.Agent
+            || terminal.Actor.Kind == ActorKind.Human
+                && terminal.Actor.ClientId == run.ApprovingClientId;
+    }
+
+    private static AgentAuthorizationError? ValidateCapabilityPolicyUpdate(
+        RunAuthority run,
+        AgentRunPolicyUpdate update)
+    {
+        if (update.CapabilityRequestId is not { } requestId)
+        {
+            return null;
+        }
+
+        var pending = run.PendingCapabilityRequest;
+        if (pending is null
+            || pending.RequestId != requestId
+            || !pending.RequestedDurable
+            || pending.TerminalEvent is not null
+            || update.PolicyGeneration != pending.PolicyGeneration + 1
+            || run.Policy.GetPermission(pending.Capability) != AgentPermission.Off
+            || update.Policy.GetPermission(pending.Capability) != AgentPermission.Ask
+            || AgentPolicy.Capabilities.Any(capability =>
+                capability != pending.Capability
+                && run.Policy.GetPermission(capability)
+                    != update.Policy.GetPermission(capability))
+            || !string.Equals(run.Policy.Provider, update.Policy.Provider, StringComparison.Ordinal)
+            || !string.Equals(run.Policy.Model, update.Policy.Model, StringComparison.Ordinal)
+            || run.Policy.CompactionModel != update.Policy.CompactionModel
+            || run.Policy.TitleModel != update.Policy.TitleModel
+            || !string.Equals(run.Policy.SystemPrompt, update.Policy.SystemPrompt, StringComparison.Ordinal)
+            || run.YoloConfirmation != update.YoloConfirmation)
+        {
+            return Error(
+                AgentAuthorizationErrorCode.PolicyChanged,
+                "The policy transition does not match the audited Off-to-Ask request.");
+        }
+
+        return null;
+    }
+
     private static AuditEventRecord CreatePolicyTransitionAuditEvent(
         RunAuthority run,
         AgentRunPolicyUpdate update,
@@ -1954,7 +2261,8 @@ public sealed class AgentCapabilityBroker :
                 transition,
                 update.PolicyGeneration,
                 targetIdentity,
-                yoloExpiresAtUtc),
+                yoloExpiresAtUtc,
+                update.CapabilityRequestId),
             occurredAt.ToUniversalTime());
     }
 
@@ -2367,9 +2675,33 @@ public sealed class AgentCapabilityBroker :
 
         public AuditEventRecord? PendingPolicyAuditEvent { get; set; }
 
+        public PendingCapabilityRequestAudit? PendingCapabilityRequest { get; set; }
+
         public bool Suspended { get; set; }
 
         public bool Cancelled { get; set; }
+    }
+
+    private sealed class PendingCapabilityRequestAudit(
+        AgentCapabilityRequestId requestId,
+        AgentCapability capability,
+        long policyGeneration,
+        AgentActionDigest targetIdentity,
+        AuditEventRecord requestedEvent)
+    {
+        public AgentCapabilityRequestId RequestId { get; } = requestId;
+
+        public AgentCapability Capability { get; } = capability;
+
+        public long PolicyGeneration { get; } = policyGeneration;
+
+        public AgentActionDigest TargetIdentity { get; } = targetIdentity;
+
+        public AuditEventRecord RequestedEvent { get; } = requestedEvent;
+
+        public bool RequestedDurable { get; set; }
+
+        public AuditEventRecord? TerminalEvent { get; set; }
     }
 
     private sealed class PendingApproval(

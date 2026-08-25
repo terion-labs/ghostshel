@@ -12,6 +12,62 @@ namespace GhostShell.Browser.Tests;
 public sealed class BrowserLowLevelAutomationTests
 {
     [Fact]
+    public async Task GovernedNativeAutomationFailsBeforeDispatchWithoutPeerBinding()
+    {
+        var native = new RecordingEmbeddedBrowserView
+        {
+            SupportsPeerBoundTransport = false,
+        };
+        var surface = Surface(native);
+        Arrange(surface);
+        var binding = BrowserAutomationBinding.FromState(surface.State);
+        var origin = BrowserNavigationOrigin.FromAddress(surface.State.Address);
+
+        var mouse = await surface.DispatchMouseWithinOriginAsync(
+            new BrowserMouseRequest(
+                new SessionId("browser"),
+                binding,
+                BrowserMouseAction.Move,
+                20,
+                30),
+            origin,
+            CancellationToken.None);
+        var key = await surface.DispatchKeyWithinOriginAsync(
+            new BrowserKeyRequest(
+                new SessionId("browser"),
+                binding,
+                BrowserKeyAction.Press,
+                BrowserKey.Enter),
+            origin,
+            CancellationToken.None);
+        var scroll = await surface.ScrollWithinOriginAsync(
+            new BrowserScrollRequest(
+                new SessionId("browser"),
+                binding,
+                20,
+                30,
+                0,
+                100),
+            origin,
+            CancellationToken.None);
+        var evaluate = await surface.EvaluateWithinOriginAsync(
+            new BrowserEvaluateRequest(
+                new SessionId("browser"),
+                binding,
+                "document.title"),
+            origin,
+            CancellationToken.None);
+
+        Assert.All(
+            [mouse.Error, key.Error, scroll.Error, evaluate.Error],
+            error => Assert.Equal(BrowserErrorCode.NavigationPolicyDenied, error?.Code));
+        Assert.Null(native.LastMouseRequest);
+        Assert.Null(native.LastKeyRequest);
+        Assert.Null(native.LastScrollRequest);
+        Assert.Null(native.LastEvaluateRequest);
+    }
+
+    [Fact]
     public async Task AcknowledgedClickAdvancesInputEpochAndReturnsFreshState()
     {
         var native = new RecordingEmbeddedBrowserView();

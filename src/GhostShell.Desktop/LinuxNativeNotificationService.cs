@@ -232,8 +232,9 @@ public sealed class LinuxNativeNotificationService :
     }
 
     private static void ReportCallbackFailure(Exception exception) =>
-        Console.Error.WriteLine(
-            $"[ghostshell:notifications] Linux callback failed: {exception.Message}");
+        GhostShell.Application.SecretSafeDiagnosticProjection.WriteStandardError(
+            "notifications.linux-callback.failed",
+            exception);
 
     private static string Priority(PanelNotificationKind kind) => kind switch
     {

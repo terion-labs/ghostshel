@@ -43,6 +43,7 @@ public sealed class AgentRunPolicyTransitionAuditTests
                 "policyGeneration",
                 "targetIdentityDigest",
                 "yoloExpiresAtUtc",
+                "capabilityRequestId",
             ],
             document.RootElement.EnumerateObject().Select(property => property.Name), StringComparer.Ordinal);
     }
@@ -136,6 +137,52 @@ public sealed class AgentRunPolicyTransitionAuditTests
         Assert.True(decoded);
         var action = Assert.IsType<AuditDetails.AgentActionDetails>(details);
         Assert.Equal(AgentActionAuditBinding.Empty, action.Binding);
+    }
+
+    [Fact]
+    public void PreviousPolicyTransitionSchemaRemainsReadable()
+    {
+        var digest = AgentActionDigest.FromUtf8("legacy-target");
+        var encoded = $$"""
+            {"schemaVersion":2,"kind":"agent-run-policy-transition","runId":"run-1","transition":"Updated","policyGeneration":7,"targetIdentityDigest":"{{digest.Value}}","yoloExpiresAtUtc":null}
+            """;
+
+        Assert.True(AuditDetailsJson.TryDeserialize(encoded, out var details));
+        Assert.Null(
+            Assert.IsType<AuditDetails.AgentRunPolicyTransitionDetails>(details)
+                .CapabilityRequestId);
+    }
+
+    [Fact]
+    public void CapabilityRequestCodecIsClosedAndSecretFree()
+    {
+        const string rawTarget = "ssh://root:secret-canary@production.example";
+        var expected = AuditDetails.ForAgentCapabilityRequest(
+            new AgentRunId("run-1"),
+            AgentCapability.RunCommands,
+            policyGeneration: 4,
+            AgentActionDigest.FromUtf8(rawTarget),
+            AgentCapabilityRequestAuditDecision.TargetChanged);
+
+        var encoded = AuditDetailsJson.Serialize(expected);
+
+        Assert.True(AuditDetailsJson.TryDeserialize(encoded, out var decoded));
+        Assert.Equal(expected, decoded);
+        Assert.DoesNotContain(rawTarget, encoded, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret-canary", encoded, StringComparison.Ordinal);
+        using var document = JsonDocument.Parse(encoded);
+        Assert.Equal(
+            [
+                "schemaVersion",
+                "kind",
+                "runId",
+                "capability",
+                "policyGeneration",
+                "targetIdentityDigest",
+                "decision",
+            ],
+            document.RootElement.EnumerateObject().Select(property => property.Name),
+            StringComparer.Ordinal);
     }
 
     [Fact]

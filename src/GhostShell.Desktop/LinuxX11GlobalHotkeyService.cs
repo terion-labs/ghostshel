@@ -352,7 +352,9 @@ internal sealed class LinuxX11GlobalHotkeyService : IGlobalHotkeyService
         }
         catch (Exception exception)
         {
-            Trace.TraceError("X11 global hot-key callback failed: {0}", exception);
+            GhostShell.Application.SecretSafeDiagnosticProjection.WriteTrace(
+                "desktop.hotkey.x11-service-callback.failed",
+                exception);
         }
     }
 

@@ -132,8 +132,10 @@ the durable audit.
 Agent-action phase IDs and durable state transitions are deterministic and
 idempotent. SQLite atomically enforces
 `requested -> approved/denied -> started -> succeeded/failed/cancelled`.
-Startup reconciles an incomplete `started` action to `cancelled` with the
-stable `application_restart` code before provider or UI work begins.
+Startup reconciles an incomplete `started` action to `failed` with the
+stable `application_restart_outcome_unknown` failure before provider or UI
+work begins. Recovery cannot prove whether an external side effect committed,
+so it must not label an incomplete started action as cancelled.
 
 Audit details are a closed, explicitly encoded value shape. They contain the
 run, trusted capability/risk, permission/decision, policy generation,
@@ -142,6 +144,14 @@ duration, authority expiry, execution duration, optional bounded counts or
 artifact references, authorization source, and stable result code. They do not
 contain prompts, screen/command output, raw arguments, approval display values,
 or secrets.
+
+Run-local capability escalation has a separate broker-owned audit chain. The
+broker persists a closed, secret-free `Requested` event before UI presentation
+and exactly one terminal decision. The decision is one of allowed, denied,
+expired, cancelled, target/capability/policy drift, or audit failure. An allowed
+Off-to-Ask policy transition carries the same request ID in its closed policy
+details. Audit ambiguity suspends the run and grants no authority; ordinary
+per-action approval remains a separate later step.
 
 The desktop composition registers the broker, its SQLite audit dependency, the
 session-host executor, a composition-owned human approval principal, and the

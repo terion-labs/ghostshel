@@ -63,8 +63,8 @@ internal sealed class BrowserRendererAttachment(
         }
         catch (Exception exception)
         {
-            System.Diagnostics.Trace.TraceError(
-                "Unable to release the browser attachment: {0}",
+            SecretSafeDiagnostics.WriteTrace(
+                "browser.attachment.release-failed",
                 exception);
         }
     }

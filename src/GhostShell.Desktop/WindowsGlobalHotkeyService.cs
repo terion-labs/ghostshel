@@ -324,7 +324,9 @@ internal sealed class WindowsGlobalHotkeyService : IGlobalHotkeyService
         }
         catch (Exception exception)
         {
-            Trace.TraceError("Windows global hot-key callback failed: {0}", exception);
+            GhostShell.Application.SecretSafeDiagnosticProjection.WriteTrace(
+                "desktop.hotkey.windows-service-callback.failed",
+                exception);
         }
     }
 

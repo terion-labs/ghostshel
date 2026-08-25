@@ -17,6 +17,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\SecurityCampaignCanaries.cs"
+             Link="Shared\SecurityCampaignCanaries.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\GhostShell.Agent.Runtime\GhostShell.Agent.Runtime.csproj" />
     <ProjectReference Include="..\..\src\GhostShell.Agent\GhostShell.Agent.csproj" />
     <ProjectReference Include="..\..\src\GhostShell.Application\GhostShell.Application.csproj" />

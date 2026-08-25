@@ -121,19 +121,25 @@ public sealed class BrowserDestinationPolicyTests
                 .AsTask());
     }
 
-    [Theory]
-    [InlineData("http://localhost/")]
-    [InlineData("http://127.0.0.1/")]
-    [InlineData("http://169.254.169.254/")]
-    public async Task SshRouteLeavesDestinationResolutionToTheRemoteRoute(
-        string value)
+    [Fact(DisplayName = "content.browser.ssh-private-default-deny")]
+    [Trait("SecurityCampaignCase", "content.browser.ssh-private-default-deny")]
+    public async Task SshRouteDeniesPrivateDestinationsWithoutExactCapability()
     {
-        var address = Address(value);
+        string[] values =
+        [
+            "http://localhost/",
+            "http://127.0.0.1/",
+            "http://169.254.169.254/",
+        ];
 
-        Assert.True(BrowserDestinationPolicy.SshRouted
-            .AllowsNavigationStart(address));
-        Assert.True(await BrowserDestinationPolicy.SshRouted
-            .AllowsResolvedAsync(address, CancellationToken.None));
+        foreach (var value in values)
+        {
+            var address = Address(value);
+            Assert.False(BrowserDestinationPolicy.SshRouted
+                .AllowsNavigationStart(address));
+            Assert.False(await BrowserDestinationPolicy.SshRouted
+                .AllowsResolvedAsync(address, CancellationToken.None));
+        }
     }
 
     private static BrowserAddress Address(string value)

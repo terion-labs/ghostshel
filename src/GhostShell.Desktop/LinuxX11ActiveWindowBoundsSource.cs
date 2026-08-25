@@ -23,9 +23,9 @@ internal sealed class LinuxX11ActiveWindowBoundsSource : IActiveWindowBoundsSour
             or EntryPointNotFoundException
             or ExternalException)
         {
-            Trace.TraceWarning(
-                "Unable to inspect the active X11 window bounds: {0}",
-                exception.Message);
+            GhostShell.Application.SecretSafeDiagnosticProjection.WriteTrace(
+                "desktop.active-window.x11-read.failed",
+                exception);
             return null;
         }
     }

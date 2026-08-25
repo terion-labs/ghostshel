@@ -7,8 +7,9 @@ public sealed class AgentAuditRecoveryTests
     private static readonly DateTimeOffset Now =
         new(2026, 7, 23, 12, 0, 0, TimeSpan.Zero);
 
-    [Fact]
-    public async Task StartedActionsReceiveOneSecretFreeRestartCancellation()
+    [Fact(DisplayName = "lifecycle.restart-outcome-unknown recovers started action exactly once")]
+    [Trait("SecurityCampaignCase", "lifecycle.restart-outcome-unknown")]
+    public async Task StartedActionsReceiveOneSecretFreeUnknownRestartFailure()
     {
         var started = StartedEvent();
         var store = new RecoveryAuditStore([started]);
@@ -20,10 +21,10 @@ public sealed class AgentAuditRecoveryTests
         Assert.Equal(1, result.Value);
         var terminal = Assert.Single(store.Appended);
         Assert.Equal(started.CorrelationId, terminal.CorrelationId);
-        Assert.Equal(AuditOutcome.Cancelled, terminal.Outcome);
+        Assert.Equal(AuditOutcome.Failed, terminal.Outcome);
         Assert.Equal(ActorKind.System, terminal.Actor.Kind);
         var details = Assert.IsType<AuditDetails.AgentActionDetails>(terminal.Details);
-        Assert.Equal(AgentAuthorizationErrorCode.Cancelled, details.ErrorCode);
+        Assert.Null(details.ErrorCode);
         Assert.Equal(AgentAuditRecovery.RecoveryResultCode, details.ResultCode);
         Assert.DoesNotContain("command text", terminal.ToString(), StringComparison.Ordinal);
     }

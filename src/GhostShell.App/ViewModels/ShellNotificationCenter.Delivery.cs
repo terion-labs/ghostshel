@@ -125,8 +125,9 @@ internal sealed partial class ShellNotificationCenter
     }
 
     private static void ReportNativeFailure(Exception exception) =>
-        Console.Error.WriteLine(
-            $"[ghostshell:notifications] Native delivery failed: {exception.Message}");
+        SecretSafeDiagnostics.WriteTraceAndStandardError(
+            "notifications.native-delivery.failed",
+            exception);
 
     private void OnNativeNotificationActivated(
         object? sender,
@@ -191,6 +192,7 @@ internal sealed partial class ShellNotificationCenter
     }
 
     private static void ReportDispatchFailure(Exception exception) =>
-        Console.Error.WriteLine(
-            $"[ghostshell:notifications] UI dispatch failed: {exception.Message}");
+        SecretSafeDiagnostics.WriteTraceAndStandardError(
+            "notifications.ui-dispatch.failed",
+            exception);
 }

@@ -23,6 +23,11 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
             return Failed(AgentWebSearchErrorCode.Cancelled);
         }
 
+        if (!CefBrowserView.HasPeerBoundTransport)
+        {
+            return Failed(AgentWebSearchErrorCode.NavigationDenied);
+        }
+
         try
         {
             await SearchGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -209,7 +214,7 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
                     var createdBrowser = createdNetwork.CreateView();
                     createdBrowser.SetResourceRequestPolicy(
                         (candidate, token) => BrowserDestinationPolicy.LocalSystem
-                            .AllowsResolvedAsync(candidate, token));
+                            .AllowsCefTransportAsync(candidate, token));
                     return (createdNetwork, createdBrowser);
                 });
             if (!await browser.BeginDomObservationWhenReadyAsync()
@@ -320,7 +325,7 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
                     browser.SetActiveNavigationRequestPolicy(
                         (candidate, token) => IsGoogleAddress(candidate.Value)
                             ? BrowserDestinationPolicy.LocalSystem
-                                .AllowsResolvedAsync(candidate, token)
+                                .AllowsCefTransportAsync(candidate, token)
                             : ValueTask.FromResult(false));
                 }
                 catch (InvalidOperationException)

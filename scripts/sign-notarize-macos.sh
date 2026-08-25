@@ -7,6 +7,7 @@ entitlements="${repository_dir}/tools/GhostShell.Packaging/MacOS/Chromium.entitl
 app=""
 identity=""
 notary_profile=""
+evidence=""
 
 usage() {
     cat >&2 <<'EOF'
@@ -14,7 +15,8 @@ Usage:
   ./scripts/sign-notarize-macos.sh \
     --app <path/to/GhostShell.app> \
     --identity <Developer ID Application identity> \
-    [--notary-profile <notarytool keychain profile>]
+    [--notary-profile <notarytool keychain profile>] \
+    [--evidence <outside-app/notarization.json>]
 
 Signs the already-assembled managed-runtime native code, CEF framework, five
 helper apps, and outer GhostShell bundle in nested-code order. If a notary
@@ -39,6 +41,11 @@ while [[ $# -gt 0 ]]; do
         --notary-profile)
             [[ $# -ge 2 ]] || { usage; exit 64; }
             notary_profile="$2"
+            shift 2
+            ;;
+        --evidence)
+            [[ $# -ge 2 ]] || { usage; exit 64; }
+            evidence="$2"
             shift 2
             ;;
         --help|-h)
@@ -72,6 +79,22 @@ fi
 if [[ "${identity}" == "-" && -n "${notary_profile}" ]]; then
     echo "Ad-hoc signatures cannot be notarized." >&2
     exit 64
+fi
+if [[ -n "${notary_profile}" && -z "${evidence}" ]]; then
+    echo "Notarized distribution requires a closed --evidence record." >&2
+    exit 64
+fi
+if [[ -z "${notary_profile}" && -n "${evidence}" ]]; then
+    echo "Signing evidence is valid only for a notarized distribution." >&2
+    exit 64
+fi
+if [[ -n "${evidence}" ]]; then
+    evidence="$(cd -- "$(dirname -- "${evidence}")" && pwd -P)/$(basename -- "${evidence}")"
+    app_canonical="$(cd -- "$(dirname -- "${app}")" && pwd -P)/$(basename -- "${app}")"
+    if [[ "${evidence}" == "${app_canonical}"/* || -e "${evidence}" ]]; then
+        echo "Signing evidence must be a new file outside GhostShell.app." >&2
+        exit 64
+    fi
 fi
 
 frameworks="${app}/Contents/Frameworks"
@@ -154,16 +177,57 @@ fi
 
 notary_directory="$(mktemp -d "${TMPDIR:-/tmp}/ghostshell-notary.XXXXXX")"
 notary_zip="${notary_directory}/GhostShell.zip"
+evidence_staging=""
 cleanup() {
     rm -rf -- "${notary_directory}"
+    if [[ -n "${evidence_staging}" ]]; then
+        rm -f -- "${evidence_staging}"
+    fi
 }
 trap cleanup EXIT
 
 /usr/bin/ditto -c -k --keepParent "${app}" "${notary_zip}"
+notary_result="${notary_directory}/notary-result.json"
 /usr/bin/xcrun notarytool submit \
     "${notary_zip}" \
     --keychain-profile "${notary_profile}" \
-    --wait
+    --wait \
+    --output-format json > "${notary_result}"
+notarization_id="$(/usr/bin/plutil -extract id raw "${notary_result}")"
+notarization_status="$(/usr/bin/plutil -extract status raw "${notary_result}")"
+if [[ -z "${notarization_id}" || "${notarization_status}" != "Accepted" ]]; then
+    echo "Apple notarization did not return an accepted closed result." >&2
+    exit 1
+fi
 /usr/bin/xcrun stapler staple "${app}"
 /usr/bin/xcrun stapler validate "${app}"
 /usr/sbin/spctl --assess --type execute --verbose=2 "${app}"
+
+codesign_details="${notary_directory}/codesign-details.txt"
+/usr/bin/codesign --display --verbose=4 "${app}" 2> "${codesign_details}"
+team_identifier="$(/usr/bin/sed -n 's/^TeamIdentifier=//p' "${codesign_details}")"
+if [[ ! "${team_identifier}" =~ ^[A-Za-z0-9]{1,32}$ ]]; then
+    echo "The signed application has no bounded TeamIdentifier." >&2
+    exit 1
+fi
+certificate_prefix="${notary_directory}/certificate"
+/usr/bin/codesign --display --extract-certificates "${certificate_prefix}" "${app}"
+if [[ ! -f "${certificate_prefix}0" ]]; then
+    echo "The signing certificate could not be extracted." >&2
+    exit 1
+fi
+certificate_sha256="$(/usr/bin/shasum -a 256 "${certificate_prefix}0" | /usr/bin/awk '{print $1}')"
+
+evidence_staging="${evidence}.staging"
+/usr/bin/plutil -create json "${evidence_staging}"
+/usr/bin/plutil -insert schemaVersion -integer 1 "${evidence_staging}"
+/usr/bin/plutil -insert format -string ghostshell-macos-signing-evidence-v1 "${evidence_staging}"
+/usr/bin/plutil -insert notarizationId -string "${notarization_id}" "${evidence_staging}"
+/usr/bin/plutil -insert notarizationStatus -string "${notarization_status}" "${evidence_staging}"
+/usr/bin/plutil -insert teamIdentifier -string "${team_identifier}" "${evidence_staging}"
+/usr/bin/plutil -insert certificateSha256 -string "${certificate_sha256}" "${evidence_staging}"
+/usr/bin/plutil -insert codeSignatureValid -bool true "${evidence_staging}"
+/usr/bin/plutil -insert stapleValid -bool true "${evidence_staging}"
+/usr/bin/plutil -insert gatekeeperAccepted -bool true "${evidence_staging}"
+/bin/mv "${evidence_staging}" "${evidence}"
+evidence_staging=""

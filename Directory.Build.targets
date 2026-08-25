@@ -58,4 +58,16 @@
         Condition="'$(RestoreLockedMode)' != 'true'"
         Text="Self-contained GhostShell.Desktop packaging requires RestoreLockedMode=true and a prior locked restore using $(NuGetLockFilePath)." />
   </Target>
+
+  <!-- The source seal is consumed by the compiler, not added after packaging.
+       The release script also verifies the same manifest immediately around
+       compilation while the exported source root is read-only. -->
+  <Target
+      Name="RequireValidReleaseSourceManifestIdentity"
+      BeforeTargets="CoreCompile"
+      Condition="'$(GhostShellFirstPartyProject)' == 'True' and '$(GhostShellReleaseSourceManifestSha256)' != ''">
+    <Error
+        Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(GhostShellReleaseSourceManifestSha256)', '^[0-9a-f]{64}$'))"
+        Text="GhostShellReleaseSourceManifestSha256 must be an exact lowercase SHA-256 digest." />
+  </Target>
 </Project>

@@ -20,6 +20,11 @@ internal sealed class CefAgentWebReader
             return Failed(AgentWebToolErrorCode.Cancelled);
         }
 
+        if (!CefBrowserView.HasPeerBoundTransport)
+        {
+            return Failed(AgentWebToolErrorCode.DestinationDenied);
+        }
+
         try
         {
             await BrowserGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -139,7 +144,7 @@ internal sealed class CefAgentWebReader
                     var createdBrowser = createdNetwork.CreateView();
                     createdBrowser.SetResourceRequestPolicy(
                         (candidate, token) => BrowserDestinationPolicy.LocalSystem
-                            .AllowsResolvedAsync(candidate, token));
+                            .AllowsCefTransportAsync(candidate, token));
                     return (createdNetwork, createdBrowser);
                 });
             if (!await browser.BeginDomObservationWhenReadyAsync()
@@ -216,7 +221,7 @@ internal sealed class CefAgentWebReader
                 {
                     browser.SetActiveNavigationRequestPolicy(
                         (candidate, token) => BrowserDestinationPolicy.LocalSystem
-                            .AllowsResolvedAsync(candidate, token));
+                            .AllowsCefTransportAsync(candidate, token));
                 }
                 catch (InvalidOperationException)
                 {

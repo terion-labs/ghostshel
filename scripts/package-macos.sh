@@ -12,6 +12,10 @@ runtime_identifier=""
 cef_runtime_root=""
 sign_identity=""
 notary_profile=""
+release_evidence_dir=""
+source_seal=""
+security_campaign_tool=""
+build_artifacts_root=""
 native_aot_linker="${GHOSTSHELL_NATIVE_AOT_LINKER:-}"
 component_catalog="${repository_dir}/licenses/managed-components.json"
 desktop_project="${repository_dir}/src/GhostShell.Desktop/GhostShell.Desktop.csproj"
@@ -78,7 +82,11 @@ Usage:
     [--cef-runtime-root <verified-runtime-directory>] \
     [--configuration Release] \
     [--sign-identity <Developer ID Application identity>] \
-    [--notary-profile <notarytool keychain profile>]
+    [--notary-profile <notarytool keychain profile>] \
+    [--release-evidence-dir <outside-app-directory>] \
+    [--source-seal <outside-source-seal-directory>] \
+    [--security-campaign-tool <outside-source-tool-dll>] \
+    [--build-artifacts-root <outside-source-directory>]
 
 Creates a speed-optimized Native AOT macOS arm64 release candidate. Without
 --sign-identity the candidate receives a complete ad-hoc seal for local use.
@@ -130,6 +138,26 @@ while [[ $# -gt 0 ]]; do
         --notary-profile)
             [[ $# -ge 2 ]] || { usage; exit 64; }
             notary_profile="$2"
+            shift 2
+            ;;
+        --release-evidence-dir)
+            [[ $# -ge 2 ]] || { usage; exit 64; }
+            release_evidence_dir="$2"
+            shift 2
+            ;;
+        --source-seal)
+            [[ $# -ge 2 ]] || { usage; exit 64; }
+            source_seal="$2"
+            shift 2
+            ;;
+        --security-campaign-tool)
+            [[ $# -ge 2 ]] || { usage; exit 64; }
+            security_campaign_tool="$2"
+            shift 2
+            ;;
+        --build-artifacts-root)
+            [[ $# -ge 2 ]] || { usage; exit 64; }
+            build_artifacts_root="$2"
             shift 2
             ;;
         --help|-h)
@@ -184,10 +212,79 @@ if [[ -n "${notary_profile}" && -z "${sign_identity}" ]]; then
     echo "--notary-profile requires --sign-identity." >&2
     exit 64
 fi
+if [[ -n "${notary_profile}" && -z "${release_evidence_dir}" ]]; then
+    echo "Notarized packaging requires --release-evidence-dir." >&2
+    exit 64
+fi
+if [[ -z "${notary_profile}" && -n "${release_evidence_dir}" ]]; then
+    echo "--release-evidence-dir is valid only with notarization." >&2
+    exit 64
+fi
+if [[ -n "${notary_profile}" \
+    && ( -z "${source_seal}" \
+        || -z "${security_campaign_tool}" \
+        || -z "${build_artifacts_root}" \
+        || -z "${GHOSTSHELL_RELEASE_SOURCE_COMMIT:-}" \
+        || -z "${GHOSTSHELL_RELEASE_SOURCE_TREE:-}" \
+        || -z "${GHOSTSHELL_RELEASE_SOURCE_TAG:-}" ) ]]; then
+    echo "Notarized packaging requires the sealed source, verifier, external build root, and exact source identity." >&2
+    exit 64
+fi
+if [[ -n "${release_evidence_dir}" ]]; then
+    if [[ -e "${release_evidence_dir}" ]]; then
+        echo "The release evidence directory must not already exist." >&2
+        exit 1
+    fi
+    mkdir -p "${release_evidence_dir}"
+    release_evidence_dir="$(cd -- "${release_evidence_dir}" && pwd -P)"
+fi
+
+dotnet_artifacts_arguments=()
+if [[ -n "${build_artifacts_root}" ]]; then
+    mkdir -p "${build_artifacts_root}"
+    build_artifacts_root="$(cd -- "${build_artifacts_root}" && pwd -P)"
+    if [[ "${build_artifacts_root}" == "${repository_dir}" \
+        || "${build_artifacts_root}" == "${repository_dir}/"* ]]; then
+        echo "Release build artifacts must remain outside the sealed source root." >&2
+        exit 64
+    fi
+    dotnet_artifacts_arguments=(--artifacts-path "${build_artifacts_root}")
+fi
+
+build_identity=""
+verify_release_source() {
+    local identity_arguments=()
+    if [[ "${1:-}" == "--capture-build-identity" ]]; then
+        if [[ -z "${release_evidence_dir}" ]]; then
+            echo "A release build identity requires an external evidence directory." >&2
+            exit 1
+        fi
+        build_identity="${release_evidence_dir}/release-build-identity.json"
+        identity_arguments=(--build-identity-output "${build_identity}")
+    fi
+    "${dotnet}" "${security_campaign_tool}" \
+        verify-release-source \
+        --source-root "${repository_dir}" \
+        --source-seal "${source_seal}" \
+        --source-commit "${GHOSTSHELL_RELEASE_SOURCE_COMMIT}" \
+        --source-tree "${GHOSTSHELL_RELEASE_SOURCE_TREE}" \
+        --tag "${GHOSTSHELL_RELEASE_SOURCE_TAG}" \
+        "${identity_arguments[@]}"
+}
 
 if [[ ! -x "${dotnet}" ]]; then
     echo "Run ./scripts/bootstrap.sh before packaging GhostSHELL." >&2
     exit 1
+fi
+
+if [[ -n "${source_seal}" ]]; then
+    if [[ ! -d "${source_seal}" || ! -f "${security_campaign_tool}" ]]; then
+        echo "The release source seal or its verifier is unavailable." >&2
+        exit 1
+    fi
+    source_seal="$(cd -- "${source_seal}" && pwd -P)"
+    security_campaign_tool="$(cd -- "$(dirname -- "${security_campaign_tool}")" && pwd -P)/$(basename -- "${security_campaign_tool}")"
+    verify_release_source
 fi
 
 if [[ -z "${native_aot_linker}" ]]; then
@@ -373,6 +470,7 @@ fi
 "${dotnet}" run \
     --project "${repository_dir}/tools/GhostShell.Packaging/GhostShell.Packaging.csproj" \
     --configuration Release \
+    "${dotnet_artifacts_arguments[@]}" \
     -- \
     cef-runtime-validate \
     --runtime-root "${cef_runtime_root}" \
@@ -417,15 +515,29 @@ aot_publish_log="${working_dir}/native-aot-publish.log"
 compiled_icon_directory="${working_dir}/compiled-app-icon"
 mkdir "${compiled_icon_directory}"
 "${compile_macos_app_icon}" --output "${compiled_icon_directory}"
+if [[ -n "${source_seal}" ]]; then
+    verify_release_source
+fi
 "${dotnet}" restore \
     "${desktop_project}" \
+    "${dotnet_artifacts_arguments[@]}" \
     -maxcpucount:4 \
     --runtime "${runtime_identifier}" \
     --locked-mode \
     -p:GhostShellProductVersion="${version}" \
     -p:GhostShellMacReleaseNativeAot=true
+if [[ -n "${source_seal}" ]]; then
+    verify_release_source
+    verify_release_source --capture-build-identity
+    source_manifest_sha="$(/usr/bin/plutil -extract sealedManifestSha256 raw "${build_identity}")"
+    if [[ ! "${source_manifest_sha}" =~ ^[0-9a-f]{64}$ ]]; then
+        echo "The release build identity contains an invalid source manifest digest." >&2
+        exit 1
+    fi
+fi
 "${dotnet}" publish \
     "${desktop_project}" \
+    "${dotnet_artifacts_arguments[@]}" \
     -maxcpucount:4 \
     --configuration "${configuration}" \
     --runtime "${runtime_identifier}" \
@@ -434,12 +546,17 @@ mkdir "${compiled_icon_directory}"
     --output "${managed_evidence_dir}" \
     -p:RestoreLockedMode=true \
     -p:GhostShellProductVersion="${version}" \
+    -p:GhostShellReleaseSourceManifestSha256="${source_manifest_sha:-}" \
     -p:GhostShellCefRuntimeArtifactDirectory="${cef_runtime_root}" \
     -p:DebugType=None \
     -p:DebugSymbols=false \
     -p:GhostShellSqlLanguageRequired=true
+if [[ -n "${source_seal}" ]]; then
+    verify_release_source
+fi
 "${dotnet}" publish \
     "${desktop_project}" \
+    "${dotnet_artifacts_arguments[@]}" \
     -maxcpucount:4 \
     --configuration "${configuration}" \
     --runtime "${runtime_identifier}" \
@@ -450,11 +567,19 @@ mkdir "${compiled_icon_directory}"
     -p:GhostShellMacReleaseNativeAot=true \
     -p:GhostShellNativeAotLinker="${native_aot_linker}" \
     -p:GhostShellProductVersion="${version}" \
+    -p:GhostShellReleaseSourceManifestSha256="${source_manifest_sha:-}" \
     -p:GhostShellCefRuntimeArtifactDirectory="${cef_runtime_root}" \
     -p:DebugType=None \
     -p:DebugSymbols=false \
     -p:GhostShellSqlLanguageRequired=true \
     2>&1 | /usr/bin/tee "${aot_publish_log}"
+if [[ -n "${source_seal}" ]]; then
+    verify_release_source
+    if ! LC_ALL=C /usr/bin/grep -aFq "${source_manifest_sha}" "${publish_dir}/GhostShell"; then
+        echo "The Native AOT executable does not embed the sealed source manifest identity." >&2
+        exit 1
+    fi
+fi
 
 if /usr/bin/grep -E \
     'ILC : (Trim analysis warning IL2026|AOT analysis warning IL3050): GhostShell\.' \
@@ -655,9 +780,13 @@ if [[ -n "${unexpected_exports}" ]]; then
     exit 1
 fi
 
+if [[ -n "${source_seal}" ]]; then
+    verify_release_source
+fi
 "${dotnet}" run \
     --project "${repository_dir}/tools/GhostShell.Packaging/GhostShell.Packaging.csproj" \
     --configuration Release \
+    "${dotnet_artifacts_arguments[@]}" \
     -- \
     macos \
     --publish "${publish_dir}" \
@@ -677,6 +806,16 @@ fi
     --cef-runtime-root "${cef_runtime_root}" \
     --cef-runtime-catalog "${cef_runtime_catalog}" \
     --runtime-identifier "${runtime_identifier}"
+
+if [[ -n "${source_seal}" ]]; then
+    verify_release_source
+    release_identity_directory="${candidate}/Contents/Resources/Licenses/Release"
+    mkdir -p "${release_identity_directory}"
+    cp "${source_seal}/source-seal.json" \
+        "${release_identity_directory}/source-seal.json"
+    cp "${build_identity}" \
+        "${release_identity_directory}/release-build-identity.json"
+fi
 
 /usr/bin/plutil -lint "${candidate}/Contents/Info.plist"
 candidate_icon="${candidate}/Contents/Resources/GhostShell.icns"
@@ -763,6 +902,7 @@ sign_arguments=(
 )
 if [[ -n "${notary_profile}" ]]; then
     sign_arguments+=(--notary-profile "${notary_profile}")
+    sign_arguments+=(--evidence "${release_evidence_dir}/notarization.json")
 fi
 "${sign_notarize_macos}" "${sign_arguments[@]}"
 
@@ -770,6 +910,7 @@ fi
     --project \
     "${repository_dir}/tools/GhostShell.AccessibilityAcceptance/GhostShell.AccessibilityAcceptance.csproj" \
     --configuration Release \
+    "${dotnet_artifacts_arguments[@]}" \
     -- \
     publish-macos-package \
     --build-label "macos-${version}-${build_version}" \

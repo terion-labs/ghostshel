@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostshell.app/schemas/security-campaign-cases-v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "format",
+    "releaseScope",
+    "deferredPlatforms",
+    "actionExceptions",
+    "cases"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "format": { "const": "ghostshell-security-campaign-cases-v1" },
+    "releaseScope": { "const": "macos-arm64" },
+    "deferredPlatforms": {
+      "const": ["windows", "linux"]
+    },
+    "actionExceptions": {
+      "const": ["terminal.wait", "browser.wait"]
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "testProject", "testSource", "testNameContains"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,159}$" },
+          "kind": { "enum": ["content", "authority", "lifecycle", "secrecy"] },
+          "testProject": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "testSource": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "testNameContains": { "type": "string", "minLength": 1, "maxLength": 256 }
+        }
+      }
+    }
+  }
+}

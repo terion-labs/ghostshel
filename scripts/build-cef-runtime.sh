@@ -13,6 +13,10 @@ dotnet=""
 target_rid=""
 allow_unsandboxed_windows=false
 cef_build_jobs="${GHOSTSHELL_CEF_BUILD_JOBS:-4}"
+dotnet_artifacts_arguments=()
+if [[ -n "${GHOSTSHELL_BUILD_ARTIFACTS_ROOT:-}" ]]; then
+    dotnet_artifacts_arguments=(--artifacts-path "${GHOSTSHELL_BUILD_ARTIFACTS_ROOT}")
+fi
 
 usage() {
     cat >&2 <<'EOF'
@@ -545,6 +549,7 @@ fi
 "${dotnet}" run \
     --project "${repository_dir}/tools/GhostShell.Packaging/GhostShell.Packaging.csproj" \
     --configuration Release \
+    "${dotnet_artifacts_arguments[@]}" \
     -- \
     cef-runtime-receipt \
     --runtime-root "${cef_artifact_dir}" \
@@ -559,6 +564,7 @@ fi
 "${dotnet}" run \
     --project "${repository_dir}/tools/GhostShell.Packaging/GhostShell.Packaging.csproj" \
     --configuration Release \
+    "${dotnet_artifacts_arguments[@]}" \
     -- \
     cef-runtime-validate \
     --runtime-root "${cef_artifact_dir}" \
@@ -579,6 +585,7 @@ fi
 "${dotnet}" run \
     --project "${repository_dir}/tools/GhostShell.Packaging/GhostShell.Packaging.csproj" \
     --configuration Release \
+    "${dotnet_artifacts_arguments[@]}" \
     -- \
     native-publish-artifacts \
     --staged-directory "${artifact_dir}" \

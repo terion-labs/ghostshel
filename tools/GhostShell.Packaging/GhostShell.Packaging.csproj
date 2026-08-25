@@ -16,6 +16,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="GhostShell.AccessibilityAcceptance" />
     <InternalsVisibleTo Include="GhostShell.AccessibilityAcceptance.Tests" />
+    <InternalsVisibleTo Include="GhostShell.SecurityCampaign" />
   </ItemGroup>
 
 </Project>

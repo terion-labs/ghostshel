@@ -22,6 +22,8 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
 
     public bool CanGoForward { get; set; }
 
+    public bool SupportsPeerBoundTransport { get; set; } = true;
+
     public bool IsAgentActive { get; private set; }
 
     public bool IsDisposed { get; private set; }

@@ -877,11 +877,9 @@ public sealed partial class GovernedAgentRuntime :
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            Trace.TraceError(
-                "Governed agent {0} failure during {1}: {2}",
-                providerTurnStarted ? "turn" : "setup",
-                setupStage,
-                exception.GetType().FullName);
+            SecretSafeDiagnosticProjection.WriteTrace(
+                "agent.run.failed",
+                exception);
             if (!providerTurnStarted)
             {
                 return FinishRecoverableSetupFailure(
@@ -1100,6 +1098,9 @@ public sealed partial class GovernedAgentRuntime :
             question,
             "question_cancelled",
             "The agent question was cancelled.");
+        await AuditDetachedCapabilityRequestCancellationAsync(
+                capabilityRequest)
+            .ConfigureAwait(false);
         CancelDetachedCapabilityRequestAwaiter(
             capabilityRequest,
             "capability_request_cancelled",
@@ -1504,6 +1505,9 @@ public sealed partial class GovernedAgentRuntime :
             question,
             "question_cancelled",
             "The agent question was cancelled.");
+        await AuditDetachedCapabilityRequestCancellationAsync(
+                capabilityRequest)
+            .ConfigureAwait(false);
         CancelDetachedCapabilityRequestAwaiter(
             capabilityRequest,
             "capability_request_cancelled",
@@ -2065,9 +2069,9 @@ public sealed partial class GovernedAgentRuntime :
                 var code = result.ErrorCode is { } errorCode
                     ? StableCompactionCode(errorCode)
                     : "agent_compaction_failed";
-                Trace.TraceError(
-                    "Governed agent compaction failed with {0}.",
-                    code);
+                SecretSafeDiagnosticProjection.WriteTrace(
+                    "agent.compaction.failed",
+                    SecretSafeDiagnosticKind.Unexpected);
                 return ConversationCompactionOutcome.Failure(
                     code,
                     "The conversation could not be compacted before the next provider request. Retry.");
@@ -2087,9 +2091,9 @@ public sealed partial class GovernedAgentRuntime :
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            Trace.TraceError(
-                "Governed agent compaction threw {0}.",
-                exception.GetType().FullName);
+            SecretSafeDiagnosticProjection.WriteTrace(
+                "agent.compaction.failed",
+                exception);
             return ConversationCompactionOutcome.Failure(
                 "agent_compaction_failed",
                 "The conversation could not be compacted before the next provider request. Retry.");
@@ -2727,10 +2731,9 @@ public sealed partial class GovernedAgentRuntime :
                 && retryTransientFailures
                 && !cancellationToken.IsCancellationRequested)
             {
-                Trace.TraceWarning(
-                    "Agent workspace context inspection attempt {0} failed: {1}.",
-                    attempt + 1,
-                    exception.GetType().FullName);
+                SecretSafeDiagnosticProjection.WriteTrace(
+                    "agent.workspace-context.inspect-failed",
+                    exception);
             }
 
             if (attempt + 1 < attemptCount)
@@ -2785,10 +2788,9 @@ public sealed partial class GovernedAgentRuntime :
             exception is not OutOfMemoryException
             && !cancellationToken.IsCancellationRequested)
         {
-            Trace.TraceWarning(
-                "Agent terminal attachment inspection failed for panel {0}: {1}.",
-                panel.PanelId.Value,
-                exception.GetType().FullName);
+            SecretSafeDiagnosticProjection.WriteTrace(
+                "agent.terminal-attachment.inspect-failed",
+                exception);
             return null;
         }
     }
@@ -2898,10 +2900,9 @@ public sealed partial class GovernedAgentRuntime :
             exception is not OutOfMemoryException
             && !cancellationToken.IsCancellationRequested)
         {
-            Trace.TraceWarning(
-                "Agent browser attachment inspection failed for panel {0}: {1}.",
-                panel.PanelId.Value,
-                exception.GetType().FullName);
+            SecretSafeDiagnosticProjection.WriteTrace(
+                "agent.browser-attachment.inspect-failed",
+                exception);
             return null;
         }
     }
@@ -3015,10 +3016,9 @@ public sealed partial class GovernedAgentRuntime :
             exception is not OutOfMemoryException
             && !cancellationToken.IsCancellationRequested)
         {
-            Trace.TraceWarning(
-                "Agent File Viewer session inspection failed for panel {0}: {1}.",
-                panel.PanelId.Value,
-                exception.GetType().FullName);
+            SecretSafeDiagnosticProjection.WriteTrace(
+                "agent.file-viewer-attachment.inspect-failed",
+                exception);
             return null;
         }
     }

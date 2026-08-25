@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Avalonia;
 using Exclr8Cef;
 using Exclr8Cef.WebView;
+using GhostShell.Application;
 
 namespace GhostShell.Browser;
 
@@ -133,9 +134,9 @@ public static class BrowserEngineRuntime
 
             if (Cef.Browsers.Any())
             {
-                Console.Error.WriteLine(
-                    "GhostSHELL did not receive CEF close confirmation for "
-                    + $"{Cef.Browsers.Count()} browser(s) within {closeTimeout}.");
+                SecretSafeDiagnosticProjection.WriteStandardError(
+                    "browser.shutdown.close-timeout",
+                    SecretSafeDiagnosticKind.Timeout);
                 return false;
             }
 
@@ -183,8 +184,11 @@ public static class BrowserEngineRuntime
             CachePath = null,
             RootCachePath = options.ProfileDirectory,
             UserAgentProduct = $"GhostSHELL/{options.ProductVersion}",
+            // The vendor callback cannot suppress Chromium's default console
+            // emission. Disable native persistence and project warning/error
+            // callbacks through CefConsoleMessagePolicy instead.
             LogFile = options.LogFilePath,
-            LogSeverity = Cef.CefLogSeverity.Warning,
+            LogSeverity = Cef.CefLogSeverity.Disable,
             PersistSessionCookies = false,
             RemoteDebuggingPort = 0,
         };

@@ -172,14 +172,11 @@ public sealed class SqliteRuntimeRecoveryStore :
                 "The runtime recovery payload exceeds the safe snapshot limit.");
         }
 
-        var sqliteStage = "open connection";
         try
         {
             await using var connection = await _database.OpenConnectionAsync(cancellationToken)
                 .ConfigureAwait(false);
-            sqliteStage = "begin transaction";
             await using var transaction = connection.BeginTransaction(deferred: false);
-            sqliteStage = "read active run";
             var activeRunId = await ReadActiveRunIdAsync(
                 connection,
                 transaction,
@@ -197,7 +194,6 @@ public sealed class SqliteRuntimeRecoveryStore :
             // SQLite3MC 3.49.1 returned SQLITE_NOMEM for the combined
             // INSERT ... SELECT ... WHERE ... ON CONFLICT form. The immediate
             // transaction keeps this two-statement form atomic.
-            sqliteStage = "inspect snapshot inventory";
             await using (var inventory = connection.CreateCommand())
             {
                 inventory.Transaction = transaction;
@@ -236,7 +232,6 @@ public sealed class SqliteRuntimeRecoveryStore :
                 }
             }
 
-            sqliteStage = "write snapshot";
             await using var command = connection.CreateCommand();
             command.Transaction = transaction;
             command.CommandText = """
@@ -263,7 +258,6 @@ public sealed class SqliteRuntimeRecoveryStore :
                     "The active run already contains the maximum recovery snapshots.");
             }
 
-            sqliteStage = "commit transaction";
             await transaction.CommitAsync(CancellationToken.None).ConfigureAwait(false);
             return ApplicationRunResult<Unit>.Success(Unit.Value);
         }
@@ -275,11 +269,9 @@ public sealed class SqliteRuntimeRecoveryStore :
         }
         catch (SqliteException exception)
         {
-            Console.Error.WriteLine(
-                $"[ghostshell:recovery] SQLite save failed "
-                + $"during {sqliteStage} "
-                + $"for {payloadBytes} payload bytes "
-                + $"(code {exception.SqliteErrorCode}, extended {exception.SqliteExtendedErrorCode}).");
+            SecretSafeDiagnosticProjection.WriteStandardError(
+                "recovery.sqlite-save.failed",
+                exception);
             return Failure<Unit>(
                 MapSqliteError(exception),
                 "Runtime recovery state could not be saved.");

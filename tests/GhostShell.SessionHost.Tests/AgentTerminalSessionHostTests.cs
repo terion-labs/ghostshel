@@ -151,6 +151,70 @@ public sealed class AgentTerminalSessionHostTests
         Assert.Null((await fixture.SnapshotAsync()).InputLease);
     }
 
+    [Fact(DisplayName = "lifecycle.start-audit-failure")]
+    [Trait("SecurityCampaignCase", "lifecycle.start-audit-failure")]
+    public async Task SecurityCampaignStartedAuditFailureDeniesNativeDispatchAsync()
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var audit = new InMemoryAuditStore();
+        await using var broker = new AgentCapabilityBroker(
+            BuiltInAgentTools.Catalog,
+            audit,
+            clock);
+        await using var fixture = await AgentTerminalHostFixture.CreateAsync(
+            clock,
+            broker);
+        Assert.Null(await broker.RegisterRunAsync(
+            new AgentRunRegistration(
+                fixture.RunId,
+                fixture.Agent,
+                fixture.ClientId,
+                new AgentTarget.Workspace(
+                    fixture.WindowId,
+                    fixture.WorkspaceId),
+                AgentPolicy.Default,
+                policyGeneration: 0),
+            default));
+        var action = await fixture.PrepareAsync(
+            new AgentTerminalRequest.SendMouse(
+                fixture.SessionId,
+                new TerminalMouseInput(
+                    TerminalMouseButton.Left,
+                    TerminalMouseEventKind.Down,
+                    Column: 4,
+                    Row: 3),
+                ExpectedContentRevision: 0));
+        var requested = Assert.IsType<AgentAuthorizationResult.ApprovalRequired>(
+            await broker.RequestAsync(action.Proposal, default));
+        var approved = Assert.IsType<AgentAuthorizationResult.Authorized>(
+            await broker.DecideAsync(
+                new AgentApprovalDecision(
+                    requested.Approval.Id,
+                    fixture.HumanContext().Actor,
+                    approved: true,
+                    AgentApprovalDuration.Once,
+                    clock.GetUtcNow()),
+                default));
+        audit.FailurePredicate = item => string.Equals(
+            item.CorrelationId,
+            action.Proposal.Id.Value,
+            StringComparison.Ordinal) && item.Outcome == AuditOutcome.Started;
+
+        var result = await fixture.Client.RunAgentTerminalActionAsync(
+            approved.Authorization.Id,
+            action,
+            default);
+
+        Assert.Equal(HostErrorCode.EngineFailed, result.Error().Code);
+        Assert.Equal(0, fixture.Factory[fixture.SessionId].MouseCount);
+        Assert.Equal(
+            [AuditOutcome.Requested, AuditOutcome.Approved],
+            audit.Events.Where(item => string.Equals(
+                item.CorrelationId,
+                action.Proposal.Id.Value,
+                StringComparison.Ordinal)).Select(item => item.Outcome));
+    }
+
     [Fact]
     public async Task StaleContentRevisionRejectsMouseBeforePtyDispatch()
     {
@@ -2128,6 +2192,30 @@ public sealed class AgentTerminalSessionHostTests
         Assert.Equal(0, fixture.Factory[fixture.SessionId].WriteCount);
         Assert.Equal(1, fixture.Authorization.ConsumeCount);
         Assert.Empty(fixture.Authorization.Completions);
+    }
+
+    internal async Task SecurityCampaignDispatchesInterruptExactlyOnceAsync()
+    {
+        await using var fixture = await AgentTerminalHostFixture.CreateAsync();
+        var action = await fixture.PrepareAsync(
+            new AgentTerminalRequest.Interrupt(fixture.SessionId));
+
+        var forged = await fixture.Client.RunAgentTerminalActionAsync(
+            AgentAuthorizationId.New(),
+            action,
+            default);
+
+        Assert.Equal(HostErrorCode.EngineFailed, forged.Error().Code);
+        Assert.Equal(0, fixture.Factory[fixture.SessionId].InterruptCount);
+
+        var result = await fixture.Client.RunAgentTerminalActionAsync(
+            fixture.Authorization.Arm(action),
+            action,
+            default);
+
+        Assert.IsType<AgentTerminalActionResult.Completed>(result.Value());
+        Assert.Equal(1, fixture.Factory[fixture.SessionId].InterruptCount);
+        Assert.Single(fixture.Authorization.Completions);
     }
 
     private sealed class AgentTerminalHostFixture : IAsyncDisposable

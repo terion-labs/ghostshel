@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using Avalonia.Controls;
 using Avalonia.Platform;
+using GhostShell.Application;
 
 namespace GhostShell.App.Views;
 
@@ -52,9 +53,9 @@ internal static class MacOsWindowBackingScale
 
         if (Math.Abs(nativeScale - managedScale) >= 0.001)
         {
-            Console.Error.WriteLine(
-                "[ghostshell:display] reconciled stale macOS backing scale " +
-                $"{managedScale:0.###} -> {nativeScale:0.###}");
+            SecretSafeDiagnosticProjection.WriteStandardError(
+                "display.macos.backing-scale-reconciled",
+                SecretSafeDiagnosticKind.Unexpected);
         }
 
         return true;

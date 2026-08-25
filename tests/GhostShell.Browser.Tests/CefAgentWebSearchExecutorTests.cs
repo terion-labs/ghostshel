@@ -5,6 +5,17 @@ namespace GhostShell.Browser.Tests;
 public sealed class CefAgentWebSearchExecutorTests
 {
     [Fact]
+    public async Task GovernedCefSearchFailsBeforeNativeDispatchWithoutPeerBinding()
+    {
+        var result = await new CefAgentWebSearchExecutor().SearchAsync(
+            new AgentWebSearchRequest("bounded query", 3),
+            CancellationToken.None);
+
+        var failure = Assert.IsType<AgentWebSearchExecutionResult.Failed>(result);
+        Assert.Equal(AgentWebSearchErrorCode.NavigationDenied, failure.Code);
+    }
+
+    [Fact]
     public void SearchAddressUsesOnlyFixedGoogleParametersAndEncodedQuery()
     {
         var address = CefAgentWebSearchExecutor.CreateSearchAddress(

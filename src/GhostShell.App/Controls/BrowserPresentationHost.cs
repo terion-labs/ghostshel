@@ -524,7 +524,9 @@ public sealed class BrowserPresentationHost : ContentControl
                 SetFailureState("The browser could not be initialized.");
             }
 
-            Trace.TraceError("Unable to attach the browser session: {0}", exception);
+            SecretSafeDiagnostics.WriteTrace(
+                "browser.renderer-attachment.failed",
+                exception);
         }
     }
 

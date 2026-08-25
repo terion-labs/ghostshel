@@ -1853,6 +1853,59 @@ public sealed class AgentBrowserSessionHostTests
         Assert.Equal(0, fixture.Renderer.KeyCount);
     }
 
+    internal async Task SecurityCampaignDispatchesExactLowLevelInputAsync(
+        string toolName)
+    {
+        await using var fixture = await AgentBrowserHostFixture.CreateAsync();
+        fixture.Renderer.SetViewport();
+        var binding = BrowserAutomationBinding.FromState(fixture.Renderer.State);
+        AgentBrowserRequest request = toolName switch
+        {
+            BuiltInAgentTools.BrowserKey => new AgentBrowserRequest.Key(
+                new BrowserKeyRequest(
+                    fixture.SessionId,
+                    binding,
+                    BrowserKeyAction.Press,
+                    BrowserKey.Enter)),
+            BuiltInAgentTools.BrowserScroll => new AgentBrowserRequest.Scroll(
+                new BrowserScrollRequest(
+                    fixture.SessionId,
+                    binding,
+                    originXCss: 10,
+                    originYCss: 10,
+                    deltaX: 0,
+                    deltaY: 100)),
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(toolName),
+                toolName,
+                null),
+        };
+        var action = await fixture.PrepareAsync(request);
+
+        var forged = await fixture.Client.RunAgentBrowserActionAsync(
+            AgentAuthorizationId.New(),
+            action,
+            default);
+
+        Assert.Equal(HostErrorCode.EngineFailed, forged.Error().Code);
+        Assert.Equal(0, fixture.Renderer.KeyCount);
+        Assert.Equal(0, fixture.Renderer.ScrollCount);
+
+        var result = await fixture.Client.RunAgentBrowserActionAsync(
+            fixture.Authorization.Arm(action),
+            action,
+            default);
+
+        Assert.IsType<AgentBrowserActionResult.Automation>(result.Value());
+        Assert.Equal(
+            toolName == BuiltInAgentTools.BrowserKey ? 1 : 0,
+            fixture.Renderer.KeyCount);
+        Assert.Equal(
+            toolName == BuiltInAgentTools.BrowserScroll ? 1 : 0,
+            fixture.Renderer.ScrollCount);
+        Assert.Single(fixture.Authorization.Completions);
+    }
+
     [Fact]
     public async Task HumanInputAfterMouseDispatchStartsReturnsOutcomeUnknown()
     {

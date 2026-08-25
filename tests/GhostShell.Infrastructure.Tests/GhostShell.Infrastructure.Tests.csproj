@@ -17,6 +17,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\SecurityCampaignCanaries.cs"
+             Link="Shared\SecurityCampaignCanaries.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\GhostShell.Infrastructure\GhostShell.Infrastructure.csproj" />
     <ProjectReference
       Include="..\..\tools\GhostShell.SqlLanguageTestWorker\GhostShell.SqlLanguageTestWorker.csproj"

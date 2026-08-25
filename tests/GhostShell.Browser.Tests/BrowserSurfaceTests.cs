@@ -2282,6 +2282,130 @@ public sealed class BrowserSurfaceTests
         Assert.Equal(0, nativeView.NavigateCount);
     }
 
+    [Fact(DisplayName = "content.browser.cef-peer-binding.fail-closed")]
+    [Trait("SecurityCampaignCase", "content.browser.cef-peer-binding.fail-closed")]
+    public async Task GovernedNavigationFailsBeforeTransportWithoutPeerBinding()
+    {
+        var nativeView = new RecordingEmbeddedBrowserView
+        {
+            SupportsPeerBoundTransport = false,
+        };
+        var surface = new BrowserSurface(
+            nativeView,
+            BrowserTestDestinationPolicy.Public,
+            InlineBrowserUiDispatcher.Instance,
+            capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
+        var requested = Address("https://public.example.test/start");
+
+        var result = await surface.NavigateWithinOriginAsync(
+            new BrowserOriginConstrainedNavigationRequest.Navigate(requested),
+            BrowserNavigationOrigin.FromAddress(requested),
+            BrowserNavigationStartBinding.FromState(surface.State),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(BrowserErrorCode.NavigationPolicyDenied, result.Error?.Code);
+        Assert.Contains("connected peer", result.Error?.Message, StringComparison.Ordinal);
+        Assert.Equal(0, nativeView.NavigateCount);
+    }
+
+    [Fact]
+    public async Task GovernedElementMutationsFailBeforeNativeDispatchWithoutPeerBinding()
+    {
+        var clickNative = new RecordingEmbeddedBrowserView
+        {
+            SupportsPeerBoundTransport = false,
+            SnapshotResult = ActionableSnapshot("click"),
+        };
+        var clickSurface = Surface(clickNative);
+        var clickDocument = BrowserDocumentBinding.FromState(clickSurface.State);
+        var clickSnapshot = await clickSurface.CaptureSnapshotAsync(
+            clickDocument,
+            CancellationToken.None);
+        var click = await clickSurface.ClickWithinOriginAsync(
+            clickSnapshot.Value!.Nodes[1].Reference!,
+            BrowserNavigationOrigin.FromAddress(clickDocument.Address),
+            CancellationToken.None);
+
+        var fillNative = new RecordingEmbeddedBrowserView
+        {
+            SupportsPeerBoundTransport = false,
+            SnapshotResult = ActionableSnapshot("fill"),
+        };
+        var fillSurface = Surface(fillNative);
+        var fillDocument = BrowserDocumentBinding.FromState(fillSurface.State);
+        var fillSnapshot = await fillSurface.CaptureSnapshotAsync(
+            fillDocument,
+            CancellationToken.None);
+        var fill = await fillSurface.FillWithinOriginAsync(
+            fillSnapshot.Value!.Nodes[1].Reference!,
+            "safe text",
+            BrowserNavigationOrigin.FromAddress(fillDocument.Address),
+            CancellationToken.None);
+
+        var checkNative = new RecordingEmbeddedBrowserView
+        {
+            SupportsPeerBoundTransport = false,
+            SnapshotResult = ActionableSnapshot("check"),
+        };
+        var checkSurface = Surface(checkNative);
+        var checkDocument = BrowserDocumentBinding.FromState(checkSurface.State);
+        var checkSnapshot = await checkSurface.CaptureSnapshotAsync(
+            checkDocument,
+            CancellationToken.None);
+        var check = await checkSurface.CheckWithinOriginAsync(
+            checkSnapshot.Value!.Nodes[1].Reference!,
+            BrowserNavigationOrigin.FromAddress(checkDocument.Address),
+            CancellationToken.None);
+
+        Assert.All(
+            [click.Error, fill.Error, check.Error],
+            error => Assert.Equal(BrowserErrorCode.NavigationPolicyDenied, error?.Code));
+        Assert.Equal(0, clickNative.ClickCount);
+        Assert.Equal(0, fillNative.FillCount);
+        Assert.Equal(0, checkNative.CheckCount);
+    }
+
+    [Fact]
+    public async Task ManualNavigationAndLoadedContentObservationRemainAvailableWithoutPeerBinding()
+    {
+        var nativeView = new RecordingEmbeddedBrowserView
+        {
+            SupportsPeerBoundTransport = false,
+        };
+        var surface = new BrowserSurface(
+            nativeView,
+            BrowserTestDestinationPolicy.Public,
+            InlineBrowserUiDispatcher.Instance,
+            capabilityProfile: BrowserCapabilityProfile.FullAutomationCandidate);
+        var requested = Address("https://manual.example.test/start");
+
+        var manual = await surface.NavigateAsync(
+            requested,
+            CancellationToken.None);
+        Assert.True(manual.IsSuccess);
+        Assert.False(nativeView.RaiseNavigationStarted(requested));
+        nativeView.RaiseNavigationCompleted(requested, isSuccess: true);
+
+        var snapshot = await surface.CaptureSnapshotAsync(
+            BrowserDocumentBinding.FromState(surface.State),
+            CancellationToken.None);
+        var governed = await surface.NavigateWithinOriginAsync(
+            new BrowserOriginConstrainedNavigationRequest.Reload(),
+            BrowserNavigationOrigin.FromAddress(requested),
+            BrowserNavigationStartBinding.FromState(surface.State),
+            CancellationToken.None);
+
+        Assert.True(snapshot.IsSuccess);
+        Assert.Equal(1, nativeView.SnapshotCount);
+        Assert.False(governed.IsSuccess);
+        Assert.Equal(
+            BrowserErrorCode.NavigationPolicyDenied,
+            governed.Error?.Code);
+        Assert.Equal(1, nativeView.NavigateCount);
+        Assert.Equal(0, nativeView.ReloadCount);
+    }
+
     [Fact]
     public async Task GovernedNavigationRejectsOriginBeforeResolvingItsHost()
     {

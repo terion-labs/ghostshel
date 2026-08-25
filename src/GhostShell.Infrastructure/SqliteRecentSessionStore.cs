@@ -389,24 +389,19 @@ public sealed class SqliteRecentSessionStore :
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(query);
-        var sqliteStage = "open connection";
         try
         {
             await using var connection = await _database.OpenConnectionAsync(cancellationToken)
                 .ConfigureAwait(false);
-            sqliteStage = "begin transaction";
             await using var transaction = connection.BeginTransaction(deferred: false);
-            sqliteStage = "read retention";
             var retention = await ResolveRetentionAsync(
                     connection,
                     transaction,
                     cancellationToken)
                 .ConfigureAwait(false);
-            sqliteStage = "prune history";
             await PruneAsync(connection, transaction, retention, cancellationToken)
                 .ConfigureAwait(false);
 
-            sqliteStage = "read history";
             await using var command = connection.CreateCommand();
             command.Transaction = transaction;
             command.CommandText = """
@@ -427,18 +422,15 @@ public sealed class SqliteRecentSessionStore :
                 (object?)query.SourceKind?.Value ?? DBNull.Value);
             command.Parameters.AddWithValue("$limit", query.Limit);
             var sessions = new List<RecentSessionRecord>();
-            sqliteStage = "execute history query";
             await using (var reader = await command.ExecuteReaderAsync(cancellationToken)
                 .ConfigureAwait(false))
             {
-                sqliteStage = "materialize history";
                 while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                 {
                     sessions.Add(ReadRecord(reader));
                 }
             }
 
-            sqliteStage = "commit transaction";
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
             return RecentSessionStoreResult<IReadOnlyList<RecentSessionRecord>>.Success(sessions);
         }
@@ -450,11 +442,9 @@ public sealed class SqliteRecentSessionStore :
         }
         catch (SqliteException exception)
         {
-            Console.Error.WriteLine(
-                "[ghostshell:history] SQLite history read failed "
-                + $"during {sqliteStage} "
-                + $"(code {exception.SqliteErrorCode}, extended {exception.SqliteExtendedErrorCode}): "
-                + exception.Message);
+            SecretSafeDiagnosticProjection.WriteStandardError(
+                "history.sqlite-read.failed",
+                exception);
             return Failure<IReadOnlyList<RecentSessionRecord>>(
                 MapSqliteError(exception),
                 "The recent-session store could not read history.");

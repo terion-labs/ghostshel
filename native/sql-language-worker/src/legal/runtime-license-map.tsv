@@ -1,8 +1,8 @@
 # group:artifact:version<TAB>distribution license<TAB>fallback licenses when the JAR omits one<TAB>supplemental legal documents
-com.fasterxml.jackson.core:jackson-annotations:2.18.6	Apache-2.0	-	-
-com.fasterxml.jackson.core:jackson-core:2.18.6	Apache-2.0 AND MIT AND BSL-1.0 AND BSD-2-Clause	-	licenses/fast-double-parser-07d9189-bsl-1.0.txt,licenses/fastdoubleparser-522be16-mit.txt
-com.fasterxml.jackson.core:jackson-databind:2.18.6	Apache-2.0	-	-
-com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.18.6	Apache-2.0	-	-
+com.fasterxml.jackson.core:jackson-annotations:2.18.9	Apache-2.0	-	-
+com.fasterxml.jackson.core:jackson-core:2.18.9	Apache-2.0 AND MIT AND BSL-1.0 AND BSD-2-Clause	-	licenses/fast-double-parser-07d9189-bsl-1.0.txt,licenses/fastdoubleparser-522be16-mit.txt
+com.fasterxml.jackson.core:jackson-databind:2.18.9	Apache-2.0	-	-
+com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.18.9	Apache-2.0	-	-
 com.google.errorprone:error_prone_annotations:2.36.0	Apache-2.0	licenses/apache-2.0.txt	-
 com.google.guava:failureaccess:1.0.3	Apache-2.0	-	-
 com.google.guava:guava:33.4.8-jre	Apache-2.0	-	-
@@ -27,13 +27,10 @@ org.apache.calcite:calcite-babel:1.42.0	Apache-2.0	-	-
 org.apache.calcite:calcite-core:1.42.0	Apache-2.0	-	-
 org.apache.calcite:calcite-linq4j:1.42.0	Apache-2.0	-	-
 org.apache.commons:commons-dbcp2:2.11.0	Apache-2.0	-	-
-org.apache.commons:commons-lang3:3.1	Apache-2.0	-	-
+org.apache.commons:commons-lang3:3.18.0	Apache-2.0	-	-
 org.apache.commons:commons-math3:3.6.1	Apache-2.0 AND Minpack AND BSD-2-Clause AND BSD-3-Clause	-	-
 org.apache.commons:commons-pool2:2.12.0	Apache-2.0	-	-
 org.apache.commons:commons-text:1.11.0	Apache-2.0	-	-
-org.apache.httpcomponents.client5:httpclient5:5.5	Apache-2.0	-	-
-org.apache.httpcomponents.core5:httpcore5-h2:5.3.4	Apache-2.0	-	-
-org.apache.httpcomponents.core5:httpcore5:5.3.5	Apache-2.0	-	-
 org.apiguardian:apiguardian-api:1.1.2	Apache-2.0	-	-
 org.checkerframework:checker-qual:3.10.0	MIT	-	-
 org.codehaus.janino:commons-compiler:3.1.12	BSD-3-Clause	licenses/janino-3.1.12-bsd-3-clause.txt	-
