@@ -220,6 +220,80 @@ public sealed class RuntimeDockControlHeadlessTests
             return Task.CompletedTask;
         });
 
+    [Fact]
+    public Task Closing_the_right_branch_expands_the_surviving_nested_column() =>
+        RunHeadlessAsync(() =>
+        {
+            var tab = NewTab();
+            var upperLeft = Assert.IsType<UnavailableRuntimePanelViewModel>(tab.ActivePanel);
+            var right = Panel("right-panel", "Right");
+            Assert.True(tab.SplitActivePanel(right, PanelSplitOrientation.LeftRight));
+            Assert.True(tab.ActivatePanel(upperLeft.Id));
+            var lowerLeft = Panel("lower-left-panel", "Lower left");
+            Assert.True(tab.SplitActivePanel(lowerLeft, PanelSplitOrientation.TopBottom));
+
+            var canvas = new RuntimeDockControl
+            {
+                Theme = Assert.IsType<ControlTheme>(
+                    new WorkspaceView().Resources["RuntimeDockControlTheme"]),
+                RuntimeTab = tab,
+                InitializeFactory = true,
+                InitializeLayout = false,
+            };
+            var window = new Window
+            {
+                Width = 1_200,
+                Height = 700,
+                Content = canvas,
+            };
+            foreach (var template in new MainWindow().DataTemplates)
+            {
+                window.DataTemplates.Add(template);
+            }
+
+            window.Show();
+            try
+            {
+                canvas.ApplyTemplate();
+                window.UpdateLayout();
+
+                var widthBeforeClose = PanelHost(canvas, upperLeft).Bounds.Width;
+                Assert.InRange(widthBeforeClose, 500, 700);
+
+                Assert.True(tab.RemovePanel(right.Id));
+                window.UpdateLayout();
+
+                var upperHost = PanelHost(canvas, upperLeft);
+                var lowerHost = PanelHost(canvas, lowerLeft);
+                Assert.InRange(upperHost.Bounds.Width, 1_100, 1_200);
+                Assert.InRange(lowerHost.Bounds.Width, 1_100, 1_200);
+                Assert.DoesNotContain(
+                    canvas.GetVisualDescendants().OfType<RuntimePanelContentControl>(),
+                    host => ReferenceEquals(host.Content, right));
+            }
+            finally
+            {
+                window.Close();
+            }
+
+            return Task.CompletedTask;
+        });
+
+    private static RuntimePanelContentControl PanelHost(
+        RuntimeDockControl canvas,
+        RuntimePanelViewModel panel) =>
+        Assert.Single(
+            canvas.GetVisualDescendants().OfType<RuntimePanelContentControl>(),
+            host => ReferenceEquals(host.Content, panel));
+
+    private static UnavailableRuntimePanelViewModel Panel(string id, string title) =>
+        new(
+            new PanelInstanceId(id),
+            PanelKind.Terminal,
+            title,
+            "LOCAL",
+            "Unavailable in this test.");
+
     private static RuntimeTabViewModel NewTab()
     {
         var tab = new RuntimeTabViewModel(

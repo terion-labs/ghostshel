@@ -81,6 +81,35 @@ public sealed class RuntimeDockLayoutPersistenceTests
     }
 
     [Fact]
+    public void Closing_a_branch_normalizes_the_surviving_dock_before_presentation()
+    {
+        var tab = NewTab("nested-close-reflow");
+        var upperLeft = Panel("nested-close-upper-left");
+        var right = Panel("nested-close-right");
+        var lowerLeft = Panel("nested-close-lower-left");
+        tab.AddPanel(upperLeft);
+        Assert.True(tab.SplitActivePanel(right, PanelSplitOrientation.LeftRight));
+        Assert.True(tab.ActivatePanel(upperLeft.Id));
+        Assert.True(tab.SplitActivePanel(lowerLeft, PanelSplitOrientation.TopBottom));
+
+        Assert.True(tab.RemovePanel(right.Id));
+
+        var singletonDocks = Enumerate(tab.DockLayout)
+            .OfType<IProportionalDock>()
+            .Select(dock => (dock.VisibleDockables ?? [])
+                .Where(dockable => dockable is not IProportionalDockSplitter)
+                .ToArray())
+            .Where(panes => panes.Length == 1)
+            .ToArray();
+        Assert.NotEmpty(singletonDocks);
+        Assert.All(singletonDocks, panes =>
+        {
+            Assert.Equal(1d, panes[0].Proportion);
+            Assert.Equal(1d, panes[0].CollapsedProportion);
+        });
+    }
+
+    [Fact]
     public void Adding_to_the_workspace_edge_wraps_an_existing_recursive_split()
     {
         var tab = NewTab("nested-edge-add");

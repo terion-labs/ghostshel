@@ -200,6 +200,7 @@ internal sealed class RuntimeDockLayoutController
         var document = Factory.Detach(panelId.Value);
         if (document is not null)
         {
+            ExpandSingleChildDocks();
             Changed();
         }
 
@@ -312,6 +313,27 @@ internal sealed class RuntimeDockLayoutController
         else
         {
             Factory.RemoveDockable(document, collapse: true);
+        }
+
+        ExpandSingleChildDocks();
+    }
+
+    private void ExpandSingleChildDocks()
+    {
+        foreach (var dock in EnumerateDockables(Layout).OfType<IProportionalDock>())
+        {
+            var children = (dock.VisibleDockables ?? [])
+                .Where(dockable => dockable is not IProportionalDockSplitter)
+                .ToArray();
+            if (children.Length != 1)
+            {
+                continue;
+            }
+
+            // ProportionalStackPanel normally repairs this during measure. A
+            // close must leave a complete model even when no measure follows.
+            children[0].Proportion = 1d;
+            children[0].CollapsedProportion = 1d;
         }
     }
 
