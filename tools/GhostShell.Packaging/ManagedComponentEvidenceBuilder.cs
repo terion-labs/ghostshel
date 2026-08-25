@@ -337,11 +337,6 @@ internal static class ManagedComponentEvidenceBuilder
                 "releaseBlockers, dependencies, and additionalComponents must be arrays");
         }
 
-        if (catalog.ReleaseBlockers.Count == 0)
-        {
-            throw CatalogError("releaseBlockers must not be empty");
-        }
-
         foreach (var blocker in catalog.ReleaseBlockers)
         {
             ValidateText(blocker, "release blocker", 1_000);

@@ -2334,12 +2334,11 @@ validates the complete package fingerprint and publishes with an OS-level
 exclusive rename in the same process. Exact candidate hashes are evidence
 artifacts, not evergreen architecture claims.
 
-This is structural unsigned-package and provenance evidence, not legal
-clearance or a distributable release. The native component catalog remains
-release-blocked until independent review confirms the exact linked
-libghostty-vt and staged shell-integration source/license closure. Complete
-source/relinking delivery, security/prompt-injection and soak suites, agreed
-performance measurements, icons/installers, signing, notarization, and
+This is structural unsigned-package and provenance evidence, not an independent
+legal opinion or a distributable release. The project owner accepted the exact
+macOS libghostty-vt and staged shell-integration source/license closure in
+`licenses/macos-release-legal.json`. Security/prompt-injection and soak suites,
+agreed performance measurements, icons/installers, signing, notarization, and
 named-host package launch, terminal rendering/IME, and accessibility evidence
 remain open.
 

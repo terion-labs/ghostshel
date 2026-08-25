@@ -13,7 +13,7 @@ ADR 0008 requires an SMB adapter behind the same bounded `IFileProvider` contrac
 
 The production transport uses `SMBLibrary` `1.5.7.1`, published 2026-07-13, through its .NET Standard 2.0 asset. The project is active, cross-platform, and implements SMB 1.0, 2.0, 2.1, and 3.0 clients and servers. GhostSHELL instantiates only `SMB2Client`, enables its SMB 3.1.1 negotiation path, and uses direct TCP hosting on port 445. It never offers SMB 1.0/CIFS and does not use NetBIOS port 139. The package remains a separate, unmodified managed assembly behind `SmbLibrarySessionFactory`; no SMBLibrary type appears in a public provider constructor or result.
 
-SMBLibrary is licensed `LGPL-3.0-or-later`, not MIT. GhostSHELL remains MIT, while SMBLibrary keeps its own license. The macOS Native AOT distribution retains the applicable notices and publishes an exact source-and-rebuild path for the user's LGPL replacement rights. Organizations that cannot accept those obligations must obtain the vendor's commercial license or replace this private adapter. Independent review remains required before a release receives legal clearance.
+SMBLibrary is licensed `LGPL-3.0-or-later`, not MIT. GhostSHELL remains MIT, while SMBLibrary keeps its own license. The macOS Native AOT distribution retains the applicable notices and publishes an exact source-and-rebuild path for the user's LGPL replacement rights. Organizations that cannot accept those obligations must obtain the vendor's commercial license or replace this private adapter. The project owner accepted the documented path for the exact macOS closure without an independent legal review; dependency drift requires a new decision.
 
 ### Identity, authentication, and transport state
 

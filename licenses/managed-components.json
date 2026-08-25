@@ -3,12 +3,7 @@
   "documentName": "GhostSHELL ${productVersion} managed-component evidence",
   "documentCreatedUtc": "2026-08-25T00:00:00Z",
   "namespaceBase": "https://ghostshell.app/spdx/managed-components/${productVersion}",
-  "releaseBlockers": [
-    "Independent review must approve the documented SMBLibrary 1.5.7.1 LGPL source-and-Native-AOT-rebuild path.",
-    "Avalonia.Fonts.Inter 12.0.5 embeds Inter font binaries but its NuGet archive contains no OFL text or reserved-font-name notice; exact upstream font provenance remains under review.",
-    "The exact libghostty-vt and GPL-covered shell-resource closure has engineering evidence but has not completed independent release review.",
-    "The macOS CEF credits and native SQL worker's remaining commons-math3 source exception require independent review."
-  ],
+  "releaseBlockers": [],
   "dependencies": [
     {
       "identity": "AWSSDK.Core/4.0.102.1",
@@ -1694,7 +1689,7 @@
       "file": "libghostty-vt.dylib",
       "licenseDeclared": "MIT",
       "downloadLocation": "https://github.com/ghostty-org/ghostty/tree/08f039fbb3dea9c6b1cdb5ff4550666598122346",
-      "comment": "Pinned Ghostty VT state engine; the aggregate transitive native license conclusion remains blocked pending independent review.",
+      "comment": "Pinned Ghostty VT state engine; the project owner's exact macOS disposition is recorded in macos-release-legal.json and must be renewed after dependency drift.",
       "licenseEvidenceFile": "GHOSTTY-LICENSE",
       "licenseEvidenceSha256": "386211873e5b7a02f663ae4d7adf96285999f91608f8f9f31fecfd0f4095e6f1",
       "licenseEvidenceMinimumBytes": 1024

@@ -37,8 +37,8 @@ public sealed class MacOsReleaseLegalClosureTests : IDisposable
     {
         var recordPath = CreateRecord(
             legalClearance: false,
-            ["Independent review remains open."],
-            "pending-independent-review",
+            ["The project owner has not made a release decision."],
+            "pending-project-owner-decision",
             reviewedBy: null,
             reviewedAtUtc: null);
 
@@ -60,20 +60,19 @@ public sealed class MacOsReleaseLegalClosureTests : IDisposable
             Path.Combine(repositoryRoot, "licenses", "macos-release-legal.json"),
             repositoryRoot);
 
-        Assert.False(inspection.LegalClearance);
-        Assert.NotEmpty(inspection.ReleaseBlockers);
-        Assert.Throws<InvalidDataException>(() =>
-            MacOsReleaseLegalClosure.RequirePublicationClearance(inspection));
+        Assert.True(inspection.LegalClearance);
+        Assert.Empty(inspection.ReleaseBlockers);
+        MacOsReleaseLegalClosure.RequirePublicationClearance(inspection);
     }
 
     [Fact]
-    public void Approved_record_with_no_blockers_can_cross_publication_boundary()
+    public void Owner_accepted_record_with_no_blockers_can_cross_publication_boundary()
     {
         var recordPath = CreateRecord(
             legalClearance: true,
             [],
-            "approved",
-            "release reviewer",
+            "accepted-by-project-owner",
+            "Terion Labs project owner",
             "2026-08-25T12:00:00Z");
 
         var inspection = MacOsReleaseLegalClosure.Validate(
@@ -96,8 +95,10 @@ public sealed class MacOsReleaseLegalClosureTests : IDisposable
         var recordPath = CreateRecord(
             legalClearance,
             blockers,
-            legalClearance ? "approved" : "pending-independent-review",
-            legalClearance ? "release reviewer" : null,
+            legalClearance
+                ? "accepted-by-project-owner"
+                : "pending-project-owner-decision",
+            legalClearance ? "Terion Labs project owner" : null,
             legalClearance ? "2026-08-25T12:00:00Z" : null);
 
         Assert.Throws<InvalidDataException>(() =>
@@ -111,8 +112,8 @@ public sealed class MacOsReleaseLegalClosureTests : IDisposable
     {
         var recordPath = CreateRecord(
             legalClearance: false,
-            ["Independent review remains open."],
-            "pending-independent-review",
+            ["The project owner has not made a release decision."],
+            "pending-project-owner-decision",
             reviewedBy: null,
             reviewedAtUtc: null);
         File.AppendAllText(
@@ -131,12 +132,31 @@ public sealed class MacOsReleaseLegalClosureTests : IDisposable
         var recordPath = CreateRecord(
             legalClearance: true,
             [],
-            "approved",
-            "release reviewer",
+            "accepted-by-project-owner",
+            "Terion Labs project owner",
             "2026-08-25T12:00:00Z");
         var record = JsonNode.Parse(File.ReadAllText(recordPath))!.AsObject();
         record["dispositions"]!["cefMacos"]!["status"] =
-            "pending-independent-review";
+            "pending-project-owner-decision";
+        File.WriteAllText(recordPath, record.ToJsonString());
+
+        Assert.Throws<InvalidDataException>(() =>
+            MacOsReleaseLegalClosure.Validate(
+                recordPath,
+                _temporaryDirectory));
+    }
+
+    [Fact]
+    public void Owner_clearance_rejects_an_ambiguous_review_basis()
+    {
+        var recordPath = CreateRecord(
+            legalClearance: true,
+            [],
+            "accepted-by-project-owner",
+            "Terion Labs project owner",
+            "2026-08-25T12:00:00Z");
+        var record = JsonNode.Parse(File.ReadAllText(recordPath))!.AsObject();
+        record["review"]!["basis"] = "approved";
         File.WriteAllText(recordPath, record.ToJsonString());
 
         Assert.Throws<InvalidDataException>(() =>
@@ -182,6 +202,9 @@ public sealed class MacOsReleaseLegalClosureTests : IDisposable
             review = new
             {
                 status,
+                basis = legalClearance
+                    ? "documented-engineering-evidence-without-independent-legal-review"
+                    : null,
                 reviewedBy,
                 reviewedAtUtc,
             },
@@ -203,7 +226,9 @@ public sealed class MacOsReleaseLegalClosureTests : IDisposable
 
     private static object Disposition(bool approved, string comment) => new
     {
-        status = approved ? "approved-for-macos" : "pending-independent-review",
+        status = approved
+            ? "accepted-by-owner-for-macos"
+            : "pending-project-owner-decision",
         scope = "macos-arm64",
         comment,
     };

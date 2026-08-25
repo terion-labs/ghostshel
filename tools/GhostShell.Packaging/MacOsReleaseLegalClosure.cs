@@ -12,13 +12,19 @@ internal sealed record MacOsReleaseLegalInspection(
 
 /// <summary>
 /// Binds the macOS legal decision to the exact engineering evidence reviewed.
-/// A blocked record is valid package evidence, but only an approved record can
-/// cross the separate tag-publication boundary.
+/// A blocked record is valid package evidence, but only a record accepted by
+/// the project owner can cross the separate tag-publication boundary.
 /// </summary>
 internal static class MacOsReleaseLegalClosure
 {
     private const int MaximumRecordBytes = 1024 * 1024;
     private const string Format = "ghostshell-macos-release-legal-closure-v1";
+    private const string AcceptedReviewStatus = "accepted-by-project-owner";
+    private const string AcceptedReviewBasis =
+        "documented-engineering-evidence-without-independent-legal-review";
+    private const string PendingReviewStatus = "pending-project-owner-decision";
+    private const string AcceptedDispositionStatus =
+        "accepted-by-owner-for-macos";
 
     private static readonly string[] RequiredEvidencePaths =
     [
@@ -103,7 +109,12 @@ internal static class MacOsReleaseLegalClosure
         bool legalClearance,
         IReadOnlyList<string> blockers)
     {
-        RequireProperties(review, "status", "reviewedBy", "reviewedAtUtc");
+        RequireProperties(
+            review,
+            "status",
+            "basis",
+            "reviewedBy",
+            "reviewedAtUtc");
         if (legalClearance)
         {
             if (blockers.Count != 0)
@@ -112,7 +123,8 @@ internal static class MacOsReleaseLegalClosure
                     "A cleared macOS legal record cannot retain release blockers.");
             }
 
-            RequireString(review, "status", "approved");
+            RequireString(review, "status", AcceptedReviewStatus);
+            RequireString(review, "basis", AcceptedReviewBasis);
             _ = RequireNonEmptyString(review, "reviewedBy");
             var reviewedAt = RequireNonEmptyString(review, "reviewedAtUtc");
             if (!DateTimeOffset.TryParseExact(
@@ -123,7 +135,7 @@ internal static class MacOsReleaseLegalClosure
                     out _))
             {
                 throw new InvalidDataException(
-                    "An approved macOS legal record requires a valid reviewedAtUtc value.");
+                    "An owner-accepted macOS legal record requires a valid reviewedAtUtc value.");
             }
 
             return;
@@ -135,7 +147,8 @@ internal static class MacOsReleaseLegalClosure
                 "A blocked macOS legal record must explain at least one release blocker.");
         }
 
-        RequireString(review, "status", "pending-independent-review");
+        RequireString(review, "status", PendingReviewStatus);
+        RequireNull(review, "basis");
         RequireNull(review, "reviewedBy");
         RequireNull(review, "reviewedAtUtc");
     }
@@ -152,7 +165,7 @@ internal static class MacOsReleaseLegalClosure
             "sqlLanguageWorker",
         };
         RequireProperties(dispositions, names);
-        var approvedCount = 0;
+        var acceptedCount = 0;
         foreach (var name in names)
         {
             var disposition = dispositions.GetProperty(name);
@@ -160,13 +173,16 @@ internal static class MacOsReleaseLegalClosure
             RequireString(disposition, "scope", "macos-arm64");
             _ = RequireNonEmptyString(disposition, "comment");
             var status = RequireNonEmptyString(disposition, "status");
-            if (string.Equals(status, "approved-for-macos", StringComparison.Ordinal))
+            if (string.Equals(
+                    status,
+                    AcceptedDispositionStatus,
+                    StringComparison.Ordinal))
             {
-                approvedCount++;
+                acceptedCount++;
             }
             else if (!string.Equals(
                          status,
-                         "pending-independent-review",
+                         PendingReviewStatus,
                          StringComparison.Ordinal))
             {
                 throw new InvalidDataException(
@@ -174,13 +190,13 @@ internal static class MacOsReleaseLegalClosure
             }
         }
 
-        if (legalClearance && approvedCount != names.Length)
+        if (legalClearance && acceptedCount != names.Length)
         {
             throw new InvalidDataException(
-                "macOS legal clearance requires an approved disposition for every nested evidence set.");
+                "macOS legal clearance requires an owner-accepted disposition for every nested evidence set.");
         }
 
-        if (!legalClearance && approvedCount == names.Length)
+        if (!legalClearance && acceptedCount == names.Length)
         {
             throw new InvalidDataException(
                 "A blocked macOS legal record must retain a pending nested evidence disposition.");

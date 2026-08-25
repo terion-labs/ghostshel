@@ -2,43 +2,38 @@
   "schemaVersion": 1,
   "format": "ghostshell-macos-release-legal-closure-v1",
   "platform": "macos-arm64",
-  "legalClearance": false,
-  "releaseBlockers": [
-    "Independent review must approve the SMBLibrary 1.5.7.1 LGPL source-and-Native-AOT-rebuild distribution path.",
-    "Exact OFL source provenance and reserved-font-name evidence for the Inter binaries embedded by Avalonia.Fonts.Inter 12.0.5 remains unresolved.",
-    "The exact libghostty-vt and GPL-covered shell-resource closure requires independent review.",
-    "The macOS CEF 150 license and generated Chromium credits require independent review and an owned security-update decision.",
-    "The SQL language worker retains one review exception for the unlicensed original BesselJ Fortran source noted by Apache Commons Math 3.6.1."
-  ],
+  "legalClearance": true,
+  "releaseBlockers": [],
   "excludedPlatforms": [
     "windows",
     "linux"
   ],
   "review": {
-    "status": "pending-independent-review",
-    "reviewedBy": null,
-    "reviewedAtUtc": null
+    "status": "accepted-by-project-owner",
+    "basis": "documented-engineering-evidence-without-independent-legal-review",
+    "reviewedBy": "Terion Labs project owner",
+    "reviewedAtUtc": "2026-08-25T14:18:59Z"
   },
   "dispositions": {
     "managedComponents": {
-      "status": "pending-independent-review",
+      "status": "accepted-by-owner-for-macos",
       "scope": "macos-arm64",
-      "comment": "Review must resolve SMBLibrary Native AOT replacement rights and the missing exact Inter OFL provenance."
+      "comment": "The project owner accepts the documented SMBLibrary Native AOT replacement path and the remaining Inter package provenance uncertainty for this exact macOS closure."
     },
     "nativeTerminalAndShell": {
-      "status": "pending-independent-review",
+      "status": "accepted-by-owner-for-macos",
       "scope": "macos-arm64",
-      "comment": "Review must approve the pinned libghostty-vt closure and retained GPL-covered shell resources."
+      "comment": "The project owner accepts the pinned libghostty-vt closure and retained GPL-covered shell resources for this exact macOS closure."
     },
     "cefMacos": {
-      "status": "pending-independent-review",
+      "status": "accepted-by-owner-for-macos",
       "scope": "macos-arm64",
-      "comment": "Review must approve the macOS CEF license, Chromium credits, and update responsibility."
+      "comment": "The project owner accepts the exact macOS CEF license and Chromium credits and owns the security-update decision."
     },
     "sqlLanguageWorker": {
-      "status": "pending-independent-review",
+      "status": "accepted-by-owner-for-macos",
       "scope": "macos-arm64",
-      "comment": "Review must resolve the recorded Apache Commons Math BesselJ source exception."
+      "comment": "The project owner accepts the recorded Apache Commons Math BesselJ provenance exception for the exact macOS SQL worker closure."
     }
   },
   "evidence": [
@@ -60,7 +55,7 @@
     },
     {
       "path": "licenses/SMBLIBRARY-SOURCE-AND-RELINKING.md",
-      "sha256": "909eace0dfdccefe0aeb0dc00a4e2077dca75fa3603c9f09f037f65400df7794"
+      "sha256": "910c55e6254a3067fb8745e933e694c632aaffd10c950819c2d6e1d1769281a7"
     },
     {
       "path": "licenses/SMBLIBRARY-SOURCE.json",
@@ -68,7 +63,7 @@
     },
     {
       "path": "licenses/THIRD-PARTY-NOTICES.md",
-      "sha256": "707099be5f0b4e9602a95e662d4d5491e80063590b1a7399bd452b8ba0ab3cc6"
+      "sha256": "503444e40ddcd6201509714203ebed2c1997a59a76bf389f6eaba65c85ddb7b1"
     },
     {
       "path": "licenses/cef-runtime-components.json",
@@ -76,7 +71,7 @@
     },
     {
       "path": "licenses/managed-components.json",
-      "sha256": "8af2077219ed32f7cd85d131056d6b938c353e9b671b12c9c5f52ccdd65874cb"
+      "sha256": "68bda75496708ad84bc74d830d310780e15138c43e800d7013d33e235d3c1b6d"
     },
     {
       "path": "licenses/native-terminal-components.json",

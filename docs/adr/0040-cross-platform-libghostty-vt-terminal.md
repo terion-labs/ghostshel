@@ -176,8 +176,10 @@ is reported without inventing semantic shell events.
   mouse, resize, sleep/wake, and VoiceOver/Narrator/Orca acceptance remain
   release gates. Deterministic unit and integration tests do not turn an
   unobserved platform into a passing release target.
-- The current native component and staged shell-integration license closure is
-  explicitly release-blocked until independent review is complete.
+- The project owner accepted the exact macOS native component and staged
+  shell-integration license closure recorded in
+  `licenses/macos-release-legal.json` without an independent legal review.
+  Other platform closures require their own decision.
 
 ## Alternatives rejected
 

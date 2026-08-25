@@ -1908,11 +1908,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
                     ["documentCreatedUtc"] = "2026-07-23T00:00:00Z",
                     ["namespaceBase"] =
                         "https://ghostshell.test/spdx/managed-components/${productVersion}",
-                    ["releaseBlockers"] = new[]
-                    {
-                        "SMBLibrary release evidence remains unresolved.",
-                        "The complete native dependency graph remains unresolved.",
-                    },
+                    ["releaseBlockers"] = Array.Empty<string>(),
                     ["dependencies"] = catalogDependencies
                         .OrderBy(
                             component => (string)component["identity"]!,
@@ -2277,11 +2273,12 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             format = "ghostshell-macos-release-legal-closure-v1",
             platform = "macos-arm64",
             legalClearance = false,
-            releaseBlockers = new[] { "Fixture independent review remains open." },
+            releaseBlockers = new[] { "Fixture owner decision remains open." },
             excludedPlatforms = new[] { "windows", "linux" },
             review = new
             {
-                status = "pending-independent-review",
+                status = "pending-project-owner-decision",
+                basis = (string?)null,
                 reviewedBy = (string?)null,
                 reviewedAtUtc = (string?)null,
             },
@@ -2319,7 +2316,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
 
         static object PendingDisposition(string comment) => new
         {
-            status = "pending-independent-review",
+            status = "pending-project-owner-decision",
             scope = "macos-arm64",
             comment,
         };

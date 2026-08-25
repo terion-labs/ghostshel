@@ -77,7 +77,8 @@ set its `distribution.modified` value to `true`.
 Finally, update the matching SHA-256 values in
 `licenses/macos-release-legal.json` for the changed managed catalog and SMB
 source record. Keep `legalClearance` false, retain a release blocker, and keep
-the SMB/managed disposition at `pending-independent-review`. This allows a
+the SMB/managed disposition at `pending-project-owner-decision`. Set the review
+`basis`, `reviewedBy`, and `reviewedAtUtc` fields to null. This allows a
 local relinked package while preventing it from being published as a cleared
 release.
 

@@ -35,18 +35,20 @@ part from Kitty under GPL-3.0-or-later, as declared in those files, and
 `bash-preexec` under MIT. The package retains the source notices and GPLv3 text.
 The current macOS `libghostty-vt.dylib` links only Apple's system
 `libSystem.B.dylib`; it does not link the obsolete gettext `libintl` library.
-Independent review of the exact Ghostty and shell-resource closure remains
-open.
+The project owner accepts this exact pinned Ghostty and shell-resource closure
+for macOS distribution. No independent legal review was obtained.
 
 SMBLibrary 1.5.7.1 is recorded at exact upstream commit
 `255339717ccc9a278579d563f42939d9f2668506`, with a checked archive hash,
 LGPLv3/GPLv3 texts, and instructions for rebuilding the Native AOT executable
-with a modified library. Independent review must still approve that
-distribution path. Avalonia.Fonts.Inter 12.0.5 declares MIT for the package but
-embeds Inter font binaries without an OFL file or reserved-font-name notice in
-the NuGet archive. Exact Inter font provenance remains a blocker. JetBrains Mono
-is tracked separately by an exact source catalog, per-face hashes, build
-receipt, package manifest, and retained OFL text.
+with a modified library. Avalonia.Fonts.Inter 12.0.5 declares MIT for the
+package but embeds Inter font binaries without an OFL file or
+reserved-font-name notice in the NuGet archive. Upstream Inter is OFL-1.1 and
+identifies `Inter` as a reserved font name. The project owner accepts the
+documented SMBLibrary distribution path and the remaining Inter package
+provenance uncertainty for this exact macOS closure. JetBrains Mono is tracked
+separately by an exact source catalog, per-face hashes, build receipt, package
+manifest, and retained OFL text.
 
 The managed-component SBOM records engineering evidence. It is not legal
 clearance. The exact macOS legal decision and every source record it reviewed
@@ -55,14 +57,16 @@ are bound by `MACOS-RELEASE-LEGAL.json`.
 CEF is tracked separately by `cef-runtime-components.json`, a per-RID exact
 build receipt, retained CEF license and Chromium credits, and a CEF-specific
 SPDX document. Those artifacts preserve provenance; they are not legal
-clearance and do not replace independent review of Chromium's generated
-third-party credits or an owned security-update SLA.
+clearance by themselves. The project owner accepts the exact macOS CEF license
+and generated Chromium credits and owns the security-update decision. Windows
+and Linux remain outside this decision.
 
 The native SQL language worker is tracked separately by its per-RID build
 receipt, 48-entry runtime dependency inventory, generated third-party notice,
 and one explicit review exception for the unlicensed original BesselJ Fortran
 source noted by Apache Commons Math 3.6.1. Those components are intentionally
-not duplicated in the managed NuGet table below.
+not duplicated in the managed NuGet table below. The project owner accepts the
+recorded provenance exception for the exact macOS SQL worker closure.
 
 SPDX license texts are available from <https://spdx.org/licenses/>.
 The table below is the conservative managed third-party inventory in the
@@ -76,7 +80,7 @@ This inventory is RID-specific. Every other release RID must regenerate and
 validate its own exact managed-component catalog and SBOM against its publish
 output before distribution. This table does not claim a cross-target inventory
 and does not substitute for the release's exact native software bill of
-materials and independent license review.
+materials and platform-specific owner decision.
 
 | Package | Version | License |
 |---|---:|---|
