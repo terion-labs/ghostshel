@@ -28,7 +28,7 @@ concurrency:
 jobs:
   compile-adaptive-icon:
     name: Compile adaptive application icon
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -37,7 +37,7 @@ jobs:
       - name: Select full Xcode 26
         shell: bash
         run: |
-          for xcode_application in /Applications/Xcode_26*.app /Applications/Xcode.app; do
+          for xcode_application in /Applications/Xcode.app /Applications/Xcode_26*.app; do
             developer_directory="${xcode_application}/Contents/Developer"
             if [[ -d "${developer_directory}" ]] \
                 && DEVELOPER_DIR="${developer_directory}" \

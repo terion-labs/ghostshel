@@ -148,9 +148,10 @@ destination absent.
 Adaptive icon compilation also fails closed before the managed publish. The
 selected developer directory must be full Xcode, `actool` must report version
 26 or newer, and both the generated partial plist and `Assets.car` must declare
-`GhostShell` as the primary icon. The release workflow selects a matching Xcode
-installation explicitly and repeats the `assetutil` check after extracting the
-signed archive.
+`GhostShell` as the primary icon. The focused identity and release jobs run on
+a macOS 26 host, select a matching Xcode installation explicitly, and repeat
+the `assetutil` check after extracting the signed archive. This avoids the
+Xcode 26 AssetRuntime crash observed when the hosted compiler ran on macOS 15.
 
 The default CEF root is `native/artifacts/<rid>/cef`. A separately staged,
 verified root can be supplied with `--cef-runtime-root`; it must still match

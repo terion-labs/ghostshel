@@ -14,12 +14,12 @@ public sealed partial class RepositoryConventionTests
     public void Github_actions_use_only_reviewed_runners()
     {
         var workflowDirectory = Path.Combine(RepositoryRoot, ".github", "workflows");
-        var expectedRunners = new Dictionary<string, string>(StringComparer.Ordinal)
+        var expectedRunners = new Dictionary<string, string[]>(StringComparer.Ordinal)
         {
-            ["database-viewer-integration.yml"] = "runs-on: macos-15",
-            ["macos-product-identity.yml"] = "runs-on: macos-15",
-            ["repository-gate.yml"] = "runs-on: macos-15",
-            ["website.yml"] = "runs-on: ubuntu-latest",
+            ["database-viewer-integration.yml"] = ["runs-on: macos-15"],
+            ["macos-product-identity.yml"] = ["runs-on: macos-26"],
+            ["repository-gate.yml"] = ["runs-on: macos-15", "runs-on: macos-26"],
+            ["website.yml"] = ["runs-on: ubuntu-latest"],
         };
         var workflows = Directory
             .GetFiles(workflowDirectory, "*.yml")
@@ -39,10 +39,17 @@ public sealed partial class RepositoryConventionTests
             Assert.NotEmpty(runnerDeclarations);
             Assert.All(
                 runnerDeclarations,
-                declaration => Assert.Equal(
+                declaration => Assert.Contains(
+                    declaration,
                     expectedRunners[Path.GetFileName(workflow)],
-                    declaration));
+                    StringComparer.Ordinal));
         }
+
+        Assert.Contains(
+            "runs-on: macos-26",
+            File.ReadLines(Path.Combine(workflowDirectory, "repository-gate.yml"))
+                .Select(line => line.Trim()),
+            StringComparer.Ordinal);
     }
 
     [Fact]

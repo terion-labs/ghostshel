@@ -177,7 +177,7 @@ jobs:
   macos-early-release:
     name: macOS arm64 early release
     needs: [managed-conformance, macos-release-build, format-and-boundaries]
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 180
     permissions:
       contents: write
