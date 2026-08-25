@@ -12,6 +12,7 @@ internal static class Program
             return args.FirstOrDefault()?.ToLowerInvariant() switch
             {
                 "macos" => BuildMacOs(MacOsPackagingCommand.Parse(args[1..])),
+                "macos-release-legal" => ValidateMacOsReleaseLegal(args[1..]),
                 "cef-runtime-receipt" => CreateCefRuntimeReceipt(
                     CefRuntimeReceiptCommand.Parse(args[1..])),
                 "cef-runtime-validate" => ValidateCefRuntime(
@@ -57,6 +58,28 @@ internal static class Program
         Console.WriteLine(
             $"Created GhostShell.app {result.ProductVersion} "
             + $"({result.FileCount} files, build {result.BuildVersion}).");
+        return 0;
+    }
+
+    private static int ValidateMacOsReleaseLegal(IReadOnlyList<string> arguments)
+    {
+        if (arguments.Count != 5
+            || !string.Equals(arguments[0], "--record", StringComparison.Ordinal)
+            || !string.Equals(arguments[2], "--source-root", StringComparison.Ordinal)
+            || !string.Equals(arguments[4], "--require-clearance", StringComparison.Ordinal)
+            || string.IsNullOrWhiteSpace(arguments[1])
+            || string.IsNullOrWhiteSpace(arguments[3]))
+        {
+            throw new PackagingUsageException(
+                "macos-release-legal requires --record <path>, "
+                + "--source-root <directory>, and --require-clearance.");
+        }
+
+        var inspection = MacOsReleaseLegalClosure.Validate(
+            arguments[1],
+            arguments[3]);
+        MacOsReleaseLegalClosure.RequirePublicationClearance(inspection);
+        Console.WriteLine("Validated macOS release legal clearance.");
         return 0;
     }
 
@@ -116,6 +139,9 @@ internal static class Program
                     --cef-runtime-root <verified-runtime-directory>
                     --cef-runtime-catalog <cef-runtime-components.json>
                     --runtime-identifier <osx-arm64>
+
+              macos-release-legal --record <macos-release-legal.json>
+                    --source-root <repository-directory> --require-clearance
 
               cef-runtime-receipt --runtime-root <staged-directory>
                     --catalog <cef-runtime-components.json>

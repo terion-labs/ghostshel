@@ -7,6 +7,9 @@ GhostSHELL does not claim ownership of these components.
 
 The application bundle also includes:
 
+- `GHOSTSHELL-LICENSE.txt`, GhostSHELL's MIT license;
+- `SMBLIBRARY-LGPL-3.0.txt`, `GPL-3.0.txt`, exact source provenance, and
+  Native AOT replacement instructions for SMBLibrary 1.5.7.1;
 - `DOTNET-LICENSE.txt` and `DOTNET-THIRD-PARTY-NOTICES.txt` for the
   self-contained .NET runtime;
 - `GHOSTTY-LICENSE` for the pinned libghostty-vt source snapshot (commit
@@ -27,21 +30,27 @@ The application bundle also includes:
 - package-specific copyright and repository metadata in the corresponding
   NuGet packages.
 
-The pinned Ghostty resources also contain bash and zsh integration derived in
+The pinned Ghostty resources also contain Bash and Zsh integration derived in
 part from Kitty under GPL-3.0-or-later, as declared in those files, and
-`bash-preexec` under MIT. The release license gate remains open until the
-corresponding complete license texts, copyright notices, source offer/link, and
-the statically linked native dependency inventory are generated and verified
-for the exact package payload.
+`bash-preexec` under MIT. The package retains the source notices and GPLv3 text.
+The current macOS `libghostty-vt.dylib` links only Apple's system
+`libSystem.B.dylib`; it does not link the obsolete gettext `libintl` library.
+Independent review of the exact Ghostty and shell-resource closure remains
+open.
 
-The gate also remains open for `SMBLibrary` (`LGPL-3.0-or-later`) and the
-complete OFL license/reserved-font-name evidence for embedded Inter font
-assets. JetBrains Mono is tracked separately by an exact source catalog,
-per-face hashes, build receipt, package manifest, and retained OFL text. The
-managed-component SBOM records the remaining blockers as unresolved evidence;
-it is not legal clearance and does not substitute for the complete
-native dependency graph, exact source provenance, patches, build flags, license
-texts, notices, source delivery, or relinking review.
+SMBLibrary 1.5.7.1 is recorded at exact upstream commit
+`255339717ccc9a278579d563f42939d9f2668506`, with a checked archive hash,
+LGPLv3/GPLv3 texts, and instructions for rebuilding the Native AOT executable
+with a modified library. Independent review must still approve that
+distribution path. Avalonia.Fonts.Inter 12.0.5 declares MIT for the package but
+embeds Inter font binaries without an OFL file or reserved-font-name notice in
+the NuGet archive. Exact Inter font provenance remains a blocker. JetBrains Mono
+is tracked separately by an exact source catalog, per-face hashes, build
+receipt, package manifest, and retained OFL text.
+
+The managed-component SBOM records engineering evidence. It is not legal
+clearance. The exact macOS legal decision and every source record it reviewed
+are bound by `MACOS-RELEASE-LEGAL.json`.
 
 CEF is tracked separately by `cef-runtime-components.json`, a per-RID exact
 build receipt, retained CEF license and Chromium credits, and a CEF-specific
@@ -50,13 +59,15 @@ clearance and do not replace independent review of Chromium's generated
 third-party credits or an owned security-update SLA.
 
 The native SQL language worker is tracked separately by its per-RID build
-receipt, runtime dependency inventory, and nested third-party notice. Those
-components are intentionally not duplicated in the managed NuGet table below.
+receipt, 48-entry runtime dependency inventory, generated third-party notice,
+and one explicit review exception for the unlicensed original BesselJ Fortran
+source noted by Apache Commons Math 3.6.1. Those components are intentionally
+not duplicated in the managed NuGet table below.
 
 SPDX license texts are available from <https://spdx.org/licenses/>.
-The table below is the conservative managed third-party inventory resolved
-by the reviewed GhostSHELL 0.1.0 `osx-arm64` publish. It contains 120 NuGet
-packages and the two separately licensed vendored Exclr8CEF projects.
+The table below is the conservative managed third-party inventory in the
+current `osx-arm64` release catalog. It contains 128 NuGet packages and the two
+separately licensed vendored Exclr8CEF projects.
 First-party GhostSHELL project assemblies are omitted; the self-contained
 .NET runtimepack is indexed by the retained .NET license and notice files
 rather than duplicated here.
@@ -69,8 +80,11 @@ materials and independent license review.
 
 | Package | Version | License |
 |---|---:|---|
-| `AWSSDK.Core` | `4.0.100.6` | Apache-2.0 |
-| `AWSSDK.S3` | `4.0.101.3` | Apache-2.0 |
+| `AWSSDK.Core` | `4.0.102.1` | Apache-2.0 |
+| `AWSSDK.S3` | `4.0.102.4` | Apache-2.0 |
+| `AngleSharp` | `1.5.2` | MIT |
+| `Apache.Arrow` | `23.0.0` | Apache-2.0 |
+| `Apache.Arrow.Scalars` | `23.0.0` | Apache-2.0 |
 | `Avalonia.AvaloniaEdit` | `12.0.0` | MIT |
 | `Avalonia.Controls.ColorPicker` | `12.0.5` | MIT |
 | `Avalonia.Controls.DataGrid` | `12.0.1` | MIT |
@@ -89,8 +103,8 @@ materials and independent license review.
 | `AvaloniaEdit.TextMate` | `12.0.0` | MIT |
 | `Azure.Core` | `1.38.0` | MIT |
 | `Azure.Identity` | `1.11.4` | MIT |
-| `BouncyCastle.Cryptography` | `2.6.2` | MIT |
-| `ClickHouse.Client` | `7.8.0` | MIT |
+| `BouncyCastle.Cryptography` | `2.7.0` | MIT |
+| `ClickHouse.Client` | `7.14.0` | MIT |
 | `Dock.Avalonia.Themes.Fluent` | `12.0.0.2` | MIT |
 | `Dock.Avalonia` | `12.0.0.2` | MIT |
 | `Dock.Controls.DeferredContentControl` | `12.0.0.2` | MIT |
@@ -101,8 +115,8 @@ materials and independent license review.
 | `Dock.Model.Inpc` | `12.0.0.2` | MIT |
 | `Dock.Model` | `12.0.0.2` | MIT |
 | `Dock.Settings` | `12.0.0.2` | MIT |
-| `DuckDB.NET.Bindings.Full` | `1.2.1` | NOASSERTION (nuspec file: `LICENSE.md`) |
-| `DuckDB.NET.Data.Full` | `1.2.1` | NOASSERTION (nuspec file: `LICENSE.md`) |
+| `DuckDB.NET.Bindings.Full` | `1.5.5` | MIT |
+| `DuckDB.NET.Data.Full` | `1.5.5` | MIT |
 | `ExCSS` | `4.3.1` | MIT |
 | `Exclr8Cef.WebView` | `0.8.0` | MIT (vendored project; see `Exclr8CEF-MIT.txt`) |
 | `Exclr8Cef` | `0.8.0` | MIT (vendored project; see `Exclr8CEF-MIT.txt`) |
@@ -131,11 +145,11 @@ materials and independent license review.
 | `Microsoft.Extensions.Configuration` | `8.0.0` | MIT |
 | `Microsoft.Extensions.DependencyInjection.Abstractions` | `10.0.10` | MIT |
 | `Microsoft.Extensions.DependencyInjection` | `10.0.10` | MIT |
-| `Microsoft.Extensions.Diagnostics.Abstractions` | `8.0.0` | MIT |
-| `Microsoft.Extensions.Diagnostics` | `8.0.0` | MIT |
-| `Microsoft.Extensions.Http` | `8.0.0` | MIT |
+| `Microsoft.Extensions.Diagnostics.Abstractions` | `8.0.1` | MIT |
+| `Microsoft.Extensions.Diagnostics` | `8.0.1` | MIT |
+| `Microsoft.Extensions.Http` | `8.0.1` | MIT |
 | `Microsoft.Extensions.Logging.Abstractions` | `10.0.7` | MIT |
-| `Microsoft.Extensions.Logging` | `8.0.0` | MIT |
+| `Microsoft.Extensions.Logging` | `8.0.1` | MIT |
 | `Microsoft.Extensions.ObjectPool` | `10.0.3` | MIT |
 | `Microsoft.Extensions.Options.ConfigurationExtensions` | `8.0.0` | MIT |
 | `Microsoft.Extensions.Options` | `9.0.4` | MIT |
@@ -152,22 +166,25 @@ materials and independent license review.
 | `Microsoft.SqlServer.Server` | `1.0.0` | MIT |
 | `ModelContextProtocol.Core` | `1.3.0` | Apache-2.0 |
 | `MySqlConnector` | `2.4.0` | MIT |
-| `NodaTime` | `3.1.12` | Apache-2.0 |
+| `NodaTime` | `3.2.2` | Apache-2.0 |
 | `Npgsql` | `9.0.3` | PostgreSQL |
 | `Onigwrap` | `1.0.11` | MIT |
 | `Oracle.ManagedDataAccess.Core` | `23.7.0` | NOASSERTION (nuspec file: `LICENSE.txt`) |
 | `PDFtoImage` | `5.3.0` | MIT |
 | `Porta.Pty` | `1.0.7` | MIT |
+| `RESPite` | `3.0.17` | MIT |
+| `ReverseMarkdown` | `6.2.1` | MIT |
 | `SMBLibrary` | `1.5.7.1` | LGPL-3.0-or-later |
 | `SQLite3MC.PCLRaw.bundle` | `2.4.0` | MIT |
 | `SQLite3MC.PCLRaw.lib` | `2.4.0` | MIT |
 | `SQLite3MC.PCLRaw.provider` | `2.4.0` | MIT |
 | `SQLitePCLRaw.core` | `3.0.2` | Apache-2.0 |
-| `SSH.NET` | `2025.1.0` | MIT |
+| `SSH.NET` | `2026.0.0` | MIT |
 | `ShimSkiaSharp` | `5.1.1` | MIT |
 | `SkiaSharp.NativeAssets.macOS` | `4.150.1` | MIT |
 | `SkiaSharp` | `4.150.1` | MIT |
-| `SshNet.Agent` | `2024.2.0.5` | MIT |
+| `SshNet.Agent` | `2026.0.0` | MIT |
+| `StackExchange.Redis` | `3.0.17` | MIT |
 | `Sugiyama` | `0.12.1` | MIT |
 | `Svg.Animation` | `5.1.1` | MIT |
 | `Svg.Controls.Skia.Avalonia` | `12.0.0.13` | MIT |
@@ -175,12 +192,14 @@ materials and independent license review.
 | `Svg.Model` | `5.1.1` | MIT |
 | `Svg.SceneGraph` | `5.1.1` | MIT |
 | `Svg.Skia` | `5.1.1` | MIT |
+| `Sylinko.CSharpMath.Avalonia` | `12.0.0` | MIT |
 | `System.ClientModel` | `1.0.0` | MIT |
 | `System.Configuration.ConfigurationManager` | `9.0.4` | MIT |
 | `System.Diagnostics.EventLog` | `9.0.4` | MIT |
 | `System.Diagnostics.PerformanceCounter` | `8.0.0` | MIT |
 | `System.DirectoryServices.Protocols` | `8.0.0` | MIT |
 | `System.IdentityModel.Tokens.Jwt` | `7.5.0` | MIT |
+| `System.IO.Hashing` | `10.0.5` | MIT |
 | `System.Memory.Data` | `1.0.2` | MIT |
 | `System.Security.Cryptography.Pkcs` | `9.0.4` | MIT |
 | `System.Security.Cryptography.ProtectedData` | `10.0.10` | MIT |
@@ -191,7 +210,6 @@ materials and independent license review.
 | `Vanara.PInvoke.Kernel32` | `4.2.1` | MIT |
 | `Vanara.PInvoke.Shared` | `4.2.1` | MIT |
 | `bblanchon.PDFium.macOS` | `152.0.7961` | Apache-2.0 |
-
 ## Lucide icon geometry
 
 The Dock drop-target vectors are adapted from Lucide Icons.

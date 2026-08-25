@@ -151,11 +151,11 @@ internal static class MacOsProductIdentity
         RequireProperties(artwork, "source", "owner", "license", "copyright");
         RequireExactString(artwork, "source", "Original first-party GhostSHELL artwork");
         RequireExactString(artwork, "owner", "Terion Labs");
-        RequireExactString(artwork, "license", "LicenseRef-Terion-Labs-Proprietary");
+        RequireExactString(artwork, "license", "MIT");
         RequireExactString(
             artwork,
             "copyright",
-            "Copyright 2026 Terion Labs. All rights reserved.");
+            "Copyright (c) 2026 Terion Labs");
     }
 
     private static void ValidateApproval(JsonElement approval)

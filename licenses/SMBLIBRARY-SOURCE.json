@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "format": "ghostshell-smblibrary-source-provenance-v1",
+  "package": {
+    "identity": "SMBLibrary/1.5.7.1",
+    "nuGetPackageSha512": "j3jZ+Uva5aPBuqhG67GVBk2XOFLxu7HZe7zKNrOx6tIs9PBmOeCRxBXNJMKuuS4VJOyYOAA3X37VHhnfvDuc2Q==",
+    "licenseDeclared": "LGPL-3.0-or-later"
+  },
+  "source": {
+    "repository": "https://github.com/TalAloni/SMBLibrary.git",
+    "commit": "255339717ccc9a278579d563f42939d9f2668506",
+    "archiveUrl": "https://codeload.github.com/TalAloni/SMBLibrary/tar.gz/255339717ccc9a278579d563f42939d9f2668506",
+    "archiveSha256": "0f4ab1c1f6144eb383c8cd68c9e4eeba3d9bae780e1f0a8fdefcc848223ae64d",
+    "projectFile": "SMBLibrary/SMBLibrary.csproj",
+    "projectFileSha256": "1ca8283204cafc89f7636d35462c84d2a963d3c4136ed7a622f3c4c67b2d14ff",
+    "upstreamLicenseFile": "License.txt",
+    "upstreamLicenseSha256": "7d3a95e5e06978064ed3f8e2b7c8f845e7fd8a405294727cc708f94cb83b8059",
+    "provenanceBasis": "The upstream commit sets SMBLibrary.csproj to 1.5.7.1 and predates the matching NuGet publication; the NuGet metadata does not carry a repository commit."
+  },
+  "distribution": {
+    "modified": false,
+    "licenseText": "SMBLIBRARY-LGPL-3.0.txt",
+    "gplText": "GPL-3.0.txt",
+    "replacementInstructions": "SMBLIBRARY-SOURCE-AND-RELINKING.md"
+  }
+}

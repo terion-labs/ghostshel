@@ -9,8 +9,8 @@
   "artwork": {
     "source": "Original first-party GhostSHELL artwork",
     "owner": "Terion Labs",
-    "license": "LicenseRef-Terion-Labs-Proprietary",
-    "copyright": "Copyright 2026 Terion Labs. All rights reserved."
+    "license": "MIT",
+    "copyright": "Copyright (c) 2026 Terion Labs"
   },
   "approval": {
     "status": "approved",

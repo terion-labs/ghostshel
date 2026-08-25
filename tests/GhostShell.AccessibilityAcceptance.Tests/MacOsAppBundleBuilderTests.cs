@@ -334,6 +334,23 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
     }
 
     [Fact]
+    public void Builder_rejects_packaged_legal_evidence_that_differs_from_reviewed_source()
+    {
+        var publish = CreatePublishPayload();
+        File.AppendAllText(
+            Path.Combine(publish, "SMBLIBRARY-SOURCE.json"),
+            "drift");
+
+        var exception = Assert.Throws<InvalidDataException>(() =>
+            new MacOsAppBundleBuilder().Build(Request(publish, OutputPath())));
+
+        Assert.Contains(
+            "packaged legal file SMBLIBRARY-SOURCE.json differs",
+            exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Builder_rejects_product_artwork_that_drifted_from_the_reviewed_manifest()
     {
         var publish = CreatePublishPayload();
@@ -1926,6 +1943,11 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         var nativeEvidence = NativeTerminalTestProvenance.AddToPublish(
             publishDirectory,
             fixtureDirectory);
+        AddLegalClosureInputs(
+            productIdentity.SourceRoot,
+            publishDirectory,
+            catalogPath,
+            nativeEvidence);
         _evidenceInputs.Add(
             publishDirectory,
             new EvidenceInputs(
@@ -2137,8 +2159,8 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
                 {
                     source = "Original first-party GhostSHELL artwork",
                     owner = "Terion Labs",
-                    license = "LicenseRef-Terion-Labs-Proprietary",
-                    copyright = "Copyright 2026 Terion Labs. All rights reserved.",
+                    license = "MIT",
+                    copyright = "Copyright (c) 2026 Terion Labs",
                 },
                 approval = new
                 {
@@ -2186,6 +2208,120 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             role,
             path,
             sha256 = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(sourcePath))),
+        };
+    }
+
+    private static void AddLegalClosureInputs(
+        string sourceRoot,
+        string publishDirectory,
+        string managedCatalogPath,
+        NativeTerminalTestEvidence nativeEvidence)
+    {
+        var sourceFiles = new Dictionary<string, byte[]>(StringComparer.Ordinal)
+        {
+            ["LICENSE"] = "fixture MIT license"u8.ToArray(),
+            ["licenses/GPL-3.0.txt"] = "fixture GPL license"u8.ToArray(),
+            ["licenses/SMBLIBRARY-LGPL-3.0.txt"] =
+                "fixture LGPL license"u8.ToArray(),
+            ["licenses/SMBLIBRARY-SOURCE-AND-RELINKING.md"] =
+                "fixture relinking instructions"u8.ToArray(),
+            ["licenses/SMBLIBRARY-SOURCE.json"] =
+                "{\"fixture\":\"SMB source\"}"u8.ToArray(),
+            ["licenses/THIRD-PARTY-NOTICES.md"] =
+                File.ReadAllBytes(Path.Combine(
+                    publishDirectory,
+                    "THIRD-PARTY-NOTICES.md")),
+            ["licenses/cef-runtime-components.json"] =
+                "{\"fixture\":\"CEF catalog\"}"u8.ToArray(),
+            ["licenses/managed-components.json"] =
+                File.ReadAllBytes(managedCatalogPath),
+            ["licenses/native-terminal-components.json"] =
+                File.ReadAllBytes(nativeEvidence.CatalogPath),
+            ["licenses/terminal-font-assets.json"] =
+                File.ReadAllBytes(nativeEvidence.FontCatalogPath),
+            ["native/ghostty-vt/SHELL-INTEGRATION-NOTICE.md"] =
+                "fixture shell notice"u8.ToArray(),
+            ["native/sql-language-worker/src/legal/legal-review.tsv"] =
+                "fixture\treview"u8.ToArray(),
+            ["native/sql-language-worker/src/legal/runtime-license-map.tsv"] =
+                "fixture\tmap"u8.ToArray(),
+        };
+        foreach (var (relativePath, content) in sourceFiles)
+        {
+            var path = Path.Combine(
+                sourceRoot,
+                relativePath.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllBytes(path, content);
+        }
+
+        var productIdentityPath = Path.Combine(
+            sourceRoot,
+            "assets",
+            "macos",
+            "product-identity.json");
+        sourceFiles.Add(
+            "assets/macos/product-identity.json",
+            File.ReadAllBytes(productIdentityPath));
+        var evidence = sourceFiles
+            .OrderBy(item => item.Key, StringComparer.Ordinal)
+            .Select(item => new
+            {
+                path = item.Key,
+                sha256 = Convert.ToHexStringLower(SHA256.HashData(item.Value)),
+            })
+            .ToArray();
+        var record = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            schemaVersion = 1,
+            format = "ghostshell-macos-release-legal-closure-v1",
+            platform = "macos-arm64",
+            legalClearance = false,
+            releaseBlockers = new[] { "Fixture independent review remains open." },
+            excludedPlatforms = new[] { "windows", "linux" },
+            review = new
+            {
+                status = "pending-independent-review",
+                reviewedBy = (string?)null,
+                reviewedAtUtc = (string?)null,
+            },
+            dispositions = new
+            {
+                managedComponents = PendingDisposition("managed fixture"),
+                nativeTerminalAndShell = PendingDisposition("terminal fixture"),
+                cefMacos = PendingDisposition("CEF fixture"),
+                sqlLanguageWorker = PendingDisposition("SQL fixture"),
+            },
+            evidence,
+        });
+        var recordPath = Path.Combine(
+            sourceRoot,
+            "licenses",
+            "macos-release-legal.json");
+        File.WriteAllBytes(recordPath, record);
+
+        var publishedFiles = new Dictionary<string, byte[]>(StringComparer.Ordinal)
+        {
+            ["GHOSTSHELL-LICENSE.txt"] = sourceFiles["LICENSE"],
+            ["MACOS-RELEASE-LEGAL.json"] = record,
+            ["GPL-3.0.txt"] = sourceFiles["licenses/GPL-3.0.txt"],
+            ["SMBLIBRARY-LGPL-3.0.txt"] =
+                sourceFiles["licenses/SMBLIBRARY-LGPL-3.0.txt"],
+            ["SMBLIBRARY-SOURCE-AND-RELINKING.md"] =
+                sourceFiles["licenses/SMBLIBRARY-SOURCE-AND-RELINKING.md"],
+            ["SMBLIBRARY-SOURCE.json"] =
+                sourceFiles["licenses/SMBLIBRARY-SOURCE.json"],
+        };
+        foreach (var (fileName, content) in publishedFiles)
+        {
+            File.WriteAllBytes(Path.Combine(publishDirectory, fileName), content);
+        }
+
+        static object PendingDisposition(string comment) => new
+        {
+            status = "pending-independent-review",
+            scope = "macos-arm64",
+            comment,
         };
     }
 

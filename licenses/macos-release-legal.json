@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "format": "ghostshell-macos-release-legal-closure-v1",
+  "platform": "macos-arm64",
+  "legalClearance": false,
+  "releaseBlockers": [
+    "Independent review must approve the SMBLibrary 1.5.7.1 LGPL source-and-Native-AOT-rebuild distribution path.",
+    "Exact OFL source provenance and reserved-font-name evidence for the Inter binaries embedded by Avalonia.Fonts.Inter 12.0.5 remains unresolved.",
+    "The exact libghostty-vt and GPL-covered shell-resource closure requires independent review.",
+    "The macOS CEF 150 license and generated Chromium credits require independent review and an owned security-update decision.",
+    "The SQL language worker retains one review exception for the unlicensed original BesselJ Fortran source noted by Apache Commons Math 3.6.1."
+  ],
+  "excludedPlatforms": [
+    "windows",
+    "linux"
+  ],
+  "review": {
+    "status": "pending-independent-review",
+    "reviewedBy": null,
+    "reviewedAtUtc": null
+  },
+  "dispositions": {
+    "managedComponents": {
+      "status": "pending-independent-review",
+      "scope": "macos-arm64",
+      "comment": "Review must resolve SMBLibrary Native AOT replacement rights and the missing exact Inter OFL provenance."
+    },
+    "nativeTerminalAndShell": {
+      "status": "pending-independent-review",
+      "scope": "macos-arm64",
+      "comment": "Review must approve the pinned libghostty-vt closure and retained GPL-covered shell resources."
+    },
+    "cefMacos": {
+      "status": "pending-independent-review",
+      "scope": "macos-arm64",
+      "comment": "Review must approve the macOS CEF license, Chromium credits, and update responsibility."
+    },
+    "sqlLanguageWorker": {
+      "status": "pending-independent-review",
+      "scope": "macos-arm64",
+      "comment": "Review must resolve the recorded Apache Commons Math BesselJ source exception."
+    }
+  },
+  "evidence": [
+    {
+      "path": "LICENSE",
+      "sha256": "4789c9c62f487a7c929260adcc550facc92f7b48b56a8338e336cc70e5f70cd7"
+    },
+    {
+      "path": "assets/macos/product-identity.json",
+      "sha256": "59d3006b3a20ae332847a372fb9ed46c8dab26330d14ecaa9ab3aa133ace718b"
+    },
+    {
+      "path": "licenses/GPL-3.0.txt",
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+    },
+    {
+      "path": "licenses/SMBLIBRARY-LGPL-3.0.txt",
+      "sha256": "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118"
+    },
+    {
+      "path": "licenses/SMBLIBRARY-SOURCE-AND-RELINKING.md",
+      "sha256": "909eace0dfdccefe0aeb0dc00a4e2077dca75fa3603c9f09f037f65400df7794"
+    },
+    {
+      "path": "licenses/SMBLIBRARY-SOURCE.json",
+      "sha256": "808c6618b7bf37420456bc4d310ce70601016053e326d5d01a0088027f2571b4"
+    },
+    {
+      "path": "licenses/THIRD-PARTY-NOTICES.md",
+      "sha256": "707099be5f0b4e9602a95e662d4d5491e80063590b1a7399bd452b8ba0ab3cc6"
+    },
+    {
+      "path": "licenses/cef-runtime-components.json",
+      "sha256": "06e696f64572934ffa96e673a0ec16c7f8fc96b681153668e33037a143481c0c"
+    },
+    {
+      "path": "licenses/managed-components.json",
+      "sha256": "8af2077219ed32f7cd85d131056d6b938c353e9b671b12c9c5f52ccdd65874cb"
+    },
+    {
+      "path": "licenses/native-terminal-components.json",
+      "sha256": "a7cfc02a3f667d5f49e5dc4db8204e8b8ab5fc5d3db0f6d8007ce14d9ff1f48e"
+    },
+    {
+      "path": "licenses/terminal-font-assets.json",
+      "sha256": "9345434d91afea9b743ea846387ff5e6321d306b5d6b0b1f0063d4185e422820"
+    },
+    {
+      "path": "native/ghostty-vt/SHELL-INTEGRATION-NOTICE.md",
+      "sha256": "bb85a91121f785ce83bada6b80d7b1b86ac41f49f0abc4a44ef9aff38a4e7b1b"
+    },
+    {
+      "path": "native/sql-language-worker/src/legal/legal-review.tsv",
+      "sha256": "6ede1a67a93a78c866df81ec0ba55cdf9e14546fd4c97b006eb93158a00dc755"
+    },
+    {
+      "path": "native/sql-language-worker/src/legal/runtime-license-map.tsv",
+      "sha256": "60045741209b29344ed59681ffe61fc1e626a0e312b76dfb05bbb9f80acf3be1"
+    }
+  ]
+}

@@ -299,6 +299,25 @@ and executable digests but does not launch the candidate.
 
 ## Outstanding release work
 
+`licenses/macos-release-legal.json` is the single macOS legal-closure decision.
+It hashes the MIT project license, SMBLibrary source and replacement materials,
+managed catalog, Ghostty and shell evidence, Inter font catalog, CEF catalog,
+and SQL worker legal maps. Local packaging validates and carries the blocked
+record. The tag workflow runs the stricter `macos-release-legal
+--require-clearance` command before signing, and refuses publication unless
+`legalClearance` is true, `releaseBlockers` is empty, and the review fields are
+complete. It also requires explicit `approved-for-macos` dispositions for the
+managed catalog, native terminal and shell resources, CEF, and SQL worker. The
+record hashes each nested evidence set, so an approval applies only to those
+exact bytes. Windows and Linux are explicitly outside this record.
+
+GhostSHELL is MIT licensed. SMBLibrary remains LGPL-3.0-or-later and is compiled
+into the Native AOT executable. The bundle retains LGPLv3 and GPLv3 text, exact
+source provenance for upstream commit
+`255339717ccc9a278579d563f42939d9f2668506`, and
+`SMBLIBRARY-SOURCE-AND-RELINKING.md`. Those materials explain how to replace the
+library and rebuild GhostSHELL. They do not replace independent review.
+
 The pipeline supports Developer ID signing, Chromium JIT hardened-runtime
 entitlements, notarization, and stapling, but possession of credentials does
 not itself make a distributable release. Independent license review, DMG or
@@ -318,6 +337,15 @@ completed independent release review. In particular, the retained Bash/Zsh
 upstream notices include GPL-covered portions. The catalog, receipt, and notice
 keep this blocker explicit rather than treating source provenance as legal
 clearance.
+
+The current macOS terminal library links only Apple's system
+`/usr/lib/libSystem.B.dylib`. The prior gettext/libintl concern belongs to the
+retired renderer pipeline and is not part of this `libghostty-vt` payload. The
+SQL worker records its 48 runtime dependencies and one review exception in its
+build receipt. CEF retains its exact macOS archive, BSD license, Chromium
+credits, binding source snapshot, patches, and SPDX receipt. These facts close
+the mechanical inventory questions, while the legal record keeps the remaining
+review decisions blocked.
 
 Finally, a structurally valid bundle is not evidence that its interactive
 terminal is ready to ship. Named-host rendering, full-screen TUI, physical

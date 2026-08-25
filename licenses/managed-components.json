@@ -4,10 +4,10 @@
   "documentCreatedUtc": "2026-08-25T00:00:00Z",
   "namespaceBase": "https://ghostshell.app/spdx/managed-components/${productVersion}",
   "releaseBlockers": [
-    "SMBLibrary 1.5.7.1 is declared LGPL-3.0-or-later; release obligations and distribution posture remain unresolved.",
-    "Embedded Inter font assets require complete OFL license and reserved-font-name notice verification.",
-    "The exact transitive source and license closure linked into the libghostty-vt development snapshot has not completed independent release review.",
-    "The expanded managed and native-bearing dependency closure still requires independent license and notice review before release."
+    "Independent review must approve the documented SMBLibrary 1.5.7.1 LGPL source-and-Native-AOT-rebuild path.",
+    "Avalonia.Fonts.Inter 12.0.5 embeds Inter font binaries but its NuGet archive contains no OFL text or reserved-font-name notice; exact upstream font provenance remains under review.",
+    "The exact libghostty-vt and GPL-covered shell-resource closure has engineering evidence but has not completed independent release review.",
+    "The macOS CEF credits and native SQL worker's remaining commons-math3 source exception require independent review."
   ],
   "dependencies": [
     {
@@ -399,22 +399,22 @@
       "identity": "DuckDB.NET.Bindings.Full/1.5.5",
       "kind": "nuget",
       "depsType": "package",
-      "licenseDeclared": "NOASSERTION",
+      "licenseDeclared": "MIT",
       "nuGetId": "DuckDB.NET.Bindings.Full",
       "contentHash": "QIyg93jXN+ebHtsl3UhNmoKV+UoBlHxicycGUVY8cw/kwTGB8CrrULcLr7ngUkk5pftaPoyIHycxTgshBOalaA==",
       "nupkgSha512": "2T9ZTSRyF3HosIf72kXQPwwlsteGd8qTGkzQAJoR5qJq1HFALSOpoabRT5cyc/A9WiCRaNom/3/uosvijDP9IA==",
-      "nuspecLicenseType": "file",
-      "nuspecLicense": "LICENSE.md",
+      "nuspecLicenseType": "expression",
+      "nuspecLicense": "MIT",
       "notices": [
         {
           "archivePath": "LICENSE.md",
-          "outputPath": "DuckDB.NET.Bindings.Full-1.2.1/LICENSE.md",
+          "outputPath": "DuckDB.NET.Bindings.Full-1.5.5/LICENSE.md",
           "sha256": "91ba5e7529bb908f1e09539fde3e37ed379bffc42d84473683d29499e6c8dc75",
           "minimumBytes": 1024
         },
         {
           "archivePath": "LICENSE-DuckDB.txt",
-          "outputPath": "DuckDB.NET.Bindings.Full-1.2.1/LICENSE-DuckDB.txt",
+          "outputPath": "DuckDB.NET.Bindings.Full-1.5.5/LICENSE-DuckDB.txt",
           "sha256": "3ad73e53243c374756dfc2eb5e780abd462ce99e89c84f9e46ada745db934107",
           "minimumBytes": 1024
         }
@@ -424,17 +424,23 @@
       "identity": "DuckDB.NET.Data.Full/1.5.5",
       "kind": "nuget",
       "depsType": "package",
-      "licenseDeclared": "NOASSERTION",
+      "licenseDeclared": "MIT",
       "nuGetId": "DuckDB.NET.Data.Full",
       "contentHash": "M52jdLPafItTtfzwhvF+a87QHA39fMU6BOlaFLDuzGF6Gx1DSn34+UOEyCMArmw/gGoo1+Btbb/vh51IokVd0w==",
       "nupkgSha512": "MIUZYAGc97D+czhAz3O7oOkPtbmVZTgPTICNFfhCBZPjMN+jZ2eFqGarjTEC/yk++d9CNVRv2r2R4gvHJE3gaA==",
-      "nuspecLicenseType": "file",
-      "nuspecLicense": "LICENSE.md",
+      "nuspecLicenseType": "expression",
+      "nuspecLicense": "MIT",
       "notices": [
         {
           "archivePath": "LICENSE.md",
-          "outputPath": "DuckDB.NET.Data.Full-1.2.1/LICENSE.md",
+          "outputPath": "DuckDB.NET.Data.Full-1.5.5/LICENSE.md",
           "sha256": "91ba5e7529bb908f1e09539fde3e37ed379bffc42d84473683d29499e6c8dc75",
+          "minimumBytes": 1024
+        },
+        {
+          "archivePath": "LICENSE-DuckDB.txt",
+          "outputPath": "DuckDB.NET.Data.Full-1.5.5/LICENSE-DuckDB.txt",
+          "sha256": "3ad73e53243c374756dfc2eb5e780abd462ce99e89c84f9e46ada745db934107",
           "minimumBytes": 1024
         }
       ]

@@ -217,6 +217,17 @@ jobs:
             exit 1
           fi
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
+      - name: Verify macOS legal publication clearance
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: >-
+          ./.dotnet/dotnet run
+          --project tools/GhostShell.Packaging/GhostShell.Packaging.csproj
+          --configuration Release
+          --
+          macos-release-legal
+          --record licenses/macos-release-legal.json
+          --source-root .
+          --require-clearance
       - name: Select full Xcode 26 for adaptive icon compilation
         shell: bash
         run: |

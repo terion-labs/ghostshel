@@ -206,6 +206,7 @@ public sealed partial class RepositoryConventionTests
         Assert.Equal(ProductIdentity.ExecutableName, root.GetProperty("executableName").GetString());
         Assert.Equal(ProductIdentity.BundleIdentifier, root.GetProperty("bundleIdentifier").GetString());
         Assert.Equal("approved", root.GetProperty("approval").GetProperty("status").GetString());
+        Assert.Equal("MIT", root.GetProperty("artwork").GetProperty("license").GetString());
         Assert.Equal(
             ["Default", "Dark", "TintedLight", "TintedDark", "ClearLight", "ClearDark"],
             root.GetProperty("requiredAppearances")
@@ -267,6 +268,56 @@ public sealed partial class RepositoryConventionTests
     }
 
     [Fact]
+    public void Managed_third_party_notice_table_matches_the_macos_catalog()
+    {
+        using var catalog = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(
+            RepositoryRoot,
+            "licenses",
+            "managed-components.json")));
+        var expectedRows = catalog.RootElement
+            .GetProperty("dependencies")
+            .EnumerateArray()
+            .Where(component =>
+                string.Equals(
+                    component.GetProperty("kind").GetString(),
+                    "nuget",
+                    StringComparison.Ordinal)
+                || component.GetProperty("identity").GetString()!.StartsWith(
+                    "Exclr8Cef",
+                    StringComparison.Ordinal))
+            .Select(component =>
+            {
+                var identity = component.GetProperty("identity").GetString()!;
+                var separator = identity.LastIndexOf('/');
+                var name = identity[..separator];
+                var version = identity[(separator + 1)..];
+                var kind = component.GetProperty("kind").GetString();
+                var license = string.Equals(kind, "project", StringComparison.Ordinal)
+                    ? "MIT (vendored project; see `Exclr8CEF-MIT.txt`)"
+                    : component.GetProperty("nuspecLicenseType").GetString() == "file"
+                        ? $"NOASSERTION (nuspec file: `{component.GetProperty("nuspecLicense").GetString()}`)"
+                        : component.GetProperty("licenseDeclared").GetString();
+                return $"| `{name}` | `{version}` | {license} |";
+            })
+            .ToArray();
+        var noticeLines = File.ReadAllLines(Path.Combine(
+            RepositoryRoot,
+            "licenses",
+            "THIRD-PARTY-NOTICES.md"));
+        var tableStart = Array.IndexOf(noticeLines, "| Package | Version | License |");
+        var tableEnd = Array.IndexOf(noticeLines, "## Lucide icon geometry");
+
+        Assert.True(tableStart >= 0 && tableEnd > tableStart);
+        Assert.Equal(
+            expectedRows,
+            noticeLines[(tableStart + 2)..tableEnd],
+            StringComparer.Ordinal);
+        Assert.Equal(128, expectedRows.Count(row => !row.Contains("Exclr8Cef", StringComparison.Ordinal)));
+        Assert.Contains(expectedRows, row => row.Contains("DuckDB.NET.Bindings.Full` | `1.5.5` | MIT", StringComparison.Ordinal));
+        Assert.DoesNotContain(expectedRows, row => row.Contains("DuckDB.NET.Bindings.Full` | `1.2.1`", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Tag_release_publishes_stable_latest_download_assets()
     {
         var workflow = File.ReadAllText(Path.Combine(
@@ -274,6 +325,10 @@ public sealed partial class RepositoryConventionTests
             ".github",
             "workflows",
             "repository-gate.yml"));
+
+        Assert.Contains("Verify macOS legal publication clearance", workflow, StringComparison.Ordinal);
+        Assert.Contains("macos-release-legal", workflow, StringComparison.Ordinal);
+        Assert.Contains("--require-clearance", workflow, StringComparison.Ordinal);
 
         Assert.Contains("archive=\"GhostShell-macOS-arm64.zip\"", workflow, StringComparison.Ordinal);
         Assert.Contains("artifacts/GhostShell-macOS-arm64.zip.sha256", workflow, StringComparison.Ordinal);

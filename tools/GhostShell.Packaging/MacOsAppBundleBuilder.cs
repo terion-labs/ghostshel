@@ -55,6 +55,13 @@ public sealed class MacOsAppBundleBuilder
         "terminal-font-assets-build-receipt.json";
     private const string TerminalFontLicenseFileName =
         "JETBRAINS-MONO-OFL.txt";
+    private const string ProjectLicenseFileName = "GHOSTSHELL-LICENSE.txt";
+    private const string MacOsLegalRecordFileName = "MACOS-RELEASE-LEGAL.json";
+    private const string SmbSourceFileName = "SMBLIBRARY-SOURCE.json";
+    private const string SmbRelinkingFileName =
+        "SMBLIBRARY-SOURCE-AND-RELINKING.md";
+    private const string SmbLicenseFileName = "SMBLIBRARY-LGPL-3.0.txt";
+    private const string GplLicenseFileName = "GPL-3.0.txt";
     private const string NativeResourcesDirectoryName = "Native";
     private const string SqlLanguageResourcesDirectoryName = "SqlLanguage";
 
@@ -72,6 +79,12 @@ public sealed class MacOsAppBundleBuilder
         TerminalFontCatalogFileName,
         TerminalFontReceiptFileName,
         TerminalFontLicenseFileName,
+        ProjectLicenseFileName,
+        MacOsLegalRecordFileName,
+        SmbSourceFileName,
+        SmbRelinkingFileName,
+        SmbLicenseFileName,
+        GplLicenseFileName,
     ];
 
     private static readonly IReadOnlyDictionary<string, string>
@@ -91,6 +104,12 @@ public sealed class MacOsAppBundleBuilder
             [TerminalFontReceiptFileName] =
                 Path.Combine("Native", TerminalFontReceiptFileName),
             [TerminalFontLicenseFileName] = "JetBrainsMono-OFL.txt",
+            [ProjectLicenseFileName] = ProjectLicenseFileName,
+            [MacOsLegalRecordFileName] = MacOsLegalRecordFileName,
+            [SmbSourceFileName] = SmbSourceFileName,
+            [SmbRelinkingFileName] = SmbRelinkingFileName,
+            [SmbLicenseFileName] = SmbLicenseFileName,
+            [GplLicenseFileName] = GplLicenseFileName,
         };
 
     public MacOsAppBundleResult Build(MacOsAppBundleRequest request)
@@ -112,6 +131,12 @@ public sealed class MacOsAppBundleBuilder
             request.ProductIdentityManifestPath,
             request.ProductIdentitySourceRoot,
             request.AssetCatalogPath);
+        var legalClosure = MacOsReleaseLegalClosure.Validate(
+            Path.Combine(
+                request.ProductIdentitySourceRoot,
+                "licenses",
+                "macos-release-legal.json"),
+            request.ProductIdentitySourceRoot);
         var infoPlist = RenderInfoPlist(request.ProductVersion, request.BuildVersion);
         var generatedBundleBytes = checked(
             Encoding.UTF8.GetByteCount(infoPlist)
@@ -146,6 +171,7 @@ public sealed class MacOsAppBundleBuilder
             publishDirectory,
             generatedBundleBytes);
         ValidateRequiredPayload(sourceEntries, hasSeparateManagedEvidence);
+        ValidatePackagedLegalEvidence(publishDirectory, legalClosure);
         var evidenceLimits = CreateManagedEvidenceLimits(
             sourceEntries,
             generatedBundleBytes);
@@ -560,6 +586,44 @@ public sealed class MacOsAppBundleBuilder
                 && current.UnixMode is { } unixMode)
             {
                 File.SetUnixFileMode(destination, unixMode);
+            }
+        }
+    }
+
+    private static void ValidatePackagedLegalEvidence(
+        string publishDirectory,
+        MacOsReleaseLegalInspection legalClosure)
+    {
+        var requiredFiles = new Dictionary<string, byte[]>(StringComparer.Ordinal)
+        {
+            [MacOsLegalRecordFileName] = legalClosure.Record,
+            [ProjectLicenseFileName] = legalClosure.Evidence["LICENSE"],
+            [GplLicenseFileName] = legalClosure.Evidence["licenses/GPL-3.0.txt"],
+            [SmbLicenseFileName] =
+                legalClosure.Evidence["licenses/SMBLIBRARY-LGPL-3.0.txt"],
+            [SmbRelinkingFileName] = legalClosure.Evidence[
+                "licenses/SMBLIBRARY-SOURCE-AND-RELINKING.md"],
+            [SmbSourceFileName] =
+                legalClosure.Evidence["licenses/SMBLIBRARY-SOURCE.json"],
+            ["THIRD-PARTY-NOTICES.md"] =
+                legalClosure.Evidence["licenses/THIRD-PARTY-NOTICES.md"],
+        };
+        foreach (var (fileName, expected) in requiredFiles)
+        {
+            var path = Path.Combine(publishDirectory, fileName);
+            using var stream = RegularPackageFileReader.Open(path, out var inspection);
+            if (inspection.Length != expected.Length)
+            {
+                throw new InvalidDataException(
+                    $"The packaged legal file {fileName} differs from reviewed evidence.");
+            }
+
+            var actual = new byte[checked((int)inspection.Length)];
+            stream.ReadExactly(actual);
+            if (!actual.AsSpan().SequenceEqual(expected))
+            {
+                throw new InvalidDataException(
+                    $"The packaged legal file {fileName} differs from reviewed evidence.");
             }
         }
     }
