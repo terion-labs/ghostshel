@@ -1,14 +1,29 @@
 <script setup lang="ts">
 const base = useRuntimeConfig().app.baseURL
 
+const siteUrl = 'https://ghostshell.terion.name'
+
 useSeoMeta({
   title: 'GhostSHELL — a ghost in your shell',
   description:
     'A native terminal workspace with an AI agent that operates local and remote machines over plain SSH. Terminal, browser, files, databases, Docker, Git, and monitoring in one window. Nothing to install on your servers.',
-  ogTitle: 'GhostSHELL',
+  ogTitle: 'GhostSHELL — a ghost in your shell',
   ogDescription:
+    'A native terminal workspace with an AI agent that operates local and remote machines over plain SSH. Nothing to install on your servers.',
+  ogType: 'website',
+  ogUrl: `${siteUrl}/`,
+  ogSiteName: 'GhostSHELL',
+  ogImage: `${siteUrl}/share.png`,
+  ogImageWidth: 1200,
+  ogImageHeight: 630,
+  ogImageType: 'image/png',
+  ogImageAlt:
+    'GhostSHELL logo: AI-native terminal workspaces and multitool',
+  twitterCard: 'summary_large_image',
+  twitterTitle: 'GhostSHELL — a ghost in your shell',
+  twitterDescription:
     'A native terminal workspace with an AI agent that operates local and remote machines over plain SSH.',
-  ogImage: 'https://ghostshell.terion.name/shots/workspace-agent.webp',
+  twitterImage: `${siteUrl}/share.png`,
 })
 
 const providers = [
