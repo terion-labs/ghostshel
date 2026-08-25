@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostshell.app/schemas/macos-arm64-release-soak-receipt-v1.json",
+  "title": "GhostShell macOS arm64 release soak receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "evidenceKind", "runnerVersion", "catalogSha256", "policySha256", "policy", "host", "build", "startedAtUtc", "completedAtUtc", "overallResult", "packageUnchanged", "scenarios"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "evidenceKind": { "const": "ghostshell-macos-arm64-release-soak" },
+    "runnerVersion": { "const": "1.0.0" },
+    "catalogSha256": { "$ref": "#/$defs/sha256" },
+    "policySha256": { "$ref": "#/$defs/sha256" },
+    "policy": { "$ref": "#/$defs/policy" },
+    "host": { "$ref": "#/$defs/host" },
+    "build": { "$ref": "#/$defs/build" },
+    "startedAtUtc": { "type": "string", "format": "date-time" },
+    "completedAtUtc": { "type": "string", "format": "date-time" },
+    "overallResult": { "enum": ["pass", "fail", "blocked"] },
+    "packageUnchanged": { "type": "boolean" },
+    "scenarios": { "type": "array", "minItems": 10, "maxItems": 10, "items": { "$ref": "#/$defs/scenario" } }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "policyKind", "policyVersion", "referenceConfigurationId", "ratifiedAtUtc", "scenarios"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "policyKind": { "const": "ghostshell-macos-arm64-soak-policy" },
+        "policyVersion": { "$ref": "#/$defs/identifier" },
+        "referenceConfigurationId": { "$ref": "#/$defs/identifier" },
+        "ratifiedAtUtc": { "type": "string", "format": "date-time" },
+        "scenarios": { "type": "array", "minItems": 10, "maxItems": 10, "items": { "$ref": "#/$defs/budget" } }
+      }
+    },
+    "budget": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "durationSeconds", "requiredLoad", "loadUnit", "maximumWorkingSetGrowthBytes", "maximumFailures", "cleanupTimeoutSeconds", "maximumLiveProcessesAfterCleanup"],
+      "properties": {
+        "id": { "$ref": "#/$defs/failureCode" },
+        "durationSeconds": { "type": "integer", "minimum": 60 },
+        "requiredLoad": { "type": "integer", "minimum": 1 },
+        "loadUnit": { "$ref": "#/$defs/failureCode" },
+        "maximumWorkingSetGrowthBytes": { "type": "integer", "minimum": 1 },
+        "maximumFailures": { "type": "integer", "minimum": 0 },
+        "cleanupTimeoutSeconds": { "type": "integer", "minimum": 5, "maximum": 300 },
+        "maximumLiveProcessesAfterCleanup": { "const": 0 }
+      }
+    },
+    "host": {
+      "type": "object", "additionalProperties": false,
+      "required": ["referenceConfigurationId", "hostFingerprint", "osDescription", "osArchitecture", "processArchitecture", "logicalProcessorCount", "powerSource"],
+      "properties": {
+        "referenceConfigurationId": { "$ref": "#/$defs/identifier" },
+        "hostFingerprint": { "type": "string", "pattern": "^host-[a-f0-9]{16}$" },
+        "osDescription": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "osArchitecture": { "const": "Arm64" },
+        "processArchitecture": { "const": "Arm64" },
+        "logicalProcessorCount": { "type": "integer", "minimum": 1 },
+        "powerSource": { "enum": ["ac", "battery", "unknown"] }
+      }
+    },
+    "build": {
+      "type": "object", "additionalProperties": false,
+      "required": ["buildLabel", "packageKind", "packageExecutable", "productVersion", "executableLengthBytes", "executableSha256", "packageFileCount", "packageManifestSha256", "applicationIdentity"],
+      "properties": {
+        "buildLabel": { "$ref": "#/$defs/identifier" },
+        "packageKind": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "packageExecutable": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "productVersion": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "executableLengthBytes": { "type": "integer", "minimum": 1 },
+        "executableSha256": { "$ref": "#/$defs/sha256" },
+        "packageFileCount": { "type": "integer", "minimum": 1 },
+        "packageManifestSha256": { "$ref": "#/$defs/sha256" },
+        "applicationIdentity": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    },
+    "resourceObservation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sampleCount", "initialWorkingSetBytes", "peakWorkingSetBytes", "finalWorkingSetBytes", "workingSetGrowthBytes", "cpuTimeMilliseconds", "peakLiveProcessCount", "capturedProcessCount"],
+      "properties": {
+        "sampleCount": { "type": "integer", "minimum": 1 },
+        "initialWorkingSetBytes": { "type": "integer", "minimum": 0 },
+        "peakWorkingSetBytes": { "type": "integer", "minimum": 0 },
+        "finalWorkingSetBytes": { "type": "integer", "minimum": 0 },
+        "workingSetGrowthBytes": { "type": "integer", "minimum": 0 },
+        "cpuTimeMilliseconds": { "type": "integer", "minimum": 0 },
+        "peakLiveProcessCount": { "type": "integer", "minimum": 0 },
+        "capturedProcessCount": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "identifier": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$" },
+    "failureCode": { "type": "string", "pattern": "^[a-z0-9-]{3,64}$" },
+    "scenario": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "startedAtUtc", "completedAtUtc", "completedLoad", "observedFailures", "abruptExits", "operatorResult", "machineResult", "failureCodes", "resources", "cleanupPassed"],
+      "properties": {
+        "id": { "$ref": "#/$defs/failureCode" },
+        "startedAtUtc": { "type": "string", "format": "date-time" },
+        "completedAtUtc": { "type": "string", "format": "date-time" },
+        "completedLoad": { "type": "integer", "minimum": 0 },
+        "observedFailures": { "type": "integer", "minimum": 0 },
+        "abruptExits": { "type": "integer", "minimum": 0 },
+        "operatorResult": { "enum": ["pass", "fail", "blocked"] },
+        "machineResult": { "enum": ["pass", "fail", "blocked"] },
+        "failureCodes": { "type": "array", "items": { "$ref": "#/$defs/failureCode" }, "uniqueItems": true },
+        "resources": { "$ref": "#/$defs/resourceObservation" },
+        "cleanupPassed": { "type": "boolean" }
+      }
+    }
+  }
+}

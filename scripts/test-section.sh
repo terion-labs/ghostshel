@@ -52,6 +52,7 @@ data_browser_projects=(
     "tests/GhostShell.Databases.IntegrationTests/GhostShell.Databases.IntegrationTests.csproj"
     "tests/GhostShell.Databases.Tests/GhostShell.Databases.Tests.csproj"
     "tests/GhostShell.Redis.Tests/GhostShell.Redis.Tests.csproj"
+    "tests/GhostShell.SoakAcceptance.Tests/GhostShell.SoakAcceptance.Tests.csproj"
 )
 terminal_host_projects=(
     "tests/GhostShell.SessionHost.Tests/GhostShell.SessionHost.Tests.csproj"

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostshell.app/schemas/macos-arm64-soak-policy-v1.json",
+  "title": "GhostShell macOS arm64 soak policy v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "policyKind", "policyVersion", "referenceConfigurationId", "ratifiedAtUtc", "scenarios"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "policyKind": { "const": "ghostshell-macos-arm64-soak-policy" },
+    "policyVersion": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$" },
+    "referenceConfigurationId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$" },
+    "ratifiedAtUtc": { "type": "string", "format": "date-time" },
+    "scenarios": {
+      "type": "array", "minItems": 10, "maxItems": 10,
+      "items": { "$ref": "#/$defs/scenarioBudget" }
+    }
+  },
+  "$defs": {
+    "scenarioBudget": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "durationSeconds", "requiredLoad", "loadUnit", "maximumWorkingSetGrowthBytes", "maximumFailures", "cleanupTimeoutSeconds", "maximumLiveProcessesAfterCleanup"],
+      "properties": {
+        "id": { "type": "string" },
+        "durationSeconds": { "type": "integer", "minimum": 60 },
+        "requiredLoad": { "type": "integer", "minimum": 1 },
+        "loadUnit": { "type": "string" },
+        "maximumWorkingSetGrowthBytes": { "type": "integer", "minimum": 1 },
+        "maximumFailures": { "type": "integer", "minimum": 0 },
+        "cleanupTimeoutSeconds": { "type": "integer", "minimum": 5, "maximum": 300 },
+        "maximumLiveProcessesAfterCleanup": { "const": 0 }
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "policyKind": "ghostshell-macos-arm64-soak-policy",
+  "policyVersion": "release-v1",
+  "referenceConfigurationId": "macos-arm64-reference-v1",
+  "ratifiedAtUtc": "2026-08-25T00:00:00+00:00",
+  "scenarios": [
+    { "id": "reconnect-reattach", "durationSeconds": 900, "requiredLoad": 30, "loadUnit": "cycles", "maximumWorkingSetGrowthBytes": 268435456, "maximumFailures": 0, "cleanupTimeoutSeconds": 30, "maximumLiveProcessesAfterCleanup": 0 },
+    { "id": "startup-crash-restore", "durationSeconds": 900, "requiredLoad": 12, "loadUnit": "cycles", "maximumWorkingSetGrowthBytes": 268435456, "maximumFailures": 0, "cleanupTimeoutSeconds": 30, "maximumLiveProcessesAfterCleanup": 0 },
+    { "id": "many-tabs-panels", "durationSeconds": 1200, "requiredLoad": 40, "loadUnit": "panels", "maximumWorkingSetGrowthBytes": 402653184, "maximumFailures": 0, "cleanupTimeoutSeconds": 60, "maximumLiveProcessesAfterCleanup": 0 },
+    { "id": "bounded-scrollback", "durationSeconds": 900, "requiredLoad": 500000, "loadUnit": "lines", "maximumWorkingSetGrowthBytes": 268435456, "maximumFailures": 0, "cleanupTimeoutSeconds": 30, "maximumLiveProcessesAfterCleanup": 0 },
+    { "id": "provider-failure-noncooperation", "durationSeconds": 900, "requiredLoad": 12, "loadUnit": "failures", "maximumWorkingSetGrowthBytes": 268435456, "maximumFailures": 0, "cleanupTimeoutSeconds": 60, "maximumLiveProcessesAfterCleanup": 0 },
+    { "id": "cef-renderer-replacement", "durationSeconds": 900, "requiredLoad": 6, "loadUnit": "replacements", "maximumWorkingSetGrowthBytes": 402653184, "maximumFailures": 0, "cleanupTimeoutSeconds": 60, "maximumLiveProcessesAfterCleanup": 0 },
+    { "id": "mcp-failure-cleanup", "durationSeconds": 900, "requiredLoad": 12, "loadUnit": "failures", "maximumWorkingSetGrowthBytes": 268435456, "maximumFailures": 0, "cleanupTimeoutSeconds": 60, "maximumLiveProcessesAfterCleanup": 0 },
+    { "id": "sleep-wake", "durationSeconds": 1800, "requiredLoad": 3, "loadUnit": "cycles", "maximumWorkingSetGrowthBytes": 268435456, "maximumFailures": 0, "cleanupTimeoutSeconds": 60, "maximumLiveProcessesAfterCleanup": 0 },
+    { "id": "quick-terminal-cycles", "durationSeconds": 900, "requiredLoad": 100, "loadUnit": "cycles", "maximumWorkingSetGrowthBytes": 268435456, "maximumFailures": 0, "cleanupTimeoutSeconds": 30, "maximumLiveProcessesAfterCleanup": 0 },
+    { "id": "native-view-open-close", "durationSeconds": 1200, "requiredLoad": 100, "loadUnit": "cycles", "maximumWorkingSetGrowthBytes": 402653184, "maximumFailures": 0, "cleanupTimeoutSeconds": 60, "maximumLiveProcessesAfterCleanup": 0 }
+  ]
+}

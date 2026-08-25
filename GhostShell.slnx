@@ -44,6 +44,7 @@
     <Project Path="tests/GhostShell.Protocol.Tests/GhostShell.Protocol.Tests.csproj" />
     <Project Path="tests/GhostShell.Redis.Tests/GhostShell.Redis.Tests.csproj" />
     <Project Path="tests/GhostShell.SessionHost.Tests/GhostShell.SessionHost.Tests.csproj" />
+    <Project Path="tests/GhostShell.SoakAcceptance.Tests/GhostShell.SoakAcceptance.Tests.csproj" />
     <Project Path="tests/GhostShell.Terminal.Tests/GhostShell.Terminal.Tests.csproj" />
     <Project Path="tests/GhostShell.TerminalAcceptance.Tests/GhostShell.TerminalAcceptance.Tests.csproj" />
   </Folder>
@@ -52,6 +53,7 @@
     <Project Path="tools/GhostShell.DesignQa/GhostShell.DesignQa.csproj" />
     <Project Path="tools/GhostShell.Packaging/GhostShell.Packaging.csproj" />
     <Project Path="tools/GhostShell.SecurityKeyProbe/GhostShell.SecurityKeyProbe.csproj" />
+    <Project Path="tools/GhostShell.SoakAcceptance/GhostShell.SoakAcceptance.csproj" />
     <Project Path="tools/GhostShell.SingleInstanceTestHost/GhostShell.SingleInstanceTestHost.csproj" />
     <Project Path="tools/GhostShell.SqlLanguageAotProbe/GhostShell.SqlLanguageAotProbe.csproj" />
     <Project Path="tools/GhostShell.SqlLanguageTestWorker/GhostShell.SqlLanguageTestWorker.csproj" />

@@ -9,6 +9,8 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="GhostShell.AccessibilityAcceptance.Tests" />
+    <InternalsVisibleTo Include="GhostShell.SoakAcceptance" />
+    <InternalsVisibleTo Include="GhostShell.SoakAcceptance.Tests" />
   </ItemGroup>
 
   <ItemGroup>
