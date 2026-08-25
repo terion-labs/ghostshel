@@ -72,6 +72,9 @@ internal sealed class SafeDiagnosticsBundleRequestSource : IDiagnosticsBundleReq
 
         return ValueTask.FromResult(new DiagnosticsBundleRequest(
             new DiagnosticsBundleMetadata(
+                ProductIdentity.DisplayName,
+                ProductIdentity.BundleIdentifier,
+                ProductIdentity.ExecutableName,
                 assemblyVersion,
                 RuntimeInformation.FrameworkDescription,
                 RuntimeInformation.OSDescription,

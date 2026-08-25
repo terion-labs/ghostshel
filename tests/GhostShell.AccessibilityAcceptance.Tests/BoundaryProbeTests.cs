@@ -438,6 +438,22 @@ public sealed class BoundaryProbeTests : IDisposable
             "rc-1"));
     }
 
+    [Theory]
+    [InlineData("Ghostshell", "GhostShell")]
+    [InlineData("GhostSHELL", "Ghostshell")]
+    public void Mac_package_rejects_identity_display_or_icon_drift(
+        string displayName,
+        string iconName)
+    {
+        var bundle = CreateMacBundle();
+        WriteInfoPlist(bundle, "app.ghostshell", displayName, iconName);
+
+        Assert.Throws<InvalidDataException>(() => PackageFingerprint.Inspect(
+            bundle,
+            TargetPlatform.MacOS,
+            "rc-1"));
+    }
+
     [Fact]
     public void Mac_package_rejects_duplicate_keys_even_with_mixed_value_types()
     {
@@ -635,7 +651,11 @@ public sealed class BoundaryProbeTests : IDisposable
         return bundle;
     }
 
-    private static void WriteInfoPlist(string bundle, string identifier)
+    private static void WriteInfoPlist(
+        string bundle,
+        string identifier,
+        string displayName = "GhostSHELL",
+        string iconName = "GhostShell")
     {
         File.WriteAllText(
             Path.Combine(bundle, "Contents", "Info.plist"),
@@ -645,6 +665,9 @@ public sealed class BoundaryProbeTests : IDisposable
             <plist version="1.0"><dict>
               <key>CFBundleIdentifier</key><string>{{identifier}}</string>
               <key>CFBundleExecutable</key><string>GhostShell</string>
+              <key>CFBundleDisplayName</key><string>{{displayName}}</string>
+              <key>CFBundleName</key><string>{{displayName}}</string>
+              <key>CFBundleIconName</key><string>{{iconName}}</string>
               <key>CFBundleShortVersionString</key><string>1.0.0</string>
             </dict></plist>
             """);

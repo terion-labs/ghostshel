@@ -1324,12 +1324,15 @@
                   Description="View version, platform, and application information." />
 
               <controls:SurfaceCard>
-                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="{DynamicResource ShellSpaceLg}" ColumnSpacing="{DynamicResource ShellSpaceXl}">
-                  <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Version" /><TextBlock FontWeight="SemiBold" Text="{Binding ApplicationVersion}" /></StackPanel>
-                  <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Platform" /><TextBlock Text="{Binding PlatformDescription}" /></StackPanel>
-                  <StackPanel Grid.Row="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Runtime" /><TextBlock Text="{Binding RuntimeDescription}" /></StackPanel>
-                  <StackPanel Grid.Row="1" Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Agent runtime" /><TextBlock Text="{Binding AgentRuntimeDescription}" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Target architecture: native .NET in process, without an external JavaScript runtime." TextWrapping="Wrap" /></StackPanel>
-                  <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Updates" /><TextBlock Text="{Binding UpdateStatus}" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Install newer builds through the same channel that provided this copy." TextWrapping="Wrap" /></StackPanel>
+                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="{DynamicResource ShellSpaceLg}" ColumnSpacing="{DynamicResource ShellSpaceXl}">
+                  <StackPanel Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Product" /><TextBlock FontWeight="SemiBold" Text="{Binding ProductName}" /></StackPanel>
+                  <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Version" /><TextBlock FontWeight="SemiBold" Text="{Binding ApplicationVersion}" /></StackPanel>
+                  <StackPanel Grid.Row="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Bundle identifier" /><TextBlock Text="{Binding ApplicationIdentifier}" /></StackPanel>
+                  <StackPanel Grid.Row="1" Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Executable" /><TextBlock Text="{Binding ExecutableName}" /></StackPanel>
+                  <StackPanel Grid.Row="2" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Platform" /><TextBlock Text="{Binding PlatformDescription}" /></StackPanel>
+                  <StackPanel Grid.Row="2" Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Runtime" /><TextBlock Text="{Binding RuntimeDescription}" /></StackPanel>
+                  <StackPanel Grid.Row="3" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Agent runtime" /><TextBlock Text="{Binding AgentRuntimeDescription}" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Target architecture: native .NET in process, without an external JavaScript runtime." TextWrapping="Wrap" /></StackPanel>
+                  <StackPanel Grid.Row="3" Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Updates" /><TextBlock Text="{Binding UpdateStatus}" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Install newer builds through the same channel that provided this copy." TextWrapping="Wrap" /></StackPanel>
                 </Grid>
               </controls:SurfaceCard>
 

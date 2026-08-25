@@ -20,6 +20,8 @@ native_component_catalog="${repository_dir}/licenses/native-terminal-components.
 font_assets_catalog="${repository_dir}/licenses/terminal-font-assets.json"
 font_assets_directory="${repository_dir}/native/artifacts/common/fonts/JetBrainsMono"
 font_assets_build_receipt="${repository_dir}/native/artifacts/common/terminal-font-assets-build-receipt.json"
+product_identity_manifest="${repository_dir}/assets/macos/product-identity.json"
+compile_macos_app_icon="${repository_dir}/scripts/compile-macos-app-icon.sh"
 declare_macos_sdk="${repository_dir}/scripts/declare-macos-sdk26.sh"
 sign_notarize_macos="${repository_dir}/scripts/sign-notarize-macos.sh"
 namespace_avalonia_native="${repository_dir}/scripts/namespace-avalonia-native-macos.sh"
@@ -214,6 +216,14 @@ if [[ ! -x "${namespace_avalonia_native}" ]]; then
     echo "The Avalonia Native Objective-C namespace helper is unavailable." >&2
     exit 1
 fi
+if [[ ! -x "${compile_macos_app_icon}" ]]; then
+    echo "The Xcode application-icon compiler is unavailable." >&2
+    exit 1
+fi
+if [[ ! -f "${product_identity_manifest}" || -L "${product_identity_manifest}" ]]; then
+    echo "The reviewed macOS product identity manifest is unavailable." >&2
+    exit 1
+fi
 
 if [[ "$(basename "${output}")" != "GhostShell.app" ]]; then
     echo "The --output path must end in GhostShell.app." >&2
@@ -404,6 +414,9 @@ trap cleanup EXIT
 publish_dir="${working_dir}/publish"
 managed_evidence_dir="${working_dir}/managed-evidence"
 aot_publish_log="${working_dir}/native-aot-publish.log"
+compiled_icon_directory="${working_dir}/compiled-app-icon"
+mkdir "${compiled_icon_directory}"
+"${compile_macos_app_icon}" --output "${compiled_icon_directory}"
 "${dotnet}" restore \
     "${desktop_project}" \
     -maxcpucount:4 \
@@ -652,6 +665,9 @@ fi
     --output "${candidate}" \
     --version "${version}" \
     --build-version "${build_version}" \
+    --product-identity-manifest "${product_identity_manifest}" \
+    --product-identity-source-root "${repository_dir}" \
+    --asset-catalog "${compiled_icon_directory}/Assets.car" \
     --component-catalog "${component_catalog}" \
     --native-component-catalog "${native_component_catalog}" \
     --native-build-receipt "${native_build_receipt}" \
@@ -664,12 +680,35 @@ fi
 
 /usr/bin/plutil -lint "${candidate}/Contents/Info.plist"
 candidate_icon="${candidate}/Contents/Resources/GhostShell.icns"
+candidate_asset_catalog="${candidate}/Contents/Resources/Assets.car"
+candidate_identity="${candidate}/Contents/Resources/Licenses/ProductIdentity/product-identity.json"
 if [[ ! -f "${candidate_icon}" || -L "${candidate_icon}" ]]; then
     echo "The packaged macOS application icon is missing or linked." >&2
     exit 1
 fi
-if [[ "$(/usr/bin/plutil -extract CFBundleIconFile raw "${candidate}/Contents/Info.plist")" != "GhostShell" ]]; then
+if [[ ! -f "${candidate_asset_catalog}" || -L "${candidate_asset_catalog}" ]]; then
+    echo "The packaged Xcode asset catalog is missing or linked." >&2
+    exit 1
+fi
+if ! /usr/bin/cmp -s "${product_identity_manifest}" "${candidate_identity}"; then
+    echo "The packaged product identity differs from the reviewed manifest." >&2
+    exit 1
+fi
+candidate_info_plist="${candidate}/Contents/Info.plist"
+if [[ "$(/usr/bin/plutil -extract CFBundleDisplayName raw "${candidate_info_plist}")" != "GhostSHELL" \
+    || "$(/usr/bin/plutil -extract CFBundleName raw "${candidate_info_plist}")" != "GhostSHELL" \
+    || "$(/usr/bin/plutil -extract CFBundleExecutable raw "${candidate_info_plist}")" != "GhostShell" \
+    || "$(/usr/bin/plutil -extract CFBundleIdentifier raw "${candidate_info_plist}")" != "app.ghostshell" \
+    || "$(/usr/bin/plutil -extract CFBundleIconFile raw "${candidate_info_plist}")" != "GhostShell" \
+    || "$(/usr/bin/plutil -extract CFBundleIconName raw "${candidate_info_plist}")" != "GhostShell" ]]; then
     echo "The packaged macOS application icon declaration is invalid." >&2
+    exit 1
+fi
+candidate_asset_info="${working_dir}/candidate-Assets.info.json"
+/usr/bin/assetutil --info "${candidate_asset_catalog}" > "${candidate_asset_info}"
+if ! /usr/bin/grep -Fq '"AssetType" : "Icon Image"' "${candidate_asset_info}" \
+    || ! /usr/bin/grep -Fq '"Name" : "GhostShell"' "${candidate_asset_info}"; then
+    echo "The packaged Assets.car does not contain the named GhostShell icon." >&2
     exit 1
 fi
 

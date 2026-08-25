@@ -246,6 +246,9 @@ public sealed class DiagnosticsExportViewModelTests
 
         public DiagnosticsBundleRequest Request { get; } = new(
             new DiagnosticsBundleMetadata(
+                ProductIdentity.DisplayName,
+                ProductIdentity.BundleIdentifier,
+                ProductIdentity.ExecutableName,
                 "0.1.0",
                 ".NET 10",
                 "Test OS",

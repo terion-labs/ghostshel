@@ -1,4 +1,3 @@
-using System.Buffers.Binary;
 using System.Text;
 
 namespace GhostShell.Packaging;
@@ -8,6 +7,9 @@ public sealed record MacOsAppBundleRequest(
     string DestinationPath,
     string ProductVersion,
     string BuildVersion,
+    string ProductIdentityManifestPath,
+    string ProductIdentitySourceRoot,
+    string AssetCatalogPath,
     string ComponentCatalogPath,
     string NativeComponentCatalogPath,
     string NativeBuildReceiptPath,
@@ -34,13 +36,15 @@ public sealed class MacOsAppBundleBuilder
 
     private const string InfoPlistResource =
         "GhostShell.Packaging.MacOS.Info.plist.template";
-    private const string AppIconResource =
-        "GhostShell.Packaging.MacOS.GhostShell.icns";
     private const string AppIconFileName = "GhostShell.icns";
-    private const int MaximumAppIconBytes = 16 * 1024 * 1024;
+    private const string AssetCatalogFileName = "Assets.car";
+    private const string ProductIdentityFileName = "product-identity.json";
+    private const string ProductIdentityDirectoryName = "ProductIdentity";
     private const string ProductVersionPlaceholder = "__GHOSTSHELL_VERSION__";
     private const string BuildVersionPlaceholder = "__GHOSTSHELL_BUILD_VERSION__";
     private const int NativeEvidenceDirectoryCount = 1;
+    private const int GeneratedBundleFileCount = 4;
+    private const int GeneratedBundleDirectoryCount = 1;
     private const string NativeTerminalCatalogFileName =
         "native-terminal-components.json";
     private const string NativeTerminalReceiptFileName =
@@ -104,10 +108,16 @@ public sealed class MacOsAppBundleBuilder
         ValidateVersion(request.ProductVersion, nameof(request.ProductVersion), 3, 3);
         ValidateVersion(request.BuildVersion, nameof(request.BuildVersion), 1, 3);
 
+        var identity = MacOsProductIdentity.Validate(
+            request.ProductIdentityManifestPath,
+            request.ProductIdentitySourceRoot,
+            request.AssetCatalogPath);
         var infoPlist = RenderInfoPlist(request.ProductVersion, request.BuildVersion);
-        var appIcon = ReadAppIcon();
         var generatedBundleBytes = checked(
-            Encoding.UTF8.GetByteCount(infoPlist) + appIcon.Length);
+            Encoding.UTF8.GetByteCount(infoPlist)
+            + identity.Manifest.Length
+            + identity.IcnsFallback.Length
+            + identity.AssetCatalog.Length);
         var publishDirectory = MacOsPackagePaths.RequireExistingDirectory(
             request.PublishDirectory,
             nameof(request.PublishDirectory));
@@ -181,13 +191,23 @@ public sealed class MacOsAppBundleBuilder
                 cefPlan);
             WriteManagedEvidence(licenseDirectory, managedEvidence.Files);
             cefPlan?.CopyTo(contentsDirectory);
-            File.WriteAllBytes(
+            WriteNewFile(
                 Path.Combine(resourcesDirectory, AppIconFileName),
-                appIcon);
-            File.WriteAllText(
+                identity.IcnsFallback);
+            WriteNewFile(
+                Path.Combine(resourcesDirectory, AssetCatalogFileName),
+                identity.AssetCatalog);
+            var identityDirectory = Path.Combine(
+                licenseDirectory,
+                ProductIdentityDirectoryName);
+            Directory.CreateDirectory(identityDirectory);
+            WriteNewFile(
+                Path.Combine(identityDirectory, ProductIdentityFileName),
+                identity.Manifest);
+            WriteNewFile(
                 Path.Combine(contentsDirectory, "Info.plist"),
-                infoPlist,
-                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)
+                    .GetBytes(infoPlist));
             ValidateNativeProvenance();
 
             ExclusiveDirectoryMover.Move(stagingPath, destinationPath);
@@ -199,7 +219,7 @@ public sealed class MacOsAppBundleBuilder
                 sourceEntries.Count(entry => !entry.IsDirectory)
                 + managedEvidence.Files.Count
                 + (cefPlan?.FileCount ?? 0)
-                + 2);
+                + GeneratedBundleFileCount);
 
             void ValidateNativeProvenance()
             {
@@ -614,11 +634,14 @@ public sealed class MacOsAppBundleBuilder
         ValidateSourceBudget(
             sourceEntries.Count(entry => !entry.IsDirectory)
             + evidenceFiles.Count
-            + (cefPlan?.FileCount ?? 0),
+            + (cefPlan?.FileCount ?? 0)
+            + GeneratedBundleFileCount,
             sourceEntries.Count
             + evidenceFiles.Count
             + evidenceDirectories.Count
             + NativeEvidenceDirectoryCount
+            + GeneratedBundleFileCount
+            + GeneratedBundleDirectoryCount
             + CountCefDirectories(cefPlan),
             Math.Max(
                 Math.Max(
@@ -735,6 +758,16 @@ public sealed class MacOsAppBundleBuilder
         }
     }
 
+    private static void WriteNewFile(string path, byte[] content)
+    {
+        using var target = new FileStream(
+            path,
+            FileMode.CreateNew,
+            FileAccess.Write,
+            FileShare.None);
+        target.Write(content);
+    }
+
     private static void EnsureEvidenceDestinationsAreAvailable(
         string licenseDirectory,
         IReadOnlyList<ManagedComponentEvidenceFile> evidenceFiles)
@@ -831,31 +864,6 @@ public sealed class MacOsAppBundleBuilder
                 BuildVersionPlaceholder,
                 buildVersion,
                 StringComparison.Ordinal);
-    }
-
-    private static byte[] ReadAppIcon()
-    {
-        using var stream = typeof(MacOsAppBundleBuilder).Assembly
-            .GetManifestResourceStream(AppIconResource)
-            ?? throw new InvalidOperationException(
-                "The embedded macOS application icon is unavailable.");
-        if (stream.Length is < 8 or > MaximumAppIconBytes)
-        {
-            throw new InvalidDataException(
-                "The embedded macOS application icon has an invalid size.");
-        }
-
-        var icon = new byte[(int)stream.Length];
-        stream.ReadExactly(icon);
-        var declaredLength = BinaryPrimitives.ReadUInt32BigEndian(icon.AsSpan(4, 4));
-        if (!icon.AsSpan(0, 4).SequenceEqual("icns"u8)
-            || declaredLength != icon.Length)
-        {
-            throw new InvalidDataException(
-                "The embedded macOS application icon is not a valid ICNS container.");
-        }
-
-        return icon;
     }
 
     private static int CountOccurrences(string value, string search)

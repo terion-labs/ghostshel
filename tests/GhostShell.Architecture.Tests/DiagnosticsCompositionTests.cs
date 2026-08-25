@@ -35,6 +35,9 @@ public sealed class DiagnosticsCompositionTests
         var request = await source.CreateRequestAsync(
             DiagnosticsRedactionLevel.Safe,
             CancellationToken.None);
+        Assert.Equal(ProductIdentity.DisplayName, request.Metadata.ApplicationName);
+        Assert.Equal(ProductIdentity.BundleIdentifier, request.Metadata.ApplicationIdentifier);
+        Assert.Equal(ProductIdentity.ExecutableName, request.Metadata.ExecutableName);
         await using var output = new MemoryStream();
         var result = await new DeterministicDiagnosticsBundleExporter().ExportAsync(
             request,

@@ -53,14 +53,17 @@ public sealed class DeterministicDiagnosticsBundleExporterTests
 
         using var manifest = JsonDocument.Parse(ReadEntry(archive, "manifest.json"));
         var root = manifest.RootElement;
-        Assert.Equal(1, root.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(2, root.GetProperty("schemaVersion").GetInt32());
         Assert.Equal("2026-07-22T12:30:00.0000000Z", root.GetProperty("capturedAt").GetString());
+        Assert.Equal("GhostSHELL", root.GetProperty("applicationName").GetString());
+        Assert.Equal("app.ghostshell", root.GetProperty("applicationIdentifier").GetString());
+        Assert.Equal("GhostShell", root.GetProperty("executableName").GetString());
         Assert.Equal("0.1.0", root.GetProperty("applicationVersion").GetString());
         Assert.Equal(".NET 10.0.0", root.GetProperty("runtimeVersion").GetString());
         Assert.Equal("macOS 15.5", root.GetProperty("operatingSystem").GetString());
         Assert.Equal("arm64", root.GetProperty("architecture").GetString());
         Assert.Equal(2, root.GetProperty("artifacts").GetArrayLength());
-        Assert.Equal(7, root.GetPropertyCount());
+        Assert.Equal(10, root.GetPropertyCount());
     }
 
     [Fact]
@@ -380,6 +383,9 @@ public sealed class DeterministicDiagnosticsBundleExporterTests
         new(Metadata(CapturedAt), artifacts);
 
     private static DiagnosticsBundleMetadata Metadata(DateTimeOffset capturedAt) => new(
+        ProductIdentity.DisplayName,
+        ProductIdentity.BundleIdentifier,
+        ProductIdentity.ExecutableName,
         "0.1.0",
         ".NET 10.0.0",
         "macOS 15.5",

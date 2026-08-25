@@ -28,7 +28,10 @@ Install LLVM's `ld64.lld` as well. GhostSHELL's Native AOT object exceeds the
 limits of Apple's current linker. Set `GHOSTSHELL_NATIVE_AOT_LINKER` when the
 linker is not on `PATH`.
 
-Install Apple's Icon Composer to regenerate the checked-in icon fallback:
+Install full Xcode 26 or newer before packaging. CommandLineTools alone does not
+contain `actool` and the release script fails before publishing when full Xcode
+is unavailable. Apple's separate Icon Composer app is needed only to regenerate
+the checked-in compatibility icon:
 
 ```sh
 ./scripts/build-macos-icon.sh
@@ -37,11 +40,21 @@ Install Apple's Icon Composer to regenerate the checked-in icon fallback:
 `assets/macos/GhostShell.icon` is the layered source. It uses automatic and
 system fills so Icon Composer can render default, dark, tinted, and clear
 appearances while macOS supplies its mask, material, shadow, and highlight.
-`GhostShell.icns` is the deterministic compatibility rendition consumed by
-the non-Xcode packager. Icon Composer can preview every adaptive rendition,
-but its `ictool` only exports images. A truly adaptive installed icon requires
-Xcode's asset compiler to turn the layered source into `Assets.car`; copying a
-raw `.icon` document into an application bundle is not a supported substitute.
+`GhostShell.icns` is the deterministic compatibility rendition for macOS 13
+through 25. During every package build, `compile-macos-app-icon.sh` requires
+Xcode `actool` 26 or newer and compiles the same layered source into
+`Assets.car`. The script verifies the generated partial property list and uses
+`assetutil` to require a named `GhostShell` icon image. Copying a raw `.icon`
+document into an application bundle is not a supported substitute.
+
+`assets/macos/product-identity.json` is the reviewed macOS identity contract.
+It records the canonical display name, executable, bundle identifier, icon
+name, first-party ownership and license, maintainer approval, the six required
+appearances, and exact SHA-256 hashes for the Icon Composer document, source
+SVG, and ICNS fallback. Package assembly re-hashes each input and rejects an
+unknown field, missing appearance, changed source, incomplete ICNS size set, or
+identity disagreement. The exact manifest is retained under
+`Contents/Resources/Licenses/ProductIdentity`.
 
 The native build checks out Ghostty commit
 `08f039fbb3dea9c6b1cdb5ff4550666598122346`, applies the ordered patch overlay
@@ -132,6 +145,13 @@ validates the complete candidate, then publishes with a no-overwrite directory
 move. A failure removes the staging directory and leaves the requested
 destination absent.
 
+Adaptive icon compilation also fails closed before the managed publish. The
+selected developer directory must be full Xcode, `actool` must report version
+26 or newer, and both the generated partial plist and `Assets.car` must declare
+`GhostShell` as the primary icon. The release workflow selects a matching Xcode
+installation explicitly and repeats the `assetutil` check after extracting the
+signed archive.
+
 The default CEF root is `native/artifacts/<rid>/cef`. A separately staged,
 verified root can be supplied with `--cef-runtime-root`; it must still match
 the checked-in catalog and its own receipt.
@@ -182,9 +202,13 @@ The packager fails closed unless the Native AOT publish contains:
 
 - the GhostSHELL Native AOT executable, with no managed application DLLs,
   dependency manifest, runtime configuration, or JIT runtime;
-- `Contents/Resources/GhostShell.icns`, rendered from the checked-in layered
-  `assets/macos/GhostShell.icon` source and declared by `CFBundleIconFile` as
-  the compatibility icon until an Xcode-built `Assets.car` is packaged;
+- `Contents/Resources/Assets.car`, compiled by Xcode 26 or newer from the
+  checked-in layered `assets/macos/GhostShell.icon` source and declared by
+  `CFBundleIconName`;
+- `Contents/Resources/GhostShell.icns`, containing every required 16 through
+  1024 pixel compatibility rendition and declared by `CFBundleIconFile`;
+- the exact approved product-identity manifest under
+  `Contents/Resources/Licenses/ProductIdentity`;
 - exactly the current terminal library `libghostty-vt.dylib` rather than
   `libghostshell-ghostty.dylib` or full `libghostty.dylib`;
 - the pinned Ghostty license, native component catalog, and native build
@@ -223,8 +247,11 @@ package error, not an implicit extension point.
 
 The bundle declares:
 
+- display and bundle name `GhostSHELL`;
 - bundle identifier `app.ghostshell`;
 - executable `Contents/MacOS/GhostShell`;
+- primary adaptive icon name `GhostShell` and compatibility icon file
+  `GhostShell.icns`;
 - minimum system version macOS 13;
 - the supplied `CFBundleShortVersionString` and `CFBundleVersion`;
 - `Contents/Resources/Licenses/GHOSTTY-LICENSE`;
@@ -278,11 +305,11 @@ PKG creation, update-feed policy, and release-identity operations remain
 separate gates. An unsigned or ad-hoc local candidate must not be represented
 as notarized.
 
-Adaptive Icon Composer delivery is also still a release gate. The layered
-document and all six appearances are ready, but the current non-Xcode bundle
-contains the `.icns` compatibility rendition. Install full Xcode before
-claiming that the shipped bundle follows live system tint and clear-icon
-settings.
+Adaptive icon structure is now a package gate, but visual acceptance remains a
+release-host check. Inspect the exact signed candidate in Finder and the Dock
+under default, dark, tinted, and clear modes on macOS 26 before claiming those
+appearances. The automated `actool` and `assetutil` checks prove compilation and
+identity, not the pixels selected by the live desktop.
 
 The native component catalog deliberately reports `BLOCKED`: the exact linked
 libghostty-vt and staged shell-integration source/license closure has not

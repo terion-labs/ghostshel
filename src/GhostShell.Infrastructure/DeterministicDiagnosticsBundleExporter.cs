@@ -14,7 +14,7 @@ namespace GhostShell.Infrastructure;
 /// </summary>
 public sealed class DeterministicDiagnosticsBundleExporter : IDiagnosticsBundleExporter
 {
-    private const int ManifestSchemaVersion = 1;
+    private const int ManifestSchemaVersion = 2;
     private const int MaximumPathSegmentLength = 80;
     private const int MaximumPathSegmentCount = 12;
     private const string ManifestPath = "manifest.json";
@@ -191,6 +191,9 @@ public sealed class DeterministicDiagnosticsBundleExporter : IDiagnosticsBundleE
     {
         var values = new[]
         {
+            metadata.ApplicationName,
+            metadata.ApplicationIdentifier,
+            metadata.ExecutableName,
             metadata.ApplicationVersion,
             metadata.RuntimeVersion,
             metadata.OperatingSystem,
@@ -226,6 +229,9 @@ public sealed class DeterministicDiagnosticsBundleExporter : IDiagnosticsBundleE
             normalized[1],
             normalized[2],
             normalized[3],
+            normalized[4],
+            normalized[5],
+            normalized[6],
             metadata.CapturedAt.ToUniversalTime()));
     }
 
@@ -433,6 +439,9 @@ public sealed class DeterministicDiagnosticsBundleExporter : IDiagnosticsBundleE
             request.Metadata.CapturedAt.ToString(
                 "yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'",
                 CultureInfo.InvariantCulture));
+        writer.WriteString("applicationName", request.Metadata.ApplicationName);
+        writer.WriteString("applicationIdentifier", request.Metadata.ApplicationIdentifier);
+        writer.WriteString("executableName", request.Metadata.ExecutableName);
         writer.WriteString("applicationVersion", request.Metadata.ApplicationVersion);
         writer.WriteString("runtimeVersion", request.Metadata.RuntimeVersion);
         writer.WriteString("operatingSystem", request.Metadata.OperatingSystem);
@@ -513,6 +522,9 @@ public sealed class DeterministicDiagnosticsBundleExporter : IDiagnosticsBundleE
             new DiagnosticsBundleError(code, message));
 
     private sealed record PreparedMetadata(
+        string ApplicationName,
+        string ApplicationIdentifier,
+        string ExecutableName,
         string ApplicationVersion,
         string RuntimeVersion,
         string OperatingSystem,

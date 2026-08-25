@@ -6,6 +6,9 @@ internal sealed record MacOsPackagingCommand(
     string DestinationPath,
     string ProductVersion,
     string BuildVersion,
+    string ProductIdentityManifestPath,
+    string ProductIdentitySourceRoot,
+    string AssetCatalogPath,
     string ComponentCatalogPath,
     string NativeComponentCatalogPath,
     string NativeBuildReceiptPath,
@@ -19,11 +22,13 @@ internal sealed record MacOsPackagingCommand(
     public static MacOsPackagingCommand Parse(IReadOnlyList<string> arguments)
     {
         ArgumentNullException.ThrowIfNull(arguments);
-        if (arguments.Count != 28)
+        if (arguments.Count != 34)
         {
             throw new PackagingUsageException(
                 "macos requires --publish, --managed-evidence, --output, "
                 + "--version, --build-version, "
+                + "--product-identity-manifest, --product-identity-source-root, "
+                + "--asset-catalog, "
                 + "--component-catalog, --native-component-catalog, "
                 + "--native-build-receipt, --font-assets-catalog, "
                 + "--font-assets-build-receipt, --nuget-packages, "
@@ -41,6 +46,9 @@ internal sealed record MacOsPackagingCommand(
                     or "--output"
                     or "--version"
                     or "--build-version"
+                    or "--product-identity-manifest"
+                    or "--product-identity-source-root"
+                    or "--asset-catalog"
                     or "--component-catalog"
                     or "--native-component-catalog"
                     or "--native-build-receipt"
@@ -66,6 +74,9 @@ internal sealed record MacOsPackagingCommand(
             Required(values, "--output"),
             Required(values, "--version"),
             Required(values, "--build-version"),
+            Required(values, "--product-identity-manifest"),
+            Required(values, "--product-identity-source-root"),
+            Required(values, "--asset-catalog"),
             Required(values, "--component-catalog"),
             Required(values, "--native-component-catalog"),
             Required(values, "--native-build-receipt"),
@@ -82,6 +93,9 @@ internal sealed record MacOsPackagingCommand(
         DestinationPath,
         ProductVersion,
         BuildVersion,
+        ProductIdentityManifestPath,
+        ProductIdentitySourceRoot,
+        AssetCatalogPath,
         ComponentCatalogPath,
         NativeComponentCatalogPath,
         NativeBuildReceiptPath,

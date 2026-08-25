@@ -1,0 +1,68 @@
+name: macOS product identity
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/macos-product-identity.yml"
+      - "assets/macos/GhostShell.icon/**"
+      - "assets/macos/GhostShell.icns"
+      - "assets/macos/product-identity.json"
+      - "scripts/compile-macos-app-icon.sh"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/macos-product-identity.yml"
+      - "assets/macos/GhostShell.icon/**"
+      - "assets/macos/GhostShell.icns"
+      - "assets/macos/product-identity.json"
+      - "scripts/compile-macos-app-icon.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-product-identity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile-adaptive-icon:
+    name: Compile adaptive application icon
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Select full Xcode 26
+        shell: bash
+        run: |
+          for xcode_application in /Applications/Xcode_26*.app /Applications/Xcode.app; do
+            developer_directory="${xcode_application}/Contents/Developer"
+            if [[ -d "${developer_directory}" ]] \
+                && DEVELOPER_DIR="${developer_directory}" \
+                  xcrun actool --version --output-format=human-readable-text \
+                  | grep -Eq 'short-bundle-version: (2[6-9]|[3-9][0-9]|[1-9][0-9]{2,})(\.|$)'; then
+              echo "DEVELOPER_DIR=${developer_directory}" >> "${GITHUB_ENV}"
+              exit 0
+            fi
+          done
+          echo "The runner does not provide full Xcode 26." >&2
+          exit 1
+      - name: Compile and inspect reviewed icon
+        run: |
+          mkdir -p artifacts/macos-product-identity
+          ./scripts/compile-macos-app-icon.sh \
+            --output artifacts/macos-product-identity
+          shasum -a 256 \
+            artifacts/macos-product-identity/Assets.car \
+            artifacts/macos-product-identity/assetcatalog-generated-info.plist \
+            > artifacts/macos-product-identity/SHA256SUMS
+      - name: Upload compilation evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-product-identity
+          path: artifacts/macos-product-identity
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

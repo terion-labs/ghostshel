@@ -715,6 +715,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public bool CanCloneSelectedKeybindingProfile => SelectedKeybindingProfile?.IsBuiltIn == true;
 
+    public string ProductName => ProductIdentity.DisplayName;
+
+    public string ApplicationIdentifier => ProductIdentity.BundleIdentifier;
+
+    public string ExecutableName => ProductIdentity.ExecutableName;
+
     public string ApplicationVersion =>
         $"v{typeof(MainWindowViewModel).Assembly.GetName().Version?.ToString(3) ?? "0.0.0"}";
 

@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
@@ -77,6 +78,20 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         Assert.Equal(
             "icns",
             Encoding.ASCII.GetString(File.ReadAllBytes(appIcon), 0, 4));
+        Assert.Equal(
+            "RATC",
+            Encoding.ASCII.GetString(File.ReadAllBytes(Path.Combine(
+                output,
+                "Contents",
+                "Resources",
+                "Assets.car")), 0, 4));
+        Assert.True(File.Exists(Path.Combine(
+            output,
+            "Contents",
+            "Resources",
+            "Licenses",
+            "ProductIdentity",
+            "product-identity.json")));
         var infoPlist = File.ReadAllText(Path.Combine(
             output,
             "Contents",
@@ -316,6 +331,78 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         Assert.Equal(
             File.ReadAllBytes(SpdxPath(firstOutput)),
             File.ReadAllBytes(SpdxPath(secondOutput)));
+    }
+
+    [Fact]
+    public void Builder_rejects_product_artwork_that_drifted_from_the_reviewed_manifest()
+    {
+        var publish = CreatePublishPayload();
+        var evidence = _evidenceInputs[publish];
+        File.AppendAllText(Path.Combine(
+            evidence.ProductIdentitySourceRoot,
+            "assets",
+            "macos",
+            "GhostShell.icon",
+            "Assets",
+            "logo.svg"), "drift");
+
+        var exception = Assert.Throws<InvalidDataException>(() =>
+            new MacOsAppBundleBuilder().Build(Request(publish, OutputPath())));
+
+        Assert.Contains("identity hash", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Builder_rejects_an_icns_fallback_without_every_required_size()
+    {
+        var publish = CreatePublishPayload();
+        var evidence = _evidenceInputs[publish];
+        var fallbackPath = Path.Combine(
+            evidence.ProductIdentitySourceRoot,
+            "assets",
+            "macos",
+            "GhostShell.icns");
+        File.WriteAllBytes(fallbackPath, CreateIcns(["ic10"]));
+        UpdateIdentityFileHash(
+            evidence.ProductIdentityManifestPath,
+            "icns-fallback",
+            fallbackPath);
+
+        var exception = Assert.Throws<InvalidDataException>(() =>
+            new MacOsAppBundleBuilder().Build(Request(publish, OutputPath())));
+
+        Assert.Contains("missing required sizes", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Builder_rejects_a_non_car_adaptive_icon_output()
+    {
+        var publish = CreatePublishPayload();
+        var evidence = _evidenceInputs[publish];
+        File.WriteAllBytes(evidence.AssetCatalogPath, "not-a-car"u8.ToArray());
+
+        var exception = Assert.Throws<InvalidDataException>(() =>
+            new MacOsAppBundleBuilder().Build(Request(publish, OutputPath())));
+
+        Assert.Contains("not an Assets.car", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Builder_rejects_identity_fields_that_disagree_with_the_application()
+    {
+        var publish = CreatePublishPayload();
+        var evidence = _evidenceInputs[publish];
+        var manifest = JsonNode.Parse(
+            File.ReadAllText(evidence.ProductIdentityManifestPath))!.AsObject();
+        manifest["bundleIdentifier"] = "test.wrong";
+        File.WriteAllText(
+            evidence.ProductIdentityManifestPath,
+            manifest.ToJsonString());
+
+        var exception = Assert.Throws<InvalidDataException>(() =>
+            new MacOsAppBundleBuilder().Build(Request(publish, OutputPath())));
+
+        Assert.Contains("bundleIdentifier", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1265,6 +1352,9 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             "--output", "/output/GhostShell.app",
             "--version", "1.2.3",
             "--build-version", "42",
+            "--product-identity-manifest", "/repo/assets/macos/product-identity.json",
+            "--product-identity-source-root", "/repo",
+            "--asset-catalog", "/tmp/icon/Assets.car",
             "--component-catalog", "/repo/licenses/managed-components.json",
             "--native-component-catalog", "/repo/licenses/native-terminal-components.json",
             "--native-build-receipt", "/repo/native/native-terminal-build-receipt.json",
@@ -1278,6 +1368,11 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
 
         Assert.Equal("/publish", command.PublishDirectory);
         Assert.Equal("/managed-evidence", command.ManagedEvidenceDirectory);
+        Assert.Equal(
+            "/repo/assets/macos/product-identity.json",
+            command.ProductIdentityManifestPath);
+        Assert.Equal("/repo", command.ProductIdentitySourceRoot);
+        Assert.Equal("/tmp/icon/Assets.car", command.AssetCatalogPath);
         Assert.Equal(
             "/repo/licenses/managed-components.json",
             command.ComponentCatalogPath);
@@ -1323,6 +1418,9 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
                 "--output", "/output/GhostShell.app",
                 "--version", "1.2.3",
                 "--build-version", "42",
+                "--product-identity-manifest", "/repo/assets/macos/product-identity.json",
+                "--product-identity-source-root", "/repo",
+                "--asset-catalog", "/tmp/icon/Assets.car",
                 "--component-catalog", "/repo/licenses/managed-components.json",
                 "--native-component-catalog", "/repo/licenses/native-terminal-components.json",
                 "--native-build-receipt", "/repo/native/native-terminal-build-receipt.json",
@@ -1348,6 +1446,9 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             "/missing/output/GhostShell.app",
             "1.2.3",
             "42",
+            "/missing/product-identity.json",
+            "/missing/source-root",
+            "/missing/Assets.car",
             "/missing/managed-components.json",
             "/missing/native-components.json",
             "/missing/native-receipt.json",
@@ -1588,6 +1689,9 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             destinationPath,
             productVersion,
             buildVersion,
+            evidence.ProductIdentityManifestPath,
+            evidence.ProductIdentitySourceRoot,
+            evidence.AssetCatalogPath,
             evidence.CatalogPath,
             evidence.NativeCatalogPath,
             evidence.NativeReceiptPath,
@@ -1603,6 +1707,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             $"evidence-{Guid.NewGuid():N}");
         var packageRoot = Path.Combine(fixtureDirectory, "packages");
         Directory.CreateDirectory(packageRoot);
+        var productIdentity = CreateProductIdentityInputs(fixtureDirectory);
         var harfBuzz = CreateNuGetPackage(
             packageRoot,
             "HarfBuzzSharp.NativeAssets.macOS",
@@ -1829,7 +1934,10 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
                 nativeEvidence.CatalogPath,
                 nativeEvidence.ReceiptPath,
                 nativeEvidence.FontCatalogPath,
-                nativeEvidence.FontReceiptPath));
+                nativeEvidence.FontReceiptPath,
+                productIdentity.ManifestPath,
+                productIdentity.SourceRoot,
+                productIdentity.AssetCatalogPath));
     }
 
     private static Dictionary<string, object?> CatalogPackage(
@@ -1981,6 +2089,149 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         stream.Write(content);
     }
 
+    private static ProductIdentityInputs CreateProductIdentityInputs(string fixtureDirectory)
+    {
+        var sourceRoot = Path.Combine(fixtureDirectory, "identity-source");
+        var documentPath = Path.Combine(
+            sourceRoot,
+            "assets",
+            "macos",
+            "GhostShell.icon",
+            "icon.json");
+        var artworkPath = Path.Combine(
+            sourceRoot,
+            "assets",
+            "macos",
+            "GhostShell.icon",
+            "Assets",
+            "logo.svg");
+        var fallbackPath = Path.Combine(
+            sourceRoot,
+            "assets",
+            "macos",
+            "GhostShell.icns");
+        Directory.CreateDirectory(Path.GetDirectoryName(documentPath)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(artworkPath)!);
+        File.WriteAllText(documentPath, "{\"test\":true}");
+        File.WriteAllText(artworkPath, "<svg>test</svg>");
+        Directory.CreateDirectory(Path.GetDirectoryName(fallbackPath)!);
+        File.WriteAllBytes(fallbackPath, CreateCompleteIcns());
+
+        var manifestPath = Path.Combine(
+            sourceRoot,
+            "assets",
+            "macos",
+            "product-identity.json");
+        File.WriteAllText(
+            manifestPath,
+            JsonSerializer.Serialize(new
+            {
+                format = "ghostshell-macos-product-identity-v1",
+                platform = "macos",
+                displayName = "GhostSHELL",
+                bundleName = "GhostSHELL",
+                executableName = "GhostShell",
+                bundleIdentifier = "app.ghostshell",
+                iconName = "GhostShell",
+                artwork = new
+                {
+                    source = "Original first-party GhostSHELL artwork",
+                    owner = "Terion Labs",
+                    license = "LicenseRef-Terion-Labs-Proprietary",
+                    copyright = "Copyright 2026 Terion Labs. All rights reserved.",
+                },
+                approval = new
+                {
+                    status = "approved",
+                    approvedBy = "terion-labs/ghostshell maintainer",
+                    approvedAt = "2026-08-25",
+                    evidence = "https://github.com/terion-labs/ghostshell/issues/42",
+                },
+                requiredAppearances = new[]
+                {
+                    "Default",
+                    "Dark",
+                    "TintedLight",
+                    "TintedDark",
+                    "ClearLight",
+                    "ClearDark",
+                },
+                files = new[]
+                {
+                    IdentityFile(
+                        "icon-composer-document",
+                        "assets/macos/GhostShell.icon/icon.json",
+                        documentPath),
+                    IdentityFile(
+                        "source-artwork",
+                        "assets/macos/GhostShell.icon/Assets/logo.svg",
+                        artworkPath),
+                    IdentityFile(
+                        "icns-fallback",
+                        "assets/macos/GhostShell.icns",
+                        fallbackPath),
+                },
+            }, new JsonSerializerOptions { WriteIndented = true }));
+        var assetCatalogPath = Path.Combine(fixtureDirectory, "Assets.car");
+        File.WriteAllBytes(
+            assetCatalogPath,
+            [.. "RATC"u8.ToArray(), 0, 0, 0, 1]);
+        return new ProductIdentityInputs(
+            manifestPath,
+            sourceRoot,
+            assetCatalogPath);
+
+        static object IdentityFile(string role, string path, string sourcePath) => new
+        {
+            role,
+            path,
+            sha256 = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(sourcePath))),
+        };
+    }
+
+    private static byte[] CreateCompleteIcns()
+    {
+        string[] types =
+        [
+            "ic04", "ic05", "ic07", "ic08", "ic09",
+            "ic10", "ic11", "ic12", "ic13", "ic14",
+        ];
+        return CreateIcns(types);
+    }
+
+    private static byte[] CreateIcns(IReadOnlyList<string> types)
+    {
+        var result = new byte[8 + (types.Count * 8)];
+        Encoding.ASCII.GetBytes("icns").CopyTo(result, 0);
+        BinaryPrimitives.WriteUInt32BigEndian(result.AsSpan(4, 4), (uint)result.Length);
+        for (var index = 0; index < types.Count; index++)
+        {
+            var offset = 8 + (index * 8);
+            Encoding.ASCII.GetBytes(types[index]).CopyTo(result, offset);
+            BinaryPrimitives.WriteUInt32BigEndian(result.AsSpan(offset + 4, 4), 8);
+        }
+
+        return result;
+    }
+
+    private static void UpdateIdentityFileHash(
+        string manifestPath,
+        string role,
+        string sourcePath)
+    {
+        var manifest = JsonNode.Parse(File.ReadAllText(manifestPath))!.AsObject();
+        var file = manifest["files"]!
+            .AsArray()
+            .Select(node => node!.AsObject())
+            .Single(node => string.Equals(
+                node["role"]!.GetValue<string>(),
+                role,
+                StringComparison.Ordinal));
+        file["sha256"] = Convert.ToHexStringLower(
+            SHA256.HashData(File.ReadAllBytes(sourcePath)));
+        File.WriteAllText(manifestPath, manifest.ToJsonString());
+    }
+
     private static void WriteFile(string root, string relativePath, string content)
     {
         var path = Path.Combine(root, relativePath);
@@ -1994,7 +2245,15 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         string NativeCatalogPath,
         string NativeReceiptPath,
         string FontCatalogPath,
-        string FontReceiptPath);
+        string FontReceiptPath,
+        string ProductIdentityManifestPath,
+        string ProductIdentitySourceRoot,
+        string AssetCatalogPath);
+
+    private sealed record ProductIdentityInputs(
+        string ManifestPath,
+        string SourceRoot,
+        string AssetCatalogPath);
 
     private sealed record NuGetPackageFixture(
         string Id,

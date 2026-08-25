@@ -90,6 +90,9 @@ public sealed class DiagnosticsBundleContractsTests
         || value.Contains("EnvironmentValue", StringComparison.OrdinalIgnoreCase);
 
     private static DiagnosticsBundleMetadata Metadata() => new(
+        ProductIdentity.DisplayName,
+        ProductIdentity.BundleIdentifier,
+        ProductIdentity.ExecutableName,
         "0.1.0",
         ".NET 10.0.0",
         "macOS 15.5",

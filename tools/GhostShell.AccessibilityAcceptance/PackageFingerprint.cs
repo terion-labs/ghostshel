@@ -101,6 +101,22 @@ internal static class PackageFingerprint
                 "GhostShell.app must declare GhostShell as CFBundleExecutable.");
         }
 
+        if (!values.TryGetValue("CFBundleDisplayName", out var displayName)
+            || !string.Equals(displayName, "GhostSHELL", StringComparison.Ordinal)
+            || !values.TryGetValue("CFBundleName", out var bundleName)
+            || !string.Equals(bundleName, "GhostSHELL", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "GhostShell.app must declare GhostSHELL as its display and bundle name.");
+        }
+
+        if (!values.TryGetValue("CFBundleIconName", out var iconName)
+            || !string.Equals(iconName, "GhostShell", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "GhostShell.app must declare GhostShell as CFBundleIconName.");
+        }
+
         var executable = Path.Combine(root, "Contents", "MacOS", executableName);
         var productVersion = values.GetValueOrDefault("CFBundleShortVersionString")
             ?? values.GetValueOrDefault("CFBundleVersion")
@@ -267,6 +283,9 @@ internal static class PackageFingerprint
                  {
                      "CFBundleIdentifier",
                      "CFBundleExecutable",
+                     "CFBundleDisplayName",
+                     "CFBundleName",
+                     "CFBundleIconName",
                      "CFBundleShortVersionString",
                      "CFBundleVersion",
                  })

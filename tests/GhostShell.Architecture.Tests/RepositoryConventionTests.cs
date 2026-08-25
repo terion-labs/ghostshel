@@ -1,6 +1,9 @@
+using System.Security.Cryptography;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
+using GhostShell.Application;
 using GhostShell.Testing;
 
 namespace GhostShell.Architecture.Tests;
@@ -14,6 +17,7 @@ public sealed partial class RepositoryConventionTests
         var expectedRunners = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["database-viewer-integration.yml"] = "runs-on: macos-15",
+            ["macos-product-identity.yml"] = "runs-on: macos-15",
             ["repository-gate.yml"] = "runs-on: macos-15",
             ["website.yml"] = "runs-on: ubuntu-latest",
         };
@@ -178,6 +182,81 @@ public sealed partial class RepositoryConventionTests
             "macos",
             "GhostShell.icon",
             "icon.json")));
+    }
+
+    [Fact]
+    public void Macos_product_identity_is_reviewed_hashed_and_compiled_by_xcode()
+    {
+        var manifestPath = Path.Combine(
+            RepositoryRoot,
+            "assets",
+            "macos",
+            "product-identity.json");
+        using var manifest = JsonDocument.Parse(File.ReadAllBytes(manifestPath));
+        var root = manifest.RootElement;
+
+        Assert.Equal(ProductIdentity.DisplayName, root.GetProperty("displayName").GetString());
+        Assert.Equal(ProductIdentity.ExecutableName, root.GetProperty("executableName").GetString());
+        Assert.Equal(ProductIdentity.BundleIdentifier, root.GetProperty("bundleIdentifier").GetString());
+        Assert.Equal("approved", root.GetProperty("approval").GetProperty("status").GetString());
+        Assert.Equal(
+            ["Default", "Dark", "TintedLight", "TintedDark", "ClearLight", "ClearDark"],
+            root.GetProperty("requiredAppearances")
+                .EnumerateArray()
+                .Select(value => value.GetString()),
+            StringComparer.Ordinal);
+
+        var files = root.GetProperty("files").EnumerateArray().ToArray();
+        Assert.Equal(3, files.Length);
+        foreach (var file in files)
+        {
+            var relativePath = file.GetProperty("path").GetString()!;
+            var actualHash = Convert.ToHexStringLower(SHA256.HashData(
+                File.ReadAllBytes(Path.Combine(
+                    RepositoryRoot,
+                    relativePath.Replace('/', Path.DirectorySeparatorChar)))));
+            Assert.Equal(file.GetProperty("sha256").GetString(), actualHash);
+        }
+
+        var infoPlist = File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            "tools",
+            "GhostShell.Packaging",
+            "MacOS",
+            "Info.plist.template"));
+        Assert.Contains("<key>CFBundleDisplayName</key>\n    <string>GhostSHELL</string>", infoPlist, StringComparison.Ordinal);
+        Assert.Contains("<key>CFBundleExecutable</key>\n    <string>GhostShell</string>", infoPlist, StringComparison.Ordinal);
+        Assert.Contains("<key>CFBundleIdentifier</key>\n    <string>app.ghostshell</string>", infoPlist, StringComparison.Ordinal);
+        Assert.Contains("<key>CFBundleIconName</key>\n    <string>GhostShell</string>", infoPlist, StringComparison.Ordinal);
+
+        var iconCompiler = File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            "scripts",
+            "compile-macos-app-icon.sh"));
+        var packageScript = File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            "scripts",
+            "package-macos.sh"));
+        var workflow = File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            ".github",
+            "workflows",
+            "repository-gate.yml"));
+        var identityWorkflow = File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            ".github",
+            "workflows",
+            "macos-product-identity.yml"));
+        Assert.Contains("--app-icon GhostShell", iconCompiler, StringComparison.Ordinal);
+        Assert.Contains("--minimum-deployment-target \"${minimum_macos}\"", iconCompiler, StringComparison.Ordinal);
+        Assert.Contains("requires Xcode actool 26 or newer", iconCompiler, StringComparison.Ordinal);
+        Assert.Contains("--asset-catalog \"${compiled_icon_directory}/Assets.car\"", packageScript, StringComparison.Ordinal);
+        Assert.Contains("assetutil --info \"${candidate_asset_catalog}\"", packageScript, StringComparison.Ordinal);
+        Assert.Contains("Select full Xcode 26 for adaptive icon compilation", workflow, StringComparison.Ordinal);
+        Assert.Contains("Contents/Resources/Assets.car", workflow, StringComparison.Ordinal);
+        Assert.Contains("branches: [main]", identityWorkflow, StringComparison.Ordinal);
+        Assert.Contains("./scripts/compile-macos-app-icon.sh", identityWorkflow, StringComparison.Ordinal);
+        Assert.Contains("macos-product-identity", identityWorkflow, StringComparison.Ordinal);
     }
 
     [Fact]

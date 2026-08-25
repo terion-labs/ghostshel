@@ -12,6 +12,8 @@
     <string>app.ghostshell</string>
     <key>CFBundleIconFile</key>
     <string>GhostShell</string>
+    <key>CFBundleIconName</key>
+    <string>GhostShell</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
@@ -26,6 +28,8 @@
     <string>public.app-category.developer-tools</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright 2026 Terion Labs. All rights reserved.</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSSupportsAutomaticGraphicsSwitching</key>

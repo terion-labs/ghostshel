@@ -104,6 +104,9 @@ internal static class Program
                     --managed-evidence <self-contained-directory>
                     --output <GhostShell.app>
                     --version <major.minor.patch> --build-version <number[.number...]>
+                    --product-identity-manifest <product-identity.json>
+                    --product-identity-source-root <repository-directory>
+                    --asset-catalog <Xcode-output/Assets.car>
                     --component-catalog <managed-components.json>
                     --native-component-catalog <native-terminal-components.json>
                     --native-build-receipt <native-terminal-build-receipt.json>

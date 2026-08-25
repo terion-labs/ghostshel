@@ -217,6 +217,31 @@ jobs:
             exit 1
           fi
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
+      - name: Select full Xcode 26 for adaptive icon compilation
+        shell: bash
+        run: |
+          xcode_application="/Applications/Xcode.app"
+          if [[ ! -d "${xcode_application}/Contents/Developer" ]] \
+              || ! DEVELOPER_DIR="${xcode_application}/Contents/Developer" \
+                  xcrun actool --version --output-format=human-readable-text \
+                  | grep -Eq 'short-bundle-version: (2[6-9]|[3-9][0-9]|[1-9][0-9]{2,})(\.|$)'; then
+            xcode_application="$(find /Applications -maxdepth 1 -type d \
+              -name 'Xcode_26*.app' -print | sort | tail -n 1)"
+          fi
+          if [[ -z "${xcode_application}" \
+              || ! -d "${xcode_application}/Contents/Developer" ]]; then
+            echo "The release runner does not provide full Xcode 26." >&2
+            exit 1
+          fi
+          developer_directory="${xcode_application}/Contents/Developer"
+          actool_version="$(DEVELOPER_DIR="${developer_directory}" \
+            xcrun actool --version --output-format=human-readable-text)"
+          if ! grep -Eq 'short-bundle-version: (2[6-9]|[3-9][0-9]|[1-9][0-9]{2,})(\.|$)' \
+              <<< "${actool_version}"; then
+            echo "The selected Xcode does not provide actool 26 or newer." >&2
+            exit 1
+          fi
+          echo "DEVELOPER_DIR=${developer_directory}" >> "${GITHUB_ENV}"
       - name: Build verified native payloads
         run: |
           ./scripts/build-libghostty-vt.sh --rid osx-arm64
@@ -308,6 +333,16 @@ jobs:
           test "$(plutil -extract CFBundleShortVersionString raw \
             "${verification_directory}/GhostShell.app/Contents/Info.plist")" \
             = "${{ steps.release.outputs.version }}"
+          info_plist="${verification_directory}/GhostShell.app/Contents/Info.plist"
+          test "$(plutil -extract CFBundleDisplayName raw "${info_plist}")" = "GhostSHELL"
+          test "$(plutil -extract CFBundleExecutable raw "${info_plist}")" = "GhostShell"
+          test "$(plutil -extract CFBundleIdentifier raw "${info_plist}")" = "app.ghostshell"
+          test "$(plutil -extract CFBundleIconName raw "${info_plist}")" = "GhostShell"
+          assets_car="${verification_directory}/GhostShell.app/Contents/Resources/Assets.car"
+          test -f "${assets_car}"
+          assetutil --info "${assets_car}" > "${verification_directory}/Assets.info.json"
+          grep -Fq '"AssetType" : "Icon Image"' "${verification_directory}/Assets.info.json"
+          grep -Fq '"Name" : "GhostShell"' "${verification_directory}/Assets.info.json"
       - name: Upload macOS release candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

@@ -1,0 +1,46 @@
+{
+  "format": "ghostshell-macos-product-identity-v1",
+  "platform": "macos",
+  "displayName": "GhostSHELL",
+  "bundleName": "GhostSHELL",
+  "executableName": "GhostShell",
+  "bundleIdentifier": "app.ghostshell",
+  "iconName": "GhostShell",
+  "artwork": {
+    "source": "Original first-party GhostSHELL artwork",
+    "owner": "Terion Labs",
+    "license": "LicenseRef-Terion-Labs-Proprietary",
+    "copyright": "Copyright 2026 Terion Labs. All rights reserved."
+  },
+  "approval": {
+    "status": "approved",
+    "approvedBy": "terion-labs/ghostshell maintainer",
+    "approvedAt": "2026-08-25",
+    "evidence": "https://github.com/terion-labs/ghostshell/issues/42"
+  },
+  "requiredAppearances": [
+    "Default",
+    "Dark",
+    "TintedLight",
+    "TintedDark",
+    "ClearLight",
+    "ClearDark"
+  ],
+  "files": [
+    {
+      "role": "icon-composer-document",
+      "path": "assets/macos/GhostShell.icon/icon.json",
+      "sha256": "43835ebe3168e3660c3253474e7a505f6ea21ba6ebb976bf86499158a5684ac7"
+    },
+    {
+      "role": "source-artwork",
+      "path": "assets/macos/GhostShell.icon/Assets/logo.svg",
+      "sha256": "5fb34a33e6fd3abf301ed9f1bb64ccfb96b711240dcf599b3e2aaed0dacbc054"
+    },
+    {
+      "role": "icns-fallback",
+      "path": "assets/macos/GhostShell.icns",
+      "sha256": "1434a2b9d43a653c49afd08ef5f1757cbd7d742347d4ec656a22422b23bd62c2"
+    }
+  ]
+}
