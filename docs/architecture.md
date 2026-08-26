@@ -2317,9 +2317,10 @@ actual OS-vault persistence capability, links to definition import and bounded
 history-privacy controls, persists completion independently from portable
 definitions, and backfills existing profiles without presenting seeded
 definitions as proof of completion. The About surface reports
-product/platform/runtime state and truthfully says that updates are not
-configured. Its component inventory is supplied by the desktop composition
-boundary, so presentation remains independent of the concrete terminal engine.
+product/platform/runtime state and the manual GitHub Releases update channel.
+It does not check for or install updates. Its component inventory is supplied
+by the desktop composition boundary, so presentation remains independent of
+the concrete terminal engine.
 The governed agent surface reports its native in-process .NET boundary, the
 visible workspace target, live mixed terminal/browser/File Viewer/Statistics/
 Process Monitor membership, live capabilities, and effective policy. It

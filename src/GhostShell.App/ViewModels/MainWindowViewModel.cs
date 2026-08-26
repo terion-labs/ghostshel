@@ -736,8 +736,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         ? "Unavailable · provider runtime not composed"
         : AgentChat.RendererModeDescription;
 
+    public string UpdateChannel =>
+        "Manual · GitHub Releases";
+
     public string UpdateStatus =>
-        "Not configured for this build";
+        "Not checked · automatic updates are off";
 
     public IReadOnlyList<ProductComponentViewModel> ProductComponents { get; }
 

@@ -120,6 +120,63 @@ public sealed class SettingsViewContractTests
     }
 
     [Fact]
+    public void About_reports_the_manual_channel_without_update_controls()
+    {
+        var settings = LoadView("SettingsView");
+        var about = Assert.Single(
+            settings.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "Heading"),
+                "About GhostSHELL",
+                StringComparison.Ordinal))
+            .Parent!;
+        var visibleText = about
+            .Descendants()
+            .Select(element => AttributeValue(element, "Text"))
+            .Where(text => text is not null)
+            .ToArray();
+
+        Assert.Contains(
+            visibleText,
+            text => string.Equals(
+                text,
+                "{Binding UpdateChannel}",
+                StringComparison.Ordinal));
+        Assert.Contains(
+            visibleText,
+            text => string.Equals(
+                text,
+                "{Binding UpdateStatus}",
+                StringComparison.Ordinal));
+        Assert.Contains(
+            visibleText,
+            text => text!.Contains(
+                "never checks for or installs updates",
+                StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            about.Descendants(),
+            element => string.Equals(
+                element.Name.LocalName,
+                "Button",
+                StringComparison.Ordinal)
+                && (AttributeValue(element, "Content")?.Contains(
+                    "update",
+                    StringComparison.OrdinalIgnoreCase) ?? false));
+
+        var viewModel = File.ReadAllText(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "ViewModels",
+            "MainWindowViewModel.cs"));
+        Assert.Contains("Manual · GitHub Releases", viewModel, StringComparison.Ordinal);
+        Assert.Contains(
+            "Not checked · automatic updates are off",
+            viewModel,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Ai_settings_group_defaults_providers_and_mcp_without_a_second_navigation_page()
     {
         var settings = LoadView("SettingsView");

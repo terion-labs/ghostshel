@@ -10,6 +10,29 @@ namespace GhostShell.Architecture.Tests;
 
 public sealed partial class RepositoryConventionTests
 {
+    [Theory]
+    [InlineData("api.github.com/repos/terion-labs/ghostshell/releases")]
+    [InlineData("releases/latest/download/GhostShell-macOS")]
+    [InlineData("Sparkle")]
+    [InlineData("Velopack")]
+    [InlineData("appcast")]
+    public void Desktop_has_no_automatic_update_client(string updateClientMarker)
+    {
+        var sourceRoot = Path.Combine(RepositoryRoot, "src");
+        var productionSource = Directory
+            .EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories)
+            .Where(path => path.EndsWith(".cs", StringComparison.Ordinal)
+                || path.EndsWith(".axaml", StringComparison.Ordinal)
+                || path.EndsWith(".csproj", StringComparison.Ordinal)
+                || path.EndsWith("packages.lock.json", StringComparison.Ordinal))
+            .Where(path => !HasPathSegment(path, "bin") && !HasPathSegment(path, "obj"));
+
+        Assert.All(productionSource, path => Assert.DoesNotContain(
+            updateClientMarker,
+            File.ReadAllText(path),
+            StringComparison.OrdinalIgnoreCase));
+    }
+
     [Fact]
     public void Github_actions_use_only_reviewed_runners()
     {
