@@ -119,13 +119,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private readonly SessionRestoreCoordinator? _sessionRestoreCoordinator;
     private readonly TerminalMultiplexerCoordinator? _terminalMultiplexerCoordinator;
     private readonly AgentPolicyCoordinator? _agentPolicyCoordinator;
-    private readonly RecentSessionHistory? _recentSessionHistory;
     private readonly IUiThreadDispatcher _uiThreadDispatcher;
     private readonly TimeProvider _timeProvider;
-    private readonly CancellationTokenSource _historyLifetime = new();
     private readonly CancellationTokenSource _runtimeGraphLifetime = new();
     private readonly SemaphoreSlim _runtimeGraphGate = new(1, 1);
-    private readonly object _historyGate = new();
     private readonly object _mcpServerTestGate = new();
     private readonly object _shutdownGate = new();
     private readonly Dictionary<PanelInstanceId, SessionId> _recentSessionIds = [];
@@ -139,15 +136,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private readonly Dictionary<
         McpServerProfileId,
         McpServerTestPresentation> _mcpServerTests = [];
-    private Task _historyOperations = Task.CompletedTask;
     private Task? _shutdownTask;
-    private RecentSessionStoreError? _historyDrainError;
-
-    /// <summary>
-    /// Sessions this process has already ended. A session ends once; the
-    /// store enforces that, and this keeps the app from asking twice.
-    /// </summary>
-    private readonly HashSet<SessionId> _completedSessionIds = [];
     private CancellationTokenSource? _runtimeGraphWatchCancellation;
     private CancellationTokenSource? _workspaceAutoSaveDebounce;
     private RuntimeHistorySource? _runtimeHistorySource;
@@ -157,7 +146,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private string? _operationError;
     private string _tabReorderStatus = string.Empty;
     private string _launcherSearchQuery = string.Empty;
-    private string _historySearchQuery = string.Empty;
     private bool _isAgentPanelVisible;
     private bool _isAgentPanelDocked;
     private DefinitionKey? _editingDefinition;
@@ -165,14 +153,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private string _editorName = string.Empty;
     private string _editorDescription = string.Empty;
     private string _secretVaultStatus = "Checking the operating-system vault…";
-    private string _recentSessionStatus =
-        "Sessions you open will appear here without storing terminal content or commands.";
-    private bool _hasRecentSessionFailure;
-    private bool _hasUnreadableRecentSessionHistory;
-    private bool _isHistoryLoading;
-    private bool _isHistoryMutating;
-    private bool _isHistoryExporting;
-    private bool _historyOperationsSealed;
     private string _definitionBundleStatus =
         "Exports include saved settings but not credentials or terminal content.";
     private string? _applicationKeySequenceHint;
@@ -183,21 +163,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private TerminalProfileEditorViewModel? _terminalSettingsEditor;
     private QuickTerminalSettingsEditorViewModel? _quickTerminalSettingsEditor;
     private LauncherSearchResultViewModel? _selectedLauncherSearchResult;
-    private RecentSessionHistoryItemViewModel? _selectedHistorySession;
-    private HistoryExportScope _selectedHistoryExportScope;
-    private StoredRecentSessionRetentionPolicy? _storedHistoryRetention;
     private bool _restoreSessionsOnStart = true;
     private bool _sessionRestorePreferenceLoaded;
     private bool _sessionRestorePreferenceSaving;
     private TerminalMultiplexingMode _terminalMultiplexingMode;
     private bool _terminalMultiplexingPreferenceLoaded;
     private bool _terminalMultiplexingPreferenceSaving;
-    private HistoryRetentionOption? _selectedHistoryRetentionOption;
-    private bool _isApplyingStoredHistoryRetention;
-    private bool _hasPendingHistoryRetentionChange;
-    private string _historyExportStatus =
-        "History exports contain definition metadata only; terminal commands and content are excluded.";
-    private string _historyRetentionStatus = "Loading local history privacy settings…";
     private AgentRunScopeOption _selectedAgentRunScope =
         AgentRunScopeOptionsValue[2];
     private bool _agentTerminalSelectionStale;
@@ -324,8 +295,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _agentPolicyCoordinator?.Changed += OnAgentPolicyCoordinatorChanged;
         _terminalMultiplexerCoordinator?.LeasesChanged +=
                 OnTerminalMultiplexerLeasesChanged;
-        _recentSessionHistory = recentSessionHistory;
         _timeProvider = timeProvider ?? TimeProvider.System;
+        History = new RecentSessionHistoryViewModel(
+            recentSessionHistory,
+            _timeProvider,
+            ToRecentSessionItem);
+        History.PropertyChanged += OnHistoryPropertyChanged;
+        History.SnapshotChanged += OnHistorySnapshotChanged;
         ClientId = agentApprovalPrincipal is null
             ? ClientId.New()
             : RequireDesktopClientId(agentApprovalPrincipal);
@@ -360,21 +336,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         if (role == MainWindowRole.Primary)
         {
             Onboarding?.Start();
-            if (_recentSessionHistory is not null)
-            {
-                IsHistoryLoading = true;
-                _ = QueueHistoryOperation(async token =>
-                {
-                    try
-                    {
-                        await RefreshRecentSessionsCoreAsync(token);
-                    }
-                    finally
-                    {
-                        IsHistoryLoading = false;
-                    }
-                });
-            }
+            History.StartLoading();
 
             // The editor displays a complete default as soon as an enabled
             // provider exists. Persist that exact visible configuration so the
@@ -385,6 +347,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     }
 
     public ISessionHostClient SessionClient { get; }
+
+    public RecentSessionHistoryViewModel History { get; }
 
     public MainWindowRole Role { get; }
 
@@ -615,38 +579,19 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         McpServerSecretTargets
     { get; } = [];
 
-    public ObservableCollection<RecentSessionHistoryItemViewModel> RecentSessions { get; } = [];
+    public ObservableCollection<RecentSessionHistoryItemViewModel> RecentSessions =>
+        History.RecentSessions;
 
-    public ObservableCollection<RecentSessionHistoryItemViewModel> HistorySessions { get; } = [];
+    public ObservableCollection<RecentSessionHistoryItemViewModel> HistorySessions =>
+        History.Sessions;
 
-    public ObservableCollection<RecentSessionHistoryItemViewModel> FilteredHistorySessions { get; } = [];
+    public ObservableCollection<RecentSessionHistoryItemViewModel> FilteredHistorySessions =>
+        History.FilteredSessions;
 
-    public IReadOnlyList<HistoryExportScope> HistoryExportScopes { get; } =
-        Enum.GetValues<HistoryExportScope>();
+    public IReadOnlyList<HistoryExportScope> HistoryExportScopes => History.ExportScopes;
 
-    public ObservableCollection<HistoryRetentionOption> HistoryRetentionOptions { get; } =
-    [
-        new(
-            "Off",
-            "Do not retain session metadata. Existing history is removed.",
-            new RecentSessionRetentionPolicy(0, TimeSpan.FromDays(30))),
-        new(
-            "Private · 20 / 7 days",
-            "Keep at most 20 records for up to 7 days.",
-            new RecentSessionRetentionPolicy(20, TimeSpan.FromDays(7))),
-        new(
-            "Standard · 100 / 30 days",
-            "Keep at most 100 records for up to 30 days.",
-            RecentSessionRetentionPolicy.Default),
-        new(
-            "Extended · 500 / 90 days",
-            "Keep at most 500 records for up to 90 days.",
-            new RecentSessionRetentionPolicy(500, TimeSpan.FromDays(90))),
-        new(
-            "Maximum · 1,000 / 365 days",
-            "Keep at most 1,000 records for up to 365 days.",
-            new RecentSessionRetentionPolicy(1_000, TimeSpan.FromDays(365))),
-    ];
+    public ObservableCollection<HistoryRetentionOption> HistoryRetentionOptions =>
+        History.RetentionOptions;
 
     public LayoutDesignerViewModel? LayoutDesignerEditor
     {
@@ -780,110 +725,41 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public bool HasNoScreens => !HasScreens;
 
-    public bool HasRecentSessions => RecentSessions.Count > 0;
+    public bool HasRecentSessions => History.HasRecentSessions;
 
-    public bool HasNoRecentSessions => !HasRecentSessions && !IsHistoryLoading;
+    public bool HasNoRecentSessions => History.HasNoRecentSessions;
 
-    public bool HasHistorySessions => HistorySessions.Count > 0;
+    public bool HasHistorySessions => History.HasSessions;
 
-    public bool HasNoHistorySessions => !HasHistorySessions;
+    public bool HasNoHistorySessions => History.HasNoSessions;
 
-    public bool HasFilteredHistorySessions => FilteredHistorySessions.Count > 0;
+    public bool HasFilteredHistorySessions => History.HasFilteredSessions;
 
-    public bool HasNoFilteredHistorySessions =>
-        !HasFilteredHistorySessions && !IsHistoryLoading;
+    public bool HasNoFilteredHistorySessions => History.HasNoFilteredSessions;
 
-    public bool HasRecentSessionFailure
-    {
-        get => _hasRecentSessionFailure;
-        private set
-        {
-            if (SetProperty(ref _hasRecentSessionFailure, value))
-            {
-                NotifyHistoryActionStateChanged();
-            }
-        }
-    }
+    public bool HasRecentSessionFailure => History.HasFailure;
 
-    public bool CanResetRecentSessionHistory =>
-        _recentSessionHistory is not null
-        && HasUnreadableRecentSessionHistory
-        && !IsHistoryLoading
-        && !IsHistoryMutating;
+    public bool CanResetRecentSessionHistory => History.CanReset;
 
-    public bool HasUnreadableRecentSessionHistory
-    {
-        get => _hasUnreadableRecentSessionHistory;
-        private set
-        {
-            if (SetProperty(ref _hasUnreadableRecentSessionHistory, value))
-            {
-                OnPropertyChanged(nameof(CanResetRecentSessionHistory));
-            }
-        }
-    }
+    public bool HasUnreadableRecentSessionHistory => History.HasUnreadableHistory;
 
-    public bool IsHistoryLoading
-    {
-        get => _isHistoryLoading;
-        private set
-        {
-            if (SetProperty(ref _isHistoryLoading, value))
-            {
-                NotifyHistoryActionStateChanged();
-            }
-        }
-    }
+    public bool IsHistoryLoading => History.IsLoading;
 
-    public bool IsHistoryMutating
-    {
-        get => _isHistoryMutating;
-        private set
-        {
-            if (SetProperty(ref _isHistoryMutating, value))
-            {
-                NotifyHistoryActionStateChanged();
-            }
-        }
-    }
+    public bool IsHistoryMutating => History.IsMutating;
 
-    public bool IsHistoryExporting
-    {
-        get => _isHistoryExporting;
-        private set
-        {
-            if (SetProperty(ref _isHistoryExporting, value))
-            {
-                NotifyHistoryActionStateChanged();
-            }
-        }
-    }
+    public bool IsHistoryExporting => History.IsExporting;
 
-    public bool CanRetryRecentSessionHistory =>
-        HasRecentSessionFailure && !IsHistoryLoading && !IsHistoryMutating;
+    public bool CanRetryRecentSessionHistory => History.CanRetry;
 
-    public bool CanClearRecentSessionHistory =>
-        HasHistorySessions && !IsHistoryLoading && !IsHistoryMutating;
+    public bool CanClearRecentSessionHistory => History.CanClear;
 
-    public bool CanExportAllHistory =>
-        HasHistorySessions
-        && !IsHistoryLoading
-        && !IsHistoryMutating
-        && !IsHistoryExporting;
+    public bool CanExportAllHistory => History.CanExportAll;
 
-    public bool CanExportFilteredHistory =>
-        HasFilteredHistorySessions
-        && !IsHistoryLoading
-        && !IsHistoryMutating
-        && !IsHistoryExporting;
+    public bool CanExportFilteredHistory => History.CanExportFiltered;
 
-    public string HistoryResultCount => string.IsNullOrWhiteSpace(HistorySearchQuery)
-        ? $"{FilteredHistorySessions.Count} retained"
-        : $"{FilteredHistorySessions.Count} matched";
+    public string HistoryResultCount => History.ResultCount;
 
-    public string HistorySearchEmptyState => HasHistorySessions
-        ? $"No retained sessions match ‘{HistorySearchQuery.Trim()}’."
-        : RecentSessionStatus;
+    public string HistorySearchEmptyState => History.SearchEmptyState;
 
     public bool HasLauncherSearchResults => LauncherSearchResults.Count > 0;
 
@@ -893,68 +769,30 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         ? "No commands or saved launch targets are available."
         : $"No commands or launch targets match ‘{LauncherSearchQuery.Trim()}’.";
 
-    public string RecentSessionStatus
-    {
-        get => _recentSessionStatus;
-        private set => SetProperty(ref _recentSessionStatus, value);
-    }
+    public string RecentSessionStatus => History.RecentSessionStatus;
 
-    public string HistoryExportStatus
-    {
-        get => _historyExportStatus;
-        private set => SetProperty(ref _historyExportStatus, value);
-    }
+    public string HistoryExportStatus => History.ExportStatus;
 
-    public string HistoryRetentionStatus
-    {
-        get => _historyRetentionStatus;
-        private set => SetProperty(ref _historyRetentionStatus, value);
-    }
+    public string HistoryRetentionStatus => History.RetentionStatus;
 
-    public bool CanManageHistoryRetention =>
-        _recentSessionHistory?.SupportsRetentionSettings == true
-        && _storedHistoryRetention is not null
-        && !IsHistoryLoading
-        && !IsHistoryMutating;
+    public bool CanManageHistoryRetention => History.CanManageRetention;
 
     public HistoryRetentionOption? SelectedHistoryRetentionOption
     {
-        get => _selectedHistoryRetentionOption;
-        set
-        {
-            if (SetProperty(ref _selectedHistoryRetentionOption, value))
-            {
-                if (!_isApplyingStoredHistoryRetention)
-                {
-                    HasPendingHistoryRetentionChange = _storedHistoryRetention is { } stored
-                        && value?.Policy != stored.Policy;
-                }
-
-                OnPropertyChanged(nameof(RequiresHistoryRetentionConfirmation));
-            }
-        }
+        get => History.SelectedRetentionOption;
+        set => History.SelectedRetentionOption = value;
     }
 
     public bool HasPendingHistoryRetentionChange
     {
-        get => _hasPendingHistoryRetentionChange;
-        private set
-        {
-            if (SetProperty(ref _hasPendingHistoryRetentionChange, value))
-            {
-                OnPropertyChanged(nameof(CanApplyHistoryRetention));
-            }
-        }
+        get => History.HasPendingRetentionChange;
     }
 
     public bool CanApplyHistoryRetention =>
-        CanManageHistoryRetention && HasPendingHistoryRetentionChange;
+        History.CanApplyRetention;
 
     public bool RequiresHistoryRetentionConfirmation =>
-        _storedHistoryRetention is { } stored
-        && SelectedHistoryRetentionOption is { } selected
-        && (selected.Policy.MaximumEntries < stored.Policy.MaximumEntries
-            || selected.Policy.MaximumAge < stored.Policy.MaximumAge);
+        History.RequiresRetentionConfirmation;
 
     public string DefinitionBundleStatus
     {
@@ -1931,105 +1769,48 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public string HistorySearchQuery
     {
-        get => _historySearchQuery;
-        set
-        {
-            if (SetProperty(ref _historySearchQuery, value))
-            {
-                RefreshHistorySearchResults(preserveSelection: false);
-            }
-        }
+        get => History.SearchQuery;
+        set => History.SearchQuery = value;
     }
 
     public RecentSessionHistoryItemViewModel? SelectedHistorySession
     {
-        get => _selectedHistorySession;
-        set
-        {
-            if (SetProperty(ref _selectedHistorySession, value))
-            {
-                OnPropertyChanged(nameof(HasSelectedHistorySession));
-                OnPropertyChanged(nameof(HasNoSelectedHistorySession));
-            }
-        }
+        get => History.SelectedSession;
+        set => History.SelectedSession = value;
     }
 
-    public bool HasSelectedHistorySession => SelectedHistorySession is not null;
+    public bool HasSelectedHistorySession => History.HasSelectedSession;
 
     public bool HasNoSelectedHistorySession => !HasSelectedHistorySession;
 
     public HistoryExportScope SelectedHistoryExportScope
     {
-        get => _selectedHistoryExportScope;
-        set => SetProperty(ref _selectedHistoryExportScope, value);
+        get => History.SelectedExportScope;
+        set => History.SelectedExportScope = value;
     }
 
     public IReadOnlyList<RecentSessionRecord> CaptureHistoryExportSnapshot() =>
-        [.. (SelectedHistoryExportScope == HistoryExportScope.CurrentResults
-            ? FilteredHistorySessions
-            : HistorySessions)
-        .Select(item => item.Record)];
+        History.CaptureExportSnapshot();
 
     public void SetHistoryExportStatus(string status)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(status);
-        HistoryExportStatus = status.Trim();
+        History.SetExportStatus(status);
     }
 
     public bool TryBeginHistoryExport(HistoryExportScope scope)
     {
-        var canBegin = scope switch
-        {
-            HistoryExportScope.AllRetained => CanExportAllHistory,
-            HistoryExportScope.CurrentResults => CanExportFilteredHistory,
-            _ => throw new ArgumentOutOfRangeException(nameof(scope), scope, null),
-        };
-        if (!canBegin)
-        {
-            return false;
-        }
-
-        SelectedHistoryExportScope = scope;
-        IsHistoryExporting = true;
-        HistoryExportStatus = "Preparing the metadata-only history export…";
-        return true;
+        return History.TryBeginExport(scope);
     }
 
     public void EndHistoryExport(string status)
     {
-        SetHistoryExportStatus(status);
-        IsHistoryExporting = false;
+        History.EndExport(status);
     }
 
     public async Task<bool> RetryRecentSessionHistoryAsync(
         CancellationToken cancellationToken)
     {
-        if (!CanRetryRecentSessionHistory)
-        {
-            return false;
-        }
-
-        IsHistoryLoading = true;
-        try
-        {
-            var operation = QueueHistoryOperation(token =>
-                RefreshRecentSessionsCoreAsync(token));
-            await operation.WaitAsync(cancellationToken);
-            if (HasRecentSessionFailure)
-            {
-                return false;
-            }
-
-            return true;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            return false;
-        }
-        finally
-        {
-            IsHistoryLoading = false;
-        }
+        return await History.RetryAsync(cancellationToken);
     }
 
     public void SelectFirstAvailableLauncherSearchResult()
@@ -8511,234 +8292,36 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public async Task<bool> ClearRecentSessionsAsync(CancellationToken cancellationToken)
     {
-        if (_recentSessionHistory is null)
-        {
-            return false;
-        }
-
-        var cutoff = _recentSessionHistory.CaptureClearCutoff();
+        var cutoff = History.CaptureClearCutoff();
         return await ClearRecentSessionsAsync(cutoff, cancellationToken);
     }
 
     public RecentSessionClearCutoff CaptureRecentSessionClearCutoff() =>
-        _recentSessionHistory?.CaptureClearCutoff()
-        ?? new RecentSessionClearCutoff(_timeProvider.GetUtcNow());
+        History.CaptureClearCutoff();
 
     public async Task<bool> ClearRecentSessionsAsync(
         RecentSessionClearCutoff cutoff,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(cutoff);
-        if (_recentSessionHistory is null || IsHistoryLoading || IsHistoryMutating)
-        {
-            return false;
-        }
-
-        IsHistoryMutating = true;
-        var cleared = false;
-        try
-        {
-            var operation = QueueHistoryOperation(async token =>
-            {
-                var result = await _recentSessionHistory.ClearThroughAsync(cutoff, token);
-                if (!result.IsSuccess)
-                {
-                    ApplyRecentSessionPersistenceFailure(result.Error!);
-                    return;
-                }
-
-                cleared = true;
-                await RefreshRecentSessionsCoreAsync(token);
-            });
-
-            await operation.WaitAsync(cancellationToken);
-            return cleared;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            return false;
-        }
-        finally
-        {
-            IsHistoryMutating = false;
-        }
+        return await History.ClearAsync(cutoff, cancellationToken);
     }
 
     public async Task<bool> ResetUnreadableRecentSessionsAsync(
         CancellationToken cancellationToken)
     {
-        if (_recentSessionHistory is null
-            || !HasUnreadableRecentSessionHistory
-            || IsHistoryLoading
-            || IsHistoryMutating)
-        {
-            return false;
-        }
-
-        IsHistoryMutating = true;
-        var reset = false;
-        try
-        {
-            var operation = QueueHistoryOperation(async token =>
-            {
-                var result = await _recentSessionHistory.ClearAllAsync(token);
-                if (!result.IsSuccess)
-                {
-                    ApplyRecentSessionPersistenceFailure(result.Error!);
-                    return;
-                }
-
-                reset = true;
-                await RefreshRecentSessionsCoreAsync(token);
-            });
-
-            await operation.WaitAsync(cancellationToken);
-            return reset && !HasRecentSessionFailure;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            return false;
-        }
-        finally
-        {
-            IsHistoryMutating = false;
-        }
+        return await History.ResetUnreadableAsync(cancellationToken);
     }
 
     public async Task<RecentSessionStoreResult<RecentSessionRetentionUpdateResult>>
         SaveHistoryRetentionAsync(CancellationToken cancellationToken)
     {
-        if (_recentSessionHistory is null
-            || _storedHistoryRetention is not { } stored
-            || SelectedHistoryRetentionOption is not { } selected)
-        {
-            return RecentSessionStoreResult<RecentSessionRetentionUpdateResult>.Failure(
-                new RecentSessionStoreError(
-                    RecentSessionStoreErrorCode.StorageUnavailable,
-                    "Recent-session retention settings are unavailable."));
-        }
-
-        if (selected.Policy == stored.Policy)
-        {
-            HasPendingHistoryRetentionChange = false;
-            return RecentSessionStoreResult<RecentSessionRetentionUpdateResult>.Success(
-                new RecentSessionRetentionUpdateResult(stored, 0));
-        }
-
-        if (IsHistoryLoading || IsHistoryMutating)
-        {
-            return RecentSessionStoreResult<RecentSessionRetentionUpdateResult>.Failure(
-                new RecentSessionStoreError(
-                    RecentSessionStoreErrorCode.Conflict,
-                    "Another session-history change is already running."));
-        }
-
-        IsHistoryMutating = true;
-        try
-        {
-            RecentSessionStoreResult<RecentSessionRetentionUpdateResult>? saved = null;
-            var operation = QueueHistoryOperation(async token =>
-            {
-                saved = await _recentSessionHistory.UpdateRetentionAsync(
-                    selected.Policy,
-                    stored.Revision,
-                    token);
-                if (!saved.IsSuccess)
-                {
-                    HistoryRetentionStatus =
-                        $"History privacy settings could not be saved ({saved.Error!.Code}).";
-                    if (saved.Error.Code == RecentSessionStoreErrorCode.Conflict)
-                    {
-                        await RefreshRecentSessionsCoreAsync(
-                            token,
-                            replaceRetentionSelection: true);
-                        if (_storedHistoryRetention is { Revision: var currentRevision }
-                            && currentRevision != stored.Revision)
-                        {
-                            HistoryRetentionStatus =
-                                "History privacy settings changed elsewhere; the current policy was reloaded.";
-                        }
-                    }
-                    else
-                    {
-                        ApplyRecentSessionPersistenceFailure(saved.Error);
-                    }
-
-                    return;
-                }
-
-                HasPendingHistoryRetentionChange = false;
-                ApplyStoredHistoryRetention(
-                    saved.Value!.StoredPolicy,
-                    replaceSelection: true);
-                var completionStatus = saved.Value.PrunedSessionCount == 0
-                    ? "History privacy settings saved."
-                    : $"History privacy settings saved; {CountLabel(saved.Value.PrunedSessionCount, "retained record")} removed.";
-                await RefreshRecentSessionsCoreAsync(token);
-                if (_storedHistoryRetention?.Revision == saved.Value.StoredPolicy.Revision)
-                {
-                    HistoryRetentionStatus = completionStatus;
-                }
-            });
-
-            await operation.WaitAsync(cancellationToken);
-            return saved ?? RecentSessionStoreResult<RecentSessionRetentionUpdateResult>.Failure(
-                new RecentSessionStoreError(
-                    RecentSessionStoreErrorCode.Cancelled,
-                    "Saving recent-session retention was cancelled."));
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            return RecentSessionStoreResult<RecentSessionRetentionUpdateResult>.Failure(
-                new RecentSessionStoreError(
-                    RecentSessionStoreErrorCode.Cancelled,
-                    "Saving recent-session retention was cancelled."));
-        }
-        finally
-        {
-            IsHistoryMutating = false;
-        }
+        return await History.SaveRetentionAsync(cancellationToken);
     }
 
     public async Task<ApplicationRunResult<Unit>> FlushRecentSessionHistoryAsync(
         CancellationToken cancellationToken)
     {
-        Task pending;
-        lock (_historyGate)
-        {
-            pending = _historyOperations;
-        }
-
-        try
-        {
-            await pending.WaitAsync(cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            return ApplicationRunResult<Unit>.Failure(new ApplicationRunError(
-                ApplicationRunErrorCode.Cancelled,
-                "Waiting for recent-session persistence was cancelled."));
-        }
-        catch (Exception exception) when (exception is not OutOfMemoryException)
-        {
-            return ApplicationRunResult<Unit>.Failure(new ApplicationRunError(
-                ApplicationRunErrorCode.StorageFailure,
-                "Recent-session persistence could not be drained."));
-        }
-
-        RecentSessionStoreError? error;
-        lock (_historyGate)
-        {
-            error = _historyDrainError;
-        }
-
-        return error is null
-            ? ApplicationRunResult<Unit>.Success(Unit.Value)
-            : ApplicationRunResult<Unit>.Failure(new ApplicationRunError(
-                error.Code == RecentSessionStoreErrorCode.StorageUnavailable
-                    ? ApplicationRunErrorCode.StorageUnavailable
-                    : ApplicationRunErrorCode.StorageFailure,
-                $"Recent-session metadata could not be persisted safely: {error.Message}"));
+        return await History.DrainAsync(cancellationToken);
     }
 
     /// <summary>
@@ -10189,12 +9772,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     private void TrackRecentSessions(IEnumerable<RuntimePanelViewModel> panels)
     {
-        if (_recentSessionHistory is null)
-        {
-            return;
-        }
-
-        var pending = new List<RecentSessionRecord>();
         foreach (var panel in panels)
         {
             var source = ResolveRuntimeHistorySource(panel);
@@ -10219,34 +9796,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 continue;
             }
 
-            pending.Add(_recentSessionHistory.CaptureStarted(
+            _ = History.RecordStartedAsync(
                 identity.SessionId,
                 source.SourceDefinition,
                 identity.Kind,
-                source.DurableTitle));
+                source.DurableTitle);
         }
-
-        if (pending.Count == 0)
-        {
-            return;
-        }
-
-        _ = QueueHistoryOperation(async token =>
-        {
-            foreach (var item in pending)
-            {
-                var result = await _recentSessionHistory.RecordStartedAsync(
-                    item,
-                    token);
-                if (!result.IsSuccess)
-                {
-                    ApplyRecentSessionPersistenceFailure(result.Error!);
-                    return;
-                }
-            }
-
-            await RefreshRecentSessionsCoreAsync(token);
-        });
     }
 
     private RuntimeHistorySource? ResolveRuntimeHistorySource(RuntimePanelViewModel panel)
@@ -10303,39 +9858,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private void QueueRecentSessionCompletions(
         IReadOnlyList<(SessionId SessionId, RecentSessionOutcome Outcome)> completions)
     {
-        if (_recentSessionHistory is null || completions.Count == 0)
+        if (completions.Count == 0)
         {
             return;
         }
 
-        List<RecentSessionCompletion> captured = [];
-        lock (_historyGate)
-        {
-            foreach (var item in completions)
-            {
-                // A session ends once. Two producers can reach for the same
-                // panel at shutdown — its own close and the sweep that
-                // follows — and the store rightly refuses to overwrite a
-                // terminal outcome, so the duplicate is stopped here rather
-                // than turned into an error nobody can act on.
-                if (!_completedSessionIds.Add(item.SessionId))
-                {
-                    continue;
-                }
-
-                captured.Add(_recentSessionHistory.CaptureCompletion(
-                    item.SessionId,
-                    item.Outcome));
-            }
-        }
-
-        if (captured.Count == 0)
-        {
-            return;
-        }
-
-        var capturedCompletions = captured.ToArray();
-        var trackedSessionIds = capturedCompletions
+        var trackedSessionIds = completions
             .Select(item => item.SessionId)
             .ToHashSet();
         foreach (var panelId in _recentSessionIds
@@ -10346,160 +9874,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             _recentSessionIds.Remove(panelId);
         }
 
-        _ = QueueHistoryOperation(async token =>
-        {
-            foreach (var completion in capturedCompletions)
-            {
-                var result = await _recentSessionHistory.RecordCompletedAsync(
-                    completion,
-                    token);
-                if (!result.IsSuccess)
-                {
-                    if (result.Error!.Code == RecentSessionStoreErrorCode.Conflict)
-                    {
-                        // The row already carries a terminal outcome, so this
-                        // session's end is recorded — by an earlier
-                        // notification, not this one. Nothing was lost, and
-                        // the exit report must stay a report of loss to mean
-                        // anything.
-                        SecretSafeDiagnosticProjection.WriteStandardError(
-                            "history.late-completion.ignored",
-                            SecretSafeDiagnosticKind.Unexpected);
-                        continue;
-                    }
-
-                    ApplyRecentSessionPersistenceFailure(result.Error!);
-                    return;
-                }
-            }
-
-            // Once the desktop lifetime has ended there is no visible history view to
-            // refresh, and its dispatcher is no longer available. The durable completion
-            // above is the only shutdown work this operation owns.
-            if (!_shutdownStarted)
-            {
-                await RefreshRecentSessionsCoreAsync(token);
-            }
-        });
-    }
-
-    private Task QueueHistoryOperation(Func<CancellationToken, Task> operation)
-    {
-        ArgumentNullException.ThrowIfNull(operation);
-        lock (_historyGate)
-        {
-            if (_historyOperationsSealed)
-            {
-                return _historyOperations;
-            }
-
-            _historyOperations = RunHistoryOperationAsync(
-                _historyOperations,
-                operation,
-                _historyLifetime.Token);
-            return _historyOperations;
-        }
-    }
-
-    private async Task RunHistoryOperationAsync(
-        Task previous,
-        Func<CancellationToken, Task> operation,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            await previous;
-            cancellationToken.ThrowIfCancellationRequested();
-            await operation(cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-        }
-        catch (Exception exception)
-        {
-            var error = new RecentSessionStoreError(
-                RecentSessionStoreErrorCode.StorageFailure,
-                $"Recent-session metadata is temporarily unavailable ({exception.GetType().Name}).");
-            SecretSafeDiagnostics.WriteTraceAndStandardError(
-                "history.queued-operation.failed",
-                exception);
-            ApplyRecentSessionPersistenceFailure(error);
-        }
-    }
-
-    private async Task RefreshRecentSessionsCoreAsync(
-        CancellationToken cancellationToken,
-        bool replaceRetentionSelection = false)
-    {
-        if (_recentSessionHistory is null)
-        {
-            return;
-        }
-
-        if (_recentSessionHistory.SupportsRetentionSettings)
-        {
-            var retention = await _recentSessionHistory.GetRetentionAsync(cancellationToken);
-            if (!retention.IsSuccess)
-            {
-                _storedHistoryRetention = null;
-                _isApplyingStoredHistoryRetention = true;
-                try
-                {
-                    SelectedHistoryRetentionOption = null;
-                    HasPendingHistoryRetentionChange = false;
-                }
-                finally
-                {
-                    _isApplyingStoredHistoryRetention = false;
-                }
-
-                ApplyRecentSessionFailure(retention.Error!);
-                HistoryRetentionStatus =
-                    $"History privacy settings are unavailable ({retention.Error!.Code}).";
-                OnPropertyChanged(nameof(CanManageHistoryRetention));
-                return;
-            }
-
-            ApplyStoredHistoryRetention(
-                retention.Value!,
-                replaceRetentionSelection);
-        }
-
-        var result = await _recentSessionHistory.ListRecentAsync(
-            RecentSessionQuery.MaximumLimit,
-            cancellationToken);
-        if (!result.IsSuccess)
-        {
-            ApplyRecentSessionFailure(result.Error!);
-            return;
-        }
-
-        var observedAt = _timeProvider.GetUtcNow();
-        var items = result.Value!
-            .Select(record => ToRecentSessionItem(record, observedAt))
-            .ToArray();
-        HasRecentSessionFailure = false;
-        HasUnreadableRecentSessionHistory = false;
-        ReplaceIfChanged(HistorySessions, items, static (a, b) => a.PresentsSameAs(b));
-        ReplaceIfChanged(
-            RecentSessions,
-            [.. items.Take(8)],
-            static (a, b) => a.PresentsSameAs(b));
-        // The durable half was just replaced, so whatever the runtime half said
-        // went with it.
-        RefreshWorkspaceRuntimeFlags();
-        RecentSessionStatus = HistorySessions.Count > 0
-            ? "Recent sessions store definition metadata only; commands and terminal content are excluded."
-            : _storedHistoryRetention is { Policy.IsEnabled: false }
-                ? "Session history is disabled in the local privacy settings."
-                : "Sessions you open will appear here without storing terminal content or commands.";
-        OnPropertyChanged(nameof(HasRecentSessions));
-        OnPropertyChanged(nameof(HasNoRecentSessions));
-        OnPropertyChanged(nameof(HasHistorySessions));
-        OnPropertyChanged(nameof(HasNoHistorySessions));
-        RefreshHistorySearchResults();
-        RefreshLauncherSearchResults();
-        NotifyHistoryActionStateChanged();
+        _ = History.RecordCompletionsAsync(
+            completions,
+            refreshAfterWrite: !_shutdownStarted);
     }
 
     /// <summary>
@@ -10548,104 +9925,87 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             connection?.Detail);
     }
 
-    private void ApplyStoredHistoryRetention(
-        StoredRecentSessionRetentionPolicy stored,
-        bool replaceSelection = false)
+    private void OnHistorySnapshotChanged(object? sender, EventArgs eventArgs)
     {
-        _storedHistoryRetention = stored;
-        var option = HistoryRetentionOptions.FirstOrDefault(item => item.Policy == stored.Policy);
-        if (option is null)
-        {
-            option = new HistoryRetentionOption(
-                $"Custom · {stored.Policy.MaximumEntries:N0} / {stored.Policy.MaximumAge.TotalDays:0} days",
-                $"Keep at most {stored.Policy.MaximumEntries:N0} records for up to {stored.Policy.MaximumAge.TotalDays:0} days.",
-                stored.Policy);
-            HistoryRetentionOptions.Add(option);
-        }
-
-        if (replaceSelection
-            || !HasPendingHistoryRetentionChange
-            || SelectedHistoryRetentionOption is null)
-        {
-            _isApplyingStoredHistoryRetention = true;
-            try
-            {
-                SelectedHistoryRetentionOption = option;
-                HasPendingHistoryRetentionChange = false;
-            }
-            finally
-            {
-                _isApplyingStoredHistoryRetention = false;
-            }
-        }
-        else if (SelectedHistoryRetentionOption.Policy == stored.Policy)
-        {
-            HasPendingHistoryRetentionChange = false;
-        }
-        HistoryRetentionStatus = stored.Policy.IsEnabled
-            ? $"Local metadata retention: up to {stored.Policy.MaximumEntries:N0} records for {stored.Policy.MaximumAge.TotalDays:0} days."
-            : "Session history is disabled; newly opened sessions will not be retained.";
-        OnPropertyChanged(nameof(CanManageHistoryRetention));
-        OnPropertyChanged(nameof(RequiresHistoryRetentionConfirmation));
-    }
-
-    private void RefreshHistorySearchResults(bool preserveSelection = true)
-    {
-        var selectedSessionId = preserveSelection ? SelectedHistorySession?.SessionId : null;
-        var results = RecentSessionHistoryProjection.Search(HistorySearchQuery, HistorySessions);
-        ReplaceIfChanged(
-            FilteredHistorySessions,
-            results,
-            static (a, b) => a.PresentsSameAs(b));
-        SelectedHistorySession = RecentSessionHistoryProjection.ResolveSelection(
-            results,
-            selectedSessionId);
-        OnPropertyChanged(nameof(HasFilteredHistorySessions));
-        OnPropertyChanged(nameof(HasNoFilteredHistorySessions));
-        OnPropertyChanged(nameof(HistoryResultCount));
-        OnPropertyChanged(nameof(HistorySearchEmptyState));
-        OnPropertyChanged(nameof(CanExportFilteredHistory));
-    }
-
-    private void ApplyRecentSessionFailure(RecentSessionStoreError error)
-    {
-        HasRecentSessionFailure = true;
-        HasUnreadableRecentSessionHistory =
-            error.Code == RecentSessionStoreErrorCode.InvalidHistoryData;
-        HistorySessions.Clear();
-        RecentSessions.Clear();
-        RecentSessionStatus = $"Recent-session metadata is unavailable ({error.Code}).";
-        OnPropertyChanged(nameof(HasRecentSessions));
-        OnPropertyChanged(nameof(HasNoRecentSessions));
-        OnPropertyChanged(nameof(HasHistorySessions));
-        OnPropertyChanged(nameof(HasNoHistorySessions));
-        RefreshHistorySearchResults();
+        // These are joins with root-owned runtime/catalog state. The history
+        // component intentionally knows nothing about either side.
+        RefreshWorkspaceRuntimeFlags();
         RefreshLauncherSearchResults();
-        NotifyHistoryActionStateChanged();
     }
 
-    private void ApplyRecentSessionPersistenceFailure(
-        RecentSessionStoreError error)
+    private void OnHistoryPropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
     {
-        lock (_historyGate)
+        var propertyNames = eventArgs.PropertyName switch
         {
-            _historyDrainError ??= error;
+            nameof(RecentSessionHistoryViewModel.HasRecentSessions) =>
+                new[] { nameof(HasRecentSessions) },
+            nameof(RecentSessionHistoryViewModel.HasNoRecentSessions) =>
+                [nameof(HasNoRecentSessions)],
+            nameof(RecentSessionHistoryViewModel.HasSessions) =>
+                [nameof(HasHistorySessions)],
+            nameof(RecentSessionHistoryViewModel.HasNoSessions) =>
+                [nameof(HasNoHistorySessions)],
+            nameof(RecentSessionHistoryViewModel.HasFilteredSessions) =>
+                [nameof(HasFilteredHistorySessions)],
+            nameof(RecentSessionHistoryViewModel.HasNoFilteredSessions) =>
+                [nameof(HasNoFilteredHistorySessions)],
+            nameof(RecentSessionHistoryViewModel.HasFailure) =>
+                [nameof(HasRecentSessionFailure)],
+            nameof(RecentSessionHistoryViewModel.HasUnreadableHistory) =>
+                [nameof(HasUnreadableRecentSessionHistory)],
+            nameof(RecentSessionHistoryViewModel.IsLoading) =>
+                [nameof(IsHistoryLoading)],
+            nameof(RecentSessionHistoryViewModel.IsMutating) =>
+                [nameof(IsHistoryMutating)],
+            nameof(RecentSessionHistoryViewModel.IsExporting) =>
+                [nameof(IsHistoryExporting)],
+            nameof(RecentSessionHistoryViewModel.CanRetry) =>
+                [nameof(CanRetryRecentSessionHistory)],
+            nameof(RecentSessionHistoryViewModel.CanClear) =>
+                [nameof(CanClearRecentSessionHistory)],
+            nameof(RecentSessionHistoryViewModel.CanReset) =>
+                [nameof(CanResetRecentSessionHistory)],
+            nameof(RecentSessionHistoryViewModel.CanExportAll) =>
+                [nameof(CanExportAllHistory)],
+            nameof(RecentSessionHistoryViewModel.CanExportFiltered) =>
+                [nameof(CanExportFilteredHistory)],
+            nameof(RecentSessionHistoryViewModel.ResultCount) =>
+                [nameof(HistoryResultCount)],
+            nameof(RecentSessionHistoryViewModel.SearchEmptyState) =>
+                [nameof(HistorySearchEmptyState)],
+            nameof(RecentSessionHistoryViewModel.RecentSessionStatus) =>
+                [nameof(RecentSessionStatus)],
+            nameof(RecentSessionHistoryViewModel.ExportStatus) =>
+                [nameof(HistoryExportStatus)],
+            nameof(RecentSessionHistoryViewModel.RetentionStatus) =>
+                [nameof(HistoryRetentionStatus)],
+            nameof(RecentSessionHistoryViewModel.CanManageRetention) =>
+                [nameof(CanManageHistoryRetention)],
+            nameof(RecentSessionHistoryViewModel.SelectedRetentionOption) =>
+                [nameof(SelectedHistoryRetentionOption)],
+            nameof(RecentSessionHistoryViewModel.HasPendingRetentionChange) =>
+                [nameof(HasPendingHistoryRetentionChange)],
+            nameof(RecentSessionHistoryViewModel.CanApplyRetention) =>
+                [nameof(CanApplyHistoryRetention)],
+            nameof(RecentSessionHistoryViewModel.RequiresRetentionConfirmation) =>
+                [nameof(RequiresHistoryRetentionConfirmation)],
+            nameof(RecentSessionHistoryViewModel.SearchQuery) =>
+                [nameof(HistorySearchQuery)],
+            nameof(RecentSessionHistoryViewModel.SelectedSession) =>
+                [nameof(SelectedHistorySession)],
+            nameof(RecentSessionHistoryViewModel.HasSelectedSession) =>
+                [nameof(HasSelectedHistorySession)],
+            nameof(RecentSessionHistoryViewModel.HasNoSelectedSession) =>
+                [nameof(HasNoSelectedHistorySession)],
+            nameof(RecentSessionHistoryViewModel.SelectedExportScope) =>
+                [nameof(SelectedHistoryExportScope)],
+            _ => [],
+        };
+
+        foreach (var propertyName in propertyNames)
+        {
+            OnPropertyChanged(propertyName);
         }
-
-        ApplyRecentSessionFailure(error);
-    }
-
-    private void NotifyHistoryActionStateChanged()
-    {
-        OnPropertyChanged(nameof(HasNoRecentSessions));
-        OnPropertyChanged(nameof(HasNoFilteredHistorySessions));
-        OnPropertyChanged(nameof(CanRetryRecentSessionHistory));
-        OnPropertyChanged(nameof(CanClearRecentSessionHistory));
-        OnPropertyChanged(nameof(CanResetRecentSessionHistory));
-        OnPropertyChanged(nameof(CanExportAllHistory));
-        OnPropertyChanged(nameof(CanExportFilteredHistory));
-        OnPropertyChanged(nameof(CanManageHistoryRetention));
-        OnPropertyChanged(nameof(CanApplyHistoryRetention));
     }
 
     private bool CanOpenDefinition(DefinitionKey key) => key.Kind switch
@@ -10895,21 +10255,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     private void RefreshRecentSessionAvailability()
     {
-        for (var index = 0; index < HistorySessions.Count; index++)
-        {
-            var item = HistorySessions[index];
-            var canOpen = CanOpenDefinition(item.SourceDefinition);
-            if (item.CanOpen != canOpen)
-            {
-                HistorySessions[index] = item with { CanOpen = canOpen };
-            }
-        }
-
-        ReplaceIfChanged(
-            RecentSessions,
-            [.. HistorySessions.Take(8)],
-            static (a, b) => a.PresentsSameAs(b));
-        RefreshHistorySearchResults();
+        History.RefreshAvailability(ToRecentSessionItem);
     }
 
     /// <summary>
@@ -14760,10 +14106,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 OnTerminalMultiplexerLeasesChanged;
         _agentPolicyCoordinator?.Changed -= OnAgentPolicyCoordinatorChanged;
 
-        lock (_historyGate)
-        {
-            _historyOperationsSealed = true;
-        }
+        History.SealOperations();
 
         _runtimeGraphLifetime.Cancel();
         StopRuntimeGraphWatch();
@@ -14786,10 +14129,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
         _disposed = true;
         _shutdownStarted = true;
-        lock (_historyGate)
-        {
-            _historyOperationsSealed = true;
-        }
+        History.SealOperations();
 
         _catalog.Changed -= OnCatalogChanged;
         _fileTransferQueue.TransfersChanged -= OnFileTransfersChanged;
@@ -14834,11 +14174,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         }
         DefaultAgentPolicy.Changed -= OnDefaultAgentPolicyChanged;
         DefaultAgentPolicy.Dispose();
+        History.PropertyChanged -= OnHistoryPropertyChanged;
+        History.SnapshotChanged -= OnHistorySnapshotChanged;
+        History.Dispose();
         _runtimeGraphLifetime.Cancel();
         StopRuntimeGraphWatch();
-        _historyLifetime.Cancel();
         _runtimeGraphLifetime.Dispose();
-        _historyLifetime.Dispose();
     }
 
     private sealed class WorkspaceAgentChat : IDisposable
