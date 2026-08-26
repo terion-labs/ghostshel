@@ -3778,9 +3778,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         CancellationToken cancellationToken)
     {
         var multiplexed = OpenTerminalPanels().Where(panel => panel.Id == panelId).ToArray();
-        var result = await SessionClient.CloseAsync(
+        var result = await RuntimeGraph.CloseAsync(
             CloseScopeRequest.Panel(panelId, decision),
-            NewContext(),
             cancellationToken);
         RecordRecentSessionCompletions(result);
         if (result is HostResult<CloseScopeResult>.Success
@@ -3802,9 +3801,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             .SelectMany(tab => tab.Panels)
             .OfType<TerminalRuntimePanelViewModel>()
             .ToArray();
-        var result = await SessionClient.CloseAsync(
+        var result = await RuntimeGraph.CloseAsync(
             CloseScopeRequest.Tab(tabId, decision),
-            NewContext(),
             cancellationToken);
         RecordRecentSessionCompletions(result);
         if (result is HostResult<CloseScopeResult>.Success
@@ -3833,9 +3831,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             .SelectMany(tab => tab.Panels)
             .OfType<TerminalRuntimePanelViewModel>()
             .ToArray();
-        var result = await SessionClient.CloseAsync(
+        var result = await RuntimeGraph.CloseAsync(
             CloseScopeRequest.Workspace(workspaceId, decision),
-            NewContext(),
             cancellationToken);
         RecordRecentSessionCompletions(result);
         if (result is HostResult<CloseScopeResult>.Success
@@ -3893,9 +3890,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         CloseDecision decision,
         CancellationToken cancellationToken)
     {
-        var result = await SessionClient.CloseAsync(
+        var result = await RuntimeGraph.CloseAsync(
             CloseScopeRequest.Window(WindowId, decision),
-            NewContext(),
             cancellationToken);
         RecordRecentSessionCompletions(result);
         return result;
@@ -10020,18 +10016,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             return;
         }
 
-        var result = await SessionClient.EnsureBrowserSessionAsync(
+        var snapshot = await RuntimeGraph.EnsureBrowserSessionAsync(
             browser.SessionRequest,
-            OperationContext.ForHuman(
-                ClientId,
-                idempotencyKey: IdempotencyKey.New()),
+            owner,
             _runtimeGraphLifetime.Token);
-        if (result is not HostResult<SessionSnapshot>.Success success
-            || success.ResultingRevision != success.Value.Descriptor.Revision
-            || success.Value.Descriptor.Id != browser.SessionRequest.SessionId
-            || success.Value.Descriptor.Owner != owner
-            || success.Value.Descriptor.Kind != PanelKind.Browser
-            || success.Value.Descriptor.Lifecycle != SessionLifecycle.Active)
+        if (snapshot is null)
         {
             return;
         }
@@ -10075,24 +10064,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                     return;
                 }
 
-                var result = await SessionClient.EnsureTerminalSessionAsync(
+                var snapshot = await RuntimeGraph.EnsureTerminalSessionAsync(
                     request,
-                    OperationContext.ForHuman(
-                        ClientId,
-                        idempotencyKey: IdempotencyKey.New()),
+                    owner,
                     _runtimeGraphLifetime.Token);
-                if (result is not HostResult<SessionSnapshot>.Success success
-                    || success.ResultingRevision != success.Value.Descriptor.Revision
-                    || success.Value.Descriptor.Id != request.SessionId
-                    || success.Value.Descriptor.Owner != owner
-                    || success.Value.Descriptor.Kind != PanelKind.Terminal
-                    || success.Value.Descriptor.Lifecycle is not (
-                        SessionLifecycle.Starting or SessionLifecycle.Active))
+                if (snapshot is null)
                 {
                     return;
                 }
 
-                terminal.ObserveSessionSnapshot(success.Value);
+                terminal.ObserveSessionSnapshot(snapshot);
                 await WatchAcceptedTerminalSessionAsync(
                     terminal,
                     request,
@@ -10120,22 +10101,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         EnsureTerminalSessionRequest request,
         CancellationToken cancellationToken)
     {
-        await foreach (var item in SessionClient.WatchAsync(
-            new WatchSessionRequest(request.SessionId, AfterSequence: 0),
-            OperationContext.ForHuman(ClientId),
+        await foreach (var snapshot in RuntimeGraph.WatchSessionAsync(
+            request.SessionId,
             cancellationToken))
         {
-            SessionSnapshot snapshot = item switch
-            {
-                SessionStreamItem.Event sessionEvent => new SessionSnapshot(
-                    sessionEvent.Value.Descriptor,
-                    sessionEvent.Value.Sequence,
-                    [],
-                    null),
-                SessionStreamItem.ResynchronizationRequired resynchronization =>
-                    resynchronization.Snapshot,
-                _ => throw new ArgumentOutOfRangeException(nameof(item)),
-            };
             terminal.ObserveSessionSnapshot(snapshot);
             if (!ReferenceEquals(terminal.SessionRequest, request))
             {
@@ -10930,8 +10899,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     }
 
     private void ApplyError(DefinitionStoreError? error) => OperationError = error?.Message;
-
-    private OperationContext NewContext() => OperationContext.ForHuman(ClientId);
 
     private sealed record RuntimeSessionIdentity(
         SessionId SessionId,

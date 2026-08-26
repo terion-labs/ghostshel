@@ -67,13 +67,12 @@ public sealed partial class MainWindowViewModel
         var before = CaptureRuntimeWorkspaceGraph(workspace);
         if (request is AgentWorkspaceLayoutRequest.ConnectionList)
         {
-            var observed = await SessionClient.GetWorkspaceGraphAsync(
+            var observed = await RuntimeGraph.ObserveWorkspaceAsync(
                 workspaceId,
-                OperationContext.ForHuman(ClientId),
                 cancellationToken);
-            return observed is HostResult<WorkspaceGraphSnapshot>.Success observedSuccess
+            return observed is not null
                 ? new AgentWorkspaceLayoutMutationResult.Observed(
-                    observedSuccess.Value,
+                    observed,
                     _agentWorkspaceLayoutPorts.TryGetValue(
                         workspaceId,
                         out var port)
@@ -435,28 +434,16 @@ public sealed partial class MainWindowViewModel
                     : AgentPanelOperationalState.Waiting;
             }
 
-            var result = await SessionClient.EnsureBrowserSessionAsync(
+            var snapshot = await RuntimeGraph.EnsureBrowserSessionAsync(
                 browser.SessionRequest,
-                OperationContext.ForHuman(ClientId),
+                browser.SessionRequest.Owner,
                 cancellationToken);
-            if (result is not HostResult<SessionSnapshot>.Success success)
+            if (snapshot is null)
             {
                 return AgentPanelOperationalState.Failed;
             }
 
-            var browserReady = success is
-            {
-                Value.Descriptor:
-                {
-                    Id: var sessionId,
-                    Owner: var owner,
-                    Kind: PanelKind.Browser,
-                    Lifecycle: SessionLifecycle.Active,
-                    Health: SessionHealth.Healthy,
-                },
-            }
-            && sessionId == browser.SessionRequest.SessionId
-            && owner == browser.SessionRequest.Owner
+            var browserReady = snapshot.Descriptor.Health == SessionHealth.Healthy
             && browser.HasInteractiveAttachment;
             return browserReady
                 ? AgentPanelOperationalState.Ready
@@ -488,18 +475,16 @@ public sealed partial class MainWindowViewModel
         CancellationToken cancellationToken,
         PanelInstanceId? requirePanelSessionId = null)
     {
-        var result = await SessionClient.GetWorkspaceGraphAsync(
+        var snapshot = await RuntimeGraph.ObserveWorkspaceAsync(
             workspace.Id,
-            OperationContext.ForHuman(ClientId),
             cancellationToken);
-        if (result is not HostResult<WorkspaceGraphSnapshot>.Success success
-            || success.ResultingRevision != success.Value.Revision)
+        if (snapshot is null)
         {
             return null;
         }
 
         if (requirePanelSessionId is { } panelId
-            && success.Value.Workspace.Tabs
+            && snapshot.Workspace.Tabs
                 .SelectMany(tab => tab.Panels)
                 .SingleOrDefault(panel => panel.Id == panelId)
                 ?.SessionId is null)
@@ -507,13 +492,11 @@ public sealed partial class MainWindowViewModel
             return null;
         }
 
-        if (success.Value.WindowId != WindowId
-            || success.Value.Workspace.Id != workspace.Id
-            || success.Value.Revision < workspace.HostRevision
-            || success.Value.LastSequence < workspace.HostSequence
+        if (snapshot.Revision < workspace.HostRevision
+            || snapshot.LastSequence < workspace.HostSequence
             || !WorkspaceTopologyMatches(
                 CaptureRuntimeWorkspaceGraph(workspace),
-                success.Value.Workspace))
+                snapshot.Workspace))
         {
             // A user layout change can legitimately overtake the startup wait.
             // That invalidates this agent operation; it is not an invalid host
@@ -521,19 +504,19 @@ public sealed partial class MainWindowViewModel
             return null;
         }
 
-        if (success.Value.LastSequence > workspace.HostSequence
+        if (snapshot.LastSequence > workspace.HostSequence
             && !RuntimeGraph.TryApplyProjection(
                 workspace,
-                success.Value.WindowId,
-                success.Value.Workspace,
-                success.Value.Revision,
-                success.Value.LastSequence,
+                snapshot.WindowId,
+                snapshot.Workspace,
+                snapshot.Revision,
+                snapshot.LastSequence,
                 "agent panel readiness"))
         {
             return null;
         }
 
-        return success.Value;
+        return snapshot;
     }
 
     private enum AgentPanelOperationalState

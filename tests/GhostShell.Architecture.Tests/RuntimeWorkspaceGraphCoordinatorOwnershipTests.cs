@@ -26,7 +26,7 @@ public sealed class RuntimeWorkspaceGraphCoordinatorOwnershipTests
     [Fact]
     public void Revision_application_receipt_validation_and_watch_lifetime_live_in_coordinator()
     {
-        var root = Read("MainWindowViewModel.cs");
+        var root = ReadMainWindow();
         var owner = Read("RuntimeWorkspaceGraphCoordinator.cs");
 
         Assert.DoesNotContain("ApplyHostProjection(", root, StringComparison.Ordinal);
@@ -38,6 +38,10 @@ public sealed class RuntimeWorkspaceGraphCoordinatorOwnershipTests
         Assert.DoesNotContain("GetWorkspaceGraphAsync", root, StringComparison.Ordinal);
         Assert.DoesNotContain("SessionClient.ActivateWorkspaceTabAsync", root, StringComparison.Ordinal);
         Assert.DoesNotContain("SessionClient.ActivateWorkspacePanelAsync", root, StringComparison.Ordinal);
+        Assert.DoesNotContain("SessionClient.CloseAsync", root, StringComparison.Ordinal);
+        Assert.DoesNotContain("SessionClient.EnsureBrowserSessionAsync", root, StringComparison.Ordinal);
+        Assert.DoesNotContain("SessionClient.EnsureTerminalSessionAsync", root, StringComparison.Ordinal);
+        Assert.DoesNotContain("SessionClient.WatchAsync", root, StringComparison.Ordinal);
         Assert.DoesNotContain("WorkspaceGraphEventKind", root, StringComparison.Ordinal);
         Assert.Contains("ApplyHostProjection(", owner, StringComparison.Ordinal);
         Assert.Contains("WatchWorkspaceGraphAsync", owner, StringComparison.Ordinal);
@@ -46,6 +50,11 @@ public sealed class RuntimeWorkspaceGraphCoordinatorOwnershipTests
         Assert.Contains("GetWorkspaceGraphAsync", owner, StringComparison.Ordinal);
         Assert.Contains("ActivateWorkspaceTabAsync", owner, StringComparison.Ordinal);
         Assert.Contains("ActivateWorkspacePanelAsync", owner, StringComparison.Ordinal);
+        Assert.Contains("RequireSessionClient().CloseAsync", owner, StringComparison.Ordinal);
+        Assert.Contains("ObserveWorkspaceAsync", owner, StringComparison.Ordinal);
+        Assert.Contains("EnsureBrowserSessionAsync", owner, StringComparison.Ordinal);
+        Assert.Contains("EnsureTerminalSessionAsync", owner, StringComparison.Ordinal);
+        Assert.Contains("RequireSessionClient().WatchAsync", owner, StringComparison.Ordinal);
         Assert.Contains("IsExpectedReceipt", owner, StringComparison.Ordinal);
         Assert.Contains("IsExpectedReconciledReceipt", owner, StringComparison.Ordinal);
         Assert.Contains("SemaphoreSlim _gate", owner, StringComparison.Ordinal);
@@ -90,4 +99,18 @@ public sealed class RuntimeWorkspaceGraphCoordinatorOwnershipTests
         "GhostShell.App",
         "ViewModels",
         fileName));
+
+    private static string ReadMainWindow()
+    {
+        var directory = Path.Combine(
+            ApplicationViewCatalog.Load().RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "ViewModels");
+        return string.Join(
+            Environment.NewLine,
+            Directory.GetFiles(directory, "MainWindowViewModel*.cs")
+                .Order(StringComparer.Ordinal)
+                .Select(File.ReadAllText));
+    }
 }

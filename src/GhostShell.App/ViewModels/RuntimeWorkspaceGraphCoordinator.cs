@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 using GhostShell.Application;
 using GhostShell.Core;
 
@@ -345,6 +347,112 @@ public sealed class RuntimeWorkspaceGraphCoordinator : IDisposable
         }
 
         return false;
+    }
+
+    public ValueTask<HostResult<CloseScopeResult>> CloseAsync(
+        CloseScopeRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return RequireSessionClient().CloseAsync(
+            request,
+            OperationContext.ForHuman(_clientId),
+            cancellationToken);
+    }
+
+    public async ValueTask<WorkspaceGraphSnapshot?> ObserveWorkspaceAsync(
+        WorkspaceInstanceId workspaceId,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var result = await RequireSessionClient().GetWorkspaceGraphAsync(
+            workspaceId,
+            OperationContext.ForHuman(_clientId),
+            cancellationToken);
+        return result is HostResult<WorkspaceGraphSnapshot>.Success success
+            && success.ResultingRevision == success.Value.Revision
+            && success.Value.WindowId == _windowId
+            && success.Value.Workspace.Id == workspaceId
+                ? success.Value
+                : null;
+    }
+
+    public async ValueTask<SessionSnapshot?> EnsureBrowserSessionAsync(
+        EnsureBrowserSessionRequest request,
+        SessionOwner owner,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var result = await RequireSessionClient().EnsureBrowserSessionAsync(
+            request,
+            OperationContext.ForHuman(
+                _clientId,
+                idempotencyKey: IdempotencyKey.New()),
+            cancellationToken);
+        return result is HostResult<SessionSnapshot>.Success success
+            && success.ResultingRevision == success.Value.Descriptor.Revision
+            && success.Value.Descriptor.Id == request.SessionId
+            && success.Value.Descriptor.Owner == owner
+            && success.Value.Descriptor.Kind == PanelKind.Browser
+            && success.Value.Descriptor.Lifecycle == SessionLifecycle.Active
+                ? success.Value
+                : null;
+    }
+
+    public async ValueTask<SessionSnapshot?> EnsureTerminalSessionAsync(
+        EnsureTerminalSessionRequest request,
+        SessionOwner owner,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var result = await RequireSessionClient().EnsureTerminalSessionAsync(
+            request,
+            OperationContext.ForHuman(
+                _clientId,
+                idempotencyKey: IdempotencyKey.New()),
+            cancellationToken);
+        return result is HostResult<SessionSnapshot>.Success success
+            && success.ResultingRevision == success.Value.Descriptor.Revision
+            && success.Value.Descriptor.Id == request.SessionId
+            && success.Value.Descriptor.Owner == owner
+            && success.Value.Descriptor.Kind == PanelKind.Terminal
+            && success.Value.Descriptor.Lifecycle is
+                SessionLifecycle.Starting or SessionLifecycle.Active
+                ? success.Value
+                : null;
+    }
+
+    public async IAsyncEnumerable<SessionSnapshot> WatchSessionAsync(
+        SessionId sessionId,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        await foreach (var item in RequireSessionClient().WatchAsync(
+            new WatchSessionRequest(sessionId, AfterSequence: 0),
+            OperationContext.ForHuman(_clientId),
+            cancellationToken))
+        {
+            var snapshot = item switch
+            {
+                SessionStreamItem.Event sessionEvent => new SessionSnapshot(
+                    sessionEvent.Value.Descriptor,
+                    sessionEvent.Value.Sequence,
+                    [],
+                    null),
+                SessionStreamItem.ResynchronizationRequired resynchronization =>
+                    resynchronization.Snapshot,
+                _ => throw new ArgumentOutOfRangeException(nameof(item)),
+            };
+            if (snapshot.Descriptor.Id != sessionId)
+            {
+                yield break;
+            }
+
+            yield return snapshot;
+        }
     }
 
     public async Task<bool> ReplaceAsync(
