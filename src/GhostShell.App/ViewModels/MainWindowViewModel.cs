@@ -283,6 +283,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _startupCommandDispatcher = startupCommandDispatcher
             ?? throw new ArgumentNullException(nameof(startupCommandDispatcher));
         _fileProviderRuntime = fileProviderRuntime ?? filePanelClient as IFileProviderProfileRuntime;
+        FileProviderSettings = new FileProviderSettingsViewModel(
+            _catalog,
+            _fileProviderRuntime,
+            () => _filePanelClient.Profiles,
+            () => [.. Secrets],
+            _uiThreadDispatcher);
+        FileProviderSettings.PropertyChanged += OnFileProviderSettingsPropertyChanged;
         _aiProviderRuntime = aiProviderRuntime;
         _agentRuntimeFactory = agentRuntimeFactory;
         _agentRunAuditReader = agentRunAuditReader;
@@ -339,7 +346,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         ProductComponents = productComponentCatalog?.Components ?? [];
         _catalog.Changed += OnCatalogChanged;
         _fileTransferQueue.TransfersChanged += OnFileTransfersChanged;
-        _fileProviderRuntime?.ProfilesChanged += OnFileProviderProfilesChanged;
         _aiProviderRuntime?.ProfilesChanged += OnAiProviderProfilesChanged;
         _runtimeRecoveryWriter?.WriteFailed += OnRuntimeRecoveryWriteFailed;
         RefreshCatalog(_catalog.Snapshot);
@@ -601,7 +607,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public ObservableCollection<FileTransferItemViewModel> FileTransfers { get; } = [];
 
-    public ObservableCollection<FileProviderProfileItemViewModel> FileProviderDefinitions { get; } = [];
+    public ObservableCollection<FileProviderProfileItemViewModel> FileProviderDefinitions =>
+        FileProviderSettings.Definitions;
+
+    public FileProviderSettingsViewModel FileProviderSettings { get; }
 
     public ObservableCollection<AiProviderProfileItemViewModel> AiProviderDefinitions { get; } = [];
 
@@ -793,7 +802,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     }
 
     public IReadOnlyList<FileProviderProfileDescriptor> FileProviderProfiles =>
-        _filePanelClient.Profiles;
+        FileProviderSettings.Profiles;
 
     public IReadOnlyList<AiProviderProfileDescriptor> AiProviderProfiles =>
         _aiProviderRuntime?.Profiles ?? [];
@@ -1111,6 +1120,30 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 [nameof(WorkspaceEditor)],
             nameof(WorkspaceSettingsViewModel.HasEditor) =>
                 [nameof(HasWorkspaceEditor)],
+            _ => [],
+        };
+        foreach (var propertyName in propertyNames)
+        {
+            OnPropertyChanged(propertyName);
+        }
+    }
+
+    private void OnFileProviderSettingsPropertyChanged(
+        object? sender,
+        PropertyChangedEventArgs eventArgs)
+    {
+        _ = sender;
+        string[] propertyNames = eventArgs.PropertyName switch
+        {
+            nameof(FileProviderSettingsViewModel.Definitions) =>
+                [nameof(FileProviderDefinitions)],
+            nameof(FileProviderSettingsViewModel.Profiles) =>
+                [
+                    nameof(FileProviderProfiles),
+                    nameof(FileConnectionOptions),
+                    nameof(SavedConnectionShortcuts),
+                    nameof(SavedConnectionShortcutCount),
+                ],
             _ => [],
         };
         foreach (var propertyName in propertyNames)
@@ -3536,30 +3569,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     }
 
     public FileProviderProfileEditorViewModel CreateFileProviderEditor(
-        FileProviderProfileId? profileId = null)
-    {
-        var runtime = _fileProviderRuntime
-            ?? throw new InvalidOperationException("The file-provider runtime is unavailable.");
-        var connections = _catalog.Snapshot.Connections
-            .Select(item => item.Value)
-            .ToArray();
-        if (profileId is null)
-        {
-            return new FileProviderProfileEditorViewModel(
-                runtime,
-                connections,
-                [.. Secrets]);
-        }
-
-        var stored = _catalog.Snapshot.FileProviderProfiles
-            .SingleOrDefault(item => item.Value.Id == profileId.Value) ?? throw new InvalidOperationException("That file-provider profile no longer exists.");
-        return new FileProviderProfileEditorViewModel(
-            runtime,
-            connections,
-            [.. Secrets],
-            stored.Value,
-            stored.Revision);
-    }
+        FileProviderProfileId? profileId = null) =>
+        FileProviderSettings.CreateEditor(profileId);
 
     /// <summary>
     /// Builds the single editor that covers every connection family. A locked
@@ -3617,10 +3628,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     {
         ArgumentNullException.ThrowIfNull(request);
         ClearError();
-        var result = await _catalog.SaveFileProviderProfileAsync(
-            request.Profile,
-            request.ExpectedRevision,
-            cancellationToken);
+        var result = await FileProviderSettings.SaveAsync(request, cancellationToken);
         ApplyError(result.Error);
         return result;
     }
@@ -6966,21 +6974,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         }
     }
 
-    private void OnFileProviderProfilesChanged(object? sender, EventArgs eventArgs)
-    {
-        _ = sender;
-        _ = eventArgs;
-        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
-        {
-            RefreshFileProviderDefinitions(_catalog.Snapshot);
-        }
-        else
-        {
-            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                RefreshFileProviderDefinitions(_catalog.Snapshot));
-        }
-    }
-
     private void OnAiProviderProfilesChanged(object? sender, EventArgs eventArgs)
     {
         _ = sender;
@@ -9856,7 +9849,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         // edited. Re-resolve its shell accent from this newly published
         // snapshot so an accent save retints the open workspace immediately.
         SetActiveWorkspaceAccent(ShellAccentOf(RuntimeWorkspace, snapshot));
-        RefreshFileProviderDefinitions(snapshot);
+        FileProviderSettings.ApplyCatalog(snapshot);
         RefreshAiProviderDefinitions(snapshot);
         RefreshMcpServerDefinitions(snapshot);
         DefinitionSettings.ApplyCatalog(snapshot);
@@ -9906,49 +9899,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                     bounds.RowSpan,
                     item.index == 0);
             })];
-    }
-
-    private void RefreshFileProviderDefinitions(DefinitionCatalogSnapshot snapshot)
-    {
-        var liveIds = _filePanelClient.Profiles
-            .Select(item => item.Id)
-            .ToHashSet(StringComparer.Ordinal);
-        var diagnostics = (_fileProviderRuntime?.Diagnostics ?? [])
-            .Where(item => item.ProfileId is not null)
-            .GroupBy(item => item.ProfileId!.Value)
-            .ToDictionary(item => item.Key, item => item.ToArray());
-        ReplaceIfChanged(
-            FileProviderDefinitions,
-            [.. snapshot.FileProviderProfiles
-            .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(item =>
-            {
-                diagnostics.TryGetValue(item.Value.Id, out var profileDiagnostics);
-                var error = profileDiagnostics?.FirstOrDefault(diagnostic =>
-                    diagnostic.Severity == FileProviderRuntimeDiagnosticSeverity.Error);
-                var warning = profileDiagnostics?.FirstOrDefault(diagnostic =>
-                    diagnostic.Severity == FileProviderRuntimeDiagnosticSeverity.Warning);
-                var isLive = liveIds.Contains(item.Value.Id.Value);
-                return new FileProviderProfileItemViewModel(
-                    item.Value.Id,
-                    item.Revision,
-                    item.Value.Name,
-                    FileProviderKindLabel(item.Value.ProviderKind),
-                    FileProviderEndpoint(item.Value.Configuration),
-                    error is not null ? "Unavailable" : isLive ? "Ready" : "Loading",
-                    error?.Message
-                        ?? warning?.Message
-                        ?? (isLive
-                            ? "Adapter loaded; credentials resolve only when the provider is used."
-                            : "Materializing the saved adapter…"),
-                    error is not null,
-                    warning is not null);
-            })],
-            static (a, b) => a == b);
-        OnPropertyChanged(nameof(FileProviderProfiles));
-        OnPropertyChanged(nameof(FileConnectionOptions));
-        OnPropertyChanged(nameof(SavedConnectionShortcuts));
-        OnPropertyChanged(nameof(SavedConnectionShortcutCount));
     }
 
     private IReadOnlyList<SavedConnectionShortcutViewModel> BuildSavedConnectionShortcuts()
@@ -13558,7 +13508,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
         _catalog.Changed -= OnCatalogChanged;
         _fileTransferQueue.TransfersChanged -= OnFileTransfersChanged;
-        _fileProviderRuntime?.ProfilesChanged -= OnFileProviderProfilesChanged;
         _aiProviderRuntime?.ProfilesChanged -= OnAiProviderProfilesChanged;
         _runtimeRecoveryWriter?.WriteFailed -= OnRuntimeRecoveryWriteFailed;
         _terminalMultiplexerCoordinator?.LeasesChanged -=
@@ -13592,7 +13541,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
         _catalog.Changed -= OnCatalogChanged;
         _fileTransferQueue.TransfersChanged -= OnFileTransfersChanged;
-        _fileProviderRuntime?.ProfilesChanged -= OnFileProviderProfilesChanged;
         _aiProviderRuntime?.ProfilesChanged -= OnAiProviderProfilesChanged;
         _runtimeRecoveryWriter?.WriteFailed -= OnRuntimeRecoveryWriteFailed;
         _terminalMultiplexerCoordinator?.LeasesChanged -=
@@ -13606,6 +13554,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         AppearanceSettings.BackgroundSaveStarting -= OnAppearanceBackgroundSaveStarting;
         AppearanceSettings.BackgroundSaveCompleted -= OnAppearanceBackgroundSaveCompleted;
         WorkspaceSettings.PropertyChanged -= OnWorkspaceSettingsPropertyChanged;
+        FileProviderSettings.PropertyChanged -= OnFileProviderSettingsPropertyChanged;
         Launcher.PropertyChanged -= OnLauncherPropertyChanged;
         StopTrackingAgentTerminalSelection(_runtimeWorkspace);
         StopTrackingRecovery(_runtimeWorkspace);
@@ -13624,6 +13573,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         WorkspaceSettings.Dispose();
         SavedScreenSettings.Dispose();
         TerminalConnectionSettings.Dispose();
+        FileProviderSettings.Dispose();
         DefinitionSettings.Dispose();
         TerminalSettings.Dispose();
         AppearanceSettings.Dispose();
