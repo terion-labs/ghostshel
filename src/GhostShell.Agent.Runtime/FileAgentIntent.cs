@@ -96,19 +96,78 @@ internal abstract record FileAgentIntent
         public override ImmutableArray<FilePanelPathSegment> RelativePath { get; }
     }
 
-    public sealed record Move : FileAgentIntent
+    public sealed record CreateText : FileAgentIntent
     {
-        public Move(
+        public CreateText(IEnumerable<FilePanelPathSegment> pathSegments, string content)
+        {
+            ArgumentNullException.ThrowIfNull(pathSegments);
+            RelativePath = [.. pathSegments];
+            Content = content ?? throw new ArgumentNullException(nameof(content));
+        }
+
+        public override ImmutableArray<FilePanelPathSegment> RelativePath { get; }
+
+        public string Content { get; }
+    }
+
+    public sealed record ReplaceText : FileAgentIntent
+    {
+        public ReplaceText(
+            IEnumerable<FilePanelPathSegment> pathSegments,
+            AgentFileEntryReference entryReference,
+            string content)
+        {
+            ArgumentNullException.ThrowIfNull(pathSegments);
+            RelativePath = [.. pathSegments];
+            EntryReference = entryReference;
+            Content = content ?? throw new ArgumentNullException(nameof(content));
+        }
+
+        public override ImmutableArray<FilePanelPathSegment> RelativePath { get; }
+
+        public AgentFileEntryReference EntryReference { get; }
+
+        public string Content { get; }
+    }
+
+    public sealed record Copy : FileAgentIntent
+    {
+        public Copy(
             IEnumerable<FilePanelPathSegment> sourcePathSegments,
+            AgentFileEntryReference entryReference,
             IEnumerable<FilePanelPathSegment> destinationPathSegments)
         {
             ArgumentNullException.ThrowIfNull(sourcePathSegments);
             ArgumentNullException.ThrowIfNull(destinationPathSegments);
             RelativePath = [.. sourcePathSegments];
+            EntryReference = entryReference;
             DestinationRelativePath = [.. destinationPathSegments];
         }
 
         public override ImmutableArray<FilePanelPathSegment> RelativePath { get; }
+
+        public AgentFileEntryReference EntryReference { get; }
+
+        public ImmutableArray<FilePanelPathSegment> DestinationRelativePath { get; }
+    }
+
+    public sealed record Move : FileAgentIntent
+    {
+        public Move(
+            IEnumerable<FilePanelPathSegment> sourcePathSegments,
+            AgentFileEntryReference entryReference,
+            IEnumerable<FilePanelPathSegment> destinationPathSegments)
+        {
+            ArgumentNullException.ThrowIfNull(sourcePathSegments);
+            ArgumentNullException.ThrowIfNull(destinationPathSegments);
+            RelativePath = [.. sourcePathSegments];
+            EntryReference = entryReference;
+            DestinationRelativePath = [.. destinationPathSegments];
+        }
+
+        public override ImmutableArray<FilePanelPathSegment> RelativePath { get; }
+
+        public AgentFileEntryReference EntryReference { get; }
 
         public ImmutableArray<FilePanelPathSegment> DestinationRelativePath { get; }
     }
@@ -117,14 +176,18 @@ internal abstract record FileAgentIntent
     {
         public Delete(
             IEnumerable<FilePanelPathSegment> pathSegments,
+            AgentFileEntryReference entryReference,
             bool recursive = false)
         {
             ArgumentNullException.ThrowIfNull(pathSegments);
             RelativePath = [.. pathSegments];
+            EntryReference = entryReference;
             Recursive = recursive;
         }
 
         public override ImmutableArray<FilePanelPathSegment> RelativePath { get; }
+
+        public AgentFileEntryReference EntryReference { get; }
 
         public bool Recursive { get; }
     }

@@ -15,4 +15,5 @@ public sealed record SessionDescriptor(
     SessionFailure? Failure = null,
     TerminalSessionMetadata? TerminalMetadata = null,
     FileSessionMetadata? FileMetadata = null,
-    BrowserSessionMetadata? BrowserMetadata = null);
+    BrowserSessionMetadata? BrowserMetadata = null,
+    GitSessionMetadata? GitMetadata = null);

@@ -64,6 +64,20 @@ public sealed partial record AgentContextPanel
                 "Only browser sessions can expose trusted document metadata.",
                 nameof(session));
         }
+
+        if (kind != PanelKind.Git && session.GitMetadata is not null)
+        {
+            throw new ArgumentException(
+                "Only Git sessions can expose trusted repository metadata.",
+                nameof(session));
+        }
+
+        if (kind == PanelKind.Git && session.GitMetadata is null)
+        {
+            throw new ArgumentException(
+                "A Git session requires trusted repository metadata.",
+                nameof(session));
+        }
     }
 
     private static string? CopyTitle(string? title, string parameterName)

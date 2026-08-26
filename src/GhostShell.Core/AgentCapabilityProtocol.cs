@@ -32,6 +32,7 @@ public static class AgentCapabilityProtocol
     public const string ProcessData = "process_data";
     public const string ArtifactTransfer = "artifact_transfer";
     public const string WorkspaceLayout = "workspace_layout";
+    public const string GitData = "git_data";
 
     public static string GetToken(AgentCapability capability) =>
         capability switch
@@ -61,6 +62,7 @@ public static class AgentCapabilityProtocol
             AgentCapability.ProcessData => ProcessData,
             AgentCapability.ArtifactTransfer => ArtifactTransfer,
             AgentCapability.WorkspaceLayout => WorkspaceLayout,
+            AgentCapability.GitData => GitData,
             _ => throw new ArgumentOutOfRangeException(nameof(capability)),
         };
 
@@ -141,6 +143,9 @@ public static class AgentCapabilityProtocol
                 return true;
             case WorkspaceLayout:
                 capability = AgentCapability.WorkspaceLayout;
+                return true;
+            case GitData:
+                capability = AgentCapability.GitData;
                 return true;
             default:
                 capability = default;

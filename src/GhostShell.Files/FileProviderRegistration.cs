@@ -44,7 +44,11 @@ public sealed record FileProviderRegistration
         const FilePanelCapability knownGovernedMutationCapabilities =
             FilePanelCapability.GovernedCreateDirectory
             | FilePanelCapability.GovernedDelete
-            | FilePanelCapability.GovernedRename;
+            | FilePanelCapability.GovernedRename
+            | FilePanelCapability.GovernedCreateFile
+            | FilePanelCapability.GovernedReplaceFile
+            | FilePanelCapability.GovernedCopySource
+            | FilePanelCapability.GovernedCopy;
         if ((governedMutationCapabilities & ~knownGovernedMutationCapabilities) != FilePanelCapability.None)
         {
             throw new ArgumentOutOfRangeException(
@@ -75,6 +79,34 @@ public sealed record FileProviderRegistration
         {
             throw new ArgumentException(
                 "Governed rename requires provider rename support.",
+                nameof(governedMutationCapabilities));
+        }
+
+        var needsStreamingWrite = governedMutationCapabilities.HasFlag(
+                FilePanelCapability.GovernedCreateFile)
+            || governedMutationCapabilities.HasFlag(FilePanelCapability.GovernedReplaceFile);
+        if (needsStreamingWrite
+            && !provider.Capabilities.Supports(FileProviderCapability.StreamingWrite))
+        {
+            throw new ArgumentException(
+                "Governed text writes require provider streaming-write support.",
+                nameof(governedMutationCapabilities));
+        }
+
+        if (governedMutationCapabilities.HasFlag(FilePanelCapability.GovernedCopySource)
+            && (!provider.Capabilities.Supports(FileProviderCapability.Stat)
+                || !provider.Capabilities.Supports(FileProviderCapability.RangedRead)))
+        {
+            throw new ArgumentException(
+                "A governed copy source requires provider stat and ranged-read support.",
+                nameof(governedMutationCapabilities));
+        }
+
+        if (governedMutationCapabilities.HasFlag(FilePanelCapability.GovernedCopy)
+            && !provider.Capabilities.Supports(FileProviderCapability.Copy))
+        {
+            throw new ArgumentException(
+                "Governed copy requires provider copy support.",
                 nameof(governedMutationCapabilities));
         }
 

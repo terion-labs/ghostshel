@@ -142,6 +142,21 @@ internal static class FileAgentToolParser
             return ParseMove(properties, panelId);
         }
 
+        if (string.Equals(toolName, GovernedFileToolNames.CreateText, StringComparison.Ordinal))
+        {
+            return ParseText(properties, panelId, requireReference: false);
+        }
+
+        if (string.Equals(toolName, GovernedFileToolNames.ReplaceText, StringComparison.Ordinal))
+        {
+            return ParseText(properties, panelId, requireReference: true);
+        }
+
+        if (string.Equals(toolName, GovernedFileToolNames.Copy, StringComparison.Ordinal))
+        {
+            return ParseCopy(properties, panelId);
+        }
+
         if (properties.Count != 1
             || !properties.TryGetValue(
                 "path_segments",
@@ -187,10 +202,11 @@ internal static class FileAgentToolParser
         IReadOnlyDictionary<string, JsonElement> properties,
         PanelInstanceId? panelId)
     {
-        if (properties.Count is < 1 or > 2
+        if (properties.Count is < 2 or > 3
             || !properties.TryGetValue("path_segments", out var pathElement)
             || !TryReadPath(pathElement, out var path)
-            || path.Length == 0)
+            || path.Length == 0
+            || !TryReadReference(properties, out var entryReference))
         {
             return Invalid("File deletion requires a non-root path_segments array.");
         }
@@ -206,13 +222,13 @@ internal static class FileAgentToolParser
             recursive = recursiveElement.GetBoolean();
         }
 
-        if (properties.Keys.Any(name => name is not ("path_segments" or "recursive")))
+        if (properties.Keys.Any(name => name is not ("path_segments" or "recursive" or "entry_ref")))
         {
             return Invalid("File deletion contains an unknown field.");
         }
 
         return new FileAgentIntentResult.Parsed(
-            new FileAgentIntent.Delete(path, recursive),
+            new FileAgentIntent.Delete(path, entryReference, recursive),
             panelId);
     }
 
@@ -220,12 +236,13 @@ internal static class FileAgentToolParser
         IReadOnlyDictionary<string, JsonElement> properties,
         PanelInstanceId? panelId)
     {
-        if (properties.Count != 2
+        if (properties.Count != 3
             || !properties.TryGetValue(
                 "source_path_segments",
                 out var sourceElement)
             || !TryReadPath(sourceElement, out var source)
             || source.Length == 0
+            || !TryReadReference(properties, out var entryReference)
             || !properties.TryGetValue(
                 "destination_path_segments",
                 out var destinationElement)
@@ -239,8 +256,120 @@ internal static class FileAgentToolParser
         }
 
         return new FileAgentIntentResult.Parsed(
-            new FileAgentIntent.Move(source, destination),
+            new FileAgentIntent.Move(source, entryReference, destination),
             panelId);
+    }
+
+    private static FileAgentIntentResult ParseText(
+        IReadOnlyDictionary<string, JsonElement> properties,
+        PanelInstanceId? panelId,
+        bool requireReference)
+    {
+        var expectedCount = requireReference ? 3 : 2;
+        if (properties.Count != expectedCount
+            || !properties.TryGetValue("path_segments", out var pathElement)
+            || !TryReadPath(pathElement, out var path)
+            || path.Length == 0
+            || !properties.TryGetValue("content", out var contentElement)
+            || contentElement.ValueKind != JsonValueKind.String
+            || !TryGetString(contentElement, out var content)
+            || !IsSafeText(content))
+        {
+            return Invalid("Text mutation requires a non-root path and bounded UTF-8 content.");
+        }
+
+        if (!requireReference)
+        {
+            return new FileAgentIntentResult.Parsed(
+                new FileAgentIntent.CreateText(path, content),
+                panelId);
+        }
+
+        if (!TryReadReference(properties, out var entryReference))
+        {
+            return Invalid("Text replacement requires an opaque entry_ref from files.stat.");
+        }
+
+        return new FileAgentIntentResult.Parsed(
+            new FileAgentIntent.ReplaceText(path, entryReference, content),
+            panelId);
+    }
+
+    private static FileAgentIntentResult ParseCopy(
+        IReadOnlyDictionary<string, JsonElement> properties,
+        PanelInstanceId? panelId)
+    {
+        if (properties.Count != 3
+            || !properties.TryGetValue("source_path_segments", out var sourceElement)
+            || !TryReadPath(sourceElement, out var source)
+            || source.Length == 0
+            || !properties.TryGetValue("destination_path_segments", out var destinationElement)
+            || !TryReadPath(destinationElement, out var destination)
+            || destination.Length == 0
+            || source.SequenceEqual(destination)
+            || !TryReadReference(properties, out var entryReference))
+        {
+            return Invalid(
+                "File copy requires distinct source and destination paths and an opaque entry_ref.");
+        }
+
+        return new FileAgentIntentResult.Parsed(
+            new FileAgentIntent.Copy(source, entryReference, destination),
+            panelId);
+    }
+
+    private static bool TryReadReference(
+        IReadOnlyDictionary<string, JsonElement> properties,
+        out AgentFileEntryReference entryReference)
+    {
+        entryReference = default;
+        if (!properties.TryGetValue("entry_ref", out var element)
+            || element.ValueKind != JsonValueKind.String
+            || !TryGetString(element, out var value))
+        {
+            return false;
+        }
+
+        try
+        {
+            entryReference = new AgentFileEntryReference(value);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsSafeText(string value)
+    {
+        if (Encoding.UTF8.GetByteCount(value) > FileAgentToolSet.MaximumTextBytes)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < value.Length; index++)
+        {
+            if (!char.IsSurrogate(value[index]))
+            {
+                continue;
+            }
+
+            if (!char.IsHighSurrogate(value[index])
+                || index + 1 >= value.Length
+                || !char.IsLowSurrogate(value[++index]))
+            {
+                return false;
+            }
+        }
+
+        return value.EnumerateRunes().All(rune =>
+            Rune.GetUnicodeCategory(rune) is not (
+                UnicodeCategory.Format
+                or UnicodeCategory.LineSeparator
+                or UnicodeCategory.ParagraphSeparator)
+            && (Rune.GetUnicodeCategory(rune) != UnicodeCategory.Control
+                || rune.Value is '\t' or '\n' or '\r'));
     }
 
     private static FileAgentIntentResult ParseSearch(
@@ -463,6 +592,9 @@ internal static class FileAgentToolParser
             or BuiltInAgentTools.FilesAccessRead
             or BuiltInAgentTools.FilesTransfers
             or BuiltInAgentTools.FilesCreateDirectory
+            or GovernedFileToolNames.CreateText
+            or GovernedFileToolNames.ReplaceText
+            or GovernedFileToolNames.Copy
             or BuiltInAgentTools.FilesMove
             or BuiltInAgentTools.FilesDelete;
 

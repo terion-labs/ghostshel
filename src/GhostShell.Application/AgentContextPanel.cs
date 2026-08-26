@@ -108,6 +108,7 @@ public sealed partial record AgentContextPanel
             nameof(CurrentWorkingDirectory));
         FileMetadata = session?.FileMetadata;
         BrowserMetadata = session?.BrowserMetadata;
+        GitMetadata = session?.GitMetadata;
     }
 
     public WindowInstanceId WindowId { get; }
@@ -172,6 +173,8 @@ public sealed partial record AgentContextPanel
     public FileSessionMetadata? FileMetadata { get; }
 
     public BrowserSessionMetadata? BrowserMetadata { get; }
+
+    public GitSessionMetadata? GitMetadata { get; }
 
     public static AgentContextPanel ForGraphPanel(
         WorkspaceGraphSnapshot graph,

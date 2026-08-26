@@ -383,6 +383,7 @@ public sealed partial class MainWindowViewModel
             DatabaseRuntimePanelViewModel database => !database.HasHostedSession,
             RedisRuntimePanelViewModel redis => !redis.HasHostedSession,
             DockerRuntimePanelViewModel docker => !docker.HasHostedSession,
+            GitRuntimePanelViewModel git => !git.HasHostedSession,
             _ => true,
         };
 
@@ -412,6 +413,12 @@ public sealed partial class MainWindowViewModel
             FindAcceptedPanelOwner(docker)
                 ?? throw new InvalidOperationException(
                     "The accepted Docker panel has no workspace owner.")),
+        GitRuntimePanelViewModel git => git.StartHostingAsync(
+            SessionClient,
+            ClientId,
+            FindAcceptedPanelOwner(git)
+                ?? throw new InvalidOperationException(
+                    "The accepted Git panel has no workspace owner.")),
         _ => Task.CompletedTask,
     };
 

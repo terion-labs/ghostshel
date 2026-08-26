@@ -8,6 +8,135 @@ namespace GhostShell.Docker.Tests;
 public sealed class DockerLiveSmokeTests
 {
     [Fact]
+    public async Task GovernedLifecycleControlsOneExactDisposableLocalContainer()
+    {
+        if (!string.Equals(
+                Environment.GetEnvironmentVariable(
+                    "GHOSTSHELL_RUN_DOCKER_LIFECYCLE_INTEGRATION"),
+                "1",
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var image = Environment.GetEnvironmentVariable(
+                "GHOSTSHELL_DOCKER_LIFECYCLE_IMAGE")
+            ?? throw new InvalidOperationException(
+                "GHOSTSHELL_DOCKER_LIFECYCLE_IMAGE is required and must name an already-present image with a long-running default command.");
+        var containerName = $"ghostshell-lifecycle-{Guid.NewGuid():N}";
+        var executor = new ConnectionCommandExecutor(
+            new LocalRuntime(),
+            new PathConnectionExecutableLocator());
+        var client = new DockerEngineClient(executor, TimeProvider.System);
+        string? containerId = null;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        try
+        {
+            var present = await ExecuteDockerAsync(
+                executor,
+                ["image", "inspect", image],
+                timeout.Token);
+            Assert.Equal(ConnectionCommandOutcome.Exited, present.Outcome);
+            Assert.Equal(0, present.ExitCode);
+
+            var created = await ExecuteDockerAsync(
+                executor,
+                [
+                    "container",
+                    "create",
+                    "--pull=never",
+                    "--name",
+                    containerName,
+                    "--label",
+                    "com.ghostshell.integration-test=governed-lifecycle",
+                    image,
+                ],
+                timeout.Token);
+            Assert.Equal(ConnectionCommandOutcome.Exited, created.Outcome);
+            Assert.Equal(0, created.ExitCode);
+            containerId = created.StandardOutput.Trim();
+            Assert.Equal(64, containerId.Length);
+            Assert.All(containerId, character => Assert.True(char.IsAsciiHexDigit(character)));
+
+            var factory = new DockerPanelSessionFactory(client, TimeProvider.System);
+            await using var session = await factory.CreateAsync(
+                new SessionId($"docker-live-{Guid.NewGuid():N}"),
+                new DockerSessionTarget(BuiltInConnections.Local, 1),
+                timeout.Token);
+            Assert.True(session.Capabilities.Contains(
+                SessionCapabilities.DockerContainerStart));
+
+            await AssertExactStateAsync(client, containerId, containerName, "created", timeout.Token);
+            await ApplyAsync(
+                session,
+                containerName,
+                DockerContainerAction.Start,
+                "created",
+                timeout.Token);
+            await AssertExactStateAsync(client, containerId, containerName, "running", timeout.Token);
+
+            await ApplyAsync(
+                session,
+                containerName,
+                DockerContainerAction.Restart,
+                "running",
+                timeout.Token);
+            await AssertExactStateAsync(client, containerId, containerName, "running", timeout.Token);
+
+            await ApplyAsync(
+                session,
+                containerName,
+                DockerContainerAction.Pause,
+                "running",
+                timeout.Token);
+            await AssertExactStateAsync(client, containerId, containerName, "paused", timeout.Token);
+
+            await ApplyAsync(
+                session,
+                containerName,
+                DockerContainerAction.Resume,
+                "paused",
+                timeout.Token);
+            await AssertExactStateAsync(client, containerId, containerName, "running", timeout.Token);
+
+            await ApplyAsync(
+                session,
+                containerName,
+                DockerContainerAction.Stop,
+                "running",
+                timeout.Token);
+            await AssertExactStateAsync(client, containerId, containerName, "exited", timeout.Token);
+
+            await ApplyAsync(
+                session,
+                containerName,
+                DockerContainerAction.Remove,
+                "exited",
+                timeout.Token);
+            var afterRemove = await ReadSnapshotAsync(client, timeout.Token);
+            Assert.DoesNotContain(afterRemove.Containers, container =>
+                string.Equals(container.Id, containerId, StringComparison.Ordinal)
+                || string.Equals(container.Name, containerName, StringComparison.Ordinal));
+            containerId = null;
+        }
+        finally
+        {
+            // This test owns only its cryptographically random name/returned ID.
+            // Force and anonymous-volume removal are cleanup, never agent input.
+            _ = await ExecuteDockerAsync(
+                executor,
+                [
+                    "container",
+                    "rm",
+                    "--force",
+                    "--volumes",
+                    containerId ?? containerName,
+                ],
+                CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public async Task RemoteSnapshotAndVolumeUsageCanBeReadThroughTheProductionCommandRuntime()
     {
         if (!string.Equals(Environment.GetEnvironmentVariable("GHOSTSHELL_RUN_DOCKER_SSH_SMOKE"), "1", StringComparison.Ordinal))
@@ -47,6 +176,84 @@ public sealed class DockerLiveSmokeTests
         Assert.NotEmpty(usage);
         Assert.Contains(usage, item => item.SizeBytes is > 0);
     }
+
+    private static async ValueTask ApplyAsync(
+        IDockerPanelSession session,
+        string containerName,
+        DockerContainerAction action,
+        string expectedState,
+        CancellationToken cancellationToken)
+    {
+        var snapshot = Assert.IsType<DockerResult<DockerPanelSnapshot>.Success>(
+            await session.ReadStateAsync(100, cancellationToken)).Value;
+        var container = Assert.Single(snapshot.Containers, item =>
+            string.Equals(item.Resource.DisplayName, containerName, StringComparison.Ordinal));
+        Assert.Equal(expectedState, container.State, ignoreCase: true);
+        var revision = Assert.IsType<DockerContainerRevision>(container.ControlRevision);
+
+        var result = await session.ControlContainerAsync(
+            new DockerContainerControlRequest(
+                container.Resource.Reference,
+                session.State.EngineGeneration,
+                revision,
+                action,
+                expectedState),
+            cancellationToken);
+
+        Assert.Equal(DockerContainerControlOutcome.Applied, result.Outcome);
+        Assert.Equal("docker_container_control_applied", result.StableCode);
+        Assert.False(result.Retryable);
+    }
+
+    private static async ValueTask AssertExactStateAsync(
+        DockerEngineClient client,
+        string containerId,
+        string containerName,
+        string expectedState,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(10);
+        while (true)
+        {
+            var snapshot = await ReadSnapshotAsync(client, cancellationToken);
+            var matches = snapshot.Containers.Where(container =>
+                string.Equals(container.Id, containerId, StringComparison.Ordinal)
+                || string.Equals(container.Name, containerName, StringComparison.Ordinal)).ToArray();
+            var container = Assert.Single(matches);
+            Assert.Equal(containerId, container.Id);
+            Assert.Equal(containerName, container.Name);
+            if (string.Equals(container.State, expectedState, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            Assert.True(
+                DateTimeOffset.UtcNow < deadline,
+                $"Container remained in state '{container.State}' instead of '{expectedState}'.");
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+        }
+    }
+
+    private static async ValueTask<DockerEngineSnapshot> ReadSnapshotAsync(
+        DockerEngineClient client,
+        CancellationToken cancellationToken) =>
+        Assert.IsType<DockerResult<DockerEngineSnapshot>.Success>(
+            await client.ReadSnapshotAsync(
+                BuiltInConnections.Local,
+                cancellationToken)).Value;
+
+    private static ValueTask<ConnectionCommandResult> ExecuteDockerAsync(
+        IConnectionCommandExecutor executor,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken) =>
+        executor.ExecuteAsync(
+            new ConnectionCommand(
+                BuiltInConnections.Local,
+                "docker",
+                arguments,
+                TimeSpan.FromSeconds(30),
+                64 * 1_024),
+            cancellationToken);
 
     [Fact]
     public async Task VolumeUsageCanBeReadFromTheProductionCommandRuntime()

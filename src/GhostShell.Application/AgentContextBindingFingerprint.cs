@@ -49,6 +49,7 @@ public static class AgentContextBindingFingerprint
             Append(builder, panel.CurrentWorkingDirectory);
             AppendFileMetadata(builder, panel.FileMetadata);
             AppendBrowserMetadata(builder, panel.BrowserMetadata);
+            AppendGitMetadata(builder, panel.GitMetadata);
             Append(builder, panel.Capabilities.Count);
             foreach (var capability in panel.Capabilities)
             {
@@ -57,6 +58,23 @@ public static class AgentContextBindingFingerprint
         }
 
         return AgentActionDigest.FromUtf8(builder.ToString());
+    }
+
+    private static void AppendGitMetadata(
+        StringBuilder builder,
+        GitSessionMetadata? metadata)
+    {
+        if (metadata is null)
+        {
+            Append(builder, (string?)null);
+            return;
+        }
+
+        Append(builder, metadata.RepositoryIdentity.Value);
+        Append(builder, metadata.BindingRevision);
+        Append(builder, metadata.ConnectionDisplayName);
+        Append(builder, (int)metadata.ConnectionKind);
+        Append(builder, metadata.MutationsQuarantined);
     }
 
     private static void AppendBrowserMetadata(

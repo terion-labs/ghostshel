@@ -104,6 +104,63 @@ public sealed class DockerPanelSessionFactoryTests
     }
 
     [Fact]
+    public async Task LocalControlConsumesOneShotRevisionAndRevalidatesState()
+    {
+        var client = new FakeDockerEngineClient { SupportsMutation = true };
+        var factory = new DockerPanelSessionFactory(client, TimeProvider.System);
+        await using var session = await factory.CreateAsync(
+            new SessionId("docker-control"),
+            new DockerSessionTarget(BuiltInConnections.Local, 1),
+            CancellationToken.None);
+        Assert.True(session.Capabilities.Contains(SessionCapabilities.DockerContainerPause));
+        var state = Success(await session.ReadStateAsync(10, CancellationToken.None));
+        var container = Assert.Single(state.Containers, item =>
+            string.Equals(item.Resource.DisplayName, "api", StringComparison.Ordinal));
+        var revision = Assert.IsType<DockerContainerRevision>(container.ControlRevision);
+        var request = new DockerContainerControlRequest(
+            container.Resource.Reference,
+            session.State.EngineGeneration,
+            revision,
+            DockerContainerAction.Pause,
+            "running");
+
+        var applied = await session.ControlContainerAsync(request, CancellationToken.None);
+        var replay = await session.ControlContainerAsync(request, CancellationToken.None);
+
+        Assert.Equal(DockerContainerControlOutcome.Applied, applied.Outcome);
+        Assert.Equal(DockerContainerControlOutcome.NotDispatched, replay.Outcome);
+        Assert.Equal("docker_container_precondition_expired", replay.StableCode);
+        Assert.False(replay.Retryable);
+        Assert.Equal(1, client.MutationOperationCount);
+        Assert.Equal(ContainerId, client.LastMutationContainerId);
+        Assert.Equal(DockerContainerAction.Pause, client.LastMutationAction);
+    }
+
+    [Fact]
+    public async Task RemoteDockerSessionDoesNotAdvertiseAgentControl()
+    {
+        var client = new FakeDockerEngineClient { SupportsMutation = true };
+        var factory = new DockerPanelSessionFactory(client, TimeProvider.System);
+        var remote = new ConnectionProfile(
+            new ConnectionId("remote-docker"),
+            ConnectionProfile.CurrentSchemaVersion,
+            "Remote Docker",
+            new ConnectionEndpoint.Ssh("docker.example.test", username: "ops"),
+            new ConnectionAuthentication.SshAgent(),
+            ConnectionStartup.Default,
+            ConnectionKeepAlive.Disabled,
+            SshHostKeyPolicy.Strict);
+        await using var session = await factory.CreateAsync(
+            new SessionId("docker-remote"),
+            new DockerSessionTarget(remote, 1),
+            CancellationToken.None);
+
+        Assert.DoesNotContain(
+            session.Capabilities.Values,
+            capability => capability.StartsWith("docker.container.", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task ProviderFailuresAreReducedToFixedSecretFreeErrors()
     {
         var client = new FakeDockerEngineClient();
@@ -273,6 +330,10 @@ public sealed class DockerPanelSessionFactoryTests
 
         public DockerError? SnapshotFailure { get; init; }
 
+        public bool SupportsMutation { get; init; }
+
+        public bool SupportsContainerMutation => SupportsMutation;
+
         public DockerError? InspectFailure { get; set; }
 
         public DockerResourceInspection? InspectionOverride { get; set; }
@@ -288,6 +349,10 @@ public sealed class DockerPanelSessionFactoryTests
         public int FileOperationCount { get; private set; }
 
         public int MutationOperationCount { get; private set; }
+
+        public string? LastMutationContainerId { get; private set; }
+
+        public DockerContainerAction? LastMutationAction { get; private set; }
 
         public ValueTask<DockerResult<DockerEngineSnapshot>> ReadSnapshotAsync(
             ConnectionProfile connection,
@@ -431,6 +496,21 @@ public sealed class DockerPanelSessionFactoryTests
             MutationOperationCount++;
             return ValueTask.FromResult<DockerResult<bool>>(
                 new DockerResult<bool>.Success(true));
+        }
+
+        public ValueTask<DockerContainerMutationResult> RunContainerMutationAsync(
+            ConnectionProfile connection,
+            string containerId,
+            DockerContainerAction action,
+            CancellationToken cancellationToken)
+        {
+            MutationOperationCount++;
+            LastMutationContainerId = containerId;
+            LastMutationAction = action;
+            return ValueTask.FromResult(new DockerContainerMutationResult(
+                DockerContainerMutationOutcome.Applied,
+                "docker_container_control_applied",
+                Retryable: false));
         }
     }
 }

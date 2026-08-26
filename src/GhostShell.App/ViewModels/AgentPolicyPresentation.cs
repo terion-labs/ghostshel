@@ -12,6 +12,7 @@ internal static class AgentPolicyPresentation
             AgentCapability.EditFiles => "Edit files",
             AgentCapability.ReadFiles => "Read files",
             AgentCapability.Search => "Search",
+            AgentCapability.GitData => "Git data",
             AgentCapability.Git => "Git",
             AgentCapability.WebFetch => "Web search and fetch",
             AgentCapability.Docker => "Docker",
@@ -47,7 +48,8 @@ internal static class AgentPolicyPresentation
             AgentCapability.EditFiles => "Create, modify, and delete files.",
             AgentCapability.ReadFiles => "Read files and list directories.",
             AgentCapability.Search => "Search file contents and paths.",
-            AgentCapability.Git => "Inspect and change Git repositories.",
+            AgentCapability.GitData => "Inspect Git repositories without changing them.",
+            AgentCapability.Git => "Change Git repositories.",
             AgentCapability.WebFetch => "Search and fetch internet resources.",
             AgentCapability.Docker => "Manage Docker workload lifecycle.",
             AgentCapability.DestructiveTerminalActions =>

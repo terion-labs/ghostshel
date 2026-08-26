@@ -23,8 +23,9 @@
   [ADR 0034](../adr/0034-governed-local-process-monitor-observation.md),
   [ADR 0035](../adr/0035-intrinsic-agent-user-clarification.md),
   [ADR 0036](../adr/0036-intrinsic-agent-capability-request.md),
-  [ADR 0037](../adr/0037-bounded-native-provider-steering.md), and
-  [ADR 0038](../adr/0038-governed-native-dotnet-mcp-stdio.md)
+  [ADR 0037](../adr/0037-bounded-native-provider-steering.md),
+  [ADR 0038](../adr/0038-governed-native-dotnet-mcp-stdio.md), and
+  [ADR 0047](../adr/0047-governed-local-git-tools.md)
 
 ## 1. Security objective
 

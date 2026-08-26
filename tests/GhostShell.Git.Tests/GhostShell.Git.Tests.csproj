@@ -17,5 +17,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\GhostShell.Git\GhostShell.Git.csproj" />
+    <ProjectReference Include="..\..\src\GhostShell.Infrastructure\GhostShell.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

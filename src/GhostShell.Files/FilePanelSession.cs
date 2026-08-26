@@ -129,6 +129,20 @@ public sealed class FilePanelSession : IFilePanelSession
             ? _filePanel.DeleteAsync(request, cancellationToken)
             : ValueTask.FromResult(Closed<FilePanelDeleteReceipt>());
 
+    public ValueTask<FilePanelResult<FilePanelTextWriteReceipt>> WriteTextAsync(
+        FilePanelTextWriteRequest request,
+        CancellationToken cancellationToken) =>
+        IsOpen()
+            ? _filePanel.WriteTextAsync(request, cancellationToken)
+            : ValueTask.FromResult(Closed<FilePanelTextWriteReceipt>());
+
+    public ValueTask<FilePanelResult<FilePanelCopyReceipt>> CopyAsync(
+        FilePanelCopyRequest request,
+        CancellationToken cancellationToken) =>
+        IsOpen()
+            ? _filePanel.CopyAsync(request, cancellationToken)
+            : ValueTask.FromResult(Closed<FilePanelCopyReceipt>());
+
     public ValueTask<FilePanelResult<FilePanelAccessControl>> GetAccessControlAsync(
         FilePanelAccessControlRequest request,
         CancellationToken cancellationToken) =>

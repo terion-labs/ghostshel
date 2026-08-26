@@ -112,7 +112,11 @@ public sealed class FileProviderAdapterFactoryTests
                     Assert.IsType<DeferredFileProvider>(
                         item.Registration.Provider);
                     Assert.Equal(
-                        FilePanelCapability.GovernedCreateDirectory,
+                        FilePanelCapability.GovernedCreateDirectory
+                        | FilePanelCapability.GovernedCreateFile
+                        | FilePanelCapability.GovernedReplaceFile
+                        | FilePanelCapability.GovernedCopySource
+                        | FilePanelCapability.GovernedCopy,
                         item.Registration.GovernedMutationCapabilities);
                 });
             Assert.All(registrations, item => Assert.Equal(
@@ -134,6 +138,12 @@ public sealed class FileProviderAdapterFactoryTests
                 FilePanelCapability.GovernedCreateDirectory));
             Assert.False(profileCapabilities["files.webdav"].HasFlag(
                 FilePanelCapability.GovernedDelete));
+            Assert.True(profileCapabilities["files.webdav"].HasFlag(
+                FilePanelCapability.GovernedCreateFile));
+            Assert.True(profileCapabilities["files.webdav"].HasFlag(
+                FilePanelCapability.GovernedReplaceFile));
+            Assert.True(profileCapabilities["files.webdav"].HasFlag(
+                FilePanelCapability.GovernedCopy));
             Assert.All(
                 [
                     "files.local",

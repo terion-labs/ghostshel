@@ -50,6 +50,12 @@ public interface ISessionHostClient
         CancellationToken cancellationToken) =>
         Unsupported<SessionSnapshot>("Docker sessions are not implemented by this client.");
 
+    ValueTask<HostResult<SessionSnapshot>> EnsureGitSessionAsync(
+        EnsureGitSessionRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<SessionSnapshot>("Git sessions are not implemented by this client.");
+
     ValueTask<HostResult<WorkspaceGraphSnapshot>> RegisterWorkspaceGraphAsync(
         RegisterWorkspaceGraphRequest request,
         OperationContext context,

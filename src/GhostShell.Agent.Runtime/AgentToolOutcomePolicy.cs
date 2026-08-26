@@ -34,6 +34,10 @@ internal static class AgentToolOutcomePolicy
                 AgentToolOutcomeDisposition.Reconcile,
             FileAgentToolResultJson.FileMutationOutcomeUnknownStableCode =>
                 AgentToolOutcomeDisposition.Reconcile,
+            DockerAgentControlToolResultJson.OutcomeUnknownStableCode =>
+                AgentToolOutcomeDisposition.Reconcile,
+            GitAgentToolResultJson.MutationOutcomeUnknownStableCode =>
+                AgentToolOutcomeDisposition.Reconcile,
             McpAgentToolResultJson.ManifestChangedStableCode =>
                 AgentToolOutcomeDisposition.Quarantine,
             McpAgentToolResultJson.OutcomeUnknownStableCode =>

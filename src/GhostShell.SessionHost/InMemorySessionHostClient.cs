@@ -19,6 +19,7 @@ public sealed partial class InMemorySessionHostClient :
     IAgentStatisticsSessionHost,
     IAgentDatabaseSessionHost,
     IAgentDockerSessionHost,
+    IAgentGitSessionHost,
     IAgentWebToolSessionHost,
     IAsyncDisposable
 {
@@ -41,6 +42,7 @@ public sealed partial class InMemorySessionHostClient :
     private readonly ISystemMonitorPanelSessionFactory? _systemMonitorFactory;
     private readonly IDatabasePanelSessionFactory? _databasePanelFactory;
     private readonly IDockerPanelSessionFactory? _dockerPanelFactory;
+    private readonly IGitPanelSessionFactory? _gitPanelFactory;
     private readonly ISessionLifecyclePolicy _lifecyclePolicy;
     private readonly TimeProvider _timeProvider;
     private readonly AgentTerminalActionComposer? _agentTerminalActionComposer;
@@ -59,6 +61,7 @@ public sealed partial class InMemorySessionHostClient :
         _agentDatabaseReadActionComposer;
     private readonly AgentDockerReadActionComposer?
         _agentDockerReadActionComposer;
+    private readonly AgentGitActionComposer? _agentGitActionComposer;
     private readonly AgentWebToolActionComposer? _agentWebToolActionComposer;
     private readonly IAgentWebToolExecutor? _agentWebToolExecutor;
     private readonly IAgentAuthorizationConsumer? _agentAuthorizationConsumer;
@@ -94,7 +97,9 @@ public sealed partial class InMemorySessionHostClient :
         AgentWorkspaceLayoutActionComposer?
             agentWorkspaceLayoutActionComposer = null,
         AgentWebToolActionComposer? agentWebToolActionComposer = null,
-        IAgentWebToolExecutor? agentWebToolExecutor = null)
+        IAgentWebToolExecutor? agentWebToolExecutor = null,
+        IGitPanelSessionFactory? gitPanelFactory = null,
+        AgentGitActionComposer? agentGitActionComposer = null)
     {
         ArgumentNullException.ThrowIfNull(terminalFactory);
         ArgumentNullException.ThrowIfNull(lifecyclePolicy);
@@ -112,6 +117,7 @@ public sealed partial class InMemorySessionHostClient :
         _systemMonitorFactory = systemMonitorFactory;
         _databasePanelFactory = databasePanelFactory;
         _dockerPanelFactory = dockerPanelFactory;
+        _gitPanelFactory = gitPanelFactory;
         _lifecyclePolicy = lifecyclePolicy;
         _timeProvider = timeProvider ?? TimeProvider.System;
         _agentTerminalActionComposer = agentActionComposer;
@@ -127,6 +133,7 @@ public sealed partial class InMemorySessionHostClient :
             agentStatisticsReadActionComposer;
         _agentDatabaseReadActionComposer = agentDatabaseReadActionComposer;
         _agentDockerReadActionComposer = agentDockerReadActionComposer;
+        _agentGitActionComposer = agentGitActionComposer;
         _agentWebToolActionComposer = agentWebToolActionComposer;
         _agentWebToolExecutor = agentWebToolExecutor;
         _agentAuthorizationConsumer = agentAuthorizationConsumer;
@@ -146,6 +153,7 @@ public sealed partial class InMemorySessionHostClient :
             .. (databasePanelFactory?.RelationalCapabilities.Values ?? []),
             .. (databasePanelFactory?.RedisCapabilities.Values ?? []),
             .. (dockerPanelFactory?.Capabilities.Values ?? []),
+            .. (gitPanelFactory?.Capabilities.Values ?? []),
         ]);
     }
 

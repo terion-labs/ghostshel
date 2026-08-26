@@ -150,7 +150,8 @@ internal sealed partial class DockerPanelSession
             BoundedText(value.NetworkIo, 128),
             BoundedText(value.BlockIo, 128),
             OptionalBoundedText(value.ComposeProject, 256),
-            OptionalBoundedText(value.ComposeService, 256));
+            OptionalBoundedText(value.ComposeService, 256),
+            _containerRevisions.Mint(State.EngineGeneration, value));
     }
 
     private DockerImageItem ProjectImage(DockerImageSummary value)
@@ -639,7 +640,8 @@ internal sealed partial class DockerPanelSession
         + Utf8Length(value.NetworkIo)
         + Utf8Length(value.BlockIo)
         + Utf8Length(value.ComposeProject)
-        + Utf8Length(value.ComposeService);
+        + Utf8Length(value.ComposeService)
+        + Utf8Length(value.ControlRevision?.Value);
 
     private static int ItemCost(DockerImageItem value) =>
         256

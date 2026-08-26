@@ -360,6 +360,26 @@ public sealed class SessionHostedFilePanelClient :
             cancellationToken);
     }
 
+    public ValueTask<FilePanelResult<FilePanelTextWriteReceipt>> WriteTextAsync(
+        FilePanelTextWriteRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(FilePanelResult<FilePanelTextWriteReceipt>.Failure(
+            FilePanelMutationErrors.Unsupported));
+    }
+
+    public ValueTask<FilePanelResult<FilePanelCopyReceipt>> CopyAsync(
+        FilePanelCopyRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(FilePanelResult<FilePanelCopyReceipt>.Failure(
+            FilePanelMutationErrors.Unsupported));
+    }
+
     public async ValueTask<FilePanelResult<FilePanelTransferSnapshot>> EnqueueAsync(
         FilePanelTransferRequest request,
         CancellationToken cancellationToken)

@@ -73,6 +73,7 @@ public sealed class AgentCapabilityProtocolTests
     [InlineData(AgentCapability.ProcessData, "process_data")]
     [InlineData(AgentCapability.ArtifactTransfer, "artifact_transfer")]
     [InlineData(AgentCapability.WorkspaceLayout, "workspace_layout")]
+    [InlineData(AgentCapability.GitData, "git_data")]
     public void Capability_tokens_are_stable_protocol_values(
         AgentCapability capability,
         string expectedToken)

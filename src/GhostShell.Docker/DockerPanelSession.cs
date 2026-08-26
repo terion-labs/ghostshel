@@ -13,6 +13,8 @@ internal sealed partial class DockerPanelSession : IDockerPanelSession
 
     private readonly object _initialSnapshotGate = new();
     private readonly IDockerEngineClient _client;
+    private readonly SemaphoreSlim _containerControlGate = new(1, 1);
+    private readonly DockerContainerRevisionPool _containerRevisions = new();
     private readonly DockerPanelSessionLifetime _lifetime;
     private readonly DockerResourceLeasePool _resources = new();
     private readonly DockerSessionTarget _target;
@@ -207,7 +209,11 @@ internal sealed partial class DockerPanelSession : IDockerPanelSession
         CancellationToken cancellationToken) =>
         _lifetime.CloseAsync(mode, cancellationToken);
 
-    public ValueTask DisposeAsync() => _lifetime.DisposeAsync();
+    public async ValueTask DisposeAsync()
+    {
+        await _lifetime.DisposeAsync().ConfigureAwait(false);
+        _containerControlGate.Dispose();
+    }
 
     private ValueTask<DockerResult<DockerEngineSnapshot>> ReadEngineSnapshotAsync(
         CancellationToken cancellationToken)

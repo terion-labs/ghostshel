@@ -42,6 +42,9 @@ public sealed class AgentPolicyResolverTests
         Assert.Equal(
             AgentPermission.Ask,
             AgentPolicy.Default.GetPermission(AgentCapability.WorkspaceLayout));
+        Assert.Equal(
+            AgentPermission.Off,
+            AgentPolicy.Default.GetPermission(AgentCapability.GitData));
         Assert.All(
             PanelToolsetCapabilities,
             capability => Assert.Equal(

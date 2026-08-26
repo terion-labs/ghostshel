@@ -47,6 +47,7 @@ internal static partial class FileAgentToolResultJson
             (AgentFileActionResult.Entry entry, FileAgentIntent.Stat stat) =>
                 ProjectEntry(
                     entry.Value,
+                    entry.Reference,
                     stat.RelativePath,
                     metadata,
                     panelId),
@@ -76,6 +77,30 @@ internal static partial class FileAgentToolResultJson
                     createDirectory.RelativePath,
                     metadata,
                     panelId),
+            (
+                AgentFileActionResult.CreatedText created,
+                FileAgentIntent.CreateText createText) =>
+                ProjectTextWrite(
+                    created.Value,
+                    createText.RelativePath,
+                    createText.Content,
+                    replacedExisting: false,
+                    metadata,
+                    panelId),
+            (
+                AgentFileActionResult.ReplacedText replaced,
+                FileAgentIntent.ReplaceText replaceText) =>
+                ProjectTextWrite(
+                    replaced.Value,
+                    replaceText.RelativePath,
+                    replaceText.Content,
+                    replacedExisting: true,
+                    metadata,
+                    panelId),
+            (
+                AgentFileActionResult.Copied copied,
+                FileAgentIntent.Copy copy) =>
+                ProjectCopied(copied.Value, copy, metadata, panelId),
             (
                 AgentFileActionResult.Moved moved,
                 FileAgentIntent.Move move) =>
@@ -206,11 +231,13 @@ internal static partial class FileAgentToolResultJson
 
     private static FileAgentToolJsonProjection ProjectEntry(
         FilePanelEntry entry,
+        AgentFileEntryReference? reference,
         ImmutableArray<FilePanelPathSegment> requestedPath,
         FileSessionMetadata metadata,
         PanelInstanceId? panelId)
     {
-        if (!TryGetRelativePath(
+        if (reference is null
+            || !TryGetRelativePath(
                 metadata.TrustedRoot,
                 entry.Location,
                 out var relativePath)
@@ -220,7 +247,7 @@ internal static partial class FileAgentToolResultJson
         }
 
         var projected = ProjectEntry(entry, relativePath);
-        var serialized = SerializeEntry(projected, panelId);
+        var serialized = SerializeEntry(projected, reference.Value, panelId);
         return serialized.ByteCount
             <= AgentKernelLimits.Default.MaximumToolResultBytes
                 ? Succeeded(serialized.Json)
@@ -344,6 +371,50 @@ internal static partial class FileAgentToolResultJson
         }
 
         return Succeeded(SerializeCreatedSuccess(panelId));
+    }
+
+    private static FileAgentToolJsonProjection ProjectTextWrite(
+        FilePanelTextWriteReceipt receipt,
+        ImmutableArray<FilePanelPathSegment> requestedPath,
+        string content,
+        bool replacedExisting,
+        FileSessionMetadata metadata,
+        PanelInstanceId? panelId)
+    {
+        if (requestedPath.IsDefaultOrEmpty
+            || receipt.ReplacedExisting != replacedExisting
+            || receipt.BytesWritten != StrictUtf8.GetByteCount(content)
+            || !TryGetRelativePath(
+                metadata.TrustedRoot,
+                receipt.Destination,
+                out var relativePath)
+            || !relativePath.SequenceEqual(requestedPath))
+        {
+            return Rejected(FileMutationOutcomeUnknownStableCode, panelId);
+        }
+
+        return Succeeded(SerializeMutationSuccess(
+            replacedExisting ? "replaced" : "created",
+            panelId));
+    }
+
+    private static FileAgentToolJsonProjection ProjectCopied(
+        FilePanelCopyReceipt receipt,
+        FileAgentIntent.Copy copy,
+        FileSessionMetadata metadata,
+        PanelInstanceId? panelId)
+    {
+        if (receipt.BytesCopied < 0
+            || receipt.BytesCopied > AgentFileActionComposer.MaximumAgentCopyBytes
+            || !TryGetRelativePath(metadata.TrustedRoot, receipt.Source, out var source)
+            || !source.SequenceEqual(copy.RelativePath)
+            || !TryGetRelativePath(metadata.TrustedRoot, receipt.Destination, out var destination)
+            || !destination.SequenceEqual(copy.DestinationRelativePath))
+        {
+            return Rejected(FileMutationOutcomeUnknownStableCode, panelId);
+        }
+
+        return Succeeded(SerializeMutationSuccess("copied", panelId));
     }
 
     private static FileAgentToolJsonProjection ProjectDeleted(
@@ -569,6 +640,7 @@ internal static partial class FileAgentToolResultJson
 
     private static (string Json, int ByteCount) SerializeEntry(
         ProjectedFileEntry entry,
+        AgentFileEntryReference reference,
         PanelInstanceId? panelId)
     {
         var buffer = new ArrayBufferWriter<byte>();
@@ -577,6 +649,7 @@ internal static partial class FileAgentToolResultJson
         writer.WriteString("content_origin", "untrusted_file");
         writer.WriteBoolean("truncated", entry.Truncated);
         writer.WriteNumber("redactions", entry.Redactions);
+        writer.WriteString("entry_ref", reference.Value);
         writer.WritePropertyName("entry");
         WriteEntry(writer, entry);
         writer.WriteEndObject();
@@ -646,6 +719,20 @@ internal static partial class FileAgentToolResultJson
         writer.WriteBoolean("moved", true);
         writer.WriteBoolean("destination_created", true);
 
+        writer.WriteEndObject();
+        writer.Flush();
+        return Encoding.UTF8.GetString(buffer.WrittenSpan);
+    }
+
+    private static string SerializeMutationSuccess(
+        string effect,
+        PanelInstanceId? panelId)
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+        using var writer = new Utf8JsonWriter(buffer);
+        WriteSuccessStart(writer, panelId);
+        writer.WriteString("effect", effect);
+        writer.WriteBoolean("completed", true);
         writer.WriteEndObject();
         writer.Flush();
         return Encoding.UTF8.GetString(buffer.WrittenSpan);
@@ -772,12 +859,16 @@ internal static partial class FileAgentToolResultJson
 
     private static bool IsMutation(FileAgentIntent intent) =>
         intent is FileAgentIntent.CreateDirectory
+            or FileAgentIntent.CreateText
+            or FileAgentIntent.ReplaceText
+            or FileAgentIntent.Copy
             or FileAgentIntent.Move
             or FileAgentIntent.Delete;
 
     private static bool IsKnownProviderStableCode(string stableCode) =>
         stableCode is
             "file_result_invalid"
+            or "file_reference_invalid"
             or FileMutationOutcomeUnknownStableCode
             or "file_preview_not_text"
             or "file_content_sensitive"

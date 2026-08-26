@@ -32,6 +32,8 @@ public sealed class FilePanelSessionFactory : IFilePanelSessionFactory
         SessionCapabilities.FilesCreateDirectory,
         SessionCapabilities.FilesRename,
         SessionCapabilities.FilesDelete,
+        GovernedFileToolNames.SessionWrite,
+        GovernedFileToolNames.SessionCopy,
         SessionCapabilities.FilesTransferEnqueue,
         SessionCapabilities.FilesTransferCancel,
         SessionCapabilities.FilesTransferRetry,

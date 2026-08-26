@@ -93,6 +93,7 @@ public static class DesktopComposition
         services.AddSingleton<AgentStatisticsReadActionComposer>();
         services.AddSingleton<AgentDatabaseReadActionComposer>();
         services.AddSingleton<AgentDockerReadActionComposer>();
+        services.AddSingleton<AgentGitActionComposer>();
         services.AddSingleton<AgentMcpToolCallActionComposer>();
         services.AddSingleton<AgentWebToolActionComposer>();
         services.AddSingleton<AgentPanelActionComposer>();
@@ -127,6 +128,8 @@ public static class DesktopComposition
         services.AddSingleton<IConnectionCommandExecutor, ConnectionCommandExecutor>();
         services.AddSingleton<IDockerEngineClient, DockerEngineClient>();
         services.AddSingleton<IGitRepositoryClient, GitRepositoryClient>();
+        services.AddSingleton<IGitRepositoryMutationCoordinator,
+            GitRepositoryMutationCoordinator>();
         services.AddSingleton<SshKnownHostStore>();
         services.AddSingleton<ISshHostKeyTrustStore>(provider =>
             provider.GetRequiredService<SshKnownHostStore>());
@@ -179,6 +182,7 @@ public static class DesktopComposition
                 provider.GetRequiredService<IDatabaseTunnelFactory>()));
         services.AddSingleton<IDatabasePanelSessionFactory, DatabasePanelSessionFactory>();
         services.AddSingleton<IDockerPanelSessionFactory, DockerPanelSessionFactory>();
+        services.AddSingleton<IGitPanelSessionFactory, GitPanelSessionFactory>();
         services.AddSingleton<IDatabaseConnectionCatalog, RedisConnectionCatalog>();
         services.AddSingleton<ISqlLanguageService, CalciteSqlLanguageService>();
         // Keep ImageMagick previews unavailable until native decoding runs in a
@@ -270,6 +274,8 @@ public static class DesktopComposition
         services.AddSingleton<IAgentDatabaseSessionHost>(provider =>
             provider.GetRequiredService<InMemorySessionHostClient>());
         services.AddSingleton<IAgentDockerSessionHost>(provider =>
+            provider.GetRequiredService<InMemorySessionHostClient>());
+        services.AddSingleton<IAgentGitSessionHost>(provider =>
             provider.GetRequiredService<InMemorySessionHostClient>());
         services.AddSingleton<IAgentPanelSessionHost>(provider =>
             provider.GetRequiredService<InMemorySessionHostClient>());

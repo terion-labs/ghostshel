@@ -652,6 +652,53 @@ public sealed class DockerEngineClientTests
         Assert.Equal(["container", "restart", "container-api"], request.Arguments);
     }
 
+    [Fact]
+    public async Task GovernedStopUsesFixedArgvAndDiscardsProviderOutput()
+    {
+        var executor = SuccessfulExecutor();
+        executor.Responses["container stop"] = Exited("private-provider-output");
+        var client = new DockerEngineClient(executor, TimeProvider.System);
+
+        var result = await client.RunContainerMutationAsync(
+            BuiltInConnections.Local,
+            "sha256:exact-container-id",
+            DockerContainerAction.Stop,
+            CancellationToken.None);
+
+        Assert.Equal(DockerContainerMutationOutcome.Applied, result.Outcome);
+        Assert.Equal("docker_container_control_applied", result.StableCode);
+        Assert.False(result.Retryable);
+        var request = Assert.Single(executor.Requests);
+        Assert.Equal(
+            ["container", "stop", "--time", "10", "sha256:exact-container-id"],
+            request.Arguments);
+        Assert.Equal(1_024, request.MaximumOutputCharacters);
+    }
+
+    [Fact]
+    public async Task GovernedMutationDoesNotRetryAnUncertainOutcome()
+    {
+        var executor = SuccessfulExecutor();
+        executor.Responses["container pause"] = new ConnectionCommandResult(
+            ConnectionCommandOutcome.TimedOut,
+            null,
+            string.Empty,
+            "Password=provider-secret");
+        var client = new DockerEngineClient(executor, TimeProvider.System);
+
+        var result = await client.RunContainerMutationAsync(
+            BuiltInConnections.Local,
+            "sha256:exact-container-id",
+            DockerContainerAction.Pause,
+            CancellationToken.None);
+
+        Assert.Equal(DockerContainerMutationOutcome.OutcomeUnknown, result.Outcome);
+        Assert.Equal("docker_mutation_outcome_unknown", result.StableCode);
+        Assert.False(result.Retryable);
+        Assert.Single(executor.Requests);
+        Assert.DoesNotContain("provider-secret", result.StableCode, StringComparison.Ordinal);
+    }
+
     private static RoutingExecutor SuccessfulExecutor()
     {
         var executor = new RoutingExecutor();
@@ -778,6 +825,10 @@ public sealed class DockerEngineClientTests
                 ["container", "create", ..] => "container create",
                 ["container", "rm", ..] => "container rm",
                 ["container", "restart", ..] => "container restart",
+                ["container", "start", ..] => "container start",
+                ["container", "stop", ..] => "container stop",
+                ["container", "pause", ..] => "container pause",
+                ["container", "unpause", ..] => "container unpause",
                 _ => throw new InvalidOperationException(
                     $"Unexpected Docker request: {string.Join(' ', request.Arguments)}"),
             };

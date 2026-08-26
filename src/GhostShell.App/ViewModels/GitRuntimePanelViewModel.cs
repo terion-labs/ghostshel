@@ -20,6 +20,7 @@ public sealed class GitRuntimePanelViewModel : RuntimePanelViewModel
     private const double SidebarExpandedWidth = 220;
     private const double SidebarMinimumWidth = 160;
     private readonly IGitRepositoryClient _client;
+    private readonly IGitRepositoryMutationCoordinator? _mutationCoordinator;
     private readonly ConnectionProfile _connection;
     private readonly IGitPanelPreferences? _panelPreferences;
     private readonly CancellationTokenSource _lifetime = new();
@@ -28,6 +29,11 @@ public sealed class GitRuntimePanelViewModel : RuntimePanelViewModel
     // Mutations run strictly one at a time per repository so two index edits
     // can never interleave; reads stay concurrent and cancelable.
     private readonly SemaphoreSlim _mutationGate = new(1, 1);
+    private HostedPanelSessionLink? _hostedSession;
+    private ISessionHostClient? _hostSessionClient;
+    private Task _hostInitialization = Task.CompletedTask;
+    private GitSessionTarget? _sessionTarget;
+    private long _bindingRevision;
     private readonly AsyncActionCommand _openRepositoryCommand;
     private readonly AsyncActionCommand _refreshCommand;
     private readonly AsyncActionCommand _stageCommand;
@@ -118,10 +124,12 @@ public sealed class GitRuntimePanelViewModel : RuntimePanelViewModel
         IGitRepositoryClient client,
         ConnectionProfile connection,
         string? initialRepositoryPath = null,
-        IGitPanelPreferences? panelPreferences = null)
+        IGitPanelPreferences? panelPreferences = null,
+        IGitRepositoryMutationCoordinator? mutationCoordinator = null)
         : base(id, PanelKind.Git, title, "Git")
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
+        _mutationCoordinator = mutationCoordinator;
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
         _panelPreferences = panelPreferences;
         if (connection.Endpoint is not (ConnectionEndpoint.Local or ConnectionEndpoint.Ssh))
@@ -172,6 +180,41 @@ public sealed class GitRuntimePanelViewModel : RuntimePanelViewModel
     }
 
     public Task Initialization { get; } = Task.CompletedTask;
+
+    public SessionId? HostedSessionId => _hostedSession?.SessionId;
+
+    public CapabilitySet HostedCapabilities =>
+        _hostedSession?.Capabilities ?? CapabilitySet.Empty;
+
+    public bool HasHostedSession => _hostedSession?.IsLinked == true;
+
+    public Task StartHostingAsync(
+        ISessionHostClient sessionClient,
+        ClientId clientId,
+        SessionOwner owner)
+    {
+        ArgumentNullException.ThrowIfNull(sessionClient);
+        ArgumentNullException.ThrowIfNull(owner);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_connection.Endpoint is not ConnectionEndpoint.Local)
+        {
+            return Task.CompletedTask;
+        }
+
+        if (_hostedSession is not null)
+        {
+            return _hostInitialization;
+        }
+
+        _hostSessionClient = sessionClient;
+        _hostedSession = new HostedPanelSessionLink(
+            sessionClient,
+            clientId,
+            owner,
+            PanelKind.Git);
+        _hostInitialization = InitializeHostedSessionAsync();
+        return _hostInitialization;
+    }
 
     public ConnectionId ConnectionId => _connection.Id;
 
@@ -1030,6 +1073,19 @@ public sealed class GitRuntimePanelViewModel : RuntimePanelViewModel
 
         UntrustedRepositoryPath = null;
         _repository = ((GitResult<GitRepositoryHandle>.Success)result).Value;
+        if (_repository.Connection.Endpoint is ConnectionEndpoint.Local)
+        {
+            _bindingRevision++;
+            _sessionTarget = new GitSessionTarget(_repository, _bindingRevision);
+            if (_hostedSession is not null)
+            {
+                await _hostedSession.InvalidateAsync().ConfigureAwait(true);
+            }
+        }
+        else
+        {
+            _sessionTarget = null;
+        }
         RepositoryPathInput = _repository.WorkingTreeRoot;
         OnPropertyChanged(nameof(IsRepositoryOpen));
         OnPropertyChanged(nameof(RepositoryRoot));
@@ -1039,6 +1095,7 @@ public sealed class GitRuntimePanelViewModel : RuntimePanelViewModel
         RaiseMutationCommands();
         await RefreshAsync();
         await LoadCommitsAsync(reset: true);
+        QueueHostedSessionEnsure();
     }
 
     /// <summary>
@@ -1919,7 +1976,20 @@ public sealed class GitRuntimePanelViewModel : RuntimePanelViewModel
             return false;
         }
 
-        await _mutationGate.WaitAsync(_lifetime.Token);
+        IAsyncDisposable? sharedMutation = null;
+        var localMutation = false;
+        if (_mutationCoordinator is not null && _sessionTarget is { } target)
+        {
+            sharedMutation = await _mutationCoordinator
+                .AcquireAsync(target.Identity, _lifetime.Token)
+                .ConfigureAwait(true);
+        }
+        else
+        {
+            await _mutationGate.WaitAsync(_lifetime.Token);
+            localMutation = true;
+        }
+
         IsMutating = true;
         try
         {
@@ -1940,7 +2010,14 @@ public sealed class GitRuntimePanelViewModel : RuntimePanelViewModel
         finally
         {
             IsMutating = false;
-            _mutationGate.Release();
+            if (sharedMutation is not null)
+            {
+                await sharedMutation.DisposeAsync().ConfigureAwait(true);
+            }
+            else if (localMutation)
+            {
+                _mutationGate.Release();
+            }
 
             // The worktree moved; whatever happened, show its real state.
             // Index-only mutations settle for the scoped read: staging cannot
@@ -1996,8 +2073,65 @@ public sealed class GitRuntimePanelViewModel : RuntimePanelViewModel
         _detailCancellation?.Cancel();
         _detailCancellation?.Dispose();
         _lifetime.Dispose();
+        _hostedSession?.Dispose();
         _refreshGate.Dispose();
         _mutationGate.Dispose();
         base.Dispose();
+    }
+
+    private async Task InitializeHostedSessionAsync()
+    {
+        try
+        {
+            await Initialization.ConfigureAwait(true);
+            if (_disposed || _sessionTarget is null || _hostedSession?.IsLinked == true)
+            {
+                return;
+            }
+
+            await EnsureHostedSessionAsync(_lifetime.Token).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+        catch
+        {
+            // Human Git remains usable when its governed hosted mirror fails.
+        }
+    }
+
+    private void QueueHostedSessionEnsure()
+    {
+        if (_hostedSession is not null
+            && _hostSessionClient is not null
+            && _sessionTarget is not null)
+        {
+            _ = EnsureHostedSessionAsync(_lifetime.Token);
+        }
+    }
+
+    private Task<bool> EnsureHostedSessionAsync(CancellationToken cancellationToken)
+    {
+        var hosted = _hostedSession;
+        var sessionClient = _hostSessionClient;
+        var target = _sessionTarget;
+        if (hosted is null
+            || sessionClient is null
+            || target is null
+            || _disposed)
+        {
+            return Task.FromResult(false);
+        }
+
+        return hosted.EnsureAsync(
+            (sessionId, context, token) => sessionClient.EnsureGitSessionAsync(
+                new EnsureGitSessionRequest(
+                    sessionId,
+                    hosted.Owner,
+                    Title,
+                    target),
+                context,
+                token),
+            cancellationToken);
     }
 }

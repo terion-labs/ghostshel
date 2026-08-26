@@ -15,6 +15,7 @@ internal static class FileAgentToolSet
     internal const int MaximumRelativePathBytes = 4 * 1024;
     internal const int MaximumSearchQueryBytes = 256;
     internal const int MaximumSearchResults = 100;
+    internal const int MaximumTextBytes = 8 * 1024;
 
     private static readonly AgentToolDefinition List = Tool(
         BuiltInAgentTools.FilesList,
@@ -65,6 +66,25 @@ internal static class FileAgentToolSet
         + "not already exist.",
         PathSchema(requireFilePath: true));
 
+    private static readonly AgentToolDefinition CreateText = Tool(
+        GovernedFileToolNames.CreateText,
+        "Create one bounded UTF-8 text file relative to the trusted root of the exact "
+        + "file panel pinned to this run. The path must not already exist.",
+        TextSchema(requireReference: false));
+
+    private static readonly AgentToolDefinition ReplaceText = Tool(
+        GovernedFileToolNames.ReplaceText,
+        "Replace one bounded UTF-8 text file identified by a recent opaque files.stat "
+        + "reference in the exact file panel pinned to this run.",
+        TextSchema(requireReference: true));
+
+    private static readonly AgentToolDefinition Copy = Tool(
+        GovernedFileToolNames.Copy,
+        "Copy one regular file identified by a recent opaque files.stat reference "
+        + "within the trusted root of the exact file panel pinned to this run. The "
+        + "destination must not already exist.",
+        CopySchema());
+
     private static readonly AgentToolDefinition Move = Tool(
         BuiltInAgentTools.FilesMove,
         "Move or rename exactly one path within the trusted root of the exact "
@@ -90,7 +110,7 @@ internal static class FileAgentToolSet
             return [];
         }
 
-        var tools = ImmutableArray.CreateBuilder<AgentToolDefinition>(9);
+        var tools = ImmutableArray.CreateBuilder<AgentToolDefinition>(12);
         AddIfSupported(tools, List, panel, metadata);
         AddIfSupported(tools, Search, panel, metadata);
         AddIfSupported(tools, Stat, panel, metadata);
@@ -98,6 +118,9 @@ internal static class FileAgentToolSet
         AddIfSupported(tools, AccessRead, panel, metadata);
         AddIfSupported(tools, Transfers, panel, metadata);
         AddIfSupported(tools, CreateDirectory, panel, metadata);
+        AddIfSupported(tools, CreateText, panel, metadata);
+        AddIfSupported(tools, ReplaceText, panel, metadata);
+        AddIfSupported(tools, Copy, panel, metadata);
         AddIfSupported(tools, Move, panel, metadata);
         AddIfSupported(tools, Delete, panel, metadata);
         return tools.ToImmutable();
@@ -117,7 +140,7 @@ internal static class FileAgentToolSet
             return [];
         }
 
-        var tools = ImmutableArray.CreateBuilder<AgentToolDefinition>(9);
+        var tools = ImmutableArray.CreateBuilder<AgentToolDefinition>(12);
         AddSelectedTool(tools, List, activePanels);
         AddSelectedTool(tools, Search, activePanels);
         AddSelectedTool(tools, Stat, activePanels);
@@ -125,23 +148,37 @@ internal static class FileAgentToolSet
         AddSelectedTool(tools, AccessRead, activePanels);
         AddSelectedTool(tools, Transfers, activePanels);
         AddSelectedTool(tools, CreateDirectory, activePanels);
+        AddSelectedTool(tools, CreateText, activePanels);
+        AddSelectedTool(tools, ReplaceText, activePanels);
+        AddSelectedTool(tools, Copy, activePanels);
         AddSelectedTool(tools, Move, activePanels);
         AddSelectedTool(tools, Delete, activePanels);
         return tools.ToImmutable();
     }
 
-    public static ImmutableArray<AgentToolDefinition> ForWorkspace() =>
-    [
-        AgentToolScopeSchema.WithRequiredPanelId(List),
-        AgentToolScopeSchema.WithRequiredPanelId(Search),
-        AgentToolScopeSchema.WithRequiredPanelId(Stat),
-        AgentToolScopeSchema.WithRequiredPanelId(Read),
-        AgentToolScopeSchema.WithRequiredPanelId(AccessRead),
-        AgentToolScopeSchema.WithRequiredPanelId(Transfers),
-        AgentToolScopeSchema.WithRequiredPanelId(CreateDirectory),
-        AgentToolScopeSchema.WithRequiredPanelId(Move),
-        AgentToolScopeSchema.WithRequiredPanelId(Delete),
-    ];
+    public static ImmutableArray<AgentToolDefinition> ForWorkspace(
+        IReadOnlyList<AgentContextPanel> panels,
+        IReadOnlyDictionary<PanelInstanceId, FileSessionMetadata> metadata)
+    {
+        var activePanels = ActiveFilePanels(panels, metadata);
+        if (activePanels.Length > 0)
+        {
+            return For(panels, metadata);
+        }
+
+        // A workspace launcher may create a File Viewer later in the run, so
+        // retain the bounded read-only family. Mutations are never advertised
+        // until a live session proves its exact governed provider capabilities.
+        return
+        [
+            AgentToolScopeSchema.WithRequiredPanelId(List),
+            AgentToolScopeSchema.WithRequiredPanelId(Search),
+            AgentToolScopeSchema.WithRequiredPanelId(Stat),
+            AgentToolScopeSchema.WithRequiredPanelId(Read),
+            AgentToolScopeSchema.WithRequiredPanelId(AccessRead),
+            AgentToolScopeSchema.WithRequiredPanelId(Transfers),
+        ];
+    }
 
     internal static ImmutableArray<FilePanelBinding> ActiveFilePanels(
         IReadOnlyList<AgentContextPanel> panels,
@@ -210,6 +247,22 @@ internal static class FileAgentToolSet
                 && metadata.Capabilities.HasFlag(
                     FilePanelCapability.CreateDirectory
                     | FilePanelCapability.GovernedCreateDirectory),
+            GovernedFileToolNames.CreateText =>
+                Has(panel, GovernedFileToolNames.SessionWrite)
+                && metadata.Capabilities.HasFlag(
+                    FilePanelCapability.StreamingWrite
+                    | FilePanelCapability.GovernedCreateFile),
+            GovernedFileToolNames.ReplaceText =>
+                Has(panel, GovernedFileToolNames.SessionWrite)
+                && metadata.Capabilities.HasFlag(
+                    FilePanelCapability.StreamingWrite
+                    | FilePanelCapability.GovernedReplaceFile),
+            GovernedFileToolNames.Copy =>
+                Has(panel, GovernedFileToolNames.SessionCopy)
+                && metadata.Capabilities.HasFlag(
+                    FilePanelCapability.Copy
+                    | FilePanelCapability.GovernedCopySource
+                    | FilePanelCapability.GovernedCopy),
             BuiltInAgentTools.FilesMove =>
                 Has(panel, SessionCapabilities.FilesRename)
                 && metadata.Capabilities.HasFlag(
@@ -410,9 +463,14 @@ internal static class FileAgentToolSet
             "recursive": {
               "type": "boolean",
               "default": false
+            },
+            "entry_ref": {
+              "type": "string",
+              "minLength": {{AgentFileEntryReference.EncodedLength}},
+              "maxLength": {{AgentFileEntryReference.EncodedLength}}
             }
           },
-          "required": ["path_segments"],
+          "required": ["path_segments", "entry_ref"],
           "additionalProperties": false
         }
         """;
@@ -441,9 +499,67 @@ internal static class FileAgentToolSet
                 "minLength": 1,
                 "maxLength": {{MaximumPathSegmentBytes}}
               }
+            },
+            "entry_ref": {
+              "type": "string",
+              "minLength": {{AgentFileEntryReference.EncodedLength}},
+              "maxLength": {{AgentFileEntryReference.EncodedLength}}
             }
           },
-          "required": ["source_path_segments", "destination_path_segments"],
+          "required": ["source_path_segments", "destination_path_segments", "entry_ref"],
+          "additionalProperties": false
+        }
+        """;
+
+    private static string TextSchema(bool requireReference) =>
+        $$"""
+        {
+          "type": "object",
+          "properties": {
+            "path_segments": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": {{MaximumPathSegments}},
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": {{MaximumPathSegmentBytes}}
+              }
+            },
+            "content": {
+              "type": "string",
+              "maxLength": {{MaximumTextBytes}}
+            }{{(requireReference ? ",\n            \"entry_ref\": {\n              \"type\": \"string\",\n              \"minLength\": 43,\n              \"maxLength\": 43\n            }" : string.Empty)}}
+          },
+          "required": ["path_segments", "content"{{(requireReference ? ", \"entry_ref\"" : string.Empty)}}],
+          "additionalProperties": false
+        }
+        """;
+
+    private static string CopySchema() =>
+        $$"""
+        {
+          "type": "object",
+          "properties": {
+            "source_path_segments": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": {{MaximumPathSegments}},
+              "items": { "type": "string", "minLength": 1, "maxLength": {{MaximumPathSegmentBytes}} }
+            },
+            "destination_path_segments": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": {{MaximumPathSegments}},
+              "items": { "type": "string", "minLength": 1, "maxLength": {{MaximumPathSegmentBytes}} }
+            },
+            "entry_ref": {
+              "type": "string",
+              "minLength": {{AgentFileEntryReference.EncodedLength}},
+              "maxLength": {{AgentFileEntryReference.EncodedLength}}
+            }
+          },
+          "required": ["source_path_segments", "destination_path_segments", "entry_ref"],
           "additionalProperties": false
         }
         """;

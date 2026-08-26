@@ -61,7 +61,9 @@ public sealed class DockerAgentToolContractTests
             .TryGetProperty("since_timestamp", out _));
 
         var workspaceLogs = Assert.Single(
-            DockerAgentToolSet.ForWorkspace(),
+            DockerAgentToolSet.ForWorkspace([
+                ContextPanel("docker-workspace", SessionCapabilities.DockerReadLogs),
+            ]),
             tool => string.Equals(tool.Name, BuiltInAgentTools.DockerLogs, StringComparison.Ordinal));
         Assert.True(workspaceLogs.InputSchema
             .GetProperty("properties")
@@ -69,6 +71,9 @@ public sealed class DockerAgentToolContractTests
         Assert.False(workspaceLogs.InputSchema
             .GetProperty("properties")
             .TryGetProperty("since_timestamp", out _));
+        Assert.Empty(DockerAgentToolSet.ForWorkspace([
+            ContextPanel("docker-without-control", SessionCapabilities.DockerReadState),
+        ]).Where(tool => DockerAgentToolSet.IsControlTool(tool.Name)));
     }
 
     [Fact]
@@ -105,6 +110,53 @@ public sealed class DockerAgentToolContractTests
                     BuiltInAgentTools.DockerLogs,
                     """{"container_ref":"opaque_ref","before_timestamp":"1","since_timestamp":"2"}"""),
                 logsPanel));
+    }
+
+    [Fact]
+    public async Task LifecycleToolsAreClosedRevisionBoundAndRequireExactState()
+    {
+        var panel = ContextPanel("docker-control", SessionCapabilities.DockerContainerPause);
+        var tool = Assert.Single(DockerAgentToolSet.For(panel));
+        Assert.Equal(BuiltInAgentTools.DockerContainerPause, tool.Name);
+        var properties = tool.InputSchema.GetProperty("properties");
+        Assert.True(properties.TryGetProperty("container_ref", out _));
+        Assert.True(properties.TryGetProperty("engine_generation", out _));
+        Assert.True(properties.TryGetProperty("container_revision", out _));
+        Assert.Equal(
+            ["running"],
+            properties.GetProperty("expected_state")
+                .GetProperty("enum")
+                .EnumerateArray()
+                .Select(value => value.GetString()),
+            StringComparer.Ordinal);
+        Assert.False(tool.InputSchema.GetProperty("additionalProperties").GetBoolean());
+        Assert.DoesNotContain("command", tool.InputSchema.GetRawText(), StringComparison.Ordinal);
+        Assert.DoesNotContain("exec", tool.InputSchema.GetRawText(), StringComparison.Ordinal);
+
+        var parsed = Assert.IsType<DockerAgentControlIntent.Parsed>(
+            DockerAgentControlToolParser.Parse(
+                await ProposalAsync(
+                    BuiltInAgentTools.DockerContainerPause,
+                    """
+                    {"container_ref":"opaque_ref","engine_generation":"engine123","container_revision":"abcdef","expected_state":"running"}
+                    """),
+                [panel],
+                requirePanelId: false));
+        Assert.Equal(DockerContainerAction.Pause, parsed.Request.Action);
+        Assert.Equal("running", parsed.Request.ExpectedState);
+
+        Assert.IsType<DockerAgentControlIntent.Rejected>(
+            DockerAgentControlToolParser.Parse(
+                await ProposalAsync(
+                    BuiltInAgentTools.DockerContainerPause,
+                    """
+                    {"container_ref":"opaque_ref","engine_generation":"engine123","container_revision":"abcdef","expected_state":"paused"}
+                    """),
+                [panel],
+                requirePanelId: false));
+        Assert.Equal(
+            AgentToolOutcomeDisposition.Reconcile,
+            AgentToolOutcomePolicy.Classify("docker_mutation_outcome_unknown"));
     }
 
     [Fact]

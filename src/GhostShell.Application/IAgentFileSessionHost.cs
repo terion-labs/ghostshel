@@ -28,7 +28,10 @@ public abstract record AgentFileActionResult
         bool IsTruncated)
         : AgentFileActionResult;
 
-    public sealed record Entry(FilePanelEntry Value) : AgentFileActionResult;
+    public sealed record Entry(
+        FilePanelEntry Value,
+        AgentFileEntryReference? Reference = null)
+        : AgentFileActionResult;
 
     public sealed record Preview(FilePanelPreview Value) : AgentFileActionResult;
 
@@ -43,6 +46,12 @@ public abstract record AgentFileActionResult
         : AgentFileActionResult;
 
     public sealed record CreatedDirectory(FilePanelEntry Value) : AgentFileActionResult;
+
+    public sealed record CreatedText(FilePanelTextWriteReceipt Value) : AgentFileActionResult;
+
+    public sealed record ReplacedText(FilePanelTextWriteReceipt Value) : AgentFileActionResult;
+
+    public sealed record Copied(FilePanelCopyReceipt Value) : AgentFileActionResult;
 
     public sealed record Moved(FilePanelEntry Value) : AgentFileActionResult;
 

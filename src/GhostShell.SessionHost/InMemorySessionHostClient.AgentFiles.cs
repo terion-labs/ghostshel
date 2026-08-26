@@ -88,6 +88,8 @@ public sealed partial class InMemorySessionHostClient
                 dispatch = CaptureAgentFileDispatch(
                     action.Request,
                     session,
+                    action.Proposal.RunId,
+                    exactSessionPanel.PanelId,
                     revision,
                     expectedSessionRevision);
             }
@@ -296,12 +298,22 @@ public sealed partial class InMemorySessionHostClient
                 revision);
         }
 
+
+        if (!TryConsumeAgentFileReference(dispatch, out var referenceError))
+        {
+            return HostResult<AgentFileActionResult>.Fail(
+                referenceError!,
+                revision);
+        }
+
         return null;
     }
 
-    private static AgentFileDispatch CaptureAgentFileDispatch(
+    private AgentFileDispatch CaptureAgentFileDispatch(
         AgentFileRequest request,
         HostedSession session,
+        AgentRunId runId,
+        PanelInstanceId panelId,
         long revision,
         long expectedSessionRevision)
     {
@@ -360,6 +372,12 @@ public sealed partial class InMemorySessionHostClient
                     metadata,
                     move.DestinationRelativePath);
             }
+            else if (request is AgentFileRequest.Copy copy)
+            {
+                destinationLocation = AgentFileActionComposer.ResolveLocation(
+                    metadata,
+                    copy.DestinationRelativePath);
+            }
         }
         catch (ArgumentException)
         {
@@ -372,9 +390,11 @@ public sealed partial class InMemorySessionHostClient
             AgentFileActionComposer.GetEffectiveListPageSize(metadata);
         var maximumPreviewBytes =
             AgentFileActionComposer.GetEffectiveReadMaximumBytes(metadata);
-        return new AgentFileDispatch(
+        var dispatch = new AgentFileDispatch(
             request,
             session,
+            runId,
+            panelId,
             files,
             metadata,
             location,
@@ -386,6 +406,12 @@ public sealed partial class InMemorySessionHostClient
             session.CaptureRuntimeAuthority(),
             expectedSessionRevision,
             revision);
+        if (!TryResolveAgentFileReference(dispatch, consume: false, out var referenceError))
+        {
+            throw new AgentFileDispatchException(referenceError!);
+        }
+
+        return dispatch;
     }
 
     private async ValueTask<HostResult<AgentFileActionResult>>
@@ -483,7 +509,7 @@ public sealed partial class InMemorySessionHostClient
             .ConfigureAwait(false);
     }
 
-    private static async ValueTask<HostResult<AgentFileActionResult>>
+    private async ValueTask<HostResult<AgentFileActionResult>>
         DispatchAgentFileActionAsync(
             AgentFileDispatch dispatch,
             CancellationToken cancellationToken)
@@ -524,6 +550,21 @@ public sealed partial class InMemorySessionHostClient
                         await CreateAgentDirectoryAsync(
                                 dispatch,
                                 cancellationToken)
+                            .ConfigureAwait(false),
+                    AgentFileRequest.CreateText =>
+                        await WriteAgentTextAsync(
+                                dispatch,
+                                replacedExisting: false,
+                                cancellationToken)
+                            .ConfigureAwait(false),
+                    AgentFileRequest.ReplaceText =>
+                        await WriteAgentTextAsync(
+                                dispatch,
+                                replacedExisting: true,
+                                cancellationToken)
+                            .ConfigureAwait(false),
+                    AgentFileRequest.Copy =>
+                        await CopyAgentFileAsync(dispatch, cancellationToken)
                             .ConfigureAwait(false),
                     AgentFileRequest.Move =>
                         await MoveAgentFileAsync(
@@ -632,7 +673,7 @@ public sealed partial class InMemorySessionHostClient
             dispatch.Session.Snapshot().Descriptor.Revision);
     }
 
-    private static async ValueTask<HostResult<AgentFileActionResult>>
+    private async ValueTask<HostResult<AgentFileActionResult>>
         StatAgentFileAsync(
             AgentFileDispatch dispatch,
             CancellationToken cancellationToken)
@@ -647,8 +688,10 @@ public sealed partial class InMemorySessionHostClient
                 dispatch.Revision);
         }
 
-        if (!TryNormalizeExactEntry(
-                providerResult.Value!,
+        var providerEntry = providerResult.Value!;
+        if (providerEntry.Location.Version is null
+            || !TryNormalizeExactEntry(
+                providerEntry,
                 dispatch.Location,
                 dispatch.Metadata.TrustedRoot,
                 out var normalized))
@@ -656,8 +699,9 @@ public sealed partial class InMemorySessionHostClient
             return InvalidAgentFileProviderResult(dispatch.Revision);
         }
 
+        var reference = IssueAgentFileReference(dispatch, providerEntry);
         return HostResult<AgentFileActionResult>.Succeed(
-            new AgentFileActionResult.Entry(normalized!),
+            new AgentFileActionResult.Entry(normalized!, reference),
             dispatch.Session.Snapshot().Descriptor.Revision);
     }
 
@@ -773,6 +817,94 @@ public sealed partial class InMemorySessionHostClient
     }
 
     private static async ValueTask<HostResult<AgentFileActionResult>>
+        WriteAgentTextAsync(
+            AgentFileDispatch dispatch,
+            bool replacedExisting,
+            CancellationToken cancellationToken)
+    {
+        var content = dispatch.Request switch
+        {
+            AgentFileRequest.CreateText create => create.Content,
+            AgentFileRequest.ReplaceText replace => replace.Content,
+            _ => throw new InvalidOperationException("The text-write request is invalid."),
+        };
+        var location = replacedExisting
+            ? dispatch.VersionedSource
+                ?? throw new InvalidOperationException("The file reference was not resolved.")
+            : dispatch.Location;
+        var precondition = replacedExisting
+            ? FilePanelMutationPrecondition.VersionMatches(location.Version!)
+            : FilePanelMutationPrecondition.MustNotExist;
+        var providerResult = await dispatch.Files.WriteTextAsync(
+                new FilePanelTextWriteRequest(location, content, precondition),
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (!providerResult.IsSuccess)
+        {
+            return MapAgentFileMutationProviderFailure(
+                providerResult.Error!,
+                dispatch.Revision);
+        }
+
+        var receipt = providerResult.Value!;
+        if (receipt.ReplacedExisting != replacedExisting
+            || receipt.BytesWritten != StrictAgentFileUtf8.GetByteCount(content)
+            || !LocationsMatchIgnoringVersion(receipt.Destination, dispatch.Location)
+            || !IsAtOrBelowTrustedRoot(receipt.Destination, dispatch.Metadata.TrustedRoot))
+        {
+            return FileMutationOutcomeUnknown(dispatch.Revision);
+        }
+
+        AgentFileActionResult result = replacedExisting
+            ? new AgentFileActionResult.ReplacedText(receipt)
+            : new AgentFileActionResult.CreatedText(receipt);
+        return HostResult<AgentFileActionResult>.Succeed(result, dispatch.Revision);
+    }
+
+    private static async ValueTask<HostResult<AgentFileActionResult>>
+        CopyAgentFileAsync(
+            AgentFileDispatch dispatch,
+            CancellationToken cancellationToken)
+    {
+        if (dispatch.VersionedSource is not { } source
+            || dispatch.DestinationLocation is not { } destination)
+        {
+            return InvalidAgentFileAction(
+                "The governed file copy has no validated source or destination.",
+                dispatch.Revision);
+        }
+
+        var providerResult = await dispatch.Files.CopyAsync(
+                new FilePanelCopyRequest(
+                    source,
+                    destination,
+                    AgentFileActionComposer.MaximumAgentCopyBytes),
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (!providerResult.IsSuccess)
+        {
+            return MapAgentFileMutationProviderFailure(
+                providerResult.Error!,
+                dispatch.Revision);
+        }
+
+        var receipt = providerResult.Value!;
+        if (receipt.BytesCopied < 0
+            || receipt.BytesCopied > AgentFileActionComposer.MaximumAgentCopyBytes
+            || !LocationsMatchIgnoringVersion(receipt.Source, source)
+            || !LocationsMatchIgnoringVersion(receipt.Destination, destination)
+            || !IsAtOrBelowTrustedRoot(receipt.Source, dispatch.Metadata.TrustedRoot)
+            || !IsAtOrBelowTrustedRoot(receipt.Destination, dispatch.Metadata.TrustedRoot))
+        {
+            return FileMutationOutcomeUnknown(dispatch.Revision);
+        }
+
+        return HostResult<AgentFileActionResult>.Succeed(
+            new AgentFileActionResult.Copied(receipt),
+            dispatch.Revision);
+    }
+
+    private static async ValueTask<HostResult<AgentFileActionResult>>
         MoveAgentFileAsync(
             AgentFileDispatch dispatch,
             CancellationToken cancellationToken)
@@ -787,7 +919,8 @@ public sealed partial class InMemorySessionHostClient
         var providerResult = await dispatch.Files
             .RenameAsync(
                 new FilePanelRenameRequest(
-                    dispatch.Location,
+                    dispatch.VersionedSource
+                        ?? throw new InvalidOperationException("The source reference was not resolved."),
                     destination,
                     FilePanelMutationPrecondition.MustNotExist),
                 cancellationToken)
@@ -821,9 +954,11 @@ public sealed partial class InMemorySessionHostClient
         var providerResult = await dispatch.Files
             .DeleteAsync(
                 new FilePanelDeleteRequest(
-                    dispatch.Location,
+                    dispatch.VersionedSource
+                        ?? throw new InvalidOperationException("The source reference was not resolved."),
                     Recursive: ((AgentFileRequest.Delete)dispatch.Request).Recursive,
-                    FilePanelMutationPrecondition.MustExist),
+                    FilePanelMutationPrecondition.VersionMatches(
+                        dispatch.VersionedSource.Version!)),
                 cancellationToken)
             .ConfigureAwait(false);
         if (!providerResult.IsSuccess)
@@ -930,6 +1065,9 @@ public sealed partial class InMemorySessionHostClient
             AgentFileActionResult.AccessControl => "file_access_read",
             AgentFileActionResult.Transfers => "file_transfers_read",
             AgentFileActionResult.CreatedDirectory => "directory_created",
+            AgentFileActionResult.CreatedText => "file_created",
+            AgentFileActionResult.ReplacedText => "file_replaced",
+            AgentFileActionResult.Copied => "file_copied",
             AgentFileActionResult.Moved => "file_moved",
             AgentFileActionResult.Deleted => "file_deleted",
             _ => throw new ArgumentOutOfRangeException(
@@ -1273,6 +1411,9 @@ public sealed partial class InMemorySessionHostClient
 
     private static bool IsAgentFileMutation(AgentFileRequest request) =>
         request is AgentFileRequest.CreateDirectory
+            or AgentFileRequest.CreateText
+            or AgentFileRequest.ReplaceText
+            or AgentFileRequest.Copy
             or AgentFileRequest.Move
             or AgentFileRequest.Delete;
 
@@ -1336,6 +1477,9 @@ public sealed partial class InMemorySessionHostClient
             AgentFileRequest.Transfers => BuiltInAgentTools.FilesTransfers,
             AgentFileRequest.CreateDirectory =>
                 BuiltInAgentTools.FilesCreateDirectory,
+            AgentFileRequest.CreateText => GovernedFileToolNames.CreateText,
+            AgentFileRequest.ReplaceText => GovernedFileToolNames.ReplaceText,
+            AgentFileRequest.Copy => GovernedFileToolNames.Copy,
             AgentFileRequest.Move => BuiltInAgentTools.FilesMove,
             AgentFileRequest.Delete => BuiltInAgentTools.FilesDelete,
             _ => throw AgentFileDispatchFailure(
@@ -1357,6 +1501,9 @@ public sealed partial class InMemorySessionHostClient
                 SessionCapabilities.FilesTransfersRead,
             AgentFileRequest.CreateDirectory =>
                 SessionCapabilities.FilesCreateDirectory,
+            AgentFileRequest.CreateText or AgentFileRequest.ReplaceText =>
+                GovernedFileToolNames.SessionWrite,
+            AgentFileRequest.Copy => GovernedFileToolNames.SessionCopy,
             AgentFileRequest.Move => SessionCapabilities.FilesRename,
             AgentFileRequest.Delete => SessionCapabilities.FilesDelete,
             _ => throw AgentFileDispatchFailure(
@@ -1377,6 +1524,16 @@ public sealed partial class InMemorySessionHostClient
             AgentFileRequest.CreateDirectory =>
                 FilePanelCapability.CreateDirectory
                 | FilePanelCapability.GovernedCreateDirectory,
+            AgentFileRequest.CreateText =>
+                FilePanelCapability.StreamingWrite
+                | FilePanelCapability.GovernedCreateFile,
+            AgentFileRequest.ReplaceText =>
+                FilePanelCapability.StreamingWrite
+                | FilePanelCapability.GovernedReplaceFile,
+            AgentFileRequest.Copy =>
+                FilePanelCapability.Copy
+                | FilePanelCapability.GovernedCopySource
+                | FilePanelCapability.GovernedCopy,
             AgentFileRequest.Move =>
                 FilePanelCapability.Rename
                 | FilePanelCapability.GovernedRename,
@@ -1400,6 +1557,9 @@ public sealed partial class InMemorySessionHostClient
             AgentFileRequest.Transfers transfers => transfers.SessionId,
             AgentFileRequest.CreateDirectory createDirectory =>
                 createDirectory.SessionId,
+            AgentFileRequest.CreateText createText => createText.SessionId,
+            AgentFileRequest.ReplaceText replaceText => replaceText.SessionId,
+            AgentFileRequest.Copy copy => copy.SessionId,
             AgentFileRequest.Move move => move.SessionId,
             AgentFileRequest.Delete delete => delete.SessionId,
             _ => throw AgentFileDispatchFailure(
@@ -1419,6 +1579,9 @@ public sealed partial class InMemorySessionHostClient
             AgentFileRequest.Transfers => [],
             AgentFileRequest.CreateDirectory createDirectory =>
                 createDirectory.RelativePath,
+            AgentFileRequest.CreateText createText => createText.RelativePath,
+            AgentFileRequest.ReplaceText replaceText => replaceText.RelativePath,
+            AgentFileRequest.Copy copy => copy.RelativePath,
             AgentFileRequest.Move move => move.RelativePath,
             AgentFileRequest.Delete delete => delete.RelativePath,
             _ => throw AgentFileDispatchFailure(
@@ -1473,6 +1636,8 @@ public sealed partial class InMemorySessionHostClient
     private sealed record AgentFileDispatch(
         AgentFileRequest Request,
         HostedSession Session,
+        AgentRunId RunId,
+        PanelInstanceId PanelId,
         IFilePanelSession Files,
         FileSessionMetadata Metadata,
         FilePanelLocation Location,
@@ -1483,7 +1648,10 @@ public sealed partial class InMemorySessionHostClient
         long MaximumPreviewBytes,
         CancellationToken RuntimeCancellation,
         long ExpectedSessionRevision,
-        long Revision);
+        long Revision)
+    {
+        public FilePanelLocation? VersionedSource { get; set; }
+    }
 
     private sealed class AgentFileDispatchException(HostError error)
         : Exception(error.Message)

@@ -53,6 +53,9 @@ public sealed partial class GovernedAgentRuntime
             : selected.PanelId;
         var isMutation = selected.Intent is
             FileAgentIntent.CreateDirectory
+            or FileAgentIntent.CreateText
+            or FileAgentIntent.ReplaceText
+            or FileAgentIntent.Copy
             or FileAgentIntent.Move
             or FileAgentIntent.Delete;
         var panel = context.Panels.SingleOrDefault(
@@ -306,16 +309,35 @@ public sealed partial class GovernedAgentRuntime
                 new AgentFileRequest.CreateDirectory(
                     sessionId,
                     createDirectory.RelativePath),
+            FileAgentIntent.CreateText createText =>
+                new AgentFileRequest.CreateText(
+                    sessionId,
+                    createText.RelativePath,
+                    createText.Content),
+            FileAgentIntent.ReplaceText replaceText =>
+                new AgentFileRequest.ReplaceText(
+                    sessionId,
+                    replaceText.RelativePath,
+                    replaceText.EntryReference,
+                    replaceText.Content),
+            FileAgentIntent.Copy copy =>
+                new AgentFileRequest.Copy(
+                    sessionId,
+                    copy.RelativePath,
+                    copy.EntryReference,
+                    copy.DestinationRelativePath),
             FileAgentIntent.Move move =>
                 new AgentFileRequest.Move(
                     sessionId,
                     move.RelativePath,
-                    move.DestinationRelativePath),
+                    move.DestinationRelativePath,
+                    move.EntryReference),
             FileAgentIntent.Delete delete =>
                 new AgentFileRequest.Delete(
                     sessionId,
                     delete.RelativePath,
-                    delete.Recursive),
+                    delete.Recursive,
+                    delete.EntryReference),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(intent),
                 intent.GetType(),
@@ -331,6 +353,9 @@ public sealed partial class GovernedAgentRuntime
             or BuiltInAgentTools.FilesAccessRead
             or BuiltInAgentTools.FilesTransfers
             or BuiltInAgentTools.FilesCreateDirectory
+            or GovernedFileToolNames.CreateText
+            or GovernedFileToolNames.ReplaceText
+            or GovernedFileToolNames.Copy
             or BuiltInAgentTools.FilesMove
             or BuiltInAgentTools.FilesDelete;
 
@@ -358,7 +383,9 @@ public sealed partial class GovernedAgentRuntime
 
             if (context.Context.Target is AgentTarget.Workspace)
             {
-                return FileAgentToolSet.ForWorkspace();
+                return FileAgentToolSet.ForWorkspace(
+                    context.Context.Panels,
+                    context.FileMetadata);
             }
             if (context.FileMetadata.Count == 0)
             {

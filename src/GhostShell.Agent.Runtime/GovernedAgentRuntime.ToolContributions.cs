@@ -19,6 +19,7 @@ public sealed partial class GovernedAgentRuntime
         new StatisticsToolContribution(this),
         new DatabaseToolContribution(this),
         new DockerToolContribution(this),
+        new GitToolContribution(this),
         new FileToolContribution(this),
         new McpToolContribution(this),
     ];

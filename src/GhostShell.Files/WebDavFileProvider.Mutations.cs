@@ -435,7 +435,12 @@ public sealed partial class WebDavFileProvider
         DestinationCondition destinationCondition,
         CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(method, source.Uri);
+        using var request = new HttpRequestMessage(method, source.Uri)
+        {
+            // COPY and MOVE have no request body. The explicit empty body prevents
+            // SocketsHttpHandler from replaying an ambiguous mutation.
+            Content = new ByteArrayContent([]),
+        };
         request.Headers.TryAddWithoutValidation("Destination", destination.Uri.AbsoluteUri);
         request.Headers.TryAddWithoutValidation(
             "Overwrite",

@@ -56,11 +56,14 @@ public sealed class AgentFileActionComposerTests
         Assert.Equal(
             [
                 "AccessRead",
+                "Copy",
                 "CreateDirectory",
+                "CreateText",
                 "Delete",
                 "List",
                 "Move",
                 "Read",
+                "ReplaceText",
                 "Search",
                 "Stat",
                 "Transfers",
@@ -83,12 +86,15 @@ public sealed class AgentFileActionComposerTests
         Assert.Equal(
             [
                 "AccessControl",
+                "Copied",
                 "CreatedDirectory",
+                "CreatedText",
                 "Deleted",
                 "Entry",
                 "Moved",
                 "Page",
                 "Preview",
+                "ReplacedText",
                 "SearchResults",
                 "Transfers",
             ],
@@ -317,7 +323,8 @@ public sealed class AgentFileActionComposerTests
                 "precondition",
                 "must_not_exist"));
         Assert.Collection(
-            move.Proposal.Presentation.Arguments.TakeLast(3),
+            move.Proposal.Presentation.Arguments.TakeLast(4),
+            argument => AssertArgument(argument, "entry_ref", Reference().Value),
             argument => AssertArgument(
                 argument,
                 "destination_relative_path",
@@ -328,7 +335,8 @@ public sealed class AgentFileActionComposerTests
                 "destination_precondition",
                 "must_not_exist"));
         Assert.Collection(
-            delete.Proposal.Presentation.Arguments.TakeLast(3),
+            delete.Proposal.Presentation.Arguments.TakeLast(4),
+            argument => AssertArgument(argument, "entry_ref", Reference().Value),
             argument => AssertArgument(
                 argument,
                 "effect",
@@ -860,10 +868,17 @@ public sealed class AgentFileActionComposerTests
         new AgentFileRequest.Move(
             Session(),
             Segments(sourceRelativePath),
-            Segments(destinationRelativePath));
+            Segments(destinationRelativePath),
+            Reference());
 
     private static AgentFileRequest Delete(params string[] relativePath) =>
-        new AgentFileRequest.Delete(Session(), Segments(relativePath));
+        new AgentFileRequest.Delete(
+            Session(),
+            Segments(relativePath),
+            EntryReference: Reference());
+
+    private static AgentFileEntryReference Reference() =>
+        new(new string('A', AgentFileEntryReference.EncodedLength));
 
     private static ImmutableArray<FilePanelPathSegment> Segments(
         params string[] values) =>

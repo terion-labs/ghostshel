@@ -49,13 +49,15 @@ public sealed class FileAgentToolContractTests
                     schema.GetProperty("additionalProperties").GetBoolean());
                 Assert.Equal(
 string.Equals(tool.Name, BuiltInAgentTools.FilesDelete
-, StringComparison.Ordinal) ? ["path_segments", "recursive"]
+, StringComparison.Ordinal) ? ["path_segments", "recursive", "entry_ref"]
                         : ["path_segments"],
                     schema.GetProperty("properties")
                         .EnumerateObject()
                         .Select(property => property.Name), StringComparer.Ordinal);
                 Assert.Equal(
-                    ["path_segments"],
+                    string.Equals(tool.Name, BuiltInAgentTools.FilesDelete, StringComparison.Ordinal)
+                        ? ["path_segments", "entry_ref"]
+                        : ["path_segments"],
                     schema.GetProperty("required")
                         .EnumerateArray()
                         .Select(value => value.GetString()), StringComparer.Ordinal);
@@ -179,6 +181,74 @@ string.Equals(tool.Name, BuiltInAgentTools.FilesDelete
         Assert.Equal(
             [list.PanelId.Value],
             PanelIds(onePanelTools, BuiltInAgentTools.FilesList));
+    }
+
+    [Fact]
+    public void WorkspaceSchemasAdvertiseFileMutationsOnlyForLiveCapablePanels()
+    {
+        var ordinary = ContextPanel(
+            "workspace-ordinary",
+            FilePanelCapability.Stat
+            | FilePanelCapability.StreamingWrite
+            | FilePanelCapability.Copy,
+            SessionCapabilities.FilesStat,
+            GovernedFileToolNames.SessionWrite,
+            GovernedFileToolNames.SessionCopy);
+        var governed = ContextPanel(
+            "workspace-governed",
+            FilePanelCapability.Stat
+            | FilePanelCapability.StreamingWrite
+            | FilePanelCapability.Copy
+            | FilePanelCapability.GovernedCreateFile
+            | FilePanelCapability.GovernedReplaceFile
+            | FilePanelCapability.GovernedCopySource
+            | FilePanelCapability.GovernedCopy,
+            SessionCapabilities.FilesStat,
+            GovernedFileToolNames.SessionWrite,
+            GovernedFileToolNames.SessionCopy);
+
+        var withoutLiveMetadata = FileAgentToolSet.ForWorkspace(
+            [ordinary],
+            new Dictionary<PanelInstanceId, FileSessionMetadata>());
+        var ordinaryTools = FileAgentToolSet.ForWorkspace(
+            [ordinary],
+            new Dictionary<PanelInstanceId, FileSessionMetadata>
+            {
+                [ordinary.PanelId] = ordinary.FileMetadata!,
+            });
+        var governedTools = FileAgentToolSet.ForWorkspace(
+            [ordinary, governed],
+            new Dictionary<PanelInstanceId, FileSessionMetadata>
+            {
+                [ordinary.PanelId] = ordinary.FileMetadata!,
+                [governed.PanelId] = governed.FileMetadata!,
+            });
+
+        Assert.Contains(
+            withoutLiveMetadata,
+            tool => string.Equals(
+                tool.Name,
+                BuiltInAgentTools.FilesList,
+                StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            withoutLiveMetadata,
+            tool => tool.Name is GovernedFileToolNames.CreateText
+                or GovernedFileToolNames.ReplaceText
+                or GovernedFileToolNames.Copy);
+        Assert.DoesNotContain(
+            ordinaryTools,
+            tool => tool.Name is GovernedFileToolNames.CreateText
+                or GovernedFileToolNames.ReplaceText
+                or GovernedFileToolNames.Copy);
+        Assert.Equal(
+            [governed.PanelId.Value],
+            PanelIds(governedTools, GovernedFileToolNames.CreateText));
+        Assert.Equal(
+            [governed.PanelId.Value],
+            PanelIds(governedTools, GovernedFileToolNames.ReplaceText));
+        Assert.Equal(
+            [governed.PanelId.Value],
+            PanelIds(governedTools, GovernedFileToolNames.Copy));
     }
 
     [Fact]
@@ -489,12 +559,13 @@ string.Equals(tool.Name, BuiltInAgentTools.FilesDelete
         var createDirectory = await ProposalAsync(
             BuiltInAgentTools.FilesCreateDirectory,
             """{"path_segments":["deploy","current"]}""");
+        var entryReference = new string('A', AgentFileEntryReference.EncodedLength);
         var delete = await ProposalAsync(
             BuiltInAgentTools.FilesDelete,
-            """{"path_segments":["deploy","old"]}""");
+            $$"""{"path_segments":["deploy","old"],"entry_ref":"{{entryReference}}"}""");
         var move = await ProposalAsync(
             BuiltInAgentTools.FilesMove,
-            """{"source_path_segments":["deploy","draft"],"destination_path_segments":["archive","draft"]}""");
+            $$"""{"source_path_segments":["deploy","draft"],"destination_path_segments":["archive","draft"],"entry_ref":"{{entryReference}}"}""");
 
         var parsedCreate = Assert.IsType<FileAgentIntentResult.Parsed>(
             FileAgentToolParser.Parse(
@@ -535,7 +606,7 @@ string.Equals(tool.Name, BuiltInAgentTools.FilesDelete
             .Single(tool => string.Equals(tool.Name, BuiltInAgentTools.FilesMove, StringComparison.Ordinal))
             .InputSchema;
         Assert.Equal(
-            ["source_path_segments", "destination_path_segments"],
+            ["source_path_segments", "destination_path_segments", "entry_ref"],
             moveSchema.GetProperty("required")
                 .EnumerateArray()
                 .Select(value => value.GetString()), StringComparer.Ordinal);
@@ -550,7 +621,7 @@ string.Equals(tool.Name, BuiltInAgentTools.FilesDelete
 
         var samePathMove = await ProposalAsync(
             BuiltInAgentTools.FilesMove,
-            """{"source_path_segments":["same"],"destination_path_segments":["same"]}""");
+            $$"""{"source_path_segments":["same"],"destination_path_segments":["same"],"entry_ref":"{{entryReference}}"}""");
         Assert.Equal(
             "invalid_tool_arguments",
             Assert.IsType<FileAgentIntentResult.Rejected>(
@@ -563,7 +634,7 @@ string.Equals(tool.Name, BuiltInAgentTools.FilesDelete
             FileAgentToolParser.Parse(
                 await ProposalAsync(
                     BuiltInAgentTools.FilesDelete,
-                    """{"path_segments":["old"],"recursive":true}"""),
+                    $$"""{"path_segments":["old"],"recursive":true,"entry_ref":"{{entryReference}}"}"""),
                 panel,
                 panel.FileMetadata!));
         Assert.True(Assert.IsType<FileAgentIntent.Delete>(recursiveDelete.Intent).Recursive);

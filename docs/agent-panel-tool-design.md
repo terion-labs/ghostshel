@@ -105,11 +105,11 @@ graph, intrinsic, and governed workspace-layout tools.
 | --- | --- | --- | --- |
 | Terminal | Yes | screen/scrollback observation and search, viewport control, bounded waits, text/paste/key/chord/mouse, interrupt, resize | selection and destructive history operations intentionally absent |
 | Browser | Yes | state, AX snapshot, bounded waits, semantic click/fill/check, atomic mouse/key/scroll, navigation | artifacts, diagnostics, and safely constrained scripting |
-| File Viewer | Yes | list/search/stat/read/access, transfer status, mkdir, same-provider move/rename, recursive or non-recursive delete | governed copy/write/ACL operations and non-text artifacts |
+| File Viewer | Yes | list/search/stat/read/access, transfer status, mkdir, bounded text create/replace, same-provider file copy and move/rename, recursive or non-recursive delete | cross-provider copy, ACL mutations, and non-text artifacts |
 | Statistics | Yes | one bounded read | no essential gap |
 | Process Monitor | Yes | bounded filtered, sorted, and paged list | optional exact-row refresh; no control tool is justified |
 | Database Viewer | Yes | bounded relational schema/projected table reads and Redis scan/read/index discovery/search | enforced read-only SQL and all writes intentionally absent |
-| Docker | Yes; embedded terminal/file children remain distinct | state, inspect, logs, bounded file reads | lifecycle mutations and generic exec intentionally absent |
+| Docker | Yes; embedded terminal/file children remain distinct | state, inspect, logs, bounded file reads, exact local macOS lifecycle changes | generic exec and remote/cross-platform lifecycle intentionally absent |
 
 ### Implemented production tool inventory
 
@@ -122,17 +122,18 @@ retain the researched target surface and mark deferred tools explicitly.
 | Web | `http.fetch`, `web.read`, `web.search` |
 | Terminal | `terminal.read_screen`, `terminal.read_screen_diff`, `terminal.find_on_screen`, `terminal.find_rendered_history`, `terminal.jump_to_rendered_history`, `terminal.read_scrollback`, `terminal.find`, `terminal.scroll_viewport`, `terminal.wait`, `terminal.send_text`, `terminal.paste`, `terminal.submit_text`, `terminal.send_keys`, `terminal.send_chord`, `terminal.send_mouse`, `terminal.interrupt`, `terminal.resize` |
 | Browser | `browser.read_state`, `browser.snapshot`, `browser.wait`, `browser.click`, `browser.fill`, `browser.check`, `browser.mouse`, `browser.key`, `browser.scroll`, `browser.navigate`, `browser.back`, `browser.forward`, `browser.reload`, `browser.stop` |
-| File Viewer | `files.list`, `files.search`, `files.stat`, `files.read`, `files.access_read`, `files.transfers`, `files.mkdir`, `files.move`, `files.delete` |
+| File Viewer | `files.list`, `files.search`, `files.stat`, `files.read`, `files.access_read`, `files.transfers`, `files.mkdir`, `files.create_text`, `files.replace_text`, `files.copy`, `files.move`, `files.delete` |
 | Statistics | `statistics.read` |
 | Process Monitor | `processes.list` |
 | Relational database | `database.read_state`, `database.list_objects`, `database.describe_object`, `database.read_table`, `database.schema_graph` |
 | Redis | `redis.scan`, `redis.read`, `redis.list_indexes`, and capability-gated `redis.search` |
-| Docker | `docker.read_state`, `docker.inspect`, `docker.logs`, `docker.files_list`, `docker.files_stat`, `docker.file_read` |
+| Docker | `docker.read_state`, `docker.inspect`, `docker.logs`, `docker.files_list`, `docker.files_stat`, `docker.file_read`, `docker.container_start`, `docker.container_stop`, `docker.container_restart`, `docker.container_pause`, `docker.container_resume`, `docker.container_remove` |
 
 `browser.evaluate` exists only as a dormant conformance candidate and is not
 advertised by the production browser profile. `browser.cdp`, diagnostics,
-artifacts, uploads/downloads, database/Redis writes, Docker lifecycle actions,
-and generic terminal/Docker exec are not implemented as production tools.
+artifacts, uploads/downloads, database/Redis writes, remote/cross-platform
+Docker lifecycle actions, and generic terminal/Docker exec are not implemented
+as production tools.
 
 The three web tools are run-scoped observations governed by the existing
 `WebFetch` policy and use one exact typed action/authorization path. They do
@@ -513,7 +514,9 @@ replace them with caller-supplied native paths or provider URLs.
 | `files.mkdir` | One non-root directory, `MustNotExist` | `EditFiles` / Mutation | Existing |
 | `files.move` | Move or rename one exact non-root path to one exact non-root destination in the same hosted provider, `MustNotExist` | `EditFiles` / Mutation | Implemented for explicitly trusted local providers |
 | `files.delete` | One exact non-root path, with recursive deletion requested explicitly | `EditFiles` / Destructive | Existing, capability gated |
-| `files.copy` | Copy one or more exact entries to an exact hosted destination panel/directory with explicit conflict policy | `EditFiles` / Mutation | P1 after a separate governed copy capability |
+| `files.create_text` | Create one strict UTF-8 file up to 8 KiB, `MustNotExist` | `EditFiles` / Mutation | Implemented for attested WebDAV profiles |
+| `files.replace_text` | Replace one strict UTF-8 regular file up to 8 KiB using an opaque stat reference | `EditFiles` / Destructive | Implemented for attested WebDAV profiles |
+| `files.copy` | Copy one version-bound regular file up to 64 MiB to a distinct path, `MustNotExist` | `EditFiles` / Mutation | Implemented within one attested provider profile |
 | `files.transfers` | List bounded session-owned transfer status without source/destination paths or provider identifiers | `ReadFiles` / Observation | Implemented |
 | `files.transfer_cancel` / `retry` | One exact transfer; retry only a provider-declared safely retryable, uncommitted transfer | `EditFiles` / Mutation | Deferred: queue cannot yet prove a race-safe final state |
 | `files.access_read` | Bounded POSIX mode or provider ACL | `ReadFiles` / Observation | Implemented |
@@ -559,9 +562,11 @@ Keep `processes.list` as the primary and, for now, only tool:
   and terminal content; and
 - the tool targets only the local hosted Process Monitor, never a remote shell.
 
-Do not add terminate, signal, priority, attach, open-file, or environment tools
-until the human panel supports them and a separate process-control design owns
-identity reuse, privileges, confirmation, and outcome uncertainty.
+Do not add terminate, signal, priority, attach, open-file, or environment tools.
+On macOS, sampled PID plus start time does not close the PID-reuse race before a
+signal. A future process-control design requires handle-addressed identity,
+privilege and confirmation rules, and explicit outcome uncertainty. Porting and
+remote process control are separate milestones.
 
 Use a new `ProcessData` capability for listing. Reserve the existing
 `ProcessControl` capability for future mutations rather than using a mutation
@@ -643,8 +648,9 @@ workspace graph.
 
 ### Tool set
 
-Production implements the six observation tools. Container lifecycle and shell
-creation remain deferred; there is no generic Docker exec tool.
+Production implements the six observation tools plus six exact local macOS
+lifecycle tools. Shell creation remains deferred; there is no generic Docker
+exec tool.
 
 | Tool | Purpose | Capability / risk |
 | --- | --- | --- |
@@ -652,11 +658,11 @@ creation remain deferred; there is no generic Docker exec tool.
 | `docker.inspect` | Exact resource ref with bounded normalized allowlisted properties; no raw JSON, command, environment, labels, mounts, or host paths | `DockerData` / Observation |
 | `docker.logs` | Exact container ref, bounded lines, before/since cursor, text filter/context | `DockerData` / Observation |
 | `docker.files_list` / `docker.files_stat` / `docker.file_read` | Bounded container/image/volume file observation | `DockerData` / Observation |
-| `docker.container_start` | Start one exact stopped container | existing `Docker` / Mutation |
-| `docker.container_stop` | Stop one exact running/paused container | `Docker` / Destructive |
-| `docker.container_restart` | Restart one exact container | `Docker` / Destructive |
-| `docker.container_pause` / `resume` | Change one exact container run state | `Docker` / Mutation |
-| `docker.open_shell` | Resolve a reviewed shell path and create/focus one embedded terminal session; subsequent operation uses terminal tools | `Docker` / Mutation |
+| `docker.container_start` | Start one exact created/exited container | existing `Docker` / Destructive |
+| `docker.container_stop` | Stop one exact running container with fixed ten-second timeout | `Docker` / Destructive |
+| `docker.container_restart` | Restart one exact running container with fixed ten-second timeout | `Docker` / Destructive |
+| `docker.container_pause` / `resume` | Pause running or resume paused exact container | `Docker` / Destructive |
+| `docker.container_remove` | Remove one exact stopped standalone container, without force or volumes | `Docker` / Destructive |
 
 Do not expose a generic `docker exec <string>` tool. An interactive shell is a
 real hosted Terminal panel and receives the terminal tool set, input lease,
@@ -664,8 +670,16 @@ screen state, waits, and audit behavior. Do not expose the current multi-contain
 stack loop initially: partial success across independently committed container
 actions needs a separate batch receipt design.
 
-Removal/prune/build/pull/push/copy-in/copy-out are absent until the human panel
-and typed Docker client support them with bounded progress and exact receipts.
+Force/volume removal, prune, build, pull, push, copy-in, and copy-out are absent
+until typed clients support them with bounded progress and exact receipts.
+
+An opt-in live-daemon integration test exercises the production command client
+and hosted session against one random disposable container. Set
+`GHOSTSHELL_RUN_DOCKER_LIFECYCLE_INTEGRATION=1` and
+`GHOSTSHELL_DOCKER_LIFECYCLE_IMAGE` to an already-present image with a
+long-running default command. The test uses `--pull=never`, validates the exact
+full container ID, start/restart/pause/resume/stop/remove state transitions and
+governed receipts, and cleans only its generated container in `finally`.
 
 ## Policy capability changes
 
@@ -738,12 +752,11 @@ libghostty-vt state already exist.
 
 ### Remaining: File Viewer mutations and artifacts
 
-1. Add bounded governed text write with version/create preconditions.
-2. Add transfer cancellation/retry only after the queue proves final state and
+1. Add transfer cancellation/retry only after the queue proves final state and
    commit evidence.
-3. Add exact cross-panel copy; same-provider move/rename is already governed,
+2. Add exact cross-panel copy; same-provider move/rename is already governed,
    while copy-then-delete move needs explicit partial-effect evidence.
-4. Add ACL writes only for providers with race-safe version semantics.
+3. Add ACL writes only for providers with race-safe version semantics.
 
 ## Verification gates
 

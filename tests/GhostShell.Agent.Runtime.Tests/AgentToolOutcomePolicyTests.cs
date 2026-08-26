@@ -17,6 +17,10 @@ public sealed class AgentToolOutcomePolicyTests
                 nameof(AgentToolOutcomeDisposition.Reconcile)
             },
             {
+                GitAgentToolResultJson.MutationOutcomeUnknownStableCode,
+                nameof(AgentToolOutcomeDisposition.Reconcile)
+            },
+            {
                 McpAgentToolResultJson.OutcomeUnknownStableCode,
                 nameof(AgentToolOutcomeDisposition.Reconcile)
             },

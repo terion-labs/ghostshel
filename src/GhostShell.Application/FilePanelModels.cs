@@ -41,6 +41,10 @@ public enum FilePanelCapability : ulong
     GovernedCreateDirectory = 1UL << 21,
     GovernedDelete = 1UL << 22,
     GovernedRename = 1UL << 23,
+    GovernedCreateFile = 1UL << 24,
+    GovernedReplaceFile = 1UL << 25,
+    GovernedCopySource = 1UL << 26,
+    GovernedCopy = 1UL << 27,
 }
 
 public sealed record FileProviderProfileDescriptor
@@ -155,7 +159,11 @@ public sealed record FileProviderProfileDescriptor
         | FilePanelCapability.Pagination
         | FilePanelCapability.GovernedCreateDirectory
         | FilePanelCapability.GovernedDelete
-        | FilePanelCapability.GovernedRename;
+        | FilePanelCapability.GovernedRename
+        | FilePanelCapability.GovernedCreateFile
+        | FilePanelCapability.GovernedReplaceFile
+        | FilePanelCapability.GovernedCopySource
+        | FilePanelCapability.GovernedCopy;
 }
 
 public enum FilePanelEntryKind
@@ -433,4 +441,83 @@ public sealed record FilePanelDeleteReceipt
     public FilePanelLocation DeletedLocation { get; }
 
     public bool WasDirectory { get; }
+}
+
+public sealed record FilePanelTextWriteRequest
+{
+    public FilePanelTextWriteRequest(
+        FilePanelLocation location,
+        string content,
+        FilePanelMutationPrecondition precondition)
+    {
+        Location = location ?? throw new ArgumentNullException(nameof(location));
+        Content = content ?? throw new ArgumentNullException(nameof(content));
+        Precondition = precondition ?? throw new ArgumentNullException(nameof(precondition));
+    }
+
+    public FilePanelLocation Location { get; }
+
+    public string Content { get; }
+
+    public FilePanelMutationPrecondition Precondition { get; }
+}
+
+public sealed record FilePanelTextWriteReceipt
+{
+    public FilePanelTextWriteReceipt(
+        FilePanelLocation destination,
+        long bytesWritten,
+        bool replacedExisting)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(bytesWritten);
+        Destination = destination ?? throw new ArgumentNullException(nameof(destination));
+        BytesWritten = bytesWritten;
+        ReplacedExisting = replacedExisting;
+    }
+
+    public FilePanelLocation Destination { get; }
+
+    public long BytesWritten { get; }
+
+    public bool ReplacedExisting { get; }
+}
+
+public sealed record FilePanelCopyRequest
+{
+    public FilePanelCopyRequest(
+        FilePanelLocation source,
+        FilePanelLocation destination,
+        long maximumBytes)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumBytes);
+        Source = source ?? throw new ArgumentNullException(nameof(source));
+        Destination = destination ?? throw new ArgumentNullException(nameof(destination));
+        MaximumBytes = maximumBytes;
+    }
+
+    public FilePanelLocation Source { get; }
+
+    public FilePanelLocation Destination { get; }
+
+    public long MaximumBytes { get; }
+}
+
+public sealed record FilePanelCopyReceipt
+{
+    public FilePanelCopyReceipt(
+        FilePanelLocation source,
+        FilePanelLocation destination,
+        long bytesCopied)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(bytesCopied);
+        Source = source ?? throw new ArgumentNullException(nameof(source));
+        Destination = destination ?? throw new ArgumentNullException(nameof(destination));
+        BytesCopied = bytesCopied;
+    }
+
+    public FilePanelLocation Source { get; }
+
+    public FilePanelLocation Destination { get; }
+
+    public long BytesCopied { get; }
 }

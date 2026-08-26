@@ -29,6 +29,8 @@ public sealed class DockerEngineClient(
     private static readonly TimeSpan LogDownloadTimeout = TimeSpan.FromHours(1);
     private static readonly TimeSpan VolumeUsageTimeout = TimeSpan.FromMinutes(1);
 
+    public bool SupportsContainerMutation => true;
+
     public async ValueTask<DockerResult<DockerEngineSnapshot>> ReadSnapshotAsync(
         ConnectionProfile connection,
         CancellationToken cancellationToken)
@@ -514,6 +516,78 @@ public sealed class DockerEngineClient(
             _ => throw new InvalidOperationException("Unknown Docker command result."),
         };
     }
+
+    public async ValueTask<DockerContainerMutationResult> RunContainerMutationAsync(
+        ConnectionProfile connection,
+        string containerId,
+        DockerContainerAction action,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentException.ThrowIfNullOrWhiteSpace(containerId);
+        if (!Supports(connection) || cancellationToken.IsCancellationRequested)
+        {
+            return new DockerContainerMutationResult(
+                DockerContainerMutationOutcome.NotDispatched,
+                "docker_container_control_unavailable",
+                Retryable: false);
+        }
+
+        IReadOnlyList<string> arguments = action switch
+        {
+            DockerContainerAction.Start => ["container", "start", containerId],
+            DockerContainerAction.Stop =>
+                ["container", "stop", "--time", "10", containerId],
+            DockerContainerAction.Restart =>
+                ["container", "restart", "--time", "10", containerId],
+            DockerContainerAction.Pause => ["container", "pause", containerId],
+            DockerContainerAction.Resume => ["container", "unpause", containerId],
+            DockerContainerAction.Remove => ["container", "rm", containerId],
+            _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
+        };
+
+        ConnectionCommandResult result;
+        try
+        {
+            result = await executor.ExecuteAsync(
+                    new ConnectionCommand(
+                        connection,
+                        "docker",
+                        arguments,
+                        ActionTimeout,
+                        1_024),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return UnknownMutationOutcome();
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return UnknownMutationOutcome();
+        }
+
+        if (result.Outcome == ConnectionCommandOutcome.Exited && result.ExitCode == 0)
+        {
+            return new DockerContainerMutationResult(
+                DockerContainerMutationOutcome.Applied,
+                "docker_container_control_applied",
+                Retryable: false);
+        }
+
+        return result.Outcome == ConnectionCommandOutcome.StartFailed
+            ? new DockerContainerMutationResult(
+                DockerContainerMutationOutcome.NotDispatched,
+                "docker_container_control_not_dispatched",
+                Retryable: false)
+            : UnknownMutationOutcome();
+    }
+
+    private static DockerContainerMutationResult UnknownMutationOutcome() => new(
+        DockerContainerMutationOutcome.OutcomeUnknown,
+        "docker_mutation_outcome_unknown",
+        Retryable: false);
 
     private async ValueTask<DockerResult<string>> ExecuteLogCommandAsync(
         ConnectionProfile connection,

@@ -27,6 +27,10 @@ public sealed class AgentPolicyPresentationTests
         "Docker data",
         "Inspect Docker workloads without lifecycle control.")]
     [InlineData(
+        AgentCapability.GitData,
+        "Git data",
+        "Inspect Git repositories without changing them.")]
+    [InlineData(
         AgentCapability.SystemData,
         "System data",
         "Read aggregate local system statistics.")]

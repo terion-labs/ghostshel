@@ -24,6 +24,8 @@ public sealed class AgentFileActionComposer
     public const int MaximumAgentSearchResults = 100;
     public const int MaximumAgentAccessGrants = 100;
     public const int MaximumAgentTransfers = 100;
+    public const int MaximumAgentTextBytes = 8 * 1024;
+    public const long MaximumAgentCopyBytes = 64L * 1024 * 1024;
 
     private static readonly UTF8Encoding StrictUtf8 = new(
         encoderShouldEmitUTF8Identifier: false,
@@ -190,6 +192,25 @@ public sealed class AgentFileActionComposer
                 FilePanelCapability.CreateDirectory
                 | FilePanelCapability.GovernedCreateDirectory,
                 createDirectory.SessionId),
+            AgentFileRequest.CreateText createText => new(
+                GovernedFileToolNames.CreateText,
+                GovernedFileToolNames.SessionWrite,
+                FilePanelCapability.StreamingWrite
+                | FilePanelCapability.GovernedCreateFile,
+                createText.SessionId),
+            AgentFileRequest.ReplaceText replaceText => new(
+                GovernedFileToolNames.ReplaceText,
+                GovernedFileToolNames.SessionWrite,
+                FilePanelCapability.StreamingWrite
+                | FilePanelCapability.GovernedReplaceFile,
+                replaceText.SessionId),
+            AgentFileRequest.Copy copy => new(
+                GovernedFileToolNames.Copy,
+                GovernedFileToolNames.SessionCopy,
+                FilePanelCapability.Copy
+                | FilePanelCapability.GovernedCopySource
+                | FilePanelCapability.GovernedCopy,
+                copy.SessionId),
             AgentFileRequest.Move move => new(
                 BuiltInAgentTools.FilesMove,
                 SessionCapabilities.FilesRename,
@@ -220,6 +241,9 @@ public sealed class AgentFileActionComposer
         var relativePath = RequestPath(request);
         if (request is AgentFileRequest.Read
             or AgentFileRequest.CreateDirectory
+            or AgentFileRequest.CreateText
+            or AgentFileRequest.ReplaceText
+            or AgentFileRequest.Copy
             or AgentFileRequest.Move
             or AgentFileRequest.Delete)
         {
@@ -235,6 +259,17 @@ public sealed class AgentFileActionComposer
             {
                 throw new ArgumentException(
                     "A governed file move requires different source and destination paths.",
+                    nameof(request));
+            }
+        }
+        if (request is AgentFileRequest.Copy copyRequest)
+        {
+            RequireNonRootPath(copyRequest.DestinationRelativePath);
+            _ = ResolveLocation(metadata, copyRequest.DestinationRelativePath);
+            if (copyRequest.DestinationRelativePath.SequenceEqual(copyRequest.RelativePath))
+            {
+                throw new ArgumentException(
+                    "A governed file copy requires different source and destination paths.",
                     nameof(request));
             }
         }
@@ -312,7 +347,28 @@ public sealed class AgentFileActionComposer
                 arguments.Add(Argument("effect", "create_directory"));
                 arguments.Add(Argument("precondition", "must_not_exist"));
                 break;
+            case AgentFileRequest.CreateText createText:
+                AddTextMutationArguments(arguments, createText.Content, "create_text");
+                arguments.Add(Argument("precondition", "must_not_exist"));
+                break;
+            case AgentFileRequest.ReplaceText replaceText:
+                AddTextMutationArguments(arguments, replaceText.Content, "replace_text");
+                arguments.Add(Argument("entry_ref", replaceText.EntryReference.Value));
+                arguments.Add(Argument("precondition", "version_matches"));
+                break;
+            case AgentFileRequest.Copy copy:
+                arguments.Add(Argument("entry_ref", copy.EntryReference.Value));
+                arguments.Add(Argument(
+                    "destination_relative_path",
+                    DisplayPath(copy.DestinationRelativePath, isRelative: true)));
+                arguments.Add(Argument("effect", "copy"));
+                arguments.Add(Argument("maximum_bytes", Invariant(MaximumAgentCopyBytes)));
+                arguments.Add(Argument("destination_precondition", "must_not_exist"));
+                break;
             case AgentFileRequest.Move moveRequest:
+                arguments.Add(Argument(
+                    "entry_ref",
+                    RequireEntryReference(moveRequest.EntryReference, nameof(request)).Value));
                 arguments.Add(Argument(
                     "destination_relative_path",
                     DisplayPath(moveRequest.DestinationRelativePath, isRelative: true)));
@@ -320,6 +376,9 @@ public sealed class AgentFileActionComposer
                 arguments.Add(Argument("destination_precondition", "must_not_exist"));
                 break;
             case AgentFileRequest.Delete delete:
+                arguments.Add(Argument(
+                    "entry_ref",
+                    RequireEntryReference(delete.EntryReference, nameof(request)).Value));
                 arguments.Add(Argument("effect", "permanent_delete"));
                 arguments.Add(Argument("recursive", delete.Recursive ? "true" : "false"));
                 arguments.Add(Argument("precondition", "must_exist"));
@@ -343,6 +402,9 @@ public sealed class AgentFileActionComposer
             AgentFileRequest.Transfers => [],
             AgentFileRequest.CreateDirectory createDirectory =>
                 createDirectory.RelativePath,
+            AgentFileRequest.CreateText createText => createText.RelativePath,
+            AgentFileRequest.ReplaceText replaceText => replaceText.RelativePath,
+            AgentFileRequest.Copy copy => copy.RelativePath,
             AgentFileRequest.Move move => move.RelativePath,
             AgentFileRequest.Delete delete => delete.RelativePath,
             _ => throw new ArgumentOutOfRangeException(
@@ -350,6 +412,60 @@ public sealed class AgentFileActionComposer
                 request.GetType(),
                 "The agent file request kind is not supported."),
         };
+
+    private static void AddTextMutationArguments(
+        ICollection<MaterialArgument> arguments,
+        string content,
+        string effect)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        var bytes = StrictUtf8.GetBytes(content);
+        try
+        {
+            if (bytes.Length > MaximumAgentTextBytes)
+            {
+                throw new ArgumentException(
+                    $"Agent text content cannot exceed {MaximumAgentTextBytes} UTF-8 bytes.",
+                    nameof(content));
+            }
+
+            if (content.EnumerateRunes().Any(rune =>
+                    Rune.GetUnicodeCategory(rune) is UnicodeCategory.Format
+                        or UnicodeCategory.LineSeparator
+                        or UnicodeCategory.ParagraphSeparator
+                    || (Rune.GetUnicodeCategory(rune) == UnicodeCategory.Control
+                        && rune.Value is not '\t' and not '\n' and not '\r')))
+            {
+                throw new ArgumentException(
+                    "Agent text content contains unsupported control characters.",
+                    nameof(content));
+            }
+
+            if (AgentLiteralSecretValidator.ContainsLikelyLiteralSecret(content))
+            {
+                throw new ArgumentException(
+                    "Agent text content appears to contain literal secret material.",
+                    nameof(content));
+            }
+
+            arguments.Add(Argument("effect", effect));
+            arguments.Add(Argument("content_bytes", Invariant(bytes.Length)));
+            arguments.Add(Argument(
+                "content_sha256",
+                Convert.ToHexStringLower(SHA256.HashData(bytes))));
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(bytes);
+        }
+    }
+
+    private static AgentFileEntryReference RequireEntryReference(
+        AgentFileEntryReference? reference,
+        string parameterName) =>
+        reference ?? throw new ArgumentException(
+            "This file mutation requires an opaque reference from files.stat.",
+            parameterName);
 
     private static ResolvedFileContext ResolveForPreparation(
         AgentContextSnapshot context,

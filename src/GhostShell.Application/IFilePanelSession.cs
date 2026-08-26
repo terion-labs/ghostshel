@@ -40,6 +40,26 @@ public interface IFilePanelSession : IPanelSession
         FilePanelDeleteRequest request,
         CancellationToken cancellationToken);
 
+    ValueTask<FilePanelResult<FilePanelTextWriteReceipt>> WriteTextAsync(
+        FilePanelTextWriteRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        _ = cancellationToken;
+        return ValueTask.FromResult(FilePanelResult<FilePanelTextWriteReceipt>.Failure(
+            FilePanelMutationErrors.Unsupported));
+    }
+
+    ValueTask<FilePanelResult<FilePanelCopyReceipt>> CopyAsync(
+        FilePanelCopyRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        _ = cancellationToken;
+        return ValueTask.FromResult(FilePanelResult<FilePanelCopyReceipt>.Failure(
+            FilePanelMutationErrors.Unsupported));
+    }
+
     /// <summary>
     /// Defaulted for the same reason the client's is: most connections have no
     /// notion of who can do what, and none should have to write out that they

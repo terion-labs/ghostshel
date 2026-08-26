@@ -53,7 +53,8 @@ public sealed record DockerContainerItem(
     string NetworkIo,
     string BlockIo,
     string? ComposeProject = null,
-    string? ComposeService = null);
+    string? ComposeService = null,
+    DockerContainerRevision? ControlRevision = null);
 
 public sealed record DockerImageItem(
     DockerResourceItem Resource,
@@ -156,6 +157,14 @@ public interface IDockerPanelSession : IPanelSession
     ValueTask<DockerResult<DockerFileSnapshot>> ReadFileAsync(
         DockerFileReadRequest request,
         CancellationToken cancellationToken);
+
+    ValueTask<DockerContainerControlResult> ControlContainerAsync(
+        DockerContainerControlRequest request,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(new DockerContainerControlResult(
+            DockerContainerControlOutcome.NotDispatched,
+            "docker_container_control_unavailable",
+            Retryable: false));
 }
 
 public interface IDockerPanelSessionFactory

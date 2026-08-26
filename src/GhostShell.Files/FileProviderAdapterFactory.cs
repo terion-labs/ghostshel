@@ -283,7 +283,11 @@ internal sealed class FileProviderAdapterFactory(
             deferred,
             new FileLocation(providerId, authority, FilePath.Root),
             FileProviderFamily.WebDav,
-            FilePanelCapability.GovernedCreateDirectory,
+            FilePanelCapability.GovernedCreateDirectory
+                | FilePanelCapability.GovernedCreateFile
+                | FilePanelCapability.GovernedReplaceFile
+                | FilePanelCapability.GovernedCopySource
+                | FilePanelCapability.GovernedCopy,
             deferred);
     }
 

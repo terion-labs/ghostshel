@@ -175,6 +175,9 @@ public static class BuiltInAgentTools
     public const string FilesCreateDirectory = "files.mkdir";
     public const string FilesMove = "files.move";
     public const string FilesDelete = "files.delete";
+    public const string FilesCreateText = GovernedFileToolNames.CreateText;
+    public const string FilesReplaceText = GovernedFileToolNames.ReplaceText;
+    public const string FilesCopy = GovernedFileToolNames.Copy;
     public const string ProcessesList = "processes.list";
     public const string StatisticsRead = "statistics.read";
     public const string DatabaseReadState = "database.read_state";
@@ -192,6 +195,21 @@ public static class BuiltInAgentTools
     public const string DockerFilesList = "docker.files_list";
     public const string DockerFilesStat = "docker.files_stat";
     public const string DockerFileRead = "docker.file_read";
+    public const string DockerContainerStart = "docker.container_start";
+    public const string DockerContainerStop = "docker.container_stop";
+    public const string DockerContainerRestart = "docker.container_restart";
+    public const string DockerContainerPause = "docker.container_pause";
+    public const string DockerContainerResume = "docker.container_resume";
+    public const string DockerContainerRemove = "docker.container_remove";
+    public const string GitReadState = GitAgentToolNames.ReadState;
+    public const string GitReadDiff = GitAgentToolNames.ReadDiff;
+    public const string GitReadRemoteRef = GitAgentToolNames.ReadRemoteRef;
+    public const string GitStage = GitAgentToolNames.Stage;
+    public const string GitUnstage = GitAgentToolNames.Unstage;
+    public const string GitBranchCreate = GitAgentToolNames.BranchCreate;
+    public const string GitBranchCheckout = GitAgentToolNames.BranchCheckout;
+    public const string GitCommit = GitAgentToolNames.Commit;
+    public const string GitPush = GitAgentToolNames.Push;
     public const string McpCall = "mcp.call";
 
     public static AgentToolCatalog Catalog { get; } = new(
@@ -431,6 +449,21 @@ public static class BuiltInAgentTools
             AgentCapability.EditFiles,
             AgentActionRisk.Destructive),
         Tool(
+            FilesCreateText,
+            "Create text file",
+            AgentCapability.EditFiles,
+            AgentActionRisk.Mutation),
+        Tool(
+            FilesReplaceText,
+            "Replace text file",
+            AgentCapability.EditFiles,
+            AgentActionRisk.Destructive),
+        Tool(
+            FilesCopy,
+            "Copy file",
+            AgentCapability.EditFiles,
+            AgentActionRisk.Mutation),
+        Tool(
             ProcessesList,
             "List local processes",
             AgentCapability.ProcessData,
@@ -515,6 +548,65 @@ public static class BuiltInAgentTools
             "Read Docker resource text file",
             AgentCapability.DockerData,
             AgentActionRisk.Observation),
+        Tool(
+            DockerContainerStart,
+            "Start Docker container",
+            AgentCapability.Docker,
+            AgentActionRisk.Destructive),
+        Tool(
+            DockerContainerStop,
+            "Stop Docker container",
+            AgentCapability.Docker,
+            AgentActionRisk.Destructive),
+        Tool(
+            DockerContainerRestart,
+            "Restart Docker container",
+            AgentCapability.Docker,
+            AgentActionRisk.Destructive),
+        Tool(
+            DockerContainerPause,
+            "Pause Docker container",
+            AgentCapability.Docker,
+            AgentActionRisk.Destructive),
+        Tool(
+            DockerContainerResume,
+            "Resume Docker container",
+            AgentCapability.Docker,
+            AgentActionRisk.Destructive),
+        Tool(
+            DockerContainerRemove,
+            "Remove Docker container",
+            AgentCapability.Docker,
+            AgentActionRisk.Destructive),
+        Tool(
+            GitReadState,
+            "Read Git repository state",
+            AgentCapability.GitData,
+            AgentActionRisk.Observation),
+        Tool(
+            GitReadDiff,
+            "Read Git change diff",
+            AgentCapability.GitData,
+            AgentActionRisk.Observation),
+        Tool(
+            GitReadRemoteRef,
+            "Read Git remote branch state",
+            AgentCapability.GitData,
+            AgentActionRisk.Routine),
+        Tool(GitStage, "Stage Git change", AgentCapability.Git, AgentActionRisk.Mutation),
+        Tool(GitUnstage, "Unstage Git change", AgentCapability.Git, AgentActionRisk.Mutation),
+        Tool(
+            GitBranchCreate,
+            "Create Git branch",
+            AgentCapability.Git,
+            AgentActionRisk.Mutation),
+        Tool(
+            GitBranchCheckout,
+            "Switch Git branch",
+            AgentCapability.Git,
+            AgentActionRisk.Mutation),
+        Tool(GitCommit, "Commit staged Git changes", AgentCapability.Git, AgentActionRisk.Mutation),
+        Tool(GitPush, "Push Git branch", AgentCapability.Git, AgentActionRisk.Privileged),
         Tool(
             McpCall,
             "Run MCP tool",

@@ -49,15 +49,37 @@ public abstract record AgentFileRequest
         ImmutableArray<FilePanelPathSegment> RelativePath)
         : AgentFileRequest;
 
+    public sealed record CreateText(
+        SessionId SessionId,
+        ImmutableArray<FilePanelPathSegment> RelativePath,
+        string Content)
+        : AgentFileRequest;
+
+    public sealed record ReplaceText(
+        SessionId SessionId,
+        ImmutableArray<FilePanelPathSegment> RelativePath,
+        AgentFileEntryReference EntryReference,
+        string Content)
+        : AgentFileRequest;
+
+    public sealed record Copy(
+        SessionId SessionId,
+        ImmutableArray<FilePanelPathSegment> RelativePath,
+        AgentFileEntryReference EntryReference,
+        ImmutableArray<FilePanelPathSegment> DestinationRelativePath)
+        : AgentFileRequest;
+
     public sealed record Move(
         SessionId SessionId,
         ImmutableArray<FilePanelPathSegment> RelativePath,
-        ImmutableArray<FilePanelPathSegment> DestinationRelativePath)
+        ImmutableArray<FilePanelPathSegment> DestinationRelativePath,
+        AgentFileEntryReference? EntryReference = null)
         : AgentFileRequest;
 
     public sealed record Delete(
         SessionId SessionId,
         ImmutableArray<FilePanelPathSegment> RelativePath,
-        bool Recursive = false)
+        bool Recursive = false,
+        AgentFileEntryReference? EntryReference = null)
         : AgentFileRequest;
 }

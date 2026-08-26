@@ -352,6 +352,86 @@ public sealed class DockerSessionHostTests
         Assert.Equal("docker_read_completed", completion.StableCode);
     }
 
+    [Theory]
+    [InlineData(AgentAuthorizationSource.AutoPolicy, false)]
+    [InlineData(AgentAuthorizationSource.HumanApproval, true)]
+    [InlineData(AgentAuthorizationSource.YoloPolicy, true)]
+    public async Task GovernedControlRequiresExplicitApprovalSource(
+        AgentAuthorizationSource source,
+        bool expectedDispatch)
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var factory = new FakeDockerPanelSessionFactory();
+        var composer = new AgentDockerReadActionComposer();
+        var authorization = new DockerControlAuthorizationConsumer(
+            clock,
+            new ClientId("docker-control-client"));
+        await using var host = new InMemorySessionHostClient(
+            new FakeTerminalSessionFactory(),
+            new DesktopLifecyclePolicy(),
+            clock,
+            dockerPanelFactory: factory,
+            agentAuthorizationConsumer: authorization,
+            agentDockerReadActionComposer: composer);
+        _ = (await host.RegisterWorkspaceGraphAsync(
+            new RegisterWorkspaceGraphRequest(WindowId, Workspace()),
+            Context(),
+            CancellationToken.None)).Value();
+        _ = (await host.EnsureDockerSessionAsync(
+            Request(),
+            Context(),
+            CancellationToken.None)).Value();
+        var actor = new ActorDescriptor(
+            new ActorId("docker-control-agent"),
+            ActorKind.Agent,
+            "Docker control agent");
+        var context = (await host.InspectAgentContextAsync(
+            new AgentContextRequest(new AgentTarget.Workspace(WindowId, WorkspaceId)),
+            new OperationContext(
+                RequestId.New(),
+                actor,
+                CancellationId: CancellationId.New()),
+            CancellationToken.None)).Value();
+        var now = clock.GetUtcNow();
+        var action = composer.Prepare(
+            new AgentActionEnvelope(
+                AgentActionId.New(),
+                new AgentRunId("docker-control-run"),
+                actor,
+                policyGeneration: 0,
+                now,
+                now.AddMinutes(1)),
+            context,
+            new AgentDockerControlRequest(
+                PanelId,
+                new DockerResourceReferenceId("opaque_container"),
+                factory.Session!.State.EngineGeneration,
+                new DockerContainerRevision("abcdef"),
+                DockerContainerAction.Pause,
+                "running"));
+        var authorizationId = authorization.Arm(action, source);
+
+        var result = await host.RunAgentDockerControlAsync(
+            authorizationId,
+            action,
+            CancellationToken.None);
+
+        Assert.Equal(expectedDispatch ? 1 : 0, factory.Session.ControlCount);
+        if (expectedDispatch)
+        {
+            var applied = Assert.IsType<HostResult<AgentDockerControlResult>.Success>(result);
+            Assert.Equal(DockerContainerControlOutcome.Applied, applied.Value.Outcome);
+            Assert.Equal(AgentActionOutcome.Succeeded, Assert.Single(authorization.Completions).Outcome);
+        }
+        else
+        {
+            var rejected = Assert.IsType<HostResult<AgentDockerControlResult>.Failure>(result);
+            Assert.Equal(HostErrorCode.InvalidRequest, rejected.Error.Code);
+            Assert.Equal("docker_authorization_rejected", rejected.Error.StableCode);
+            Assert.Equal(AgentActionOutcome.Failed, Assert.Single(authorization.Completions).Outcome);
+        }
+    }
+
     private static InMemorySessionHostClient CreateHost(
         IDockerPanelSessionFactory? dockerFactory,
         ITerminalSessionFactory? terminalFactory = null) =>
@@ -401,6 +481,7 @@ public sealed class DockerSessionHostTests
         SessionCapabilities.DockerFilesList,
         SessionCapabilities.DockerFilesStat,
         SessionCapabilities.DockerFilesRead,
+        SessionCapabilities.DockerContainerPause,
     ]);
 
     private static OperationContext Context(IdempotencyKey? idempotencyKey = null) =>
@@ -490,6 +571,8 @@ public sealed class DockerSessionHostTests
 
         public int ReadStateCount { get; private set; }
 
+        public int ControlCount { get; private set; }
+
         public Func<CancellationToken, ValueTask>? BeforeSnapshotAsync { get; set; }
 
         public int DisposeCount { get; private set; }
@@ -536,6 +619,18 @@ public sealed class DockerSessionHostTests
             DockerFileReadRequest request,
             CancellationToken cancellationToken) =>
             throw new NotSupportedException();
+
+        public ValueTask<DockerContainerControlResult> ControlContainerAsync(
+            DockerContainerControlRequest request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ControlCount++;
+            return ValueTask.FromResult(new DockerContainerControlResult(
+                DockerContainerControlOutcome.Applied,
+                "docker_container_control_applied",
+                Retryable: false));
+        }
 
         public async ValueTask<PanelSessionSnapshot> SnapshotAsync(
             CancellationToken cancellationToken)
@@ -648,6 +743,90 @@ public sealed class DockerSessionHostTests
                             now.AddMinutes(1)),
                         now,
                         CancellationToken.None)));
+        }
+
+        public ValueTask<AgentAuthorizationError?> CompleteAsync(
+            AgentActionPermit permit,
+            AgentActionCompletion completion,
+            CancellationToken cancellationToken)
+        {
+            _ = permit;
+            cancellationToken.ThrowIfCancellationRequested();
+            _completions.Enqueue(completion);
+            return ValueTask.FromResult<AgentAuthorizationError?>(null);
+        }
+
+        private static bool BindingsMatch(
+            AgentActionExecutionBinding left,
+            AgentActionExecutionBinding right) =>
+            left.ActionId == right.ActionId
+            && left.RunId == right.RunId
+            && left.ActorId == right.ActorId
+            && string.Equals(left.ToolName, right.ToolName, StringComparison.Ordinal)
+            && left.Target == right.Target
+            && left.TargetIdentity == right.TargetIdentity
+            && left.TargetFingerprint == right.TargetFingerprint
+            && left.ArgumentDigest == right.ArgumentDigest
+            && left.PolicyGeneration == right.PolicyGeneration;
+    }
+
+    private sealed class DockerControlAuthorizationConsumer(
+        TimeProvider timeProvider,
+        ClientId clientId) : IAgentAuthorizationConsumer
+    {
+        private readonly ConcurrentQueue<AgentActionCompletion> _completions = new();
+        private AgentDockerControlAction? _action;
+        private AgentAuthorizationId _authorizationId;
+        private AgentAuthorizationSource _source;
+        private int _consumed;
+
+        public IReadOnlyList<AgentActionCompletion> Completions => [.. _completions];
+
+        public AgentAuthorizationId Arm(
+            AgentDockerControlAction action,
+            AgentAuthorizationSource source)
+        {
+            _action = action;
+            _source = source;
+            _authorizationId = AgentAuthorizationId.New();
+            Volatile.Write(ref _consumed, 0);
+            return _authorizationId;
+        }
+
+        public ValueTask<AgentPermitResult> ConsumeAsync(
+            AgentAuthorizationId authorizationId,
+            AgentActionExecutionBinding currentBinding,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var action = _action
+                ?? throw new InvalidOperationException("An action must be armed.");
+            var expected = AgentActionExecutionBinding.FromProposal(action.Proposal);
+            if (authorizationId != _authorizationId
+                || !BindingsMatch(expected, currentBinding)
+                || Interlocked.CompareExchange(ref _consumed, 1, 0) != 0)
+            {
+                return ValueTask.FromResult<AgentPermitResult>(
+                    new AgentPermitResult.Denied(new AgentAuthorizationError(
+                        AgentAuthorizationErrorCode.AuthorizationMismatch,
+                        "The Docker control binding changed.")));
+            }
+
+            Assert.True(BuiltInAgentTools.Catalog.TryGet(
+                action.Proposal.ToolName,
+                out var tool));
+            var now = timeProvider.GetUtcNow();
+            return ValueTask.FromResult<AgentPermitResult>(
+                new AgentPermitResult.Granted(new AgentActionPermit(
+                    new AgentActionAuthorization(
+                        authorizationId,
+                        action.Proposal,
+                        tool!,
+                        _source,
+                        clientId,
+                        now.AddMinutes(1)),
+                    now,
+                    CancellationToken.None)));
         }
 
         public ValueTask<AgentAuthorizationError?> CompleteAsync(

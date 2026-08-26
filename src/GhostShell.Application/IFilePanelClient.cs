@@ -50,6 +50,26 @@ public interface IFilePanelClient
         FilePanelDeleteRequest request,
         CancellationToken cancellationToken);
 
+    ValueTask<FilePanelResult<FilePanelTextWriteReceipt>> WriteTextAsync(
+        FilePanelTextWriteRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        _ = cancellationToken;
+        return ValueTask.FromResult(FilePanelResult<FilePanelTextWriteReceipt>.Failure(
+            FilePanelMutationErrors.Unsupported));
+    }
+
+    ValueTask<FilePanelResult<FilePanelCopyReceipt>> CopyAsync(
+        FilePanelCopyRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        _ = cancellationToken;
+        return ValueTask.FromResult(FilePanelResult<FilePanelCopyReceipt>.Failure(
+            FilePanelMutationErrors.Unsupported));
+    }
+
     /// <summary>
     /// Who can do what to one item. A connection that does not describe such a
     /// thing says so rather than inventing an answer, which is what this
@@ -75,6 +95,15 @@ public interface IFilePanelClient
         return ValueTask.FromResult(FilePanelResult<FilePanelAccessControl>.Failure(
             FilePanelAccessControlErrors.Unsupported));
     }
+}
+
+public static class FilePanelMutationErrors
+{
+    public static FilePanelError Unsupported { get; } = new(
+        FilePanelErrorCode.UnsupportedCapability,
+        "file_mutation_unsupported",
+        "This connection does not support this file mutation.",
+        Retryable: false);
 }
 
 public static class FilePanelAccessControlErrors

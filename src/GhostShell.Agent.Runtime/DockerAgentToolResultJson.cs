@@ -226,6 +226,10 @@ internal static class DockerAgentToolResultJson
         writer.WriteString("memory", value.Memory);
         writer.WriteString("network_io", value.NetworkIo);
         writer.WriteString("block_io", value.BlockIo);
+        WriteOptionalString(
+            writer,
+            "container_revision",
+            value.ControlRevision?.Value);
         WriteOptionalRedacted(writer, "compose_project", value.ComposeProject, ref redactionCount);
         WriteOptionalRedacted(writer, "compose_service", value.ComposeService, ref redactionCount);
     }

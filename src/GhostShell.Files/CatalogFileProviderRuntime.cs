@@ -117,6 +117,16 @@ public sealed class CatalogFileProviderRuntime :
         CancellationToken cancellationToken) =>
         UseActiveAsync((client, token) => client.PreviewAsync(request, token), cancellationToken);
 
+    public ValueTask<FilePanelResult<FilePanelTextWriteReceipt>> WriteTextAsync(
+        FilePanelTextWriteRequest request,
+        CancellationToken cancellationToken) =>
+        UseActiveAsync((client, token) => client.WriteTextAsync(request, token), cancellationToken);
+
+    public ValueTask<FilePanelResult<FilePanelCopyReceipt>> CopyAsync(
+        FilePanelCopyRequest request,
+        CancellationToken cancellationToken) =>
+        UseActiveAsync((client, token) => client.CopyAsync(request, token), cancellationToken);
+
     /// <summary>
     /// Opening content runs against the generation that is active when it
     /// starts, exactly like every other operation here: a profile reload
@@ -1052,6 +1062,20 @@ internal sealed class GenerationBoundFilePanelClient :
         CancellationToken cancellationToken) =>
         UseAsync(
             (client, token) => client.DeleteAsync(request, token),
+            cancellationToken);
+
+    public ValueTask<FilePanelResult<FilePanelTextWriteReceipt>> WriteTextAsync(
+        FilePanelTextWriteRequest request,
+        CancellationToken cancellationToken) =>
+        UseAsync(
+            (client, token) => client.WriteTextAsync(request, token),
+            cancellationToken);
+
+    public ValueTask<FilePanelResult<FilePanelCopyReceipt>> CopyAsync(
+        FilePanelCopyRequest request,
+        CancellationToken cancellationToken) =>
+        UseAsync(
+            (client, token) => client.CopyAsync(request, token),
             cancellationToken);
 
     public ValueTask<FilePanelResult<FilePanelAccessControl>> GetAccessControlAsync(

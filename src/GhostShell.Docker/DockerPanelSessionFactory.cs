@@ -25,6 +25,17 @@ public sealed class DockerPanelSessionFactory(
         SessionCapabilities.DockerFilesList,
         SessionCapabilities.DockerFilesStat,
         SessionCapabilities.DockerFilesRead,
+        .. OperatingSystem.IsMacOS()
+            ? new[]
+            {
+                SessionCapabilities.DockerContainerStart,
+                SessionCapabilities.DockerContainerStop,
+                SessionCapabilities.DockerContainerRestart,
+                SessionCapabilities.DockerContainerPause,
+                SessionCapabilities.DockerContainerResume,
+                SessionCapabilities.DockerContainerRemove,
+            }
+            : [],
     ]);
 
     public async ValueTask<IDockerPanelSession> CreateAsync(
@@ -45,12 +56,18 @@ public sealed class DockerPanelSessionFactory(
                 "The Docker engine could not be opened.");
         }
 
+        var capabilities = OperatingSystem.IsMacOS()
+            && target.Connection.ConnectionKind == ConnectionKind.Local
+            && _client.SupportsContainerMutation
+                ? Capabilities
+                : new CapabilitySet(Capabilities.Values.Where(capability =>
+                    !capability.StartsWith("docker.container.", StringComparison.Ordinal)));
         return new DockerPanelSession(
             sessionId,
             target,
             _client,
             success.Value,
-            Capabilities,
+            capabilities,
             _timeProvider);
     }
 }

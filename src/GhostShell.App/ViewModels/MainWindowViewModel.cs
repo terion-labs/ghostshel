@@ -100,6 +100,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private readonly IRedisPanelSessionFactory? _redisPanelSessionFactory;
     private readonly IDockerEngineClient? _dockerEngineClient;
     private readonly IGitRepositoryClient? _gitRepositoryClient;
+    private readonly IGitRepositoryMutationCoordinator? _gitMutationCoordinator;
     private readonly IGitPanelPreferences? _gitPanelPreferences;
     private readonly ISqlLanguageService? _sqlLanguageService;
     private readonly IImagePreviewDecoder? _imagePreviewDecoder;
@@ -258,6 +259,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         IDockerEngineClient? dockerEngineClient = null,
         IGitRepositoryClient? gitRepositoryClient = null,
         IGitPanelPreferences? gitPanelPreferences = null,
+        IGitRepositoryMutationCoordinator? gitMutationCoordinator = null,
         TerminalMultiplexerCoordinator? terminalMultiplexerCoordinator = null,
         IAgentModelFavoriteStore? agentModelFavoriteStore = null,
         AgentPolicyCoordinator? agentPolicyCoordinator = null,
@@ -293,6 +295,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _redisPanelSessionFactory = redisPanelSessionFactory;
         _dockerEngineClient = dockerEngineClient;
         _gitRepositoryClient = gitRepositoryClient;
+        _gitMutationCoordinator = gitMutationCoordinator;
         _gitPanelPreferences = gitPanelPreferences;
         _sqlLanguageService = sqlLanguageService;
         _imagePreviewDecoder = imagePreviewDecoder;
@@ -13263,7 +13266,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             _gitRepositoryClient,
             connection,
             repositoryPath,
-            _gitPanelPreferences);
+            _gitPanelPreferences,
+            _gitMutationCoordinator);
     }
 
     /// <summary>
@@ -14155,6 +14159,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                     ClientId,
                     owner),
                 DockerRuntimePanelViewModel docker => docker.StartHostingAsync(
+                    SessionClient,
+                    ClientId,
+                    owner),
+                GitRuntimePanelViewModel git => git.StartHostingAsync(
                     SessionClient,
                     ClientId,
                     owner),

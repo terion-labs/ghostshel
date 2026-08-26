@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text;
 using GhostShell.Application;
 using GhostShell.Core;
 
@@ -20,6 +21,8 @@ internal sealed class FakeFilePanelSessionFactory : IFilePanelSessionFactory
         SessionCapabilities.FilesCreateDirectory,
         SessionCapabilities.FilesRename,
         SessionCapabilities.FilesDelete,
+        GovernedFileToolNames.SessionWrite,
+        GovernedFileToolNames.SessionCopy,
         SessionCapabilities.FilesTransferEnqueue,
         SessionCapabilities.FilesTransferCancel,
         SessionCapabilities.FilesTransferRetry,
@@ -115,6 +118,10 @@ internal sealed class FakeFilePanelSession : IFilePanelSession
 
     public int RenameCount { get; private set; }
 
+    public int WriteTextCount { get; private set; }
+
+    public int CopyCount { get; private set; }
+
     public int ListCount { get; private set; }
 
     public int SearchCount { get; private set; }
@@ -138,6 +145,10 @@ internal sealed class FakeFilePanelSession : IFilePanelSession
     public FilePanelDeleteRequest? LastDeleteRequest { get; private set; }
 
     public FilePanelRenameRequest? LastRenameRequest { get; private set; }
+
+    public FilePanelTextWriteRequest? LastWriteTextRequest { get; private set; }
+
+    public FilePanelCopyRequest? LastCopyRequest { get; private set; }
 
     public Func<
         FilePanelListRequest,
@@ -312,6 +323,36 @@ internal sealed class FakeFilePanelSession : IFilePanelSession
             new FilePanelDeleteReceipt(request.Location, false)));
     }
 
+    public ValueTask<FilePanelResult<FilePanelTextWriteReceipt>> WriteTextAsync(
+        FilePanelTextWriteRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        WriteTextCount++;
+        LastWriteTextRequest = request;
+        var replaced = request.Precondition.Kind ==
+            FilePanelMutationPreconditionKind.VersionMatches;
+        return ValueTask.FromResult(FilePanelResult<FilePanelTextWriteReceipt>.Success(
+            new FilePanelTextWriteReceipt(
+                request.Location.WithVersion("written-version"),
+                Encoding.UTF8.GetByteCount(request.Content),
+                replaced)));
+    }
+
+    public ValueTask<FilePanelResult<FilePanelCopyReceipt>> CopyAsync(
+        FilePanelCopyRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        CopyCount++;
+        LastCopyRequest = request;
+        return ValueTask.FromResult(FilePanelResult<FilePanelCopyReceipt>.Success(
+            new FilePanelCopyReceipt(
+                request.Source,
+                request.Destination.WithVersion("copied-version"),
+                bytesCopied: 7)));
+    }
+
     public ValueTask<FilePanelResult<FilePanelAccessControl>> GetAccessControlAsync(
         FilePanelAccessControlRequest request,
         CancellationToken cancellationToken)
@@ -449,7 +490,7 @@ internal sealed class FakeFilePanelSession : IFilePanelSession
     }
 
     private static FilePanelEntry Entry(FilePanelLocation location, string name) => new(
-        location,
+        location.WithVersion("test-version"),
         name,
         FilePanelEntryKind.File,
         7,

@@ -889,9 +889,9 @@ The initial tool families are:
 - `files.list`, `files.stat`, bounded textual `files.read`, `files.mkdir`, and
   permanent non-recursive `files.delete`, followed by later provider-neutral
   file mutations from section 8;
-- `processes.list` for one hosted local Process Monitor, followed by scoped
-  Git, process mutation/control, and Docker operations exposed by application
-  services;
+- `processes.list` for one hosted local Process Monitor; governed local macOS
+  Git operations and exact Docker lifecycle tools are exposed by typed
+  application services, while process mutation remains absent;
 - `statistics.read` for one hosted local Statistics panel, returning bounded
   numeric observations through the same observation policy and audit path;
 - `agent.ask_user`, `agent.request_capability`, and `agent.report_progress`.

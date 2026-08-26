@@ -519,4 +519,80 @@ public interface IGitRepositoryClient
         GitRepositoryHandle repository,
         string reference,
         CancellationToken cancellationToken);
+
+    ValueTask<GitResult<GitGovernedState>> ReadGovernedStateAsync(
+        GitRepositoryHandle repository,
+        long generation,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult<GitResult<GitGovernedState>>(
+            new GitResult<GitGovernedState>.Failure(new GitError(
+                GitErrorCode.Unsupported,
+                "Governed Git state is unavailable.",
+                Retryable: false)));
+
+    ValueTask<GitResult<GitGovernedRemoteRef>> ReadGovernedRemoteRefAsync(
+        GitRepositoryHandle repository,
+        string remoteName,
+        string destinationBranch,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult<GitResult<GitGovernedRemoteRef>>(
+            new GitResult<GitGovernedRemoteRef>.Failure(new GitError(
+                GitErrorCode.Unsupported,
+                "Governed remote observation is unavailable.",
+                Retryable: false)));
+
+    ValueTask<GitResult<GitDiffDocument>> ReadGovernedDiffAsync(
+        GitRepositoryHandle repository,
+        GitDiffRequest request,
+        CancellationToken cancellationToken) =>
+        ReadDiffAsync(repository, request, cancellationToken);
+
+    ValueTask<GitGovernedMutationReceipt> StageGovernedAsync(
+        GitRepositoryHandle repository,
+        GitRepositoryGuard expectedState,
+        GitFileChange expectedChange,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(UnsupportedGovernedMutation());
+
+    ValueTask<GitGovernedMutationReceipt> UnstageGovernedAsync(
+        GitRepositoryHandle repository,
+        GitRepositoryGuard expectedState,
+        GitFileChange expectedChange,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(UnsupportedGovernedMutation());
+
+    ValueTask<GitGovernedMutationReceipt> CreateBranchGovernedAsync(
+        GitRepositoryHandle repository,
+        GitRepositoryGuard expectedState,
+        string name,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(UnsupportedGovernedMutation());
+
+    ValueTask<GitGovernedMutationReceipt> CheckoutBranchGovernedAsync(
+        GitRepositoryHandle repository,
+        GitRepositoryGuard expectedState,
+        string branchName,
+        string expectedBranchSha,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(UnsupportedGovernedMutation());
+
+    ValueTask<GitGovernedMutationReceipt> CommitGovernedAsync(
+        GitRepositoryHandle repository,
+        GitRepositoryGuard expectedState,
+        string subject,
+        string? body,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(UnsupportedGovernedMutation());
+
+    ValueTask<GitGovernedMutationReceipt> PushGovernedAsync(
+        GitRepositoryHandle repository,
+        GitGovernedPushRequest request,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(UnsupportedGovernedMutation());
+
+    private static GitGovernedMutationReceipt UnsupportedGovernedMutation() =>
+        new(
+            GitGovernedMutationDisposition.Rejected,
+            "git_governed_operation_unavailable",
+            State: null);
 }

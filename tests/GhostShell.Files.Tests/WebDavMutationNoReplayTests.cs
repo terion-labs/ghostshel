@@ -62,6 +62,62 @@ public sealed class WebDavMutationNoReplayTests
         Assert.Equal(0, request.ContentLength);
     }
 
+    [Fact]
+    public async Task WriteDispatchesPutOnlyOnceWhenServerDropsResponse()
+    {
+        await using var endpoint = new ResponseDroppingWebDavEndpoint("PUT");
+        using var client = CreateClient();
+        var provider = CreateProvider(client, endpoint.BaseUri);
+        var location = Root.Child(new FilePathSegment("file.txt"));
+        await using var source = new MemoryStream([1, 2, 3], writable: false);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        var result = await provider.WriteAsync(
+            new FileWriteRequest(
+                location,
+                contentLength: 3,
+                bufferSize: 1024,
+                new FileMutationPrecondition.MustNotExist()),
+            source,
+            progress: null,
+            timeout.Token);
+
+        Assert.False(result.IsSuccess);
+        Assert.False(timeout.IsCancellationRequested);
+        var request = Assert.Single(endpoint.MutationRequests);
+        Assert.Equal("PUT", request.Method);
+        Assert.Equal("/root/file.txt", request.Target);
+        Assert.Equal(3, request.ContentLength);
+    }
+
+    [Fact]
+    public async Task CopyDispatchesCopyOnlyOnceWhenServerDropsResponse()
+    {
+        await using var endpoint = new ResponseDroppingWebDavEndpoint("COPY");
+        using var client = CreateClient();
+        var provider = CreateProvider(client, endpoint.BaseUri);
+        var source = Root.Child(new FilePathSegment("file.txt"));
+        var destination = Root.Child(new FilePathSegment("copy.txt"));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        var result = await provider.TransferAsync(
+            new FileTransferRequest(
+                source,
+                destination,
+                FileTransferKind.Copy,
+                bufferSize: 1024,
+                new FileMutationPrecondition.MustNotExist()),
+            progress: null,
+            timeout.Token);
+
+        Assert.False(result.IsSuccess);
+        Assert.False(timeout.IsCancellationRequested);
+        var request = Assert.Single(endpoint.MutationRequests);
+        Assert.Equal("COPY", request.Method);
+        Assert.Equal("/root/file.txt", request.Target);
+        Assert.Equal(0, request.ContentLength);
+    }
+
     private static FileLocation Root =>
         new(ProfileId, Authority, FilePath.Root);
 

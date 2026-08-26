@@ -41,6 +41,16 @@ internal sealed class UnavailableFilePanelClient : IFilePanelClient
         FilePanelDeleteRequest request,
         CancellationToken cancellationToken) => Unavailable<FilePanelDeleteReceipt>(cancellationToken);
 
+    public ValueTask<FilePanelResult<FilePanelTextWriteReceipt>> WriteTextAsync(
+        FilePanelTextWriteRequest request,
+        CancellationToken cancellationToken) =>
+        Unavailable<FilePanelTextWriteReceipt>(cancellationToken);
+
+    public ValueTask<FilePanelResult<FilePanelCopyReceipt>> CopyAsync(
+        FilePanelCopyRequest request,
+        CancellationToken cancellationToken) =>
+        Unavailable<FilePanelCopyReceipt>(cancellationToken);
+
     private static ValueTask<FilePanelResult<T>> Unavailable<T>(CancellationToken cancellationToken)
     {
         if (cancellationToken.IsCancellationRequested)

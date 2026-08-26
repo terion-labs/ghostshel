@@ -314,6 +314,120 @@ public sealed class FilePanelClientTests
     }
 
     [Fact]
+    public async Task GovernedTextWriteAndCopyPreserveExactBoundsAndPreconditions()
+    {
+        using var root = TemporaryDirectory.Create();
+        var (client, _) = CreateClient(root.Path);
+        var profile = Assert.Single(client.Profiles);
+        var source = Child(profile.Root, "source.txt");
+        var destination = Child(profile.Root, "copy.txt");
+
+        var created = await client.WriteTextAsync(
+            new FilePanelTextWriteRequest(
+                source,
+                "first",
+                FilePanelMutationPrecondition.MustNotExist),
+            CancellationToken.None);
+        var stated = await client.StatAsync(source, CancellationToken.None);
+        Assert.True(created.IsSuccess, created.Error?.Message);
+        Assert.True(stated.IsSuccess, stated.Error?.Message);
+        var replaced = await client.WriteTextAsync(
+            new FilePanelTextWriteRequest(
+                stated.Value!.Location,
+                "second",
+                FilePanelMutationPrecondition.VersionMatches(
+                    stated.Value.Location.Version!)),
+            CancellationToken.None);
+        Assert.True(replaced.IsSuccess, replaced.Error?.Message);
+        var copied = await client.CopyAsync(
+            new FilePanelCopyRequest(
+                replaced.Value!.Destination,
+                destination,
+                FilePanelClient.MaximumGovernedCopyBytes),
+            CancellationToken.None);
+
+        Assert.False(created.Value!.ReplacedExisting);
+        Assert.True(replaced.Value!.ReplacedExisting);
+        Assert.True(copied.IsSuccess, copied.Error?.Message);
+        Assert.Equal(6, copied.Value!.BytesCopied);
+        Assert.Equal("second", await File.ReadAllTextAsync(Path.Combine(root.Path, "copy.txt")));
+
+        var oversized = await client.WriteTextAsync(
+            new FilePanelTextWriteRequest(
+                Child(profile.Root, "too-large.txt"),
+                new string('x', FilePanelClient.MaximumGovernedTextBytes + 1),
+                FilePanelMutationPrecondition.MustNotExist),
+            CancellationToken.None);
+        Assert.False(oversized.IsSuccess);
+        Assert.Equal(FilePanelErrorCode.LimitExceeded, oversized.Error!.Code);
+    }
+
+    [Fact]
+    public async Task GovernedCopyRejectsAStaleObservedSourceBeforeTransferCommit()
+    {
+        using var root = TemporaryDirectory.Create();
+        var (client, _) = CreateClient(root.Path);
+        var profile = Assert.Single(client.Profiles);
+        var source = Child(profile.Root, "source.txt");
+        var destination = Child(profile.Root, "stale-copy.txt");
+
+        var created = await client.WriteTextAsync(
+            new FilePanelTextWriteRequest(
+                source,
+                "first",
+                FilePanelMutationPrecondition.MustNotExist),
+            CancellationToken.None);
+        Assert.True(created.IsSuccess, created.Error?.Message);
+        var observed = await client.StatAsync(source, CancellationToken.None);
+        Assert.True(observed.IsSuccess, observed.Error?.Message);
+        var replaced = await client.WriteTextAsync(
+            new FilePanelTextWriteRequest(
+                observed.Value!.Location,
+                "new version",
+                FilePanelMutationPrecondition.VersionMatches(
+                    observed.Value.Location.Version!)),
+            CancellationToken.None);
+        Assert.True(replaced.IsSuccess, replaced.Error?.Message);
+
+        var copy = await client.CopyAsync(
+            new FilePanelCopyRequest(
+                observed.Value.Location,
+                destination,
+                FilePanelClient.MaximumGovernedCopyBytes),
+            CancellationToken.None);
+
+        Assert.False(copy.IsSuccess);
+        Assert.Equal(FilePanelErrorCode.PreconditionFailed, copy.Error!.Code);
+        Assert.Equal("file_precondition_failed", copy.Error.StableCode);
+        Assert.False(File.Exists(Path.Combine(root.Path, "stale-copy.txt")));
+    }
+
+    [Fact]
+    public async Task GovernedCopyChecksReturnedStatVersionBeforeTransfer()
+    {
+        var provider = new StaleCopyProvider();
+        var registration = new FileProviderRegistration(
+            "Stale copy fixture",
+            FileProviderFamily.WebDav,
+            provider,
+            provider.Root);
+        using var client = new FilePanelClient([registration]);
+        var root = Assert.Single(client.Profiles).Root;
+
+        var result = await client.CopyAsync(
+            new FilePanelCopyRequest(
+                Child(root, "source.txt").WithVersion("observed-version"),
+                Child(root, "copy.txt"),
+                FilePanelClient.MaximumGovernedCopyBytes),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(FilePanelErrorCode.PreconditionFailed, result.Error!.Code);
+        Assert.Equal("file_copy_source_changed", result.Error.StableCode);
+        Assert.Equal(0, provider.TransferCount);
+    }
+
+    [Fact]
     public async Task UnknownProfileReturnsStableTypedError()
     {
         using var root = TemporaryDirectory.Create();
@@ -421,6 +535,72 @@ public sealed class FilePanelClientTests
         public ValueTask<FileProviderResult<FileTransferReceipt>> TransferAsync(
             FileTransferRequest request,
             IProgress<FileTransferProgress>? progress,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public ValueTask<FileProviderResult<FileDeleteReceipt>> DeleteAsync(
+            FileDeleteRequest request,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    private sealed class StaleCopyProvider : IFileProvider
+    {
+        private static readonly FileAuthority Authority = new("fixture");
+
+        public FileProviderProfileId ProfileId { get; } = new("stale-copy-test");
+
+        public FileLocation Root => new(ProfileId, Authority, FilePath.Root);
+
+        public int TransferCount { get; private set; }
+
+        public FileProviderCapabilities Capabilities { get; } = new(
+            FileProviderCapability.Stat
+            | FileProviderCapability.RangedRead
+            | FileProviderCapability.Copy,
+            FileNameComparison.CaseSensitive,
+            new FileProviderLimits(100, 1024, 1024));
+
+        public ValueTask<FileProviderResult<FileEntry>> StatAsync(
+            FileStatRequest request,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(FileProviderResult<FileEntry>.Success(new FileEntry(
+                request.Location.WithVersion(null),
+                FileEntryKind.File,
+                Size: 1,
+                LastModifiedAt: null,
+                new FileVersion("current-version"),
+                IsHidden: false)));
+
+        public ValueTask<FileProviderResult<FileTransferReceipt>> TransferAsync(
+            FileTransferRequest request,
+            IProgress<FileTransferProgress>? progress,
+            CancellationToken cancellationToken)
+        {
+            TransferCount++;
+            throw new InvalidOperationException("A stale source must not reach transfer dispatch.");
+        }
+
+        public ValueTask<FileProviderResult<FilePage>> ListAsync(
+            FileListRequest request,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public ValueTask<FileProviderResult<FileReadReceipt>> ReadAsync(
+            FileReadRequest request,
+            Stream destination,
+            IProgress<FileTransferProgress>? progress,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public ValueTask<FileProviderResult<FileWriteReceipt>> WriteAsync(
+            FileWriteRequest request,
+            Stream source,
+            IProgress<FileTransferProgress>? progress,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public ValueTask<FileProviderResult<FileEntry>> CreateDirectoryAsync(
+            FileCreateDirectoryRequest request,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public ValueTask<FileProviderResult<FileEntry>> RenameAsync(
+            FileRenameRequest request,
             CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public ValueTask<FileProviderResult<FileDeleteReceipt>> DeleteAsync(

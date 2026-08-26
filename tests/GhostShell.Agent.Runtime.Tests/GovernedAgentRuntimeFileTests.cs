@@ -335,7 +335,9 @@ public sealed class GovernedAgentRuntimeFileTests
             FileScope.ExactPanel,
             ScriptedProvider.ToolThenAnswer(
                 BuiltInAgentTools.FilesDelete,
-                """{"path_segments":["deploy","obsolete"]}"""));
+                $$"""
+                {"path_segments":["deploy","obsolete"],"entry_ref":"{{new string('a', AgentFileEntryReference.EncodedLength)}}"}
+                """));
         fixture.Context.EnableMutations();
         fixture.Files.Failure = new HostError(
             HostErrorCode.EngineFailed,

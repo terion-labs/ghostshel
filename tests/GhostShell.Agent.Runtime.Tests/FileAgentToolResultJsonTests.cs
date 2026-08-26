@@ -100,7 +100,7 @@ public sealed class FileAgentToolResultJsonTests
             IsHidden: false);
 
         var projection = FileAgentToolResultJson.Project(
-            new AgentFileActionResult.Entry(entry),
+            new AgentFileActionResult.Entry(entry, Reference()),
             new FileAgentIntent.Stat(requestedPath),
             metadata);
 
@@ -112,6 +112,7 @@ public sealed class FileAgentToolResultJsonTests
             root.GetProperty("content_origin").GetString());
         Assert.False(root.GetProperty("truncated").GetBoolean());
         Assert.Equal(0, root.GetProperty("redactions").GetInt32());
+        Assert.Equal(Reference().Value, root.GetProperty("entry_ref").GetString());
         var projectedEntry = root.GetProperty("entry");
         Assert.Equal(
             ["reports", "status.txt"],
@@ -266,7 +267,7 @@ public sealed class FileAgentToolResultJsonTests
             IsHidden: false);
 
         var projection = FileAgentToolResultJson.Project(
-            new AgentFileActionResult.Entry(entry),
+            new AgentFileActionResult.Entry(entry, Reference()),
             new FileAgentIntent.Stat(Segments("escape.txt")),
             metadata);
 
@@ -324,12 +325,12 @@ public sealed class FileAgentToolResultJsonTests
             metadata);
         var deletedProjection = FileAgentToolResultJson.Project(
             new AgentFileActionResult.Deleted(deleted),
-            new FileAgentIntent.Delete(deletePath),
+            new FileAgentIntent.Delete(deletePath, Reference()),
             metadata,
             new PanelInstanceId("files-panel"));
         var movedProjection = FileAgentToolResultJson.Project(
             new AgentFileActionResult.Moved(moved),
-            new FileAgentIntent.Move(moveSourcePath, moveDestinationPath),
+            new FileAgentIntent.Move(moveSourcePath, Reference(), moveDestinationPath),
             metadata,
             new PanelInstanceId("files-panel"));
 
@@ -523,7 +524,7 @@ public sealed class FileAgentToolResultJsonTests
                 metadata),
             FileAgentToolResultJson.Project(
                 new AgentFileActionResult.Deleted(outside),
-                new FileAgentIntent.Delete(path),
+                new FileAgentIntent.Delete(path, Reference()),
                 metadata),
             FileAgentToolResultJson.Project(
                 new AgentFileActionResult.Entry(wrongKind),
@@ -660,4 +661,7 @@ public sealed class FileAgentToolResultJsonTests
 
     private static FilePanelPathSegment[] Segments(params string[] values) =>
         [.. values.Select(value => new FilePanelPathSegment(value))];
+
+    private static AgentFileEntryReference Reference() =>
+        new(new string('A', AgentFileEntryReference.EncodedLength));
 }

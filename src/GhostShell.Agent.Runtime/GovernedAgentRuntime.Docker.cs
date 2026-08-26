@@ -31,6 +31,21 @@ public sealed partial class GovernedAgentRuntime
 
         var exactTarget = context.Target
             is AgentTarget.Panel or AgentTarget.ConnectionSession;
+        if (DockerAgentToolSet.IsControlTool(proposal.ToolName))
+        {
+            return await ExecuteDockerControlProposalAsync(
+                    proposal,
+                    descriptor,
+                    context,
+                    eligible,
+                    exactTarget,
+                    resizeEligiblePanelIds,
+                    browserEligiblePanelIds,
+                    fileMetadata,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         var parsed = exactTarget
             ? DockerAgentToolParser.Parse(proposal, eligible.Single())
             : DockerAgentToolParser.Parse(proposal, eligible);
@@ -211,7 +226,7 @@ public sealed partial class GovernedAgentRuntime
 
             if (context.Context.Target is AgentTarget.Workspace)
             {
-                return DockerAgentToolSet.ForWorkspace();
+                return DockerAgentToolSet.ForWorkspace(context.Context.Panels);
             }
 
             var eligible = context.Context.Panels

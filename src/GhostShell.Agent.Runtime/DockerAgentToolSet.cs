@@ -41,6 +41,36 @@ internal static class DockerAgentToolSet
             SessionCapabilities.DockerFilesRead,
             "Read bounded strict UTF-8 text from one exact provider-relative Docker file path. Binary/base64 content is never returned.",
             WriteFileRead),
+        new(
+            BuiltInAgentTools.DockerContainerStart,
+            SessionCapabilities.DockerContainerStart,
+            "Start one exact local Docker container from a preceding state observation. Requires opaque container_ref, engine_generation, one-shot container_revision, and expected_state.",
+            writer => WriteControl(writer, ["created", "exited"])),
+        new(
+            BuiltInAgentTools.DockerContainerStop,
+            SessionCapabilities.DockerContainerStop,
+            "Stop one exact running local Docker container with a fixed ten-second timeout. The outcome can require reconciliation and is never implicitly retried.",
+            writer => WriteControl(writer, ["running"])),
+        new(
+            BuiltInAgentTools.DockerContainerRestart,
+            SessionCapabilities.DockerContainerRestart,
+            "Restart one exact running local Docker container with a fixed ten-second timeout. The outcome can require reconciliation and is never implicitly retried.",
+            writer => WriteControl(writer, ["running"])),
+        new(
+            BuiltInAgentTools.DockerContainerPause,
+            SessionCapabilities.DockerContainerPause,
+            "Pause one exact running local Docker container from a preceding state observation.",
+            writer => WriteControl(writer, ["running"])),
+        new(
+            BuiltInAgentTools.DockerContainerResume,
+            SessionCapabilities.DockerContainerResume,
+            "Resume one exact paused local Docker container from a preceding state observation.",
+            writer => WriteControl(writer, ["paused"])),
+        new(
+            BuiltInAgentTools.DockerContainerRemove,
+            SessionCapabilities.DockerContainerRemove,
+            "Remove one exact stopped standalone local Docker container. Force removal and volume removal are unavailable.",
+            writer => WriteControl(writer, ["created", "exited", "dead"])),
     ];
 
     public static ImmutableArray<AgentToolDefinition> For(AgentContextPanel panel)
@@ -81,10 +111,22 @@ internal static class DockerAgentToolSet
         return tools.ToImmutable();
     }
 
-    public static ImmutableArray<AgentToolDefinition> ForWorkspace() =>
-        [.. Specifications
+    public static ImmutableArray<AgentToolDefinition> ForWorkspace(
+        IReadOnlyList<AgentContextPanel> panels)
+    {
+        if (ActiveDockerPanels(panels).Length > 0)
+        {
+            return For(panels);
+        }
+
+        // A workspace launcher may create a Docker panel later. Preserve only
+        // the bounded observation family until a live local session proves
+        // each lifecycle capability.
+        return [.. Specifications
+            .Where(specification => !IsControlTool(specification.Name))
             .Select(specification => AgentToolScopeSchema.WithRequiredPanelId(
                 Tool(specification, panelIds: null)))];
+    }
 
     internal static ImmutableArray<AgentContextPanel> ActiveDockerPanels(
         IReadOnlyList<AgentContextPanel> panels)
@@ -110,6 +152,14 @@ internal static class DockerAgentToolSet
             specification.Name,
             toolName,
             StringComparison.Ordinal))?.Capability;
+
+    internal static bool IsControlTool(string toolName) => toolName is
+        BuiltInAgentTools.DockerContainerStart
+        or BuiltInAgentTools.DockerContainerStop
+        or BuiltInAgentTools.DockerContainerRestart
+        or BuiltInAgentTools.DockerContainerPause
+        or BuiltInAgentTools.DockerContainerResume
+        or BuiltInAgentTools.DockerContainerRemove;
 
     private static bool SupportsDockerPanel(AgentContextPanel panel) =>
         panel.Kind == PanelKind.Docker
@@ -201,6 +251,25 @@ internal static class DockerAgentToolSet
         WriteInteger(writer, "maximum_bytes", 1, 16 * 1_024, 8 * 1_024);
     }
 
+    private static void WriteControl(
+        Utf8JsonWriter writer,
+        IReadOnlyList<string> expectedStates)
+    {
+        WriteString(writer, "container_ref", 1, 128);
+        WriteString(writer, "engine_generation", 1, 128);
+        WriteString(writer, "container_revision", 1, 128);
+        writer.WriteStartObject("expected_state");
+        writer.WriteString("type", "string");
+        writer.WriteStartArray("enum");
+        foreach (var state in expectedStates)
+        {
+            writer.WriteStringValue(state);
+        }
+
+        writer.WriteEndArray();
+        writer.WriteEndObject();
+    }
+
     private static IReadOnlyList<string> RequiredArguments(string toolName) =>
         toolName switch
         {
@@ -209,6 +278,18 @@ internal static class DockerAgentToolSet
             BuiltInAgentTools.DockerFilesList
                 or BuiltInAgentTools.DockerFilesStat
                 or BuiltInAgentTools.DockerFileRead => ["resource_ref", "path"],
+            BuiltInAgentTools.DockerContainerStart
+                or BuiltInAgentTools.DockerContainerStop
+                or BuiltInAgentTools.DockerContainerRestart
+                or BuiltInAgentTools.DockerContainerPause
+                or BuiltInAgentTools.DockerContainerResume
+                or BuiltInAgentTools.DockerContainerRemove =>
+                [
+                    "container_ref",
+                    "engine_generation",
+                    "container_revision",
+                    "expected_state",
+                ],
             _ => [],
         };
 

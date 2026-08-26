@@ -77,6 +77,16 @@ internal sealed class HostedSession
                 nameof(engine));
         }
 
+        var gitMetadata = engine is IGitPanelSession git
+            ? git.State.Metadata
+            : null;
+        if ((engine.Kind == PanelKind.Git) != (gitMetadata is not null))
+        {
+            throw new ArgumentException(
+                "Git sessions require a Git engine with trusted repository state.",
+                nameof(engine));
+        }
+
         Engine = engine;
         Owner = owner;
         Role = role;
@@ -96,7 +106,8 @@ internal sealed class HostedSession
             engineSnapshot.Failure,
             terminalMetadata,
             fileMetadata,
-            browserMetadata);
+            browserMetadata,
+            gitMetadata);
         AppendEvent(SessionEventKind.Created, "Session created.");
     }
 
@@ -583,6 +594,39 @@ internal sealed class HostedSession
                 // A Docker provider cannot preserve agent authority by throwing
                 // while its exact binding, generation, and live capability are
                 // revalidated.
+                return false;
+            }
+        }
+    }
+
+    public bool CanExecuteAgentGitAction(
+        IGitPanelSession git,
+        GitSessionBinding expectedBinding,
+        long expectedSessionRevision,
+        string requiredCapability,
+        CancellationToken runtimeAuthority)
+    {
+        ArgumentNullException.ThrowIfNull(git);
+        ArgumentException.ThrowIfNullOrWhiteSpace(requiredCapability);
+        lock (_gate)
+        {
+            try
+            {
+                return _descriptor.Lifecycle == SessionLifecycle.Active
+                    && _descriptor.Revision == expectedSessionRevision
+                    && Engine.Kind == PanelKind.Git
+                    && ReferenceEquals(Engine, git)
+                    && git.Binding == expectedBinding
+                    && _descriptor.GitMetadata == git.State.Metadata
+                    && _descriptor.Capabilities.Contains(requiredCapability)
+                    && git.Capabilities.Contains(requiredCapability)
+                    && _runtimeAuthority.Token.Equals(runtimeAuthority)
+                    && !runtimeAuthority.IsCancellationRequested;
+            }
+            catch (Exception)
+            {
+                // A Git provider cannot preserve authority by throwing while
+                // its exact repository binding is revalidated.
                 return false;
             }
         }
@@ -1287,11 +1331,31 @@ internal sealed class HostedSession
     private SessionSnapshot SnapshotUnsafe()
     {
         RefreshBrowserMetadataUnsafe();
+        RefreshGitMetadataUnsafe();
         return new(
             _descriptor,
             _sequence,
             [.. _attachments.Values.OrderBy(item => item.AttachedAtUtc)],
             _inputLease);
+    }
+
+    private void RefreshGitMetadataUnsafe()
+    {
+        if (Engine is not IGitPanelSession git)
+        {
+            return;
+        }
+
+        var metadata = git.State.Metadata;
+        if (_descriptor.GitMetadata == metadata)
+        {
+            return;
+        }
+
+        _descriptor = _descriptor with { GitMetadata = metadata };
+        AppendEventUnsafe(
+            SessionEventKind.StateChanged,
+            "Git repository authority state changed.");
     }
 
     private void RefreshBrowserMetadataUnsafe()

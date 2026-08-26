@@ -183,6 +183,14 @@ public sealed class DockerFilePanelClient : IFilePanelClient
         FilePanelDeleteRequest request,
         CancellationToken cancellationToken) => Unsupported<FilePanelDeleteReceipt>();
 
+    public ValueTask<FilePanelResult<FilePanelTextWriteReceipt>> WriteTextAsync(
+        FilePanelTextWriteRequest request,
+        CancellationToken cancellationToken) => Unsupported<FilePanelTextWriteReceipt>();
+
+    public ValueTask<FilePanelResult<FilePanelCopyReceipt>> CopyAsync(
+        FilePanelCopyRequest request,
+        CancellationToken cancellationToken) => Unsupported<FilePanelCopyReceipt>();
+
     public ValueTask<FilePanelResult<FilePanelAccessControl>> GetAccessControlAsync(
         FilePanelAccessControlRequest request,
         CancellationToken cancellationToken) => Unsupported<FilePanelAccessControl>();

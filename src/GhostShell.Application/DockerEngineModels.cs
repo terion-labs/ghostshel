@@ -17,7 +17,20 @@ public enum DockerContainerAction
     Restart,
     Pause,
     Resume,
+    Remove,
 }
+
+public enum DockerContainerMutationOutcome
+{
+    Applied,
+    NotDispatched,
+    OutcomeUnknown,
+}
+
+public sealed record DockerContainerMutationResult(
+    DockerContainerMutationOutcome Outcome,
+    string StableCode,
+    bool Retryable);
 
 public sealed record DockerEngineSnapshot(
     DockerEngineSummary Engine,
@@ -182,6 +195,8 @@ public abstract record DockerResult<T>
 
 public interface IDockerEngineClient
 {
+    bool SupportsContainerMutation => false;
+
     ValueTask<DockerResult<DockerEngineSnapshot>> ReadSnapshotAsync(
         ConnectionProfile connection,
         CancellationToken cancellationToken);
@@ -245,6 +260,16 @@ public interface IDockerEngineClient
         string containerId,
         DockerContainerAction action,
         CancellationToken cancellationToken);
+
+    ValueTask<DockerContainerMutationResult> RunContainerMutationAsync(
+        ConnectionProfile connection,
+        string containerId,
+        DockerContainerAction action,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(new DockerContainerMutationResult(
+            DockerContainerMutationOutcome.NotDispatched,
+            "docker_container_control_unavailable",
+            Retryable: false));
 }
 
 /// <summary>

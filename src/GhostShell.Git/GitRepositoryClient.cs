@@ -9,7 +9,7 @@ namespace GhostShell.Git;
 /// one code path, and the user's configuration, hooks, credential helpers,
 /// and filters all apply because the target's Git does the work.
 /// </summary>
-public sealed class GitRepositoryClient(IConnectionCommandExecutor executor, TimeProvider timeProvider)
+public sealed partial class GitRepositoryClient(IConnectionCommandExecutor executor, TimeProvider timeProvider)
     : IGitRepositoryClient
 {
     private const string GitExecutable = "git";

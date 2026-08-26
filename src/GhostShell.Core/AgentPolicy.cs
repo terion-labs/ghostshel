@@ -90,6 +90,12 @@ public enum AgentCapability
     /// Creating, splitting, and closing tabs and panels in the bound workspace.
     /// </summary>
     WorkspaceLayout,
+
+    /// <summary>
+    /// Bounded Git repository observations distinct from index, ref, and remote
+    /// mutation authority.
+    /// </summary>
+    GitData,
 }
 
 public enum AgentPermission
@@ -147,6 +153,7 @@ public sealed record AgentPolicy(
             [AgentCapability.ProcessData] = AgentPermission.Off,
             [AgentCapability.ArtifactTransfer] = AgentPermission.Off,
             [AgentCapability.WorkspaceLayout] = AgentPermission.Ask,
+            [AgentCapability.GitData] = AgentPermission.Off,
         }.ToImmutableDictionary();
 
     public static AgentPolicy Default { get; } = new(

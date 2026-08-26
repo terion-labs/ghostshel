@@ -312,7 +312,13 @@ public sealed partial class AgentDockerReadActionComposer
             CopyText(item.NetworkIo, 128, ref budget),
             CopyText(item.BlockIo, 128, ref budget),
             CopyOptionalText(item.ComposeProject, 256, ref budget),
-            CopyOptionalText(item.ComposeService, 256, ref budget));
+            CopyOptionalText(item.ComposeService, 256, ref budget),
+            item.ControlRevision is { } revision
+                ? new DockerContainerRevision(CopyToken(
+                    revision.Value,
+                    128,
+                    ref budget))
+                : null);
     }
 
     private static DockerImageItem CopyImage(DockerImageItem item, ref int budget)

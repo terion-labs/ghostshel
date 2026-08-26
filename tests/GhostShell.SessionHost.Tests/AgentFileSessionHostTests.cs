@@ -823,10 +823,12 @@ public sealed class AgentFileSessionHostTests
     public async Task Delete_derives_non_recursive_must_exist_and_returns_a_fixed_receipt()
     {
         await using var fixture = await MutationFixtureAsync();
+        var reference = await fixture.ReferenceAsync(Path("obsolete.txt"));
         var action = await fixture.PrepareAsync(
             new AgentFileRequest.Delete(
                 fixture.SessionId,
-                Path("obsolete.txt")));
+                Path("obsolete.txt"),
+                EntryReference: reference));
         var authorizationId = fixture.Authorization.Arm(
             action,
             AgentAuthorizationSource.HumanApproval);
@@ -846,7 +848,7 @@ public sealed class AgentFileSessionHostTests
             fixture.Files.LastDeleteRequest);
         Assert.False(request.Recursive);
         Assert.Equal(
-            FilePanelMutationPreconditionKind.MustExist,
+            FilePanelMutationPreconditionKind.VersionMatches,
             request.Precondition.Kind);
         Assert.Equal(1, fixture.Files.DeleteCount);
         var completion = Assert.Single(fixture.Authorization.Completions);
@@ -858,11 +860,13 @@ public sealed class AgentFileSessionHostTests
     public async Task Move_derives_must_not_exist_and_returns_the_verified_destination()
     {
         await using var fixture = await MutationFixtureAsync();
+        var reference = await fixture.ReferenceAsync(Path("draft.txt"));
         var action = await fixture.PrepareAsync(
             new AgentFileRequest.Move(
                 fixture.SessionId,
                 Path("draft.txt"),
-                Path("published", "report.txt")));
+                Path("published", "report.txt"),
+                reference));
         var authorizationId = fixture.Authorization.Arm(
             action,
             AgentAuthorizationSource.HumanApproval);
@@ -896,6 +900,83 @@ public sealed class AgentFileSessionHostTests
     }
 
     [Fact]
+    public async Task Text_create_and_replace_use_exact_preconditions_and_consume_stat_reference()
+    {
+        await using var fixture = await MutationFixtureAsync();
+        var create = await fixture.PrepareAsync(
+            new AgentFileRequest.CreateText(
+                fixture.SessionId,
+                Path("note.txt"),
+                "hello"));
+        var createResult = await fixture.Client.RunAgentFileActionAsync(
+            fixture.Authorization.Arm(create, AgentAuthorizationSource.HumanApproval),
+            create,
+            default);
+
+        Assert.IsType<AgentFileActionResult.CreatedText>(createResult.Value());
+        Assert.Equal(
+            FilePanelMutationPreconditionKind.MustNotExist,
+            fixture.Files.LastWriteTextRequest!.Precondition.Kind);
+        fixture.Authorization.ClearCompletions();
+
+        var reference = await fixture.ReferenceAsync(Path("note.txt"));
+        var replace = await fixture.PrepareAsync(
+            new AgentFileRequest.ReplaceText(
+                fixture.SessionId,
+                Path("note.txt"),
+                reference,
+                "updated"));
+        var replaceResult = await fixture.Client.RunAgentFileActionAsync(
+            fixture.Authorization.Arm(replace, AgentAuthorizationSource.HumanApproval),
+            replace,
+            default);
+
+        Assert.IsType<AgentFileActionResult.ReplacedText>(replaceResult.Value());
+        Assert.Equal(
+            FilePanelMutationPreconditionKind.VersionMatches,
+            fixture.Files.LastWriteTextRequest!.Precondition.Kind);
+        Assert.Equal("test-version", fixture.Files.LastWriteTextRequest.Location.Version);
+
+        var replay = await fixture.PrepareAsync(
+            new AgentFileRequest.ReplaceText(
+                fixture.SessionId,
+                Path("note.txt"),
+                reference,
+                "again"));
+        var replayResult = await fixture.Client.RunAgentFileActionAsync(
+            fixture.Authorization.Arm(replay, AgentAuthorizationSource.HumanApproval),
+            replay,
+            default);
+        Assert.Equal("file_reference_invalid", replayResult.Error().StableCode);
+        Assert.Equal(2, fixture.Files.WriteTextCount);
+    }
+
+    [Fact]
+    public async Task Copy_requires_a_versioned_regular_source_and_a_new_destination()
+    {
+        await using var fixture = await MutationFixtureAsync();
+        var reference = await fixture.ReferenceAsync(Path("source.txt"));
+        var action = await fixture.PrepareAsync(
+            new AgentFileRequest.Copy(
+                fixture.SessionId,
+                Path("source.txt"),
+                reference,
+                Path("archive", "source.txt")));
+
+        var result = await fixture.Client.RunAgentFileActionAsync(
+            fixture.Authorization.Arm(action, AgentAuthorizationSource.HumanApproval),
+            action,
+            default);
+
+        Assert.IsType<AgentFileActionResult.Copied>(result.Value());
+        Assert.Equal("test-version", fixture.Files.LastCopyRequest!.Source.Version);
+        Assert.Equal(
+            AgentFileActionComposer.MaximumAgentCopyBytes,
+            fixture.Files.LastCopyRequest.MaximumBytes);
+        Assert.Equal(1, fixture.Files.CopyCount);
+    }
+
+    [Fact]
     public async Task Mutation_rejects_auto_policy_before_provider_dispatch()
     {
         await using var fixture = await MutationFixtureAsync();
@@ -923,10 +1004,12 @@ public sealed class AgentFileSessionHostTests
     public async Task GovernedMutationCapabilityRemovedDuringAuthorizationDeniesDispatch()
     {
         await using var fixture = await MutationFixtureAsync();
+        var reference = await fixture.ReferenceAsync(Path("obsolete.txt"));
         var action = await fixture.PrepareAsync(
             new AgentFileRequest.Delete(
                 fixture.SessionId,
-                Path("obsolete.txt")));
+                Path("obsolete.txt"),
+                EntryReference: reference));
         var authorizationId = fixture.Authorization.Arm(
             action,
             AgentAuthorizationSource.HumanApproval);
@@ -1059,6 +1142,7 @@ public sealed class AgentFileSessionHostTests
     public async Task Deterministic_mutation_rejection_preserves_safe_typed_failure()
     {
         await using var fixture = await MutationFixtureAsync();
+        var reference = await fixture.ReferenceAsync(Path("obsolete.txt"));
         fixture.Files.DeleteOperation = (_, _) =>
             ValueTask.FromResult(
                 FilePanelResult<FilePanelDeleteReceipt>.Failure(
@@ -1070,7 +1154,8 @@ public sealed class AgentFileSessionHostTests
         var action = await fixture.PrepareAsync(
             new AgentFileRequest.Delete(
                 fixture.SessionId,
-                Path("obsolete.txt")));
+                Path("obsolete.txt"),
+                EntryReference: reference));
         var authorizationId = fixture.Authorization.Arm(
             action,
             AgentAuthorizationSource.HumanApproval);
@@ -1220,9 +1305,15 @@ public sealed class AgentFileSessionHostTests
                     | FilePanelCapability.CreateDirectory
                     | FilePanelCapability.Rename
                     | FilePanelCapability.Delete
+                    | FilePanelCapability.StreamingWrite
+                    | FilePanelCapability.Copy
                     | FilePanelCapability.GovernedCreateDirectory
                     | FilePanelCapability.GovernedRename
-                    | FilePanelCapability.GovernedDelete,
+                    | FilePanelCapability.GovernedDelete
+                    | FilePanelCapability.GovernedCreateFile
+                    | FilePanelCapability.GovernedReplaceFile
+                    | FilePanelCapability.GovernedCopySource
+                    | FilePanelCapability.GovernedCopy,
                     maximumListPageSize: 100,
                     maximumPreviewBytes: 64 * 1024));
 
@@ -1396,6 +1487,21 @@ public sealed class AgentFileSessionHostTests
                 request);
         }
 
+        public async ValueTask<AgentFileEntryReference> ReferenceAsync(
+            ImmutableArray<FilePanelPathSegment> path)
+        {
+            var stat = await PrepareAsync(new AgentFileRequest.Stat(SessionId, path));
+            var authorization = Authorization.Arm(stat);
+            var result = await Client.RunAgentFileActionAsync(
+                authorization,
+                stat,
+                default);
+            var reference = Assert.IsType<AgentFileActionResult.Entry>(result.Value())
+                .Reference;
+            Authorization.ClearCompletions();
+            return Assert.NotNull(reference);
+        }
+
         public OperationContext HumanContext(ClientId? clientId = null)
         {
             var authenticatedClient = clientId ?? ClientId;
@@ -1449,6 +1555,15 @@ public sealed class AgentFileSessionHostTests
 
         public IReadOnlyList<AgentActionCompletion> Completions =>
             [.. _completions];
+
+        public void ClearCompletions()
+        {
+            while (_completions.TryDequeue(out _))
+            {
+            }
+
+            Volatile.Write(ref _consumeCount, 0);
+        }
 
         public AgentAuthorizationId Arm(
             AgentFileAction action,
