@@ -16,20 +16,6 @@ using GhostShell.Git;
 
 namespace GhostShell.App.ViewModels;
 
-public sealed record ManagedRemoteSessionViewModel(
-    TerminalMultiplexerLease Lease,
-    string ConnectionName)
-{
-    public string SessionName => Lease.Session.SessionName;
-
-    public string Status => Lease.State == TerminalMultiplexerLeaseState.Active
-        ? "Detached or active"
-        : "Cleanup pending";
-
-    public bool IsCleanupPending =>
-        Lease.State == TerminalMultiplexerLeaseState.TerminationPending;
-}
-
 public sealed partial class MainWindowViewModel : ObservableObject, IDisposable, IAgentWorkspaceHost, IPanelConnectionOptionsHost
 {
     private enum McpServerTestPresentationState
@@ -117,9 +103,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private bool _restoreSessionsOnStart = true;
     private bool _sessionRestorePreferenceLoaded;
     private bool _sessionRestorePreferenceSaving;
-    private TerminalMultiplexingMode _terminalMultiplexingMode;
-    private bool _terminalMultiplexingPreferenceLoaded;
-    private bool _terminalMultiplexingPreferenceSaving;
     private volatile bool _shutdownStarted;
     private bool _presentationTeardownCompleted;
     private bool _disposed;
@@ -298,10 +281,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             _gitRepositoryClient);
         _sessionRestoreCoordinator = sessionRestoreCoordinator;
         _terminalMultiplexerCoordinator = terminalMultiplexerCoordinator;
+        TerminalContinuity = new TerminalContinuitySettingsViewModel(
+            _terminalMultiplexerCoordinator,
+            FindConnection,
+            SetError,
+            _uiThreadDispatcher);
+        TerminalContinuity.PropertyChanged +=
+            OnTerminalContinuityPropertyChanged;
         _agentPolicyCoordinator = agentPolicyCoordinator;
         _agentPolicyCoordinator?.Changed += OnAgentPolicyCoordinatorChanged;
-        _terminalMultiplexerCoordinator?.LeasesChanged +=
-                OnTerminalMultiplexerLeasesChanged;
         _timeProvider = timeProvider ?? TimeProvider.System;
         History = new RecentSessionHistoryViewModel(
             recentSessionHistory,
@@ -422,6 +410,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public FileTransferViewModel FileTransferState { get; }
 
+    public TerminalContinuitySettingsViewModel TerminalContinuity { get; }
+
     public MainWindowRole Role { get; }
 
     public RuntimeWorkspaceGraphCoordinator RuntimeGraph { get; }
@@ -446,7 +436,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     /// </summary>
     public ApplicationSecurityEditorViewModel ApplicationSecurityEditor { get; }
 
-    public ObservableCollection<ManagedRemoteSessionViewModel> ManagedRemoteSessions { get; } = [];
+    public ObservableCollection<ManagedRemoteSessionViewModel> ManagedRemoteSessions =>
+        TerminalContinuity.ManagedSessions;
 
     public OnboardingViewModel? Onboarding { get; }
 
@@ -1178,6 +1169,29 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         RefreshMcpServerDefinitions(_catalog.Snapshot);
     }
 
+    private void OnTerminalContinuityPropertyChanged(
+        object? sender,
+        PropertyChangedEventArgs eventArgs)
+    {
+        _ = sender;
+        var propertyName = eventArgs.PropertyName switch
+        {
+            nameof(TerminalContinuitySettingsViewModel.UseForSshTerminals) =>
+                nameof(UseTerminalMultiplexingForSshTerminals),
+            nameof(TerminalContinuitySettingsViewModel.CanChange) =>
+                nameof(CanChangeTerminalMultiplexing),
+            nameof(TerminalContinuitySettingsViewModel.HasManagedSessions) =>
+                nameof(HasManagedRemoteSessions),
+            nameof(TerminalContinuitySettingsViewModel.ManagedSessions) =>
+                nameof(ManagedRemoteSessions),
+            _ => null,
+        };
+        if (propertyName is not null)
+        {
+            OnPropertyChanged(propertyName);
+        }
+    }
+
     private void OnAiProviderSettingsPropertyChanged(
         object? sender,
         PropertyChangedEventArgs eventArgs)
@@ -1775,13 +1789,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         || (_sessionRestorePreferenceLoaded && !_sessionRestorePreferenceSaving);
 
     public bool UseTerminalMultiplexingForSshTerminals =>
-        _terminalMultiplexingMode == TerminalMultiplexingMode.Automatic;
+        TerminalContinuity.UseForSshTerminals;
 
     public bool CanChangeTerminalMultiplexing =>
-        _terminalMultiplexerCoordinator is null
-        || (_terminalMultiplexingPreferenceLoaded && !_terminalMultiplexingPreferenceSaving);
+        TerminalContinuity.CanChange;
 
-    public bool HasManagedRemoteSessions => ManagedRemoteSessions.Count > 0;
+    public bool HasManagedRemoteSessions => TerminalContinuity.HasManagedSessions;
 
     public bool IsKeybindingSettingsVisible => _navigation.IsKeybindingSettingsVisible;
 
@@ -3142,156 +3155,30 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     public async Task<bool> LoadTerminalMultiplexingAsync(
         CancellationToken cancellationToken = default)
     {
-        if (_terminalMultiplexerCoordinator is null)
-        {
-            _terminalMultiplexingPreferenceLoaded = true;
-            return true;
-        }
-
-        var preference = await _terminalMultiplexerCoordinator.ReadPreferenceAsync(cancellationToken);
-        var leases = await _terminalMultiplexerCoordinator.ListAsync(cancellationToken);
-        if (!preference.IsSuccess || !leases.IsSuccess)
-        {
-            SetError("Terminal continuity settings could not be loaded.");
-            return false;
-        }
-
-        _terminalMultiplexingMode = preference.Value;
-        _terminalMultiplexingPreferenceLoaded = true;
-        OnPropertyChanged(nameof(UseTerminalMultiplexingForSshTerminals));
-        OnPropertyChanged(nameof(CanChangeTerminalMultiplexing));
-        RefreshManagedRemoteSessions(leases.Value!);
-        return true;
+        return await TerminalContinuity.LoadAsync(cancellationToken);
     }
 
     public async Task<bool> SetUseTerminalMultiplexingForSshTerminalsAsync(
         bool enabled,
         CancellationToken cancellationToken = default)
     {
-        var mode = enabled
-            ? TerminalMultiplexingMode.Automatic
-            : TerminalMultiplexingMode.Disabled;
-        if (_terminalMultiplexerCoordinator is null)
-        {
-            _terminalMultiplexingMode = mode;
-            OnPropertyChanged(nameof(UseTerminalMultiplexingForSshTerminals));
-            return true;
-        }
-
-        if (!_terminalMultiplexingPreferenceLoaded || _terminalMultiplexingPreferenceSaving)
-        {
-            return false;
-        }
-
-        _terminalMultiplexingPreferenceSaving = true;
-        OnPropertyChanged(nameof(CanChangeTerminalMultiplexing));
-        try
-        {
-            var result = await _terminalMultiplexerCoordinator.WritePreferenceAsync(
-                mode,
-                cancellationToken);
-            if (!result.IsSuccess)
-            {
-                SetError("Terminal continuity settings could not be saved.");
-                OnPropertyChanged(nameof(UseTerminalMultiplexingForSshTerminals));
-                return false;
-            }
-
-            _terminalMultiplexingMode = mode;
-            OnPropertyChanged(nameof(UseTerminalMultiplexingForSshTerminals));
-            return true;
-        }
-        finally
-        {
-            _terminalMultiplexingPreferenceSaving = false;
-            OnPropertyChanged(nameof(CanChangeTerminalMultiplexing));
-        }
+        return await TerminalContinuity.SetUseForSshTerminalsAsync(
+            enabled,
+            cancellationToken);
     }
 
     public async Task TerminateManagedRemoteSessionAsync(
         ManagedRemoteSessionViewModel item,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(item);
-        if (_terminalMultiplexerCoordinator is null
-            || FindConnection(item.Lease.ConnectionId) is not { } connection)
-        {
-            SetError("The connection for this managed remote session is unavailable.");
-            return;
-        }
-
-        var result = await _terminalMultiplexerCoordinator.TerminateAsync(
-            connection,
-            item.Lease.Session,
-            cancellationToken);
-        if (!result.Terminated)
-        {
-            SetError(result.Detail);
-        }
-
-        await RefreshManagedRemoteSessionsAsync(cancellationToken);
+        await TerminalContinuity.TerminateAsync(item, cancellationToken);
     }
 
     public async Task ForgetManagedRemoteSessionAsync(
         ManagedRemoteSessionViewModel item,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(item);
-        if (_terminalMultiplexerCoordinator is null)
-        {
-            return;
-        }
-
-        _ = await _terminalMultiplexerCoordinator.ForgetAsync(item.Lease, cancellationToken);
-        await RefreshManagedRemoteSessionsAsync(cancellationToken);
-    }
-
-    private async Task RefreshManagedRemoteSessionsAsync(CancellationToken cancellationToken)
-    {
-        if (_terminalMultiplexerCoordinator is null)
-        {
-            return;
-        }
-
-        var result = await _terminalMultiplexerCoordinator.ListAsync(cancellationToken);
-        if (result.IsSuccess)
-        {
-            RefreshManagedRemoteSessions(result.Value!);
-        }
-    }
-
-    private void RefreshManagedRemoteSessions(
-        IReadOnlyList<TerminalMultiplexerLease> leases)
-    {
-        ManagedRemoteSessions.Clear();
-        foreach (var lease in leases)
-        {
-            ManagedRemoteSessions.Add(new ManagedRemoteSessionViewModel(
-                lease,
-                FindConnection(lease.ConnectionId)?.Name ?? lease.ConnectionId.Value));
-        }
-
-        OnPropertyChanged(nameof(HasManagedRemoteSessions));
-    }
-
-    private async void OnTerminalMultiplexerLeasesChanged(object? sender, EventArgs eventArgs)
-    {
-        _ = sender;
-        _ = eventArgs;
-        if (_terminalMultiplexerCoordinator is null || _disposed)
-        {
-            return;
-        }
-
-        var result = await _terminalMultiplexerCoordinator.ListAsync(CancellationToken.None);
-        if (!result.IsSuccess || _disposed)
-        {
-            return;
-        }
-
-        await _uiThreadDispatcher.InvokeAsync(
-            () => RefreshManagedRemoteSessions(result.Value!),
-            CancellationToken.None);
+        await TerminalContinuity.ForgetAsync(item, cancellationToken);
     }
 
     /// <summary>
@@ -4116,7 +4003,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             }
         }
 
-        await RefreshManagedRemoteSessionsAsync(CancellationToken.None);
+        await TerminalContinuity.RefreshSessionsAsync(CancellationToken.None);
     }
 
     public async ValueTask<HostResult<CloseScopeResult>> CloseWindowAsync(
@@ -9110,7 +8997,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             : ResolveTerminalKeymap(_catalog.Snapshot, terminalProfile.KeymapId);
         var mode = _workspaceTerminalMultiplexingModes.TryGetValue(workspaceId, out var workspaceMode)
             ? workspaceMode
-            : _terminalMultiplexingMode;
+            : TerminalContinuity.Mode;
         var usesContinuity = mode == TerminalMultiplexingMode.Automatic
             && connection.ConnectionKind == ConnectionKind.Ssh;
         if (!usesContinuity)
@@ -10865,10 +10752,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
         _catalog.Changed -= OnCatalogChanged;
         FileTransferState.Dispose();
+        TerminalContinuity.Dispose();
         WorkspaceAutoSave.Seal();
         RuntimeRecovery.Seal();
-        _terminalMultiplexerCoordinator?.LeasesChanged -=
-                OnTerminalMultiplexerLeasesChanged;
         _agentPolicyCoordinator?.Changed -= OnAgentPolicyCoordinatorChanged;
 
         History.SealOperations();
@@ -10891,13 +10777,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _catalog.Changed -= OnCatalogChanged;
         FileTransferState.PropertyChanged -= OnFileTransferStatePropertyChanged;
         FileTransferState.Dispose();
+        TerminalContinuity.PropertyChanged -=
+            OnTerminalContinuityPropertyChanged;
+        TerminalContinuity.Dispose();
         SecretSettings.PropertyChanged -= OnSecretSettingsPropertyChanged;
         SecretSettings.ProjectionChanged -= OnSecretProjectionChanged;
         SecretSettings.Dispose();
         WorkspaceAutoSave.Seal();
         RuntimeRecovery.Seal();
-        _terminalMultiplexerCoordinator?.LeasesChanged -=
-                OnTerminalMultiplexerLeasesChanged;
         _agentPolicyCoordinator?.Changed -= OnAgentPolicyCoordinatorChanged;
         _navigation.PropertyChanged -= OnShellNavigationPropertyChanged;
         DefinitionEdit.PropertyChanged -= OnDefinitionEditPropertyChanged;
