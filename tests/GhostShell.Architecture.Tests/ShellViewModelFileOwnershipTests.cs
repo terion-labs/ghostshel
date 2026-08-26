@@ -40,6 +40,27 @@ public sealed class ShellViewModelFileOwnershipTests
     }
 
     [Fact]
+    public void Settings_presentation_types_live_outside_the_mixed_shell_module()
+    {
+        var shell = ReadViewModelSource("ShellViewModels.cs");
+        var settings = ReadViewModelSource("SettingsPresentationViewModels.cs");
+
+        string[] settingsDeclarations =
+        [
+            "public sealed record AnsiSwatchViewModel",
+            "public sealed record LayoutCardViewModel",
+            "public sealed record ProductComponentViewModel",
+            "public sealed record KeybindingRowViewModel",
+            "public sealed record ThemeChromePreference",
+        ];
+        foreach (var declaration in settingsDeclarations)
+        {
+            Assert.Contains(declaration, settings, StringComparison.Ordinal);
+            Assert.DoesNotContain(declaration, shell, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void Runtime_types_remain_in_the_shell_module_until_the_runtime_slice()
     {
         var shell = ReadViewModelSource("ShellViewModels.cs");
