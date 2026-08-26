@@ -145,7 +145,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private AgentChatViewModel? _agentChat;
     private string? _operationError;
     private string _tabReorderStatus = string.Empty;
-    private string _launcherSearchQuery = string.Empty;
     private bool _isAgentPanelVisible;
     private bool _isAgentPanelDocked;
     private DefinitionKey? _editingDefinition;
@@ -162,7 +161,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private KeybindingEditorSessionViewModel? _keybindingEditorSession;
     private TerminalProfileEditorViewModel? _terminalSettingsEditor;
     private QuickTerminalSettingsEditorViewModel? _quickTerminalSettingsEditor;
-    private LauncherSearchResultViewModel? _selectedLauncherSearchResult;
     private bool _restoreSessionsOnStart = true;
     private bool _sessionRestorePreferenceLoaded;
     private bool _sessionRestorePreferenceSaving;
@@ -302,6 +300,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             ToRecentSessionItem);
         History.PropertyChanged += OnHistoryPropertyChanged;
         History.SnapshotChanged += OnHistorySnapshotChanged;
+        Launcher = new LauncherViewModel(BuildLauncherSearchCandidates);
+        Launcher.PropertyChanged += OnLauncherPropertyChanged;
         ClientId = agentApprovalPrincipal is null
             ? ClientId.New()
             : RequireDesktopClientId(agentApprovalPrincipal);
@@ -349,6 +349,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     public ISessionHostClient SessionClient { get; }
 
     public RecentSessionHistoryViewModel History { get; }
+
+    public LauncherViewModel Launcher { get; }
 
     public MainWindowRole Role { get; }
 
@@ -481,18 +483,20 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         private set => SetProperty(ref _hasAgentTerminalSelectionError, value);
     }
 
-    public ObservableCollection<LauncherWorkspaceViewModel> Workspaces { get; } = [];
+    public ObservableCollection<LauncherWorkspaceViewModel> Workspaces => Launcher.Workspaces;
 
-    public ObservableCollection<LauncherConnectionViewModel> Connections { get; } = [];
+    public ObservableCollection<LauncherConnectionViewModel> Connections => Launcher.Connections;
 
     /// <summary>
     /// Saved file-transfer providers, presented as connection cards so the
     /// launcher manages every connection family in one place.
     /// </summary>
-    public ObservableCollection<LauncherConnectionViewModel> FileConnections { get; } = [];
+    public ObservableCollection<LauncherConnectionViewModel> FileConnections =>
+        Launcher.FileConnections;
 
     /// <summary>Saved database connections, presented as connection cards.</summary>
-    public ObservableCollection<LauncherConnectionViewModel> DatabaseConnections { get; } = [];
+    public ObservableCollection<LauncherConnectionViewModel> DatabaseConnections =>
+        Launcher.DatabaseConnections;
 
     public IReadOnlyList<SavedConnectionShortcutViewModel> SavedConnectionShortcuts =>
         BuildSavedConnectionShortcuts();
@@ -545,7 +549,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 CanOpen: _databaseConnectionCatalog is not null);
         });
 
-    public ObservableCollection<LauncherScreenViewModel> Screens { get; } = [];
+    public ObservableCollection<LauncherScreenViewModel> Screens => Launcher.Screens;
 
     public ObservableCollection<LayoutCardViewModel> Layouts { get; } = [];
 
@@ -553,7 +557,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public ObservableCollection<KeybindingProfileItemViewModel> KeybindingProfiles { get; } = [];
 
-    public ObservableCollection<LauncherSearchResultViewModel> LauncherSearchResults { get; } = [];
+    public ObservableCollection<LauncherSearchResultViewModel> LauncherSearchResults =>
+        Launcher.SearchResults;
 
     public ObservableCollection<SecretMetadataViewModel> Secrets { get; } = [];
 
@@ -687,43 +692,40 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     /// </summary>
     public bool HasNoProductComponents => ProductComponents.Count == 0;
 
-    public bool HasWorkspaces => Workspaces.Count > 0;
+    public bool HasWorkspaces => Launcher.HasWorkspaces;
 
-    public bool HasNoWorkspaces => !HasWorkspaces;
+    public bool HasNoWorkspaces => Launcher.HasNoWorkspaces;
 
     /// <summary>
     /// Home is a summary, so it shows a bounded preview and sends the rest to the
     /// dedicated page. Without the cap a profile with a hundred connections would
     /// push every other section off the page.
     /// </summary>
-    public ObservableCollection<LauncherConnectionViewModel> ConnectionsPreview { get; } = [];
+    public ObservableCollection<LauncherConnectionViewModel> ConnectionsPreview =>
+        Launcher.ConnectionsPreview;
 
-    public ObservableCollection<LauncherScreenViewModel> ScreensPreview { get; } = [];
+    public ObservableCollection<LauncherScreenViewModel> ScreensPreview =>
+        Launcher.ScreensPreview;
 
-    private const int HomePreviewConnectionCount = 8;
+    public bool HasMoreConnectionsThanPreview => Launcher.HasMoreConnectionsThanPreview;
 
-    private const int HomePreviewScreenCount = 4;
+    public bool HasMoreScreensThanPreview => Launcher.HasMoreScreensThanPreview;
 
-    public bool HasMoreConnectionsThanPreview => TotalConnectionCount > ConnectionsPreview.Count;
+    public bool HasConnections => Launcher.HasConnections;
 
-    public bool HasMoreScreensThanPreview => Screens.Count > ScreensPreview.Count;
+    public bool HasNoConnections => Launcher.HasNoConnections;
 
-    public bool HasConnections => TotalConnectionCount > 0;
+    public bool HasTerminalConnections => Launcher.HasTerminalConnections;
 
-    public bool HasNoConnections => !HasConnections;
+    public bool HasFileConnections => Launcher.HasFileConnections;
 
-    public bool HasTerminalConnections => Connections.Count > 0;
+    public bool HasDatabaseConnections => Launcher.HasDatabaseConnections;
 
-    public bool HasFileConnections => FileConnections.Count > 0;
+    public int TotalConnectionCount => Launcher.TotalConnectionCount;
 
-    public bool HasDatabaseConnections => DatabaseConnections.Count > 0;
+    public bool HasScreens => Launcher.HasScreens;
 
-    public int TotalConnectionCount =>
-        Connections.Count + FileConnections.Count + DatabaseConnections.Count;
-
-    public bool HasScreens => Screens.Count > 0;
-
-    public bool HasNoScreens => !HasScreens;
+    public bool HasNoScreens => Launcher.HasNoScreens;
 
     public bool HasRecentSessions => History.HasRecentSessions;
 
@@ -761,13 +763,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public string HistorySearchEmptyState => History.SearchEmptyState;
 
-    public bool HasLauncherSearchResults => LauncherSearchResults.Count > 0;
+    public bool HasLauncherSearchResults => Launcher.HasSearchResults;
 
-    public bool HasNoLauncherSearchResults => !HasLauncherSearchResults;
+    public bool HasNoLauncherSearchResults => Launcher.HasNoSearchResults;
 
-    public string LauncherSearchEmptyState => string.IsNullOrWhiteSpace(LauncherSearchQuery)
-        ? "No commands or saved launch targets are available."
-        : $"No commands or launch targets match ‘{LauncherSearchQuery.Trim()}’.";
+    public string LauncherSearchEmptyState => Launcher.SearchEmptyState;
 
     public string RecentSessionStatus => History.RecentSessionStatus;
 
@@ -985,7 +985,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 OnPropertyChanged(nameof(NewItemLauncherTitle));
                 OnPropertyChanged(nameof(CanCreateBrowserPanel));
                 _activation?.Mark("notifications");
-                RefreshLauncherSearchResults();
+                Launcher.RefreshSearchResults();
                 _activation?.Mark("search results");
             }
         }
@@ -1008,6 +1008,33 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     {
         _ = sender;
         OnPropertyChanged(eventArgs.PropertyName);
+    }
+
+    private void OnLauncherPropertyChanged(
+        object? sender,
+        PropertyChangedEventArgs eventArgs)
+    {
+        _ = sender;
+        string[] propertyNames = eventArgs.PropertyName switch
+        {
+            nameof(LauncherViewModel.SearchQuery) =>
+                [nameof(LauncherSearchQuery)],
+            nameof(LauncherViewModel.SelectedSearchResult) =>
+                [nameof(SelectedLauncherSearchResult)],
+            nameof(LauncherViewModel.HasSearchResults) =>
+                [nameof(HasLauncherSearchResults)],
+            nameof(LauncherViewModel.HasNoSearchResults) =>
+                [nameof(HasNoLauncherSearchResults)],
+            nameof(LauncherViewModel.SearchEmptyState) =>
+                [nameof(LauncherSearchEmptyState)],
+            _ => eventArgs.PropertyName is { } propertyName
+                ? [propertyName]
+                : [],
+        };
+        foreach (var propertyName in propertyNames)
+        {
+            OnPropertyChanged(propertyName);
+        }
     }
 
     private void ActivateWorkspaceAgentChat(WorkspaceInstanceId? workspaceId)
@@ -1750,21 +1777,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public string LauncherSearchQuery
     {
-        get => _launcherSearchQuery;
-        set
-        {
-            if (SetProperty(ref _launcherSearchQuery, value))
-            {
-                OnPropertyChanged(nameof(LauncherSearchEmptyState));
-                RefreshLauncherSearchResults(preserveSelection: false);
-            }
-        }
+        get => Launcher.SearchQuery;
+        set => Launcher.SearchQuery = value;
     }
 
     public LauncherSearchResultViewModel? SelectedLauncherSearchResult
     {
-        get => _selectedLauncherSearchResult;
-        set => SetProperty(ref _selectedLauncherSearchResult, value);
+        get => Launcher.SelectedSearchResult;
+        set => Launcher.SelectedSearchResult = value;
     }
 
     public string HistorySearchQuery
@@ -1815,27 +1835,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public void SelectFirstAvailableLauncherSearchResult()
     {
-        var index = LauncherSearchProjection.FindNextAvailableIndex(
-            LauncherSearchResults,
-            currentIndex: -1,
-            direction: 1);
-        SelectedLauncherSearchResult = index < 0 ? null : LauncherSearchResults[index];
+        Launcher.SelectFirstAvailableSearchResult();
     }
 
     public void MoveLauncherSearchSelection(int direction)
     {
-        var currentIndex = SelectedLauncherSearchResult is null
-            ? -1
-            : LauncherSearchResults.IndexOf(SelectedLauncherSearchResult);
-        var nextIndex = LauncherSearchProjection.FindNextAvailableIndex(
-            LauncherSearchResults,
-            currentIndex,
-            direction);
-        SelectedLauncherSearchResult = nextIndex < 0 ? null : LauncherSearchResults[nextIndex];
+        Launcher.MoveSearchSelection(direction);
     }
 
     public LauncherSearchTarget? ConfirmLauncherSearchSelection() =>
-        LauncherSearchProjection.ConfirmSelection(SelectedLauncherSearchResult);
+        Launcher.ConfirmSearchSelection();
 
     public string? OperationError
     {
@@ -2071,7 +2080,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         if (overlay == ShellOverlay.CommandPalette)
         {
             LauncherSearchQuery = string.Empty;
-            RefreshLauncherSearchResults(preserveSelection: false);
+            Launcher.RefreshSearchResults(preserveSelection: false);
         }
     }
 
@@ -5326,7 +5335,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 TabReorderStatus =
                     $"Moved tab “{sourceTab.Title}” to position " +
                     $"{insertionIndex + 1} of {workspace.Tabs.Count}.";
-                RefreshLauncherSearchResults();
+                Launcher.RefreshSearchResults();
             },
             RuntimeGraphStaleProposalHandling.Reject,
             cancellationToken);
@@ -9930,7 +9939,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         // These are joins with root-owned runtime/catalog state. The history
         // component intentionally knows nothing about either side.
         RefreshWorkspaceRuntimeFlags();
-        RefreshLauncherSearchResults();
+        Launcher.RefreshSearchResults();
     }
 
     private void OnHistoryPropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
@@ -10078,23 +10087,58 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     /// </summary>
     internal void RefreshCatalog(DefinitionCatalogSnapshot snapshot)
     {
-        ReplaceIfChanged(
-            Workspaces,
-            [.. snapshot.Workspaces
-                .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(item => new LauncherWorkspaceViewModel(
+        var workspaces = snapshot.Workspaces
+            .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(item => new LauncherWorkspaceViewModel(
+                item.Value.Id,
+                item.Revision,
+                item.Value.Name,
+                item.Value.Description ?? "No description",
+                // The tile carries the workspace's identity colour, which is
+                // its own field now; an accent-only workspace keeps looking
+                // the way it did before colours existed.
+                WorkspaceTints.Of(item.Value),
+                Initials(item.Value.Name),
+                WorkspaceIconSymbol(item.Value.Icon),
+                item.Value.Entries.Count))
+            .ToArray();
+        var connections = snapshot.Connections
+            .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(item => ToConnectionItem(
+                ResolveForDisplay(snapshot, item.Value),
+                item.Revision))
+            .ToArray();
+        var fileConnections = snapshot.FileProviderProfiles
+            .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(item => ToFileConnectionItem(item.Value, item.Revision))
+            .ToArray();
+        var databaseConnections = snapshot.DatabaseConnections
+            .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(item => ToDatabaseConnectionItem(item.Value, item.Revision))
+            .ToArray();
+        var layoutsById = snapshot.Layouts.ToDictionary(item => item.Value.Id, item => item.Value);
+        var screens = snapshot.Screens
+            .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(item =>
+            {
+                layoutsById.TryGetValue(item.Value.LayoutId, out var layout);
+                return new LauncherScreenViewModel(
                     item.Value.Id,
                     item.Revision,
                     item.Value.Name,
-                    item.Value.Description ?? "No description",
-                    // The tile carries the workspace's identity colour, which is
-                    // its own field now; an accent-only workspace keeps looking
-                    // the way it did before colours existed.
-                    WorkspaceTints.Of(item.Value),
-                    Initials(item.Value.Name),
-                    WorkspaceIconSymbol(item.Value.Icon),
-                    item.Value.Entries.Count))],
-            static (a, b) => a.PresentsSameAs(b));
+                    item.Value.Description ?? "Reusable screen",
+                    layout?.Name ?? "Missing layout",
+                    item.Value.Panels.Count,
+                    CreateScreenPreview(item.Value, layout),
+                    ScreenSummary(item.Value, snapshot));
+            })
+            .ToArray();
+        Launcher.ApplyCatalog(
+            workspaces,
+            connections,
+            fileConnections,
+            databaseConnections,
+            screens);
         // A rail item that was replaced arrives with its runtime flags cleared,
         // and the flags are derived rather than stored, so nothing else would
         // put them back. Saving the workspace you are working in bumps its
@@ -10105,48 +10149,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         // edited. Re-resolve its shell accent from this newly published
         // snapshot so an accent save retints the open workspace immediately.
         SetActiveWorkspaceAccent(ShellAccentOf(RuntimeWorkspace, snapshot));
-        ReplaceIfChanged(
-            Connections,
-            [.. snapshot.Connections
-                .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(item => ToConnectionItem(
-                    ResolveForDisplay(snapshot, item.Value),
-                    item.Revision))],
-            static (a, b) => a.PresentsSameAs(b));
-        ReplaceIfChanged(
-            FileConnections,
-            [.. snapshot.FileProviderProfiles
-                .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(item => ToFileConnectionItem(item.Value, item.Revision))],
-            static (a, b) => a.PresentsSameAs(b));
-        ReplaceIfChanged(
-            DatabaseConnections,
-            [.. snapshot.DatabaseConnections
-                .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(item => ToDatabaseConnectionItem(item.Value, item.Revision))],
-            static (a, b) => a.PresentsSameAs(b));
         RefreshFileProviderDefinitions(snapshot);
         RefreshAiProviderDefinitions(snapshot);
         RefreshMcpServerDefinitions(snapshot);
-        var layoutsById = snapshot.Layouts.ToDictionary(item => item.Value.Id, item => item.Value);
-        ReplaceIfChanged(
-            Screens,
-            [.. snapshot.Screens
-                .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(item =>
-                {
-                    layoutsById.TryGetValue(item.Value.LayoutId, out var layout);
-                    return new LauncherScreenViewModel(
-                        item.Value.Id,
-                        item.Revision,
-                        item.Value.Name,
-                        item.Value.Description ?? "Reusable screen",
-                        layout?.Name ?? "Missing layout",
-                        item.Value.Panels.Count,
-                        CreateScreenPreview(item.Value, layout),
-                        ScreenSummary(item.Value, snapshot));
-                })],
-            static (a, b) => a.PresentsSameAs(b));
         ReplaceIfChanged(
             Layouts,
             [.. snapshot.Layouts
@@ -10161,34 +10166,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                     item.Value.Slots.Count,
                     CreateLayoutPreview(item.Value)))],
             static (a, b) => a.PresentsSameAs(b));
-        OnPropertyChanged(nameof(HasWorkspaces));
-        OnPropertyChanged(nameof(HasNoWorkspaces));
-        ReplaceIfChanged(
-            ConnectionsPreview,
-            [.. Connections
-                .Concat(FileConnections)
-                .Concat(DatabaseConnections)
-                .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
-                .Take(HomePreviewConnectionCount)],
-            static (a, b) => a.PresentsSameAs(b));
-        ReplaceIfChanged(
-            ScreensPreview,
-            [.. Screens.Take(HomePreviewScreenCount)],
-            static (a, b) => a.PresentsSameAs(b));
-        OnPropertyChanged(nameof(HasConnections));
         OnPropertyChanged(nameof(PanelConnectionOptions));
         OnPropertyChanged(nameof(BrowserConnectionOptions));
         OnPropertyChanged(nameof(DatabasePanelConnectionOptions));
         OnPropertyChanged(nameof(FileConnectionOptions));
-        OnPropertyChanged(nameof(HasNoConnections));
-        OnPropertyChanged(nameof(HasTerminalConnections));
-        OnPropertyChanged(nameof(HasFileConnections));
-        OnPropertyChanged(nameof(HasDatabaseConnections));
-        OnPropertyChanged(nameof(TotalConnectionCount));
-        OnPropertyChanged(nameof(HasScreens));
-        OnPropertyChanged(nameof(HasNoScreens));
-        OnPropertyChanged(nameof(HasMoreConnectionsThanPreview));
-        OnPropertyChanged(nameof(HasMoreScreensThanPreview));
         var terminal = snapshot.TerminalProfiles
             .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault();
@@ -10250,7 +10231,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         OnPropertyChanged(nameof(SideTabIconPickerPlacement));
         OnPropertyChanged(nameof(KeybindingConflictCount));
         RefreshRecentSessionAvailability();
-        RefreshLauncherSearchResults();
+        Launcher.RefreshSearchResults();
     }
 
     private void RefreshRecentSessionAvailability()
@@ -10893,7 +10874,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         OnPropertyChanged(nameof(ActiveApplicationKeymap));
         OnPropertyChanged(nameof(ActiveApplicationKeymapRevision));
         OnPropertyChanged(nameof(ActiveApplicationKeymapName));
-        RefreshLauncherSearchResults();
+        Launcher.RefreshSearchResults();
     }
 
     private static StoredDefinition<KeymapProfile> ResolveActiveApplicationKeymap(
@@ -10964,9 +10945,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private static bool IsBuiltInKeymap(KeymapProfileId id) =>
         BuiltInKeymaps.All.Any(item => item.Id == id);
 
-    private void RefreshLauncherSearchResults(bool preserveSelection = true)
+    private IReadOnlyList<LauncherSearchResultViewModel> BuildLauncherSearchCandidates()
     {
-        var selectedTarget = preserveSelection ? SelectedLauncherSearchResult?.Target : null;
         var activeBindings = ActiveApplicationKeymap.Bindings
             .ToLookup(binding => binding.CommandId);
         var candidates = new List<LauncherSearchResultViewModel>();
@@ -11194,23 +11174,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 recent.Detail,
             ])));
 
-        var results = LauncherSearchProjection.Search(LauncherSearchQuery, candidates);
-
-        // Rebuilding the list tears down every row, which moves whatever the
-        // pointer is over while the pointer has not moved. Most refreshes are
-        // triggered by something unrelated to the palette and produce exactly the
-        // results already on screen, so those must touch nothing.
-        if (!PresentsSameResults(LauncherSearchResults, results))
-        {
-            Replace(LauncherSearchResults, results);
-            SelectedLauncherSearchResult = LauncherSearchProjection.ResolveAvailableSelection(
-                results,
-                selectedTarget);
-        }
-
-        OnPropertyChanged(nameof(HasLauncherSearchResults));
-        OnPropertyChanged(nameof(HasNoLauncherSearchResults));
-        OnPropertyChanged(nameof(LauncherSearchEmptyState));
+        return candidates;
     }
 
     private LauncherSearchResultViewModel CreateCommandLauncherResult(
@@ -14140,6 +14104,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 OnTerminalMultiplexerLeasesChanged;
         _agentPolicyCoordinator?.Changed -= OnAgentPolicyCoordinatorChanged;
         _navigation.PropertyChanged -= OnShellNavigationPropertyChanged;
+        Launcher.PropertyChanged -= OnLauncherPropertyChanged;
         StopTrackingAgentTerminalSelection(_runtimeWorkspace);
         StopTrackingRecovery(_runtimeWorkspace);
         // Every open workspace, not only the one in front: the others are just
@@ -14177,6 +14142,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         History.PropertyChanged -= OnHistoryPropertyChanged;
         History.SnapshotChanged -= OnHistorySnapshotChanged;
         History.Dispose();
+        Launcher.Dispose();
         _runtimeGraphLifetime.Cancel();
         StopRuntimeGraphWatch();
         _runtimeGraphLifetime.Dispose();
@@ -14361,26 +14327,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         }
 
         return clientId;
-    }
-
-    private static bool PresentsSameResults(
-        IReadOnlyList<LauncherSearchResultViewModel> current,
-        IReadOnlyList<LauncherSearchResultViewModel> candidate)
-    {
-        if (current.Count != candidate.Count)
-        {
-            return false;
-        }
-
-        for (var index = 0; index < current.Count; index++)
-        {
-            if (!current[index].PresentsSameAs(candidate[index]))
-            {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     /// <summary>
