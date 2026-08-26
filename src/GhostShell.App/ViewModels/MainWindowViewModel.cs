@@ -238,6 +238,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         DefinitionSettings.PropertyChanged += OnDefinitionSettingsPropertyChanged;
         TerminalSettings = new TerminalSettingsViewModel(_catalog);
         TerminalSettings.PropertyChanged += OnTerminalSettingsPropertyChanged;
+        AppearanceSettings = new AppearanceSettingsViewModel(_catalog);
+        AppearanceSettings.PropertyChanged += OnAppearanceSettingsPropertyChanged;
+        AppearanceSettings.BackgroundSaveStarting += OnAppearanceBackgroundSaveStarting;
+        AppearanceSettings.BackgroundSaveCompleted += OnAppearanceBackgroundSaveCompleted;
         WorkspaceSettings = new WorkspaceSettingsViewModel(
             _catalog,
             () => _aiProviderRuntime?.Profiles ?? []);
@@ -357,6 +361,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     public DefinitionSettingsViewModel DefinitionSettings { get; }
 
     public TerminalSettingsViewModel TerminalSettings { get; }
+
+    public AppearanceSettingsViewModel AppearanceSettings { get; }
 
     public WorkspaceSettingsViewModel WorkspaceSettings { get; }
 
@@ -1054,6 +1060,32 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         {
             OnPropertyChanged(propertyName);
         }
+    }
+
+    private void OnAppearanceSettingsPropertyChanged(
+        object? sender,
+        PropertyChangedEventArgs eventArgs)
+    {
+        _ = sender;
+        if (eventArgs.PropertyName is not null)
+        {
+            OnPropertyChanged(eventArgs.PropertyName);
+        }
+    }
+
+    private void OnAppearanceBackgroundSaveStarting(object? sender, EventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        ClearError();
+    }
+
+    private void OnAppearanceBackgroundSaveCompleted(
+        object? sender,
+        AppearanceSaveCompletedEventArgs eventArgs)
+    {
+        _ = sender;
+        ApplyError(eventArgs.Error);
     }
 
     private void OnWorkspaceSettingsPropertyChanged(
@@ -1957,9 +1989,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     public string CommandPaletteSettingsAction =>
         $"{CommandPaletteShortcut}  Search & commands";
 
-    public ThemePreference ActiveTheme => _catalog.Snapshot.Themes
-        .FirstOrDefault(item => item.Value.Id == ThemePreference.Default.Id)?.Value
-        ?? ThemePreference.Default;
+    public ThemePreference ActiveTheme => AppearanceSettings.ActiveTheme;
 
     public TerminalProfile? ActiveTerminalProfile =>
         TerminalSettings.ActiveTerminalProfile;
@@ -1983,16 +2013,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         get => TerminalSettings.QuickTerminalEditor;
     }
 
-    public string ThemeMode => ActiveTheme.Appearance.ToString();
+    public string ThemeMode => AppearanceSettings.ThemeMode;
 
-    public string ThemeProfile => ActiveTheme.PlatformProfile.ToString();
+    public string ThemeProfile => AppearanceSettings.ThemeProfile;
 
-    public string ThemeTextScale => ActiveTheme.TextScaleOverride is { } textScale
-        ? textScale.ToString("0.##%", System.Globalization.CultureInfo.InvariantCulture)
-        : "Follow host";
+    public string ThemeTextScale => AppearanceSettings.ThemeTextScale;
 
     /// <summary>Window-chrome settings the shell layout binds to directly.</summary>
-    public bool ShowTabBar => ActiveTheme.ShowTabBar;
+    public bool ShowTabBar => AppearanceSettings.ShowTabBar;
 
     /// <summary>
     /// Whether the workspace rail is shown.
@@ -2007,68 +2035,37 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     /// </summary>
     public bool ShowWorkspacesPanel
     {
-        get => ActiveTheme.ShowWorkspacesPanel;
-        set
-        {
-            var theme = ActiveTheme;
-            if (value == theme.ShowWorkspacesPanel)
-            {
-                return;
-            }
-
-            _ = SaveThemeAsync(
-                theme.Appearance,
-                theme.PlatformProfile,
-                theme.Accent,
-                theme.TextScaleOverride,
-                CancellationToken.None,
-                ThemeChromePreference.From(theme) with { ShowWorkspacesPanel = value }).AsTask();
-        }
+        get => AppearanceSettings.ShowWorkspacesPanel;
+        set => AppearanceSettings.ShowWorkspacesPanel = value;
     }
 
-    public bool IsWorkspacePanelOnLeft =>
-        ActiveTheme.WorkspacePanelPlacement == WorkspacePanelPlacement.Left;
+    public bool IsWorkspacePanelOnLeft => AppearanceSettings.IsWorkspacePanelOnLeft;
 
-    public bool IsWorkspacePanelOnRight => !IsWorkspacePanelOnLeft;
+    public bool IsWorkspacePanelOnRight => AppearanceSettings.IsWorkspacePanelOnRight;
 
     /// <summary>The rail's dock edge, so the setting moves the real panel.</summary>
-    public Avalonia.Controls.Dock WorkspacePanelDock => IsWorkspacePanelOnLeft
-        ? Avalonia.Controls.Dock.Left
-        : Avalonia.Controls.Dock.Right;
+    public Avalonia.Controls.Dock WorkspacePanelDock => AppearanceSettings.WorkspacePanelDock;
 
-    public bool IsTabStripVisibleOnTop =>
-        ShowTabBar && ActiveTheme.TabStripPlacement == TabStripPlacement.Top;
+    public bool IsTabStripVisibleOnTop => AppearanceSettings.IsTabStripVisibleOnTop;
 
-    public bool IsTabStripVisibleOnBottom =>
-        ShowTabBar && ActiveTheme.TabStripPlacement == TabStripPlacement.Bottom;
+    public bool IsTabStripVisibleOnBottom => AppearanceSettings.IsTabStripVisibleOnBottom;
 
     /// <summary>A side strip is one control docked to whichever edge is chosen.</summary>
-    public bool IsTabStripVisibleOnSide =>
-        ShowTabBar && ActiveTheme.TabStripPlacement
-            is TabStripPlacement.Left or TabStripPlacement.Right;
+    public bool IsTabStripVisibleOnSide => AppearanceSettings.IsTabStripVisibleOnSide;
 
-    public Avalonia.Controls.Dock TabStripDock =>
-        ActiveTheme.TabStripPlacement == TabStripPlacement.Right
-            ? Avalonia.Controls.Dock.Right
-            : Avalonia.Controls.Dock.Left;
+    public Avalonia.Controls.Dock TabStripDock => AppearanceSettings.TabStripDock;
 
     /// <summary>Which side the strip touches, as booleans, because the strip's
     /// floating margin belongs on the window side only — the canvas supplies
     /// the gap on the inner side, the same contract the other sidebars keep.</summary>
-    public bool IsTabStripDockedLeft =>
-        IsTabStripVisibleOnSide && TabStripDock == Avalonia.Controls.Dock.Left;
+    public bool IsTabStripDockedLeft => AppearanceSettings.IsTabStripDockedLeft;
 
-    public bool IsTabStripDockedRight =>
-        IsTabStripVisibleOnSide && TabStripDock == Avalonia.Controls.Dock.Right;
+    public bool IsTabStripDockedRight => AppearanceSettings.IsTabStripDockedRight;
 
     public Avalonia.Controls.PlacementMode SideTabIconPickerPlacement =>
-        IsTabStripDockedRight
-            ? Avalonia.Controls.PlacementMode.LeftEdgeAlignedTop
-            : Avalonia.Controls.PlacementMode.RightEdgeAlignedTop;
+        AppearanceSettings.SideTabIconPickerPlacement;
 
-    public string ThemeAccent => ActiveTheme.Accent.Kind == AccentPreferenceKind.Custom
-        ? ActiveTheme.Accent.CustomColor?.ToString() ?? ThemePreference.BronzeFallback.ToString()
-        : "Follow system accent";
+    public string ThemeAccent => AppearanceSettings.ThemeAccent;
 
     public int KeybindingConflictCount =>
         DefinitionSettings.KeybindingConflictCount;
@@ -4510,40 +4507,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         ThemeChromePreference? chrome = null)
     {
         ClearError();
-        var stored = _catalog.Snapshot.Themes
-            .FirstOrDefault(item => item.Value.Id == ThemePreference.Default.Id);
-        // A caller that does not supply chrome settings keeps whatever is stored,
-        // so saving from a surface that does not show them cannot silently reset
-        // them to defaults.
-        var existing = stored?.Value ?? ThemePreference.Default;
-        var effective = chrome ?? ThemeChromePreference.From(existing);
-        var updated = new ThemePreference(
-            ThemePreference.Default.Id,
-            ThemePreference.Default.Name,
+        var result = await AppearanceSettings.SaveThemeAsync(
             appearance,
             platformProfile,
             accent,
             textScaleOverride,
-            effective.Density,
-            effective.ShowTabBar,
-            effective.ShowWorkspacesPanel,
-            effective.TabStripPlacement,
-            effective.WorkspacePanelPlacement,
-            effective.IsTranslucent,
-            effective.BackdropOpacityPercent,
-            effective.HasGlassPanels,
-            effective.OverridesBackdropOpacity);
-        // A theme is all scalars, so record equality is enough to tell that this
-        // would rewrite what is already stored.
-        if (stored is not null && stored.Value == updated)
-        {
-            return DefinitionStoreResult<StoredDefinition<ThemePreference>>.Success(stored);
-        }
-
-        var result = await _catalog.SaveThemeAsync(
-            updated,
-            stored?.Revision,
-            cancellationToken);
+            cancellationToken,
+            chrome);
         ApplyError(result.Error);
         return result;
     }
@@ -9938,32 +9908,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         RefreshMcpServerDefinitions(snapshot);
         DefinitionSettings.ApplyCatalog(snapshot);
         TerminalSettings.ApplyCatalog(snapshot);
+        AppearanceSettings.ApplyCatalog(snapshot);
         OnPropertyChanged(nameof(PanelConnectionOptions));
         OnPropertyChanged(nameof(BrowserConnectionOptions));
         OnPropertyChanged(nameof(DatabasePanelConnectionOptions));
         OnPropertyChanged(nameof(FileConnectionOptions));
         RefreshOpenTerminalRenderProfiles();
-        OnPropertyChanged(nameof(ActiveTheme));
         OnPropertyChanged(nameof(ActiveTerminalProfile));
-        OnPropertyChanged(nameof(ThemeMode));
-        OnPropertyChanged(nameof(ThemeProfile));
-        OnPropertyChanged(nameof(ThemeTextScale));
-        OnPropertyChanged(nameof(ThemeAccent));
-        OnPropertyChanged(nameof(ShowTabBar));
-        OnPropertyChanged(nameof(ShowWorkspacesPanel));
         // The mark on the menu stands in for the rail, so turning the rail on
         // or off decides whether it is needed.
         OnPropertyChanged(nameof(HasWorkspaceAttention));
-        OnPropertyChanged(nameof(IsWorkspacePanelOnLeft));
-        OnPropertyChanged(nameof(IsWorkspacePanelOnRight));
-        OnPropertyChanged(nameof(WorkspacePanelDock));
-        OnPropertyChanged(nameof(IsTabStripVisibleOnTop));
-        OnPropertyChanged(nameof(IsTabStripVisibleOnBottom));
-        OnPropertyChanged(nameof(IsTabStripVisibleOnSide));
-        OnPropertyChanged(nameof(TabStripDock));
-        OnPropertyChanged(nameof(IsTabStripDockedLeft));
-        OnPropertyChanged(nameof(IsTabStripDockedRight));
-        OnPropertyChanged(nameof(SideTabIconPickerPlacement));
         OnPropertyChanged(nameof(KeybindingConflictCount));
         RefreshRecentSessionAvailability();
         Launcher.RefreshSearchResults();
@@ -13695,6 +13649,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         DefinitionEdit.PropertyChanged -= OnDefinitionEditPropertyChanged;
         DefinitionSettings.PropertyChanged -= OnDefinitionSettingsPropertyChanged;
         TerminalSettings.PropertyChanged -= OnTerminalSettingsPropertyChanged;
+        AppearanceSettings.PropertyChanged -= OnAppearanceSettingsPropertyChanged;
+        AppearanceSettings.BackgroundSaveStarting -= OnAppearanceBackgroundSaveStarting;
+        AppearanceSettings.BackgroundSaveCompleted -= OnAppearanceBackgroundSaveCompleted;
         WorkspaceSettings.PropertyChanged -= OnWorkspaceSettingsPropertyChanged;
         Launcher.PropertyChanged -= OnLauncherPropertyChanged;
         StopTrackingAgentTerminalSelection(_runtimeWorkspace);
@@ -13714,6 +13671,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         WorkspaceSettings.Dispose();
         DefinitionSettings.Dispose();
         TerminalSettings.Dispose();
+        AppearanceSettings.Dispose();
         Onboarding?.Dispose();
         AgentChat?.Cancel();
         if (_agentRuntimeFactory is null)
