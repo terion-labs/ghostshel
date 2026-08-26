@@ -152,8 +152,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         "Exports include saved settings but not credentials or terminal content.";
     private string? _applicationKeySequenceHint;
     private WorkspaceEditorViewModel? _workspaceEditor;
-    private TerminalProfileEditorViewModel? _terminalSettingsEditor;
-    private QuickTerminalSettingsEditorViewModel? _quickTerminalSettingsEditor;
     private bool _restoreSessionsOnStart = true;
     private bool _sessionRestorePreferenceLoaded;
     private bool _sessionRestorePreferenceSaving;
@@ -239,6 +237,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         DefinitionEdit.PropertyChanged += OnDefinitionEditPropertyChanged;
         DefinitionSettings = new DefinitionSettingsViewModel(_catalog);
         DefinitionSettings.PropertyChanged += OnDefinitionSettingsPropertyChanged;
+        TerminalSettings = new TerminalSettingsViewModel(_catalog);
+        TerminalSettings.PropertyChanged += OnTerminalSettingsPropertyChanged;
         SavedScreenDeleteUndo = new SavedScreenDeleteUndoViewModel(_catalog);
         _connectionRuntime = connectionRuntime ?? throw new ArgumentNullException(nameof(connectionRuntime));
         _secretVault = secretVault ?? throw new ArgumentNullException(nameof(secretVault));
@@ -352,6 +352,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     public DefinitionEditSessionViewModel DefinitionEdit { get; }
 
     public DefinitionSettingsViewModel DefinitionSettings { get; }
+
+    public TerminalSettingsViewModel TerminalSettings { get; }
 
     public MainWindowRole Role { get; }
 
@@ -1037,6 +1039,27 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             _ => [],
         };
         foreach (var propertyName in propertyNames)
+        {
+            OnPropertyChanged(propertyName);
+        }
+    }
+
+    private void OnTerminalSettingsPropertyChanged(
+        object? sender,
+        PropertyChangedEventArgs eventArgs)
+    {
+        _ = sender;
+        var propertyName = eventArgs.PropertyName switch
+        {
+            nameof(TerminalSettingsViewModel.TerminalEditor) =>
+                nameof(TerminalSettingsEditor),
+            nameof(TerminalSettingsViewModel.QuickTerminalEditor) =>
+                nameof(QuickTerminalSettingsEditor),
+            nameof(TerminalSettingsViewModel.ActiveTerminalProfile) =>
+                nameof(ActiveTerminalProfile),
+            _ => null,
+        };
+        if (propertyName is not null)
         {
             OnPropertyChanged(propertyName);
         }
@@ -1929,7 +1952,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         ?? ThemePreference.Default;
 
     public TerminalProfile? ActiveTerminalProfile =>
-        _catalog.Snapshot.TerminalProfiles.FirstOrDefault()?.Value;
+        TerminalSettings.ActiveTerminalProfile;
 
     public KeymapProfile ActiveApplicationKeymap =>
         DefinitionSettings.ActiveApplicationKeymap;
@@ -1942,14 +1965,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public TerminalProfileEditorViewModel? TerminalSettingsEditor
     {
-        get => _terminalSettingsEditor;
-        private set => SetProperty(ref _terminalSettingsEditor, value);
+        get => TerminalSettings.TerminalEditor;
     }
 
     public QuickTerminalSettingsEditorViewModel? QuickTerminalSettingsEditor
     {
-        get => _quickTerminalSettingsEditor;
-        private set => SetProperty(ref _quickTerminalSettingsEditor, value);
+        get => TerminalSettings.QuickTerminalEditor;
     }
 
     public string ThemeMode => ActiveTheme.Appearance.ToString();
@@ -4460,39 +4481,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         CancellationToken cancellationToken)
     {
         ClearError();
-        if (TerminalSettingsEditor is null)
-        {
-            return Fail<StoredDefinition<TerminalProfile>>("No terminal profile is available to edit.");
-        }
-
-        TerminalProfileEditorSaveRequest request;
-        try
-        {
-            request = TerminalSettingsEditor.CreateSaveRequest();
-        }
-        catch (Exception exception) when (exception is ArgumentException or FormatException)
-        {
-            return Fail<StoredDefinition<TerminalProfile>>(exception.Message);
-        }
-
-        // Nothing to write is not a write. Saving unconditionally notified the
-        // catalog, which rebuilt this editor, whose rebinding read as a fresh edit
-        // and asked to save again — a loop that pinned a core at idle.
-        if (ActiveTerminalProfile is { } stored
-            && stored.RepresentsSameAs(request.Profile))
-        {
-            return DefinitionStoreResult<StoredDefinition<TerminalProfile>>.Success(
-                new StoredDefinition<TerminalProfile>(
-                    stored,
-                    request.ExpectedRevision,
-                    DateTimeOffset.UnixEpoch,
-                    DateTimeOffset.UnixEpoch));
-        }
-
-        var result = await _catalog.SaveTerminalProfileAsync(
-            request.Profile,
-            request.ExpectedRevision,
-            cancellationToken);
+        var result = await TerminalSettings.SaveTerminalProfileAsync(cancellationToken);
         ApplyError(result.Error);
         return result;
     }
@@ -4501,26 +4490,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         CancellationToken cancellationToken)
     {
         ClearError();
-        if (QuickTerminalSettingsEditor is null)
-        {
-            return Fail<StoredDefinition<QuickTerminalSettings>>(
-                "Quick Terminal settings are unavailable.");
-        }
-
-        QuickTerminalSettingsSaveRequest request;
-        try
-        {
-            request = QuickTerminalSettingsEditor.CreateSaveRequest();
-        }
-        catch (Exception exception) when (exception is ArgumentException or FormatException)
-        {
-            return Fail<StoredDefinition<QuickTerminalSettings>>(exception.Message);
-        }
-
-        var result = await _catalog.SaveQuickTerminalSettingsAsync(
-            request.Settings,
-            request.ExpectedRevision,
-            cancellationToken);
+        var result = await TerminalSettings.SaveQuickTerminalSettingsAsync(cancellationToken);
         ApplyError(result.Error);
         return result;
     }
@@ -4529,7 +4499,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         KeyStroke configuredGesture,
         KeyStroke? activeGesture,
         GlobalHotkeyRegistrationResult result) =>
-        QuickTerminalSettingsEditor?.ApplyRegistration(
+        TerminalSettings.ApplyQuickTerminalRegistration(
             configuredGesture,
             activeGesture,
             result);
@@ -10012,46 +9982,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         RefreshAiProviderDefinitions(snapshot);
         RefreshMcpServerDefinitions(snapshot);
         DefinitionSettings.ApplyCatalog(snapshot);
+        TerminalSettings.ApplyCatalog(snapshot);
         OnPropertyChanged(nameof(PanelConnectionOptions));
         OnPropertyChanged(nameof(BrowserConnectionOptions));
         OnPropertyChanged(nameof(DatabasePanelConnectionOptions));
         OnPropertyChanged(nameof(FileConnectionOptions));
-        var terminal = snapshot.TerminalProfiles
-            .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
-            .FirstOrDefault();
-        if (terminal is null)
-        {
-            TerminalSettingsEditor = null;
-        }
-        else if (TerminalSettingsEditor is null
-            || TerminalSettingsEditor.ProfileId != terminal.Value.Id
-            || TerminalSettingsEditor.ExpectedRevision != terminal.Revision
-            || !TerminalSettingsEditor.MatchesTerminalKeymaps(
-                snapshot.Keymaps.Select(item => item.Value)))
-        {
-            TerminalSettingsEditor = new TerminalProfileEditorViewModel(
-                terminal.Value,
-                terminal.Revision,
-                snapshot.Keymaps.Select(item => item.Value));
-        }
-
-        var quickTerminal = snapshot.QuickTerminalSettings
-            .OrderByDescending(item => item.Value.Id == QuickTerminalSettings.DefaultId)
-            .ThenBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
-            .FirstOrDefault();
-        if (quickTerminal is null)
-        {
-            QuickTerminalSettingsEditor = null;
-        }
-        else if (QuickTerminalSettingsEditor is null
-            || QuickTerminalSettingsEditor.SettingsId != quickTerminal.Value.Id
-            || QuickTerminalSettingsEditor.ExpectedRevision != quickTerminal.Revision)
-        {
-            QuickTerminalSettingsEditor = new QuickTerminalSettingsEditorViewModel(
-                quickTerminal.Value,
-                quickTerminal.Revision);
-        }
-
         RefreshOpenTerminalRenderProfiles();
         OnPropertyChanged(nameof(ActiveTheme));
         OnPropertyChanged(nameof(ActiveTerminalProfile));
@@ -13804,6 +13739,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _navigation.PropertyChanged -= OnShellNavigationPropertyChanged;
         DefinitionEdit.PropertyChanged -= OnDefinitionEditPropertyChanged;
         DefinitionSettings.PropertyChanged -= OnDefinitionSettingsPropertyChanged;
+        TerminalSettings.PropertyChanged -= OnTerminalSettingsPropertyChanged;
         Launcher.PropertyChanged -= OnLauncherPropertyChanged;
         StopTrackingAgentTerminalSelection(_runtimeWorkspace);
         StopTrackingRecovery(_runtimeWorkspace);
@@ -13821,6 +13757,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _runtimeWorkspace = null;
         WorkspaceEditor = null;
         DefinitionSettings.Dispose();
+        TerminalSettings.Dispose();
         Onboarding?.Dispose();
         AgentChat?.Cancel();
         if (_agentRuntimeFactory is null)
