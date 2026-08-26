@@ -246,7 +246,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             _catalog,
             () => _aiProviderRuntime?.Profiles ?? []);
         WorkspaceSettings.PropertyChanged += OnWorkspaceSettingsPropertyChanged;
-        SavedScreenDeleteUndo = new SavedScreenDeleteUndoViewModel(_catalog);
+        SavedScreenSettings = new SavedScreenSettingsViewModel(
+            _catalog,
+            () => _aiProviderRuntime?.Profiles ?? []);
         _connectionRuntime = connectionRuntime ?? throw new ArgumentNullException(nameof(connectionRuntime));
         _secretVault = secretVault ?? throw new ArgumentNullException(nameof(secretVault));
         _filePanelClient = filePanelClient ?? throw new ArgumentNullException(nameof(filePanelClient));
@@ -366,6 +368,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public WorkspaceSettingsViewModel WorkspaceSettings { get; }
 
+    public SavedScreenSettingsViewModel SavedScreenSettings { get; }
+
     public MainWindowRole Role { get; }
 
     /// <summary>
@@ -435,7 +439,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         ClearError();
     }
 
-    public SavedScreenDeleteUndoViewModel SavedScreenDeleteUndo { get; }
+    public SavedScreenDeleteUndoViewModel SavedScreenDeleteUndo =>
+        SavedScreenSettings.DeleteUndo;
 
     public ClientId ClientId { get; }
 
@@ -4382,49 +4387,18 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         return new SecretUsePurpose(SecretUseKind.UserManagement, targetId);
     }
 
-    public SavedScreenEditorViewModel CreateSavedScreenEditor(ScreenId screenId)
-    {
-        var stored = _catalog.Snapshot.Screens
-            .SingleOrDefault(item => item.Value.Id == screenId) ?? throw new InvalidOperationException("That saved screen no longer exists.");
-        return new SavedScreenEditorViewModel(
-            stored.Value,
-            stored.Revision,
-            [.. _catalog.Snapshot.Connections.Select(item => item.Value)],
-            [.. _catalog.Snapshot.FileProviderProfiles.Select(item => item.Value)],
-            SelectableLayouts(),
-            _aiProviderRuntime?.Profiles ?? []);
-    }
+    public SavedScreenEditorViewModel CreateSavedScreenEditor(ScreenId screenId) =>
+        SavedScreenSettings.CreateEditor(screenId);
 
-    public SavedScreenEditorViewModel CreateNewSavedScreenEditor(string name)
-    {
-        return SavedScreenEditorViewModel.CreateNew(
-            RequireName(name, "Saved screen"),
-            SelectableLayouts(),
-            [.. _catalog.Snapshot.Connections.Select(item => item.Value)],
-            [.. _catalog.Snapshot.FileProviderProfiles.Select(item => item.Value)],
-            _aiProviderRuntime?.Profiles ?? []);
-    }
-
-    /// <summary>
-    /// The layouts a user may pick for new screens and tabs. Auto-saved layouts
-    /// carry a live tab's captured geometry and stay out of every picker; the
-    /// workspace editor still receives the full set so existing tab references
-    /// resolve.
-    /// </summary>
-    private LayoutDefinition[] SelectableLayouts() => [.. _catalog.Snapshot.Layouts
-        .Select(item => item.Value)
-        .Where(layout => !LayoutDefinition.IsAutoSaved(layout.Id))];
+    public SavedScreenEditorViewModel CreateNewSavedScreenEditor(string name) =>
+        SavedScreenSettings.CreateNewEditor(name);
 
     public async ValueTask<DefinitionStoreResult<StoredDefinition<ScreenDefinition>>> SaveSavedScreenAsync(
         SavedScreenEditorSaveRequest request,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(request);
         ClearError();
-        var result = await _catalog.SaveScreenAsync(
-            request.Definition,
-            request.ExpectedRevision,
-            cancellationToken);
+        var result = await SavedScreenSettings.SaveAsync(request, cancellationToken);
         ApplyError(result.Error);
         return result;
     }
@@ -4552,6 +4526,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                     new KeymapProfileId(key.Value),
                     revision,
                     cancellationToken),
+            var kind when kind == ScreenDefinition.Kind =>
+                await SavedScreenSettings.DeleteAsync(
+                    new ScreenId(key.Value),
+                    revision,
+                    cancellationToken),
             _ => await _catalog.DeleteAsync(key, revision, cancellationToken),
         };
         ApplyError(result.Error);
@@ -4573,35 +4552,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             return unsupported;
         }
 
-        var current = _catalog.Snapshot.Screens
-            .SingleOrDefault(item => item.Value.Key == key);
-        if (current is null)
-        {
-            var missing = DefinitionStoreResult<Unit>.Failure(new DefinitionStoreError(
-                DefinitionStoreErrorCode.NotFound,
-                "That saved screen no longer exists."));
-            ApplyError(missing.Error);
-            return missing;
-        }
-
-        if (current.Revision != revision)
-        {
-            var stale = DefinitionStoreResult<Unit>.Failure(new DefinitionStoreError(
-                DefinitionStoreErrorCode.RevisionConflict,
-                "That saved screen changed before it could be deleted.",
-                current.Revision));
-            ApplyError(stale.Error);
-            return stale;
-        }
-
-        var deleted = current;
-        var result = await _catalog.DeleteAsync(key, revision, cancellationToken);
+        var result = await SavedScreenSettings.DeleteAsync(
+            new ScreenId(key.Value),
+            revision,
+            cancellationToken);
         ApplyError(result.Error);
-        if (result.IsSuccess)
-        {
-            SavedScreenDeleteUndo.Publish(deleted);
-        }
-
         return result;
     }
 
@@ -4609,12 +4564,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         UndoSavedScreenDeleteAsync(CancellationToken cancellationToken)
     {
         ClearError();
-        var result = await SavedScreenDeleteUndo.UndoAsync(cancellationToken);
+        var result = await SavedScreenSettings.UndoDeleteAsync(cancellationToken);
         ApplyError(result.Error);
         return result;
     }
 
-    public void DismissSavedScreenDeleteUndo() => SavedScreenDeleteUndo.Dismiss();
+    public void DismissSavedScreenDeleteUndo() =>
+        SavedScreenSettings.DismissDeleteUndo();
 
     public bool IsDefinitionOpen(DefinitionKey key) =>
         RuntimeWorkspace is not null && _runtimeHistorySource?.SourceDefinition == key;
@@ -13684,6 +13640,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _runtimeWorkspace?.DisposePanels();
         _runtimeWorkspace = null;
         WorkspaceSettings.Dispose();
+        SavedScreenSettings.Dispose();
         DefinitionSettings.Dispose();
         TerminalSettings.Dispose();
         AppearanceSettings.Dispose();
