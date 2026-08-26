@@ -54,7 +54,10 @@ public sealed class RuntimeWorkspaceGraphCoordinatorOwnershipTests
         Assert.Contains("expectedPanel.Id != actualPanel.Id", projection, StringComparison.Ordinal);
         Assert.Contains("expectedPanel.Kind != actualPanel.Kind", projection, StringComparison.Ordinal);
         Assert.Contains("StringComparison.Ordinal", projection, StringComparison.Ordinal);
-        Assert.Contains("PanelKind.Placeholder", Read("ShellViewModels.cs"), StringComparison.Ordinal);
+        Assert.Contains(
+            "PanelKind.Placeholder",
+            Read("RuntimeWorkspaceViewModels.cs"),
+            StringComparison.Ordinal);
     }
 
     [Fact]

@@ -28,12 +28,12 @@ public sealed class AgentWorkspaceScopeOwnershipTests
     {
         var root = Read("MainWindowViewModel.cs");
         var owner = Read("AgentWorkspaceScopeViewModel.cs");
-        var shell = Read("ShellViewModels.cs");
+        var runtime = Read("RuntimeWorkspaceViewModels.cs");
 
         Assert.DoesNotContain("_agentSelectionTracked", root, StringComparison.Ordinal);
         Assert.DoesNotContain("TryCreateSelectedPanelsTarget", root, StringComparison.Ordinal);
         Assert.DoesNotContain("new AgentTerminalSelectionItemViewModel", root, StringComparison.Ordinal);
-        Assert.DoesNotContain("class AgentTerminalSelectionItemViewModel", shell, StringComparison.Ordinal);
+        Assert.DoesNotContain("class AgentTerminalSelectionItemViewModel", runtime, StringComparison.Ordinal);
         Assert.Contains("TryCreateSelectedPanelsTarget", owner, StringComparison.Ordinal);
         Assert.Contains("Tabs.CollectionChanged += OnTabsChanged", owner, StringComparison.Ordinal);
         Assert.Contains("terminal.PropertyChanged += OnTerminalPropertyChanged", owner, StringComparison.Ordinal);

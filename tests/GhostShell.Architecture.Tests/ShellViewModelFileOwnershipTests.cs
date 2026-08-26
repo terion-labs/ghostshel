@@ -7,7 +7,8 @@ public sealed class ShellViewModelFileOwnershipTests
     [Fact]
     public void Launcher_and_history_types_live_outside_the_mixed_shell_module()
     {
-        var shell = ReadViewModelSource("ShellViewModels.cs");
+        var runtime = ReadViewModelSource("RuntimeWorkspaceViewModels.cs");
+        var support = ReadShellSupportSources();
         var launcher = ReadViewModelSource("LauncherViewModels.cs");
         var history = ReadViewModelSource("RecentSessionHistoryViewModels.cs");
 
@@ -24,7 +25,8 @@ public sealed class ShellViewModelFileOwnershipTests
         foreach (var declaration in launcherDeclarations)
         {
             Assert.Contains(declaration, launcher, StringComparison.Ordinal);
-            Assert.DoesNotContain(declaration, shell, StringComparison.Ordinal);
+            Assert.DoesNotContain(declaration, runtime, StringComparison.Ordinal);
+            Assert.DoesNotContain(declaration, support, StringComparison.Ordinal);
         }
 
         string[] historyDeclarations =
@@ -35,14 +37,16 @@ public sealed class ShellViewModelFileOwnershipTests
         foreach (var declaration in historyDeclarations)
         {
             Assert.Contains(declaration, history, StringComparison.Ordinal);
-            Assert.DoesNotContain(declaration, shell, StringComparison.Ordinal);
+            Assert.DoesNotContain(declaration, runtime, StringComparison.Ordinal);
+            Assert.DoesNotContain(declaration, support, StringComparison.Ordinal);
         }
     }
 
     [Fact]
     public void Settings_presentation_types_live_outside_the_mixed_shell_module()
     {
-        var shell = ReadViewModelSource("ShellViewModels.cs");
+        var runtime = ReadViewModelSource("RuntimeWorkspaceViewModels.cs");
+        var support = ReadShellSupportSources();
         var settings = ReadViewModelSource("SettingsPresentationViewModels.cs");
 
         string[] settingsDeclarations =
@@ -56,34 +60,61 @@ public sealed class ShellViewModelFileOwnershipTests
         foreach (var declaration in settingsDeclarations)
         {
             Assert.Contains(declaration, settings, StringComparison.Ordinal);
-            Assert.DoesNotContain(declaration, shell, StringComparison.Ordinal);
+            Assert.DoesNotContain(declaration, runtime, StringComparison.Ordinal);
+            Assert.DoesNotContain(declaration, support, StringComparison.Ordinal);
         }
     }
 
     [Fact]
-    public void Runtime_types_remain_in_the_shell_module_until_the_runtime_slice()
+    public void Runtime_types_live_in_a_runtime_only_module()
     {
-        var shell = ReadViewModelSource("ShellViewModels.cs");
+        var runtime = ReadViewModelSource("RuntimeWorkspaceViewModels.cs");
+        var support = ReadShellSupportSources();
 
         Assert.Contains(
             "public sealed class RuntimeWorkspaceViewModel",
-            shell,
+            runtime,
             StringComparison.Ordinal);
         Assert.Contains(
             "public sealed class RuntimeTabViewModel",
-            shell,
+            runtime,
             StringComparison.Ordinal);
         Assert.Contains(
             "public abstract class RuntimePanelViewModel",
-            shell,
+            runtime,
             StringComparison.Ordinal);
+        Assert.DoesNotContain("RuntimeWorkspaceViewModel", support, StringComparison.Ordinal);
+        Assert.DoesNotContain("RuntimeTabViewModel", support, StringComparison.Ordinal);
+        Assert.DoesNotContain("RuntimePanelViewModel", support, StringComparison.Ordinal);
+        Assert.False(File.Exists(ViewModelPath("ShellViewModels.cs")));
     }
 
+    [Fact]
+    public void Supporting_shell_rows_are_grouped_by_product_concern()
+    {
+        var transfers = ReadViewModelSource("SecretAndTransferViewModels.cs");
+        var providers = ReadViewModelSource("ProviderProfileViewModels.cs");
+
+        Assert.Contains("public sealed record SecretMetadataViewModel", transfers, StringComparison.Ordinal);
+        Assert.Contains("public sealed class FileTransferItemViewModel", transfers, StringComparison.Ordinal);
+        Assert.DoesNotContain("ProviderProfileItemViewModel", transfers, StringComparison.Ordinal);
+        Assert.Contains("public sealed record FileProviderProfileItemViewModel", providers, StringComparison.Ordinal);
+        Assert.Contains("public sealed record AiProviderProfileItemViewModel", providers, StringComparison.Ordinal);
+        Assert.Contains("public sealed class McpServerProfileItemViewModel", providers, StringComparison.Ordinal);
+        Assert.DoesNotContain("FileTransferItemViewModel", providers, StringComparison.Ordinal);
+    }
+
+    private static string ReadShellSupportSources() => string.Concat(
+        ReadViewModelSource("SecretAndTransferViewModels.cs"),
+        ReadViewModelSource("ProviderProfileViewModels.cs"));
+
     private static string ReadViewModelSource(string fileName) =>
-        File.ReadAllText(Path.Combine(
+        File.ReadAllText(ViewModelPath(fileName));
+
+    private static string ViewModelPath(string fileName) => Path.Combine(
             ApplicationViewCatalog.Load().RepositoryRoot,
             "src",
             "GhostShell.App",
             "ViewModels",
-            fileName));
+            fileName);
 }
