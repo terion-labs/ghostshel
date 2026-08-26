@@ -295,6 +295,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _agentRunAuditReader = agentRunAuditReader;
         _agentModelFavoriteStore = agentModelFavoriteStore;
         _aiProviderAuthenticationRuntime = aiProviderAuthenticationRuntime;
+        AiProviderSettings = new AiProviderSettingsViewModel(
+            _catalog,
+            _aiProviderRuntime,
+            _aiProviderAuthenticationRuntime,
+            () => [.. Secrets],
+            _uiThreadDispatcher);
+        AiProviderSettings.PropertyChanged += OnAiProviderSettingsPropertyChanged;
+        AiProviderSettings.RuntimeProfilesChanged += OnAiProviderRuntimeProfilesChanged;
         _mcpServerDiagnostics = mcpServerDiagnostics;
         _mcpCredentialSessionInvalidator =
             mcpCredentialSessionInvalidator;
@@ -346,7 +354,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         ProductComponents = productComponentCatalog?.Components ?? [];
         _catalog.Changed += OnCatalogChanged;
         _fileTransferQueue.TransfersChanged += OnFileTransfersChanged;
-        _aiProviderRuntime?.ProfilesChanged += OnAiProviderProfilesChanged;
         _runtimeRecoveryWriter?.WriteFailed += OnRuntimeRecoveryWriteFailed;
         RefreshCatalog(_catalog.Snapshot);
         RefreshFileTransfers();
@@ -612,7 +619,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public FileProviderSettingsViewModel FileProviderSettings { get; }
 
-    public ObservableCollection<AiProviderProfileItemViewModel> AiProviderDefinitions { get; } = [];
+    public ObservableCollection<AiProviderProfileItemViewModel> AiProviderDefinitions =>
+        AiProviderSettings.Definitions;
+
+    public AiProviderSettingsViewModel AiProviderSettings { get; }
 
     public ObservableCollection<McpServerProfileItemViewModel> McpServerDefinitions { get; } = [];
 
@@ -805,11 +815,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         FileProviderSettings.Profiles;
 
     public IReadOnlyList<AiProviderProfileDescriptor> AiProviderProfiles =>
-        _aiProviderRuntime?.Profiles ?? [];
+        AiProviderSettings.Profiles;
 
-    public bool HasAiProviders => AiProviderDefinitions.Count > 0;
+    public bool HasAiProviders => AiProviderSettings.HasProviders;
 
-    public bool HasNoAiProviders => !HasAiProviders;
+    public bool HasNoAiProviders => AiProviderSettings.HasNoProviders;
 
     public bool HasMcpServers => McpServerDefinitions.Count > 0;
 
@@ -1150,6 +1160,32 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         {
             OnPropertyChanged(propertyName);
         }
+    }
+
+    private void OnAiProviderSettingsPropertyChanged(
+        object? sender,
+        PropertyChangedEventArgs eventArgs)
+    {
+        _ = sender;
+        string[] propertyNames = eventArgs.PropertyName switch
+        {
+            nameof(AiProviderSettingsViewModel.Definitions) => [nameof(AiProviderDefinitions)],
+            nameof(AiProviderSettingsViewModel.Profiles) => [nameof(AiProviderProfiles)],
+            nameof(AiProviderSettingsViewModel.HasProviders) => [nameof(HasAiProviders)],
+            nameof(AiProviderSettingsViewModel.HasNoProviders) => [nameof(HasNoAiProviders)],
+            _ => [],
+        };
+        foreach (var propertyName in propertyNames)
+        {
+            OnPropertyChanged(propertyName);
+        }
+    }
+
+    private void OnAiProviderRuntimeProfilesChanged(object? sender, EventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        RefreshDefaultAgentPolicyOptions();
     }
 
     private void OnLauncherPropertyChanged(
@@ -3634,28 +3670,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     }
 
     public AiProviderProfileEditorViewModel CreateAiProviderEditor(
-        AiProviderProfileId? profileId = null)
-    {
-        var runtime = _aiProviderRuntime
-            ?? throw new InvalidOperationException("The AI-provider runtime is unavailable.");
-        if (profileId is null)
-        {
-            return new AiProviderProfileEditorViewModel(
-                runtime,
-                [.. Secrets],
-                suggestedOrder: NextAiProviderOrder(_catalog.Snapshot),
-                authenticationRuntime: _aiProviderAuthenticationRuntime);
-        }
-
-        var stored = _catalog.Snapshot.AiProviderProfiles
-            .SingleOrDefault(item => item.Value.Id == profileId.Value) ?? throw new InvalidOperationException("That AI-provider profile no longer exists.");
-        return new AiProviderProfileEditorViewModel(
-            runtime,
-            [.. Secrets],
-            stored.Value,
-            stored.Revision,
-            authenticationRuntime: _aiProviderAuthenticationRuntime);
-    }
+        AiProviderProfileId? profileId = null) =>
+        AiProviderSettings.CreateEditor(profileId);
 
     public async ValueTask<DefinitionStoreResult<StoredDefinition<AiProviderProfile>>>
         SaveAiProviderProfileAsync(
@@ -3664,10 +3680,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     {
         ArgumentNullException.ThrowIfNull(request);
         ClearError();
-        var result = await _catalog.SaveAiProviderProfileAsync(
-            request.Profile,
-            request.ExpectedRevision,
-            cancellationToken);
+        var result = await AiProviderSettings.SaveAsync(request, cancellationToken);
         ApplyError(result.Error);
         return result;
     }
@@ -4273,23 +4286,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         string Name,
         SecretRef Reference);
 
-    private static int NextAiProviderOrder(DefinitionCatalogSnapshot snapshot)
-    {
-        var used = snapshot.AiProviderProfiles
-            .Select(item => item.Value.Order)
-            .ToHashSet();
-        for (var order = 0; order <= AiProviderProfile.MaximumOrder; order++)
-        {
-            if (!used.Contains(order))
-            {
-                return order;
-            }
-        }
-
-        throw new InvalidOperationException(
-            "Every available AI-provider display position is already in use.");
-    }
-
     public async Task RefreshSecretsAsync(CancellationToken cancellationToken)
     {
         try
@@ -4356,7 +4352,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                         dependencies.Length);
                 }));
             OnPropertyChanged(nameof(HasNoSecrets));
-            RefreshAiProviderDefinitions(_catalog.Snapshot);
+            AiProviderSettings.ApplyCatalog(_catalog.Snapshot);
             RefreshMcpServerDefinitions(_catalog.Snapshot);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -6971,25 +6967,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         else
         {
             Avalonia.Threading.Dispatcher.UIThread.Post(RefreshFileTransfers);
-        }
-    }
-
-    private void OnAiProviderProfilesChanged(object? sender, EventArgs eventArgs)
-    {
-        _ = sender;
-        _ = eventArgs;
-        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
-        {
-            RefreshAiProviderDefinitions(_catalog.Snapshot);
-            RefreshDefaultAgentPolicyOptions();
-        }
-        else
-        {
-            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-            {
-                RefreshAiProviderDefinitions(_catalog.Snapshot);
-                RefreshDefaultAgentPolicyOptions();
-            });
         }
     }
 
@@ -9850,7 +9827,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         // snapshot so an accent save retints the open workspace immediately.
         SetActiveWorkspaceAccent(ShellAccentOf(RuntimeWorkspace, snapshot));
         FileProviderSettings.ApplyCatalog(snapshot);
-        RefreshAiProviderDefinitions(snapshot);
+        AiProviderSettings.ApplyCatalog(snapshot);
         RefreshMcpServerDefinitions(snapshot);
         DefinitionSettings.ApplyCatalog(snapshot);
         TerminalSettings.ApplyCatalog(snapshot);
@@ -10014,66 +9991,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         return [.. options
             .OrderBy(option => option.Name, StringComparer.OrdinalIgnoreCase)
             .ThenBy(option => option.Kind, StringComparer.OrdinalIgnoreCase)];
-    }
-
-    private void RefreshAiProviderDefinitions(DefinitionCatalogSnapshot snapshot)
-    {
-        var descriptors = (_aiProviderRuntime?.Profiles ?? [])
-            .ToDictionary(item => item.Id);
-        var diagnostics = (_aiProviderRuntime?.Diagnostics ?? [])
-            .Where(item => item.ProfileId is not null)
-            .GroupBy(item => item.ProfileId!.Value)
-            .ToDictionary(item => item.Key, item => item.ToArray());
-        ReplaceIfChanged(
-            AiProviderDefinitions,
-            [.. snapshot.AiProviderProfiles
-            .OrderBy(item => item.Value.Order)
-            .ThenBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(item =>
-            {
-                descriptors.TryGetValue(item.Value.Id, out var descriptor);
-                diagnostics.TryGetValue(item.Value.Id, out var profileDiagnostics);
-                var error = profileDiagnostics?.FirstOrDefault(diagnostic =>
-                    diagnostic.Severity == AiProviderRuntimeDiagnosticSeverity.Error);
-                var warning = profileDiagnostics?.FirstOrDefault(diagnostic =>
-                    diagnostic.Severity == AiProviderRuntimeDiagnosticSeverity.Warning);
-                var needsCredential = item.Value.Authentication
-                    is AiProviderAuthentication.ApiKey apiKey
-                    && Secrets.All(secret => secret.Reference != apiKey.Secret);
-                var status = !item.Value.IsEnabled
-                    ? "Disabled"
-                    : error is not null
-                        ? "Unavailable"
-                        : needsCredential
-                            ? "Credential missing"
-                            : descriptor is null
-                                ? "Loading"
-                                : "Ready";
-                return new AiProviderProfileItemViewModel(
-                    item.Value.Id,
-                    item.Revision,
-                    item.Value.Name,
-                    AiProviderCatalog.Get(item.Value.Identity).DisplayName,
-                    item.Value.Endpoint.AbsoluteUri,
-                    item.Value.DefaultModel,
-                    item.Value.Order,
-                    status,
-                    error?.Message
-                        ?? warning?.Message
-                        ?? (needsCredential
-                            ? "Store the API key in the system keychain before testing."
-                            : item.Value.IsEnabled
-                                ? "Ready."
-                                : "This provider is disabled."),
-                    item.Value.IsEnabled,
-                    error is not null || needsCredential,
-                    warning is not null,
-                    needsCredential);
-            })],
-            static (a, b) => a == b);
-        OnPropertyChanged(nameof(AiProviderProfiles));
-        OnPropertyChanged(nameof(HasAiProviders));
-        OnPropertyChanged(nameof(HasNoAiProviders));
     }
 
     private void RefreshMcpServerDefinitions(DefinitionCatalogSnapshot snapshot)
@@ -13508,7 +13425,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
         _catalog.Changed -= OnCatalogChanged;
         _fileTransferQueue.TransfersChanged -= OnFileTransfersChanged;
-        _aiProviderRuntime?.ProfilesChanged -= OnAiProviderProfilesChanged;
         _runtimeRecoveryWriter?.WriteFailed -= OnRuntimeRecoveryWriteFailed;
         _terminalMultiplexerCoordinator?.LeasesChanged -=
                 OnTerminalMultiplexerLeasesChanged;
@@ -13541,7 +13457,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
         _catalog.Changed -= OnCatalogChanged;
         _fileTransferQueue.TransfersChanged -= OnFileTransfersChanged;
-        _aiProviderRuntime?.ProfilesChanged -= OnAiProviderProfilesChanged;
         _runtimeRecoveryWriter?.WriteFailed -= OnRuntimeRecoveryWriteFailed;
         _terminalMultiplexerCoordinator?.LeasesChanged -=
                 OnTerminalMultiplexerLeasesChanged;
@@ -13555,6 +13470,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         AppearanceSettings.BackgroundSaveCompleted -= OnAppearanceBackgroundSaveCompleted;
         WorkspaceSettings.PropertyChanged -= OnWorkspaceSettingsPropertyChanged;
         FileProviderSettings.PropertyChanged -= OnFileProviderSettingsPropertyChanged;
+        AiProviderSettings.PropertyChanged -= OnAiProviderSettingsPropertyChanged;
+        AiProviderSettings.RuntimeProfilesChanged -= OnAiProviderRuntimeProfilesChanged;
         Launcher.PropertyChanged -= OnLauncherPropertyChanged;
         StopTrackingAgentTerminalSelection(_runtimeWorkspace);
         StopTrackingRecovery(_runtimeWorkspace);
@@ -13574,6 +13491,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         SavedScreenSettings.Dispose();
         TerminalConnectionSettings.Dispose();
         FileProviderSettings.Dispose();
+        AiProviderSettings.Dispose();
         DefinitionSettings.Dispose();
         TerminalSettings.Dispose();
         AppearanceSettings.Dispose();
