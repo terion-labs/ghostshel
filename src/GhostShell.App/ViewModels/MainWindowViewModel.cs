@@ -75,7 +75,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private readonly IConnectionSecurityRuntime? _connectionSecurityRuntime;
     private readonly SessionRestoreCoordinator? _sessionRestoreCoordinator;
     private readonly TerminalMultiplexerCoordinator? _terminalMultiplexerCoordinator;
-    private readonly AgentPolicyCoordinator? _agentPolicyCoordinator;
     private readonly IUiThreadDispatcher _uiThreadDispatcher;
     private readonly TimeProvider _timeProvider;
     private readonly CancellationTokenSource _runtimeGraphLifetime = new();
@@ -288,8 +287,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             _uiThreadDispatcher);
         TerminalContinuity.PropertyChanged +=
             OnTerminalContinuityPropertyChanged;
-        _agentPolicyCoordinator = agentPolicyCoordinator;
-        _agentPolicyCoordinator?.Changed += OnAgentPolicyCoordinatorChanged;
         _timeProvider = timeProvider ?? TimeProvider.System;
         History = new RecentSessionHistoryViewModel(
             recentSessionHistory,
@@ -358,13 +355,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             () => AgentChat is { CanChangeProvider: true },
             TrackRecentSession);
         AgentWorkspaceScope.PropertyChanged += OnAgentWorkspaceScopePropertyChanged;
-        DefaultAgentPolicy = new SavedScreenAgentPolicyEditorViewModel(
-            _agentPolicyCoordinator?.Policy,
-            _aiProviderRuntime?.Profiles)
-        {
-            IsEnabled = true
-        };
-        DefaultAgentPolicy.Changed += OnDefaultAgentPolicyChanged;
+        DefaultAgentPolicySettings = new DefaultAgentPolicySettingsViewModel(
+            agentPolicyCoordinator,
+            _aiProviderRuntime?.Profiles,
+            _uiThreadDispatcher,
+            SetError,
+            ClearError);
+        DefaultAgentPolicySettings.PropertyChanged +=
+            OnDefaultAgentPolicySettingsPropertyChanged;
+        DefaultAgentPolicySettings.PolicyChanged +=
+            OnDefaultAgentPolicyChanged;
         Onboarding = role == MainWindowRole.Primary ? onboarding : null;
         ProductComponents = productComponentCatalog?.Components ?? [];
         _catalog.Changed += OnCatalogChanged;
@@ -378,7 +378,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             // provider exists. Persist that exact visible configuration so the
             // Agent surface and Settings cannot disagree about whether AI is set
             // up. Subsequent edits are persisted by OnDefaultAgentPolicyChanged.
-            QueueDefaultAgentPolicyPersistence(onlyWhenMissing: true);
+            DefaultAgentPolicySettings.QueuePersistence(onlyWhenMissing: true);
         }
     }
 
@@ -447,45 +447,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         private set => SetProperty(ref _agentChat, value);
     }
 
-    public SavedScreenAgentPolicyEditorViewModel DefaultAgentPolicy { get; private set; }
+    public DefaultAgentPolicySettingsViewModel DefaultAgentPolicySettings { get; }
+
+    public SavedScreenAgentPolicyEditorViewModel DefaultAgentPolicy =>
+        DefaultAgentPolicySettings.Editor;
 
     public bool CanSaveDefaultAgentPolicy =>
-        _agentPolicyCoordinator is not null && DefaultAgentPolicy.IsValid;
+        DefaultAgentPolicySettings.CanSave;
 
     public async Task SaveDefaultAgentPolicyAsync(CancellationToken cancellationToken)
     {
-        if (_agentPolicyCoordinator is null)
-        {
-            SetError("Default AI configuration storage is unavailable.");
-            return;
-        }
-
-        AgentPolicy? policy;
-        try
-        {
-            policy = DefaultAgentPolicy.Build();
-        }
-        catch (ArgumentException exception)
-        {
-            SetError(exception.Message);
-            return;
-        }
-
-        if (policy is null)
-        {
-            SetError("The default AI configuration cannot be disabled.");
-            return;
-        }
-
-        var result = await _agentPolicyCoordinator
-            .SaveAsync(policy, cancellationToken);
-        if (!result.IsSuccess)
-        {
-            SetError(result.Error!.Message);
-            return;
-        }
-
-        ClearError();
+        await DefaultAgentPolicySettings.SaveAsync(cancellationToken);
     }
 
     public SavedScreenDeleteUndoViewModel SavedScreenDeleteUndo =>
@@ -1281,7 +1253,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             return;
         }
 
-        if (_agentPolicyCoordinator?.Policy is not { } configuredPolicy)
+        if (DefaultAgentPolicySettings.Policy is not { } configuredPolicy)
         {
             AgentChat = null;
             return;
@@ -1649,7 +1621,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     }
 
     private RuntimeAgentPolicyProvenance CurrentAgentPolicyProvenance() =>
-        new(_agentPolicyCoordinator?.Policy);
+        new(DefaultAgentPolicySettings.Policy);
 
     private bool TryResolveAgentPolicy(
         RuntimeWorkspaceViewModel workspace,
@@ -1687,7 +1659,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         var overrideCount = tabs.Count(tab => tab.AgentPolicy.HasPolicyOverride);
         if (overrideCount == 0)
         {
-            if (_agentPolicyCoordinator?.Policy is not { } configuredPolicy)
+            if (DefaultAgentPolicySettings.Policy is not { } configuredPolicy)
             {
                 policy = null;
                 error = "Configure the primary, compaction, and title models in AI settings.";
@@ -6304,34 +6276,33 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         }
     }
 
-    private void RefreshDefaultAgentPolicyOptions()
-    {
-        AgentPolicy? draft = null;
-        if (DefaultAgentPolicy.IsValid)
-        {
-            draft = DefaultAgentPolicy.Build();
-        }
+    private void RefreshDefaultAgentPolicyOptions() =>
+        DefaultAgentPolicySettings.RefreshProviders(_aiProviderRuntime?.Profiles);
 
-        DefaultAgentPolicy.Changed -= OnDefaultAgentPolicyChanged;
-        DefaultAgentPolicy.Dispose();
-        DefaultAgentPolicy = new SavedScreenAgentPolicyEditorViewModel(
-            draft ?? _agentPolicyCoordinator?.Policy,
-            _aiProviderRuntime?.Profiles)
+    private void OnDefaultAgentPolicySettingsPropertyChanged(
+        object? sender,
+        PropertyChangedEventArgs eventArgs)
+    {
+        _ = sender;
+        var propertyName = eventArgs.PropertyName switch
         {
-            IsEnabled = true
+            nameof(DefaultAgentPolicySettingsViewModel.Editor) =>
+                nameof(DefaultAgentPolicy),
+            nameof(DefaultAgentPolicySettingsViewModel.CanSave) =>
+                nameof(CanSaveDefaultAgentPolicy),
+            _ => null,
         };
-        DefaultAgentPolicy.Changed += OnDefaultAgentPolicyChanged;
-        OnPropertyChanged(nameof(DefaultAgentPolicy));
-        OnPropertyChanged(nameof(CanSaveDefaultAgentPolicy));
-        QueueDefaultAgentPolicyPersistence(onlyWhenMissing: true);
+        if (propertyName is not null)
+        {
+            OnPropertyChanged(propertyName);
+        }
     }
 
     private void OnDefaultAgentPolicyChanged(object? sender, EventArgs eventArgs)
     {
         _ = sender;
         _ = eventArgs;
-        OnPropertyChanged(nameof(CanSaveDefaultAgentPolicy));
-        QueueDefaultAgentPolicyPersistence(onlyWhenMissing: false);
+        ActivateWorkspaceAgentChat(RuntimeWorkspace?.Id);
     }
 
     private void StartTrackingRecovery(RuntimeWorkspaceViewModel? workspace)
@@ -10733,7 +10704,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     private async Task QuiesceForShutdownCoreAsync()
     {
-        await WaitForDefaultAgentPolicyPersistenceAsync().ConfigureAwait(false);
+        await DefaultAgentPolicySettings.QuiesceAsync().ConfigureAwait(false);
 
         if (_agentRuntimeFactory is null)
         {
@@ -10755,7 +10726,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         TerminalContinuity.Dispose();
         WorkspaceAutoSave.Seal();
         RuntimeRecovery.Seal();
-        _agentPolicyCoordinator?.Changed -= OnAgentPolicyCoordinatorChanged;
 
         History.SealOperations();
 
@@ -10783,9 +10753,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         SecretSettings.PropertyChanged -= OnSecretSettingsPropertyChanged;
         SecretSettings.ProjectionChanged -= OnSecretProjectionChanged;
         SecretSettings.Dispose();
+        DefaultAgentPolicySettings.PropertyChanged -=
+            OnDefaultAgentPolicySettingsPropertyChanged;
+        DefaultAgentPolicySettings.PolicyChanged -=
+            OnDefaultAgentPolicyChanged;
+        DefaultAgentPolicySettings.Dispose();
         WorkspaceAutoSave.Seal();
         RuntimeRecovery.Seal();
-        _agentPolicyCoordinator?.Changed -= OnAgentPolicyCoordinatorChanged;
         _navigation.PropertyChanged -= OnShellNavigationPropertyChanged;
         DefinitionEdit.PropertyChanged -= OnDefinitionEditPropertyChanged;
         DefinitionSettings.PropertyChanged -= OnDefinitionSettingsPropertyChanged;
@@ -10841,8 +10815,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             _workspaceAgentChats.Clear();
             AgentChat = null;
         }
-        DefaultAgentPolicy.Changed -= OnDefaultAgentPolicyChanged;
-        DefaultAgentPolicy.Dispose();
         History.PropertyChanged -= OnHistoryPropertyChanged;
         History.SnapshotChanged -= OnHistorySnapshotChanged;
         History.Dispose();
