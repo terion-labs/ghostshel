@@ -87,7 +87,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private readonly IMcpCredentialSessionInvalidator?
         _mcpCredentialSessionInvalidator;
     private readonly IConnectionSecurityRuntime? _connectionSecurityRuntime;
-    private readonly RuntimeRecoveryWriter? _runtimeRecoveryWriter;
     private readonly SessionRestoreCoordinator? _sessionRestoreCoordinator;
     private readonly TerminalMultiplexerCoordinator? _terminalMultiplexerCoordinator;
     private readonly AgentPolicyCoordinator? _agentPolicyCoordinator;
@@ -273,7 +272,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             _connectionRuntime,
             _connectionSecurityRuntime,
             _gitRepositoryClient);
-        _runtimeRecoveryWriter = runtimeRecoveryWriter;
         _sessionRestoreCoordinator = sessionRestoreCoordinator;
         _terminalMultiplexerCoordinator = terminalMultiplexerCoordinator;
         _agentPolicyCoordinator = agentPolicyCoordinator;
@@ -294,6 +292,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             : RequireDesktopClientId(agentApprovalPrincipal);
         WindowId = WindowInstanceId.New();
         Role = role;
+        RuntimeRecovery = new RuntimeWorkspaceRecoveryCoordinator(
+            runtimeRecoveryWriter,
+            () => RuntimeWorkspace,
+            () => _runtimeHistorySource,
+            () => _shutdownStarted,
+            QueueWorkspaceAutoSave,
+            SetError,
+            _uiThreadDispatcher);
         RuntimeGraph = new RuntimeWorkspaceGraphCoordinator(
             SessionClient,
             ClientId,
@@ -345,7 +351,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         ProductComponents = productComponentCatalog?.Components ?? [];
         _catalog.Changed += OnCatalogChanged;
         _fileTransferQueue.TransfersChanged += OnFileTransfersChanged;
-        _runtimeRecoveryWriter?.WriteFailed += OnRuntimeRecoveryWriteFailed;
         RefreshCatalog(_catalog.Snapshot);
         RefreshFileTransfers();
         if (role == MainWindowRole.Primary)
@@ -384,6 +389,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     public MainWindowRole Role { get; }
 
     public RuntimeWorkspaceGraphCoordinator RuntimeGraph { get; }
+
+    public RuntimeWorkspaceRecoveryCoordinator RuntimeRecovery { get; }
 
     /// <summary>
     /// The preview settings the Files &amp; transfers page edits. Always
@@ -6874,170 +6881,19 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     }
 
     private void StartTrackingRecovery(RuntimeWorkspaceViewModel? workspace)
-    {
-        if (workspace is null)
-        {
-            return;
-        }
-
-        foreach (var panel in workspace.Tabs.SelectMany(tab => tab.Panels))
-        {
-            StartTrackingRecovery(panel);
-        }
-
-        foreach (var tab in workspace.Tabs)
-        {
-            tab.PropertyChanged -= OnRecoveryRelevantTabPropertyChanged;
-            tab.PropertyChanged += OnRecoveryRelevantTabPropertyChanged;
-        }
-    }
+        => RuntimeRecovery.Track(workspace);
 
     private void StartTrackingRecovery(RuntimePanelViewModel panel)
-    {
-        if (panel is FileRuntimePanelViewModel
-            or BrowserRuntimePanelViewModel
-            or DatabaseRuntimePanelViewModel
-            or RedisRuntimePanelViewModel
-            or TerminalRuntimePanelViewModel)
-        {
-            panel.PropertyChanged += OnRecoveryRelevantPanelPropertyChanged;
-        }
-    }
+        => RuntimeRecovery.Track(panel);
 
     private void StopTrackingRecovery(RuntimeWorkspaceViewModel? workspace)
-    {
-        if (workspace is null)
-        {
-            return;
-        }
-
-        foreach (var panel in workspace.Tabs.SelectMany(tab => tab.Panels))
-        {
-            StopTrackingRecovery(panel);
-        }
-
-        foreach (var tab in workspace.Tabs)
-        {
-            tab.PropertyChanged -= OnRecoveryRelevantTabPropertyChanged;
-        }
-    }
+        => RuntimeRecovery.Untrack(workspace);
 
     private void StopTrackingRecovery(RuntimePanelViewModel panel)
-    {
-        if (panel is FileRuntimePanelViewModel
-            or BrowserRuntimePanelViewModel
-            or DatabaseRuntimePanelViewModel
-            or RedisRuntimePanelViewModel
-            or TerminalRuntimePanelViewModel)
-        {
-            panel.PropertyChanged -= OnRecoveryRelevantPanelPropertyChanged;
-        }
-    }
-
-    private void OnRecoveryRelevantPanelPropertyChanged(
-        object? sender,
-        System.ComponentModel.PropertyChangedEventArgs eventArgs)
-    {
-        if (sender switch
-        {
-            FileRuntimePanelViewModel => eventArgs.PropertyName is
-                nameof(FileRuntimePanelViewModel.SelectedProfile)
-                or nameof(FileRuntimePanelViewModel.CurrentLocation)
-                or nameof(FileRuntimePanelViewModel.ShowHidden),
-            BrowserRuntimePanelViewModel => eventArgs.PropertyName is
-                nameof(BrowserRuntimePanelViewModel.CurrentAddress)
-                or nameof(BrowserRuntimePanelViewModel.ConnectionId),
-            DatabaseRuntimePanelViewModel => eventArgs.PropertyName is
-                nameof(DatabaseRuntimePanelViewModel.RecoveryTarget)
-                or nameof(DatabaseRuntimePanelViewModel.TunnelConnectionId),
-            RedisRuntimePanelViewModel => eventArgs.PropertyName is
-                nameof(RedisRuntimePanelViewModel.RecoveryTarget)
-                or nameof(RedisRuntimePanelViewModel.TunnelConnectionId),
-            TerminalRuntimePanelViewModel => eventArgs.PropertyName is
-                nameof(TerminalRuntimePanelViewModel.MultiplexerSession),
-            _ => false,
-        } is false)
-        {
-            return;
-        }
-
-        QueueRuntimeRecoverySnapshot();
-    }
-
-    private void OnRecoveryRelevantTabPropertyChanged(
-        object? sender,
-        System.ComponentModel.PropertyChangedEventArgs eventArgs)
-    {
-        if (sender is RuntimeTabViewModel
-            && string.Equals(eventArgs.PropertyName, nameof(RuntimeTabViewModel.DockLayoutRevision), StringComparison.Ordinal))
-        {
-            QueueRuntimeRecoverySnapshot();
-        }
-    }
+        => RuntimeRecovery.Untrack(panel);
 
     private void QueueRuntimeRecoverySnapshot()
-    {
-        QueueWorkspaceAutoSave();
-        if (_runtimeRecoveryWriter is null || _shutdownStarted)
-        {
-            return;
-        }
-
-        string payload;
-        try
-        {
-            payload = RuntimeWorkspaceRecoveryCodec.Serialize(
-                RuntimeWorkspace,
-                _runtimeHistorySource);
-        }
-        catch (Exception exception) when (
-            exception is ArgumentException
-                or InvalidDataException
-                or InvalidOperationException
-                or System.Text.Json.JsonException)
-        {
-            SecretSafeDiagnostics.WriteTraceAndStandardError(
-                "recovery.snapshot-prepare.failed",
-                exception);
-            // The reason, not just the fact. Every message this can carry is one
-            // of the codec's own validation sentences — no paths, no session
-            // content — and without it the banner names a subsystem and leaves
-            // the person reading it nothing to act on or report.
-            SetError($"Runtime recovery state could not be prepared. {exception.Message}");
-            return;
-        }
-
-        var queued = _runtimeRecoveryWriter.Enqueue(
-            RuntimeWorkspaceRecoveryCodec.SnapshotKey,
-            RuntimeWorkspaceRecoveryCodec.SchemaVersion,
-            payload);
-        if (!queued.IsSuccess)
-        {
-            OnRuntimeRecoveryWriteFailed(
-                _runtimeRecoveryWriter,
-                new RuntimeRecoveryWriteFailedEventArgs(queued.Error!));
-        }
-    }
-
-    private void OnRuntimeRecoveryWriteFailed(
-        object? sender,
-        RuntimeRecoveryWriteFailedEventArgs eventArgs)
-    {
-        _ = sender;
-        SecretSafeDiagnosticProjection.WriteStandardError(
-            "recovery.runtime-write.failed",
-            SecretSafeDiagnosticKind.Unexpected);
-        void Apply() => SetError($"Runtime recovery is unavailable ({eventArgs.Error.Code}).");
-
-        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
-        {
-            Apply();
-        }
-        else
-        {
-            Avalonia.Threading.Dispatcher.UIThread.Post(Apply);
-        }
-    }
+        => RuntimeRecovery.QueueSnapshot();
 
     private const int WorkspaceAutoSaveDebounceMilliseconds = 1500;
 
@@ -12174,7 +12030,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
         _catalog.Changed -= OnCatalogChanged;
         _fileTransferQueue.TransfersChanged -= OnFileTransfersChanged;
-        _runtimeRecoveryWriter?.WriteFailed -= OnRuntimeRecoveryWriteFailed;
+        RuntimeRecovery.Seal();
         _terminalMultiplexerCoordinator?.LeasesChanged -=
                 OnTerminalMultiplexerLeasesChanged;
         _agentPolicyCoordinator?.Changed -= OnAgentPolicyCoordinatorChanged;
@@ -12198,7 +12054,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
         _catalog.Changed -= OnCatalogChanged;
         _fileTransferQueue.TransfersChanged -= OnFileTransfersChanged;
-        _runtimeRecoveryWriter?.WriteFailed -= OnRuntimeRecoveryWriteFailed;
+        RuntimeRecovery.Seal();
         _terminalMultiplexerCoordinator?.LeasesChanged -=
                 OnTerminalMultiplexerLeasesChanged;
         _agentPolicyCoordinator?.Changed -= OnAgentPolicyCoordinatorChanged;
@@ -12235,6 +12091,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         FileProviderSettings.Dispose();
         AiProviderSettings.Dispose();
         AgentWorkspaceScope.Dispose();
+        RuntimeRecovery.Dispose();
         DefinitionSettings.Dispose();
         TerminalSettings.Dispose();
         AppearanceSettings.Dispose();
