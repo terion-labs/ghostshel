@@ -151,7 +151,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private string _definitionBundleStatus =
         "Exports include saved settings but not credentials or terminal content.";
     private string? _applicationKeySequenceHint;
-    private WorkspaceEditorViewModel? _workspaceEditor;
     private bool _restoreSessionsOnStart = true;
     private bool _sessionRestorePreferenceLoaded;
     private bool _sessionRestorePreferenceSaving;
@@ -239,6 +238,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         DefinitionSettings.PropertyChanged += OnDefinitionSettingsPropertyChanged;
         TerminalSettings = new TerminalSettingsViewModel(_catalog);
         TerminalSettings.PropertyChanged += OnTerminalSettingsPropertyChanged;
+        WorkspaceSettings = new WorkspaceSettingsViewModel(
+            _catalog,
+            () => _aiProviderRuntime?.Profiles ?? []);
+        WorkspaceSettings.PropertyChanged += OnWorkspaceSettingsPropertyChanged;
         SavedScreenDeleteUndo = new SavedScreenDeleteUndoViewModel(_catalog);
         _connectionRuntime = connectionRuntime ?? throw new ArgumentNullException(nameof(connectionRuntime));
         _secretVault = secretVault ?? throw new ArgumentNullException(nameof(secretVault));
@@ -354,6 +357,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     public DefinitionSettingsViewModel DefinitionSettings { get; }
 
     public TerminalSettingsViewModel TerminalSettings { get; }
+
+    public WorkspaceSettingsViewModel WorkspaceSettings { get; }
 
     public MainWindowRole Role { get; }
 
@@ -609,24 +614,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public WorkspaceEditorViewModel? WorkspaceEditor
     {
-        get => _workspaceEditor;
-        private set
-        {
-            if (ReferenceEquals(_workspaceEditor, value))
-            {
-                return;
-            }
-
-            var previous = _workspaceEditor;
-            if (SetProperty(ref _workspaceEditor, value))
-            {
-                previous?.Dispose();
-                OnPropertyChanged(nameof(HasWorkspaceEditor));
-            }
-        }
+        get => WorkspaceSettings.Editor;
     }
 
-    public bool HasWorkspaceEditor => WorkspaceEditor is not null;
+    public bool HasWorkspaceEditor => WorkspaceSettings.HasEditor;
 
     public KeybindingProfileItemViewModel? SelectedKeybindingProfile
     {
@@ -1060,6 +1051,25 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             _ => null,
         };
         if (propertyName is not null)
+        {
+            OnPropertyChanged(propertyName);
+        }
+    }
+
+    private void OnWorkspaceSettingsPropertyChanged(
+        object? sender,
+        PropertyChangedEventArgs eventArgs)
+    {
+        _ = sender;
+        string[] propertyNames = eventArgs.PropertyName switch
+        {
+            nameof(WorkspaceSettingsViewModel.Editor) =>
+                [nameof(WorkspaceEditor)],
+            nameof(WorkspaceSettingsViewModel.HasEditor) =>
+                [nameof(HasWorkspaceEditor)],
+            _ => [],
+        };
+        foreach (var propertyName in propertyNames)
         {
             OnPropertyChanged(propertyName);
         }
@@ -2141,7 +2151,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public void DismissWorkspaceEditor()
     {
-        WorkspaceEditor = null;
+        WorkspaceSettings.Dismiss();
         DefinitionEdit.Clear();
         if (Overlay == ShellOverlay.DefinitionEditor)
         {
@@ -2229,35 +2239,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public void BeginEditWorkspace(WorkspaceId id)
     {
-        var stored = _catalog.Snapshot.Workspaces.SingleOrDefault(item => item.Value.Id == id);
-        if (stored is null)
+        if (!WorkspaceSettings.TryBeginEdit(id, out var identity, out var error))
         {
-            SetError("That workspace no longer exists.");
+            SetError(error!);
             return;
         }
 
-        if (WorkspaceEditor?.RequestCancel()
-            == WorkspaceEditorCancelDisposition.ConfirmDiscard)
-        {
-            SetError("Save or discard the current workspace changes before editing another workspace.");
-            return;
-        }
-
-        var snapshot = _catalog.Snapshot;
-        WorkspaceEditor = new WorkspaceEditorViewModel(
-            stored.Value,
-            stored.Revision,
-            [.. snapshot.Connections.Select(item => item.Value)],
-            [.. snapshot.Screens.Select(item => item.Value)],
-            [.. snapshot.Layouts.Select(item => item.Value)],
-            [.. snapshot.FileProviderProfiles.Select(item => item.Value)],
-            _aiProviderRuntime?.Profiles);
-        WorkspaceEditor.SetPeers([.. snapshot.Workspaces.Select(item => item.Value)]);
         DefinitionEdit.Begin(
-            stored.Value.Key,
-            stored.Revision,
-            stored.Value.Name,
-            stored.Value.Description);
+            identity!.Key,
+            identity.Revision,
+            identity.Name,
+            identity.Description);
         ClearError();
         Overlay = ShellOverlay.DefinitionEditor;
     }
@@ -2268,36 +2260,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     /// </summary>
     public void BeginCreateWorkspace()
     {
-        if (WorkspaceEditor?.RequestCancel()
-            == WorkspaceEditorCancelDisposition.ConfirmDiscard)
+        if (!WorkspaceSettings.TryBeginCreate(out var identity, out var error))
         {
-            SetError(
-                "Save or discard the current workspace changes before creating another workspace.");
+            SetError(error!);
             return;
         }
 
-        var snapshot = _catalog.Snapshot;
-        var definition = new WorkspaceDefinition(
-            WorkspaceId.New(),
-            WorkspaceDefinition.CurrentSchemaVersion,
-            "Untitled workspace",
-            description: null,
-            ThemePreference.BronzeFallback.ToString(),
-            []);
-        WorkspaceEditor = new WorkspaceEditorViewModel(
-            definition,
-            expectedRevision: null,
-            [.. snapshot.Connections.Select(item => item.Value)],
-            [.. snapshot.Screens.Select(item => item.Value)],
-            [.. snapshot.Layouts.Select(item => item.Value)],
-            [.. snapshot.FileProviderProfiles.Select(item => item.Value)],
-            _aiProviderRuntime?.Profiles);
-        WorkspaceEditor.SetPeers([.. snapshot.Workspaces.Select(item => item.Value)]);
         DefinitionEdit.Begin(
-            definition.Key,
-            revision: null,
-            definition.Name,
-            description: null);
+            identity!.Key,
+            identity.Revision,
+            identity.Name,
+            identity.Description);
         ClearError();
         Overlay = ShellOverlay.DefinitionEditor;
     }
@@ -2306,23 +2279,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         SaveWorkspaceEditorAsync(CancellationToken cancellationToken)
     {
         ClearError();
-        if (WorkspaceEditor is null)
-        {
-            return Fail<StoredDefinition<WorkspaceDefinition>>(
-                "Choose a workspace to edit before saving.");
-        }
-
-        WorkspaceEditorSaveRequest request;
-        try
-        {
-            request = WorkspaceEditor.CreateSaveRequest();
-        }
-        catch (InvalidOperationException exception)
-        {
-            return Fail<StoredDefinition<WorkspaceDefinition>>(exception.Message);
-        }
-
-        return await SaveWorkspaceEditorAsync(request, cancellationToken);
+        var result = await WorkspaceSettings.SaveAsync(cancellationToken);
+        CompleteWorkspaceEditorSave(result);
+        return result;
     }
 
     public async ValueTask<DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>>
@@ -2332,26 +2291,22 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     {
         ArgumentNullException.ThrowIfNull(request);
         ClearError();
-        if (WorkspaceEditor is null
-            || WorkspaceEditor.Id != request.Definition.Id
-            || WorkspaceEditor.ExpectedRevision != request.ExpectedRevision)
+        var result = await WorkspaceSettings.SaveAsync(request, cancellationToken);
+        CompleteWorkspaceEditorSave(result);
+        return result;
+    }
+
+    private void CompleteWorkspaceEditorSave(
+        DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>> result)
+    {
+        ApplyError(result.Error);
+        if (result is not { IsSuccess: true, Value: { } saved })
         {
-            return Fail<StoredDefinition<WorkspaceDefinition>>(
-                "The workspace editor changed before the save could begin.");
+            return;
         }
 
-        var saved = await _catalog.SaveWorkspaceAsync(
-            request.Definition,
-            request.ExpectedRevision,
-            cancellationToken);
-        ApplyError(saved.Error);
-        if (saved.IsSuccess)
-        {
-            ApplyTerminalMultiplexingOverrideToOpenWorkspaces(request.Definition);
-            DismissWorkspaceEditor();
-        }
-
-        return saved;
+        ApplyTerminalMultiplexingOverrideToOpenWorkspaces(saved.Value);
+        DismissWorkspaceEditor();
     }
 
     private void ApplyTerminalMultiplexingOverrideToOpenWorkspaces(
@@ -9900,7 +9855,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         }
 
         DefinitionSettings.DismissLayoutDesigner();
-        WorkspaceEditor = null;
+        WorkspaceSettings.Dismiss();
         DefinitionEdit.Clear();
         Overlay = ShellOverlay.None;
         return true;
@@ -13740,6 +13695,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         DefinitionEdit.PropertyChanged -= OnDefinitionEditPropertyChanged;
         DefinitionSettings.PropertyChanged -= OnDefinitionSettingsPropertyChanged;
         TerminalSettings.PropertyChanged -= OnTerminalSettingsPropertyChanged;
+        WorkspaceSettings.PropertyChanged -= OnWorkspaceSettingsPropertyChanged;
         Launcher.PropertyChanged -= OnLauncherPropertyChanged;
         StopTrackingAgentTerminalSelection(_runtimeWorkspace);
         StopTrackingRecovery(_runtimeWorkspace);
@@ -13755,7 +13711,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _runtimeSources.Clear();
         _runtimeWorkspace?.DisposePanels();
         _runtimeWorkspace = null;
-        WorkspaceEditor = null;
+        WorkspaceSettings.Dispose();
         DefinitionSettings.Dispose();
         TerminalSettings.Dispose();
         Onboarding?.Dispose();
