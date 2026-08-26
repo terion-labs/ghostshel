@@ -16,18 +16,6 @@ using GhostShell.Git;
 
 namespace GhostShell.App.ViewModels;
 
-public enum AgentRunScopeKind
-{
-    ActivePanel,
-    CurrentTab,
-    Workspace,
-    SelectedPanels,
-}
-
-public sealed record AgentRunScopeOption(
-    AgentRunScopeKind Kind,
-    string Label);
-
 public sealed record ManagedRemoteSessionViewModel(
     TerminalMultiplexerLease Lease,
     string ConnectionName)
@@ -66,14 +54,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private const int WorkspaceMutationAttemptCount = 2;
     private static readonly TimeSpan WorkspaceGraphReceiptReconciliationTimeout =
         TimeSpan.FromSeconds(1);
-    private static readonly IReadOnlyList<AgentRunScopeOption> AgentRunScopeOptionsValue =
-        Array.AsReadOnly<AgentRunScopeOption>(
-        [
-            new(AgentRunScopeKind.ActivePanel, "Active panel"),
-            new(AgentRunScopeKind.CurrentTab, "Current tab"),
-            new(AgentRunScopeKind.Workspace, "Workspace"),
-            new(AgentRunScopeKind.SelectedPanels, "Selected terminals"),
-        ]);
 
     private readonly IDefinitionCatalog _catalog;
     private readonly IConnectionRuntime _connectionRuntime;
@@ -129,9 +109,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private readonly Dictionary<WorkspaceInstanceId, TerminalMultiplexingMode>
         _workspaceTerminalMultiplexingModes = [];
     private readonly List<Task> _runtimeGraphWatchTasks = [];
-    private readonly HashSet<RuntimeTabViewModel> _agentSelectionTrackedTabs = [];
-    private readonly HashSet<TerminalRuntimePanelViewModel>
-        _agentSelectionTrackedTerminals = [];
     private readonly HashSet<FilePanelTransferId> _refreshedFileTransfers = [];
     private readonly Dictionary<
         McpServerProfileId,
@@ -157,12 +134,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private TerminalMultiplexingMode _terminalMultiplexingMode;
     private bool _terminalMultiplexingPreferenceLoaded;
     private bool _terminalMultiplexingPreferenceSaving;
-    private AgentRunScopeOption _selectedAgentRunScope =
-        AgentRunScopeOptionsValue[2];
-    private bool _agentTerminalSelectionStale;
-    private bool _hasAgentTerminalSelectionError;
-    private string _agentTerminalSelectionStatus =
-        $"Choose between 1 and {AgentTarget.SelectedPanels.MaximumPanelCount} live terminals from this workspace.";
     private volatile bool _shutdownStarted;
     private bool _presentationTeardownCompleted;
     private bool _disposed;
@@ -343,6 +314,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 agentRunAuditReader,
                 agentModelFavoriteStore)
             : null;
+        AgentWorkspaceScope = new AgentWorkspaceScopeViewModel(
+            WindowId,
+            () => AgentChat is not { CanChangeProvider: false },
+            () => AgentChat is { CanChangeProvider: true },
+            TrackRecentSession);
+        AgentWorkspaceScope.PropertyChanged += OnAgentWorkspaceScopePropertyChanged;
         DefaultAgentPolicy = new SavedScreenAgentPolicyEditorViewModel(
             _agentPolicyCoordinator?.Policy,
             _aiProviderRuntime?.Profiles)
@@ -467,60 +444,34 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     public WindowInstanceId WindowId { get; }
 
     public IReadOnlyList<AgentRunScopeOption> AgentRunScopeOptions =>
-        AgentRunScopeOptionsValue;
+        AgentWorkspaceScope.ScopeOptions;
+
+    public AgentWorkspaceScopeViewModel AgentWorkspaceScope { get; }
 
     public AgentRunScopeOption SelectedAgentRunScope
     {
-        get => _selectedAgentRunScope;
-        set
-        {
-            ArgumentNullException.ThrowIfNull(value);
-            if (!AgentRunScopeOptionsValue.Contains(value))
-            {
-                throw new ArgumentException(
-                    "The selected agent scope is not available.",
-                    nameof(value));
-            }
-
-            if (AgentChat is { CanChangeProvider: false })
-            {
-                return;
-            }
-
-            if (SetProperty(ref _selectedAgentRunScope, value))
-            {
-                OnPropertyChanged(nameof(IsAgentSelectedPanelsScope));
-                UpdateAgentTerminalSelectionStatus();
-            }
-        }
+        get => AgentWorkspaceScope.SelectedScope;
+        set => AgentWorkspaceScope.SelectedScope = value;
     }
 
     public ObservableCollection<AgentTerminalSelectionItemViewModel> AgentTerminalSelectionOptions
-    { get; } = [];
+        => AgentWorkspaceScope.TerminalOptions;
 
     public bool IsAgentSelectedPanelsScope =>
-        SelectedAgentRunScope.Kind == AgentRunScopeKind.SelectedPanels;
+        AgentWorkspaceScope.IsSelectedPanelsScope;
 
     public bool HasAgentTerminalSelectionOptions =>
-        AgentTerminalSelectionOptions.Count > 0;
+        AgentWorkspaceScope.HasTerminalOptions;
 
     public int AgentSelectedTerminalCount =>
-        AgentTerminalSelectionOptions.Count(option => option.IsSelected);
+        AgentWorkspaceScope.SelectedTerminalCount;
 
     public string AgentTerminalSelectionSummary =>
-        $"{AgentSelectedTerminalCount} selected";
+        AgentWorkspaceScope.SelectionSummary;
 
-    public string AgentTerminalSelectionStatus
-    {
-        get => _agentTerminalSelectionStatus;
-        private set => SetProperty(ref _agentTerminalSelectionStatus, value);
-    }
+    public string AgentTerminalSelectionStatus => AgentWorkspaceScope.SelectionStatus;
 
-    public bool HasAgentTerminalSelectionError
-    {
-        get => _hasAgentTerminalSelectionError;
-        private set => SetProperty(ref _hasAgentTerminalSelectionError, value);
-    }
+    public bool HasAgentTerminalSelectionError => AgentWorkspaceScope.HasSelectionError;
 
     public ObservableCollection<LauncherWorkspaceViewModel> Workspaces => Launcher.Workspaces;
 
@@ -969,7 +920,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 SetActiveWorkspaceAccent(ShellAccentOf(value));
                 _activation?.Mark("accent");
 
-                StopTrackingAgentTerminalSelection(previous);
+                AgentWorkspaceScope.StopTracking(previous);
                 StopTrackingRecovery(previous);
 
                 // Only a workspace that has actually gone is torn down. One that
@@ -988,9 +939,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 ActivateWorkspaceAgentChat(value?.Id);
                 SyncAgentPanelPlacement(value);
                 StartTrackingRecovery(value);
-                StartTrackingAgentTerminalSelection(value);
+                AgentWorkspaceScope.AttachWorkspace(value);
                 _activation?.Mark("tracking");
-                RefreshAgentTerminalSelectionOptions(resetSelection: true);
                 _activation?.Mark("agent terminals");
                 OnPropertyChanged(nameof(HasRuntimeWorkspace));
                 OnPropertyChanged(nameof(NewItemLauncherTitle));
@@ -1186,6 +1136,35 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _ = sender;
         _ = eventArgs;
         RefreshDefaultAgentPolicyOptions();
+    }
+
+    private void OnAgentWorkspaceScopePropertyChanged(
+        object? sender,
+        PropertyChangedEventArgs eventArgs)
+    {
+        _ = sender;
+        string[] propertyNames = eventArgs.PropertyName switch
+        {
+            nameof(AgentWorkspaceScopeViewModel.SelectedScope) =>
+                [nameof(SelectedAgentRunScope)],
+            nameof(AgentWorkspaceScopeViewModel.IsSelectedPanelsScope) =>
+                [nameof(IsAgentSelectedPanelsScope)],
+            nameof(AgentWorkspaceScopeViewModel.HasTerminalOptions) =>
+                [nameof(HasAgentTerminalSelectionOptions)],
+            nameof(AgentWorkspaceScopeViewModel.SelectedTerminalCount) =>
+                [nameof(AgentSelectedTerminalCount)],
+            nameof(AgentWorkspaceScopeViewModel.SelectionSummary) =>
+                [nameof(AgentTerminalSelectionSummary)],
+            nameof(AgentWorkspaceScopeViewModel.SelectionStatus) =>
+                [nameof(AgentTerminalSelectionStatus)],
+            nameof(AgentWorkspaceScopeViewModel.HasSelectionError) =>
+                [nameof(HasAgentTerminalSelectionError)],
+            _ => [],
+        };
+        foreach (var propertyName in propertyNames)
+        {
+            OnPropertyChanged(propertyName);
+        }
     }
 
     private void OnLauncherPropertyChanged(
@@ -1564,61 +1543,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             return agentChat.QueueFollowUpAsync(cancellationToken);
         }
 
-        if (RuntimeWorkspace is not { ActiveTab: { } activeTab } workspace)
+        if (!AgentWorkspaceScope.TryCreateTarget(out var target, out var targetError))
         {
-            agentChat.ReportTargetUnavailable(
-                "Open a terminal, browser, File Viewer, Statistics, or Process Monitor panel "
-                + "before sending a request to the agent.");
+            agentChat.ReportTargetUnavailable(targetError);
             return Task.CompletedTask;
         }
 
-        AgentTarget target;
-        switch (SelectedAgentRunScope.Kind)
+        if (RuntimeWorkspace is not { } workspace)
         {
-            case AgentRunScopeKind.ActivePanel:
-                if (activeTab.ActivePanel is not { } activePanel
-                    || !IsAgentCapablePanel(activePanel))
-                {
-                    agentChat.ReportTargetUnavailable(
-                        "Select an active terminal, browser, File Viewer, hosted "
-                        + "Statistics, or hosted Process Monitor panel, "
-                        + "or choose a broader agent scope.");
-                    return Task.CompletedTask;
-                }
-
-                target = new AgentTarget.Panel(
-                    WindowId,
-                    workspace.Id,
-                    activeTab.Id,
-                    activePanel.Id);
-                break;
-            case AgentRunScopeKind.CurrentTab:
-                target = new AgentTarget.OpenTab(
-                    WindowId,
-                    workspace.Id,
-                    activeTab.Id);
-                break;
-            case AgentRunScopeKind.Workspace:
-                target = new AgentTarget.Workspace(
-                    WindowId,
-                    workspace.Id);
-                break;
-            case AgentRunScopeKind.SelectedPanels:
-                if (!TryCreateSelectedPanelsTarget(
-                        workspace,
-                        out target,
-                        out var selectionError))
-                {
-                    agentChat.ReportTargetUnavailable(selectionError);
-                    return Task.CompletedTask;
-                }
-
-                break;
-            default:
-                throw new ArgumentOutOfRangeException(
-                    nameof(SelectedAgentRunScope),
-                    SelectedAgentRunScope.Kind,
-                    "The selected agent scope is not supported.");
+            agentChat.ReportTargetUnavailable(targetError);
+            return Task.CompletedTask;
         }
 
         if (!TryResolveAgentPolicy(workspace, target, out var policy, out var policyError))
@@ -1726,83 +1660,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             return false;
         }
     }
-
-    private bool TryCreateSelectedPanelsTarget(
-        RuntimeWorkspaceViewModel workspace,
-        out AgentTarget target,
-        out string error)
-    {
-        target = null!;
-        if (_agentTerminalSelectionStale)
-        {
-            error =
-                "A selected terminal is no longer live. Review the selected terminals before sending.";
-            SetAgentTerminalSelectionError(error, stale: true);
-            return false;
-        }
-
-        var selected = AgentTerminalSelectionOptions
-            .Where(option => option.IsSelected)
-            .ToArray();
-        if (selected.Length == 0)
-        {
-            error = "Select at least one live terminal before sending.";
-            SetAgentTerminalSelectionError(error, stale: false);
-            return false;
-        }
-
-        if (selected.Length > AgentTarget.SelectedPanels.MaximumPanelCount)
-        {
-            error =
-                $"Select no more than {AgentTarget.SelectedPanels.MaximumPanelCount} terminals.";
-            SetAgentTerminalSelectionError(error, stale: false);
-            return false;
-        }
-
-        var panels = new List<AgentTarget.Panel>(selected.Length);
-        foreach (var option in selected)
-        {
-            var tab = workspace.Tabs.SingleOrDefault(
-                candidate => candidate.Id == option.TabId);
-            if (tab is null || tab?.Panels.SingleOrDefault(
-                candidate => candidate.Id == option.PanelId) is not TerminalRuntimePanelViewModel terminal || !IsLiveAgentTerminal(terminal))
-            {
-                error =
-                    "A selected terminal is no longer live. Review the selected terminals before sending.";
-                SetAgentTerminalSelectionError(error, stale: true);
-                return false;
-            }
-
-            panels.Add(
-                new AgentTarget.Panel(
-                    WindowId,
-                    workspace.Id,
-                    tab.Id,
-                    terminal.Id));
-        }
-
-        target = new AgentTarget.SelectedPanels(panels);
-        error = string.Empty;
-        HasAgentTerminalSelectionError = false;
-        UpdateAgentTerminalSelectionStatus();
-        return true;
-    }
-
-    private static bool IsLiveAgentTerminal(
-        TerminalRuntimePanelViewModel terminal) =>
-        terminal.ConnectionState == ConnectionPanelState.Ready
-        && terminal.SessionRequest is not null
-        && terminal.HasObservedActiveSession;
-
-    private static bool IsAgentCapablePanel(RuntimePanelViewModel panel) =>
-        panel is TerminalRuntimePanelViewModel
-            or BrowserRuntimePanelViewModel
-            or FileRuntimePanelViewModel
-            or StatisticsRuntimePanelViewModel
-            or ProcessMonitorRuntimePanelViewModel
-        {
-            HasHostedSession: true,
-        };
 
     public CommandContext ActiveCommandContexts
     {
@@ -5467,7 +5324,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         workspace.AddConnections(Connections.Where(item => item.Id == connection.Id));
         StartTrackingRecovery(replacement);
         TrackRecentSession(replacement);
-        RefreshAgentTerminalSelectionOptions(resetSelection: true);
+        AgentWorkspaceScope.ResetTerminalOptions();
         QueueRuntimeRecoverySnapshot();
         return true;
     }
@@ -7000,248 +6857,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         QueueDefaultAgentPolicyPersistence(onlyWhenMissing: false);
     }
 
-    private void StartTrackingAgentTerminalSelection(
-        RuntimeWorkspaceViewModel? workspace)
-    {
-        if (workspace is null)
-        {
-            return;
-        }
-
-        workspace.Tabs.CollectionChanged += OnAgentSelectionTabsChanged;
-        ReconcileAgentTerminalSelectionSubscriptions(workspace);
-    }
-
-    private void StopTrackingAgentTerminalSelection(
-        RuntimeWorkspaceViewModel? workspace)
-    {
-        workspace?.Tabs.CollectionChanged -= OnAgentSelectionTabsChanged;
-
-        foreach (var tab in _agentSelectionTrackedTabs)
-        {
-            tab.Panels.CollectionChanged -= OnAgentSelectionPanelsChanged;
-        }
-
-        foreach (var terminal in _agentSelectionTrackedTerminals)
-        {
-            terminal.PropertyChanged -= OnAgentSelectionTerminalPropertyChanged;
-        }
-
-        _agentSelectionTrackedTabs.Clear();
-        _agentSelectionTrackedTerminals.Clear();
-    }
-
-    private void ReconcileAgentTerminalSelectionSubscriptions(
-        RuntimeWorkspaceViewModel workspace)
-    {
-        foreach (var tab in _agentSelectionTrackedTabs)
-        {
-            tab.Panels.CollectionChanged -= OnAgentSelectionPanelsChanged;
-        }
-
-        foreach (var terminal in _agentSelectionTrackedTerminals)
-        {
-            terminal.PropertyChanged -= OnAgentSelectionTerminalPropertyChanged;
-        }
-
-        _agentSelectionTrackedTabs.Clear();
-        _agentSelectionTrackedTerminals.Clear();
-        foreach (var tab in workspace.Tabs)
-        {
-            tab.Panels.CollectionChanged += OnAgentSelectionPanelsChanged;
-            _agentSelectionTrackedTabs.Add(tab);
-            foreach (var terminal in tab.Panels.OfType<TerminalRuntimePanelViewModel>())
-            {
-                terminal.PropertyChanged += OnAgentSelectionTerminalPropertyChanged;
-                _agentSelectionTrackedTerminals.Add(terminal);
-            }
-        }
-    }
-
-    private void OnAgentSelectionTabsChanged(
-        object? sender,
-        NotifyCollectionChangedEventArgs eventArgs)
-    {
-        _ = sender;
-        _ = eventArgs;
-        if (RuntimeWorkspace is not { } workspace)
-        {
-            return;
-        }
-
-        ReconcileAgentTerminalSelectionSubscriptions(workspace);
-        RefreshAgentTerminalSelectionOptions(resetSelection: false);
-    }
-
-    private void OnAgentSelectionPanelsChanged(
-        object? sender,
-        NotifyCollectionChangedEventArgs eventArgs)
-    {
-        _ = sender;
-        _ = eventArgs;
-        if (RuntimeWorkspace is not { } workspace)
-        {
-            return;
-        }
-
-        ReconcileAgentTerminalSelectionSubscriptions(workspace);
-        RefreshAgentTerminalSelectionOptions(resetSelection: false);
-    }
-
-    private void OnAgentSelectionTerminalPropertyChanged(
-        object? sender,
-        PropertyChangedEventArgs eventArgs)
-    {
-        if (string.Equals(eventArgs.PropertyName
-, nameof(TerminalRuntimePanelViewModel.SessionRequest)
-, StringComparison.Ordinal) && sender is TerminalRuntimePanelViewModel { SessionRequest: not null } terminal)
-        {
-            TrackRecentSession(terminal);
-        }
-
-        if (eventArgs.PropertyName is
-            nameof(TerminalRuntimePanelViewModel.ConnectionState)
-            or nameof(TerminalRuntimePanelViewModel.SessionRequest)
-            or nameof(TerminalRuntimePanelViewModel.HasObservedActiveSession))
-        {
-            RefreshAgentTerminalSelectionOptions(resetSelection: false);
-        }
-    }
-
-    private void RefreshAgentTerminalSelectionOptions(bool resetSelection)
-    {
-        var selected = resetSelection
-            ? []
-            : AgentTerminalSelectionOptions
-                .Where(option => option.IsSelected)
-                .Select(option => (option.TabId, option.PanelId))
-                .ToHashSet();
-        var candidates = RuntimeWorkspace?.Tabs
-            .SelectMany(tab => tab.Panels
-                .OfType<TerminalRuntimePanelViewModel>()
-                .Where(IsLiveAgentTerminal)
-                .Select(terminal => (Tab: tab, Terminal: terminal)))
-            .ToArray()
-            ?? [];
-        var candidateIds = candidates
-            .Select(candidate => (candidate.Tab.Id, candidate.Terminal.Id))
-            .ToHashSet();
-        var lostSelection = !resetSelection
-            && selected.Any(id => !candidateIds.Contains(id));
-
-        AgentTerminalSelectionOptions.Clear();
-        foreach (var candidate in candidates)
-        {
-            AgentTerminalSelectionOptions.Add(
-                new AgentTerminalSelectionItemViewModel(
-                    candidate.Tab.Id,
-                    candidate.Tab.Title,
-                    candidate.Terminal.Id,
-                    candidate.Terminal.Title,
-                    selected.Contains((candidate.Tab.Id, candidate.Terminal.Id)),
-                    CanApplyAgentTerminalSelection,
-                    OnAgentTerminalSelectionChanged));
-        }
-
-        if (resetSelection)
-        {
-            _agentTerminalSelectionStale = false;
-            HasAgentTerminalSelectionError = false;
-        }
-
-        if (lostSelection)
-        {
-            SetAgentTerminalSelectionError(
-                "A selected terminal is no longer live. Review the selected terminals before sending.",
-                stale: true);
-        }
-        else
-        {
-            UpdateAgentTerminalSelectionStatus();
-        }
-
-        OnPropertyChanged(nameof(HasAgentTerminalSelectionOptions));
-        NotifyAgentTerminalSelectionCountChanged();
-    }
-
-    private bool CanApplyAgentTerminalSelection(
-        AgentTerminalSelectionItemViewModel option,
-        bool selected)
-    {
-        if (AgentChat is not { CanChangeProvider: true }
-            || !AgentTerminalSelectionOptions.Contains(option))
-        {
-            return false;
-        }
-
-        if (selected
-            && AgentSelectedTerminalCount
-                >= AgentTarget.SelectedPanels.MaximumPanelCount)
-        {
-            SetAgentTerminalSelectionError(
-                $"Select no more than {AgentTarget.SelectedPanels.MaximumPanelCount} terminals.",
-                stale: false);
-            return false;
-        }
-
-        return true;
-    }
-
-    private void OnAgentTerminalSelectionChanged()
-    {
-        _agentTerminalSelectionStale = false;
-        HasAgentTerminalSelectionError = false;
-        NotifyAgentTerminalSelectionCountChanged();
-        UpdateAgentTerminalSelectionStatus();
-    }
-
-    private void NotifyAgentTerminalSelectionCountChanged()
-    {
-        OnPropertyChanged(nameof(AgentSelectedTerminalCount));
-        OnPropertyChanged(nameof(AgentTerminalSelectionSummary));
-    }
-
-    private void UpdateAgentTerminalSelectionStatus()
-    {
-        if (_agentTerminalSelectionStale)
-        {
-            HasAgentTerminalSelectionError = true;
-            AgentTerminalSelectionStatus =
-                "A selected terminal is no longer live. Review the selected terminals before sending.";
-            return;
-        }
-
-        if (AgentTerminalSelectionOptions.Count == 0)
-        {
-            HasAgentTerminalSelectionError = false;
-            AgentTerminalSelectionStatus =
-                "No live terminal sessions are available in this workspace.";
-            return;
-        }
-
-        HasAgentTerminalSelectionError = false;
-        AgentTerminalSelectionStatus = AgentSelectedTerminalCount switch
-        {
-            0 =>
-                $"Choose between 1 and {AgentTarget.SelectedPanels.MaximumPanelCount} live terminals from this workspace.",
-            1 => "1 terminal selected. The selection locks when the run starts.",
-            var count =>
-                $"{count} terminals selected. The selection locks when the run starts.",
-        };
-    }
-
-    private void SetAgentTerminalSelectionError(string message, bool stale)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(message);
-        if (stale)
-        {
-            _agentTerminalSelectionStale = true;
-        }
-
-        HasAgentTerminalSelectionError = true;
-        AgentTerminalSelectionStatus = message;
-    }
-
     private void StartTrackingRecovery(RuntimeWorkspaceViewModel? workspace)
     {
         if (workspace is null)
@@ -8278,7 +7893,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         }
 
         StopTrackingRecovery(runtime);
-        StopTrackingAgentTerminalSelection(runtime);
+        AgentWorkspaceScope.StopTracking(runtime);
         runtime.DisposePanels();
         RemoveWorkspaceAgentChat(runtime.Id);
         RefreshWorkspaceRuntimeFlags();
@@ -13382,7 +12997,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         }
 
         _shutdownStarted = true;
-        StopTrackingAgentTerminalSelection(_runtimeWorkspace);
+        AgentWorkspaceScope.StopTracking(_runtimeWorkspace);
         StopTrackingRecovery(_runtimeWorkspace);
         QueueRemainingRecentSessionCompletions(RecentSessionOutcome.GracefullyClosed);
 
@@ -13472,8 +13087,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         FileProviderSettings.PropertyChanged -= OnFileProviderSettingsPropertyChanged;
         AiProviderSettings.PropertyChanged -= OnAiProviderSettingsPropertyChanged;
         AiProviderSettings.RuntimeProfilesChanged -= OnAiProviderRuntimeProfilesChanged;
+        AgentWorkspaceScope.PropertyChanged -= OnAgentWorkspaceScopePropertyChanged;
         Launcher.PropertyChanged -= OnLauncherPropertyChanged;
-        StopTrackingAgentTerminalSelection(_runtimeWorkspace);
+        AgentWorkspaceScope.StopTracking(_runtimeWorkspace);
         StopTrackingRecovery(_runtimeWorkspace);
         // Every open workspace, not only the one in front: the others are just
         // as alive, and leaving them behind leaks their sessions.
@@ -13492,6 +13108,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         TerminalConnectionSettings.Dispose();
         FileProviderSettings.Dispose();
         AiProviderSettings.Dispose();
+        AgentWorkspaceScope.Dispose();
         DefinitionSettings.Dispose();
         TerminalSettings.Dispose();
         AppearanceSettings.Dispose();
