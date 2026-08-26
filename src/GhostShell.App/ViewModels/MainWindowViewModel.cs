@@ -102,19 +102,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private readonly IUiThreadDispatcher _uiThreadDispatcher;
     private readonly TimeProvider _timeProvider;
     private readonly CancellationTokenSource _runtimeGraphLifetime = new();
-    private readonly SemaphoreSlim _runtimeGraphGate = new(1, 1);
+    private readonly SemaphoreSlim _runtimeGraphGate;
     private readonly object _mcpServerTestGate = new();
     private readonly object _shutdownGate = new();
     private readonly Dictionary<PanelInstanceId, SessionId> _recentSessionIds = [];
     private readonly Dictionary<WorkspaceInstanceId, TerminalMultiplexingMode>
         _workspaceTerminalMultiplexingModes = [];
-    private readonly List<Task> _runtimeGraphWatchTasks = [];
     private readonly HashSet<FilePanelTransferId> _refreshedFileTransfers = [];
     private readonly Dictionary<
         McpServerProfileId,
         McpServerTestPresentation> _mcpServerTests = [];
     private Task? _shutdownTask;
-    private CancellationTokenSource? _runtimeGraphWatchCancellation;
     private CancellationTokenSource? _workspaceAutoSaveDebounce;
     private RuntimeHistorySource? _runtimeHistorySource;
     private readonly ShellNavigationViewModel _navigation = new();
@@ -304,6 +302,20 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             : RequireDesktopClientId(agentApprovalPrincipal);
         WindowId = WindowInstanceId.New();
         Role = role;
+        RuntimeGraph = new RuntimeWorkspaceGraphCoordinator(
+            SessionClient,
+            ClientId,
+            WindowId,
+            _uiThreadDispatcher,
+            () => RuntimeWorkspace,
+            ApplyRuntimeWorkspaceGraphStreamItem,
+            SetError,
+            () =>
+            {
+                MarkVisibleNotificationsSeen();
+                QueueRuntimeRecoverySnapshot();
+            });
+        _runtimeGraphGate = RuntimeGraph.SerializationGate;
         AgentChat = _agentRuntimeFactory is null
             && agentChatRuntime is not null
             && _aiProviderRuntime is not null
@@ -368,6 +380,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     public TerminalConnectionSettingsViewModel TerminalConnectionSettings { get; }
 
     public MainWindowRole Role { get; }
+
+    public RuntimeWorkspaceGraphCoordinator RuntimeGraph { get; }
 
     /// <summary>
     /// The preview settings the Files &amp; transfers page edits. Always
@@ -7911,124 +7925,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     }
 
     private void StartRuntimeGraphWatch(RuntimeWorkspaceViewModel runtime)
-    {
-        ArgumentNullException.ThrowIfNull(runtime);
-        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(
-            _runtimeGraphLifetime.Token);
-        lock (_shutdownGate)
-        {
-            if (_shutdownStarted)
-            {
-                cancellation.Dispose();
-                return;
-            }
-
-            _runtimeGraphWatchCancellation = cancellation;
-            _runtimeGraphWatchTasks.Add(WatchRuntimeWorkspaceGraphAsync(
-                runtime,
-                runtime.HostSequence,
-                cancellation.Token));
-        }
-    }
+        => RuntimeGraph.StartWatching(runtime);
 
     private void StopRuntimeGraphWatch()
-    {
-        CancellationTokenSource? cancellation;
-        lock (_shutdownGate)
-        {
-            cancellation = _runtimeGraphWatchCancellation;
-            _runtimeGraphWatchCancellation = null;
-        }
-
-        if (cancellation is null)
-        {
-            return;
-        }
-
-        cancellation.Cancel();
-        cancellation.Dispose();
-    }
-
-    private async Task WatchRuntimeWorkspaceGraphAsync(
-        RuntimeWorkspaceViewModel runtime,
-        long afterSequence,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            var cursor = afterSequence;
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                var restartAfterResynchronization = false;
-                await foreach (var item in SessionClient.WatchWorkspaceGraphAsync(
-                    new WatchWorkspaceGraphRequest(runtime.Id, cursor),
-                    OperationContext.ForHuman(ClientId),
-                    cancellationToken).ConfigureAwait(false))
-                {
-                    await _runtimeGraphGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-                    try
-                    {
-                        if (!ReferenceEquals(RuntimeWorkspace, runtime))
-                        {
-                            return;
-                        }
-
-                        var accepted = false;
-                        await _uiThreadDispatcher.InvokeAsync(
-                            () => accepted = ApplyRuntimeWorkspaceGraphStreamItem(runtime, item),
-                            cancellationToken);
-                        if (!accepted)
-                        {
-                            return;
-                        }
-
-                        cursor = runtime.HostSequence;
-                    }
-                    finally
-                    {
-                        _runtimeGraphGate.Release();
-                    }
-
-                    if (item is WorkspaceGraphStreamItem.ResynchronizationRequired)
-                    {
-                        restartAfterResynchronization = true;
-                        break;
-                    }
-                }
-
-                if (!restartAfterResynchronization)
-                {
-                    return;
-                }
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-        }
-        catch (NotSupportedException)
-        {
-            // Compatibility clients can omit workspace watches. Production desktop clients
-            // implement the stream; mutation receipts still keep legacy clients coherent.
-        }
-        catch (Exception)
-        {
-            try
-            {
-                await _uiThreadDispatcher.InvokeAsync(() =>
-                {
-                    if (ReferenceEquals(RuntimeWorkspace, runtime))
-                    {
-                        SetError("Live workspace updates are temporarily unavailable.");
-                    }
-                }, cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                // The dispatcher can stop between the stream failure and this best-effort
-                // presentation update. There is no remaining UI surface to notify.
-            }
-        }
-    }
+        => RuntimeGraph.StopWatching();
 
     private bool ApplyRuntimeWorkspaceGraphStreamItem(
         RuntimeWorkspaceViewModel runtime,
@@ -8590,107 +8490,19 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private bool TryApplyValidatedRuntimeWorkspaceReceipt(
         RuntimeWorkspaceViewModel runtime,
         HostResult<WorkspaceGraphSnapshot>.Success success,
-        string operation)
-    {
-        var receipt = success.Value;
-        var currentIsAtLeastAsNew =
-            runtime.HostRevision >= receipt.Revision
-            && runtime.HostSequence >= receipt.LastSequence;
-        if (currentIsAtLeastAsNew)
-        {
-            if (WorkspaceTopologyMatches(
-                    CaptureRuntimeWorkspaceGraph(runtime),
-                    receipt.Workspace))
-            {
-                return true;
-            }
-
-            SetError(
-                $"The runtime workspace changed while applying {operation}.");
-            return false;
-        }
-
-        if (receipt.Revision <= runtime.HostRevision
-            || receipt.LastSequence <= runtime.HostSequence)
-        {
-            SetError($"The session host returned an invalid {operation} cursor.");
-            return false;
-        }
-
-        try
-        {
-            runtime.ApplyHostProjection(
-                receipt.Workspace,
-                receipt.Revision,
-                receipt.LastSequence);
-            return true;
-        }
-        catch (InvalidOperationException)
-        {
-            SetError(
-                $"The session host returned a different {operation} graph.");
-            return false;
-        }
-    }
+        string operation) =>
+        RuntimeGraph.TryApplyValidatedReceipt(runtime, success, operation);
 
     private bool TryApplyRuntimeWorkspaceResult(
         RuntimeWorkspaceViewModel expectedWorkspace,
         HostResult<WorkspaceGraphSnapshot> result,
         string operation,
-        Func<WorkspaceInstance, bool> requestedFocusMatches)
-    {
-        if (!ReferenceEquals(RuntimeWorkspace, expectedWorkspace))
-        {
-            return false;
-        }
-
-        if (result is HostResult<WorkspaceGraphSnapshot>.Failure failure)
-        {
-            SetError(
-                $"The session host rejected {operation} " +
-                $"({failure.Error.StableCode}): {failure.Error.Message}");
-            return false;
-        }
-
-        var success = (HostResult<WorkspaceGraphSnapshot>.Success)result;
-        var currentProjection = CaptureRuntimeWorkspaceGraph(expectedWorkspace);
-        var sameCursor =
-            success.Value.Revision == expectedWorkspace.HostRevision
-            && success.Value.LastSequence == expectedWorkspace.HostSequence;
-        var advancedCursor =
-            success.Value.Revision > expectedWorkspace.HostRevision
-            && success.Value.LastSequence > expectedWorkspace.HostSequence;
-        if (success.Value.WindowId != WindowId
-            || success.Value.Workspace.Id != expectedWorkspace.Id
-            || success.ResultingRevision != success.Value.Revision
-            || !requestedFocusMatches(success.Value.Workspace)
-            || !(advancedCursor
-                || sameCursor && requestedFocusMatches(currentProjection))
-            || !WorkspaceTopologyMatches(
-                currentProjection,
-                success.Value.Workspace))
-        {
-            SetError($"The session host returned an invalid {operation} receipt.");
-            return false;
-        }
-
-        try
-        {
-            expectedWorkspace.ApplyHostProjection(
-                success.Value.Workspace,
-                success.Value.Revision,
-                success.Value.LastSequence);
-        }
-        catch (InvalidOperationException)
-        {
-            SetError("The session host returned a different runtime workspace graph.");
-            return false;
-        }
-
-        MarkVisibleNotificationsSeen();
-        QueueRuntimeRecoverySnapshot();
-        return true;
-    }
+        Func<WorkspaceInstance, bool> requestedFocusMatches) =>
+        RuntimeGraph.TryApplyResult(
+            expectedWorkspace,
+            result,
+            operation,
+            requestedFocusMatches);
 
     private bool TryApplyRuntimeWorkspaceProjection(
         RuntimeWorkspaceViewModel runtime,
@@ -8698,42 +8510,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         WorkspaceInstance projection,
         long revision,
         long sequence,
-        string source)
-    {
-        if (!ReferenceEquals(RuntimeWorkspace, runtime))
-        {
-            return false;
-        }
-
-        if (windowId != WindowId
-            || projection.Id != runtime.Id
-            || revision < runtime.HostRevision
-            || sequence < runtime.HostSequence
-            || !WorkspaceTopologyMatches(
-                CaptureRuntimeWorkspaceGraph(runtime),
-                projection))
-        {
-            SetError($"The session host returned an invalid {source}.");
-            return false;
-        }
-
-        try
-        {
-            runtime.ApplyHostProjection(projection, revision, sequence);
-        }
-        catch (InvalidOperationException)
-        {
-            SetError($"The session host returned a different {source} graph.");
-            return false;
-        }
-
-        // Every activation the host confirms — a tab, a panel, a drag that moved
-        // one — lands here, which makes this the one place that reliably knows
-        // what the user is now looking at.
-        MarkVisibleNotificationsSeen();
-        QueueRuntimeRecoverySnapshot();
-        return true;
-    }
+        string source) =>
+        RuntimeGraph.TryApplyProjection(
+            runtime,
+            windowId,
+            projection,
+            revision,
+            sequence,
+            source);
 
     private async ValueTask<bool> RefreshRuntimeWorkspaceProjectionAsync(
         RuntimeWorkspaceViewModel runtime,
@@ -8805,85 +8589,36 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         WorkspaceInstance proposal,
         long currentRevision,
         long currentSequence) =>
-        success.Value.WindowId == WindowId
-        && success.ResultingRevision == success.Value.Revision
-        && success.ResultingRevision > currentRevision
-        && success.Value.LastSequence > currentSequence
-        && WorkspaceIntentMatches(proposal, success.Value.Workspace);
+        RuntimeGraph.IsExpectedReceipt(
+            success,
+            proposal,
+            currentRevision,
+            currentSequence);
 
     private bool IsExpectedReconciledWorkspaceGraphReceipt(
         HostResult<WorkspaceGraphSnapshot>.Success success,
         WorkspaceInstance proposal,
         long currentRevision,
         long currentSequence) =>
-        success.Value.WindowId == WindowId
-        && success.Value.Workspace.Id == proposal.Id
-        && success.ResultingRevision == success.Value.Revision
-        && success.ResultingRevision > currentRevision
-        && success.Value.LastSequence > currentSequence
-        && WorkspaceTopologyMatches(proposal, success.Value.Workspace);
+        RuntimeGraph.IsExpectedReconciledReceipt(
+            success,
+            proposal,
+            currentRevision,
+            currentSequence);
 
     private static bool WorkspaceIntentMatches(
         WorkspaceInstance expected,
         WorkspaceInstance actual) =>
-        expected.ActiveTabId == actual.ActiveTabId
-        && expected.Tabs.Zip(actual.Tabs).All(pair =>
-            pair.First.ActivePanelId == pair.Second.ActivePanelId)
-        && WorkspaceTopologyMatches(expected, actual);
+        RuntimeWorkspaceGraphProjection.IntentMatches(expected, actual);
 
     private static bool WorkspaceTopologyMatches(
         WorkspaceInstance expected,
-        WorkspaceInstance actual)
-    {
-        if (expected.Id != actual.Id
-            || !string.Equals(expected.Title, actual.Title, StringComparison.Ordinal)
-            || expected.Tabs.Count != actual.Tabs.Count)
-        {
-            return false;
-        }
-
-        for (var tabIndex = 0; tabIndex < expected.Tabs.Count; tabIndex++)
-        {
-            var expectedTab = expected.Tabs[tabIndex];
-            var actualTab = actual.Tabs[tabIndex];
-            if (expectedTab.Id != actualTab.Id
-                || !string.Equals(expectedTab.Title, actualTab.Title, StringComparison.Ordinal)
-                || expectedTab.Panels.Count != actualTab.Panels.Count)
-            {
-                return false;
-            }
-
-            for (var panelIndex = 0; panelIndex < expectedTab.Panels.Count; panelIndex++)
-            {
-                var expectedPanel = expectedTab.Panels[panelIndex];
-                var actualPanel = actualTab.Panels[panelIndex];
-                if (expectedPanel.Id != actualPanel.Id
-                    || expectedPanel.Kind != actualPanel.Kind
-                    || !string.Equals(
-                        expectedPanel.Title,
-                        actualPanel.Title,
-                        StringComparison.Ordinal))
-                {
-                    return false;
-                }
-            }
-        }
-
-        return true;
-    }
+        WorkspaceInstance actual) =>
+        RuntimeWorkspaceGraphProjection.TopologyMatches(expected, actual);
 
     private static WorkspaceInstance CaptureRuntimeWorkspaceGraph(
-        RuntimeWorkspaceViewModel workspace)
-    {
-        var activeTab = workspace.ActiveTab
-            ?? throw new InvalidOperationException(
-                "A runtime workspace must have an active tab before registration.");
-        return new WorkspaceInstance(
-            workspace.Id,
-            workspace.Name,
-            workspace.Tabs.Select(CaptureRuntimeTab),
-            activeTab.Id);
-    }
+        RuntimeWorkspaceViewModel workspace) =>
+        RuntimeWorkspaceGraphProjection.Capture(workspace);
 
     /// <summary>
     /// The tab as the session host knows it.
@@ -8898,23 +8633,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     /// allowed to disagree, and the disagreement leaked anyway.
     /// </summary>
     private static TabInstance CaptureRuntimeTab(RuntimeTabViewModel tab)
-    {
-        ArgumentNullException.ThrowIfNull(tab);
-        var panels = tab.Panels.ToArray();
-        if (panels.Length == 0)
-        {
-            throw new InvalidOperationException("A runtime tab must have a panel.");
-        }
-
-        return new TabInstance(
-            tab.Id,
-            tab.Title,
-            panels.Select(panel => new PanelInstance(
-                panel.Id,
-                panel.Kind,
-                panel.Title)),
-            tab.ActivePanelId ?? panels[0].Id);
-    }
+        => RuntimeWorkspaceGraphProjection.CaptureTab(tab);
 
     private static WorkspaceInstance? BuildTabAppendProposal(
         RuntimeWorkspaceViewModel workspace,
@@ -13048,15 +12767,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         History.SealOperations();
 
         _runtimeGraphLifetime.Cancel();
-        StopRuntimeGraphWatch();
-
-        Task[] graphWatches;
-        lock (_shutdownGate)
-        {
-            graphWatches = [.. _runtimeGraphWatchTasks];
-        }
-
-        await Task.WhenAll(graphWatches).ConfigureAwait(false);
+        await RuntimeGraph.QuiesceAsync().ConfigureAwait(false);
     }
 
     public void Dispose()
@@ -13135,7 +12846,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         History.Dispose();
         Launcher.Dispose();
         _runtimeGraphLifetime.Cancel();
-        StopRuntimeGraphWatch();
+        RuntimeGraph.Dispose();
         _runtimeGraphLifetime.Dispose();
     }
 

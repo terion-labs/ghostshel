@@ -1,0 +1,79 @@
+using System.Reflection;
+using GhostShell.App;
+using GhostShell.App.ViewModels;
+using GhostShell.Testing;
+
+namespace GhostShell.Architecture.Tests;
+
+public sealed class RuntimeWorkspaceGraphCoordinatorOwnershipTests
+{
+    [Fact]
+    public void Main_window_exposes_one_runtime_graph_coordinator()
+    {
+        var property = typeof(MainWindowViewModel).GetProperty(
+            nameof(MainWindowViewModel.RuntimeGraph),
+            BindingFlags.Instance | BindingFlags.Public);
+        Assert.NotNull(property);
+        Assert.Equal(typeof(RuntimeWorkspaceGraphCoordinator), property.PropertyType);
+        Assert.Null(property.SetMethod);
+        var fields = typeof(MainWindowViewModel).GetFields(
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.Single(
+            fields,
+            field => field.FieldType == typeof(RuntimeWorkspaceGraphCoordinator));
+    }
+
+    [Fact]
+    public void Revision_application_receipt_validation_and_watch_lifetime_live_in_coordinator()
+    {
+        var root = Read("MainWindowViewModel.cs");
+        var owner = Read("RuntimeWorkspaceGraphCoordinator.cs");
+
+        Assert.DoesNotContain("ApplyHostProjection(", root, StringComparison.Ordinal);
+        Assert.DoesNotContain("WatchRuntimeWorkspaceGraphAsync", root, StringComparison.Ordinal);
+        Assert.DoesNotContain("_runtimeGraphWatchTasks", root, StringComparison.Ordinal);
+        Assert.DoesNotContain("_runtimeGraphWatchCancellation", root, StringComparison.Ordinal);
+        Assert.Contains("ApplyHostProjection(", owner, StringComparison.Ordinal);
+        Assert.Contains("WatchWorkspaceGraphAsync", owner, StringComparison.Ordinal);
+        Assert.Contains("IsExpectedReceipt", owner, StringComparison.Ordinal);
+        Assert.Contains("IsExpectedReconciledReceipt", owner, StringComparison.Ordinal);
+        Assert.Contains("SemaphoreSlim _gate", owner, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Exact_graph_identity_rules_live_in_projection_boundary()
+    {
+        var projection = Read("RuntimeWorkspaceGraphProjection.cs");
+        Assert.Contains("expectedPanel.Id != actualPanel.Id", projection, StringComparison.Ordinal);
+        Assert.Contains("expectedPanel.Kind != actualPanel.Kind", projection, StringComparison.Ordinal);
+        Assert.Contains("StringComparison.Ordinal", projection, StringComparison.Ordinal);
+        Assert.Contains("PanelKind.Placeholder", Read("ShellViewModels.cs"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Runtime_graph_owner_has_no_feature_runtime_or_persistence_dependencies()
+    {
+        var source = Read("RuntimeWorkspaceGraphCoordinator.cs");
+        Assert.DoesNotContain("IConnectionRuntime", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("IBrowser", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("IFilePanel", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("IAiProvider", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("ISecretVault", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("IDefinitionCatalog", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("RuntimeRecoveryWriter", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Runtime_graph_owner_declares_an_explicit_lifetime()
+    {
+        Assert.True(typeof(IDisposable).IsAssignableFrom(
+            typeof(RuntimeWorkspaceGraphCoordinator)));
+    }
+
+    private static string Read(string fileName) => File.ReadAllText(Path.Combine(
+        ApplicationViewCatalog.Load().RepositoryRoot,
+        "src",
+        "GhostShell.App",
+        "ViewModels",
+        fileName));
+}
