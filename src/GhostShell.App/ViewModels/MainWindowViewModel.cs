@@ -4463,37 +4463,39 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         CancellationToken cancellationToken)
     {
         ClearError();
-        if (rows is < 1 or > 4 || columns is < 1 or > 4)
-        {
-            return Fail<StoredDefinition<LayoutDefinition>>("Layout rows and columns must be between one and four.");
-        }
+        var result = await DefinitionSettings.CreateLayoutAsync(
+            name,
+            rows,
+            columns,
+            cancellationToken);
+        ApplyError(result.Error);
+        return result;
+    }
 
-        var slots = new List<LayoutSlotDefinition>();
-        for (var row = 0; row < rows; row++)
-        {
-            for (var column = 0; column < columns; column++)
-            {
-                slots.Add(new(
-                    new LayoutSlotId($"slot-{row + 1}-{column + 1}"),
-                    new LayoutGridBounds(column, row, 1, 1),
-                    new LayoutMinimumSize(220, 140)));
-            }
-        }
+    public async ValueTask<DefinitionStoreResult<Unit>> DeleteLayoutAsync(
+        LayoutId id,
+        long revision,
+        CancellationToken cancellationToken)
+    {
+        ClearError();
+        var result = await DefinitionSettings.DeleteLayoutAsync(
+            id,
+            revision,
+            cancellationToken);
+        ApplyError(result.Error);
+        return result;
+    }
 
-        var geometry = new LayoutDefinition(
-            LayoutId.New(),
-            LayoutDefinition.CurrentSchemaVersion,
-            RequireName(name, "Layout"),
-            new LayoutGrid(columns, rows),
-            slots);
-        var definition = new LayoutDefinition(
-            geometry.Id,
-            geometry.SchemaVersion,
-            geometry.Name,
-            geometry.Grid,
-            geometry.Slots,
-            RuntimeDockLayoutController.SerializeDefinition(geometry));
-        var result = await _catalog.SaveLayoutAsync(definition, null, cancellationToken);
+    public async ValueTask<DefinitionStoreResult<Unit>> DeleteKeymapAsync(
+        KeymapProfileId id,
+        long revision,
+        CancellationToken cancellationToken)
+    {
+        ClearError();
+        var result = await DefinitionSettings.DeleteKeymapAsync(
+            id,
+            revision,
+            cancellationToken);
         ApplyError(result.Error);
         return result;
     }
@@ -4538,7 +4540,20 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         CancellationToken cancellationToken)
     {
         ClearError();
-        var result = await _catalog.DeleteAsync(key, revision, cancellationToken);
+        var result = key.Kind switch
+        {
+            var kind when kind == LayoutDefinition.Kind =>
+                await DefinitionSettings.DeleteLayoutAsync(
+                    new LayoutId(key.Value),
+                    revision,
+                    cancellationToken),
+            var kind when kind == KeymapProfile.Kind =>
+                await DefinitionSettings.DeleteKeymapAsync(
+                    new KeymapProfileId(key.Value),
+                    revision,
+                    cancellationToken),
+            _ => await _catalog.DeleteAsync(key, revision, cancellationToken),
+        };
         ApplyError(result.Error);
         return result;
     }

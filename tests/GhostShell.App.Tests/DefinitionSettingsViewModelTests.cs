@@ -80,6 +80,99 @@ public sealed class DefinitionSettingsViewModelTests
     }
 
     [Fact]
+    public async Task Create_layout_builds_the_requested_geometry_without_a_revision()
+    {
+        var catalog = CreateCatalog(Snapshot());
+        using var viewModel = CreateViewModel(catalog);
+
+        var result = await viewModel.CreateLayoutAsync(
+            "  Operations  ",
+            rows: 2,
+            columns: 3,
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, catalog.LayoutSaveCount);
+        Assert.Null(catalog.LastExpectedLayoutRevision);
+        var saved = Assert.IsType<LayoutDefinition>(catalog.LastSavedLayout);
+        Assert.Equal("Operations", saved.Name);
+        Assert.Equal(new LayoutGrid(3, 2), saved.Grid);
+        Assert.Equal(6, saved.Slots.Count);
+        Assert.Equal("slot-1-1", saved.Slots[0].Id.Value);
+        Assert.Equal("slot-2-3", saved.Slots[^1].Id.Value);
+        Assert.False(string.IsNullOrWhiteSpace(saved.DockLayoutJson));
+    }
+
+    [Theory]
+    [InlineData(0, 1)]
+    [InlineData(1, 0)]
+    [InlineData(5, 1)]
+    [InlineData(1, 5)]
+    public async Task Create_layout_rejects_geometry_outside_the_supported_range(
+        int rows,
+        int columns)
+    {
+        var catalog = CreateCatalog(Snapshot());
+        using var viewModel = CreateViewModel(catalog);
+
+        var result = await viewModel.CreateLayoutAsync(
+            "Invalid",
+            rows,
+            columns,
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(DefinitionStoreErrorCode.InvalidDefinition, result.Error?.Code);
+        Assert.Equal(0, catalog.LayoutSaveCount);
+    }
+
+    [Fact]
+    public async Task Layout_delete_forwards_identity_revision_and_preserves_open_draft_on_conflict()
+    {
+        var catalog = CreateCatalog(Snapshot());
+        catalog.DeleteError = new DefinitionStoreError(
+            DefinitionStoreErrorCode.RevisionConflict,
+            "The layout changed.",
+            CurrentRevision: 18);
+        using var viewModel = CreateViewModel(catalog);
+        var card = Assert.Single(viewModel.Layouts);
+        Assert.True(viewModel.TryBeginEditLayout(card.Id, out _));
+        var editor = Assert.IsType<LayoutDesignerViewModel>(viewModel.LayoutDesignerEditor);
+
+        var result = await viewModel.DeleteLayoutAsync(
+            card.Id,
+            card.Revision,
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(DefinitionStoreErrorCode.RevisionConflict, result.Error?.Code);
+        Assert.Equal(new DefinitionKey(LayoutDefinition.Kind, card.Id.Value), catalog.LastDeletedKey);
+        Assert.Equal(card.Revision, catalog.LastDeletedRevision);
+        Assert.Same(editor, viewModel.LayoutDesignerEditor);
+    }
+
+    [Fact]
+    public async Task Keymap_delete_forwards_identity_revision_without_replacing_the_editor()
+    {
+        var catalog = CreateCatalog(Snapshot());
+        using var viewModel = CreateViewModel(catalog);
+        var profile = Assert.Single(viewModel.KeybindingProfiles);
+        Assert.True(viewModel.TrySelectKeybindingProfile(profile, out _));
+        var editor = Assert.IsType<KeybindingEditorSessionViewModel>(
+            viewModel.KeybindingEditorSession);
+
+        var result = await viewModel.DeleteKeymapAsync(
+            profile.Id,
+            profile.Revision!.Value,
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(new DefinitionKey(KeymapProfile.Kind, profile.Id.Value), catalog.LastDeletedKey);
+        Assert.Equal(profile.Revision, catalog.LastDeletedRevision);
+        Assert.Same(editor, viewModel.KeybindingEditorSession);
+    }
+
+    [Fact]
     public void Disposing_the_owner_disposes_the_active_keybinding_session()
     {
         var catalog = CreateCatalog(Snapshot());
@@ -145,9 +238,19 @@ public sealed class DefinitionSettingsViewModelTests
 
         public bool RejectLayoutSave { get; set; }
 
+        public DefinitionStoreError? DeleteError { get; set; }
+
+        public int LayoutSaveCount { get; private set; }
+
+        public LayoutDefinition? LastSavedLayout { get; private set; }
+
         public long? LastExpectedLayoutRevision { get; private set; }
 
         public long? LastExpectedKeymapRevision { get; private set; }
+
+        public DefinitionKey? LastDeletedKey { get; private set; }
+
+        public long? LastDeletedRevision { get; private set; }
 
         public DefinitionCatalogSnapshot Snapshot => CurrentSnapshot;
 
@@ -168,6 +271,9 @@ public sealed class DefinitionSettingsViewModelTests
                 nameof(IDefinitionCatalog.SaveKeymapAsync) => SaveKeymap(
                     (KeymapProfile)args[0]!,
                     (long?)args[1]),
+                nameof(IDefinitionCatalog.DeleteAsync) => Delete(
+                    (DefinitionKey)args[0]!,
+                    (long)args[1]!),
                 "add_Changed" => AddChanged((EventHandler)args[0]!),
                 "remove_Changed" => RemoveChanged((EventHandler)args[0]!),
                 _ => throw new NotSupportedException(targetMethod.Name),
@@ -178,6 +284,8 @@ public sealed class DefinitionSettingsViewModelTests
             LayoutDefinition definition,
             long? expectedRevision)
         {
+            LayoutSaveCount++;
+            LastSavedLayout = definition;
             LastExpectedLayoutRevision = expectedRevision;
             if (RejectLayoutSave)
             {
@@ -210,6 +318,17 @@ public sealed class DefinitionSettingsViewModelTests
             Changed?.Invoke(this, EventArgs.Empty);
             return ValueTask.FromResult(
                 DefinitionStoreResult<StoredDefinition<KeymapProfile>>.Success(stored));
+        }
+
+        private ValueTask<DefinitionStoreResult<Unit>> Delete(
+            DefinitionKey key,
+            long expectedRevision)
+        {
+            LastDeletedKey = key;
+            LastDeletedRevision = expectedRevision;
+            return ValueTask.FromResult(DeleteError is null
+                ? DefinitionStoreResult<Unit>.Success(Unit.Value)
+                : DefinitionStoreResult<Unit>.Failure(DeleteError));
         }
 
         private object? AddChanged(EventHandler handler)

@@ -142,6 +142,63 @@ public sealed class DefinitionSettingsViewModel : ObservableObject, IDisposable
             cancellationToken);
     }
 
+    public async ValueTask<DefinitionStoreResult<StoredDefinition<LayoutDefinition>>>
+        CreateLayoutAsync(
+            string name,
+            int rows,
+            int columns,
+            CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        if (rows is < 1 or > 4 || columns is < 1 or > 4)
+        {
+            return Fail<StoredDefinition<LayoutDefinition>>(
+                "Layout rows and columns must be between one and four.");
+        }
+
+        var slots = new List<LayoutSlotDefinition>();
+        for (var row = 0; row < rows; row++)
+        {
+            for (var column = 0; column < columns; column++)
+            {
+                slots.Add(new(
+                    new LayoutSlotId($"slot-{row + 1}-{column + 1}"),
+                    new LayoutGridBounds(column, row, 1, 1),
+                    new LayoutMinimumSize(220, 140)));
+            }
+        }
+
+        var geometry = new LayoutDefinition(
+            LayoutId.New(),
+            LayoutDefinition.CurrentSchemaVersion,
+            RequireName(name, "Layout"),
+            new LayoutGrid(columns, rows),
+            slots);
+        var definition = new LayoutDefinition(
+            geometry.Id,
+            geometry.SchemaVersion,
+            geometry.Name,
+            geometry.Grid,
+            geometry.Slots,
+            RuntimeDockLayoutController.SerializeDefinition(geometry));
+        return await _catalog.SaveLayoutAsync(
+            definition,
+            expectedRevision: null,
+            cancellationToken);
+    }
+
+    public ValueTask<DefinitionStoreResult<Unit>> DeleteLayoutAsync(
+        LayoutId id,
+        long expectedRevision,
+        CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        return _catalog.DeleteAsync(
+            new DefinitionKey(LayoutDefinition.Kind, id.Value),
+            expectedRevision,
+            cancellationToken);
+    }
+
     public bool TrySelectKeybindingProfile(
         KeybindingProfileItemViewModel profile,
         out string? error)
@@ -247,6 +304,18 @@ public sealed class DefinitionSettingsViewModel : ObservableObject, IDisposable
         }
 
         return result;
+    }
+
+    public ValueTask<DefinitionStoreResult<Unit>> DeleteKeymapAsync(
+        KeymapProfileId id,
+        long expectedRevision,
+        CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        return _catalog.DeleteAsync(
+            new DefinitionKey(KeymapProfile.Kind, id.Value),
+            expectedRevision,
+            cancellationToken);
     }
 
     public void EnsureKeybindingEditor()
@@ -458,6 +527,9 @@ public sealed class DefinitionSettingsViewModel : ObservableObject, IDisposable
         DefinitionStoreResult<T>.Failure(new(
             DefinitionStoreErrorCode.InvalidDefinition,
             message));
+
+    private static string RequireName(string value, string fallback) =>
+        string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
 
     private static void ReplaceIfChanged<T>(
         ObservableCollection<T> target,
