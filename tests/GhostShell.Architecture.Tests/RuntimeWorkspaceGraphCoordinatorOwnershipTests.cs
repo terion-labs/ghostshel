@@ -36,12 +36,16 @@ public sealed class RuntimeWorkspaceGraphCoordinatorOwnershipTests
         Assert.DoesNotContain("RegisterWorkspaceGraphAsync", root, StringComparison.Ordinal);
         Assert.DoesNotContain("UnregisterWorkspaceGraphAsync", root, StringComparison.Ordinal);
         Assert.DoesNotContain("GetWorkspaceGraphAsync", root, StringComparison.Ordinal);
+        Assert.DoesNotContain("SessionClient.ActivateWorkspaceTabAsync", root, StringComparison.Ordinal);
+        Assert.DoesNotContain("SessionClient.ActivateWorkspacePanelAsync", root, StringComparison.Ordinal);
         Assert.DoesNotContain("WorkspaceGraphEventKind", root, StringComparison.Ordinal);
         Assert.Contains("ApplyHostProjection(", owner, StringComparison.Ordinal);
         Assert.Contains("WatchWorkspaceGraphAsync", owner, StringComparison.Ordinal);
         Assert.Contains("RegisterWorkspaceGraphAsync", owner, StringComparison.Ordinal);
         Assert.Contains("UnregisterWorkspaceGraphAsync", owner, StringComparison.Ordinal);
         Assert.Contains("GetWorkspaceGraphAsync", owner, StringComparison.Ordinal);
+        Assert.Contains("ActivateWorkspaceTabAsync", owner, StringComparison.Ordinal);
+        Assert.Contains("ActivateWorkspacePanelAsync", owner, StringComparison.Ordinal);
         Assert.Contains("IsExpectedReceipt", owner, StringComparison.Ordinal);
         Assert.Contains("IsExpectedReconciledReceipt", owner, StringComparison.Ordinal);
         Assert.Contains("SemaphoreSlim _gate", owner, StringComparison.Ordinal);

@@ -31,8 +31,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         string Status,
         string Detail);
 
-    private const int WorkspaceMutationAttemptCount = 2;
-
     private readonly IDefinitionCatalog _catalog;
     private readonly IConnectionRuntime _connectionRuntime;
     private readonly ISecretVault _secretVault;
@@ -2953,50 +2951,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             return false;
         }
 
-        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken,
-            _runtimeGraphLifetime.Token);
-        await _runtimeGraphGate.WaitAsync(linkedCancellation.Token);
-        try
-        {
-            if (!ReferenceEquals(RuntimeWorkspace, workspace))
-            {
-                return false;
-            }
-
-            var request = new ActivateWorkspaceTabRequest(workspace.Id, tabId);
-            var idempotencyKey = IdempotencyKey.New();
-            for (var attempt = 0; attempt < WorkspaceMutationAttemptCount; attempt++)
-            {
-                var result = await SessionClient.ActivateWorkspaceTabAsync(
-                    request,
-                    OperationContext.ForHuman(
-                        ClientId,
-                        workspace.HostRevision,
-                        idempotencyKey),
-                    linkedCancellation.Token);
-                if (await TryRefreshRevisionConflictAsync(
-                    workspace,
-                    result,
-                    attempt,
-                    linkedCancellation.Token))
-                {
-                    continue;
-                }
-
-                return TryApplyRuntimeWorkspaceResult(
-                    workspace,
-                    result,
-                    "tab activation",
-                    projection => projection.ActiveTabId == tabId);
-            }
-
-            return false;
-        }
-        finally
-        {
-            _runtimeGraphGate.Release();
-        }
+        return await RuntimeGraph.ActivateTabAsync(
+            workspace,
+            tabId,
+            cancellationToken);
     }
 
     public async Task<bool> ActivatePanelAsync(
@@ -3011,57 +2969,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             return false;
         }
 
-        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken,
-            _runtimeGraphLifetime.Token);
-        await _runtimeGraphGate.WaitAsync(linkedCancellation.Token);
-        try
-        {
-            if (!ReferenceEquals(RuntimeWorkspace, workspace))
-            {
-                return false;
-            }
-
-            var request = new ActivateWorkspacePanelRequest(
-                workspace.Id,
-                tab.Id,
-                panelId);
-            var idempotencyKey = IdempotencyKey.New();
-            for (var attempt = 0; attempt < WorkspaceMutationAttemptCount; attempt++)
-            {
-                var result = await SessionClient.ActivateWorkspacePanelAsync(
-                    request,
-                    OperationContext.ForHuman(
-                        ClientId,
-                        workspace.HostRevision,
-                        idempotencyKey),
-                    linkedCancellation.Token);
-                if (await TryRefreshRevisionConflictAsync(
-                    workspace,
-                    result,
-                    attempt,
-                    linkedCancellation.Token))
-                {
-                    continue;
-                }
-
-                return TryApplyRuntimeWorkspaceResult(
-                    workspace,
-                    result,
-                    "panel activation",
-                    projection =>
-                        projection.ActiveTabId == tab.Id
-                        && projection.Tabs.SingleOrDefault(
-                                candidate => candidate.Id == tab.Id)
-                            ?.ActivePanelId == panelId);
-            }
-
-            return false;
-        }
-        finally
-        {
-            _runtimeGraphGate.Release();
-        }
+        return await RuntimeGraph.ActivatePanelAsync(
+            workspace,
+            panelId,
+            cancellationToken);
     }
 
     public async Task<bool> LoadSessionRestorePreferenceAsync(
@@ -6797,28 +6708,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             runtime,
             operation,
             commit,
-            cancellationToken);
-
-    private bool TryApplyRuntimeWorkspaceResult(
-        RuntimeWorkspaceViewModel expectedWorkspace,
-        HostResult<WorkspaceGraphSnapshot> result,
-        string operation,
-        Func<WorkspaceInstance, bool> requestedFocusMatches) =>
-        RuntimeGraph.TryApplyResult(
-            expectedWorkspace,
-            result,
-            operation,
-            requestedFocusMatches);
-
-    private ValueTask<bool> TryRefreshRevisionConflictAsync<T>(
-        RuntimeWorkspaceViewModel runtime,
-        HostResult<T> result,
-        int attempt,
-        CancellationToken cancellationToken) =>
-        RuntimeGraph.TryRefreshRevisionConflictAsync(
-            runtime,
-            result,
-            attempt,
             cancellationToken);
 
     private static bool WorkspaceTopologyMatches(

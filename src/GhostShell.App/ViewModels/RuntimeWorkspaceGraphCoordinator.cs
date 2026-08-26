@@ -244,6 +244,109 @@ public sealed class RuntimeWorkspaceGraphCoordinator : IDisposable
         return TryApplyValidatedReceipt(runtime, success, "workspace registration");
     }
 
+    public async Task<bool> ActivateTabAsync(
+        RuntimeWorkspaceViewModel runtime,
+        TabInstanceId tabId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(runtime);
+        if (runtime.Tabs.All(tab => tab.Id != tabId))
+        {
+            return false;
+        }
+
+        using var lease = await EnterAsync(cancellationToken);
+        if (!ReferenceEquals(_currentWorkspace(), runtime))
+        {
+            return false;
+        }
+
+        var request = new ActivateWorkspaceTabRequest(runtime.Id, tabId);
+        var idempotencyKey = IdempotencyKey.New();
+        for (var attempt = 0; attempt < MutationAttemptCount; attempt++)
+        {
+            var result = await RequireSessionClient().ActivateWorkspaceTabAsync(
+                request,
+                OperationContext.ForHuman(
+                    _clientId,
+                    runtime.HostRevision,
+                    idempotencyKey),
+                lease.Token);
+            if (await TryRefreshRevisionConflictAsync(
+                runtime,
+                result,
+                attempt,
+                lease.Token))
+            {
+                continue;
+            }
+
+            return TryApplyResult(
+                runtime,
+                result,
+                "tab activation",
+                projection => projection.ActiveTabId == tabId);
+        }
+
+        return false;
+    }
+
+    public async Task<bool> ActivatePanelAsync(
+        RuntimeWorkspaceViewModel runtime,
+        PanelInstanceId panelId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(runtime);
+        var tab = runtime.Tabs.SingleOrDefault(item =>
+            item.Panels.Any(panel => panel.Id == panelId));
+        if (tab is null)
+        {
+            return false;
+        }
+
+        using var lease = await EnterAsync(cancellationToken);
+        if (!ReferenceEquals(_currentWorkspace(), runtime))
+        {
+            return false;
+        }
+
+        var request = new ActivateWorkspacePanelRequest(
+            runtime.Id,
+            tab.Id,
+            panelId);
+        var idempotencyKey = IdempotencyKey.New();
+        for (var attempt = 0; attempt < MutationAttemptCount; attempt++)
+        {
+            var result = await RequireSessionClient().ActivateWorkspacePanelAsync(
+                request,
+                OperationContext.ForHuman(
+                    _clientId,
+                    runtime.HostRevision,
+                    idempotencyKey),
+                lease.Token);
+            if (await TryRefreshRevisionConflictAsync(
+                runtime,
+                result,
+                attempt,
+                lease.Token))
+            {
+                continue;
+            }
+
+            return TryApplyResult(
+                runtime,
+                result,
+                "panel activation",
+                projection =>
+                    projection.ActiveTabId == tab.Id
+                    && projection.Tabs.SingleOrDefault(
+                            candidate => candidate.Id == tab.Id)
+                        ?.ActivePanelId == panelId);
+        }
+
+        return false;
+    }
+
     public async Task<bool> ReplaceAsync(
         RuntimeWorkspaceViewModel runtime,
         string operation,
