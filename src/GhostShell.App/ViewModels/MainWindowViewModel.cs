@@ -111,7 +111,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private string _tabReorderStatus = string.Empty;
     private bool _isAgentPanelVisible;
     private bool _isAgentPanelDocked;
-    private string _secretVaultStatus = "Checking the operating-system vault…";
     private string _definitionBundleStatus =
         "Exports include saved settings but not credentials or terminal content.";
     private string? _applicationKeySequenceHint;
@@ -212,6 +211,26 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _filePanelClient = filePanelClient ?? throw new ArgumentNullException(nameof(filePanelClient));
         _fileTransferQueue = fileTransferQueue
             ?? throw new ArgumentNullException(nameof(fileTransferQueue));
+        _fileProviderRuntime = fileProviderRuntime
+            ?? filePanelClient as IFileProviderProfileRuntime;
+        _aiProviderRuntime = aiProviderRuntime;
+        _agentRuntimeFactory = agentRuntimeFactory;
+        _agentRunAuditReader = agentRunAuditReader;
+        _agentModelFavoriteStore = agentModelFavoriteStore;
+        _aiProviderAuthenticationRuntime = aiProviderAuthenticationRuntime;
+        _mcpServerDiagnostics = mcpServerDiagnostics;
+        _mcpCredentialSessionInvalidator = mcpCredentialSessionInvalidator;
+        SecretSettings = new SecretSettingsViewModel(
+            _catalog,
+            _secretVault,
+            _fileProviderRuntime,
+            _aiProviderRuntime,
+            _mcpCredentialSessionInvalidator,
+            InvalidateMcpServerTests,
+            ClearError,
+            SetError);
+        SecretSettings.PropertyChanged += OnSecretSettingsPropertyChanged;
+        SecretSettings.ProjectionChanged += OnSecretProjectionChanged;
         FileTransferState = new FileTransferViewModel(
             _fileTransferQueue,
             ResolveFileTransferQueue,
@@ -229,7 +248,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             _databaseConnectionCatalog,
             _secretVault,
             SetError,
-            message => SecretVaultStatus = message);
+            SecretSettings.ReportStatus);
         _redisPanelSessionFactory = redisPanelSessionFactory;
         _dockerEngineClient = dockerEngineClient;
         _gitRepositoryClient = gitRepositoryClient;
@@ -253,33 +272,24 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             biometricAuthenticator);
         _startupCommandDispatcher = startupCommandDispatcher
             ?? throw new ArgumentNullException(nameof(startupCommandDispatcher));
-        _fileProviderRuntime = fileProviderRuntime ?? filePanelClient as IFileProviderProfileRuntime;
         FileProviderSettings = new FileProviderSettingsViewModel(
             _catalog,
             _fileProviderRuntime,
             () => _filePanelClient.Profiles,
-            () => [.. Secrets],
+            () => [.. SecretSettings.Secrets],
             _uiThreadDispatcher);
         FileProviderSettings.PropertyChanged += OnFileProviderSettingsPropertyChanged;
-        _aiProviderRuntime = aiProviderRuntime;
-        _agentRuntimeFactory = agentRuntimeFactory;
-        _agentRunAuditReader = agentRunAuditReader;
-        _agentModelFavoriteStore = agentModelFavoriteStore;
-        _aiProviderAuthenticationRuntime = aiProviderAuthenticationRuntime;
         AiProviderSettings = new AiProviderSettingsViewModel(
             _catalog,
             _aiProviderRuntime,
             _aiProviderAuthenticationRuntime,
-            () => [.. Secrets],
+            () => [.. SecretSettings.Secrets],
             _uiThreadDispatcher);
         AiProviderSettings.PropertyChanged += OnAiProviderSettingsPropertyChanged;
         AiProviderSettings.RuntimeProfilesChanged += OnAiProviderRuntimeProfilesChanged;
         McpServerSettings = new McpServerSettingsViewModel(
             _catalog,
-            () => [.. Secrets]);
-        _mcpServerDiagnostics = mcpServerDiagnostics;
-        _mcpCredentialSessionInvalidator =
-            mcpCredentialSessionInvalidator;
+            () => [.. SecretSettings.Secrets]);
         _connectionSecurityRuntime = connectionSecurityRuntime;
         TerminalConnectionSettings = new TerminalConnectionSettingsViewModel(
             _catalog,
@@ -407,6 +417,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     public McpServerSettingsViewModel McpServerSettings { get; }
 
     public DatabaseConnectionSettingsCoordinator DatabaseConnectionSettings { get; }
+
+    public SecretSettingsViewModel SecretSettings { get; }
 
     public FileTransferViewModel FileTransferState { get; }
 
@@ -600,9 +612,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     public ObservableCollection<LauncherSearchResultViewModel> LauncherSearchResults =>
         Launcher.SearchResults;
 
-    public ObservableCollection<SecretMetadataViewModel> Secrets { get; } = [];
+    public ObservableCollection<SecretMetadataViewModel> Secrets =>
+        SecretSettings.Secrets;
 
-    public bool HasNoSecrets => Secrets.Count == 0;
+    public bool HasNoSecrets => SecretSettings.HasNoSecrets;
 
     /// <summary>
     /// The browser-view factory, for surfaces that host a page of their own — the
@@ -840,7 +853,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public string FileTransferStatusText => FileTransferState.StatusText;
 
-    public IReadOnlyList<SecretKind> SecretKinds { get; } = Enum.GetValues<SecretKind>();
+    public IReadOnlyList<SecretKind> SecretKinds => SecretSettings.Kinds;
 
     public ShellRoute Route
     {
@@ -1137,6 +1150,32 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         {
             OnPropertyChanged(propertyName);
         }
+    }
+
+    private void OnSecretSettingsPropertyChanged(
+        object? sender,
+        PropertyChangedEventArgs eventArgs)
+    {
+        _ = sender;
+        var propertyName = eventArgs.PropertyName switch
+        {
+            nameof(SecretSettingsViewModel.Status) => nameof(SecretVaultStatus),
+            nameof(SecretSettingsViewModel.HasNoSecrets) => nameof(HasNoSecrets),
+            nameof(SecretSettingsViewModel.Secrets) => nameof(Secrets),
+            _ => null,
+        };
+        if (propertyName is not null)
+        {
+            OnPropertyChanged(propertyName);
+        }
+    }
+
+    private void OnSecretProjectionChanged(object? sender, EventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        AiProviderSettings.ApplyCatalog(_catalog.Snapshot);
+        RefreshMcpServerDefinitions(_catalog.Snapshot);
     }
 
     private void OnAiProviderSettingsPropertyChanged(
@@ -1766,8 +1805,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public string SecretVaultStatus
     {
-        get => _secretVaultStatus;
-        private set => SetProperty(ref _secretVaultStatus, value);
+        get => SecretSettings.Status;
     }
 
     public bool HasOverlay => _navigation.HasOverlay;
@@ -3672,40 +3710,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         string value,
         CancellationToken cancellationToken)
     {
-        ClearError();
-        if (FindConnection(connectionId) is null)
-        {
-            SetError("Choose an existing connection for this credential.");
-            return false;
-        }
-
-        if (string.IsNullOrWhiteSpace(label) || string.IsNullOrEmpty(value))
-        {
-            SetError("Credential label and value are required.");
-            return false;
-        }
-
-        var scope = new SecretScope(SecretScopeKind.Connection, connectionId.Value);
-        var purpose = new SecretUsePurpose(SecretUseKind.UserManagement, connectionId.Value);
-        var bytes = Encoding.UTF8.GetBytes(value);
-        using var material = SecretMaterial.TakeOwnership(bytes);
-        var result = await _secretVault.CreateAsync(
-            new CreateSecretRequest(
-                SecretRef.New(),
-                label.Trim(),
-                kind,
-                scope,
-                purpose),
-            material,
+        return await SecretSettings.CreateConnectionAsync(
+            connectionId,
+            label,
+            kind,
+            value,
             cancellationToken);
-        if (result is SecretVaultResult<SecretMetadata>.Failure failure)
-        {
-            SetError(failure.Error.Message);
-            return false;
-        }
-
-        await RefreshSecretsAsync(cancellationToken);
-        return true;
     }
 
     public async ValueTask<bool> CreateFileProviderSecretAsync(
@@ -3715,40 +3725,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         string value,
         CancellationToken cancellationToken)
     {
-        ClearError();
-        if (_catalog.Snapshot.FileProviderProfiles.All(item => item.Value.Id != profileId))
-        {
-            SetError("Choose an existing file-provider profile for this credential.");
-            return false;
-        }
-
-        if (string.IsNullOrWhiteSpace(label) || string.IsNullOrEmpty(value))
-        {
-            SetError("Credential label and value are required.");
-            return false;
-        }
-
-        var scope = new SecretScope(SecretScopeKind.FileProvider, profileId.Value);
-        var purpose = new SecretUsePurpose(SecretUseKind.UserManagement, profileId.Value);
-        var bytes = Encoding.UTF8.GetBytes(value);
-        using var material = SecretMaterial.TakeOwnership(bytes);
-        var result = await _secretVault.CreateAsync(
-            new CreateSecretRequest(
-                SecretRef.New(),
-                label.Trim(),
-                kind,
-                scope,
-                purpose),
-            material,
+        return await SecretSettings.CreateFileProviderAsync(
+            profileId,
+            label,
+            kind,
+            value,
             cancellationToken);
-        if (result is SecretVaultResult<SecretMetadata>.Failure failure)
-        {
-            SetError(failure.Error.Message);
-            return false;
-        }
-
-        await RefreshSecretsAsync(cancellationToken);
-        return true;
     }
 
     public async ValueTask<bool> CreateAiProviderSecretAsync(
@@ -3757,54 +3739,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         string value,
         CancellationToken cancellationToken)
     {
-        ClearError();
-        var profile = _catalog.Snapshot.AiProviderProfiles
-            .Select(item => item.Value)
-            .SingleOrDefault(item => item.Id == profileId);
-        if (profile is null)
-        {
-            SetError("Choose an existing AI-provider profile for this credential.");
-            return false;
-        }
-
-        if (profile.Authentication is not AiProviderAuthentication.ApiKey apiKey)
-        {
-            SetError("This provider is configured for local unauthenticated access.");
-            return false;
-        }
-
-        if (string.IsNullOrWhiteSpace(label) || string.IsNullOrEmpty(value))
-        {
-            SetError("Credential label and value are required.");
-            return false;
-        }
-
-        var scope = new SecretScope(SecretScopeKind.AiProvider, profileId.Value);
-        var purpose = new SecretUsePurpose(SecretUseKind.UserManagement, profileId.Value);
-        var bytes = Encoding.UTF8.GetBytes(value);
-        using var material = SecretMaterial.TakeOwnership(bytes);
-        var result = await _secretVault.CreateAsync(
-            new CreateSecretRequest(
-                apiKey.Secret,
-                label.Trim(),
-                SecretKind.ApiKey,
-                scope,
-                purpose),
-            material,
+        return await SecretSettings.CreateAiProviderAsync(
+            profileId,
+            label,
+            value,
             cancellationToken);
-        if (result is SecretVaultResult<SecretMetadata>.Failure failure)
-        {
-            SetError(failure.Error.Message);
-            return false;
-        }
-
-        await RefreshSecretsAsync(cancellationToken);
-        if (_aiProviderRuntime is not null)
-        {
-            await _aiProviderRuntime.ReloadAsync(cancellationToken);
-        }
-
-        return true;
     }
 
     public async ValueTask<bool> CreateMcpServerSecretAsync(
@@ -3814,116 +3753,19 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         string value,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(target);
-        ClearError();
-        var profile = _catalog.Snapshot.McpServerProfiles
-            .Select(item => item.Value)
-            .SingleOrDefault(item => item.Id == target.ProfileId);
-        var bindingStillExists = profile is not null
-            && EnumerateMcpServerCredentialBindings(profile).Any(binding =>
-                binding.Kind == target.BindingKind
-                && string.Equals(
-                    binding.Name,
-                    target.BindingName,
-                    StringComparison.Ordinal)
-                && binding.Reference == target.Reference);
-        if (!bindingStillExists)
-        {
-            SetError("That MCP credential binding changed. Reopen the server settings.");
-            return false;
-        }
-
-        if (string.IsNullOrWhiteSpace(label) || string.IsNullOrEmpty(value))
-        {
-            SetError("Credential label and value are required.");
-            return false;
-        }
-
-        var scope = new SecretScope(SecretScopeKind.McpServer, target.ProfileId.Value);
-        var bytes = Encoding.UTF8.GetBytes(value);
-        using var material = SecretMaterial.TakeOwnership(bytes);
-        var result = await _secretVault.CreateAsync(
-            new CreateSecretRequest(
-                target.Reference,
-                label.Trim(),
-                kind,
-                scope,
-                new SecretUsePurpose(
-                    SecretUseKind.UserManagement,
-                    target.ProfileId.Value)),
-            material,
+        return await SecretSettings.CreateMcpServerAsync(
+            target,
+            label,
+            kind,
+            value,
             cancellationToken);
-        if (result is SecretVaultResult<SecretMetadata>.Failure failure)
-        {
-            SetError(failure.Error.Message);
-            return false;
-        }
-
-        await RefreshSecretsAsync(cancellationToken);
-        return true;
     }
 
     public async ValueTask<bool> DeleteSecretAsync(
         SecretMetadataViewModel secret,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(secret);
-        ClearError();
-        var connectionDependents = _catalog.Snapshot.Connections
-            .Select(item => item.Value)
-            .Where(connection => UsesSecret(connection, secret.Reference))
-            .Select(connection => $"connection {connection.Name}");
-        var providerDependents = _catalog.Snapshot.FileProviderProfiles
-            .Select(item => item.Value)
-            .Where(profile => UsesSecret(profile, secret.Reference))
-            .Select(profile => $"file provider {profile.Name}");
-        var aiProviderDependents = _catalog.Snapshot.AiProviderProfiles
-            .Select(item => item.Value)
-            .Where(profile => UsesSecret(profile, secret.Reference))
-            .Select(profile => $"AI provider {profile.Name}");
-        var mcpServerDependents = _catalog.Snapshot.McpServerProfiles
-            .Select(item => item.Value)
-            .Where(profile => UsesSecret(profile, secret.Reference))
-            .Select(profile => $"MCP server {profile.Name}");
-        var dependents = connectionDependents
-            .Concat(providerDependents)
-            .Concat(aiProviderDependents)
-            .Concat(mcpServerDependents)
-            .Order(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        if (dependents.Length > 0)
-        {
-            SetError($"This credential is still referenced by: {string.Join(", ", dependents)}. Replace the reference before deleting it.");
-            return false;
-        }
-
-        var targetId = secret.SecretScope.Kind == SecretScopeKind.Global
-            ? SecretUsePurpose.GlobalTargetId
-            : secret.SecretScope.OwnerId!;
-        var result = await _secretVault.DeleteAsync(
-            new DeleteSecretRequest(
-                secret.Reference,
-                secret.SecretScope,
-                new SecretUsePurpose(SecretUseKind.UserManagement, targetId)),
-            cancellationToken);
-        if (result is SecretVaultResult<Unit>.Failure failure)
-        {
-            SetError(failure.Error.Message);
-            return false;
-        }
-
-        if (secret.SecretScope.Kind == SecretScopeKind.McpServer)
-        {
-            InvalidateMcpServerTests(secret.Reference);
-            if (_mcpCredentialSessionInvalidator is not null)
-            {
-                await _mcpCredentialSessionInvalidator
-                    .InvalidateAsync(secret.Reference);
-            }
-        }
-
-        await RefreshSecretsAsync(cancellationToken);
-        return true;
+        return await SecretSettings.DeleteAsync(secret, cancellationToken);
     }
 
     public async ValueTask<bool> RelabelSecretAsync(
@@ -3931,33 +3773,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         string label,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(secret);
-        ClearError();
-        SecretVaultResult<SecretMetadata> result;
-        try
-        {
-            result = await _secretVault.RelabelAsync(
-                new RelabelSecretRequest(
-                    secret.Reference,
-                    secret.SecretScope,
-                    label,
-                    ManagementPurpose(secret)),
-                cancellationToken);
-        }
-        catch (ArgumentException exception)
-        {
-            SetError(exception.Message);
-            return false;
-        }
-
-        if (result is SecretVaultResult<SecretMetadata>.Failure failure)
-        {
-            SetError(failure.Error.Message);
-            return false;
-        }
-
-        await RefreshSecretsAsync(cancellationToken);
-        return true;
+        return await SecretSettings.RelabelAsync(secret, label, cancellationToken);
     }
 
     public async ValueTask<bool> ReplaceSecretAsync(
@@ -3965,45 +3781,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         SecretMaterial replacement,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(secret);
-        ArgumentNullException.ThrowIfNull(replacement);
-        ClearError();
-        var result = await _secretVault.ReplaceAsync(
-            new ReplaceSecretRequest(
-                secret.Reference,
-                secret.SecretScope,
-                ManagementPurpose(secret)),
+        return await SecretSettings.ReplaceAsync(
+            secret,
             replacement,
             cancellationToken);
-        if (result is SecretVaultResult<SecretMetadata>.Failure failure)
-        {
-            SetError(failure.Error.Message);
-            return false;
-        }
-
-        if (secret.SecretScope.Kind == SecretScopeKind.McpServer)
-        {
-            InvalidateMcpServerTests(secret.Reference);
-            if (_mcpCredentialSessionInvalidator is not null)
-            {
-                await _mcpCredentialSessionInvalidator
-                    .InvalidateAsync(secret.Reference);
-            }
-        }
-
-        await RefreshSecretsAsync(cancellationToken);
-        if (secret.SecretScope.Kind == SecretScopeKind.FileProvider
-            && _fileProviderRuntime is not null)
-        {
-            await _fileProviderRuntime.ReloadAsync(cancellationToken);
-        }
-        else if (secret.SecretScope.Kind == SecretScopeKind.AiProvider
-            && _aiProviderRuntime is not null)
-        {
-            await _aiProviderRuntime.ReloadAsync(cancellationToken);
-        }
-
-        return true;
     }
 
     public async ValueTask<bool> CancelFileTransferAsync(
@@ -4030,160 +3811,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         return await FileTransferState.RetryAsync(id, cancellationToken);
     }
 
-    private static bool UsesSecret(ConnectionProfile connection, SecretRef reference) =>
-        (connection.Authentication switch
-        {
-            ConnectionAuthentication.Password password => password.PasswordSecret == reference,
-            ConnectionAuthentication.PrivateKey privateKey =>
-                privateKey.PrivateKeySecret == reference
-                || privateKey.PassphraseSecret == reference,
-            _ => false,
-        })
-        || connection.Startup.Environment.Any(variable =>
-            variable.Value is ConnectionEnvironmentValue.Secret secret
-            && secret.Reference == reference);
-
-    private static bool UsesSecret(FileProviderProfile profile, SecretRef reference) =>
-        profile.Configuration switch
-        {
-            FileProviderConfiguration.S3 value => value.CredentialsSecret == reference,
-            FileProviderConfiguration.Ftp value => value.PasswordSecret == reference,
-            FileProviderConfiguration.Smb value => value.PasswordSecret == reference,
-            FileProviderConfiguration.WebDav value => value.PasswordSecret == reference,
-            _ => false,
-        };
-
-    private static bool UsesSecret(AiProviderProfile profile, SecretRef reference) =>
-        profile.Authentication is AiProviderAuthentication.ApiKey apiKey
-        && apiKey.Secret == reference;
-
-    private static bool UsesSecret(McpServerProfile profile, SecretRef reference) =>
-        EnumerateMcpServerCredentialBindings(profile).Any(binding =>
-            binding.Reference == reference);
-
-    private static IEnumerable<McpServerCredentialBindingDescriptor>
-        EnumerateMcpServerCredentialBindings(McpServerProfile profile)
-    {
-        ArgumentNullException.ThrowIfNull(profile);
-        switch (profile.Transport)
-        {
-            case McpServerTransport.Stdio stdio:
-                foreach (var binding in stdio.Environment)
-                {
-                    yield return new McpServerCredentialBindingDescriptor(
-                        McpServerCredentialBindingKind.EnvironmentVariable,
-                        binding.Name,
-                        binding.Reference);
-                }
-
-                break;
-            case McpServerTransport.StreamableHttp http:
-                foreach (var header in http.Headers)
-                {
-                    yield return new McpServerCredentialBindingDescriptor(
-                        McpServerCredentialBindingKind.HttpHeader,
-                        header.Name,
-                        header.Reference);
-                }
-
-                break;
-            default:
-                throw new InvalidOperationException(
-                    "The MCP server transport is unavailable.");
-        }
-    }
-
-    private sealed record McpServerCredentialBindingDescriptor(
-        McpServerCredentialBindingKind Kind,
-        string Name,
-        SecretRef Reference);
-
-    public async Task RefreshSecretsAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            var availability = _secretVault.Availability;
-            SecretVaultStatus = availability.Message;
-            var result = await _secretVault.ListMetadataAsync(
-                new ListSecretMetadataRequest(null, SecretUsePurpose.ManageAll()),
-                cancellationToken);
-            if (result is SecretVaultResult<IReadOnlyList<SecretMetadata>>.Failure failure)
-            {
-                SecretVaultStatus = failure.Error.Message;
-                return;
-            }
-
-            var metadata = ((SecretVaultResult<IReadOnlyList<SecretMetadata>>.Success)result).Value;
-            var connections = _catalog.Snapshot.Connections
-                .Select(item => item.Value)
-                .ToArray();
-            var fileProviders = _catalog.Snapshot.FileProviderProfiles
-                .Select(item => item.Value)
-                .ToArray();
-            var aiProviders = _catalog.Snapshot.AiProviderProfiles
-                .Select(item => item.Value)
-                .ToArray();
-            var mcpServers = _catalog.Snapshot.McpServerProfiles
-                .Select(item => item.Value)
-                .ToArray();
-            Replace(Secrets, metadata
-                .OrderBy(item => item.Label, StringComparer.OrdinalIgnoreCase)
-                .Select(item =>
-                {
-                    var connectionDependencies = connections
-                        .Where(connection => UsesSecret(connection, item.Reference))
-                        .Select(connection => $"connection {connection.Name}");
-                    var providerDependencies = fileProviders
-                        .Where(profile => UsesSecret(profile, item.Reference))
-                        .Select(profile => $"file provider {profile.Name}");
-                    var aiProviderDependencies = aiProviders
-                        .Where(profile => UsesSecret(profile, item.Reference))
-                        .Select(profile => $"AI provider {profile.Name}");
-                    var mcpServerDependencies = mcpServers
-                        .Where(profile => UsesSecret(profile, item.Reference))
-                        .Select(profile => $"MCP server {profile.Name}");
-                    var dependencies = connectionDependencies
-                        .Concat(providerDependencies)
-                        .Concat(aiProviderDependencies)
-                        .Concat(mcpServerDependencies)
-                        .Order(StringComparer.OrdinalIgnoreCase)
-                        .ToArray();
-                    return new SecretMetadataViewModel(
-                        item.Reference,
-                        item.Label,
-                        item.Kind.ToString(),
-                        item.Scope.Kind == SecretScopeKind.Global
-                            ? "Global"
-                            : $"{item.Scope.Kind} · {item.Scope.OwnerId}",
-                        item.UpdatedAt.ToLocalTime().ToString("g", System.Globalization.CultureInfo.InvariantCulture),
-                        item.LastUsedAt?.ToLocalTime().ToString("g", System.Globalization.CultureInfo.InvariantCulture) ?? "Never",
-                        item.Scope,
-                        dependencies.Length == 0
-                            ? "No saved definition dependencies"
-                            : $"Used by: {string.Join(", ", dependencies)}",
-                        dependencies.Length);
-                }));
-            OnPropertyChanged(nameof(HasNoSecrets));
-            AiProviderSettings.ApplyCatalog(_catalog.Snapshot);
-            RefreshMcpServerDefinitions(_catalog.Snapshot);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-        }
-        catch (Exception)
-        {
-            SecretVaultStatus = "The operating-system credential vault could not be queried.";
-            OnPropertyChanged(nameof(HasNoSecrets));
-        }
-    }
-
-    private static SecretUsePurpose ManagementPurpose(SecretMetadataViewModel secret)
-    {
-        var targetId = secret.SecretScope.Kind == SecretScopeKind.Global
-            ? SecretUsePurpose.GlobalTargetId
-            : secret.SecretScope.OwnerId!;
-        return new SecretUsePurpose(SecretUseKind.UserManagement, targetId);
-    }
+    public Task RefreshSecretsAsync(CancellationToken cancellationToken) =>
+        SecretSettings.RefreshAsync(cancellationToken);
 
     public SavedScreenEditorViewModel CreateSavedScreenEditor(ScreenId screenId) =>
         SavedScreenSettings.CreateEditor(screenId);
@@ -8064,7 +7693,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         ReconcileMcpServerDefinitions(projectedProfiles);
         Replace(McpServerSecretTargets, snapshot.McpServerProfiles
             .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
-            .SelectMany(item => EnumerateMcpServerCredentialBindings(item.Value)
+            .SelectMany(item => SecretDefinitionReferences
+                .EnumerateMcpServerCredentialBindings(item.Value)
                 .Where(binding => Secrets.All(secret =>
                     secret.Reference != binding.Reference
                     || secret.SecretScope.Kind != SecretScopeKind.McpServer
@@ -8149,7 +7779,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         ArgumentNullException.ThrowIfNull(stored);
         ArgumentNullException.ThrowIfNull(secrets);
         var profile = stored.Value;
-        var credentialBindings = EnumerateMcpServerCredentialBindings(profile)
+        var credentialBindings = SecretDefinitionReferences
+            .EnumerateMcpServerCredentialBindings(profile)
             .ToArray();
         var missingSecretCount = credentialBindings.Count(binding =>
             secrets.All(secret =>
@@ -8308,7 +7939,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     {
         var snapshot = _catalog.Snapshot;
         var affectedProfileIds = snapshot.McpServerProfiles
-            .Where(stored => UsesSecret(stored.Value, reference))
+            .Where(stored => SecretDefinitionReferences.Uses(
+                stored.Value,
+                reference))
             .Select(stored => stored.Value.Id)
             .ToHashSet();
         if (affectedProfileIds.Count == 0)
@@ -11258,6 +10891,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _catalog.Changed -= OnCatalogChanged;
         FileTransferState.PropertyChanged -= OnFileTransferStatePropertyChanged;
         FileTransferState.Dispose();
+        SecretSettings.PropertyChanged -= OnSecretSettingsPropertyChanged;
+        SecretSettings.ProjectionChanged -= OnSecretProjectionChanged;
+        SecretSettings.Dispose();
         WorkspaceAutoSave.Seal();
         RuntimeRecovery.Seal();
         _terminalMultiplexerCoordinator?.LeasesChanged -=
