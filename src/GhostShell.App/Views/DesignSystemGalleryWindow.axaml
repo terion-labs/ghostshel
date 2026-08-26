@@ -38,7 +38,8 @@
         <TextBlock
             Classes="Muted"
             FontSize="{DynamicResource ShellFontSize10}"
-            Text="One card. A view names what it is, never what it looks like." />
+            Text="One card. A view names what it is, never what it looks like."
+            TextWrapping="Wrap" />
         <UniformGrid Columns="3" ColumnSpacing="{DynamicResource ShellSpaceMd}" RowSpacing="{DynamicResource ShellSpaceMd}">
           <controls:SurfaceCard>
             <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
@@ -101,7 +102,8 @@
         <TextBlock
             Classes="Muted"
             FontSize="{DynamicResource ShellFontSize10}"
-            Text="A sentence the page wants read before the user acts. The tone says how seriously; the glyph carries it at a glance." />
+            Text="A sentence the page wants read before the user acts. The tone says how seriously; the glyph carries it at a glance."
+            TextWrapping="Wrap" />
         <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
           <controls:Callout
               Glyph="Shield"
@@ -125,7 +127,8 @@
         <TextBlock
             Classes="Muted"
             FontSize="{DynamicResource ShellFontSize10}"
-            Text="A surface's not-content: empty, loading, or failed. One control; the Kind picks the build." />
+            Text="A surface's not-content: empty, loading, or failed. One control; the Kind picks the build."
+            TextWrapping="Wrap" />
         <UniformGrid Columns="3" ColumnSpacing="{DynamicResource ShellSpaceMd}">
           <controls:SurfaceCard Tone="Sunken" Height="230" Padding="0">
             <controls:StateOverlay
@@ -248,7 +251,8 @@
         <TextBlock
             Classes="Muted"
             FontSize="{DynamicResource ShellFontSize10}"
-            Text="A filled header inside a rounded card, shown as the active panel. If the card does not clip, the header squares off the two corners the border draws round; if the active class does not reach it, the accent outline is missing." />
+            Text="A filled header inside a rounded card, shown as the active panel. If the card does not clip, the header squares off the two corners the border draws round; if the active class does not reach it, the accent outline is missing."
+            TextWrapping="Wrap" />
         <controls:SurfaceCard Tone="Sunken" ClipsContent="True" Padding="0" Height="90" Classes="active">
           <Grid RowDefinitions="36,*">
             <Border Grid.Row="0" Classes="PanelHeader">
@@ -267,7 +271,8 @@
         <TextBlock
             Classes="Muted"
             FontSize="{DynamicResource ShellFontSize10}"
-            Text="A field names the control above it; a row names it beside. Separate on purpose — merging them behind a flag would make every use site say which it meant." />
+            Text="A field names the control above it; a row names it beside. Separate on purpose — merging them behind a flag would make every use site say which it meant."
+            TextWrapping="Wrap" />
         <UniformGrid Columns="3" ColumnSpacing="{DynamicResource ShellSpaceMd}">
           <controls:SurfaceCard Tone="Raised">
             <controls:LabeledField Label="Platform profile" Hint="Closest host-native chrome, radii, and density.">

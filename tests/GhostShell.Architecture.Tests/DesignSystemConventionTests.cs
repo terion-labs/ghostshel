@@ -263,6 +263,34 @@ public sealed partial class DesignSystemConventionTests
             + "progress in.");
     }
 
+    [Fact]
+    public void Design_system_gallery_has_the_accessibility_appearance_matrix()
+    {
+        var harness = File.ReadAllText(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "tools",
+            "GhostShell.DesignQa",
+            "Program.cs"));
+
+        Assert.Contains("\"design-system\"", harness, StringComparison.Ordinal);
+        Assert.Contains("\"design-system-light\"", harness, StringComparison.Ordinal);
+        Assert.Contains(
+            "\"design-system-high-contrast\"",
+            harness,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "\"design-system-scale-200\"",
+            harness,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "\"design-system-scale-250\"",
+            harness,
+            StringComparison.Ordinal);
+        Assert.Contains("HighContrast: true", harness, StringComparison.Ordinal);
+        Assert.Contains("AppearanceScale(2)", harness, StringComparison.Ordinal);
+        Assert.Contains("AppearanceScale(2.5)", harness, StringComparison.Ordinal);
+    }
+
     [GeneratedRegex(
         "(Background|Foreground|BorderBrush|Color|Fill|Stroke)=\"#[0-9A-Fa-f]{3,8}\"",
         RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture,

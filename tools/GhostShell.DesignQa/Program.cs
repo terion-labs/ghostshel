@@ -218,7 +218,8 @@ internal sealed record RouteCapture(
     ThemePreference? Theme = null,
     string? ClickFirst = null,
     Action<MainWindow>? PrepareCapture = null,
-    Func<MainWindowViewModel, Window>? Dialog = null);
+    Func<MainWindowViewModel, Window>? Dialog = null,
+    bool HighContrast = false);
 
 internal sealed class QaApplication : Avalonia.Application
 {
@@ -613,6 +614,24 @@ internal sealed class QaApplication : Avalonia.Application
                 PlatformProfile.Automatic,
                 AccentPreference.FollowHost,
                 tabStripPlacement: TabStripPlacement.Left)),
+        // The component gallery at every accessibility-relevant appearance
+        // variant. These routes use the product appearance mapper rather than
+        // maintaining a harness-only palette or font scale.
+        new(
+            "design-system-high-contrast",
+            vm => vm.ShowWorkspace(),
+            Dialog: static _ => new DesignSystemGalleryWindow(),
+            HighContrast: true),
+        new(
+            "design-system-scale-200",
+            vm => vm.ShowWorkspace(),
+            Theme: AppearanceScale(2),
+            Dialog: static _ => new DesignSystemGalleryWindow()),
+        new(
+            "design-system-scale-250",
+            vm => vm.ShowWorkspace(),
+            Theme: AppearanceScale(2.5),
+            Dialog: static _ => new DesignSystemGalleryWindow()),
     ];
 
     /// <summary>
@@ -628,6 +647,15 @@ internal sealed class QaApplication : Avalonia.Application
             PlatformProfile.Automatic,
             AccentPreference.FollowHost,
             density: density);
+
+    private static ThemePreference AppearanceScale(double scale) =>
+        new(
+            ThemePreference.Default.Id,
+            ThemePreference.Default.Name,
+            AppearanceMode.Dark,
+            PlatformProfile.Automatic,
+            AccentPreference.FollowHost,
+            textScaleOverride: scale);
 
     private static void ShowSampleDragGhost(MainWindow window)
     {
@@ -2035,11 +2063,16 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
     /// resource dictionary is shared with this harness application, so the live
     /// window picks the new metrics up exactly as it does in the product.
     /// </summary>
-    private static void ApplyTheme(ThemePreference theme)
+    private static void ApplyTheme(
+        ThemePreference theme,
+        bool highContrast = false)
     {
         if (_productApplication is { } productApplication)
         {
-            var mapped = ApplyProductAppearanceResources(productApplication, theme);
+            var mapped = ApplyProductAppearanceResources(
+                productApplication,
+                theme,
+                highContrast);
             // The theme dictionaries key off the requested variant, exactly as
             // the product's ApplyAppearance switches it; without this a light
             // theme capture would mix light published tokens with dark
@@ -2055,7 +2088,8 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
 
     private static object? ApplyProductAppearanceResources(
         GhostShell.App.App productApplication,
-        ThemePreference theme)
+        ThemePreference theme,
+        bool highContrast = false)
     {
         // The reference frames were drawn with #FF8400 as the example host accent.
         // Supplying it here keeps captures directly comparable; the product's own
@@ -2064,6 +2098,7 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
             HostOperatingSystem.MacOS,
             HostColorScheme.Dark,
             new RgbColor(0xFF, 0x84, 0x00),
+            highContrast: highContrast,
             supportsAdvancedMaterials: true);
         var effectiveTheme = theme.Resolve(host);
 
@@ -3706,9 +3741,11 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
             foreach (var route in selected)
             {
                 var routeTheme = route.Theme ?? ThemePreference.Default;
-                ApplyTheme(Program.IsWebsiteExport
-                    ? WebsiteScreenshotExport.NormalizeTheme(routeTheme)
-                    : routeTheme);
+                ApplyTheme(
+                    Program.IsWebsiteExport
+                        ? WebsiteScreenshotExport.NormalizeTheme(routeTheme)
+                        : routeTheme,
+                    route.HighContrast);
                 if (Program.IsWebsiteExport)
                 {
                     await ResetWebsiteRouteStateAsync(viewModel, window);
@@ -3827,6 +3864,11 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
                 if (route.Dialog is { } openDialog)
                 {
                     var dialog = openDialog(viewModel);
+                    if (route.HighContrast)
+                    {
+                        dialog.Classes.Add("high-contrast");
+                    }
+
                     dialog.Show(window);
                     await Task.Delay(220);
                     Dispatcher.UIThread.RunJobs();

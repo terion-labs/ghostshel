@@ -19,6 +19,12 @@ settings actually reshape the interface: the two themes differ only in those two
 values, so if either setting stops reaching the styles the pair becomes two
 identical images.
 
+The design-system gallery has focused dark, light, high-contrast, 200%, and
+250% text-scale captures. The accessibility variants are named
+`design-system-high-contrast`, `design-system-scale-200`, and
+`design-system-scale-250`; they use the same mapper and semantic font resources
+as the product rather than harness-only colors or scaling.
+
 Pass route names to capture a subset:
 
 ```sh
