@@ -99,7 +99,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private readonly Dictionary<PanelInstanceId, SessionId> _recentSessionIds = [];
     private readonly Dictionary<WorkspaceInstanceId, TerminalMultiplexingMode>
         _workspaceTerminalMultiplexingModes = [];
-    private readonly HashSet<FilePanelTransferId> _refreshedFileTransfers = [];
     private readonly Dictionary<
         McpServerProfileId,
         McpServerTestPresentation> _mcpServerTests = [];
@@ -213,6 +212,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _filePanelClient = filePanelClient ?? throw new ArgumentNullException(nameof(filePanelClient));
         _fileTransferQueue = fileTransferQueue
             ?? throw new ArgumentNullException(nameof(fileTransferQueue));
+        FileTransferState = new FileTransferViewModel(
+            _fileTransferQueue,
+            ResolveFileTransferQueue,
+            RefreshPanelsAfterTransferAsync,
+            SetError,
+            _uiThreadDispatcher);
+        FileTransferState.PropertyChanged += OnFileTransferStatePropertyChanged;
         _browserRendererViewFactory = browserRendererViewFactory;
         _browserProfilePreferences = browserProfilePreferences
             ?? new InMemoryBrowserProfilePreferences();
@@ -364,9 +370,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         Onboarding = role == MainWindowRole.Primary ? onboarding : null;
         ProductComponents = productComponentCatalog?.Components ?? [];
         _catalog.Changed += OnCatalogChanged;
-        _fileTransferQueue.TransfersChanged += OnFileTransfersChanged;
         RefreshCatalog(_catalog.Snapshot);
-        RefreshFileTransfers();
         if (role == MainWindowRole.Primary)
         {
             Onboarding?.Start();
@@ -403,6 +407,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     public McpServerSettingsViewModel McpServerSettings { get; }
 
     public DatabaseConnectionSettingsCoordinator DatabaseConnectionSettings { get; }
+
+    public FileTransferViewModel FileTransferState { get; }
 
     public MainWindowRole Role { get; }
 
@@ -606,7 +612,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     public IBrowserRendererViewFactory? BrowserRendererViewFactory =>
         _browserRendererViewFactory;
 
-    public ObservableCollection<FileTransferItemViewModel> FileTransfers { get; } = [];
+    public ObservableCollection<FileTransferItemViewModel> FileTransfers =>
+        FileTransferState.Transfers;
 
     public ObservableCollection<FileProviderProfileItemViewModel> FileProviderDefinitions =>
         FileProviderSettings.Definitions;
@@ -821,40 +828,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public bool HasMcpServerSecretTargets => McpServerSecretTargets.Count > 0;
 
-    public bool HasFileTransfers => FileTransfers.Count > 0;
+    public bool HasFileTransfers => FileTransferState.HasTransfers;
 
-    public bool HasNoFileTransfers => !HasFileTransfers;
+    public bool HasNoFileTransfers => FileTransferState.HasNoTransfers;
 
     public int ActiveFileTransferCount =>
-        FileTransfers.Count(transfer => transfer.IsActive);
+        FileTransferState.ActiveCount;
 
     public int FailedFileTransferCount =>
-        FileTransfers.Count(transfer => transfer.HasError);
+        FileTransferState.FailedCount;
 
-    public string FileTransferStatusText
-    {
-        get
-        {
-            var active = FileTransfers.FirstOrDefault(transfer => transfer.IsActive);
-            if (active is not null)
-            {
-                return ActiveFileTransferCount == 1
-                    ? active.HasKnownProgress
-                        ? $"Transfer · {active.ProgressPercent:0}%"
-                        : "Transfer in progress"
-                    : $"{ActiveFileTransferCount} transfers";
-            }
-
-            if (FailedFileTransferCount > 0)
-            {
-                return FailedFileTransferCount == 1
-                    ? "1 transfer failed"
-                    : $"{FailedFileTransferCount} transfers failed";
-            }
-
-            return "Transfers complete";
-        }
-    }
+    public string FileTransferStatusText => FileTransferState.StatusText;
 
     public IReadOnlyList<SecretKind> SecretKinds { get; } = Enum.GetValues<SecretKind>();
 
@@ -4027,32 +4011,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         CancellationToken cancellationToken)
     {
         ClearError();
-        var result = await ResolveFileTransferQueue(id).CancelAsync(id, cancellationToken);
-        if (!result.IsSuccess)
-        {
-            SetError(result.Error!.Message);
-            return false;
-        }
-
-        RefreshFileTransfers();
-        return true;
+        return await FileTransferState.CancelAsync(id, cancellationToken);
     }
 
     public async ValueTask<bool> QueueFileTransferAsync(
         FilePanelTransferRequest request,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(request);
         ClearError();
-        var result = await _fileTransferQueue.EnqueueAsync(request, cancellationToken);
-        if (!result.IsSuccess)
-        {
-            SetError(result.Error!.Message);
-            return false;
-        }
-
-        RefreshFileTransfers();
-        return true;
+        return await FileTransferState.EnqueueAsync(request, cancellationToken);
     }
 
     public async ValueTask<bool> RetryFileTransferAsync(
@@ -4060,15 +4027,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         CancellationToken cancellationToken)
     {
         ClearError();
-        var result = await ResolveFileTransferQueue(id).RetryAsync(id, cancellationToken);
-        if (!result.IsSuccess)
-        {
-            SetError(result.Error!.Message);
-            return false;
-        }
-
-        RefreshFileTransfers();
-        return true;
+        return await FileTransferState.RetryAsync(id, cancellationToken);
     }
 
     private static bool UsesSecret(ConnectionProfile connection, SecretRef reference) =>
@@ -6809,17 +6768,23 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         }
     }
 
-    private void OnFileTransfersChanged(object? sender, EventArgs eventArgs)
+    private void OnFileTransferStatePropertyChanged(
+        object? sender,
+        PropertyChangedEventArgs eventArgs)
     {
         _ = sender;
-        _ = eventArgs;
-        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        var propertyName = eventArgs.PropertyName switch
         {
-            RefreshFileTransfers();
-        }
-        else
+            nameof(FileTransferViewModel.HasTransfers) => nameof(HasFileTransfers),
+            nameof(FileTransferViewModel.HasNoTransfers) => nameof(HasNoFileTransfers),
+            nameof(FileTransferViewModel.ActiveCount) => nameof(ActiveFileTransferCount),
+            nameof(FileTransferViewModel.FailedCount) => nameof(FailedFileTransferCount),
+            nameof(FileTransferViewModel.StatusText) => nameof(FileTransferStatusText),
+            _ => null,
+        };
+        if (propertyName is not null)
         {
-            Avalonia.Threading.Dispatcher.UIThread.Post(RefreshFileTransfers);
+            OnPropertyChanged(propertyName);
         }
     }
 
@@ -6867,74 +6832,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     private void QueueRuntimeRecoverySnapshot()
         => RuntimeRecovery.QueueSnapshot();
-
-    private void RefreshFileTransfers()
-    {
-        var snapshots = _fileTransferQueue.Transfers;
-        var rows = snapshots.Select(snapshot =>
-            new FileTransferItemViewModel(
-                snapshot.Id,
-                FileLocationPresentation.Display(snapshot.Request.Source),
-                FileLocationPresentation.Display(snapshot.EffectiveDestination),
-                snapshot.Request.Operation.ToString(),
-                snapshot.State.ToString(),
-                snapshot.Stage,
-                FormatTransferProgress(snapshot),
-                snapshot.Error?.Message,
-                snapshot.Error is not null,
-                snapshot.CanCancel,
-                snapshot.CanRetry,
-                snapshot.State is
-                    FilePanelTransferState.Queued or FilePanelTransferState.Running,
-                snapshot.TotalBytes is > 0,
-                TransferPercent(snapshot),
-                snapshot.QueuedAt))
-            .ToArray();
-        SynchronizeFileTransfers(rows);
-        OnPropertyChanged(nameof(HasFileTransfers));
-        OnPropertyChanged(nameof(HasNoFileTransfers));
-        OnPropertyChanged(nameof(ActiveFileTransferCount));
-        OnPropertyChanged(nameof(FailedFileTransferCount));
-        OnPropertyChanged(nameof(FileTransferStatusText));
-
-        foreach (var snapshot in snapshots.Where(snapshot =>
-                     snapshot.State == FilePanelTransferState.Completed
-                     && _refreshedFileTransfers.Add(snapshot.Id)))
-        {
-            _ = RefreshPanelsAfterTransferAsync(snapshot);
-        }
-    }
-
-    private void SynchronizeFileTransfers(
-        IReadOnlyList<FileTransferItemViewModel> latest)
-    {
-        var existingById = FileTransfers.ToDictionary(transfer => transfer.Id);
-        for (var index = 0; index < latest.Count; index++)
-        {
-            var candidate = latest[index];
-            if (!existingById.TryGetValue(candidate.Id, out var existing))
-            {
-                FileTransfers.Insert(index, candidate);
-                continue;
-            }
-
-            existing.UpdateFrom(candidate);
-            var currentIndex = FileTransfers.IndexOf(existing);
-            if (currentIndex != index)
-            {
-                FileTransfers.Move(currentIndex, index);
-            }
-        }
-
-        var liveIds = latest.Select(transfer => transfer.Id).ToHashSet();
-        for (var index = FileTransfers.Count - 1; index >= 0; index--)
-        {
-            if (!liveIds.Contains(FileTransfers[index].Id))
-            {
-                FileTransfers.RemoveAt(index);
-            }
-        }
-    }
 
     private async Task RefreshPanelsAfterTransferAsync(
         FilePanelTransferSnapshot transfer)
@@ -11334,7 +11231,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         }
 
         _catalog.Changed -= OnCatalogChanged;
-        _fileTransferQueue.TransfersChanged -= OnFileTransfersChanged;
+        FileTransferState.Dispose();
         WorkspaceAutoSave.Seal();
         RuntimeRecovery.Seal();
         _terminalMultiplexerCoordinator?.LeasesChanged -=
@@ -11359,7 +11256,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         History.SealOperations();
 
         _catalog.Changed -= OnCatalogChanged;
-        _fileTransferQueue.TransfersChanged -= OnFileTransfersChanged;
+        FileTransferState.PropertyChanged -= OnFileTransferStatePropertyChanged;
+        FileTransferState.Dispose();
         WorkspaceAutoSave.Seal();
         RuntimeRecovery.Seal();
         _terminalMultiplexerCoordinator?.LeasesChanged -=
@@ -11492,22 +11390,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             }
         }
     }
-
-    private static string FormatTransferProgress(FilePanelTransferSnapshot snapshot)
-    {
-        if (snapshot.TotalBytes is > 0 and var total)
-        {
-            var percent = TransferPercent(snapshot);
-            return $"{percent.ToString("0", System.Globalization.CultureInfo.InvariantCulture)}% · {snapshot.BytesTransferred:N0} / {total:N0} bytes";
-        }
-
-        return $"{snapshot.BytesTransferred:N0} bytes";
-    }
-
-    private static double TransferPercent(FilePanelTransferSnapshot snapshot) =>
-        snapshot.TotalBytes is > 0 and var total
-            ? Math.Clamp((double)snapshot.BytesTransferred / total * 100, 0, 100)
-            : 0;
 
     private static string Initials(string name)
     {

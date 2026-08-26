@@ -55,14 +55,17 @@ public sealed class FileProviderSettingsOwnershipTests
     }
 
     [Fact]
-    public void Runtime_launch_transfer_and_secret_mutation_remain_root_concerns()
+    public void Runtime_launch_and_secret_mutation_remain_root_while_transfers_have_an_owner()
     {
         var root = ReadViewModel("MainWindowViewModel.cs");
+        var transfers = ReadViewModel("FileTransferViewModel.cs");
 
         Assert.Contains("LaunchFileProviderAsync", root, StringComparison.Ordinal);
         Assert.Contains("CreateFileProviderSecretAsync", root, StringComparison.Ordinal);
         Assert.Contains("AddFileProviderPanelAsync", root, StringComparison.Ordinal);
-        Assert.Contains("RefreshFileTransfers", root, StringComparison.Ordinal);
+        Assert.DoesNotContain("RefreshFileTransfers", root, StringComparison.Ordinal);
+        Assert.DoesNotContain("_fileTransferQueue.EnqueueAsync", root, StringComparison.Ordinal);
+        Assert.Contains("_queue.EnqueueAsync", transfers, StringComparison.Ordinal);
     }
 
     private static string ReadViewModel(string fileName) => File.ReadAllText(Path.Combine(
