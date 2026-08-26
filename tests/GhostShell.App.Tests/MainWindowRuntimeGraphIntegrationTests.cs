@@ -2464,6 +2464,42 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         }
     }
 
+    [Fact]
+    public void Shell_navigation_changes_relay_through_main_window_compatibility_properties()
+    {
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, CreateCatalogSnapshot());
+        var changed = new List<string>();
+        viewModel.PropertyChanged += (_, eventArgs) =>
+        {
+            if (eventArgs.PropertyName is { } propertyName)
+            {
+                changed.Add(propertyName);
+            }
+        };
+
+        viewModel.ShowOverlay(ShellOverlay.CommandPalette);
+        viewModel.ShowSettings(SettingsPage.Files);
+
+        string[] forwardedProperties =
+        [
+            nameof(MainWindowViewModel.Overlay),
+            nameof(MainWindowViewModel.HasOverlay),
+            nameof(MainWindowViewModel.IsCommandPaletteVisible),
+            nameof(MainWindowViewModel.SettingsPage),
+            nameof(MainWindowViewModel.IsFilesSettingsVisible),
+            nameof(MainWindowViewModel.Route),
+            nameof(MainWindowViewModel.IsSettingsVisible),
+            nameof(MainWindowViewModel.IsWorkspaceCanvasVisible),
+        ];
+        Assert.All(
+            forwardedProperties,
+            propertyName => Assert.Contains(
+                propertyName,
+                changed,
+                StringComparer.Ordinal));
+    }
+
     [Theory]
     [InlineData(ShellOverlay.CommandPalette)]
     [InlineData(ShellOverlay.NewPanel)]

@@ -63,12 +63,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         Reject,
     }
 
-    [StructLayout(LayoutKind.Auto)]
-    private readonly record struct RuntimeMutationNavigationSnapshot(
-        ShellRoute Route,
-        ShellOverlay Overlay,
-        long OverlayRevision);
-
     private const int WorkspaceMutationAttemptCount = 2;
     private static readonly TimeSpan WorkspaceGraphReceiptReconciliationTimeout =
         TimeSpan.FromSeconds(1);
@@ -157,10 +151,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private CancellationTokenSource? _runtimeGraphWatchCancellation;
     private CancellationTokenSource? _workspaceAutoSaveDebounce;
     private RuntimeHistorySource? _runtimeHistorySource;
-    private ShellRoute _route = ShellRoute.Workspace;
-    private SettingsPage _settingsPage = SettingsPage.Appearance;
-    private ShellOverlay _overlay;
-    private long _overlayRevision;
+    private readonly ShellNavigationViewModel _navigation = new();
     private RuntimeWorkspaceViewModel? _runtimeWorkspace;
     private AgentChatViewModel? _agentChat;
     private string? _operationError;
@@ -280,6 +271,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             nativeNotificationService,
             ActivateNativeNotification,
             () => IsWorkspaceCanvasVisible);
+        _navigation.PropertyChanged += OnShellNavigationPropertyChanged;
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         SavedScreenDeleteUndo = new SavedScreenDeleteUndoViewModel(_catalog);
         _connectionRuntime = connectionRuntime ?? throw new ArgumentNullException(nameof(connectionRuntime));
@@ -1025,64 +1017,41 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public ShellRoute Route
     {
-        get => _route;
+        get => _navigation.Route;
         private set
         {
-            if (SetProperty(ref _route, value))
+            var previous = _navigation.Route;
+            _navigation.ShowRoute(value);
+            if (previous != value && value == ShellRoute.Workspace)
             {
-                OnPropertyChanged(nameof(IsWorkspaceVisible));
-                OnPropertyChanged(nameof(IsSettingsVisible));
-                OnPropertyChanged(nameof(IsWorkspaceCanvasVisible));
-                if (value == ShellRoute.Workspace)
-                {
-                    MarkVisibleNotificationsSeen();
-                }
+                MarkVisibleNotificationsSeen();
             }
         }
     }
 
+    /// <summary>
+    /// The independently testable owner of shell route and overlay state.
+    /// Existing root properties remain as migration forwarders until views
+    /// bind directly to the composed surface.
+    /// </summary>
+    public ShellNavigationViewModel Navigation => _navigation;
 
     public SettingsPage SettingsPage
     {
-        get => _settingsPage;
-        set
-        {
-            if (SetProperty(ref _settingsPage, value))
-            {
-                OnPropertyChanged(nameof(IsAppearanceSettingsVisible));
-                OnPropertyChanged(nameof(IsWorkspaceSettingsVisible));
-                OnPropertyChanged(nameof(IsKeybindingSettingsVisible));
-                OnPropertyChanged(nameof(IsFilesSettingsVisible));
-                OnPropertyChanged(nameof(IsBrowserSettingsVisible));
-                OnPropertyChanged(nameof(IsTerminalSettingsVisible));
-                OnPropertyChanged(nameof(IsQuickTerminalSettingsVisible));
-                OnPropertyChanged(nameof(IsSecretsSettingsVisible));
-                OnPropertyChanged(nameof(IsDiagnosticsSettingsVisible));
-                OnPropertyChanged(nameof(IsAgentSettingsVisible));
-                OnPropertyChanged(nameof(IsMcpSettingsVisible));
-                OnPropertyChanged(nameof(IsAboutSettingsVisible));
-            }
-        }
+        get => _navigation.SettingsPage;
+        set => _navigation.SettingsPage = value;
     }
 
     public ShellOverlay Overlay
     {
-        get => _overlay;
+        get => _navigation.Overlay;
         private set
         {
-            if (SetProperty(ref _overlay, value))
+            var previous = _navigation.Overlay;
+            _navigation.ShowOverlay(value);
+            if (previous != value && value == ShellOverlay.None)
             {
-                _overlayRevision++;
-                OnPropertyChanged(nameof(HasOverlay));
-                OnPropertyChanged(nameof(IsCommandPaletteVisible));
-                OnPropertyChanged(nameof(IsNewPanelVisible));
-                OnPropertyChanged(nameof(IsLayoutDesignerVisible));
-                OnPropertyChanged(nameof(IsDefinitionEditorVisible));
-                OnPropertyChanged(nameof(IsWorkspaceCanvasVisible));
-                if (value == ShellOverlay.None)
-                {
-                    MarkVisibleNotificationsSeen();
-                }
+                MarkVisibleNotificationsSeen();
             }
         }
     }
@@ -1193,6 +1162,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         {
             Notifications.MarkWorkspaceSourceSeen(RuntimeWorkspace);
         }
+    }
+
+    private void OnShellNavigationPropertyChanged(
+        object? sender,
+        PropertyChangedEventArgs eventArgs)
+    {
+        _ = sender;
+        OnPropertyChanged(eventArgs.PropertyName);
     }
 
     private void ActivateWorkspaceAgentChat(WorkspaceInstanceId? workspaceId)
@@ -1811,15 +1788,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         }
     }
 
-    public bool IsWorkspaceVisible => Route == ShellRoute.Workspace;
+    public bool IsWorkspaceVisible => _navigation.IsWorkspaceVisible;
 
-    public bool IsSettingsVisible => Route == ShellRoute.Settings;
+    public bool IsSettingsVisible => _navigation.IsSettingsVisible;
 
-    public bool IsWorkspaceCanvasVisible => IsWorkspaceVisible && !HasOverlay;
+    public bool IsWorkspaceCanvasVisible => _navigation.IsWorkspaceCanvasVisible;
 
-    public bool IsAppearanceSettingsVisible => SettingsPage == SettingsPage.Appearance;
+    public bool IsAppearanceSettingsVisible => _navigation.IsAppearanceSettingsVisible;
 
-    public bool IsWorkspaceSettingsVisible => SettingsPage == SettingsPage.Workspaces;
+    public bool IsWorkspaceSettingsVisible => _navigation.IsWorkspaceSettingsVisible;
 
     public bool RestoreSessionsOnStart
     {
@@ -1840,25 +1817,25 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public bool HasManagedRemoteSessions => ManagedRemoteSessions.Count > 0;
 
-    public bool IsKeybindingSettingsVisible => SettingsPage == SettingsPage.Keybindings;
+    public bool IsKeybindingSettingsVisible => _navigation.IsKeybindingSettingsVisible;
 
-    public bool IsFilesSettingsVisible => SettingsPage == SettingsPage.Files;
+    public bool IsFilesSettingsVisible => _navigation.IsFilesSettingsVisible;
 
-    public bool IsBrowserSettingsVisible => SettingsPage == SettingsPage.Browser;
+    public bool IsBrowserSettingsVisible => _navigation.IsBrowserSettingsVisible;
 
-    public bool IsTerminalSettingsVisible => SettingsPage == SettingsPage.Terminal;
+    public bool IsTerminalSettingsVisible => _navigation.IsTerminalSettingsVisible;
 
-    public bool IsQuickTerminalSettingsVisible => SettingsPage == SettingsPage.QuickTerminal;
+    public bool IsQuickTerminalSettingsVisible => _navigation.IsQuickTerminalSettingsVisible;
 
-    public bool IsSecretsSettingsVisible => SettingsPage == SettingsPage.Secrets;
+    public bool IsSecretsSettingsVisible => _navigation.IsSecretsSettingsVisible;
 
-    public bool IsDiagnosticsSettingsVisible => SettingsPage == SettingsPage.Diagnostics;
+    public bool IsDiagnosticsSettingsVisible => _navigation.IsDiagnosticsSettingsVisible;
 
-    public bool IsAgentSettingsVisible => SettingsPage is SettingsPage.Agent or SettingsPage.Mcp;
+    public bool IsAgentSettingsVisible => _navigation.IsAgentSettingsVisible;
 
-    public bool IsMcpSettingsVisible => SettingsPage == SettingsPage.Mcp;
+    public bool IsMcpSettingsVisible => _navigation.IsMcpSettingsVisible;
 
-    public bool IsAboutSettingsVisible => SettingsPage == SettingsPage.About;
+    public bool IsAboutSettingsVisible => _navigation.IsAboutSettingsVisible;
 
     public string SecretVaultStatus
     {
@@ -1866,15 +1843,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         private set => SetProperty(ref _secretVaultStatus, value);
     }
 
-    public bool HasOverlay => Overlay != ShellOverlay.None;
+    public bool HasOverlay => _navigation.HasOverlay;
 
-    public bool IsCommandPaletteVisible => Overlay == ShellOverlay.CommandPalette;
+    public bool IsCommandPaletteVisible => _navigation.IsCommandPaletteVisible;
 
-    public bool IsNewPanelVisible => Overlay == ShellOverlay.NewPanel;
+    public bool IsNewPanelVisible => _navigation.IsNewPanelVisible;
 
-    public bool IsLayoutDesignerVisible => Overlay == ShellOverlay.LayoutDesigner;
+    public bool IsLayoutDesignerVisible => _navigation.IsLayoutDesignerVisible;
 
-    public bool IsDefinitionEditorVisible => Overlay == ShellOverlay.DefinitionEditor;
+    public bool IsDefinitionEditorVisible => _navigation.IsDefinitionEditorVisible;
 
     public string EditorTitle => _editingDefinition?.Kind == WorkspaceDefinition.Kind
         ? "Edit workspace"
@@ -2250,8 +2227,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             return;
         }
 
-        SettingsPage = page;
-        Route = ShellRoute.Settings;
+        _navigation.ShowSettings(page);
         if (page is SettingsPage.Secrets or SettingsPage.Mcp)
         {
             // Listing the native credential store may show an OS authorization
@@ -2281,7 +2257,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     {
         if (RuntimeWorkspace is not null && TryDismissOverlayForNavigation())
         {
-            Route = ShellRoute.Workspace;
+            var previousRoute = Route;
+            _navigation.ShowWorkspace();
+            if (previousRoute != Route)
+            {
+                MarkVisibleNotificationsSeen();
+            }
         }
     }
 
@@ -7238,41 +7219,23 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         workspace.ActiveTab = tab;
     }
 
-    private RuntimeMutationNavigationSnapshot CaptureRuntimeMutationNavigation() =>
-        new(Route, Overlay, _overlayRevision);
+    private ShellNavigationSnapshot CaptureRuntimeMutationNavigation() =>
+        _navigation.CaptureRuntimeMutation();
 
     private void CompleteRuntimeMutationNavigation(
-        RuntimeMutationNavigationSnapshot initiatingState)
+        ShellNavigationSnapshot initiatingState)
     {
-        if (Overlay is ShellOverlay.DefinitionEditor or ShellOverlay.LayoutDesigner)
+        var previousRoute = Route;
+        var previousOverlay = Overlay;
+        _navigation.CompleteRuntimeMutation(initiatingState);
+        if (previousRoute != Route && Route == ShellRoute.Workspace)
         {
-            return;
+            MarkVisibleNotificationsSeen();
         }
 
-        var initiatingOverlayStillOpen =
-            _overlayRevision == initiatingState.OverlayRevision
-            && Overlay == initiatingState.Overlay;
-        var initiatingOverlayWasDismissed =
-            initiatingState.Overlay != ShellOverlay.None
-            && Overlay == ShellOverlay.None
-            && Route == initiatingState.Route;
-        var initiatingSurfaceIsUnchanged =
-            initiatingState.Overlay == ShellOverlay.None
-            && Overlay == ShellOverlay.None
-            && Route == initiatingState.Route;
-        if (!initiatingOverlayStillOpen
-            && !initiatingOverlayWasDismissed
-            && !initiatingSurfaceIsUnchanged)
+        if (previousOverlay != Overlay && Overlay == ShellOverlay.None)
         {
-            return;
-        }
-
-        Route = ShellRoute.Workspace;
-        if (initiatingOverlayStillOpen
-            && initiatingState.Overlay is ShellOverlay.CommandPalette
-                or ShellOverlay.NewPanel)
-        {
-            CloseOverlay();
+            MarkVisibleNotificationsSeen();
         }
     }
 
@@ -14836,6 +14799,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _terminalMultiplexerCoordinator?.LeasesChanged -=
                 OnTerminalMultiplexerLeasesChanged;
         _agentPolicyCoordinator?.Changed -= OnAgentPolicyCoordinatorChanged;
+        _navigation.PropertyChanged -= OnShellNavigationPropertyChanged;
         StopTrackingAgentTerminalSelection(_runtimeWorkspace);
         StopTrackingRecovery(_runtimeWorkspace);
         // Every open workspace, not only the one in front: the others are just

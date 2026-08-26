@@ -8,12 +8,6 @@ using GhostShell.Docker;
 
 namespace GhostShell.App.ViewModels;
 
-public enum ShellRoute
-{
-    Workspace,
-    Settings,
-}
-
 public enum HistoryExportScope
 {
     AllRetained,
@@ -102,31 +96,6 @@ public sealed record HistoryRetentionOption
     public string Description { get; }
 
     public RecentSessionRetentionPolicy Policy { get; }
-}
-
-public enum SettingsPage
-{
-    Appearance,
-    Workspaces,
-    Keybindings,
-    Files,
-    Browser,
-    Terminal,
-    QuickTerminal,
-    Secrets,
-    Diagnostics,
-    Agent,
-    Mcp,
-    About,
-}
-
-public enum ShellOverlay
-{
-    None,
-    CommandPalette,
-    NewPanel,
-    LayoutDesigner,
-    DefinitionEditor,
 }
 
 /// <summary>
