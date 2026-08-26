@@ -318,6 +318,15 @@ public sealed class DefinitionSettingsViewModel : ObservableObject, IDisposable
             cancellationToken);
     }
 
+    public ValueTask<DefinitionStoreResult<Unit>> DeleteAsync(
+        DefinitionKey key,
+        long expectedRevision,
+        CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        return _catalog.DeleteAsync(key, expectedRevision, cancellationToken);
+    }
+
     public void EnsureKeybindingEditor()
     {
         ThrowIfDisposed();

@@ -173,6 +173,20 @@ public sealed class DefinitionSettingsViewModelTests
     }
 
     [Fact]
+    public async Task Generic_definition_delete_forwards_exact_identity_and_revision()
+    {
+        var catalog = CreateCatalog(Snapshot());
+        using var viewModel = CreateViewModel(catalog);
+        var key = new DefinitionKey(WorkspaceDefinition.Kind, "workspace.delete");
+
+        var result = await viewModel.DeleteAsync(key, 23, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(key, catalog.LastDeletedKey);
+        Assert.Equal(23, catalog.LastDeletedRevision);
+    }
+
+    [Fact]
     public void Disposing_the_owner_disposes_the_active_keybinding_session()
     {
         var catalog = CreateCatalog(Snapshot());

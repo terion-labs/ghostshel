@@ -35,11 +35,18 @@ public sealed class WorkspaceSettingsOwnershipTests
             nameof(WorkspaceSettingsViewModel.TryBeginCreate)));
         Assert.Equal(2, typeof(WorkspaceSettingsViewModel).GetMethods()
             .Count(method => method.Name == nameof(WorkspaceSettingsViewModel.SaveAsync)));
+        Assert.NotNull(typeof(WorkspaceSettingsViewModel).GetMethod(
+            nameof(WorkspaceSettingsViewModel.CreateAsync)));
+        Assert.NotNull(typeof(WorkspaceSettingsViewModel).GetMethod(
+            nameof(WorkspaceSettingsViewModel.SetAgentPanelPinnedAsync)));
 
         var root = ReadSource("MainWindowViewModel.cs");
+        var owner = ReadSource("WorkspaceSettingsViewModel.cs");
         Assert.DoesNotContain("new WorkspaceEditorViewModel", root, StringComparison.Ordinal);
         Assert.DoesNotContain("WorkspaceEditor = new", root, StringComparison.Ordinal);
         Assert.DoesNotContain("_workspaceEditor", root, StringComparison.Ordinal);
+        Assert.DoesNotContain("_catalog.SaveWorkspaceAsync", root, StringComparison.Ordinal);
+        Assert.Contains("_catalog.SaveWorkspaceAsync", owner, StringComparison.Ordinal);
     }
 
     [Fact]

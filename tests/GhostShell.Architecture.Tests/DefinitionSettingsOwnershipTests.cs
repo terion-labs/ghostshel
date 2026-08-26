@@ -50,6 +50,8 @@ public sealed class DefinitionSettingsOwnershipTests
             nameof(DefinitionSettingsViewModel.DeleteLayoutAsync)));
         Assert.NotNull(typeof(DefinitionSettingsViewModel).GetMethod(
             nameof(DefinitionSettingsViewModel.DeleteKeymapAsync)));
+        Assert.NotNull(typeof(DefinitionSettingsViewModel).GetMethod(
+            nameof(DefinitionSettingsViewModel.DeleteAsync)));
 
         var root = File.ReadAllText(Path.Combine(
             ApplicationViewCatalog.Load().RepositoryRoot,
@@ -63,6 +65,7 @@ public sealed class DefinitionSettingsOwnershipTests
         Assert.DoesNotContain("_layoutDesignerEditor", root, StringComparison.Ordinal);
         Assert.DoesNotContain("_keybindingEditorSession", root, StringComparison.Ordinal);
         Assert.DoesNotContain("_selectedKeybindingProfile", root, StringComparison.Ordinal);
+        Assert.DoesNotContain("_catalog.DeleteAsync", root, StringComparison.Ordinal);
         Assert.DoesNotContain(
             "Layout rows and columns must be between one and four.",
             root,

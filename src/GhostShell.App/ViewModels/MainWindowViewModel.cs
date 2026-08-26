@@ -218,6 +218,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             ?? new InMemoryBrowserProfilePreferences();
         _databasePanelClient = databasePanelClient;
         _databaseConnectionCatalog = databaseConnectionCatalog ?? databasePanelClient;
+        DatabaseConnectionSettings = new DatabaseConnectionSettingsCoordinator(
+            _catalog,
+            _databaseConnectionCatalog,
+            _secretVault,
+            SetError,
+            message => SecretVaultStatus = message);
         _redisPanelSessionFactory = redisPanelSessionFactory;
         _dockerEngineClient = dockerEngineClient;
         _gitRepositoryClient = gitRepositoryClient;
@@ -262,6 +268,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             _uiThreadDispatcher);
         AiProviderSettings.PropertyChanged += OnAiProviderSettingsPropertyChanged;
         AiProviderSettings.RuntimeProfilesChanged += OnAiProviderRuntimeProfilesChanged;
+        McpServerSettings = new McpServerSettingsViewModel(
+            _catalog,
+            () => [.. Secrets]);
         _mcpServerDiagnostics = mcpServerDiagnostics;
         _mcpCredentialSessionInvalidator =
             mcpCredentialSessionInvalidator;
@@ -390,6 +399,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     public SavedScreenSettingsViewModel SavedScreenSettings { get; }
 
     public TerminalConnectionSettingsViewModel TerminalConnectionSettings { get; }
+
+    public McpServerSettingsViewModel McpServerSettings { get; }
+
+    public DatabaseConnectionSettingsCoordinator DatabaseConnectionSettings { get; }
 
     public MainWindowRole Role { get; }
 
@@ -2335,29 +2348,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         IsAgentPanelDocked = docked;
         IsAgentPanelVisible = true;
 
-        if (FrontWorkspaceDefinition(RuntimeWorkspace) is not { } stored
-            || stored.Value.AgentPanelPinned == docked)
-        {
-            return;
-        }
-
-        var current = stored.Value;
-        var updated = new WorkspaceDefinition(
-            current.Id,
-            current.SchemaVersion,
-            current.Name,
-            current.Description,
-            current.Accent,
-            current.Entries,
-            current.AgentPolicyOverride,
-            current.Icon,
-            current.AutoSave,
-            current.Color,
+        var saved = await WorkspaceSettings.SetAgentPanelPinnedAsync(
+            _runtimeHistorySource?.SourceDefinition,
             docked,
-            current.TerminalMultiplexingOverride,
-            current.BrowserProfileOverride);
-        var saved = await _catalog.SaveWorkspaceAsync(updated, stored.Revision, cancellationToken);
-        ApplyError(saved.Error);
+            cancellationToken);
+        ApplyError(saved?.Error);
     }
 
     private StoredDefinition<WorkspaceDefinition>? FrontWorkspaceDefinition(
@@ -3465,14 +3460,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         CancellationToken cancellationToken)
     {
         ClearError();
-        var definition = new WorkspaceDefinition(
-            WorkspaceId.New(),
-            WorkspaceDefinition.CurrentSchemaVersion,
-            RequireName(name, "Workspace"),
-            "A GhostSHELL workspace.",
-            ThemePreference.BronzeFallback.ToString(),
-            []);
-        var result = await _catalog.SaveWorkspaceAsync(definition, null, cancellationToken);
+        var result = await WorkspaceSettings.CreateAsync(name, cancellationToken);
         ApplyError(result.Error);
         return result;
     }
@@ -3573,21 +3561,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     }
 
     public McpServerProfileEditorViewModel CreateMcpServerEditor(
-        McpServerProfileId? profileId = null)
-    {
-        if (profileId is null)
-        {
-            return new McpServerProfileEditorViewModel(
-                secrets: [.. Secrets]);
-        }
-
-        var stored = _catalog.Snapshot.McpServerProfiles
-            .SingleOrDefault(item => item.Value.Id == profileId.Value) ?? throw new InvalidOperationException("That MCP-server profile no longer exists.");
-        return new McpServerProfileEditorViewModel(
-            stored.Value,
-            stored.Revision,
-            [.. Secrets]);
-    }
+        McpServerProfileId? profileId = null) =>
+        McpServerSettings.CreateEditor(profileId);
 
     public async ValueTask<DefinitionStoreResult<StoredDefinition<McpServerProfile>>>
         SaveMcpServerProfileAsync(
@@ -3596,16 +3571,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     {
         ArgumentNullException.ThrowIfNull(request);
         ClearError();
-        if (!request.IsAuthorizedForSave)
-        {
-            return Fail<StoredDefinition<McpServerProfile>>(
-                "Confirm the trusted MCP transport details before saving this profile.");
-        }
-
-        var result = await _catalog.SaveMcpServerProfileAsync(
-            request.Profile,
-            request.ExpectedRevision,
-            cancellationToken);
+        var result = await McpServerSettings.SaveAsync(request, cancellationToken);
         ApplyError(result.Error);
         return result;
     }
@@ -4404,7 +4370,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                     new ScreenId(key.Value),
                     revision,
                     cancellationToken),
-            _ => await _catalog.DeleteAsync(key, revision, cancellationToken),
+            _ => await DefinitionSettings.DeleteAsync(key, revision, cancellationToken),
         };
         ApplyError(result.Error);
         return result;
@@ -10624,12 +10590,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _catalog.Snapshot.DatabaseConnections
             .SingleOrDefault(item => item.Value.Id == id)?.Value;
 
-    /// <summary>
-    /// Persists a database connection, optionally moving the typed password
-    /// into the OS vault. The stored connection string never carries the
-    /// password. Updates keep the existing profile id and its stored secret
-    /// unless a new password is being stored.
-    /// </summary>
     public async Task<DatabaseConnectionProfile?> SaveDatabaseConnectionAsync(
         DatabaseConnectionProfileId? existingId,
         string name,
@@ -10641,291 +10601,47 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         CancellationToken cancellationToken = default)
     {
         ClearError();
-        if (_databaseConnectionCatalog is null || string.IsNullOrWhiteSpace(name))
-        {
-            SetError("A saved database connection needs a name.");
-            return null;
-        }
-
-        var existing = existingId is { } id
-            ? _catalog.Snapshot.DatabaseConnections
-                .SingleOrDefault(item => item.Value.Id == id)
-            : null;
-        var profileId = existing?.Value.Id ?? DatabaseConnectionProfileId.New();
-        var secret = existing?.Value.PasswordSecret;
-        if (storePassword && !string.IsNullOrEmpty(details.Password))
-        {
-            var reference = SecretRef.New();
-            var bytes = Encoding.UTF8.GetBytes(details.Password);
-            using var material = SecretMaterial.TakeOwnership(bytes);
-            var created = await _secretVault.CreateAsync(
-                new CreateSecretRequest(
-                    reference,
-                    $"{name.Trim()} database password",
-                    SecretKind.Password,
-                    new SecretScope(SecretScopeKind.DatabaseConnection, profileId.Value),
-                    new SecretUsePurpose(
-                        SecretUseKind.DatabaseConnectionAuthentication,
-                        profileId.Value)),
-                material,
-                cancellationToken);
-            if (created is SecretVaultResult<SecretMetadata>.Failure failure)
-            {
-                SetError(failure.Error.Message);
-                return null;
-            }
-
-            secret = reference;
-        }
-
-        ConnectionProfile? inline = null;
-        if (inlineTunnel is { } tunnelRequest)
-        {
-            inline = await BuildInlineTunnelAsync(
-                profileId,
-                name.Trim(),
-                tunnelRequest,
-                existing?.Value.InlineTunnel,
-                cancellationToken);
-            if (inline is null)
-            {
-                return null;
-            }
-        }
-
-        var profile = new DatabaseConnectionProfile(
-            profileId,
-            DatabaseConnectionProfile.CurrentSchemaVersion,
-            name.Trim(),
+        var saved = await DatabaseConnectionSettings.SaveDatabaseConnectionAsync(
+            existingId,
+            name,
             driverId,
-            _databaseConnectionCatalog.BuildConnectionString(
-                driverId,
-                details with { Password = null }),
-            secret,
-            inline is null ? tunnelConnectionId : null,
-            inline);
-        var saved = await _catalog.SaveDatabaseConnectionAsync(
-            profile,
-            existing?.Revision,
+            details,
+            storePassword,
+            tunnelConnectionId,
+            inlineTunnel,
             cancellationToken);
-        if (!saved.IsSuccess)
-        {
-            SetError(saved.Error!.Message);
-            return null;
-        }
-
-        OnPropertyChanged(nameof(DatabaseConnectionOptions));
-        OnPropertyChanged(nameof(DatabasePanelConnectionOptions));
-        return saved.Value!.Value;
+        NotifyDatabaseConnectionOptionsChanged(saved);
+        return saved;
     }
 
-    /// <summary>
-    /// Adds a password supplied by the connection-time prompt to an existing
-    /// database profile. If the catalog update fails, the newly-created,
-    /// unreferenced vault entry is removed before returning.
-    /// </summary>
     internal async Task<DatabaseConnectionProfile?> StoreDatabasePasswordAsync(
         DatabaseConnectionProfileId profileId,
         string password,
         CancellationToken cancellationToken = default)
     {
         ClearError();
-        if (!_secretVault.Availability.CanPersist)
-        {
-            SetError(_secretVault.Availability.Message);
-            return null;
-        }
-
-        if (string.IsNullOrEmpty(password))
-        {
-            SetError("Enter a password before saving it.");
-            return null;
-        }
-
-        var stored = _catalog.Snapshot.DatabaseConnections
-            .SingleOrDefault(item => item.Value.Id == profileId);
-        if (stored is null)
-        {
-            SetError("That database connection no longer exists.");
-            return null;
-        }
-
-        if (stored.Value.PasswordSecret is not null)
-        {
-            return stored.Value;
-        }
-
-        var reference = SecretRef.New();
-        var scope = new SecretScope(SecretScopeKind.DatabaseConnection, profileId.Value);
-        var purpose = new SecretUsePurpose(
-            SecretUseKind.DatabaseConnectionAuthentication,
-            profileId.Value);
-        var bytes = Encoding.UTF8.GetBytes(password);
-        using var material = SecretMaterial.TakeOwnership(bytes);
-        var created = await _secretVault.CreateAsync(
-            new CreateSecretRequest(
-                reference,
-                $"{stored.Value.Name} database password",
-                SecretKind.Password,
-                scope,
-                purpose),
-            material,
+        var saved = await DatabaseConnectionSettings.StoreDatabasePasswordAsync(
+            profileId,
+            password,
             cancellationToken);
-        if (created is SecretVaultResult<SecretMetadata>.Failure failure)
-        {
-            SetError(failure.Error.Message);
-            return null;
-        }
+        NotifyDatabaseConnectionOptionsChanged(saved);
+        return saved;
+    }
 
-        var profile = new DatabaseConnectionProfile(
-            stored.Value.Id,
-            stored.Value.SchemaVersion,
-            stored.Value.Name,
-            stored.Value.DriverId,
-            stored.Value.ConnectionString,
-            reference,
-            stored.Value.TunnelConnectionId,
-            stored.Value.InlineTunnel);
-        DefinitionStoreResult<StoredDefinition<DatabaseConnectionProfile>> saved;
-        try
-        {
-            saved = await _catalog.SaveDatabaseConnectionAsync(
-                profile,
-                stored.Revision,
-                cancellationToken);
-        }
-        catch
-        {
-            await DeleteUnusedDatabasePasswordAsync(reference, scope, profileId);
-            throw;
-        }
+    private Task<string?> ResolveDatabasePasswordAsync(
+        SecretRef secret,
+        CancellationToken cancellationToken) =>
+        DatabaseConnectionSettings.ResolveDatabasePasswordAsync(secret, cancellationToken);
 
-        if (!saved.IsSuccess)
+    private void NotifyDatabaseConnectionOptionsChanged(DatabaseConnectionProfile? saved)
+    {
+        if (saved is null)
         {
-            await DeleteUnusedDatabasePasswordAsync(reference, scope, profileId);
-            SetError(saved.Error!.Message);
-            return null;
+            return;
         }
 
         OnPropertyChanged(nameof(DatabaseConnectionOptions));
         OnPropertyChanged(nameof(DatabasePanelConnectionOptions));
-        return saved.Value!.Value;
-    }
-
-    private async Task DeleteUnusedDatabasePasswordAsync(
-        SecretRef reference,
-        SecretScope scope,
-        DatabaseConnectionProfileId profileId)
-    {
-        var deleted = await _secretVault.DeleteAsync(
-            new DeleteSecretRequest(
-                reference,
-                scope,
-                new SecretUsePurpose(SecretUseKind.UserManagement, profileId.Value)),
-            CancellationToken.None);
-        if (deleted is SecretVaultResult<Unit>.Failure)
-        {
-            SecretVaultStatus =
-                "An unused database credential could not be removed from the system credential store.";
-        }
-    }
-
-    /// <summary>
-    /// Turns the editor's inline-tunnel request into the profile stored inside
-    /// the database connection. The tunnel's id derives from the database
-    /// profile so its keychain password stays scoped and resolvable across
-    /// edits; a request with no new password keeps the stored one.
-    /// </summary>
-    private async Task<ConnectionProfile?> BuildInlineTunnelAsync(
-        DatabaseConnectionProfileId profileId,
-        string name,
-        DatabaseInlineTunnelRequest request,
-        ConnectionProfile? existingInline,
-        CancellationToken cancellationToken)
-    {
-        var tunnelId = DatabaseConnectionProfile.InlineTunnelId(profileId);
-        ConnectionAuthentication authentication;
-        if (request.UseAgent)
-        {
-            authentication = new ConnectionAuthentication.SshAgent();
-        }
-        else if (!string.IsNullOrEmpty(request.Password))
-        {
-            var reference = SecretRef.New();
-            var bytes = Encoding.UTF8.GetBytes(request.Password);
-            using var material = SecretMaterial.TakeOwnership(bytes);
-            var created = await _secretVault.CreateAsync(
-                new CreateSecretRequest(
-                    reference,
-                    $"{name} tunnel password",
-                    SecretKind.Password,
-                    new SecretScope(SecretScopeKind.Connection, tunnelId.Value),
-                    new SecretUsePurpose(
-                        SecretUseKind.ConnectionAuthentication,
-                        tunnelId.Value)),
-                material,
-                cancellationToken);
-            if (created is SecretVaultResult<SecretMetadata>.Failure failure)
-            {
-                SetError(failure.Error.Message);
-                return null;
-            }
-
-            authentication = new ConnectionAuthentication.Password(reference);
-        }
-        else if (existingInline?.Authentication is ConnectionAuthentication.Password kept)
-        {
-            authentication = kept;
-        }
-        else
-        {
-            SetError("The SSH tunnel needs a password, or switch it to the SSH agent.");
-            return null;
-        }
-
-        return DatabaseConnectionEditorViewModel.BuildInlineTunnelProfile(
-            tunnelId,
-            $"{name} tunnel",
-            request,
-            authentication);
-    }
-
-    /// <summary>Resolves a stored database password from the OS vault.</summary>
-    private async Task<string?> ResolveDatabasePasswordAsync(
-        SecretRef secret,
-        CancellationToken cancellationToken)
-    {
-        var owner = _catalog.Snapshot.DatabaseConnections
-            .FirstOrDefault(item => item.Value.PasswordSecret == secret)?.Value;
-        if (owner is null)
-        {
-            return null;
-        }
-
-        var result = await _secretVault.ResolveAsync(
-            new ResolveSecretRequest(
-                secret,
-                new SecretScope(SecretScopeKind.DatabaseConnection, owner.Id.Value),
-                new SecretUsePurpose(
-                    SecretUseKind.DatabaseConnectionAuthentication,
-                    owner.Id.Value)),
-            cancellationToken);
-        if (result is SecretVaultResult<SecretMaterial>.Failure)
-        {
-            return null;
-        }
-
-        using var material = ((SecretVaultResult<SecretMaterial>.Success)result).Value;
-        var bytes = new byte[material.Length];
-        material.CopyTo(bytes);
-        try
-        {
-            return Encoding.UTF8.GetString(bytes);
-        }
-        finally
-        {
-            System.Security.Cryptography.CryptographicOperations.ZeroMemory(bytes);
-        }
     }
 
     private void StartAcceptedRuntimePanels(RuntimeWorkspaceViewModel runtime)
@@ -11679,6 +11395,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         WorkspaceSettings.Dispose();
         SavedScreenSettings.Dispose();
         TerminalConnectionSettings.Dispose();
+        McpServerSettings.Dispose();
         FileProviderSettings.Dispose();
         AiProviderSettings.Dispose();
         AgentWorkspaceScope.Dispose();

@@ -159,6 +159,61 @@ public sealed class WorkspaceSettingsViewModel : ObservableObject, IDisposable
         return result;
     }
 
+    public ValueTask<DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>> CreateAsync(
+        string name,
+        CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        var definition = new WorkspaceDefinition(
+            WorkspaceId.New(),
+            WorkspaceDefinition.CurrentSchemaVersion,
+            string.IsNullOrWhiteSpace(name) ? "Workspace" : name.Trim(),
+            "A GhostSHELL workspace.",
+            ThemePreference.BronzeFallback.ToString(),
+            []);
+        return _catalog.SaveWorkspaceAsync(definition, null, cancellationToken);
+    }
+
+    public async ValueTask<DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>?>
+        SetAgentPanelPinnedAsync(
+            DefinitionKey? sourceDefinition,
+            bool isPinned,
+            CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        if (sourceDefinition is not { } key || key.Kind != WorkspaceDefinition.Kind)
+        {
+            return null;
+        }
+
+        var stored = _catalog.Snapshot.Workspaces
+            .FirstOrDefault(item => item.Value.Key == key);
+        if (stored is null || stored.Value.AgentPanelPinned == isPinned)
+        {
+            return null;
+        }
+
+        var current = stored.Value;
+        var updated = new WorkspaceDefinition(
+            current.Id,
+            current.SchemaVersion,
+            current.Name,
+            current.Description,
+            current.Accent,
+            current.Entries,
+            current.AgentPolicyOverride,
+            current.Icon,
+            current.AutoSave,
+            current.Color,
+            isPinned,
+            current.TerminalMultiplexingOverride,
+            current.BrowserProfileOverride);
+        return await _catalog.SaveWorkspaceAsync(
+            updated,
+            stored.Revision,
+            cancellationToken);
+    }
+
     public void Dispose()
     {
         if (_disposed)

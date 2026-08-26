@@ -102,6 +102,37 @@ public sealed class WorkspaceSettingsViewModelTests
     }
 
     [Fact]
+    public async Task Create_normalizes_the_name_and_uses_a_null_revision()
+    {
+        var fixture = CreateCatalog(Snapshot());
+        using var viewModel = new WorkspaceSettingsViewModel(fixture.Catalog);
+
+        var result = await viewModel.CreateAsync("  New workspace  ", CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("New workspace", fixture.Proxy.LastSavedWorkspace?.Name);
+        Assert.Null(fixture.Proxy.LastExpectedRevision);
+    }
+
+    [Fact]
+    public async Task Agent_panel_pin_preserves_the_definition_and_revision()
+    {
+        var fixture = CreateCatalog(Snapshot());
+        var stored = fixture.Proxy.CurrentSnapshot.Workspaces.Single();
+        using var viewModel = new WorkspaceSettingsViewModel(fixture.Catalog);
+
+        var result = await viewModel.SetAgentPanelPinnedAsync(
+            stored.Value.Key,
+            isPinned: true,
+            CancellationToken.None);
+
+        Assert.True(result is { IsSuccess: true });
+        Assert.True(fixture.Proxy.LastSavedWorkspace?.AgentPanelPinned);
+        Assert.Equal(stored.Value.Name, fixture.Proxy.LastSavedWorkspace?.Name);
+        Assert.Equal(stored.Revision, fixture.Proxy.LastExpectedRevision);
+    }
+
+    [Fact]
     public void Disposing_the_owner_disposes_and_releases_the_editor()
     {
         var fixture = CreateCatalog(Snapshot());
