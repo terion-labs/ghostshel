@@ -151,10 +151,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private string _definitionBundleStatus =
         "Exports include saved settings but not credentials or terminal content.";
     private string? _applicationKeySequenceHint;
-    private LayoutDesignerViewModel? _layoutDesignerEditor;
     private WorkspaceEditorViewModel? _workspaceEditor;
-    private KeybindingProfileItemViewModel? _selectedKeybindingProfile;
-    private KeybindingEditorSessionViewModel? _keybindingEditorSession;
     private TerminalProfileEditorViewModel? _terminalSettingsEditor;
     private QuickTerminalSettingsEditorViewModel? _quickTerminalSettingsEditor;
     private bool _restoreSessionsOnStart = true;
@@ -240,6 +237,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         DefinitionEdit = new DefinitionEditSessionViewModel(_catalog);
         DefinitionEdit.PropertyChanged += OnDefinitionEditPropertyChanged;
+        DefinitionSettings = new DefinitionSettingsViewModel(_catalog);
+        DefinitionSettings.PropertyChanged += OnDefinitionSettingsPropertyChanged;
         SavedScreenDeleteUndo = new SavedScreenDeleteUndoViewModel(_catalog);
         _connectionRuntime = connectionRuntime ?? throw new ArgumentNullException(nameof(connectionRuntime));
         _secretVault = secretVault ?? throw new ArgumentNullException(nameof(secretVault));
@@ -351,6 +350,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     public LauncherViewModel Launcher { get; }
 
     public DefinitionEditSessionViewModel DefinitionEdit { get; }
+
+    public DefinitionSettingsViewModel DefinitionSettings { get; }
 
     public MainWindowRole Role { get; }
 
@@ -551,11 +552,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public ObservableCollection<LauncherScreenViewModel> Screens => Launcher.Screens;
 
-    public ObservableCollection<LayoutCardViewModel> Layouts { get; } = [];
+    public ObservableCollection<LayoutCardViewModel> Layouts => DefinitionSettings.Layouts;
 
-    public ObservableCollection<KeybindingRowViewModel> Keybindings { get; } = [];
+    public ObservableCollection<KeybindingRowViewModel> Keybindings => DefinitionSettings.Keybindings;
 
-    public ObservableCollection<KeybindingProfileItemViewModel> KeybindingProfiles { get; } = [];
+    public ObservableCollection<KeybindingProfileItemViewModel> KeybindingProfiles =>
+        DefinitionSettings.KeybindingProfiles;
 
     public ObservableCollection<LauncherSearchResultViewModel> LauncherSearchResults =>
         Launcher.SearchResults;
@@ -600,8 +602,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public LayoutDesignerViewModel? LayoutDesignerEditor
     {
-        get => _layoutDesignerEditor;
-        private set => SetProperty(ref _layoutDesignerEditor, value);
+        get => DefinitionSettings.LayoutDesignerEditor;
     }
 
     public WorkspaceEditorViewModel? WorkspaceEditor
@@ -627,38 +628,18 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public KeybindingProfileItemViewModel? SelectedKeybindingProfile
     {
-        get => _selectedKeybindingProfile;
-        private set
-        {
-            if (SetProperty(ref _selectedKeybindingProfile, value))
-            {
-                OnPropertyChanged(nameof(CanCloneSelectedKeybindingProfile));
-            }
-        }
+        get => DefinitionSettings.SelectedKeybindingProfile;
     }
 
     public KeybindingEditorSessionViewModel? KeybindingEditorSession
     {
-        get => _keybindingEditorSession;
-        private set
-        {
-            if (ReferenceEquals(_keybindingEditorSession, value))
-            {
-                return;
-            }
-
-            var previous = _keybindingEditorSession;
-            if (SetProperty(ref _keybindingEditorSession, value))
-            {
-                previous?.Dispose();
-                OnPropertyChanged(nameof(HasKeybindingEditor));
-            }
-        }
+        get => DefinitionSettings.KeybindingEditorSession;
     }
 
-    public bool HasKeybindingEditor => KeybindingEditorSession is not null;
+    public bool HasKeybindingEditor => DefinitionSettings.HasKeybindingEditor;
 
-    public bool CanCloneSelectedKeybindingProfile => SelectedKeybindingProfile?.IsBuiltIn == true;
+    public bool CanCloneSelectedKeybindingProfile =>
+        DefinitionSettings.CanCloneSelectedKeybindingProfile;
 
     public string ProductName => ProductIdentity.DisplayName;
 
@@ -1023,6 +1004,39 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             _ => null,
         };
         if (propertyName is not null)
+        {
+            OnPropertyChanged(propertyName);
+        }
+    }
+
+    private void OnDefinitionSettingsPropertyChanged(
+        object? sender,
+        PropertyChangedEventArgs eventArgs)
+    {
+        _ = sender;
+        string[] propertyNames = eventArgs.PropertyName switch
+        {
+            nameof(DefinitionSettingsViewModel.LayoutDesignerEditor) =>
+                [nameof(LayoutDesignerEditor)],
+            nameof(DefinitionSettingsViewModel.SelectedKeybindingProfile) =>
+                [nameof(SelectedKeybindingProfile)],
+            nameof(DefinitionSettingsViewModel.KeybindingEditorSession) =>
+                [nameof(KeybindingEditorSession)],
+            nameof(DefinitionSettingsViewModel.HasKeybindingEditor) =>
+                [nameof(HasKeybindingEditor)],
+            nameof(DefinitionSettingsViewModel.CanCloneSelectedKeybindingProfile) =>
+                [nameof(CanCloneSelectedKeybindingProfile)],
+            nameof(DefinitionSettingsViewModel.KeybindingConflictCount) =>
+                [nameof(KeybindingConflictCount)],
+            nameof(DefinitionSettingsViewModel.ActiveApplicationKeymap) =>
+                [nameof(ActiveApplicationKeymap)],
+            nameof(DefinitionSettingsViewModel.ActiveApplicationKeymapRevision) =>
+                [nameof(ActiveApplicationKeymapRevision)],
+            nameof(DefinitionSettingsViewModel.ActiveApplicationKeymapName) =>
+                [nameof(ActiveApplicationKeymapName)],
+            _ => [],
+        };
+        foreach (var propertyName in propertyNames)
         {
             OnPropertyChanged(propertyName);
         }
@@ -1918,12 +1932,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _catalog.Snapshot.TerminalProfiles.FirstOrDefault()?.Value;
 
     public KeymapProfile ActiveApplicationKeymap =>
-        ResolveActiveApplicationKeymap(_catalog.Snapshot).Value;
+        DefinitionSettings.ActiveApplicationKeymap;
 
     public long ActiveApplicationKeymapRevision =>
-        ResolveActiveApplicationKeymap(_catalog.Snapshot).Revision;
+        DefinitionSettings.ActiveApplicationKeymapRevision;
 
-    public string ActiveApplicationKeymapName => ActiveApplicationKeymap.Name;
+    public string ActiveApplicationKeymapName =>
+        DefinitionSettings.ActiveApplicationKeymapName;
 
     public TerminalProfileEditorViewModel? TerminalSettingsEditor
     {
@@ -2024,7 +2039,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         ? ActiveTheme.Accent.CustomColor?.ToString() ?? ThemePreference.BronzeFallback.ToString()
         : "Follow system accent";
 
-    public int KeybindingConflictCount => Keybindings.Count(item => item.HasConflict);
+    public int KeybindingConflictCount =>
+        DefinitionSettings.KeybindingConflictCount;
 
     public void ShowSettings(SettingsPage page = SettingsPage.Appearance)
     {
@@ -2043,7 +2059,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
         if (page == SettingsPage.Keybindings)
         {
-            EnsureKeybindingEditor();
+            DefinitionSettings.EnsureKeybindingEditor();
         }
 
         if (page == SettingsPage.Files)
@@ -2114,38 +2130,31 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public void BeginCreateLayout()
     {
-        if (!CanReplaceLayoutDesigner())
+        if (!DefinitionSettings.TryBeginCreateLayout(out var error))
         {
+            SetError(error!);
             return;
         }
 
         ClearError();
-        LayoutDesignerEditor = LayoutDesignerViewModel.CreateNew();
         Overlay = ShellOverlay.LayoutDesigner;
     }
 
     public void BeginEditLayout(LayoutId id)
     {
-        if (!CanReplaceLayoutDesigner())
+        if (!DefinitionSettings.TryBeginEditLayout(id, out var error))
         {
-            return;
-        }
-
-        var stored = _catalog.Snapshot.Layouts.SingleOrDefault(item => item.Value.Id == id);
-        if (stored is null)
-        {
-            SetError("That layout no longer exists.");
+            SetError(error!);
             return;
         }
 
         ClearError();
-        LayoutDesignerEditor = new LayoutDesignerViewModel(stored.Value, stored.Revision);
         Overlay = ShellOverlay.LayoutDesigner;
     }
 
     public void DismissLayoutDesigner()
     {
-        LayoutDesignerEditor = null;
+        DefinitionSettings.DismissLayoutDesigner();
         if (Overlay == ShellOverlay.LayoutDesigner)
         {
             Overlay = ShellOverlay.None;
@@ -2156,93 +2165,30 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         SaveLayoutDesignerAsync(CancellationToken cancellationToken)
     {
         ClearError();
-        if (LayoutDesignerEditor is null)
-        {
-            return Fail<StoredDefinition<LayoutDefinition>>(
-                "Open the layout designer before saving a layout.");
-        }
-
-        LayoutDesignerSaveRequest request;
-        try
-        {
-            request = LayoutDesignerEditor.CreateSaveRequest();
-        }
-        catch (InvalidOperationException exception)
-        {
-            return Fail<StoredDefinition<LayoutDefinition>>(exception.Message);
-        }
-
-        var result = await _catalog.SaveLayoutAsync(
-            request.Definition,
-            request.ExpectedRevision,
-            cancellationToken);
+        var result = await DefinitionSettings.SaveLayoutDesignerAsync(cancellationToken);
         ApplyError(result.Error);
         return result;
     }
 
-    private bool CanReplaceLayoutDesigner()
-    {
-        if (LayoutDesignerEditor?.RequestCancel()
-            != LayoutDesignerCancelDisposition.ConfirmDiscard)
-        {
-            return true;
-        }
-
-        SetError("Save or discard the current layout changes first.");
-        return false;
-    }
-
     public void SelectKeybindingProfile(KeybindingProfileItemViewModel profile)
     {
-        ArgumentNullException.ThrowIfNull(profile);
-        var stored = _catalog.Snapshot.Keymaps.SingleOrDefault(item => item.Value.Id == profile.Id);
-        if (stored is null)
+        if (!DefinitionSettings.TrySelectKeybindingProfile(profile, out var error))
         {
-            SetError("That keybinding profile no longer exists.");
+            SetError(error!);
             return;
         }
 
         ClearError();
-        OpenKeybindingEditor(stored.Value, stored.Revision, profile.IsBuiltIn);
-        SelectedKeybindingProfile = profile;
     }
 
     public void CloneSelectedKeybindingProfile()
     {
-        if (SelectedKeybindingProfile is not { IsBuiltIn: true } selected)
+        if (!DefinitionSettings.TryCloneSelectedKeybindingProfile(out var error))
         {
-            SetError("Select a built-in keybinding preset to clone.");
+            SetError(error!);
             return;
         }
 
-        var source = _catalog.Snapshot.Keymaps
-            .Select(item => item.Value)
-            .SingleOrDefault(item => item.Id == selected.Id);
-        if (source is null)
-        {
-            SetError("That built-in keybinding preset no longer exists.");
-            return;
-        }
-
-        var cloneId = new KeymapProfileId($"user.keymap.{Guid.NewGuid():N}");
-        var cloneName = $"{source.Name} copy";
-        var editor = KeybindingSettingsEditor.ClonePreset(
-            source,
-            cloneId,
-            cloneName,
-            BuiltInCommands.Registry);
-        var profile = new KeybindingProfileItemViewModel(
-            cloneId,
-            Revision: null,
-            cloneName,
-            source.Layer,
-            IsBuiltIn: false,
-            IsUnsaved: true);
-        KeybindingProfiles.Add(profile);
-        SelectedKeybindingProfile = profile;
-        KeybindingEditorSession = new KeybindingEditorSessionViewModel(
-            editor,
-            isReadOnly: false);
         ClearError();
     }
 
@@ -2250,45 +2196,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         SaveKeybindingEditorAsync(CancellationToken cancellationToken)
     {
         ClearError();
-        if (KeybindingEditorSession is null)
-        {
-            return Fail<StoredDefinition<KeymapProfile>>(
-                "Select a keybinding profile before saving.");
-        }
-
-        KeybindingSettingsSaveRequest request;
-        try
-        {
-            request = KeybindingEditorSession.CreateSaveRequest();
-        }
-        catch (InvalidOperationException exception)
-        {
-            return Fail<StoredDefinition<KeymapProfile>>(exception.Message);
-        }
-
-        var result = await _catalog.SaveKeymapAsync(
-            request.Profile,
-            request.ExpectedRevision,
-            cancellationToken);
+        var result = await DefinitionSettings.SaveKeybindingEditorAsync(cancellationToken);
         ApplyError(result.Error);
-        if (result is { IsSuccess: true, Value: { } saved })
+        if (result.IsSuccess)
         {
-            RefreshKeybindings(_catalog.Snapshot);
-            var profile = KeybindingProfiles.SingleOrDefault(item => item.Id == saved.Value.Id)
-                ?? new KeybindingProfileItemViewModel(
-                    saved.Value.Id,
-                    saved.Revision,
-                    saved.Value.Name,
-                    saved.Value.Layer,
-                    IsBuiltInKeymap(saved.Value.Id),
-                    IsUnsaved: false);
-            if (KeybindingProfiles.All(item => item.Id != profile.Id))
-            {
-                KeybindingProfiles.Add(profile);
-            }
-
-            OpenKeybindingEditor(saved.Value, saved.Revision, profile.IsBuiltIn);
-            SelectedKeybindingProfile = profile;
+            Launcher.RefreshSearchResults();
         }
 
         return result;
@@ -10017,7 +9929,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             return false;
         }
 
-        LayoutDesignerEditor = null;
+        DefinitionSettings.DismissLayoutDesigner();
         WorkspaceEditor = null;
         DefinitionEdit.Clear();
         Overlay = ShellOverlay.None;
@@ -10099,20 +10011,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         RefreshFileProviderDefinitions(snapshot);
         RefreshAiProviderDefinitions(snapshot);
         RefreshMcpServerDefinitions(snapshot);
-        ReplaceIfChanged(
-            Layouts,
-            [.. snapshot.Layouts
-                .Where(item => !LayoutDefinition.IsAutoSaved(item.Value.Id))
-                .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(item => new LayoutCardViewModel(
-                    item.Value.Id,
-                    item.Revision,
-                    item.Value.Name,
-                    item.Value.Grid.Rows,
-                    item.Value.Grid.Columns,
-                    item.Value.Slots.Count,
-                    CreateLayoutPreview(item.Value)))],
-            static (a, b) => a.PresentsSameAs(b));
+        DefinitionSettings.ApplyCatalog(snapshot);
         OnPropertyChanged(nameof(PanelConnectionOptions));
         OnPropertyChanged(nameof(BrowserConnectionOptions));
         OnPropertyChanged(nameof(DatabasePanelConnectionOptions));
@@ -10153,7 +10052,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 quickTerminal.Revision);
         }
 
-        RefreshKeybindings(snapshot);
         RefreshOpenTerminalRenderProfiles();
         OnPropertyChanged(nameof(ActiveTheme));
         OnPropertyChanged(nameof(ActiveTerminalProfile));
@@ -10185,23 +10083,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     {
         History.RefreshAvailability(ToRecentSessionItem);
     }
-
-    /// <summary>
-    /// The layout's own shape — a layout row without its geometry made every
-    /// card read as "some grid". No slot is emphasized: unlike a screen, a
-    /// layout has no primary panel, only regions.
-    /// </summary>
-    private static IReadOnlyList<LauncherScreenPanelPreviewViewModel> CreateLayoutPreview(
-        LayoutDefinition layout) =>
-        [.. layout.Slots
-            .Select(slot => new LauncherScreenPanelPreviewViewModel(
-                layout.Grid.Columns,
-                layout.Grid.Rows,
-                slot.Bounds.Column,
-                slot.Bounds.Row,
-                slot.Bounds.ColumnSpan,
-                slot.Bounds.RowSpan,
-                IsPrimary: false))];
 
     private static IReadOnlyList<LauncherScreenPanelPreviewViewModel> CreateScreenPreview(
         ScreenDefinition screen,
@@ -10761,136 +10642,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             $"Tested {completed}. Found {discovered}; {enabled}"
                 + eligibility);
     }
-
-    private void RefreshKeybindings(DefinitionCatalogSnapshot snapshot)
-    {
-        var transient = SelectedKeybindingProfile is { IsUnsaved: true } unsaved
-            ? unsaved
-            : null;
-        var profiles = snapshot.Keymaps
-            .OrderBy(item => item.Value.Layer)
-            .ThenBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(item => new KeybindingProfileItemViewModel(
-                item.Value.Id,
-                item.Revision,
-                item.Value.Name,
-                item.Value.Layer,
-                IsBuiltInKeymap(item.Value.Id),
-                IsUnsaved: false))
-            .ToList();
-        if (transient is not null && profiles.All(item => item.Id != transient.Id))
-        {
-            profiles.Add(transient);
-        }
-
-        Replace(KeybindingProfiles, profiles);
-        if (SelectedKeybindingProfile is { } selected)
-        {
-            SelectedKeybindingProfile = KeybindingProfiles
-                .SingleOrDefault(item => item.Id == selected.Id);
-        }
-
-        var rows = new List<KeybindingRowViewModel>();
-        foreach (var profile in snapshot.Keymaps.Select(item => item.Value))
-        {
-            var issues = KeymapConflictValidator.Validate(profile, BuiltInCommands.Registry);
-            for (var bindingIndex = 0; bindingIndex < profile.Bindings.Count; bindingIndex++)
-            {
-                var binding = profile.Bindings[bindingIndex];
-                _ = BuiltInCommands.Registry.TryGet(binding.CommandId, out var command);
-                var hasConflict = issues.Any(issue =>
-                    issue.BindingIndex == bindingIndex
-                    || issue.OtherBindingIndex == bindingIndex);
-                rows.Add(new(
-                    command?.Category ?? "Unknown",
-                    command?.Title ?? binding.CommandId.Value,
-                    KeySequenceDisplay.Format(binding.Sequence),
-                    profile.Name,
-                    hasConflict ? "Conflict" : "Active",
-                    hasConflict));
-            }
-        }
-
-        ReplaceIfChanged(
-            Keybindings,
-            [.. rows
-                .OrderBy(item => item.Category, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(item => item.Command, StringComparer.OrdinalIgnoreCase)],
-            static (a, b) => a == b);
-        OnPropertyChanged(nameof(KeybindingConflictCount));
-        OnPropertyChanged(nameof(ActiveApplicationKeymap));
-        OnPropertyChanged(nameof(ActiveApplicationKeymapRevision));
-        OnPropertyChanged(nameof(ActiveApplicationKeymapName));
-        Launcher.RefreshSearchResults();
-    }
-
-    private static StoredDefinition<KeymapProfile> ResolveActiveApplicationKeymap(
-        DefinitionCatalogSnapshot snapshot)
-    {
-        var custom = snapshot.Keymaps
-            .Where(item => item.Value.Layer == KeymapLayer.Application)
-            .Where(item => !IsBuiltInKeymap(item.Value.Id))
-            .OrderByDescending(item => item.UpdatedAt)
-            .ThenByDescending(item => item.Revision)
-            .ThenBy(item => item.Value.Id.Value, StringComparer.Ordinal)
-            .FirstOrDefault();
-        if (custom is not null)
-        {
-            return custom;
-        }
-
-        return snapshot.Keymaps
-            .FirstOrDefault(item => item.Value.Id == BuiltInKeymaps.TmuxApplicationId)
-            ?? new StoredDefinition<KeymapProfile>(
-                BuiltInKeymaps.TmuxApplication,
-                0,
-                DateTimeOffset.UnixEpoch,
-                DateTimeOffset.UnixEpoch);
-    }
-
-    private void EnsureKeybindingEditor()
-    {
-        if (KeybindingEditorSession is not null)
-        {
-            return;
-        }
-
-        var selected = KeybindingProfiles
-            .FirstOrDefault(item => item.Id == ActiveApplicationKeymap.Id)
-            ?? KeybindingProfiles.FirstOrDefault(item => item.Id == BuiltInKeymaps.TmuxApplicationId)
-            ?? KeybindingProfiles.FirstOrDefault();
-        if (selected is not null)
-        {
-            SelectKeybindingProfile(selected);
-        }
-    }
-
-    private void OpenKeybindingEditor(
-        KeymapProfile profile,
-        long revision,
-        bool isReadOnly)
-    {
-        var resetSource = ResolveKeybindingResetSource(profile);
-        var editor = KeybindingSettingsEditor.Edit(
-            profile,
-            revision,
-            BuiltInCommands.Registry,
-            resetSource);
-        KeybindingEditorSession = new KeybindingEditorSessionViewModel(editor, isReadOnly);
-    }
-
-    private KeymapProfile ResolveKeybindingResetSource(KeymapProfile profile)
-    {
-        var resetId = profile.BasedOn ?? profile.Id;
-        return BuiltInKeymaps.All.FirstOrDefault(item => item.Id == resetId)
-            ?? _catalog.Snapshot.Keymaps
-                .Select(item => item.Value)
-                .FirstOrDefault(item => item.Id == resetId)
-            ?? profile;
-    }
-
-    private static bool IsBuiltInKeymap(KeymapProfileId id) =>
-        BuiltInKeymaps.All.Any(item => item.Id == id);
 
     private IReadOnlyList<LauncherSearchResultViewModel> BuildLauncherSearchCandidates()
     {
@@ -14052,6 +13803,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _agentPolicyCoordinator?.Changed -= OnAgentPolicyCoordinatorChanged;
         _navigation.PropertyChanged -= OnShellNavigationPropertyChanged;
         DefinitionEdit.PropertyChanged -= OnDefinitionEditPropertyChanged;
+        DefinitionSettings.PropertyChanged -= OnDefinitionSettingsPropertyChanged;
         Launcher.PropertyChanged -= OnLauncherPropertyChanged;
         StopTrackingAgentTerminalSelection(_runtimeWorkspace);
         StopTrackingRecovery(_runtimeWorkspace);
@@ -14068,7 +13820,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _runtimeWorkspace?.DisposePanels();
         _runtimeWorkspace = null;
         WorkspaceEditor = null;
-        KeybindingEditorSession = null;
+        DefinitionSettings.Dispose();
         Onboarding?.Dispose();
         AgentChat?.Cancel();
         if (_agentRuntimeFactory is null)
