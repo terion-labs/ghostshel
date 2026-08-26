@@ -45,15 +45,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         string Status,
         string Detail);
 
-    private enum RuntimeGraphStaleProposalHandling
-    {
-        RefreshAndRetry,
-        Reject,
-    }
-
     private const int WorkspaceMutationAttemptCount = 2;
-    private static readonly TimeSpan WorkspaceGraphReceiptReconciliationTimeout =
-        TimeSpan.FromSeconds(1);
 
     private readonly IDefinitionCatalog _catalog;
     private readonly IConnectionRuntime _connectionRuntime;
@@ -307,14 +299,24 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             ClientId,
             WindowId,
             _uiThreadDispatcher,
+            _timeProvider,
             () => RuntimeWorkspace,
-            ApplyRuntimeWorkspaceGraphStreamItem,
+            runtime =>
+            {
+                CloseRuntimeWorkspace(runtime);
+                CloseOverlay();
+                if (RuntimeWorkspace is null)
+                {
+                    Route = ShellRoute.Workspace;
+                }
+            },
             SetError,
             () =>
             {
                 MarkVisibleNotificationsSeen();
                 QueueRuntimeRecoverySnapshot();
-            });
+            },
+            Notifications.Watch);
         _runtimeGraphGate = RuntimeGraph.SerializationGate;
         AgentChat = _agentRuntimeFactory is null
             && agentChatRuntime is not null
@@ -7930,155 +7932,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private void StopRuntimeGraphWatch()
         => RuntimeGraph.StopWatching();
 
-    private bool ApplyRuntimeWorkspaceGraphStreamItem(
+    private Task<bool> RegisterRuntimeWorkspaceAsync(
         RuntimeWorkspaceViewModel runtime,
-        WorkspaceGraphStreamItem item)
-    {
-        if (!ReferenceEquals(RuntimeWorkspace, runtime))
-        {
-            return false;
-        }
-
-        switch (item)
-        {
-            case WorkspaceGraphStreamItem.Event { Value: var workspaceEvent }
-                when workspaceEvent.Sequence <= runtime.HostSequence:
-                return true;
-            case WorkspaceGraphStreamItem.Event
-            {
-                Value.Kind: WorkspaceGraphEventKind.Removed,
-                Value: var workspaceEvent,
-            }:
-                if (workspaceEvent.WindowId != WindowId
-                    || workspaceEvent.WorkspaceId != runtime.Id
-                    || workspaceEvent.Revision < runtime.HostRevision)
-                {
-                    SetError("The session host returned an invalid workspace removal event.");
-                    return false;
-                }
-
-                CloseRuntimeWorkspace(runtime);
-                CloseOverlay();
-                if (RuntimeWorkspace is null)
-                {
-                    Route = ShellRoute.Workspace;
-                }
-
-                return true;
-            case WorkspaceGraphStreamItem.Event { Value: var workspaceEvent }:
-                return TryApplyRuntimeWorkspaceProjection(
-                    runtime,
-                    workspaceEvent.WindowId,
-                    workspaceEvent.Workspace,
-                    workspaceEvent.Revision,
-                    workspaceEvent.Sequence,
-                    "workspace event");
-            case WorkspaceGraphStreamItem.ResynchronizationRequired
-            {
-                Snapshot: var snapshot,
-                ResumeAfterSequence: var resumeAfterSequence,
-            }:
-                if (resumeAfterSequence != snapshot.LastSequence)
-                {
-                    SetError("The session host returned an invalid workspace resynchronization cursor.");
-                    return false;
-                }
-
-                if (resumeAfterSequence <= runtime.HostSequence)
-                {
-                    return true;
-                }
-
-                return TryApplyRuntimeWorkspaceProjection(
-                    runtime,
-                    snapshot.WindowId,
-                    snapshot.Workspace,
-                    snapshot.Revision,
-                    resumeAfterSequence,
-                    "workspace resynchronization");
-            default:
-                throw new ArgumentOutOfRangeException(nameof(item));
-        }
-    }
-
-    private async Task<bool> RegisterRuntimeWorkspaceAsync(
-        RuntimeWorkspaceViewModel runtime,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(runtime);
-        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken,
-            _runtimeGraphLifetime.Token);
-        await _runtimeGraphGate.WaitAsync(linkedCancellation.Token);
-        try
-        {
-            WorkspaceInstance proposal;
-            try
-            {
-                proposal = CaptureRuntimeWorkspaceGraph(runtime);
-            }
-            catch (ArgumentException)
-            {
-                SetError(
-                    $"A workspace can contain at most " +
-                    $"{WorkspaceInstance.MaximumPanelCount} panels.");
-                return false;
-            }
-
-            HostResult<WorkspaceGraphSnapshot> result;
-            try
-            {
-                result = await SessionClient.RegisterWorkspaceGraphAsync(
-                    new RegisterWorkspaceGraphRequest(
-                        WindowId,
-                        proposal),
-                    OperationContext.ForHuman(
-                        ClientId,
-                        idempotencyKey: IdempotencyKey.New()),
-                    linkedCancellation.Token);
-            }
-            catch (Exception exception) when (
-                IsAmbiguousWorkspaceGraphReceiptFailure(exception)
-                && !_runtimeGraphLifetime.IsCancellationRequested)
-            {
-                var authoritative = await TryQueryWorkspaceGraphForReconciliationAsync(
-                    runtime.Id);
-                if (authoritative
-                        is not HostResult<WorkspaceGraphSnapshot>.Success reconciledSuccess
-                    || !IsExpectedWorkspaceGraphReceipt(
-                        reconciledSuccess,
-                        proposal,
-                        currentRevision: 0,
-                        currentSequence: 0))
-                {
-                    throw;
-                }
-
-                result = reconciledSuccess;
-            }
-            catch (Exception exception) when (
-                exception is ArgumentException or InvalidOperationException)
-            {
-                SetError("The runtime workspace graph could not be registered.");
-                return false;
-            }
-
-            if (result is HostResult<WorkspaceGraphSnapshot>.Failure failure)
-            {
-                SetError(
-                    $"The session host rejected workspace registration " +
-                    $"({failure.Error.StableCode}): {failure.Error.Message}");
-                return false;
-            }
-
-            var success = (HostResult<WorkspaceGraphSnapshot>.Success)result;
-            return TryApplyRegisteredRuntimeWorkspace(runtime, success);
-        }
-        finally
-        {
-            _runtimeGraphGate.Release();
-        }
-    }
+        CancellationToken cancellationToken) =>
+        RuntimeGraph.RegisterAsync(runtime, cancellationToken);
 
     private bool HasRuntimeWorkspacePanelCapacity(
         RuntimeWorkspaceViewModel workspace,
@@ -8099,399 +7956,53 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         return false;
     }
 
-    private async Task<bool> ReplaceRuntimeWorkspaceGraphAsync(
+    private Task<bool> ReplaceRuntimeWorkspaceGraphAsync(
         RuntimeWorkspaceViewModel runtime,
         string operation,
         Func<RuntimeWorkspaceViewModel, WorkspaceInstance?> buildProposal,
         Action commit,
         CancellationToken cancellationToken,
         RuntimeGraphStaleProposalHandling staleProposalHandling =
-            RuntimeGraphStaleProposalHandling.RefreshAndRetry)
-    {
-        ArgumentNullException.ThrowIfNull(runtime);
-        ArgumentException.ThrowIfNullOrWhiteSpace(operation);
-        ArgumentNullException.ThrowIfNull(buildProposal);
-        ArgumentNullException.ThrowIfNull(commit);
-
-        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            RuntimeGraphStaleProposalHandling.RefreshAndRetry) =>
+        RuntimeGraph.ReplaceAsync(
+            runtime,
+            operation,
+            buildProposal,
+            commit,
             cancellationToken,
-            _runtimeGraphLifetime.Token);
-        await _runtimeGraphGate.WaitAsync(linkedCancellation.Token);
-        try
-        {
-            if (!ReferenceEquals(RuntimeWorkspace, runtime))
-            {
-                return false;
-            }
-
-            WorkspaceInstance? proposal;
-            try
-            {
-                proposal = buildProposal(runtime);
-            }
-            catch (Exception exception) when (
-                exception is ArgumentException or InvalidOperationException)
-            {
-                SetError($"The runtime workspace changed before {operation} could start.");
-                return false;
-            }
-
-            if (proposal is null)
-            {
-                SetError($"The runtime workspace changed before {operation} could start.");
-                return false;
-            }
-
-            return await ReplaceRuntimeWorkspaceGraphUnderGateAsync(
-                runtime,
-                proposal,
-                operation,
-                commit,
-                staleProposalHandling,
-                linkedCancellation.Token,
-                buildProposal);
-        }
-        finally
-        {
-            _runtimeGraphGate.Release();
-        }
-    }
+            staleProposalHandling);
 
     // The caller owns _runtimeGraphGate. Keeping proposal submission and the
     // observable commit in one critical section prevents optimistic UI order.
-    private async Task<bool> ReplaceRuntimeWorkspaceGraphUnderGateAsync(
+    private Task<bool> ReplaceRuntimeWorkspaceGraphUnderGateAsync(
         RuntimeWorkspaceViewModel runtime,
         WorkspaceInstance proposal,
         string operation,
         Action commit,
         RuntimeGraphStaleProposalHandling staleProposalHandling,
         CancellationToken cancellationToken,
-        Func<RuntimeWorkspaceViewModel, WorkspaceInstance?>? rebuildProposal = null)
-    {
-        if (!ReferenceEquals(RuntimeWorkspace, runtime))
-        {
-            return false;
-        }
-
-        HostResult<WorkspaceGraphSnapshot>? result = null;
-        var reconciledAfterAmbiguousReceipt = false;
-        var idempotencyKey = IdempotencyKey.New();
-        var attemptCount = staleProposalHandling
-            == RuntimeGraphStaleProposalHandling.RefreshAndRetry
-            ? WorkspaceMutationAttemptCount
-            : 1;
-        for (var attempt = 0; attempt < attemptCount; attempt++)
-        {
-            try
-            {
-                var request = new RegisterWorkspaceGraphRequest(WindowId, proposal);
-                var attemptResult = await SessionClient.RegisterWorkspaceGraphAsync(
-                    request,
-                    OperationContext.ForHuman(
-                        ClientId,
-                        runtime.HostRevision,
-                        idempotencyKey),
-                    cancellationToken);
-                result = attemptResult;
-                if (staleProposalHandling == RuntimeGraphStaleProposalHandling.RefreshAndRetry
-                    && await TryRefreshRevisionConflictAsync(
-                        runtime,
-                        attemptResult,
-                        attempt,
-                        cancellationToken))
-                {
-                    if (rebuildProposal is null)
-                    {
-                        SetError(
-                            $"The runtime workspace changed before {operation} could retry.");
-                        return false;
-                    }
-
-                    var rebuiltProposal = rebuildProposal(runtime);
-                    if (rebuiltProposal is null)
-                    {
-                        SetError(
-                            $"The runtime workspace changed before {operation} could retry.");
-                        return false;
-                    }
-
-                    proposal = rebuiltProposal;
-                    idempotencyKey = IdempotencyKey.New();
-                    continue;
-                }
-            }
-            catch (Exception exception) when (
-                IsAmbiguousWorkspaceGraphReceiptFailure(exception)
-                && !_runtimeGraphLifetime.IsCancellationRequested)
-            {
-                var reconciled = await TryReconcileWorkspaceGraphMutationAsync(
-                    runtime,
-                    proposal);
-                if (reconciled is null)
-                {
-                    throw;
-                }
-
-                result = reconciled;
-                reconciledAfterAmbiguousReceipt = true;
-            }
-            catch (Exception exception) when (
-                exception is ArgumentException or InvalidOperationException)
-            {
-                SetError($"The runtime workspace could not apply {operation}.");
-                return false;
-            }
-
-            break;
-        }
-
-        if (result is null)
-        {
-            return false;
-        }
-
-        if (result is HostResult<WorkspaceGraphSnapshot>.Failure failure)
-        {
-            SetError(
-                $"The session host rejected {operation} " +
-                $"({failure.Error.StableCode}): {failure.Error.Message}");
-            return false;
-        }
-
-        var success = (HostResult<WorkspaceGraphSnapshot>.Success)result;
-        var receiptIsExpected = reconciledAfterAmbiguousReceipt
-            ? IsExpectedReconciledWorkspaceGraphReceipt(
-                success,
-                proposal,
-                runtime.HostRevision,
-                runtime.HostSequence)
-            : IsExpectedWorkspaceGraphReceipt(
-                success,
-                proposal,
-                runtime.HostRevision,
-                runtime.HostSequence);
-        if (!receiptIsExpected)
-        {
-            SetError($"The session host returned an invalid {operation} receipt.");
-            return false;
-        }
-
-        commit();
-        Notifications.Watch(runtime);
-        var applied = reconciledAfterAmbiguousReceipt
-            ? TryApplyRuntimeWorkspaceProjection(
-                runtime,
-                success.Value.WindowId,
-                success.Value.Workspace,
-                success.Value.Revision,
-                success.Value.LastSequence,
-                $"{operation} reconciliation")
-            : TryApplyValidatedRuntimeWorkspaceReceipt(
-                runtime,
-                success,
-                operation);
-        if (!applied)
-        {
-            throw new InvalidOperationException(
-                $"The host-approved {operation} could not be applied to the runtime view.");
-        }
-
-        MarkVisibleNotificationsSeen();
-
-        if (!reconciledAfterAmbiguousReceipt)
-        {
-            QueueRuntimeRecoverySnapshot();
-        }
-
-        return true;
-    }
-
-    private async ValueTask<HostResult<WorkspaceGraphSnapshot>.Success?>
-        TryReconcileWorkspaceGraphMutationAsync(
-            RuntimeWorkspaceViewModel runtime,
-            WorkspaceInstance proposal)
-    {
-        var result = await TryQueryWorkspaceGraphForReconciliationAsync(
-            runtime.Id);
-        return result is HostResult<WorkspaceGraphSnapshot>.Success success
-            && IsExpectedReconciledWorkspaceGraphReceipt(
-                success,
-                proposal,
-                runtime.HostRevision,
-                runtime.HostSequence)
-                ? success
-                : null;
-    }
-
-    private async ValueTask<HostResult<WorkspaceGraphSnapshot>?>
-        TryQueryWorkspaceGraphForReconciliationAsync(
-            WorkspaceInstanceId workspaceId)
-    {
-        using var timeoutCancellation = new CancellationTokenSource(
-            WorkspaceGraphReceiptReconciliationTimeout,
-            _timeProvider);
-        using var reconciliationCancellation =
-            CancellationTokenSource.CreateLinkedTokenSource(
-                _runtimeGraphLifetime.Token,
-                timeoutCancellation.Token);
-        try
-        {
-            return await SessionClient.GetWorkspaceGraphAsync(
-                workspaceId,
-                OperationContext.ForHuman(ClientId),
-                reconciliationCancellation.Token);
-        }
-        catch (Exception exception) when (
-            exception is ArgumentException
-                or InvalidOperationException
-                or IOException
-                or NotSupportedException
-                or OperationCanceledException
-                or TimeoutException)
-        {
-            return null;
-        }
-    }
-
-    private static bool IsAmbiguousWorkspaceGraphReceiptFailure(
-        Exception exception) =>
-        exception is OperationCanceledException or IOException or TimeoutException;
+        Func<RuntimeWorkspaceViewModel, WorkspaceInstance?>? rebuildProposal = null) =>
+        RuntimeGraph.ReplaceUnderGateAsync(
+            runtime,
+            proposal,
+            operation,
+            commit,
+            staleProposalHandling,
+            cancellationToken,
+            rebuildProposal);
 
     // The caller owns _runtimeGraphGate and has already revalidated the live
     // workspace and the operation-specific intent.
-    private async Task<bool> UnregisterRuntimeWorkspaceUnderGateAsync(
+    private Task<bool> UnregisterRuntimeWorkspaceUnderGateAsync(
         RuntimeWorkspaceViewModel runtime,
         string operation,
         Action commit,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(runtime);
-        ArgumentException.ThrowIfNullOrWhiteSpace(operation);
-        ArgumentNullException.ThrowIfNull(commit);
-
-        if (!ReferenceEquals(RuntimeWorkspace, runtime))
-        {
-            return false;
-        }
-
-        HostResult<Unit>? result = null;
-        var reconciledRemoval = false;
-        var request = new UnregisterWorkspaceGraphRequest(WindowId, runtime.Id);
-        var idempotencyKey = IdempotencyKey.New();
-        for (var attempt = 0; attempt < WorkspaceMutationAttemptCount; attempt++)
-        {
-            try
-            {
-                var attemptResult = await SessionClient.UnregisterWorkspaceGraphAsync(
-                    request,
-                    OperationContext.ForHuman(
-                        ClientId,
-                        runtime.HostRevision,
-                        idempotencyKey),
-                    cancellationToken);
-                result = attemptResult;
-                if (await TryRefreshRevisionConflictAsync(
-                    runtime,
-                    attemptResult,
-                    attempt,
-                    cancellationToken))
-                {
-                    continue;
-                }
-            }
-            catch (Exception exception) when (
-                IsAmbiguousWorkspaceGraphReceiptFailure(exception)
-                && !_runtimeGraphLifetime.IsCancellationRequested)
-            {
-                var authoritative = await TryQueryWorkspaceGraphForReconciliationAsync(
-                    runtime.Id);
-                if (authoritative is not HostResult<WorkspaceGraphSnapshot>.Failure
-                    {
-                        Error.Code: HostErrorCode.NotFound,
-                    })
-                {
-                    throw;
-                }
-
-                reconciledRemoval = true;
-            }
-            catch (Exception exception) when (
-                exception is ArgumentException or InvalidOperationException)
-            {
-                SetError($"The runtime workspace could not apply {operation}.");
-                return false;
-            }
-
-            break;
-        }
-
-        if (reconciledRemoval)
-        {
-            commit();
-            return true;
-        }
-
-        if (result is null)
-        {
-            return false;
-        }
-
-        if (result is HostResult<Unit>.Failure failure)
-        {
-            SetError(
-                $"The session host rejected {operation} " +
-                $"({failure.Error.StableCode}): {failure.Error.Message}");
-            return false;
-        }
-
-        var success = (HostResult<Unit>.Success)result;
-        if (success.ResultingRevision <= runtime.HostRevision)
-        {
-            SetError($"The session host returned an invalid {operation} receipt.");
-            return false;
-        }
-
-        commit();
-        return true;
-    }
-
-    private bool TryApplyRegisteredRuntimeWorkspace(
-        RuntimeWorkspaceViewModel runtime,
-        HostResult<WorkspaceGraphSnapshot>.Success success)
-    {
-        if (!IsExpectedWorkspaceGraphReceipt(
-                success,
-                CaptureRuntimeWorkspaceGraph(runtime),
-                runtime.HostRevision,
-                runtime.HostSequence))
-        {
-            SetError("The session host returned an invalid workspace registration receipt.");
-            return false;
-        }
-
-        return TryApplyValidatedRuntimeWorkspaceReceipt(
+        CancellationToken cancellationToken) =>
+        RuntimeGraph.UnregisterUnderGateAsync(
             runtime,
-            success,
-            "workspace registration");
-    }
-
-    /// <summary>
-    /// Applies a receipt whose window, cursor advance, and requested topology
-    /// have already been validated against the submitted proposal.
-    ///
-    /// A layout commit publishes the approved view models before their host
-    /// cursor is copied across. That publication can surface a newer
-    /// session-link projection before this method runs. Treating the older,
-    /// already-validated receipt as malformed at that point both reports a
-    /// false error and risks regressing the newer projection. A newer matching
-    /// projection wins; otherwise the validated receipt supplies the
-    /// authoritative focus/cursor.
-    /// </summary>
-    private bool TryApplyValidatedRuntimeWorkspaceReceipt(
-        RuntimeWorkspaceViewModel runtime,
-        HostResult<WorkspaceGraphSnapshot>.Success success,
-        string operation) =>
-        RuntimeGraph.TryApplyValidatedReceipt(runtime, success, operation);
+            operation,
+            commit,
+            cancellationToken);
 
     private bool TryApplyRuntimeWorkspaceResult(
         RuntimeWorkspaceViewModel expectedWorkspace,
@@ -8504,112 +8015,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             operation,
             requestedFocusMatches);
 
-    private bool TryApplyRuntimeWorkspaceProjection(
-        RuntimeWorkspaceViewModel runtime,
-        WindowInstanceId windowId,
-        WorkspaceInstance projection,
-        long revision,
-        long sequence,
-        string source) =>
-        RuntimeGraph.TryApplyProjection(
-            runtime,
-            windowId,
-            projection,
-            revision,
-            sequence,
-            source);
-
-    private async ValueTask<bool> RefreshRuntimeWorkspaceProjectionAsync(
-        RuntimeWorkspaceViewModel runtime,
-        CancellationToken cancellationToken)
-    {
-        HostResult<WorkspaceGraphSnapshot> result;
-        try
-        {
-            result = await SessionClient.GetWorkspaceGraphAsync(
-                runtime.Id,
-                OperationContext.ForHuman(ClientId),
-                cancellationToken);
-        }
-        catch (Exception exception) when (
-            exception is ArgumentException
-                or InvalidOperationException
-                or IOException
-                or NotSupportedException)
-        {
-            SetError("The runtime workspace could not be refreshed.");
-            return false;
-        }
-
-        if (result is HostResult<WorkspaceGraphSnapshot>.Failure failure)
-        {
-            SetError(
-                $"The session host could not refresh the workspace " +
-                $"({failure.Error.StableCode}): {failure.Error.Message}");
-            return false;
-        }
-
-        var success = (HostResult<WorkspaceGraphSnapshot>.Success)result;
-        if (success.ResultingRevision != success.Value.Revision)
-        {
-            SetError("The session host returned an invalid workspace refresh receipt.");
-            return false;
-        }
-
-        return TryApplyRuntimeWorkspaceProjection(
-            runtime,
-            success.Value.WindowId,
-            success.Value.Workspace,
-            success.Value.Revision,
-            success.Value.LastSequence,
-            "workspace refresh");
-    }
-
-    private async ValueTask<bool> TryRefreshRevisionConflictAsync<T>(
+    private ValueTask<bool> TryRefreshRevisionConflictAsync<T>(
         RuntimeWorkspaceViewModel runtime,
         HostResult<T> result,
         int attempt,
-        CancellationToken cancellationToken)
-    {
-        if (attempt != 0
-            || result is not HostResult<T>.Failure
-            {
-                Error.Code: HostErrorCode.RevisionConflict,
-            } failure
-            || failure.CurrentRevision <= runtime.HostRevision)
-        {
-            return false;
-        }
-
-        return await RefreshRuntimeWorkspaceProjectionAsync(runtime, cancellationToken);
-    }
-
-    private bool IsExpectedWorkspaceGraphReceipt(
-        HostResult<WorkspaceGraphSnapshot>.Success success,
-        WorkspaceInstance proposal,
-        long currentRevision,
-        long currentSequence) =>
-        RuntimeGraph.IsExpectedReceipt(
-            success,
-            proposal,
-            currentRevision,
-            currentSequence);
-
-    private bool IsExpectedReconciledWorkspaceGraphReceipt(
-        HostResult<WorkspaceGraphSnapshot>.Success success,
-        WorkspaceInstance proposal,
-        long currentRevision,
-        long currentSequence) =>
-        RuntimeGraph.IsExpectedReconciledReceipt(
-            success,
-            proposal,
-            currentRevision,
-            currentSequence);
-
-    private static bool WorkspaceIntentMatches(
-        WorkspaceInstance expected,
-        WorkspaceInstance actual) =>
-        RuntimeWorkspaceGraphProjection.IntentMatches(expected, actual);
+        CancellationToken cancellationToken) =>
+        RuntimeGraph.TryRefreshRevisionConflictAsync(
+            runtime,
+            result,
+            attempt,
+            cancellationToken);
 
     private static bool WorkspaceTopologyMatches(
         WorkspaceInstance expected,

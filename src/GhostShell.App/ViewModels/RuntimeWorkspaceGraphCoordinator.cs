@@ -3,6 +3,12 @@ using GhostShell.Core;
 
 namespace GhostShell.App.ViewModels;
 
+public enum RuntimeGraphStaleProposalHandling
+{
+    RefreshAndRetry,
+    Reject,
+}
+
 /// <summary>
 /// Owns validation and application of the session host's authoritative runtime
 /// workspace revisions. Feature surfaces may propose a graph, but only this
@@ -10,15 +16,19 @@ namespace GhostShell.App.ViewModels;
 /// </summary>
 public sealed class RuntimeWorkspaceGraphCoordinator : IDisposable
 {
+    private const int MutationAttemptCount = 2;
+    private static readonly TimeSpan ReceiptReconciliationTimeout =
+        TimeSpan.FromSeconds(1);
     private readonly ISessionHostClient? _sessionClient;
     private readonly ClientId _clientId;
     private readonly WindowInstanceId _windowId;
     private readonly IUiThreadDispatcher? _uiThreadDispatcher;
+    private readonly TimeProvider _timeProvider;
     private readonly Func<RuntimeWorkspaceViewModel?> _currentWorkspace;
-    private readonly Func<RuntimeWorkspaceViewModel, WorkspaceGraphStreamItem, bool>?
-        _applyStreamItem;
+    private readonly Action<RuntimeWorkspaceViewModel>? _workspaceRemoved;
     private readonly Action<string> _setError;
     private readonly Action _projectionApplied;
+    private readonly Action<RuntimeWorkspaceViewModel> _workspaceCommitted;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly object _watchGate = new();
@@ -31,10 +41,12 @@ public sealed class RuntimeWorkspaceGraphCoordinator : IDisposable
         ClientId clientId,
         WindowInstanceId windowId,
         IUiThreadDispatcher uiThreadDispatcher,
+        TimeProvider timeProvider,
         Func<RuntimeWorkspaceViewModel?> currentWorkspace,
-        Func<RuntimeWorkspaceViewModel, WorkspaceGraphStreamItem, bool> applyStreamItem,
+        Action<RuntimeWorkspaceViewModel> workspaceRemoved,
         Action<string> setError,
-        Action projectionApplied)
+        Action projectionApplied,
+        Action<RuntimeWorkspaceViewModel> workspaceCommitted)
     {
         _sessionClient = sessionClient
             ?? throw new ArgumentNullException(nameof(sessionClient));
@@ -42,13 +54,17 @@ public sealed class RuntimeWorkspaceGraphCoordinator : IDisposable
         _windowId = windowId;
         _uiThreadDispatcher = uiThreadDispatcher
             ?? throw new ArgumentNullException(nameof(uiThreadDispatcher));
+        _timeProvider = timeProvider
+            ?? throw new ArgumentNullException(nameof(timeProvider));
         _currentWorkspace = currentWorkspace
             ?? throw new ArgumentNullException(nameof(currentWorkspace));
-        _applyStreamItem = applyStreamItem
-            ?? throw new ArgumentNullException(nameof(applyStreamItem));
+        _workspaceRemoved = workspaceRemoved
+            ?? throw new ArgumentNullException(nameof(workspaceRemoved));
         _setError = setError ?? throw new ArgumentNullException(nameof(setError));
         _projectionApplied = projectionApplied
             ?? throw new ArgumentNullException(nameof(projectionApplied));
+        _workspaceCommitted = workspaceCommitted
+            ?? throw new ArgumentNullException(nameof(workspaceCommitted));
     }
 
     internal RuntimeWorkspaceGraphCoordinator(
@@ -59,11 +75,13 @@ public sealed class RuntimeWorkspaceGraphCoordinator : IDisposable
     {
         _clientId = default;
         _windowId = windowId;
+        _timeProvider = TimeProvider.System;
         _currentWorkspace = currentWorkspace
             ?? throw new ArgumentNullException(nameof(currentWorkspace));
         _setError = setError ?? throw new ArgumentNullException(nameof(setError));
         _projectionApplied = projectionApplied
             ?? throw new ArgumentNullException(nameof(projectionApplied));
+        _workspaceCommitted = _ => { };
     }
 
     public CancellationToken LifetimeToken => _lifetime.Token;
@@ -97,7 +115,7 @@ public sealed class RuntimeWorkspaceGraphCoordinator : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_sessionClient is null
             || _uiThreadDispatcher is null
-            || _applyStreamItem is null)
+            || _workspaceRemoved is null)
         {
             throw new InvalidOperationException(
                 "Workspace graph watching was not configured for this coordinator.");
@@ -149,6 +167,378 @@ public sealed class RuntimeWorkspaceGraphCoordinator : IDisposable
         }
 
         await Task.WhenAll(watches).ConfigureAwait(false);
+    }
+
+    public async Task<bool> RegisterAsync(
+        RuntimeWorkspaceViewModel runtime,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(runtime);
+        using var lease = await EnterAsync(cancellationToken);
+        WorkspaceInstance proposal;
+        try
+        {
+            proposal = RuntimeWorkspaceGraphProjection.Capture(runtime);
+        }
+        catch (ArgumentException)
+        {
+            _setError(
+                $"A workspace can contain at most {WorkspaceInstance.MaximumPanelCount} panels.");
+            return false;
+        }
+
+        HostResult<WorkspaceGraphSnapshot> result;
+        try
+        {
+            result = await RequireSessionClient().RegisterWorkspaceGraphAsync(
+                new RegisterWorkspaceGraphRequest(_windowId, proposal),
+                OperationContext.ForHuman(
+                    _clientId,
+                    idempotencyKey: IdempotencyKey.New()),
+                lease.Token);
+        }
+        catch (Exception exception) when (
+            IsAmbiguousReceiptFailure(exception)
+            && !IsStopping)
+        {
+            var authoritative = await QueryForReconciliationAsync(runtime.Id);
+            if (authoritative
+                    is not HostResult<WorkspaceGraphSnapshot>.Success reconciledSuccess
+                || !IsExpectedReceipt(
+                    reconciledSuccess,
+                    proposal,
+                    currentRevision: 0,
+                    currentSequence: 0))
+            {
+                throw;
+            }
+
+            result = reconciledSuccess;
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or InvalidOperationException)
+        {
+            _setError("The runtime workspace graph could not be registered.");
+            return false;
+        }
+
+        if (result is HostResult<WorkspaceGraphSnapshot>.Failure failure)
+        {
+            _setError(
+                "The session host rejected workspace registration "
+                + $"({failure.Error.StableCode}): {failure.Error.Message}");
+            return false;
+        }
+
+        var success = (HostResult<WorkspaceGraphSnapshot>.Success)result;
+        if (!IsExpectedReceipt(
+                success,
+                RuntimeWorkspaceGraphProjection.Capture(runtime),
+                runtime.HostRevision,
+                runtime.HostSequence))
+        {
+            _setError("The session host returned an invalid workspace registration receipt.");
+            return false;
+        }
+
+        return TryApplyValidatedReceipt(runtime, success, "workspace registration");
+    }
+
+    public async Task<bool> ReplaceAsync(
+        RuntimeWorkspaceViewModel runtime,
+        string operation,
+        Func<RuntimeWorkspaceViewModel, WorkspaceInstance?> buildProposal,
+        Action commit,
+        CancellationToken cancellationToken,
+        RuntimeGraphStaleProposalHandling staleProposalHandling =
+            RuntimeGraphStaleProposalHandling.RefreshAndRetry)
+    {
+        ArgumentNullException.ThrowIfNull(runtime);
+        ArgumentException.ThrowIfNullOrWhiteSpace(operation);
+        ArgumentNullException.ThrowIfNull(buildProposal);
+        ArgumentNullException.ThrowIfNull(commit);
+        using var lease = await EnterAsync(cancellationToken);
+        if (!ReferenceEquals(_currentWorkspace(), runtime))
+        {
+            return false;
+        }
+
+        WorkspaceInstance? proposal;
+        try
+        {
+            proposal = buildProposal(runtime);
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or InvalidOperationException)
+        {
+            _setError($"The runtime workspace changed before {operation} could start.");
+            return false;
+        }
+
+        if (proposal is null)
+        {
+            _setError($"The runtime workspace changed before {operation} could start.");
+            return false;
+        }
+
+        return await ReplaceUnderGateAsync(
+            runtime,
+            proposal,
+            operation,
+            commit,
+            staleProposalHandling,
+            lease.Token,
+            buildProposal);
+    }
+
+    public async Task<bool> ReplaceUnderGateAsync(
+        RuntimeWorkspaceViewModel runtime,
+        WorkspaceInstance proposal,
+        string operation,
+        Action commit,
+        RuntimeGraphStaleProposalHandling staleProposalHandling,
+        CancellationToken cancellationToken,
+        Func<RuntimeWorkspaceViewModel, WorkspaceInstance?>? rebuildProposal = null)
+    {
+        ArgumentNullException.ThrowIfNull(runtime);
+        ArgumentNullException.ThrowIfNull(proposal);
+        ArgumentException.ThrowIfNullOrWhiteSpace(operation);
+        ArgumentNullException.ThrowIfNull(commit);
+        if (!ReferenceEquals(_currentWorkspace(), runtime))
+        {
+            return false;
+        }
+
+        HostResult<WorkspaceGraphSnapshot>? result = null;
+        var reconciledAfterAmbiguousReceipt = false;
+        var idempotencyKey = IdempotencyKey.New();
+        var attemptCount = staleProposalHandling
+            == RuntimeGraphStaleProposalHandling.RefreshAndRetry
+            ? MutationAttemptCount
+            : 1;
+        for (var attempt = 0; attempt < attemptCount; attempt++)
+        {
+            try
+            {
+                var request = new RegisterWorkspaceGraphRequest(_windowId, proposal);
+                var attemptResult = await RequireSessionClient().RegisterWorkspaceGraphAsync(
+                    request,
+                    OperationContext.ForHuman(
+                        _clientId,
+                        runtime.HostRevision,
+                        idempotencyKey),
+                    cancellationToken);
+                result = attemptResult;
+                if (staleProposalHandling
+                        == RuntimeGraphStaleProposalHandling.RefreshAndRetry
+                    && await TryRefreshRevisionConflictAsync(
+                        runtime,
+                        attemptResult,
+                        attempt,
+                        cancellationToken))
+                {
+                    if (rebuildProposal?.Invoke(runtime) is not { } rebuiltProposal)
+                    {
+                        _setError(
+                            $"The runtime workspace changed before {operation} could retry.");
+                        return false;
+                    }
+
+                    proposal = rebuiltProposal;
+                    idempotencyKey = IdempotencyKey.New();
+                    continue;
+                }
+            }
+            catch (Exception exception) when (
+                IsAmbiguousReceiptFailure(exception)
+                && !IsStopping)
+            {
+                var reconciled = await ReconcileMutationAsync(runtime, proposal);
+                if (reconciled is null)
+                {
+                    throw;
+                }
+
+                result = reconciled;
+                reconciledAfterAmbiguousReceipt = true;
+            }
+            catch (Exception exception) when (
+                exception is ArgumentException or InvalidOperationException)
+            {
+                _setError($"The runtime workspace could not apply {operation}.");
+                return false;
+            }
+
+            break;
+        }
+
+        if (result is null)
+        {
+            return false;
+        }
+
+        if (result is HostResult<WorkspaceGraphSnapshot>.Failure failure)
+        {
+            _setError(
+                $"The session host rejected {operation} "
+                + $"({failure.Error.StableCode}): {failure.Error.Message}");
+            return false;
+        }
+
+        var success = (HostResult<WorkspaceGraphSnapshot>.Success)result;
+        var receiptIsExpected = reconciledAfterAmbiguousReceipt
+            ? IsExpectedReconciledReceipt(
+                success,
+                proposal,
+                runtime.HostRevision,
+                runtime.HostSequence)
+            : IsExpectedReceipt(
+                success,
+                proposal,
+                runtime.HostRevision,
+                runtime.HostSequence);
+        if (!receiptIsExpected)
+        {
+            _setError($"The session host returned an invalid {operation} receipt.");
+            return false;
+        }
+
+        commit();
+        _workspaceCommitted(runtime);
+        var applied = reconciledAfterAmbiguousReceipt
+            ? TryApplyProjection(
+                runtime,
+                success.Value.WindowId,
+                success.Value.Workspace,
+                success.Value.Revision,
+                success.Value.LastSequence,
+                $"{operation} reconciliation")
+            : TryApplyValidatedReceipt(runtime, success, operation);
+        if (!applied)
+        {
+            throw new InvalidOperationException(
+                $"The host-approved {operation} could not be applied to the runtime view.");
+        }
+
+        if (!reconciledAfterAmbiguousReceipt)
+        {
+            _projectionApplied();
+        }
+
+        return true;
+    }
+
+    public async Task<bool> UnregisterUnderGateAsync(
+        RuntimeWorkspaceViewModel runtime,
+        string operation,
+        Action commit,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(runtime);
+        ArgumentException.ThrowIfNullOrWhiteSpace(operation);
+        ArgumentNullException.ThrowIfNull(commit);
+        if (!ReferenceEquals(_currentWorkspace(), runtime))
+        {
+            return false;
+        }
+
+        HostResult<Unit>? result = null;
+        var reconciledRemoval = false;
+        var request = new UnregisterWorkspaceGraphRequest(_windowId, runtime.Id);
+        var idempotencyKey = IdempotencyKey.New();
+        for (var attempt = 0; attempt < MutationAttemptCount; attempt++)
+        {
+            try
+            {
+                var attemptResult = await RequireSessionClient().UnregisterWorkspaceGraphAsync(
+                    request,
+                    OperationContext.ForHuman(
+                        _clientId,
+                        runtime.HostRevision,
+                        idempotencyKey),
+                    cancellationToken);
+                result = attemptResult;
+                if (await TryRefreshRevisionConflictAsync(
+                    runtime,
+                    attemptResult,
+                    attempt,
+                    cancellationToken))
+                {
+                    continue;
+                }
+            }
+            catch (Exception exception) when (
+                IsAmbiguousReceiptFailure(exception)
+                && !IsStopping)
+            {
+                var authoritative = await QueryForReconciliationAsync(runtime.Id);
+                if (authoritative is not HostResult<WorkspaceGraphSnapshot>.Failure
+                    {
+                        Error.Code: HostErrorCode.NotFound,
+                    })
+                {
+                    throw;
+                }
+
+                reconciledRemoval = true;
+            }
+            catch (Exception exception) when (
+                exception is ArgumentException or InvalidOperationException)
+            {
+                _setError($"The runtime workspace could not apply {operation}.");
+                return false;
+            }
+
+            break;
+        }
+
+        if (reconciledRemoval)
+        {
+            commit();
+            return true;
+        }
+
+        if (result is null)
+        {
+            return false;
+        }
+
+        if (result is HostResult<Unit>.Failure failure)
+        {
+            _setError(
+                $"The session host rejected {operation} "
+                + $"({failure.Error.StableCode}): {failure.Error.Message}");
+            return false;
+        }
+
+        var success = (HostResult<Unit>.Success)result;
+        if (success.ResultingRevision <= runtime.HostRevision)
+        {
+            _setError($"The session host returned an invalid {operation} receipt.");
+            return false;
+        }
+
+        commit();
+        return true;
+    }
+
+    public async ValueTask<bool> TryRefreshRevisionConflictAsync<T>(
+        RuntimeWorkspaceViewModel runtime,
+        HostResult<T> result,
+        int attempt,
+        CancellationToken cancellationToken)
+    {
+        if (attempt != 0
+            || result is not HostResult<T>.Failure
+            {
+                Error.Code: HostErrorCode.RevisionConflict,
+            } failure
+            || failure.CurrentRevision <= runtime.HostRevision)
+        {
+            return false;
+        }
+
+        return await RefreshProjectionAsync(runtime, cancellationToken);
     }
 
     public bool IsExpectedReceipt(
@@ -331,6 +721,105 @@ public sealed class RuntimeWorkspaceGraphCoordinator : IDisposable
         return true;
     }
 
+    private async ValueTask<HostResult<WorkspaceGraphSnapshot>.Success?>
+        ReconcileMutationAsync(
+            RuntimeWorkspaceViewModel runtime,
+            WorkspaceInstance proposal)
+    {
+        var result = await QueryForReconciliationAsync(runtime.Id);
+        return result is HostResult<WorkspaceGraphSnapshot>.Success success
+            && IsExpectedReconciledReceipt(
+                success,
+                proposal,
+                runtime.HostRevision,
+                runtime.HostSequence)
+                ? success
+                : null;
+    }
+
+    private async ValueTask<HostResult<WorkspaceGraphSnapshot>?>
+        QueryForReconciliationAsync(WorkspaceInstanceId workspaceId)
+    {
+        using var timeoutCancellation = new CancellationTokenSource(
+            ReceiptReconciliationTimeout,
+            _timeProvider);
+        using var reconciliationCancellation =
+            CancellationTokenSource.CreateLinkedTokenSource(
+                _lifetime.Token,
+                timeoutCancellation.Token);
+        try
+        {
+            return await RequireSessionClient().GetWorkspaceGraphAsync(
+                workspaceId,
+                OperationContext.ForHuman(_clientId),
+                reconciliationCancellation.Token);
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException
+                or InvalidOperationException
+                or IOException
+                or NotSupportedException
+                or OperationCanceledException
+                or TimeoutException)
+        {
+            return null;
+        }
+    }
+
+    private async ValueTask<bool> RefreshProjectionAsync(
+        RuntimeWorkspaceViewModel runtime,
+        CancellationToken cancellationToken)
+    {
+        HostResult<WorkspaceGraphSnapshot> result;
+        try
+        {
+            result = await RequireSessionClient().GetWorkspaceGraphAsync(
+                runtime.Id,
+                OperationContext.ForHuman(_clientId),
+                cancellationToken);
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException
+                or InvalidOperationException
+                or IOException
+                or NotSupportedException)
+        {
+            _setError("The runtime workspace could not be refreshed.");
+            return false;
+        }
+
+        if (result is HostResult<WorkspaceGraphSnapshot>.Failure failure)
+        {
+            _setError(
+                "The session host could not refresh the workspace "
+                + $"({failure.Error.StableCode}): {failure.Error.Message}");
+            return false;
+        }
+
+        var success = (HostResult<WorkspaceGraphSnapshot>.Success)result;
+        if (success.ResultingRevision != success.Value.Revision)
+        {
+            _setError("The session host returned an invalid workspace refresh receipt.");
+            return false;
+        }
+
+        return TryApplyProjection(
+            runtime,
+            success.Value.WindowId,
+            success.Value.Workspace,
+            success.Value.Revision,
+            success.Value.LastSequence,
+            "workspace refresh");
+    }
+
+    private ISessionHostClient RequireSessionClient() =>
+        _sessionClient
+        ?? throw new InvalidOperationException(
+            "Session-host graph operations were not configured for this coordinator.");
+
+    private static bool IsAmbiguousReceiptFailure(Exception exception) =>
+        exception is OperationCanceledException or IOException or TimeoutException;
+
     public void Dispose()
     {
         if (_disposed)
@@ -353,8 +842,6 @@ public sealed class RuntimeWorkspaceGraphCoordinator : IDisposable
             ?? throw new InvalidOperationException("Workspace graph watching is unavailable.");
         var dispatcher = _uiThreadDispatcher
             ?? throw new InvalidOperationException("Workspace graph watching is unavailable.");
-        var applyStreamItem = _applyStreamItem
-            ?? throw new InvalidOperationException("Workspace graph watching is unavailable.");
         try
         {
             var cursor = afterSequence;
@@ -374,7 +861,7 @@ public sealed class RuntimeWorkspaceGraphCoordinator : IDisposable
 
                     var accepted = false;
                     await dispatcher.InvokeAsync(
-                        () => accepted = applyStreamItem(runtime, item),
+                        () => accepted = ApplyStreamItem(runtime, item),
                         cancellationToken);
                     if (!accepted)
                     {
@@ -419,6 +906,74 @@ public sealed class RuntimeWorkspaceGraphCoordinator : IDisposable
             {
                 // Presentation teardown won the race with the best-effort error.
             }
+        }
+    }
+
+    private bool ApplyStreamItem(
+        RuntimeWorkspaceViewModel runtime,
+        WorkspaceGraphStreamItem item)
+    {
+        if (!ReferenceEquals(_currentWorkspace(), runtime))
+        {
+            return false;
+        }
+
+        switch (item)
+        {
+            case WorkspaceGraphStreamItem.Event { Value: var workspaceEvent }
+                when workspaceEvent.Sequence <= runtime.HostSequence:
+                return true;
+            case WorkspaceGraphStreamItem.Event
+            {
+                Value.Kind: WorkspaceGraphEventKind.Removed,
+                Value: var workspaceEvent,
+            }:
+                if (workspaceEvent.WindowId != _windowId
+                    || workspaceEvent.WorkspaceId != runtime.Id
+                    || workspaceEvent.Revision < runtime.HostRevision)
+                {
+                    _setError("The session host returned an invalid workspace removal event.");
+                    return false;
+                }
+
+                (_workspaceRemoved
+                    ?? throw new InvalidOperationException(
+                        "Workspace removal handling is unavailable."))(runtime);
+                return true;
+            case WorkspaceGraphStreamItem.Event { Value: var workspaceEvent }:
+                return TryApplyProjection(
+                    runtime,
+                    workspaceEvent.WindowId,
+                    workspaceEvent.Workspace,
+                    workspaceEvent.Revision,
+                    workspaceEvent.Sequence,
+                    "workspace event");
+            case WorkspaceGraphStreamItem.ResynchronizationRequired
+            {
+                Snapshot: var snapshot,
+                ResumeAfterSequence: var resumeAfterSequence,
+            }:
+                if (resumeAfterSequence != snapshot.LastSequence)
+                {
+                    _setError(
+                        "The session host returned an invalid workspace resynchronization cursor.");
+                    return false;
+                }
+
+                if (resumeAfterSequence <= runtime.HostSequence)
+                {
+                    return true;
+                }
+
+                return TryApplyProjection(
+                    runtime,
+                    snapshot.WindowId,
+                    snapshot.Workspace,
+                    snapshot.Revision,
+                    resumeAfterSequence,
+                    "workspace resynchronization");
+            default:
+                throw new ArgumentOutOfRangeException(nameof(item));
         }
     }
 }

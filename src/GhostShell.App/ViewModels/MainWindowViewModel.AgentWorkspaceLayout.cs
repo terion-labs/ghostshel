@@ -522,7 +522,7 @@ public sealed partial class MainWindowViewModel
         }
 
         if (success.Value.LastSequence > workspace.HostSequence
-            && !TryApplyRuntimeWorkspaceProjection(
+            && !RuntimeGraph.TryApplyProjection(
                 workspace,
                 success.Value.WindowId,
                 success.Value.Workspace,
