@@ -331,6 +331,39 @@ public sealed class MainWindowKeybindingEditorTests
     }
 
     [Fact]
+    public async Task Definition_edit_facade_forwards_draft_notifications_and_save_result()
+    {
+        var workspace = new WorkspaceDefinition(
+            new WorkspaceId("workspace-definition-edit"),
+            WorkspaceDefinition.CurrentSchemaVersion,
+            "Original",
+            "Description",
+            "#C97B2A",
+            []);
+        var catalog = new RecordingDefinitionCatalog(
+            KeymapSnapshot() with { Workspaces = [Store(workspace, 7)] });
+        using var viewModel = CreateViewModel(catalog);
+        var changed = new List<string?>();
+        viewModel.PropertyChanged += (_, eventArgs) => changed.Add(eventArgs.PropertyName);
+
+        viewModel.BeginEditWorkspace(workspace.Id);
+        viewModel.EditorName = "Operations";
+        viewModel.EditorDescription = "Updated description";
+        var result = await viewModel.SaveDefinitionEditAsync(CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(7, catalog.LastExpectedWorkspaceRevision);
+        Assert.Equal("Operations", catalog.LastSavedWorkspace?.Name);
+        Assert.Equal("Updated description", catalog.LastSavedWorkspace?.Description);
+        Assert.Equal(ShellOverlay.None, viewModel.Overlay);
+        Assert.Contains(nameof(MainWindowViewModel.EditorName), changed, StringComparer.Ordinal);
+        Assert.Contains(
+            nameof(MainWindowViewModel.EditorDescription),
+            changed,
+            StringComparer.Ordinal);
+    }
+
+    [Fact]
     public void Dirty_workspace_editor_blocks_unconfirmed_navigation()
     {
         var workspace = new WorkspaceDefinition(

@@ -147,10 +147,6 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private string _tabReorderStatus = string.Empty;
     private bool _isAgentPanelVisible;
     private bool _isAgentPanelDocked;
-    private DefinitionKey? _editingDefinition;
-    private long? _editingRevision;
-    private string _editorName = string.Empty;
-    private string _editorDescription = string.Empty;
     private string _secretVaultStatus = "Checking the operating-system vault…";
     private string _definitionBundleStatus =
         "Exports include saved settings but not credentials or terminal content.";
@@ -242,6 +238,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             () => IsWorkspaceCanvasVisible);
         _navigation.PropertyChanged += OnShellNavigationPropertyChanged;
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
+        DefinitionEdit = new DefinitionEditSessionViewModel(_catalog);
+        DefinitionEdit.PropertyChanged += OnDefinitionEditPropertyChanged;
         SavedScreenDeleteUndo = new SavedScreenDeleteUndoViewModel(_catalog);
         _connectionRuntime = connectionRuntime ?? throw new ArgumentNullException(nameof(connectionRuntime));
         _secretVault = secretVault ?? throw new ArgumentNullException(nameof(secretVault));
@@ -351,6 +349,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     public RecentSessionHistoryViewModel History { get; }
 
     public LauncherViewModel Launcher { get; }
+
+    public DefinitionEditSessionViewModel DefinitionEdit { get; }
 
     public MainWindowRole Role { get; }
 
@@ -1008,6 +1008,24 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     {
         _ = sender;
         OnPropertyChanged(eventArgs.PropertyName);
+    }
+
+    private void OnDefinitionEditPropertyChanged(
+        object? sender,
+        PropertyChangedEventArgs eventArgs)
+    {
+        _ = sender;
+        var propertyName = eventArgs.PropertyName switch
+        {
+            nameof(DefinitionEditSessionViewModel.EditorTitle) => nameof(EditorTitle),
+            nameof(DefinitionEditSessionViewModel.EditorName) => nameof(EditorName),
+            nameof(DefinitionEditSessionViewModel.EditorDescription) => nameof(EditorDescription),
+            _ => null,
+        };
+        if (propertyName is not null)
+        {
+            OnPropertyChanged(propertyName);
+        }
     }
 
     private void OnLauncherPropertyChanged(
@@ -1718,20 +1736,18 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public bool IsDefinitionEditorVisible => _navigation.IsDefinitionEditorVisible;
 
-    public string EditorTitle => _editingDefinition?.Kind == WorkspaceDefinition.Kind
-        ? "Edit workspace"
-        : "Edit saved screen";
+    public string EditorTitle => DefinitionEdit.EditorTitle;
 
     public string EditorName
     {
-        get => _editorName;
-        set => SetProperty(ref _editorName, value);
+        get => DefinitionEdit.EditorName;
+        set => DefinitionEdit.EditorName = value;
     }
 
     public string EditorDescription
     {
-        get => _editorDescription;
-        set => SetProperty(ref _editorDescription, value);
+        get => DefinitionEdit.EditorDescription;
+        set => DefinitionEdit.EditorDescription = value;
     }
 
     public bool IsAgentPanelVisible
@@ -2089,8 +2105,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     public void DismissWorkspaceEditor()
     {
         WorkspaceEditor = null;
-        _editingDefinition = null;
-        _editingRevision = null;
+        DefinitionEdit.Clear();
         if (Overlay == ShellOverlay.DefinitionEditor)
         {
             Overlay = ShellOverlay.None;
@@ -2305,11 +2320,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             [.. snapshot.FileProviderProfiles.Select(item => item.Value)],
             _aiProviderRuntime?.Profiles);
         WorkspaceEditor.SetPeers([.. snapshot.Workspaces.Select(item => item.Value)]);
-        _editingDefinition = stored.Value.Key;
-        _editingRevision = stored.Revision;
-        EditorName = stored.Value.Name;
-        EditorDescription = stored.Value.Description ?? string.Empty;
-        OnPropertyChanged(nameof(EditorTitle));
+        DefinitionEdit.Begin(
+            stored.Value.Key,
+            stored.Revision,
+            stored.Value.Name,
+            stored.Value.Description);
         ClearError();
         Overlay = ShellOverlay.DefinitionEditor;
     }
@@ -2345,11 +2360,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             [.. snapshot.FileProviderProfiles.Select(item => item.Value)],
             _aiProviderRuntime?.Profiles);
         WorkspaceEditor.SetPeers([.. snapshot.Workspaces.Select(item => item.Value)]);
-        _editingDefinition = definition.Key;
-        _editingRevision = null;
-        EditorName = definition.Name;
-        EditorDescription = string.Empty;
-        OnPropertyChanged(nameof(EditorTitle));
+        DefinitionEdit.Begin(
+            definition.Key,
+            revision: null,
+            definition.Name,
+            description: null);
         ClearError();
         Overlay = ShellOverlay.DefinitionEditor;
     }
@@ -4700,77 +4715,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         CancellationToken cancellationToken)
     {
         ClearError();
-        if (_editingDefinition is not { } key || _editingRevision is not { } revision)
+        var result = await DefinitionEdit.SaveAsync(cancellationToken);
+        ApplyError(result.Error);
+        if (result.IsSuccess)
         {
-            return Fail<Unit>("Choose a workspace or saved screen to edit.");
+            CloseOverlay();
         }
 
-        if (key.Kind == WorkspaceDefinition.Kind)
-        {
-            var current = _catalog.Snapshot.Workspaces
-                .Select(item => item.Value)
-                .SingleOrDefault(item => item.Key == key);
-            if (current is null)
-            {
-                return Fail<Unit>("That workspace no longer exists.");
-            }
-
-            var updated = new WorkspaceDefinition(
-                current.Id,
-                current.SchemaVersion,
-                RequireName(EditorName, current.Name),
-                EditorDescription,
-                current.Accent,
-                current.Entries,
-                current.AgentPolicyOverride,
-                current.Icon,
-                current.AutoSave,
-                current.Color,
-                current.AgentPanelPinned,
-                current.TerminalMultiplexingOverride,
-                current.BrowserProfileOverride);
-            var saved = await _catalog.SaveWorkspaceAsync(updated, revision, cancellationToken);
-            ApplyError(saved.Error);
-            if (saved.IsSuccess)
-            {
-                CloseOverlay();
-                return DefinitionStoreResult<Unit>.Success(Unit.Value);
-            }
-
-            return DefinitionStoreResult<Unit>.Failure(saved.Error!);
-        }
-
-        if (key.Kind == ScreenDefinition.Kind)
-        {
-            var current = _catalog.Snapshot.Screens
-                .Select(item => item.Value)
-                .SingleOrDefault(item => item.Key == key);
-            if (current is null)
-            {
-                return Fail<Unit>("That saved screen no longer exists.");
-            }
-
-            var updated = new ScreenDefinition(
-                current.Id,
-                current.SchemaVersion,
-                RequireName(EditorName, current.Name),
-                EditorDescription,
-                current.LayoutId,
-                current.Panels,
-                current.Tags,
-                current.AgentPolicyOverride);
-            var saved = await _catalog.SaveScreenAsync(updated, revision, cancellationToken);
-            ApplyError(saved.Error);
-            if (saved.IsSuccess)
-            {
-                CloseOverlay();
-                return DefinitionStoreResult<Unit>.Success(Unit.Value);
-            }
-
-            return DefinitionStoreResult<Unit>.Failure(saved.Error!);
-        }
-
-        return Fail<Unit>("This definition type cannot be edited here.");
+        return result;
     }
 
     public async ValueTask<DefinitionStoreResult<Unit>> DeleteAsync(
@@ -10045,11 +9997,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         string name,
         string? description)
     {
-        _editingDefinition = key;
-        _editingRevision = revision;
-        EditorName = name;
-        EditorDescription = description ?? string.Empty;
-        OnPropertyChanged(nameof(EditorTitle));
+        DefinitionEdit.Begin(key, revision, name, description);
         ShowOverlay(ShellOverlay.DefinitionEditor);
     }
 
@@ -10071,8 +10019,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
         LayoutDesignerEditor = null;
         WorkspaceEditor = null;
-        _editingDefinition = null;
-        _editingRevision = null;
+        DefinitionEdit.Clear();
         Overlay = ShellOverlay.None;
         return true;
     }
@@ -14104,6 +14051,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 OnTerminalMultiplexerLeasesChanged;
         _agentPolicyCoordinator?.Changed -= OnAgentPolicyCoordinatorChanged;
         _navigation.PropertyChanged -= OnShellNavigationPropertyChanged;
+        DefinitionEdit.PropertyChanged -= OnDefinitionEditPropertyChanged;
         Launcher.PropertyChanged -= OnLauncherPropertyChanged;
         StopTrackingAgentTerminalSelection(_runtimeWorkspace);
         StopTrackingRecovery(_runtimeWorkspace);
