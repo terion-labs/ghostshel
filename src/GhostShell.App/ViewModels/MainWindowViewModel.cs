@@ -292,6 +292,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _mcpCredentialSessionInvalidator =
             mcpCredentialSessionInvalidator;
         _connectionSecurityRuntime = connectionSecurityRuntime;
+        TerminalConnectionSettings = new TerminalConnectionSettingsViewModel(
+            _catalog,
+            _connectionRuntime,
+            _connectionSecurityRuntime,
+            _gitRepositoryClient);
         _runtimeRecoveryWriter = runtimeRecoveryWriter;
         _sessionRestoreCoordinator = sessionRestoreCoordinator;
         _terminalMultiplexerCoordinator = terminalMultiplexerCoordinator;
@@ -369,6 +374,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     public WorkspaceSettingsViewModel WorkspaceSettings { get; }
 
     public SavedScreenSettingsViewModel SavedScreenSettings { get; }
+
+    public TerminalConnectionSettingsViewModel TerminalConnectionSettings { get; }
 
     public MainWindowRole Role { get; }
 
@@ -3515,29 +3522,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     }
 
     public ConnectionEditorViewModel CreateConnectionEditor(ConnectionId? connectionId = null)
-    {
-        var savedConnections = _catalog.Snapshot.Connections
-            .Select(item => item.Value)
-            .ToArray();
-        if (connectionId is null)
-        {
-            return new ConnectionEditorViewModel(
-                _connectionRuntime,
-                securityRuntime: _connectionSecurityRuntime,
-                gitClient: _gitRepositoryClient,
-                savedConnections: savedConnections);
-        }
-
-        var stored = _catalog.Snapshot.Connections
-            .SingleOrDefault(item => item.Value.Id == connectionId.Value) ?? throw new InvalidOperationException("That connection no longer exists.");
-        return new ConnectionEditorViewModel(
-            _connectionRuntime,
-            stored.Value,
-            stored.Revision,
-            _connectionSecurityRuntime,
-            _gitRepositoryClient,
-            savedConnections);
-    }
+        => TerminalConnectionSettings.CreateEditor(connectionId);
 
     public async ValueTask<DefinitionStoreResult<StoredDefinition<ConnectionProfile>>> SaveConnectionAsync(
         ConnectionEditorSaveRequest request,
@@ -3545,10 +3530,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     {
         ArgumentNullException.ThrowIfNull(request);
         ClearError();
-        var result = await _catalog.SaveConnectionAsync(
-            request.Profile,
-            request.ExpectedRevision,
-            cancellationToken);
+        var result = await TerminalConnectionSettings.SaveAsync(request, cancellationToken);
         ApplyError(result.Error);
         return result;
     }
@@ -13641,6 +13623,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _runtimeWorkspace = null;
         WorkspaceSettings.Dispose();
         SavedScreenSettings.Dispose();
+        TerminalConnectionSettings.Dispose();
         DefinitionSettings.Dispose();
         TerminalSettings.Dispose();
         AppearanceSettings.Dispose();
