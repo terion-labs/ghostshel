@@ -11,7 +11,7 @@ public sealed partial class MainWindow
         ViewModel,
         new ApplicationCommandPresentation(
             ShowNewItemLauncherAsync,
-            FocusActivePanel,
+            FocusNavigator.FocusActivePanel,
             CloseActivePanelAsync,
             RenameActiveTabAsync,
             CloseActiveTabAsync,

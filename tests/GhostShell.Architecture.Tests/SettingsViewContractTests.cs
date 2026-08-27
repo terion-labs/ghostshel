@@ -905,8 +905,8 @@ public sealed class SettingsViewContractTests
         "SettingsRoute.CaptureFileProviderSecretForm()",
         "SettingsRoute.CaptureAiProviderSecretForm()",
         "SettingsRoute.CaptureMcpServerSecretForm()",
-        "settings.FocusBackButton()",
-        "settings.FocusSavedScreenUndo()",
+        "FocusNavigator.FocusSettingsBackButton()",
+        "FocusNavigator.FocusSavedScreenUndo()",
     ];
 
     private static readonly string[] SettingsControlNames =

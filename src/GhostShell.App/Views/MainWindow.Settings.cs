@@ -94,7 +94,7 @@ public sealed partial class MainWindow
         ViewModel.ShowSettings(page);
         if (ViewModel.IsSettingsVisible && !ViewModel.HasOverlay)
         {
-            FocusSettingsWhenReady(static settings => settings.FocusBackButton());
+            FocusNavigator.FocusSettingsBackButton();
         }
     }
 
@@ -105,7 +105,7 @@ public sealed partial class MainWindow
         if (ViewModel.HasRuntimeWorkspace)
         {
             ViewModel.ShowWorkspace();
-            FocusActivePanel();
+            FocusNavigator.FocusActivePanel();
         }
         else
         {
@@ -1105,7 +1105,4 @@ public sealed partial class MainWindow
         }
     }
 
-    private void FocusSettingsWhenReady(Action<SettingsView> focus) =>
-        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-            focus(SettingsRoute));
 }

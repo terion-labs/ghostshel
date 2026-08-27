@@ -2490,84 +2490,8 @@ public sealed partial class MainWindow
         _ = ViewModel.ChooseRuntimeTabIcon(tab.Id, e.Icon);
     }
 
-    /// <summary>
-    /// How many layout passes a panel's own surface is given to appear
-    /// before focus settles for a plain control. A panel added this turn has
-    /// no realized host yet — the container is created during layout, not
-    /// when the view model arrives — and a single post lands in the gap.
-    /// Bounded so a panel that never realizes still ends the search.
-    /// </summary>
-    private const int PanelFocusAttempts = 6;
+    private void FocusActivePanel() => FocusNavigator.FocusActivePanel();
 
-    private void FocusActivePanel() => FocusActivePanel(PanelFocusAttempts);
-
-    private void FocusActivePanel(int attemptsRemaining)
-    {
-        // Loaded priority runs after the layout pass, so the first attempt
-        // already sees anything this turn created.
-        Avalonia.Threading.Dispatcher.UIThread.Post(
-            () =>
-            {
-                if (ViewModel.ActivePanel is not { } activePanel)
-                {
-                    return;
-                }
-
-                var terminal = FindActiveTerminalHost();
-                if (terminal is not null)
-                {
-                    terminal.RequestInputFocus();
-                    return;
-                }
-
-                var browser = this.GetVisualDescendants()
-                    .OfType<BrowserPresentationHost>()
-                    .FirstOrDefault(control =>
-                        ReferenceEquals(control.DataContext, activePanel));
-                if (browser is not null)
-                {
-                    browser.RequestInputFocus();
-                    return;
-                }
-
-                // Render-backed panels are worth waiting for: their visual host
-                // is realized during layout, and handing focus elsewhere first
-                // can make a native terminal resign first responder on macOS.
-                if (attemptsRemaining > 0
-                    && activePanel is TerminalRuntimePanelViewModel
-                        or BrowserRuntimePanelViewModel)
-                {
-                    FocusActivePanel(attemptsRemaining - 1);
-                    return;
-                }
-
-                // Out of attempts: the surface genuinely never appeared, so
-                // the message means what it says rather than describing a
-                // panel that was merely still being built.
-                if (activePanel is TerminalRuntimePanelViewModel)
-                {
-                    SecretSafeDiagnosticProjection.WriteStandardError(
-                        "terminal.focus.fallback",
-                        SecretSafeDiagnosticKind.Unexpected);
-                }
-
-                this.GetVisualDescendants()
-                    .OfType<Control>()
-                    .FirstOrDefault(control =>
-                        ReferenceEquals(control.DataContext, activePanel)
-                        && control.Classes.Contains("RuntimePanelFocusTarget"))
-                    ?.Focus();
-            },
-            Avalonia.Threading.DispatcherPriority.Loaded);
-    }
-
-    private TerminalPresentationHost? FindActiveTerminalHost()
-    {
-        var activePanel = ViewModel.ActivePanel;
-        return activePanel is null
-            ? null
-            : this.GetVisualDescendants()
-                .OfType<TerminalPresentationHost>()
-                .FirstOrDefault(control => ReferenceEquals(control.DataContext, activePanel));
-    }
+    private TerminalPresentationHost? FindActiveTerminalHost() =>
+        FocusNavigator.FindActiveTerminalHost();
 }

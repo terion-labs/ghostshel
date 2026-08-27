@@ -1113,15 +1113,20 @@ public sealed class RuntimePanelViewContractTests
     [Fact]
     public void Shell_focuses_the_single_runtime_panel_focus_target()
     {
-        var codeBehind = ApplicationViews.FindPartialClassSources("MainWindow");
+        var focusNavigator = File.ReadAllText(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Views",
+            "ShellFocusNavigator.cs"));
 
         Assert.Contains(
             "control.Classes.Contains(\"RuntimePanelFocusTarget\")",
-            codeBehind,
+            focusNavigator,
             StringComparison.Ordinal);
         Assert.DoesNotContain(
             "control.Classes.Contains(\"PanelCard\")",
-            codeBehind,
+            focusNavigator,
             StringComparison.Ordinal);
 
         var mainWindow = LoadView("MainWindow");

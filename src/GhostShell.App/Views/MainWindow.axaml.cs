@@ -31,6 +31,7 @@ public sealed partial class MainWindow : Window
 
     private readonly CancellationTokenSource _lifetime = new();
     private ApplicationKeyController? _applicationKeyController;
+    private ShellFocusNavigator? _focusNavigator;
     private CancellationTokenSource? _historyExportLifetime;
     private readonly IDefinitionBundleStore? _definitionBundleStore;
     private readonly IDefinitionCatalog? _definitionCatalog;
@@ -49,7 +50,6 @@ public sealed partial class MainWindow : Window
     private WorkspaceEditorView? _workspaceDefinitionEditor;
     private bool _closeApproved;
     private bool _closeInProgress;
-    private bool _restoreRouteFocusWhenActivated;
     private bool _backingScaleReconciliationQueued;
     private IDisposable? _backingScaleSettledPass;
     private double _titleBarChromeHeight = 44;
@@ -392,6 +392,14 @@ public sealed partial class MainWindow : Window
                 ViewModel.SetError),
             _lifetime.Token);
 
+    private ShellFocusNavigator FocusNavigator => _focusNavigator ??= new(
+        this,
+        ViewModel,
+        () => SettingsRoute,
+        () => LayoutDesignerOverlay,
+        () => _workspaceDefinitionEditor,
+        _lifetime.Token);
+
     private CommandPaletteView CommandPaletteOverlay => _commandPaletteOverlay
         ?? throw new InvalidOperationException(
             "The command palette overlay has not been opened.");
@@ -546,7 +554,7 @@ public sealed partial class MainWindow : Window
     {
         if (ViewModel.IsLayoutDesignerVisible)
         {
-            FocusLayoutDesignerNameWhenReady();
+            FocusNavigator.FocusLayoutDesignerName();
             return;
         }
 
@@ -557,7 +565,7 @@ public sealed partial class MainWindow : Window
 
         EnsureLayoutDesignerOverlay();
         ViewModel.BeginCreateLayout();
-        FocusLayoutDesignerNameWhenReady();
+        FocusNavigator.FocusLayoutDesignerName();
     }
 
 
@@ -1378,7 +1386,7 @@ public sealed partial class MainWindow : Window
         ViewModel.DismissLayoutDesigner();
         EnsureLayoutDesignerOverlay();
         ViewModel.BeginEditLayout(layout.Id);
-        FocusLayoutDesignerNameWhenReady();
+        FocusNavigator.FocusLayoutDesignerName();
     }
 
     private void OnLayoutSlotClick(object? sender, RoutedEventArgs e)
@@ -1442,7 +1450,7 @@ public sealed partial class MainWindow : Window
         _ = e;
         EnsureDefinitionEditorOverlay();
         ViewModel.BeginCreateWorkspace();
-        FocusDefinitionEditorWhenReady();
+        FocusNavigator.FocusDefinitionEditor();
     }
 
     private void OnEditWorkspaceClick(object? sender, RoutedEventArgs e)
@@ -1452,7 +1460,7 @@ public sealed partial class MainWindow : Window
         {
             EnsureDefinitionEditorOverlay();
             ViewModel.BeginEditWorkspace(workspace.Id);
-            FocusDefinitionEditorWhenReady();
+            FocusNavigator.FocusDefinitionEditor();
         }
     }
 
@@ -1516,7 +1524,7 @@ public sealed partial class MainWindow : Window
         }
 
         ViewModel.BeginEditWorkspace(id);
-        FocusDefinitionEditorWhenReady();
+        FocusNavigator.FocusDefinitionEditor();
     }
 
     private async void OnCreateWorkspaceRequested(object? sender, EventArgs e)
@@ -1529,7 +1537,7 @@ public sealed partial class MainWindow : Window
         }
 
         ViewModel.BeginCreateWorkspace();
-        FocusDefinitionEditorWhenReady();
+        FocusNavigator.FocusDefinitionEditor();
     }
 
     private async Task<bool> CommitWorkspaceEditsBeforeSwitchAsync()
@@ -1613,8 +1621,7 @@ public sealed partial class MainWindow : Window
                 _lifetime.Token);
             if (result.IsSuccess)
             {
-                FocusSettingsWhenReady(static settings =>
-                    settings.FocusSavedScreenUndo());
+                FocusNavigator.FocusSavedScreenUndo();
             }
         }
     }
@@ -1626,7 +1633,7 @@ public sealed partial class MainWindow : Window
         var result = await ViewModel.UndoSavedScreenDeleteAsync(_lifetime.Token);
         if (result.IsSuccess)
         {
-            FocusCurrentRoute();
+            FocusNavigator.FocusCurrentRoute();
         }
     }
 
@@ -1635,7 +1642,7 @@ public sealed partial class MainWindow : Window
         _ = sender;
         _ = e;
         ViewModel.DismissSavedScreenDeleteUndo();
-        FocusCurrentRoute();
+        FocusNavigator.FocusCurrentRoute();
     }
 
     private void OnClearErrorClick(object? sender, RoutedEventArgs e)
@@ -1845,7 +1852,7 @@ public sealed partial class MainWindow : Window
 
         if (e.Key == Key.Escape && ViewModel.ExitTerminalCopyMode())
         {
-            FocusActivePanel();
+            FocusNavigator.FocusActivePanel();
             e.Handled = true;
             return;
         }
@@ -1890,42 +1897,7 @@ public sealed partial class MainWindow : Window
         ? e.Key == Key.C && (e.KeyModifiers & AvaloniaKeyModifiers.Meta) != AvaloniaKeyModifiers.None : e.Key == Key.C
             && (e.KeyModifiers & AvaloniaKeyModifiers.Control) != AvaloniaKeyModifiers.None && (e.KeyModifiers & AvaloniaKeyModifiers.Shift) != AvaloniaKeyModifiers.None;
 
-    private void FocusCurrentRoute()
-    {
-        if (ViewModel.IsWorkspaceVisible)
-        {
-            FocusActivePanel();
-        }
-
-        else if (ViewModel.IsSettingsVisible)
-        {
-            FocusSettingsWhenReady(static settings =>
-                settings.FocusBackButton());
-        }
-    }
-
-    private void FocusControlWhenReady(string controlName) =>
-        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-            this.FindControl<Control>(controlName)?.Focus(NavigationMethod.Tab));
-
-    private void FocusLayoutDesignerNameWhenReady() =>
-        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-        {
-            if (ViewModel.IsLayoutDesignerVisible)
-            {
-                LayoutDesignerOverlay.FocusNameEditor();
-            }
-        });
-
-    private void FocusDefinitionEditorWhenReady() =>
-        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-        {
-            if (ViewModel.IsDefinitionEditorVisible
-                && _workspaceDefinitionEditor is { } editor)
-            {
-                editor.FocusInitialControl();
-            }
-        });
+    private void FocusCurrentRoute() => FocusNavigator.FocusCurrentRoute();
 
     private async Task CloseWindowAsync()
     {
@@ -1982,15 +1954,6 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void RestoreFocusAfterCancelledClose()
-    {
-        _restoreRouteFocusWhenActivated = true;
-        Activate();
-        Avalonia.Threading.Dispatcher.UIThread.Post(
-            RestoreRouteFocusIfActive,
-            Avalonia.Threading.DispatcherPriority.Loaded);
-    }
-
     private void OnWindowActivated(object? sender, EventArgs e)
     {
         _ = sender;
@@ -2002,12 +1965,7 @@ public sealed partial class MainWindow : Window
 
         RefreshWindowChromeMetrics();
         QueueBackingScaleReconciliation();
-        if (_restoreRouteFocusWhenActivated)
-        {
-            Avalonia.Threading.Dispatcher.UIThread.Post(
-                RestoreRouteFocusIfActive,
-                Avalonia.Threading.DispatcherPriority.Loaded);
-        }
+        _focusNavigator?.NotifyWindowActivated();
     }
 
     private void OnWindowScalingChanged(object? sender, EventArgs e)
@@ -2123,25 +2081,13 @@ public sealed partial class MainWindow : Window
             : new Thickness(10, 0);
     }
 
-    private void RestoreRouteFocusIfActive()
-    {
-        if (!_restoreRouteFocusWhenActivated || !IsVisible || !IsActive)
-        {
-            return;
-        }
-
-        _restoreRouteFocusWhenActivated = false;
-        FocusCurrentRoute();
-    }
-
-
     private async Task<bool> RunCloseFlowAsync(
         Func<CloseDecision, CancellationToken, ValueTask<HostResult<CloseScopeResult>>> close)
         => await MainWindowCloseFlow.RunAsync(
             close,
             confirmation => Confirmations.CloseScope(confirmation).ShowDialog<bool>(this),
             ShowErrorAsync,
-            RestoreFocusAfterCancelledClose,
+            FocusNavigator.RestoreAfterCancelledClose,
             _lifetime.Token);
 
     private Task ShowErrorAsync(string message) =>

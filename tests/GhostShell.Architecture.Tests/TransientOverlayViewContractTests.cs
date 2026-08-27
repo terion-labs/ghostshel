@@ -530,7 +530,7 @@ public sealed class TransientOverlayViewContractTests
             "CommandPaletteOverlay.ScrollSelectedResultIntoView();",
             mainWindowCode);
         Assert.Contains(
-            "LayoutDesignerOverlay.FocusNameEditor();",
+            "FocusNavigator.FocusLayoutDesignerName();",
             mainWindowCode);
         Assert.Contains(
             "NewPanelChooserOverlay.FocusInitialAction();",

@@ -592,6 +592,12 @@ public sealed class WorkspaceViewContractTests
         Assert.Equal(10, runtimeTemplateTypes.Length);
 
         var mainWindowCode = ApplicationViews.FindPartialClassSources("MainWindow");
+        var focusNavigator = File.ReadAllText(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Views",
+            "ShellFocusNavigator.cs"));
         var dragGhost = Assert.Single(
             mainWindow.Descendants(),
             element => string.Equals(
@@ -636,9 +642,9 @@ public sealed class WorkspaceViewContractTests
         Assert.Contains("RunCloseFlowAsync(", mainWindowCode, StringComparison.Ordinal);
         Assert.DoesNotContain("AgentYoloConfirmationDialog(", mainWindowCode, StringComparison.Ordinal);
         Assert.Contains("control.Classes.Contains(\"RuntimeTabActivator\")", mainWindowCode, StringComparison.Ordinal);
-        Assert.Contains("control.Classes.Contains(\"RuntimePanelFocusTarget\")", mainWindowCode, StringComparison.Ordinal);
-        Assert.Contains(".OfType<TerminalPresentationHost>()", mainWindowCode, StringComparison.Ordinal);
-        Assert.Contains(".OfType<BrowserPresentationHost>()", mainWindowCode, StringComparison.Ordinal);
+        Assert.Contains("control.Classes.Contains(\"RuntimePanelFocusTarget\")", focusNavigator, StringComparison.Ordinal);
+        Assert.Contains(".OfType<TerminalPresentationHost>()", focusNavigator, StringComparison.Ordinal);
+        Assert.Contains(".OfType<BrowserPresentationHost>()", focusNavigator, StringComparison.Ordinal);
     }
 
     private static readonly string[] AgentInteractionNames =
