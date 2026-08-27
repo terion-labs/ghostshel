@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Avalonia.Markup.Xaml;
@@ -31,6 +32,8 @@ public sealed partial class MainWindow : Window
 
     private readonly CancellationTokenSource _lifetime = new();
     private ApplicationKeyController? _applicationKeyController;
+    private ShellClipboard? _clipboardWriter;
+    private ShellCloseCoordinator? _closeCoordinator;
     private ShellFocusNavigator? _focusNavigator;
     private CancellationTokenSource? _historyExportLifetime;
     private readonly IDefinitionBundleStore? _definitionBundleStore;
@@ -48,8 +51,6 @@ public sealed partial class MainWindow : Window
     private LayoutDesignerView? _layoutDesignerOverlay;
     private NewPanelChooserView? _newPanelChooserOverlay;
     private WorkspaceEditorView? _workspaceDefinitionEditor;
-    private bool _closeApproved;
-    private bool _closeInProgress;
     private bool _backingScaleReconciliationQueued;
     private IDisposable? _backingScaleSettledPass;
     private double _titleBarChromeHeight = 44;
@@ -146,12 +147,19 @@ public sealed partial class MainWindow : Window
 
     protected override void OnClosing(WindowClosingEventArgs e)
     {
-        if (!_closeApproved)
+        if (DataContext is not MainWindowViewModel)
         {
             e.Cancel = true;
-            if (!_closeInProgress)
+            base.OnClosing(e);
+            return;
+        }
+
+        if (!CloseCoordinator.IsWindowCloseApproved)
+        {
+            e.Cancel = true;
+            if (!CloseCoordinator.IsWindowCloseInProgress)
             {
-                _ = CloseWindowAsync();
+                _ = CloseCoordinator.RequestWindowCloseAsync();
             }
         }
 
@@ -398,6 +406,16 @@ public sealed partial class MainWindow : Window
         () => SettingsRoute,
         () => LayoutDesignerOverlay,
         () => _workspaceDefinitionEditor,
+        _lifetime.Token);
+
+    private ShellCloseCoordinator CloseCoordinator => _closeCoordinator ??= new(
+        ViewModel,
+        ShellClosePresentation.ForWindow(this, FocusNavigator),
+        _lifetime.Token);
+
+    private ShellClipboard ClipboardWriter => _clipboardWriter ??= new(
+        new ShellClipboardPresentation(text =>
+            Clipboard?.SetTextAsync(text) ?? Task.CompletedTask),
         _lifetime.Token);
 
     private CommandPaletteView CommandPaletteOverlay => _commandPaletteOverlay
@@ -800,43 +818,8 @@ public sealed partial class MainWindow : Window
         _ = await TryCloseOverlayAsync();
     }
 
-    private async Task<bool> TryCloseOverlayAsync()
-    {
-        if (ViewModel.IsLayoutDesignerVisible
-            && ViewModel.LayoutDesignerEditor?.RequestCancel()
-                == LayoutDesignerCancelDisposition.ConfirmDiscard
-            && !await Confirmations.DiscardChanges().ShowDialog<bool>(this))
-        {
-            return false;
-        }
-
-        if (ViewModel.IsDefinitionEditorVisible
-            && ViewModel.WorkspaceEditor?.RequestCancel()
-                == WorkspaceEditorCancelDisposition.ConfirmDiscard
-            && !await Confirmations.DiscardChanges(
-                    "Discard workspace changes?",
-                    "The unsaved workspace order, tabs, panels, and startup settings will be lost.")
-                .ShowDialog<bool>(this))
-        {
-            return false;
-        }
-
-        if (ViewModel.IsLayoutDesignerVisible)
-        {
-            ViewModel.DismissLayoutDesigner();
-        }
-        else if (ViewModel.IsDefinitionEditorVisible)
-        {
-            ViewModel.DismissWorkspaceEditor();
-        }
-        else
-        {
-            ViewModel.CloseOverlay();
-        }
-
-        FocusCurrentRoute();
-        return true;
-    }
+    private Task<bool> TryCloseOverlayAsync() =>
+        CloseCoordinator.TryCloseOverlayAsync();
 
     private async void OnOpenWorkspaceClick(object? sender, RoutedEventArgs e)
     {
@@ -1899,61 +1882,6 @@ public sealed partial class MainWindow : Window
 
     private void FocusCurrentRoute() => FocusNavigator.FocusCurrentRoute();
 
-    private async Task CloseWindowAsync()
-    {
-        if (DataContext is not MainWindowViewModel viewModel)
-        {
-            return;
-        }
-
-        if (viewModel.LayoutDesignerEditor?.RequestCancel()
-                == LayoutDesignerCancelDisposition.ConfirmDiscard
-            && !await Confirmations.DiscardChanges().ShowDialog<bool>(this))
-        {
-            return;
-        }
-
-        if (viewModel.KeybindingEditorSession?.IsDirty == true
-            && !await Confirmations.DiscardChanges(
-                    "Discard keybinding changes?",
-                    "The unsaved shortcuts, prefix, and conflict resolutions will be lost when GhostShell closes.")
-                .ShowDialog<bool>(this))
-        {
-            return;
-        }
-
-        if (viewModel.WorkspaceEditor?.RequestCancel()
-                == WorkspaceEditorCancelDisposition.ConfirmDiscard
-            && !await Confirmations.DiscardChanges(
-                    "Discard workspace changes?",
-                    "The unsaved workspace order, tabs, panels, and startup settings will be lost when GhostShell closes.")
-                .ShowDialog<bool>(this))
-        {
-            return;
-        }
-
-        if (!await ConfirmDiscardDatabaseChangesAsync(
-                viewModel.OpenWorkspaces.SelectMany(workspace =>
-                    workspace.Tabs.SelectMany(tab => tab.Panels))))
-        {
-            return;
-        }
-
-        _closeInProgress = true;
-        try
-        {
-            if (await RunCloseFlowAsync(viewModel.CloseWindowAsync))
-            {
-                _closeApproved = true;
-                Close();
-            }
-        }
-        finally
-        {
-            _closeInProgress = false;
-        }
-    }
-
     private void OnWindowActivated(object? sender, EventArgs e)
     {
         _ = sender;
@@ -2083,15 +2011,7 @@ public sealed partial class MainWindow : Window
 
     private async Task<bool> RunCloseFlowAsync(
         Func<CloseDecision, CancellationToken, ValueTask<HostResult<CloseScopeResult>>> close)
-        => await MainWindowCloseFlow.RunAsync(
-            close,
-            confirmation => Confirmations.CloseScope(confirmation).ShowDialog<bool>(this),
-            ShowErrorAsync,
-            FocusNavigator.RestoreAfterCancelledClose,
-            _lifetime.Token);
-
-    private Task ShowErrorAsync(string message) =>
-        Confirmations.OperationError(message).ShowDialog(this);
+        => await CloseCoordinator.RunHostCloseAsync(close);
 
     private static class EmptyCommandArguments
     {

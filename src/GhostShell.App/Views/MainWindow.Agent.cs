@@ -360,23 +360,12 @@ public sealed partial class MainWindow
     private async void OnCopyAgentMessageClick(object? sender, RoutedEventArgs e)
     {
         _ = e;
-        if (sender is not Button { Tag: AgentChatMessageViewModel message }
-            || Clipboard is not { } clipboard)
+        if (sender is not Button { Tag: AgentChatMessageViewModel message })
         {
             return;
         }
 
-        try
-        {
-            await clipboard.SetTextAsync(message.Content);
-        }
-        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
-        {
-        }
-        catch (Exception exception) when (
-            exception is InvalidOperationException or ObjectDisposedException)
-        {
-        }
+        await ClipboardWriter.WriteTextAsync(message.Content);
     }
 
     private async void OnForkAgentConversationClick(object? sender, RoutedEventArgs e)

@@ -1963,9 +1963,9 @@ public sealed partial class MainWindow
     /// </summary>
     private async Task CopyFileTextAsync(string? text)
     {
-        if (!string.IsNullOrEmpty(text) && Clipboard is { } clipboard)
+        if (!string.IsNullOrEmpty(text))
         {
-            await clipboard.SetTextAsync(text);
+            await ClipboardWriter.WriteTextAsync(text);
         }
     }
 
@@ -2421,25 +2421,8 @@ public sealed partial class MainWindow
     }
 
     private async Task<bool> ConfirmDiscardDatabaseChangesAsync(
-        IEnumerable<RuntimePanelViewModel> panels)
-    {
-        var dirtyPanels = panels
-            .OfType<DatabaseRuntimePanelViewModel>()
-            .Where(panel => panel.HasPendingChanges)
-            .ToArray();
-        if (dirtyPanels.Length == 0)
-        {
-            return true;
-        }
-
-        var detail = dirtyPanels.Length == 1
-            ? $"The unsaved row changes in {dirtyPanels[0].SelectedObjectName} will be lost."
-            : $"Unsaved row changes in {dirtyPanels.Length} database panels will be lost.";
-        return await Confirmations.DiscardChanges(
-                "Discard database changes?",
-                detail)
-            .ShowDialog<bool>(this);
-    }
+        IEnumerable<RuntimePanelViewModel> panels) =>
+        await CloseCoordinator.ConfirmDiscardDatabaseChangesAsync(panels);
 
     private async Task RenameActiveTabAsync()
     {

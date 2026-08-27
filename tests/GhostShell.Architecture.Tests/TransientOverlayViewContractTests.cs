@@ -541,7 +541,9 @@ public sealed class TransientOverlayViewContractTests
             Assert.DoesNotContain($"\"{extractedName}\"", mainWindowCode);
         }
 
-        Assert.Contains("private async Task<bool> TryCloseOverlayAsync()", mainWindowCode);
+        Assert.Contains(
+            "CloseCoordinator.TryCloseOverlayAsync();",
+            mainWindowCode);
         Assert.Contains("Confirmations.DiscardChanges()", mainWindowCode);
         Assert.Contains("ExecuteLauncherSearchTargetAsync(", mainWindowCode);
         Assert.Contains("ViewModel.AddLocalTerminalPanelAsync(", mainWindowCode);
