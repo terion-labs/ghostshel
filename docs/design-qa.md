@@ -1,0 +1,54 @@
+# Design QA acceptance
+
+The supported visual gate renders the real Avalonia views with deterministic,
+synthetic fixtures. It is offline, reads no user profile or secret store, opens
+no terminal or browser service, and labels its window `GhostSHELL · design QA`.
+`./scripts/check-design-qa.sh` compares the implementation with the committed
+reference at the identical route, content, interaction, viewport, and appearance.
+
+## Accepted matrix
+
+| Concern | Accepted capture |
+| --- | --- |
+| Canonical viewport | `workspace` at 1440 × 900 |
+| Minimum viewport | `workspace-minimum` at 1080 × 680 |
+| Dark, 100% text | `design-system` |
+| Light | `design-system-light` |
+| High contrast | `design-system-high-contrast` |
+| 200% text | `design-system-scale-200` |
+| 250% text | `design-system-scale-250` |
+| Keyboard focus | `settings-appearance-focused` |
+| Empty, loading, offline, permission, unsupported, stale, partial, conflict, retry, terminal error, cancelled, and destructive states | `design-system` variants |
+
+## Primary-surface ledger
+
+| Surface | Accepted captures |
+| --- | --- |
+| Workspace shell and terminal chrome | `workspace`, `workspace-minimum` |
+| Agent | `workspace-agent` |
+| File viewer | `workspace-file-viewer` |
+| Browser | `workspace-browser` |
+| Statistics and process monitor | `workspace-statistics`, `workspace-process-monitor` |
+| Docker | `workspace-docker` |
+| Git | `workspace-git` |
+| Database | `workspace-database` |
+| Redis | `workspace-redis` |
+| Settings | `settings-appearance`, `settings-workspaces`, `settings-terminal`, `settings-quick-terminal`, `settings-keybindings`, `settings-files`, `settings-agent`, `settings-mcp`, `settings-secrets`, `settings-diagnostics`, `settings-about` |
+| Command, panel, and layout overlays | `overlay-command-palette`, `overlay-new-panel`, `overlay-layout-designer` |
+| Shared components and semantic states | `design-system` appearance matrix |
+
+## Explicit blockers and platform adaptations
+
+- Native terminal cells and live browser documents are adapter-owned surfaces.
+  The headless gate accepts their Avalonia chrome and explicit unavailable state;
+  live renderer behavior remains covered by the platform acceptance runners.
+- The harness models the current macOS product profile and host accent. Future
+  Windows and Linux adaptations are intentionally outside this milestone.
+- Native title-bar controls are absent from headless application captures. The
+  separate website export adds deterministic macOS traffic lights only for site
+  artwork; those decorations are not an application reference.
+- Floating native child surfaces are docked or captured as their real standalone
+  Avalonia window because a window bitmap cannot include another platform surface.
+
+An intentional design deviation must be added here with its route and rationale
+before its reference is approved.

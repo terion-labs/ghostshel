@@ -57,6 +57,45 @@ internal static class Program
 
     public static bool IsTerminalFontVerification { get; private set; }
 
+    public static DesignQaBaselineMode BaselineMode { get; private set; }
+
+    public static string BaselinePath { get; private set; } = string.Empty;
+
+    private static readonly string[] GateRoutes =
+    [
+        "workspace",
+        "workspace-minimum",
+        "workspace-agent",
+        "workspace-file-viewer",
+        "workspace-browser",
+        "workspace-statistics",
+        "workspace-process-monitor",
+        "workspace-docker",
+        "workspace-git",
+        "workspace-database",
+        "workspace-redis",
+        "settings-appearance",
+        "settings-workspaces",
+        "settings-terminal",
+        "settings-quick-terminal",
+        "settings-keybindings",
+        "settings-files",
+        "settings-agent",
+        "settings-mcp",
+        "settings-secrets",
+        "settings-diagnostics",
+        "settings-about",
+        "overlay-command-palette",
+        "overlay-new-panel",
+        "overlay-layout-designer",
+        "settings-appearance-focused",
+        "design-system",
+        "design-system-light",
+        "design-system-high-contrast",
+        "design-system-scale-200",
+        "design-system-scale-250",
+    ];
+
     [STAThread]
     public static void Main(string[] args)
     {
@@ -74,7 +113,32 @@ internal static class Program
             return;
         }
 
-        if (string.Equals(args.FirstOrDefault(), "--website", StringComparison.Ordinal))
+        if (args.FirstOrDefault() is "--gate" or "--approve-baseline")
+        {
+            BaselineMode = string.Equals(
+                args[0],
+                "--gate",
+                StringComparison.Ordinal)
+                ? DesignQaBaselineMode.Verify
+                : DesignQaBaselineMode.Approve;
+            OutputDirectory = Path.GetFullPath(
+                args.ElementAtOrDefault(1)
+                ?? Path.Combine(
+                    Directory.GetCurrentDirectory(),
+                    "artifacts",
+                    "design-qa",
+                    "gate"));
+            BaselinePath = Path.GetFullPath(
+                args.ElementAtOrDefault(2)
+                ?? Path.Combine(
+                    Directory.GetCurrentDirectory(),
+                    "tools",
+                    "GhostShell.DesignQa",
+                    "design-qa-baseline.json"));
+            RequestedRoutes = GateRoutes;
+        }
+
+        else if (string.Equals(args.FirstOrDefault(), "--website", StringComparison.Ordinal))
         {
             IsWebsiteExport = true;
             OutputDirectory = Path.GetFullPath(
@@ -264,6 +328,7 @@ internal sealed class QaApplication : Avalonia.Application
             vm.BeginEditLayout(new LayoutId("grid-four"));
         }),
         new("workspace", vm => vm.ShowWorkspace()),
+        new("workspace-minimum", vm => vm.ShowWorkspace(), Width: 1080, Height: 680),
         // Every mark at once: a panel that asked, the tab and workspace that
         // inherit it, and the rail showing which workspaces are running.
         new(
@@ -578,7 +643,7 @@ internal sealed class QaApplication : Avalonia.Application
             PrepareCapture: SelectDataInTheRail),
         // Keyboard focus has its own visuals; capturing it keeps the focus ring
         // reviewable instead of only reachable by hand.
-        new("settings-appearance-focused", vm => vm.ShowSettings(SettingsPage.Appearance), FocusFirst: "SettingsBackButton"),
+        new("settings-appearance-focused", vm => vm.ShowSettings(SettingsPage.Appearance), FocusFirst: "Leave settings"),
         // The whole settings-apply-immediately loop, end to end: the click
         // commits the theme, the catalog change re-publishes the resources, and
         // the capture must visibly densify against plain settings-appearance.
@@ -3679,6 +3744,7 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
             captureTarget = contextMenu;
         }
 
+        FreezeNondeterministicPresentation(captureTarget);
         var width = (int)Math.Ceiling(Math.Max(captureTarget.Bounds.Width, 1)) * scale;
         var height = (int)Math.Ceiling(Math.Max(captureTarget.Bounds.Height, 1)) * scale;
         var path = Path.Combine(Program.OutputDirectory, $"{name}.png");
@@ -3783,8 +3849,15 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
                 // ruinously here: every later route would capture the one before
                 // it and report nothing wrong.
                 viewModel.DismissWorkspaceEditor();
+                viewModel.DismissLayoutDesigner();
+                viewModel.CloseOverlay();
+                if (viewModel.IsAgentPanelVisible)
+                {
+                    viewModel.ToggleAgentPanel();
+                }
 
                 route.Apply(viewModel);
+                MaterializeCurrentPresentation(window, viewModel);
                 if (Program.IsWebsiteExport
                     && route.Name.StartsWith("workspace-agent", StringComparison.Ordinal)
                     && viewModel.IsAgentPanelVisible
@@ -3804,12 +3877,28 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
                 {
                     var control = window.GetVisualDescendants()
                         .OfType<Control>()
-                        .FirstOrDefault(candidate => string.Equals(candidate.Name, focusTarget, StringComparison.Ordinal))
+                        .FirstOrDefault(candidate =>
+                            string.Equals(candidate.Name, focusTarget, StringComparison.Ordinal)
+                            || string.Equals(
+                                AutomationProperties.GetName(candidate),
+                                focusTarget,
+                                StringComparison.Ordinal))
                         ?? throw new InvalidOperationException(
                             $"The route wanted to focus '{focusTarget}', which is not in the tree.");
-                    control.Focus(NavigationMethod.Tab);
+                    if (!control.Focus(NavigationMethod.Tab))
+                    {
+                        throw new InvalidOperationException(
+                            $"The route could not focus '{focusTarget}', so its focus "
+                            + "indicator cannot be accepted.");
+                    }
+
                     await Task.Delay(140);
                     Dispatcher.UIThread.RunJobs();
+                    if (!control.IsFocused)
+                    {
+                        throw new InvalidOperationException(
+                            $"The route lost focus from '{focusTarget}' before capture.");
+                    }
                 }
 
                 if (route.ClickFirst is { } clickTarget)
@@ -3856,6 +3945,8 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
                     window.UpdateLayout();
                 }
 
+                FreezeNondeterministicPresentation(window);
+
                 var path = Path.Combine(Program.OutputDirectory, $"{route.Name}.png");
 
                 // A dialog is a window of its own, so it is rendered as one. It
@@ -3874,6 +3965,7 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
                     Dispatcher.UIThread.RunJobs();
                     dialog.UpdateLayout();
                     await Task.Delay(120);
+                    FreezeNondeterministicPresentation(dialog);
                     if (Program.IsWebsiteExport)
                     {
                         WebsiteScreenshotExport.WriteDialogFrame(
@@ -3940,6 +4032,14 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
             }
 
             ApplyTheme(ThemePreference.Default);
+            if (Program.BaselineMode != DesignQaBaselineMode.None)
+            {
+                DesignQaBaseline.Process(
+                    Program.BaselineMode,
+                    Program.OutputDirectory,
+                    Program.BaselinePath,
+                    Program.RequestedRoutes);
+            }
         }
         catch (Exception ex)
         {
@@ -3951,5 +4051,54 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
             viewModel.Dispose();
             desktop.Shutdown(exitCode);
         }
+    }
+
+    private static void MaterializeCurrentPresentation(
+        MainWindow window,
+        MainWindowViewModel viewModel)
+    {
+        if (viewModel.IsSettingsVisible)
+        {
+            InvokeMaterializer(window, "EnsureSettingsRoute");
+        }
+
+        var method = viewModel.Overlay switch
+        {
+            ShellOverlay.CommandPalette => "EnsureCommandPaletteOverlay",
+            ShellOverlay.NewPanel => "EnsureNewPanelChooserOverlay",
+            ShellOverlay.LayoutDesigner => "EnsureLayoutDesignerOverlay",
+            ShellOverlay.DefinitionEditor => "EnsureDefinitionEditorOverlay",
+            _ => null,
+        };
+        if (method is not null)
+        {
+            InvokeMaterializer(window, method);
+        }
+    }
+
+    private static void InvokeMaterializer(MainWindow window, string methodName)
+    {
+        var method = typeof(MainWindow).GetMethod(
+            methodName,
+            BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException(
+                $"The extracted presentation resource has no '{methodName}' materializer.");
+        _ = method.Invoke(window, null);
+    }
+
+    private static void FreezeNondeterministicPresentation(Visual root)
+    {
+        foreach (var progress in root.GetVisualDescendants().OfType<ProgressBar>())
+        {
+            if (!progress.IsIndeterminate)
+            {
+                continue;
+            }
+
+            progress.IsIndeterminate = false;
+            progress.Value = 65;
+        }
+
+        Dispatcher.UIThread.RunJobs();
     }
 }

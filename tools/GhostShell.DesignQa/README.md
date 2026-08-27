@@ -31,6 +31,39 @@ Pass route names to capture a subset:
 ./.dotnet/dotnet run --project tools/GhostShell.DesignQa -- artifacts/design-qa/current launcher-home settings-appearance
 ```
 
+## Supported coherence gate
+
+The full repository check runs a native, deterministic visual gate over every
+primary implemented surface. Its approved matrix includes the canonical
+1440 × 900 viewport, the supported minimum 1080 × 680 viewport, dark, light,
+high-contrast, 100%, 200%, and 250% text scale, keyboard focus, overlays, and
+the shared state vocabulary.
+
+```sh
+./scripts/check-design-qa.sh
+```
+
+The gate compares exact dimensions and a tightly bounded perceptual fingerprint
+of the normalized RGBA pixels for the same route,
+synthetic content, interaction state, viewport, and appearance. Consequently a
+clipped control, missing focus/state indicator, broken layout, or composition
+change fails until the change is reviewed. Indeterminate progress animation is
+frozen at a documented synthetic value before capture; sub-pixel renderer noise
+is tolerated, but structural drift is not. Captures are left in the reported
+temporary directory when invoking the tool directly; the script removes its
+temporary output when it exits.
+
+An intentional change must be reviewed visually before replacing the reference:
+
+```sh
+./.dotnet/dotnet run --project tools/GhostShell.DesignQa -- \
+  --approve-baseline artifacts/design-qa/review \
+  tools/GhostShell.DesignQa/design-qa-baseline.json
+```
+
+The JSON baseline is a compact approval artifact, not a substitute for that
+review. Never approve a reference merely to make the gate green.
+
 ## Website assets
 
 Website mode exports every coherent app screen at a 1440 × 900 CSS size into a

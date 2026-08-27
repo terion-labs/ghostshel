@@ -173,6 +173,8 @@ jobs:
           path: native/artifacts/osx-arm64
       - name: Run the fast repository gate
         run: ./scripts/check.sh --quick
+      - name: Gate native visual coherence
+        run: ./scripts/check-design-qa.sh
 
   dependency-security-evidence:
     name: Exact dependency security evidence

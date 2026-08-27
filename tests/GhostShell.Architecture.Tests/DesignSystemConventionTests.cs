@@ -291,6 +291,55 @@ public sealed partial class DesignSystemConventionTests
         Assert.Contains("AppearanceScale(2.5)", harness, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Design_qa_gate_covers_primary_surfaces_and_required_matrix()
+    {
+        var root = ApplicationViews.RepositoryRoot;
+        var harness = File.ReadAllText(Path.Combine(
+            root,
+            "tools",
+            "GhostShell.DesignQa",
+            "Program.cs"));
+        var gate = File.ReadAllText(Path.Combine(root, "scripts", "check-design-qa.sh"));
+        var fullCheck = File.ReadAllText(Path.Combine(root, "scripts", "check.sh"));
+        var hostedGate = File.ReadAllText(Path.Combine(
+            root,
+            ".github",
+            "workflows",
+            "repository-gate.yml"));
+        var ledger = File.ReadAllText(Path.Combine(root, "docs", "design-qa.md"));
+
+        foreach (var route in new[]
+                 {
+                     "workspace-minimum",
+                     "workspace-agent",
+                     "workspace-file-viewer",
+                     "workspace-browser",
+                     "workspace-statistics",
+                     "workspace-process-monitor",
+                     "workspace-docker",
+                     "workspace-git",
+                     "workspace-database",
+                     "workspace-redis",
+                     "settings-appearance-focused",
+                     "design-system-light",
+                     "design-system-high-contrast",
+                     "design-system-scale-200",
+                     "design-system-scale-250",
+                 })
+        {
+            Assert.Contains($"\"{route}\"", harness, StringComparison.Ordinal);
+            Assert.Contains($"`{route}`", ledger, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("Width: 1080, Height: 680", harness, StringComparison.Ordinal);
+        Assert.Contains("--gate", gate, StringComparison.Ordinal);
+        Assert.Contains("check-design-qa.sh", fullCheck, StringComparison.Ordinal);
+        Assert.Contains("check-design-qa.sh", hostedGate, StringComparison.Ordinal);
+        Assert.Contains("Primary-surface ledger", ledger, StringComparison.Ordinal);
+        Assert.Contains("Explicit blockers and platform adaptations", ledger, StringComparison.Ordinal);
+    }
+
     [GeneratedRegex(
         "(Background|Foreground|BorderBrush|Color|Fill|Stroke)=\"#[0-9A-Fa-f]{3,8}\"",
         RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture,
