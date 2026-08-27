@@ -340,6 +340,12 @@
                 </Grid>
               </controls:SurfaceCard>
 
+              <controls:StateOverlay
+                  Kind="Conflict"
+                  Heading="Keybinding conflicts block saving"
+                  Body="Your unsaved shortcuts remain in the editor. Resolve the marked conflicts, then save the same draft."
+                  IsVisible="{Binding KeybindingEditorSession.HasConflicts}" />
+
               <controls:SettingsGroup ControlWidth="360" IsVisible="{Binding KeybindingEditorSession.IsApplicationLayer}">
                 <controls:SettingRow
                     Label="Application prefix"
@@ -418,8 +424,8 @@
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
-                  <controls:EmptyStatePanel Grid.Row="1" Margin="{controls:Inset Xl}" IsVisible="{Binding KeybindingEditorSession.HasNoResults}"
-                      ShowsGlyph="False"
+                  <controls:StateOverlay Grid.Row="1" Margin="{controls:Inset Xl}" IsVisible="{Binding KeybindingEditorSession.HasNoResults}"
+                      Kind="NoResults"
                       Heading="No matching keybindings"
                       Body="Change the search query or choose another profile." />
                 </Grid>
@@ -807,6 +813,19 @@
                           AutomationProperties.LiveSetting="Polite"
                           AutomationProperties.Name="History export status" />
                     </StackPanel>
+                    <controls:StateOverlay
+                        Kind="Loading"
+                        Heading="Loading session history…"
+                        Body="Retention controls remain unavailable until the saved policy is known."
+                        IsVisible="{Binding IsHistoryLoading}" />
+                    <controls:StateOverlay
+                        Kind="Retry"
+                        Heading="Session history unavailable"
+                        Body="{Binding RecentSessionStatus}"
+                        ActionLabel="Retry"
+                        ActionRequested="OnRetryRecentSessionHistoryClick"
+                        FocusTarget="PrimaryAction"
+                        IsVisible="{Binding HasRecentSessionFailure}" />
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
                       <ComboBox
                           x:Name="HistoryRetentionPicker"
@@ -821,7 +840,6 @@
                     </Grid>
                     <WrapPanel HorizontalAlignment="Right" Orientation="Horizontal">
                       <Button Margin="{controls:Inset Right=Xs, Bottom=Xs}" Classes="SecondaryButton" Click="OnReviewHistoryPrivacyClick" Content="Review privacy" AutomationProperties.Name="Review session history privacy" />
-                      <Button Margin="{controls:Inset Right=Xs, Bottom=Xs}" Classes="SecondaryButton" Click="OnRetryRecentSessionHistoryClick" Content="Retry" IsEnabled="{Binding CanRetryRecentSessionHistory}" IsVisible="{Binding HasRecentSessionFailure}" AutomationProperties.Name="Retry loading session history" />
                       <Button Margin="{controls:Inset Right=Xs, Bottom=Xs}" Classes="SecondaryButton" Click="OnExportAllHistoryClick" Content="Export all" IsEnabled="{Binding CanExportAllHistory}" AutomationProperties.Name="Export all retained history metadata" />
                       <Button Margin="{controls:Inset Right=Xs, Bottom=Xs}" Classes="SecondaryButton" Click="OnCancelHistoryExportClick" Content="Cancel export" IsVisible="{Binding IsHistoryExporting}" AutomationProperties.Name="Cancel session history export" />
                       <Button Margin="{controls:Inset Right=Xs, Bottom=Xs}" Classes="DestructiveButton" Click="OnClearRecentSessionsClick" Content="Clear" IsEnabled="{Binding CanClearRecentSessionHistory}" AutomationProperties.Name="Clear retained session history" />
@@ -920,8 +938,8 @@
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
                 <controls:SurfaceCard IsVisible="{Binding HasNoSecrets}">
-                  <controls:EmptyStatePanel
-                      Glyph="Key"
+                  <controls:StateOverlay
+                      Kind="Empty"
                       Heading="No stored credentials"
                       Body="Saved credentials appear here." />
                 </controls:SurfaceCard>
@@ -1107,12 +1125,12 @@
               </ItemsControl>
 
               <controls:SurfaceCard Padding="0" IsVisible="{Binding HasNoAiProviders}">
-                <controls:EmptyStatePanel Margin="{controls:Inset Xl}"
-                    Glyph="Bot"
+                <controls:StateOverlay Margin="{controls:Inset Xl}"
+                    Kind="Empty"
                     Heading="No provider configured"
                     Body="Add a provider to start using the AI agent.">
                   <Button HorizontalAlignment="Center" Classes="SecondaryButton" Click="OnAddAiProviderClick" Content="Add first provider" />
-                </controls:EmptyStatePanel>
+                </controls:StateOverlay>
               </controls:SurfaceCard>
 
               <!-- The credential slot belongs to a saved profile, so with no
@@ -1224,12 +1242,12 @@
               </ItemsControl>
 
               <controls:SurfaceCard Padding="0" IsVisible="{Binding HasNoMcpServers}">
-                <controls:EmptyStatePanel Margin="{controls:Inset Xl}"
-                    Glyph="Code"
+                <controls:StateOverlay Margin="{controls:Inset Xl}"
+                    Kind="Empty"
                     Heading="No MCP server configured"
                     Body="Add a local or remote MCP server to make its selected tools available to the agent.">
                   <Button Classes="SecondaryButton" Click="OnAddMcpServerClick" Content="Add first server" AutomationProperties.Name="Add first MCP server" />
-                </controls:EmptyStatePanel>
+                </controls:StateOverlay>
               </controls:SurfaceCard>
 
               <controls:SettingsGroup
@@ -1361,8 +1379,8 @@
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
                 <controls:SurfaceCard Padding="0" IsVisible="{Binding HasNoProductComponents}">
-                  <controls:EmptyStatePanel Margin="{controls:Inset Xl}"
-                      ShowsGlyph="False"
+                  <controls:StateOverlay Margin="{controls:Inset Xl}"
+                      Kind="Unsupported"
                       Heading="No component inventory in this build"
                       Body="The bundled notices remain available and record the licences shipped with this copy." />
                 </controls:SurfaceCard>

@@ -1642,18 +1642,21 @@ public sealed partial class AgentChatViewModelTests
                 window.Show();
                 window.UpdateLayout();
 
-                Assert.True(Assert.IsType<EmptyStatePanel>(
-                    view.FindControl<EmptyStatePanel>("AgentSetupRequiredState"))
-                    .IsEffectivelyVisible);
+                var setup = Assert.IsType<StateOverlay>(
+                    view.FindControl<StateOverlay>("AgentSetupRequiredState"));
+                Assert.True(setup.IsEffectivelyVisible);
+                Assert.Equal(StateOverlayKind.PermissionRequired, setup.Kind);
                 Assert.False(Assert.IsType<ScrollViewer>(
                     view.FindControl<ScrollViewer>("AgentChatTranscript"))
                     .IsEffectivelyVisible);
-                Assert.False(Assert.IsType<EmptyStatePanel>(
-                    view.FindControl<EmptyStatePanel>("AgentNoProviderState"))
-                    .IsEffectivelyVisible);
-                Assert.False(Assert.IsType<EmptyStatePanel>(
-                    view.FindControl<EmptyStatePanel>("AgentFailedTurnState"))
-                    .IsEffectivelyVisible);
+                var noProvider = Assert.IsType<StateOverlay>(
+                    view.FindControl<StateOverlay>("AgentNoProviderState"));
+                Assert.False(noProvider.IsEffectivelyVisible);
+                Assert.Equal(StateOverlayKind.Offline, noProvider.Kind);
+                var failedTurn = Assert.IsType<StateOverlay>(
+                    view.FindControl<StateOverlay>("AgentFailedTurnState"));
+                Assert.False(failedTurn.IsEffectivelyVisible);
+                Assert.Equal(StateOverlayKind.Retry, failedTurn.Kind);
                 Assert.False(Assert.IsType<ItemsControl>(
                     view.FindControl<ItemsControl>("AgentQueuedFollowUps"))
                     .IsEffectivelyVisible);

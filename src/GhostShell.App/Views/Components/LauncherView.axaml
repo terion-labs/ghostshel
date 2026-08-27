@@ -84,17 +84,25 @@
               FontSize="{DynamicResource ShellFontSize10}"
               Text="{Binding Onboarding.StatusMessage}"
               TextWrapping="Wrap"
+              IsVisible="{Binding !Onboarding.IsBusy}"
               AutomationProperties.LiveSetting="Polite"
               AutomationProperties.Name="Getting started status" />
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
-            <Button
-                Classes="TextButton"
-                Click="OnRetryOnboardingClick"
-                IsVisible="{Binding Onboarding.CanRetry, FallbackValue=False}"
-                Content="Retry" />
             <Button Classes="PrimaryButton" Click="OnFinishOnboardingClick" Content="Continue" />
           </StackPanel>
         </Grid>
+        <controls:StateOverlay
+            Kind="Loading"
+            Heading="{Binding Onboarding.StatusMessage}"
+            IsVisible="{Binding Onboarding.IsBusy}" />
+        <controls:StateOverlay
+            Kind="Retry"
+            Heading="Setup check failed"
+            Body="{Binding Onboarding.StatusMessage}"
+            ActionLabel="Retry"
+            ActionRequested="OnRetryOnboardingClick"
+            FocusTarget="PrimaryAction"
+            IsVisible="{Binding Onboarding.CanRetry, FallbackValue=False}" />
       </StackPanel>
     </controls:SurfaceCard>
 
@@ -277,17 +285,12 @@
               </ItemsControl.ItemTemplate>
             </ItemsControl>
           </ScrollViewer>
-          <StackPanel
+          <controls:StateOverlay
+              Kind="NoResults"
               Margin="{controls:Inset Lg}"
-              HorizontalAlignment="Center"
-              VerticalAlignment="Center"
-              Spacing="{DynamicResource ShellSpaceXs}"
               IsVisible="{Binding HasNoFilteredHistorySessions}"
-              AutomationProperties.LiveSetting="Polite"
-              AutomationProperties.Name="Session history has no results">
-            <TextBlock HorizontalAlignment="Center" FontWeight="SemiBold" Text="No history results" />
-            <TextBlock MaxWidth="430" HorizontalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding HistorySearchEmptyState}" TextAlignment="Center" TextWrapping="Wrap" />
-          </StackPanel>
+              Heading="No history results"
+              Body="{Binding HistorySearchEmptyState}" />
         </Panel>
       </controls:SurfaceCard>
     </Grid>

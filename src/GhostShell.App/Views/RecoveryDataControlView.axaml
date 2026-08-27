@@ -46,18 +46,25 @@
           AutomationProperties.LiveSetting="Polite"
           AutomationProperties.Name="{Binding StatusAutomationName}" />
 
-      <controls:SurfaceCard Padding="{DynamicResource ShellCardPaddingCompact}" IsVisible="{Binding HasNoRuns}">
-        <controls:EmptyStatePanel
-            ShowsGlyph="False"
-            Heading="No previous recovery data"
-            Body="The protected snapshot for the current run is intentionally not shown." />
-      </controls:SurfaceCard>
+      <controls:StateOverlay
+          Kind="Loading"
+          Heading="Loading recovery metadata…"
+          Body="The current run remains protected while previous snapshots are read."
+          IsVisible="{Binding IsBusy}" />
 
-      <controls:Callout
-          Tone="Notice"
-          ShowsGlyph="False"
-          Title="Recovery metadata unavailable"
-          Text="The current recovery inventory could not be loaded. No further data will be removed automatically; use Refresh to try again."
+      <controls:StateOverlay
+          Kind="Empty"
+          Heading="No previous recovery data"
+          Body="The protected snapshot for the current run is intentionally not shown."
+          IsVisible="{Binding HasNoRuns}" />
+
+      <controls:StateOverlay
+          Kind="Retry"
+          Heading="Recovery metadata unavailable"
+          Body="The current recovery inventory could not be loaded. No data will be removed automatically."
+          ActionLabel="Refresh"
+          ActionRequested="OnRefreshClick"
+          FocusTarget="PrimaryAction"
           IsVisible="{Binding HasError}" />
 
       <ItemsControl

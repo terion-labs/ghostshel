@@ -1087,20 +1087,20 @@
       </Style>
     </ControlTheme>
 
-    <!--
-      The three not-content states share one control; which template it wears
-      is the Kind. Empty rests on EmptyStatePanel, loading is a working bar
-      with a sentence, and an error is a notice card with the way back.
-    -->
+    <!-- Every not-content state uses one layout contract. The kind changes its
+         non-colour glyph, tone, live announcement, and quiet/working/attention
+         layout without making each screen rebuild the same state card. -->
     <ControlTheme x:Key="{x:Type controls:StateOverlay}" TargetType="controls:StateOverlay">
       <Setter Property="HorizontalAlignment" Value="Center" />
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="Template">
         <ControlTemplate>
           <controls:EmptyStatePanel
-              Glyph="{TemplateBinding Glyph}"
+              Glyph="{TemplateBinding EffectiveGlyph}"
               Heading="{TemplateBinding Heading}"
-              Body="{TemplateBinding Body}">
+              Body="{TemplateBinding Body}"
+              AutomationProperties.LiveSetting="{TemplateBinding AnnouncementMode}"
+              AutomationProperties.Name="{TemplateBinding AccessibleStatus}">
             <StackPanel HorizontalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
               <ContentPresenter
                   HorizontalAlignment="Center"
@@ -1119,13 +1119,15 @@
         </ControlTemplate>
       </Setter>
 
-      <Style Selector="^:loading">
+      <Style Selector="^:working">
         <Setter Property="Template">
           <ControlTemplate>
             <StackPanel
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
-                Spacing="{DynamicResource ShellSpaceSm}">
+                Spacing="{DynamicResource ShellSpaceSm}"
+                AutomationProperties.LiveSetting="{TemplateBinding AnnouncementMode}"
+                AutomationProperties.Name="{TemplateBinding AccessibleStatus}">
               <ProgressBar
                   Width="180"
                   HorizontalAlignment="Center"
@@ -1151,18 +1153,20 @@
         </Setter>
       </Style>
 
-      <Style Selector="^:error">
+      <Style Selector="^:attention">
         <Setter Property="Template">
           <ControlTemplate>
             <controls:SurfaceCard
-                Tone="Notice"
+                Tone="{TemplateBinding PresentationTone}"
                 MaxWidth="430"
                 HorizontalAlignment="Center"
-                VerticalAlignment="Center">
+                VerticalAlignment="Center"
+                AutomationProperties.LiveSetting="{TemplateBinding AnnouncementMode}"
+                AutomationProperties.Name="{TemplateBinding AccessibleStatus}">
               <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
                 <icons:SymbolIcon
                     HorizontalAlignment="Left"
-                    Symbol="{TemplateBinding Glyph}"
+                    Symbol="{TemplateBinding EffectiveGlyph}"
                     FontSize="{DynamicResource ShellFontSize24}"
                     Foreground="{DynamicResource ShellDangerBrush}" />
                 <TextBlock

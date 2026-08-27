@@ -185,7 +185,7 @@
             IsHitTestVisible="False"
             IsVisible="{Binding ShowFallback, ElementName=RuntimeTerminal}">
           <controls:StateOverlay
-              Glyph="WindowConsole"
+              Kind="Loading"
               Body="{Binding StatusMessage, ElementName=RuntimeTerminal}" />
         </Border>
         <Border
@@ -236,7 +236,7 @@
             Background="{DynamicResource ShellSurfaceBrush}"
             IsVisible="{CompiledBinding HasConnectionOverlay}">
           <controls:StateOverlay
-              Glyph="WindowConsole"
+              Kind="Retry"
               Heading="{CompiledBinding ConnectionStatus}"
               Body="{CompiledBinding ConnectionDetail}">
             <StackPanel MaxWidth="460" Spacing="{DynamicResource ShellSpaceSm}">

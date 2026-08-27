@@ -755,8 +755,10 @@ public sealed class McpServerProfileEditorViewModelTests
 , StringComparison.Ordinal) && string.Equals(navigationItem.Attribute("Click")?.Value, "OnMcpSettingsClick", StringComparison.Ordinal));
         Assert.Contains(
             section.Descendants(),
-            element => string.Equals(element.Name.LocalName, "EmptyStatePanel"
-, StringComparison.Ordinal) && string.Equals(element.Attribute("Heading")?.Value, "No MCP server configured", StringComparison.Ordinal));
+            element => string.Equals(element.Name.LocalName, "StateOverlay"
+, StringComparison.Ordinal)
+                && string.Equals(element.Attribute("Kind")?.Value, "Empty", StringComparison.Ordinal)
+                && string.Equals(element.Attribute("Heading")?.Value, "No MCP server configured", StringComparison.Ordinal));
         Assert.Contains(
             section.Descendants(view + "Button"),
             button => string.Equals(button.Attribute("Click")?.Value

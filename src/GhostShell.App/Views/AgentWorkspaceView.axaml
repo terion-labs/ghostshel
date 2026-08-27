@@ -921,13 +921,13 @@
         </StackPanel>
       </ScrollViewer>
 
-      <controls:EmptyStatePanel
+      <controls:StateOverlay
           x:Name="AgentSetupRequiredState"
           Grid.Row="2"
           Margin="{controls:Inset Horizontal=Md, Vertical=Xl}"
           VerticalAlignment="Center"
           IsVisible="{Binding AgentChat, Converter={x:Static ObjectConverters.IsNull}}"
-          Glyph="Bot"
+          Kind="PermissionRequired"
           Heading="AI setup required"
           Body="Choose the primary, compaction, and title models in AI settings.">
         <Button
@@ -935,29 +935,29 @@
             Click="OnShowAgentSettingsClick"
             Content="Configure AI"
             AutomationProperties.Name="Configure AI models" />
-      </controls:EmptyStatePanel>
+      </controls:StateOverlay>
 
-      <controls:EmptyStatePanel
+      <controls:StateOverlay
           x:Name="AgentNoProviderState"
           Grid.Row="2"
           Margin="{controls:Inset Horizontal=Md, Vertical=Xl}"
           VerticalAlignment="Center"
           IsVisible="{Binding AgentChat.HasNoProvider, FallbackValue=False}"
-          Glyph="Bot"
+          Kind="Offline"
           Heading="Connect an AI provider"
           Body="Add a model provider to start using the AI agent.">
         <StackPanel HorizontalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
           <Button Classes="PrimaryButton" Click="OnShowAgentSettingsClick" Content="Open AI settings" AutomationProperties.Name="Open AI settings" AutomationProperties.HelpText="Configure agent defaults and AI services for this local GhostSHELL profile. Credentials remain in the operating-system vault." />
           <Button Classes="TextButton" Click="OnClearAgentChatClick" Content="Clear agent session" IsVisible="{Binding AgentChat.CanClear}" AutomationProperties.Name="Clear the retained AI agent session" />
         </StackPanel>
-      </controls:EmptyStatePanel>
-      <controls:EmptyStatePanel
+      </controls:StateOverlay>
+      <controls:StateOverlay
           x:Name="AgentFailedTurnState"
           Grid.Row="2"
           Margin="{controls:Inset Horizontal=Md, Vertical=Xl}"
           VerticalAlignment="Center"
           IsVisible="{Binding AgentChat.HasFailedTurn, FallbackValue=False}"
-          Glyph="Warning"
+          Kind="Retry"
           Heading="{Binding AgentChat.FailureHeading}"
           Body="{Binding AgentChat.Status}">
         <StackPanel HorizontalAlignment="Center" Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
@@ -973,7 +973,7 @@
               Content="Provider settings"
               AutomationProperties.Name="Open AI settings" />
         </StackPanel>
-      </controls:EmptyStatePanel>
+      </controls:StateOverlay>
 
       <StackPanel
           Grid.Row="4"

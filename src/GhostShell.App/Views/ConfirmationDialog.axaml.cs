@@ -82,6 +82,10 @@ public sealed partial class ConfirmationDialog : Window
 
         var confirm = this.FindControl<Button>("ConfirmButton")!;
         var cancel = this.FindControl<Button>("CancelButton")!;
+        this.FindControl<StateOverlay>("ConfirmationState")!.Kind =
+            options.Intent == ConfirmationIntent.Destructive
+                ? StateOverlayKind.DestructiveAction
+                : StateOverlayKind.TerminalError;
         this.FindControl<SurfaceCard>("NoticeCard")!.Tone = options.NoticeTone;
         if (options.Intent == ConfirmationIntent.Destructive)
         {

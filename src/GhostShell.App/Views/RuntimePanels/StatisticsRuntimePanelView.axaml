@@ -184,7 +184,7 @@
             AutomationProperties.Name="Statistics loading" />
 
         <controls:StateOverlay
-            Kind="Error"
+            Kind="TerminalError"
             Glyph="ErrorCircle"
             Heading="{Binding IssueTitle}"
             Body="{Binding IssueMessage}"

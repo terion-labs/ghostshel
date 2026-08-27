@@ -612,7 +612,7 @@
               </ListBox>
 
               <controls:StateOverlay
-                  Glyph="DocumentText"
+                  Kind="Empty"
                   Heading="No log rows"
                   Body="This container has no logs for the current view."
                   IsVisible="{Binding !HasLogs}" />
@@ -665,7 +665,7 @@
               </ContentControl.ContentTemplate>
             </ContentControl>
             <controls:StateOverlay
-                Glyph="WindowConsole"
+                Kind="Retry"
                 Heading="{Binding ShellStateTitle}"
                 Body="{Binding ShellStateMessage}"
                 IsVisible="{Binding !HasInlineShell}">
@@ -706,13 +706,13 @@
               IsVisible="{Binding ShowLoading}" />
 
           <controls:StateOverlay
-              Glyph="Box"
+              Kind="Empty"
               Heading="No resources in this section"
               Body="Choose another resource type or refresh the engine."
               IsVisible="{Binding ShowEmptyState}" />
 
           <controls:StateOverlay
-              Kind="Error"
+              Kind="TerminalError"
               Glyph="ErrorCircle"
               Heading="{Binding IssueTitle}"
               Body="{Binding IssueMessage}"

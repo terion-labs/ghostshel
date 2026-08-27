@@ -508,8 +508,7 @@
                 Body="{Binding ContentPresentation.Message}" />
           </Border>
           <controls:StateOverlay
-              Kind="Error"
-              Glyph="ErrorCircle"
+              Kind="Retry"
               Heading="{Binding ContentPresentation.Title}"
               Body="{Binding ContentPresentation.Message}"
               IsVisible="{Binding ShowErrorState}"
@@ -521,7 +520,7 @@
             </StackPanel>
           </controls:StateOverlay>
           <controls:StateOverlay
-              Glyph="Folder"
+              Kind="Empty"
               Heading="{Binding ContentPresentation.Title}"
               Body="{Binding ContentPresentation.Message}"
               IsVisible="{Binding ShowEmptyLocationState}"
@@ -530,7 +529,7 @@
             <TextBlock MaxWidth="360" HorizontalAlignment="Center" Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ContentPresentation.SuggestedAction}" TextAlignment="Center" TextWrapping="Wrap" />
           </controls:StateOverlay>
           <controls:StateOverlay
-              Glyph="Search"
+              Kind="NoResults"
               Heading="{Binding ContentPresentation.Title}"
               Body="{Binding ContentPresentation.Message}"
               IsVisible="{Binding ShowSearchNoResultsState}"
@@ -780,7 +779,7 @@
                   Heading="Reading preview…"
                   IsVisible="{Binding ShowPreviewProgressDetail}" />
               <controls:StateOverlay
-                  Glyph="Info"
+                  Kind="Empty"
                   Body="Select a file to preview it."
                   IsVisible="{Binding ShowPreviewPlaceholder}" />
 

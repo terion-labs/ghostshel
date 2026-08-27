@@ -127,28 +127,94 @@
         <TextBlock
             Classes="Muted"
             FontSize="{DynamicResource ShellFontSize10}"
-            Text="A surface's not-content: empty, loading, or failed. One control; the Kind picks the build."
+            Text="Every not-content state uses one typed vocabulary. Copy and recovery actions remain specific to the screen."
             TextWrapping="Wrap" />
         <UniformGrid Columns="3" ColumnSpacing="{DynamicResource ShellSpaceMd}">
-          <controls:SurfaceCard Tone="Sunken" Height="230" Padding="0">
+          <controls:SurfaceCard Tone="Sunken" MinHeight="230" Padding="0">
             <controls:StateOverlay
-                Glyph="Folder"
+                Kind="Empty"
                 Heading="Nothing here yet"
                 Body="Choose a location to browse." />
           </controls:SurfaceCard>
-          <controls:SurfaceCard Tone="Sunken" Height="230" Padding="0">
+          <controls:SurfaceCard Tone="Sunken" MinHeight="230" Padding="0">
+            <controls:StateOverlay
+                Kind="NoResults"
+                Heading="No matching sessions"
+                Body="Change the search or clear its filters." />
+          </controls:SurfaceCard>
+          <controls:SurfaceCard Tone="Sunken" MinHeight="230" Padding="0">
             <controls:StateOverlay
                 Kind="Loading"
                 Heading="Waiting for first sample…"
                 Body="Collecting resource statistics…" />
           </controls:SurfaceCard>
-          <controls:SurfaceCard Tone="Sunken" Height="230" Padding="0">
+          <controls:SurfaceCard Tone="Sunken" MinHeight="230" Padding="0">
             <controls:StateOverlay
-                Kind="Error"
-                Glyph="ErrorCircle"
+                Kind="Offline"
+                Heading="Host is offline"
+                Body="The last successful result remains visible."
+                ActionLabel="Reconnect" />
+          </controls:SurfaceCard>
+          <controls:SurfaceCard Tone="Sunken" MinHeight="230" Padding="0">
+            <controls:StateOverlay
+                Kind="PermissionRequired"
+                Heading="Permission needed"
+                Body="Approve read access to continue."
+                ActionLabel="Review access" />
+          </controls:SurfaceCard>
+          <controls:SurfaceCard Tone="Sunken" MinHeight="230" Padding="0">
+            <controls:StateOverlay
+                Kind="Unsupported"
+                Heading="Preview unavailable"
+                Body="This file type can still be downloaded." />
+          </controls:SurfaceCard>
+          <controls:SurfaceCard Tone="Sunken" MinHeight="230" Padding="0">
+            <controls:StateOverlay
+                Kind="Stale"
+                Heading="Showing an older snapshot"
+                Body="Refresh to check for current data."
+                ActionLabel="Refresh" />
+          </controls:SurfaceCard>
+          <controls:SurfaceCard Tone="Sunken" MinHeight="230" Padding="0">
+            <controls:StateOverlay
+                Kind="Partial"
+                Heading="Some results could not be loaded"
+                Body="The successful results remain available."
+                ActionLabel="Retry missing" />
+          </controls:SurfaceCard>
+          <controls:SurfaceCard Tone="Sunken" MinHeight="230" Padding="0">
+            <controls:StateOverlay
+                Kind="Conflict"
+                Heading="Settings changed elsewhere"
+                Body="Your draft is retained until you reload or save a copy."
+                ActionLabel="Review conflict" />
+          </controls:SurfaceCard>
+          <controls:SurfaceCard Tone="Sunken" MinHeight="230" Padding="0">
+            <controls:StateOverlay
+                Kind="Retry"
+                Heading="Connection interrupted"
+                Body="No input was discarded."
+                ActionLabel="Retry" />
+          </controls:SurfaceCard>
+          <controls:SurfaceCard Tone="Sunken" MinHeight="230" Padding="0">
+            <controls:StateOverlay
+                Kind="TerminalError"
                 Heading="Engine unreachable"
                 Body="The Docker socket did not answer."
                 ActionLabel="Retry" />
+          </controls:SurfaceCard>
+          <controls:SurfaceCard Tone="Sunken" MinHeight="230" Padding="0">
+            <controls:StateOverlay
+                Kind="Cancelled"
+                Heading="Export cancelled"
+                Body="No partial archive was retained." />
+          </controls:SurfaceCard>
+          <controls:SurfaceCard Tone="Sunken" MinHeight="230" Padding="0">
+            <controls:StateOverlay
+                Kind="DestructiveAction"
+                Heading="Clear all previous snapshots?"
+                Body="Saved recovery files will be deleted. The current live run is not affected."
+                ActionLabel="Clear snapshots" />
           </controls:SurfaceCard>
         </UniformGrid>
       </StackPanel>

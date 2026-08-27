@@ -21,7 +21,7 @@
       SplitRequested="OnSplitRequested"
       Title="{Binding Title}">
     <controls:StateOverlay
-        Glyph="Warning"
+        Kind="Unsupported"
         Heading="Adapter unavailable"
         Body="{Binding CapabilityMessage}" />
   </controls:PanelChrome>

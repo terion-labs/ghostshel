@@ -22,10 +22,11 @@
     what one looks like is decided here, once.
   -->
   <Grid Margin="{controls:Inset Xl}" RowDefinitions="Auto,Auto,Auto" RowSpacing="{DynamicResource ShellSpaceLg}">
-    <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
-      <TextBlock FontSize="{DynamicResource ShellFontSize17}" FontWeight="SemiBold" Text="{Binding Heading}" />
-      <TextBlock Classes="Muted" Text="{Binding Detail}" TextWrapping="Wrap" />
-    </StackPanel>
+    <controls:StateOverlay
+        x:Name="ConfirmationState"
+        HorizontalAlignment="Stretch"
+        Heading="{Binding Heading}"
+        Body="{Binding Detail}" />
     <controls:SurfaceCard
         x:Name="NoticeCard"
         Grid.Row="1"

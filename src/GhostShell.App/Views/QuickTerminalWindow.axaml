@@ -124,7 +124,7 @@
                   Background="{DynamicResource ShellBackgroundBrush}"
                   IsHitTestVisible="False" />
               <controls:StateOverlay
-                  Glyph="Warning"
+                  Kind="Unsupported"
                   Heading="{Binding TerminalPlaceholderTitle}"
                   Body="{Binding TerminalUnavailableMessage}" />
             </Grid>

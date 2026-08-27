@@ -410,7 +410,7 @@
                   </DataGrid>
 
                   <controls:StateOverlay
-                      Glyph="Database"
+                      Kind="Empty"
                       Heading="No entries"
                       Body="This key holds no value the current page can show."
                       IsVisible="{Binding !HasValueEntries}" />
@@ -687,7 +687,7 @@
               </DataGrid>
 
               <controls:StateOverlay
-                  Glyph="Search"
+                  Kind="NoResults"
                   Heading="No results"
                   Body="Choose an index and run a query."
                   IsVisible="{Binding !HasSearchResults}" />
@@ -810,7 +810,7 @@
               </DataGrid>
 
               <controls:StateOverlay
-                  Glyph="Chat"
+                  Kind="Empty"
                   Heading="No messages"
                   Body="Newest first. The panel keeps the most recent 500 messages it received."
                   IsVisible="{Binding !HasPubSubMessages}" />
