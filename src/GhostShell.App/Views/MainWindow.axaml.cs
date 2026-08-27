@@ -35,6 +35,7 @@ public sealed partial class MainWindow : Window
     private ShellClipboard? _clipboardWriter;
     private ShellCloseCoordinator? _closeCoordinator;
     private ShellFocusNavigator? _focusNavigator;
+    private LayoutDesignerInteractionController? _layoutDesignerInteractions;
     private CancellationTokenSource? _historyExportLifetime;
     private readonly IDefinitionBundleStore? _definitionBundleStore;
     private readonly IDefinitionCatalog? _definitionCatalog;
@@ -417,6 +418,9 @@ public sealed partial class MainWindow : Window
         new ShellClipboardPresentation(text =>
             Clipboard?.SetTextAsync(text) ?? Task.CompletedTask),
         _lifetime.Token);
+
+    private LayoutDesignerInteractionController LayoutDesignerInteractions =>
+        _layoutDesignerInteractions ??= new(ViewModel);
 
     private CommandPaletteView CommandPaletteOverlay => _commandPaletteOverlay
         ?? throw new InvalidOperationException(
@@ -1375,56 +1379,39 @@ public sealed partial class MainWindow : Window
     private void OnLayoutSlotClick(object? sender, RoutedEventArgs e)
     {
         _ = e;
-        if (sender is Control { DataContext: LayoutDesignerSlotViewModel slot })
-        {
-            _ = ViewModel.LayoutDesignerEditor?.SelectSlot(slot.Id);
-        }
+        LayoutDesignerInteractions.SelectSlot(sender);
     }
 
     private void OnLayoutSplitSlotRightClick(object? sender, RoutedEventArgs e)
     {
         _ = e;
-        if (sender is Control { DataContext: LayoutDesignerSlotViewModel slot })
-        {
-            _ = ViewModel.LayoutDesignerEditor?.SplitSlot(
-                slot.Id,
-                LayoutDesignerSplitDirection.Right);
-        }
+        LayoutDesignerInteractions.SplitSlotRight(sender);
     }
 
     private void OnLayoutSplitSlotDownClick(object? sender, RoutedEventArgs e)
     {
         _ = e;
-        if (sender is Control { DataContext: LayoutDesignerSlotViewModel slot })
-        {
-            _ = ViewModel.LayoutDesignerEditor?.SplitSlot(
-                slot.Id,
-                LayoutDesignerSplitDirection.Down);
-        }
+        LayoutDesignerInteractions.SplitSlotDown(sender);
     }
 
     private void OnLayoutAddSlotClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
         _ = e;
-        _ = ViewModel.LayoutDesignerEditor?.AddSlot();
+        LayoutDesignerInteractions.AddSlot();
     }
 
     private void OnLayoutRemoveSlotClick(object? sender, RoutedEventArgs e)
     {
         _ = e;
-        // The remove control sits on the slot it removes; without a slot context
-        // it falls back to the current selection for keyboard invocation.
-        _ = sender is Control { DataContext: LayoutDesignerSlotViewModel slot }
-            ? ViewModel.LayoutDesignerEditor?.RemoveSlot(slot.Id)
-            : ViewModel.LayoutDesignerEditor?.RemoveSelectedSlot();
+        LayoutDesignerInteractions.RemoveSlot(sender);
     }
 
     private void OnResetLayoutClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
         _ = e;
-        ViewModel.LayoutDesignerEditor?.Reset();
+        LayoutDesignerInteractions.Reset();
     }
 
     private void OnCreateWorkspaceClick(object? sender, RoutedEventArgs e)
