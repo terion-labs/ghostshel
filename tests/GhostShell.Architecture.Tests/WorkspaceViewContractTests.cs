@@ -598,6 +598,12 @@ public sealed class WorkspaceViewContractTests
             "GhostShell.App",
             "Views",
             "ShellFocusNavigator.cs"));
+        var tabDragController = File.ReadAllText(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Views",
+            "RuntimeTabDragController.cs"));
         var dragGhost = Assert.Single(
             mainWindow.Descendants(),
             element => string.Equals(
@@ -624,7 +630,7 @@ public sealed class WorkspaceViewContractTests
             StringComparison.Ordinal);
         Assert.Contains(
             "DataFormat.CreateInProcessFormat<RuntimeTabDragPayload>",
-            mainWindowCode,
+            tabDragController,
             StringComparison.Ordinal);
         Assert.Contains(
             "ShowDragGhost(",
@@ -638,10 +644,10 @@ public sealed class WorkspaceViewContractTests
             "DragDrop.DoDragDropAsync(",
             mainWindowCode,
             StringComparison.Ordinal);
-        Assert.Contains("ViewModel.MoveTabAsync(", mainWindowCode, StringComparison.Ordinal);
+        Assert.Contains("viewModel.MoveTabAsync(", tabDragController, StringComparison.Ordinal);
         Assert.Contains("RunCloseFlowAsync(", mainWindowCode, StringComparison.Ordinal);
         Assert.DoesNotContain("AgentYoloConfirmationDialog(", mainWindowCode, StringComparison.Ordinal);
-        Assert.Contains("control.Classes.Contains(\"RuntimeTabActivator\")", mainWindowCode, StringComparison.Ordinal);
+        Assert.Contains("control.Classes.Contains(\"RuntimeTabActivator\")", tabDragController, StringComparison.Ordinal);
         Assert.Contains("control.Classes.Contains(\"RuntimePanelFocusTarget\")", focusNavigator, StringComparison.Ordinal);
         Assert.Contains(".OfType<TerminalPresentationHost>()", focusNavigator, StringComparison.Ordinal);
         Assert.Contains(".OfType<BrowserPresentationHost>()", focusNavigator, StringComparison.Ordinal);

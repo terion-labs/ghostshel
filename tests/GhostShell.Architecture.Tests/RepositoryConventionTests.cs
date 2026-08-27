@@ -973,36 +973,41 @@ public sealed partial class RepositoryConventionTests
             AttributeValue(status, "AutomationProperties.Name"),
             StringComparison.Ordinal);
 
-        var codeBehind = ApplicationViews.FindPartialClassSources("MainWindow");
+        var dragController = File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Views",
+            "RuntimeTabDragController.cs"));
         Assert.Contains(
             "DataFormat.CreateInProcessFormat<RuntimeTabDragPayload>",
-            codeBehind,
+            dragController,
             StringComparison.Ordinal);
         Assert.Contains(
             "new RuntimeTabActiveDrag(",
-            codeBehind,
+            dragController,
             StringComparison.Ordinal);
         Assert.Contains(
-            "ShowDragGhost(",
-            codeBehind,
+            "presentation.ShowGhost(",
+            dragController,
             StringComparison.Ordinal);
         Assert.Contains(
-            "ResolveRuntimeTabDrop(",
-            codeBehind,
+            "ResolveDrop(",
+            dragController,
             StringComparison.Ordinal);
         Assert.DoesNotContain(
             "DragDrop.DoDragDropAsync(",
-            codeBehind,
+            dragController,
             StringComparison.Ordinal);
         Assert.Contains(
-            "RuntimeTabDragThreshold",
-            codeBehind,
+            "DragThreshold",
+            dragController,
             StringComparison.Ordinal);
         Assert.Contains(
-            "ViewModel.MoveTabAsync(",
-            codeBehind,
+            "viewModel.MoveTabAsync(",
+            dragController,
             StringComparison.Ordinal);
-        Assert.DoesNotContain("DataObject", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("DataObject", dragController, StringComparison.Ordinal);
     }
 
     private static IEnumerable<string> ApplicationXamlFiles()
