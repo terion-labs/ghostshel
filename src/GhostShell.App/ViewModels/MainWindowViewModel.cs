@@ -92,6 +92,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private AgentChatViewModel? _agentChat;
     private string? _operationError;
     private string _tabReorderStatus = string.Empty;
+    private string _workspaceTransferStatus = string.Empty;
     private bool _isAgentPanelVisible;
     private bool _isAgentPanelDocked;
     private string _definitionBundleStatus =
@@ -1945,6 +1946,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     {
         get => _tabReorderStatus;
         private set => SetProperty(ref _tabReorderStatus, value);
+    }
+
+    public string WorkspaceTransferStatus
+    {
+        get => _workspaceTransferStatus;
+        private set => SetProperty(ref _workspaceTransferStatus, value);
     }
 
     public string? ApplicationKeySequenceHint
@@ -8056,6 +8063,27 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             return id == BuiltInCommands.MoveTabLeft
                 ? activeIndex > 0
                 : activeIndex < workspace.Tabs.Count - 1;
+        }
+
+        if (id == BuiltInCommands.MoveTabToWorkspace
+            || id == BuiltInCommands.MovePanelToWorkspace)
+        {
+            if (!arguments.TryGetValue("position", out var value)
+                || !int.TryParse(
+                    value,
+                    System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var position)
+                || position < 0
+                || position >= _openWorkspaces.Count
+                || ReferenceEquals(RuntimeWorkspace, _openWorkspaces[position]))
+            {
+                return false;
+            }
+
+            return id == BuiltInCommands.MoveTabToWorkspace
+                ? RuntimeWorkspace?.Tabs.Count > 1
+                : RuntimeWorkspace?.ActiveTab?.Panels.Count > 1;
         }
 
         if (id == BuiltInCommands.SelectWorkspace)

@@ -92,6 +92,18 @@ public interface ISessionHostClient
         CancellationToken cancellationToken) =>
         Unsupported<WorkspaceGraphSnapshot>("Workspace panel activation is not implemented by this client.");
 
+    ValueTask<HostResult<WorkspaceGraphTransferReceipt>> TransferWorkspaceTabAsync(
+        TransferWorkspaceTabRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<WorkspaceGraphTransferReceipt>("Workspace tab transfer is not implemented by this client.");
+
+    ValueTask<HostResult<WorkspaceGraphTransferReceipt>> TransferWorkspacePanelAsync(
+        TransferWorkspacePanelRequest request,
+        OperationContext context,
+        CancellationToken cancellationToken) =>
+        Unsupported<WorkspaceGraphTransferReceipt>("Workspace panel transfer is not implemented by this client.");
+
     IAsyncEnumerable<WorkspaceGraphStreamItem> WatchWorkspaceGraphAsync(
         WatchWorkspaceGraphRequest request,
         OperationContext context,

@@ -11,6 +11,7 @@ public enum WorkspaceGraphEventKind
     Removed,
     PanelSessionLinked,
     PanelSessionUnlinked,
+    TransferCommitted,
 }
 
 public sealed record WorkspaceGraphEvent

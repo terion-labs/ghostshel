@@ -13,6 +13,8 @@ public static class BuiltInCommands
     public static CommandId CloseTab { get; } = new("tab.close");
     public static CommandId MoveTabLeft { get; } = new("tab.move-left");
     public static CommandId MoveTabRight { get; } = new("tab.move-right");
+    public static CommandId MoveTabToWorkspace { get; } = new("tab.move-to-workspace");
+    public static CommandId MovePanelToWorkspace { get; } = new("panel.move-to-workspace");
     public static CommandId NextTab { get; } = new("tab.next");
     public static CommandId PreviousTab { get; } = new("tab.previous");
     public static CommandId LastTab { get; } = new("tab.last");
@@ -61,6 +63,18 @@ public static class BuiltInCommands
             Define(CloseTab, "Close tab", "Tabs", CommandContext.Tab),
             Define(MoveTabLeft, "Move tab left", "Tabs", CommandContext.Tab),
             Define(MoveTabRight, "Move tab right", "Tabs", CommandContext.Tab),
+            Define(
+                MoveTabToWorkspace,
+                "Move tab to open workspace",
+                "Tabs",
+                CommandContext.Tab,
+                positionSchema),
+            Define(
+                MovePanelToWorkspace,
+                "Move panel to open workspace",
+                "Panels",
+                CommandContext.Panel,
+                positionSchema),
             Define(NextTab, "Next tab", "Tabs", CommandContext.Tab),
             Define(PreviousTab, "Previous tab", "Tabs", CommandContext.Tab),
             Define(LastTab, "Last active tab", "Tabs", CommandContext.Tab),

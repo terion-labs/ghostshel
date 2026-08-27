@@ -349,6 +349,188 @@ public sealed class RuntimeWorkspaceGraphCoordinator : IDisposable
         return false;
     }
 
+    public async Task<bool> TransferTabUnderGateAsync(
+        RuntimeWorkspaceViewModel source,
+        RuntimeWorkspaceViewModel destination,
+        TransferWorkspaceTabRequest request,
+        Action commit,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(destination);
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(commit);
+        return await TransferUnderGateAsync(
+            source,
+            destination,
+            request.Source,
+            request.Destination,
+            request.TabId,
+            null,
+            () => RequireSessionClient().TransferWorkspaceTabAsync(
+                request,
+                OperationContext.ForHuman(
+                    _clientId,
+                    idempotencyKey: IdempotencyKey.New()),
+                cancellationToken),
+            commit,
+            "tab transfer");
+    }
+
+    public async Task<bool> TransferPanelUnderGateAsync(
+        RuntimeWorkspaceViewModel source,
+        RuntimeWorkspaceViewModel destination,
+        TransferWorkspacePanelRequest request,
+        Action commit,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(destination);
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(commit);
+        return await TransferUnderGateAsync(
+            source,
+            destination,
+            request.Source,
+            request.Destination,
+            request.SourceTabId,
+            request.PanelId,
+            () => RequireSessionClient().TransferWorkspacePanelAsync(
+                request,
+                OperationContext.ForHuman(
+                    _clientId,
+                    idempotencyKey: IdempotencyKey.New()),
+                cancellationToken),
+            commit,
+            "panel transfer");
+    }
+
+    private async Task<bool> TransferUnderGateAsync(
+        RuntimeWorkspaceViewModel source,
+        RuntimeWorkspaceViewModel destination,
+        WorkspaceInstance sourceProposal,
+        WorkspaceInstance destinationProposal,
+        TabInstanceId tabId,
+        PanelInstanceId? panelId,
+        Func<ValueTask<HostResult<WorkspaceGraphTransferReceipt>>> submit,
+        Action commit,
+        string operation)
+    {
+        if (!ReferenceEquals(_currentWorkspace(), source)
+            || source == destination
+            || source.Id != sourceProposal.Id
+            || destination.Id != destinationProposal.Id)
+        {
+            return false;
+        }
+
+        HostResult<WorkspaceGraphTransferReceipt> result;
+        try
+        {
+            result = await submit();
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or InvalidOperationException)
+        {
+            _setError($"The runtime workspace could not apply {operation}.");
+            return false;
+        }
+
+        if (result is HostResult<WorkspaceGraphTransferReceipt>.Failure failure)
+        {
+            _setError(
+                $"The session host rejected {operation} "
+                + $"({failure.Error.StableCode}): {failure.Error.Message}");
+            return false;
+        }
+
+        var success = (HostResult<WorkspaceGraphTransferReceipt>.Success)result;
+        var receipt = success.Value;
+        if (receipt.TransferId == Guid.Empty
+            || receipt.TabId != tabId
+            || receipt.PanelId != panelId
+            || receipt.Source.WindowId != _windowId
+            || receipt.Destination.WindowId != _windowId
+            || receipt.Source.Workspace.Id != source.Id
+            || receipt.Destination.Workspace.Id != destination.Id
+            || receipt.Source.Revision <= source.HostRevision
+            || receipt.Destination.Revision <= destination.HostRevision
+            || receipt.Source.LastSequence <= source.HostSequence
+            || receipt.Destination.LastSequence <= destination.HostSequence
+            || success.ResultingRevision != Math.Max(
+                receipt.Source.Revision,
+                receipt.Destination.Revision)
+            || !RuntimeWorkspaceGraphProjection.IntentMatches(
+                sourceProposal,
+                receipt.Source.Workspace)
+            || !RuntimeWorkspaceGraphProjection.IntentMatches(
+                destinationProposal,
+                receipt.Destination.Workspace)
+            || receipt.Sessions.Select(item => item.SessionId).Distinct().Count()
+                != receipt.Sessions.Count
+            || !OwnershipReceiptsMatch(
+                receipt.Sessions,
+                sourceProposal,
+                destinationProposal,
+                tabId,
+                panelId))
+        {
+            _setError($"The session host returned an invalid {operation} receipt.");
+            return false;
+        }
+
+        commit();
+        _workspaceCommitted(source);
+        _workspaceCommitted(destination);
+        try
+        {
+            source.ApplyHostProjection(
+                receipt.Source.Workspace,
+                receipt.Source.Revision,
+                receipt.Source.LastSequence);
+            destination.ApplyHostProjection(
+                receipt.Destination.Workspace,
+                receipt.Destination.Revision,
+                receipt.Destination.LastSequence);
+        }
+        catch (InvalidOperationException exception)
+        {
+            throw new InvalidOperationException(
+                $"The host-approved {operation} could not be applied to the runtime views.",
+                exception);
+        }
+
+        _projectionApplied();
+        return true;
+    }
+
+    private bool OwnershipReceiptsMatch(
+        IReadOnlyList<SessionOwnershipTransferReceipt> sessions,
+        WorkspaceInstance source,
+        WorkspaceInstance destination,
+        TabInstanceId sourceTabId,
+        PanelInstanceId? panelId)
+    {
+        var destinationTabId = panelId is null
+            ? sourceTabId
+            : destination.Tabs.SingleOrDefault(tab =>
+                tab.Panels.Any(panel => panel.Id == panelId))?.Id;
+        if (destinationTabId is null)
+        {
+            return false;
+        }
+
+        return sessions.All(item =>
+            item.Source.WindowId == _windowId
+            && item.Source.WorkspaceId == source.Id
+            && item.Source.TabId == sourceTabId
+            && item.Destination.WindowId == _windowId
+            && item.Destination.WorkspaceId == destination.Id
+            && item.Destination.TabId == destinationTabId
+            && item.Source.PanelId == item.Destination.PanelId
+            && (panelId is null || item.Source.PanelId == panelId));
+    }
+
     public ValueTask<HostResult<CloseScopeResult>> CloseAsync(
         CloseScopeRequest request,
         CancellationToken cancellationToken)

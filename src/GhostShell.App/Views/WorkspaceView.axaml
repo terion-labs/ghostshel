@@ -538,6 +538,17 @@
             Text="{Binding TabReorderStatus}"
             AutomationProperties.LiveSetting="Polite"
             AutomationProperties.Name="{Binding TabReorderStatus, StringFormat={}Tab order status · {0}}" />
+        <TextBlock
+            Width="1"
+            Height="1"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            ClipToBounds="True"
+            IsHitTestVisible="False"
+            Opacity="0"
+            Text="{Binding WorkspaceTransferStatus}"
+            AutomationProperties.LiveSetting="Polite"
+            AutomationProperties.Name="{Binding WorkspaceTransferStatus, StringFormat={}Workspace transfer status · {0}}" />
       </Grid>
     </DockPanel>
 

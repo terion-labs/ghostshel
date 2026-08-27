@@ -1,3 +1,4 @@
+using System.Reflection;
 using GhostShell.App.ViewModels;
 using GhostShell.Application;
 using GhostShell.Core;
@@ -150,6 +151,163 @@ public sealed class RuntimeWorkspaceGraphCoordinatorTests
         Assert.Equal(5, runtime.HostSequence);
     }
 
+    [Fact]
+    public async Task Accepted_tab_transfer_commits_both_runtime_graphs_once()
+    {
+        var source = CreateWorkspace();
+        var destination = new RuntimeWorkspaceViewModel(
+            WorkspaceInstanceId.New(),
+            "Destination",
+            "#654321",
+            []);
+        destination.Tabs.Add(CreateTab("Destination tab"));
+        destination.ActiveTab = destination.Tabs[0];
+        var sourceBefore = RuntimeWorkspaceGraphProjection.Capture(source);
+        var destinationBefore = RuntimeWorkspaceGraphProjection.Capture(destination);
+        source.ApplyHostProjection(sourceBefore, 1, 1);
+        destination.ApplyHostProjection(destinationBefore, 1, 1);
+        var moved = source.Tabs[0];
+        var movedGraph = sourceBefore.Tabs[0];
+        var sourceAfter = new WorkspaceInstance(
+            source.Id,
+            source.Name,
+            sourceBefore.Tabs.Skip(1),
+            sourceBefore.Tabs[1].Id);
+        var destinationAfter = new WorkspaceInstance(
+            destination.Id,
+            destination.Name,
+            [.. destinationBefore.Tabs, movedGraph],
+            movedGraph.Id);
+        var windowId = WindowInstanceId.New();
+        var client = TransferClientProxy.Create(request =>
+            HostResult<WorkspaceGraphTransferReceipt>.Succeed(
+                new WorkspaceGraphTransferReceipt(
+                    Guid.NewGuid(),
+                    new WorkspaceGraphSnapshot(
+                        windowId,
+                        request.Source,
+                        2,
+                        2),
+                    new WorkspaceGraphSnapshot(
+                        windowId,
+                        request.Destination,
+                        2,
+                        2),
+                    request.TabId,
+                    null,
+                    []),
+                2));
+        var projections = 0;
+        using var coordinator = new RuntimeWorkspaceGraphCoordinator(
+            client,
+            ClientId.New(),
+            windowId,
+            new ImmediateDispatcher(),
+            TimeProvider.System,
+            () => source,
+            _ => { },
+            _ => { },
+            () => projections++,
+            _ => { });
+
+        var accepted = await coordinator.TransferTabUnderGateAsync(
+            source,
+            destination,
+            new TransferWorkspaceTabRequest(
+                windowId,
+                sourceAfter,
+                1,
+                windowId,
+                destinationAfter,
+                1,
+                moved.Id),
+            () =>
+            {
+                source.Tabs.Remove(moved);
+                source.ActiveTab = source.Tabs[0];
+                destination.Tabs.Add(moved);
+                destination.ActiveTab = moved;
+            },
+            CancellationToken.None);
+
+        Assert.True(accepted);
+        Assert.DoesNotContain(moved, source.Tabs);
+        Assert.Same(moved, destination.Tabs[1]);
+        Assert.Equal(2, source.HostRevision);
+        Assert.Equal(2, destination.HostRevision);
+        Assert.Equal(1, projections);
+    }
+
+    [Fact]
+    public async Task Rejected_tab_transfer_leaves_both_runtime_graphs_unchanged()
+    {
+        var source = CreateWorkspace();
+        var destination = new RuntimeWorkspaceViewModel(
+            WorkspaceInstanceId.New(),
+            "Destination",
+            "#654321",
+            []);
+        destination.Tabs.Add(CreateTab("Destination tab"));
+        destination.ActiveTab = destination.Tabs[0];
+        var sourceBefore = RuntimeWorkspaceGraphProjection.Capture(source);
+        var destinationBefore = RuntimeWorkspaceGraphProjection.Capture(destination);
+        source.ApplyHostProjection(sourceBefore, 1, 1);
+        destination.ApplyHostProjection(destinationBefore, 1, 1);
+        var moved = source.Tabs[0];
+        var sourceAfter = new WorkspaceInstance(
+            source.Id,
+            source.Name,
+            sourceBefore.Tabs.Skip(1),
+            sourceBefore.Tabs[1].Id);
+        var destinationAfter = new WorkspaceInstance(
+            destination.Id,
+            destination.Name,
+            [.. destinationBefore.Tabs, sourceBefore.Tabs[0]],
+            sourceBefore.Tabs[0].Id);
+        var errors = new List<string>();
+        var windowId = WindowInstanceId.New();
+        var client = TransferClientProxy.Create(_ =>
+            HostResult<WorkspaceGraphTransferReceipt>.Fail(
+                HostError.Create(
+                    HostErrorCode.RevisionConflict,
+                    "The destination changed."),
+                2));
+        using var coordinator = new RuntimeWorkspaceGraphCoordinator(
+            client,
+            ClientId.New(),
+            windowId,
+            new ImmediateDispatcher(),
+            TimeProvider.System,
+            () => source,
+            _ => { },
+            errors.Add,
+            () => throw new InvalidOperationException("Must not project."),
+            _ => { });
+        var committed = false;
+
+        var accepted = await coordinator.TransferTabUnderGateAsync(
+            source,
+            destination,
+            new TransferWorkspaceTabRequest(
+                windowId,
+                sourceAfter,
+                1,
+                windowId,
+                destinationAfter,
+                1,
+                moved.Id),
+            () => committed = true,
+            CancellationToken.None);
+
+        Assert.False(accepted);
+        Assert.False(committed);
+        Assert.Contains(moved, source.Tabs);
+        Assert.DoesNotContain(moved, destination.Tabs);
+        Assert.Equal(1, source.HostRevision);
+        Assert.Equal(1, destination.HostRevision);
+        Assert.Contains("revision_conflict", Assert.Single(errors), StringComparison.Ordinal);
+    }
+
     private static RuntimeWorkspaceGraphCoordinator CreateCoordinator(
         WindowInstanceId windowId,
         Func<RuntimeWorkspaceViewModel?> currentWorkspace) =>
@@ -198,5 +356,45 @@ public sealed class RuntimeWorkspaceGraphCoordinatorTests
             workspace.Title,
             [replacement, .. workspace.Tabs.Skip(1)],
             workspace.ActiveTabId);
+    }
+
+    private sealed class ImmediateDispatcher : IUiThreadDispatcher
+    {
+        public Task InvokeAsync(Action action, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            action();
+            return Task.CompletedTask;
+        }
+    }
+
+    public class TransferClientProxy : DispatchProxy
+    {
+        private Func<
+            TransferWorkspaceTabRequest,
+            HostResult<WorkspaceGraphTransferReceipt>>? _transfer;
+
+        public static ISessionHostClient Create(
+            Func<
+                TransferWorkspaceTabRequest,
+                HostResult<WorkspaceGraphTransferReceipt>> transfer)
+        {
+            var client = DispatchProxy.Create<ISessionHostClient, TransferClientProxy>();
+            ((TransferClientProxy)(object)client)._transfer = transfer;
+            return client;
+        }
+
+        protected override object? Invoke(
+            MethodInfo? targetMethod,
+            object?[]? args)
+        {
+            if (targetMethod?.Name == nameof(ISessionHostClient.TransferWorkspaceTabAsync)
+                && args?[0] is TransferWorkspaceTabRequest request)
+            {
+                return ValueTask.FromResult(_transfer!(request));
+            }
+
+            throw new NotSupportedException(targetMethod?.Name);
+        }
     }
 }

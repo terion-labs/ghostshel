@@ -14,6 +14,8 @@ internal enum ApplicationCommandActionKind
     RenameTab,
     CloseTab,
     MoveTab,
+    MoveTabToWorkspace,
+    MovePanelToWorkspace,
     SelectRelativeTab,
     SelectLastTab,
     SelectTab,
@@ -104,6 +106,20 @@ internal static class ApplicationCommandRouter
         if (commandId == BuiltInCommands.MoveTabRight)
         {
             return Success(ApplicationCommandActionKind.MoveTab, tabOffset: 1);
+        }
+
+        if (commandId == BuiltInCommands.MoveTabToWorkspace)
+        {
+            return ParseWorkspaceTransferPosition(
+                arguments,
+                ApplicationCommandActionKind.MoveTabToWorkspace);
+        }
+
+        if (commandId == BuiltInCommands.MovePanelToWorkspace)
+        {
+            return ParseWorkspaceTransferPosition(
+                arguments,
+                ApplicationCommandActionKind.MovePanelToWorkspace);
         }
 
         if (commandId == BuiltInCommands.NextTab)
@@ -220,6 +236,25 @@ internal static class ApplicationCommandRouter
             new ApplicationCommandAction(
                 ApplicationCommandActionKind.SelectWorkspace,
                 WorkspacePosition: position),
+            null);
+    }
+
+    private static ApplicationCommandRouteResult ParseWorkspaceTransferPosition(
+        IReadOnlyDictionary<string, string> arguments,
+        ApplicationCommandActionKind kind)
+    {
+        if (!int.TryParse(
+                arguments["position"],
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out var position)
+            || position is < 0 or > 8)
+        {
+            return Failure("The open workspace position must be between 0 and 8.");
+        }
+
+        return new ApplicationCommandRouteResult(
+            new ApplicationCommandAction(kind, WorkspacePosition: position),
             null);
     }
 

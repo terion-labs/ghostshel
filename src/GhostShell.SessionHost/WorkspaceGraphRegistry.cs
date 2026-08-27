@@ -220,6 +220,176 @@ internal sealed class WorkspaceGraphRegistry
         }
     }
 
+    public HostResult<WorkspaceGraphTransferReceipt> TransferTab(
+        TransferWorkspaceTabRequest request,
+        ClientId clientId,
+        IReadOnlyList<LiveWorkspaceSession> liveSessions)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(liveSessions);
+        lock (_gate)
+        {
+            if (ResolveTransferGraphs(
+                    request.SourceWindowId,
+                    request.Source.Id,
+                    request.ExpectedSourceRevision,
+                    request.DestinationWindowId,
+                    request.Destination.Id,
+                    request.ExpectedDestinationRevision,
+                    clientId)
+                is not { } graphs)
+            {
+                return TransferFailure(
+                    request.Source.Id,
+                    request.Destination.Id,
+                    "The exact source and destination ownership receipts are no longer current.");
+            }
+
+            var sourceBefore = graphs.Source.Snapshot().Workspace;
+            var destinationBefore = graphs.Destination.Snapshot().Workspace;
+            var moved = sourceBefore.Tabs.SingleOrDefault(tab => tab.Id == request.TabId);
+            if (moved is null
+                || sourceBefore.Tabs.Count == 1
+                || destinationBefore.Tabs.Any(tab => tab.Id == request.TabId)
+                || !WorkspaceTitleMatches(sourceBefore, request.Source)
+                || !WorkspaceTitleMatches(destinationBefore, request.Destination)
+                || !SequenceEqual(
+                    request.Source.Tabs,
+                    sourceBefore.Tabs.Where(tab => tab.Id != request.TabId),
+                    TabEquivalent)
+                || !TabEquivalent(
+                    moved,
+                    request.Destination.Tabs.SingleOrDefault(tab => tab.Id == request.TabId))
+                || !SequenceEqual(
+                    request.Destination.Tabs.Where(tab => tab.Id != request.TabId),
+                    destinationBefore.Tabs,
+                    TabEquivalent))
+            {
+                return InvalidTransfer(
+                    graphs,
+                    "A tab transfer must move exactly one unchanged tab and leave every other topology unchanged.");
+            }
+
+            var ownership = liveSessions
+                .Where(session =>
+                    session.Descriptor.Owner.WorkspaceId == sourceBefore.Id
+                    && session.Descriptor.Owner.TabId == request.TabId)
+                .Select(session =>
+                {
+                    var source = session.Descriptor.Owner;
+                    var destination = source with
+                    {
+                        WindowId = request.DestinationWindowId,
+                        WorkspaceId = request.Destination.Id,
+                    };
+                    return new SessionOwnershipTransferReceipt(
+                        session.Descriptor.Id,
+                        source,
+                        destination);
+                })
+                .ToArray();
+
+            return CommitTransfer(
+                graphs,
+                request.Source,
+                request.Destination,
+                request.TabId,
+                null,
+                ownership);
+        }
+    }
+
+    public HostResult<WorkspaceGraphTransferReceipt> TransferPanel(
+        TransferWorkspacePanelRequest request,
+        ClientId clientId,
+        IReadOnlyList<LiveWorkspaceSession> liveSessions)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(liveSessions);
+        lock (_gate)
+        {
+            if (ResolveTransferGraphs(
+                    request.SourceWindowId,
+                    request.Source.Id,
+                    request.ExpectedSourceRevision,
+                    request.DestinationWindowId,
+                    request.Destination.Id,
+                    request.ExpectedDestinationRevision,
+                    clientId)
+                is not { } graphs)
+            {
+                return TransferFailure(
+                    request.Source.Id,
+                    request.Destination.Id,
+                    "The exact source and destination ownership receipts are no longer current.");
+            }
+
+            var sourceBefore = graphs.Source.Snapshot().Workspace;
+            var destinationBefore = graphs.Destination.Snapshot().Workspace;
+            var sourceTab = sourceBefore.Tabs.SingleOrDefault(tab => tab.Id == request.SourceTabId);
+            var destinationTab = destinationBefore.Tabs.SingleOrDefault(
+                tab => tab.Id == request.DestinationTabId);
+            var moved = sourceTab?.Panels.SingleOrDefault(panel => panel.Id == request.PanelId);
+            var sourceAfterTab = request.Source.Tabs.SingleOrDefault(tab => tab.Id == request.SourceTabId);
+            var destinationAfterTab = request.Destination.Tabs.SingleOrDefault(
+                tab => tab.Id == request.DestinationTabId);
+            if (sourceTab is null
+                || destinationTab is null
+                || moved is null
+                || sourceTab.Panels.Count == 1
+                || destinationBefore.Tabs.SelectMany(tab => tab.Panels).Any(
+                    panel => panel.Id == request.PanelId)
+                || sourceAfterTab is null
+                || destinationAfterTab is null
+                || !WorkspaceTitleMatches(sourceBefore, request.Source)
+                || !WorkspaceTitleMatches(destinationBefore, request.Destination)
+                || !WorkspaceExceptTabMatches(
+                    sourceBefore,
+                    request.Source,
+                    request.SourceTabId)
+                || !WorkspaceExceptTabMatches(
+                    destinationBefore,
+                    request.Destination,
+                    request.DestinationTabId)
+                || !TabWithoutPanelMatches(sourceTab, sourceAfterTab, request.PanelId)
+                || !TabWithAddedPanelMatches(destinationTab, destinationAfterTab, moved))
+            {
+                return InvalidTransfer(
+                    graphs,
+                    "A panel transfer must move exactly one unchanged panel and leave every other topology unchanged.");
+            }
+
+            var ownership = liveSessions
+                .Where(session =>
+                    session.Descriptor.Owner.WorkspaceId == sourceBefore.Id
+                    && session.Descriptor.Owner.TabId == request.SourceTabId
+                    && session.Descriptor.Owner.PanelId == request.PanelId)
+                .Select(session =>
+                {
+                    var source = session.Descriptor.Owner;
+                    var destination = source with
+                    {
+                        WindowId = request.DestinationWindowId,
+                        WorkspaceId = request.Destination.Id,
+                        TabId = request.DestinationTabId,
+                    };
+                    return new SessionOwnershipTransferReceipt(
+                        session.Descriptor.Id,
+                        source,
+                        destination);
+                })
+                .ToArray();
+
+            return CommitTransfer(
+                graphs,
+                request.Source,
+                request.Destination,
+                request.SourceTabId,
+                request.PanelId,
+                ownership);
+        }
+    }
+
     public HostResult<WorkspaceGraphSnapshot>? ValidateSessionOwner(
         SessionOwner owner,
         PanelKind kind,
@@ -473,6 +643,158 @@ internal sealed class WorkspaceGraphRegistry
         _clientByWindow.Remove(windowId);
         return removed;
     }
+
+    private TransferGraphs? ResolveTransferGraphs(
+        WindowInstanceId sourceWindowId,
+        WorkspaceInstanceId sourceWorkspaceId,
+        long expectedSourceRevision,
+        WindowInstanceId destinationWindowId,
+        WorkspaceInstanceId destinationWorkspaceId,
+        long expectedDestinationRevision,
+        ClientId clientId)
+    {
+        if (!_workspaces.TryGetValue(sourceWorkspaceId, out var source)
+            || !_workspaces.TryGetValue(destinationWorkspaceId, out var destination)
+            || source == destination
+            || source.WindowId != sourceWindowId
+            || destination.WindowId != destinationWindowId
+            || source.Revision != expectedSourceRevision
+            || destination.Revision != expectedDestinationRevision
+            || !_clientByWindow.TryGetValue(sourceWindowId, out var sourceClient)
+            || !_clientByWindow.TryGetValue(destinationWindowId, out var destinationClient)
+            || sourceClient != clientId
+            || destinationClient != clientId)
+        {
+            return null;
+        }
+
+        return new TransferGraphs(source, destination);
+    }
+
+    private HostResult<WorkspaceGraphTransferReceipt> CommitTransfer(
+        TransferGraphs graphs,
+        WorkspaceInstance source,
+        WorkspaceInstance destination,
+        TabInstanceId tabId,
+        PanelInstanceId? panelId,
+        IReadOnlyList<SessionOwnershipTransferReceipt> ownership)
+    {
+        var sourceReceipt = graphs.Source.CommitTransfer(source, tabId, panelId);
+        var destinationReceipt = graphs.Destination.CommitTransfer(destination, tabId, panelId);
+        var receipt = new WorkspaceGraphTransferReceipt(
+            Guid.NewGuid(),
+            sourceReceipt,
+            destinationReceipt,
+            tabId,
+            panelId,
+            ownership);
+        return HostResult<WorkspaceGraphTransferReceipt>.Succeed(
+            receipt,
+            Math.Max(sourceReceipt.Revision, destinationReceipt.Revision));
+    }
+
+    private HostResult<WorkspaceGraphTransferReceipt> TransferFailure(
+        WorkspaceInstanceId sourceId,
+        WorkspaceInstanceId destinationId,
+        string message)
+    {
+        var sourceRevision = _workspaces.TryGetValue(sourceId, out var source)
+            ? source.Revision
+            : 0;
+        var destinationRevision = _workspaces.TryGetValue(destinationId, out var destination)
+            ? destination.Revision
+            : 0;
+        return HostResult<WorkspaceGraphTransferReceipt>.Fail(
+            HostError.Create(HostErrorCode.RevisionConflict, message),
+            Math.Max(sourceRevision, destinationRevision));
+    }
+
+    private static HostResult<WorkspaceGraphTransferReceipt> InvalidTransfer(
+        TransferGraphs graphs,
+        string message) =>
+        HostResult<WorkspaceGraphTransferReceipt>.Fail(
+            HostError.Create(HostErrorCode.InvalidRequest, message),
+            Math.Max(graphs.Source.Revision, graphs.Destination.Revision));
+
+    private static bool WorkspaceTitleMatches(
+        WorkspaceInstance expected,
+        WorkspaceInstance actual) =>
+        string.Equals(expected.Title, actual.Title, StringComparison.Ordinal);
+
+    private static bool WorkspaceExceptTabMatches(
+        WorkspaceInstance before,
+        WorkspaceInstance after,
+        TabInstanceId changedTabId) =>
+        before.Tabs.Select(tab => tab.Id).SequenceEqual(after.Tabs.Select(tab => tab.Id))
+        && before.Tabs
+            .Where(tab => tab.Id != changedTabId)
+            .All(tab => TabEquivalent(
+                tab,
+                after.Tabs.SingleOrDefault(candidate => candidate.Id == tab.Id)));
+
+    private static bool TabWithoutPanelMatches(
+        TabInstance before,
+        TabInstance after,
+        PanelInstanceId removedPanelId) =>
+        before.Id == after.Id
+        && string.Equals(before.Title, after.Title, StringComparison.Ordinal)
+        && SequenceEqual(
+            after.Panels,
+            before.Panels.Where(panel => panel.Id != removedPanelId),
+            PanelEquivalent);
+
+    private static bool TabWithAddedPanelMatches(
+        TabInstance before,
+        TabInstance after,
+        PanelInstance moved) =>
+        before.Id == after.Id
+        && string.Equals(before.Title, after.Title, StringComparison.Ordinal)
+        && PanelEquivalent(
+            moved,
+            after.Panels.SingleOrDefault(panel => panel.Id == moved.Id))
+        && SequenceEqual(
+            after.Panels.Where(panel => panel.Id != moved.Id),
+            before.Panels,
+            PanelEquivalent);
+
+    private static bool TabEquivalent(TabInstance? left, TabInstance? right) =>
+        left is not null
+        && right is not null
+        && left.Id == right.Id
+        && string.Equals(left.Title, right.Title, StringComparison.Ordinal)
+        && left.ActivePanelId == right.ActivePanelId
+        && SequenceEqual(left.Panels, right.Panels, PanelEquivalent);
+
+    private static bool PanelEquivalent(PanelInstance? left, PanelInstance? right) =>
+        left is not null
+        && right is not null
+        && left.Id == right.Id
+        && left.Kind == right.Kind
+        && string.Equals(left.Title, right.Title, StringComparison.Ordinal)
+        && left.SessionId == right.SessionId;
+
+    private static bool SequenceEqual<T>(
+        IEnumerable<T> left,
+        IEnumerable<T> right,
+        Func<T, T, bool> equivalent)
+    {
+        using var leftItems = left.GetEnumerator();
+        using var rightItems = right.GetEnumerator();
+        while (leftItems.MoveNext())
+        {
+            if (!rightItems.MoveNext()
+                || !equivalent(leftItems.Current, rightItems.Current))
+            {
+                return false;
+            }
+        }
+
+        return !rightItems.MoveNext();
+    }
+
+    private sealed record TransferGraphs(
+        HostedWorkspaceGraph Source,
+        HostedWorkspaceGraph Destination);
 
     private static bool TryReconcileSessionLinks(
         WindowInstanceId windowId,

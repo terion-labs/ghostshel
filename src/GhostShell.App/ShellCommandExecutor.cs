@@ -174,6 +174,18 @@ internal sealed class ShellCommandExecutor(
                 _ = await viewModel.MoveActiveTabAsync(action.TabOffset!.Value, lifetime);
                 presentation.FocusActivePanel();
                 return;
+            case ApplicationCommandActionKind.MoveTabToWorkspace:
+                _ = await viewModel.MoveActiveTabToWorkspaceAsync(
+                    action.WorkspacePosition!.Value,
+                    lifetime);
+                presentation.FocusActivePanel();
+                return;
+            case ApplicationCommandActionKind.MovePanelToWorkspace:
+                _ = await viewModel.MoveActivePanelToWorkspaceAsync(
+                    action.WorkspacePosition!.Value,
+                    lifetime);
+                presentation.FocusActivePanel();
+                return;
             case ApplicationCommandActionKind.SelectRelativeTab:
                 _ = await viewModel.SelectRelativeTabAsync(
                     action.TabOffset!.Value,

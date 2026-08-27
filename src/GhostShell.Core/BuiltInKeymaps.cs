@@ -98,12 +98,25 @@ public static class BuiltInKeymaps
         for (var position = 0; position < 9; position++)
         {
             var key = (position + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var argument = position.ToString(System.Globalization.CultureInfo.InvariantCulture);
             bindings.Add(Direct(
                 BuiltInCommands.SelectWorkspace,
                 key,
                 KeyModifiers.Meta,
                 CommandContext.Window,
-                ("position", position.ToString(System.Globalization.CultureInfo.InvariantCulture))));
+                ("position", argument)));
+            bindings.Add(Direct(
+                BuiltInCommands.MoveTabToWorkspace,
+                key,
+                KeyModifiers.Meta | KeyModifiers.Shift,
+                CommandContext.Tab,
+                ("position", argument)));
+            bindings.Add(Direct(
+                BuiltInCommands.MovePanelToWorkspace,
+                key,
+                KeyModifiers.Meta | KeyModifiers.Alt,
+                CommandContext.Panel,
+                ("position", argument)));
         }
 
         return new KeymapProfile(

@@ -1494,8 +1494,17 @@ submits one exact expected-revision graph proposal and changes the visible
 order only after an exact host receipt; stale, rejected, cancelled, invalid,
 boundary, and no-op moves leave both order and revision unchanged. Reordering
 preserves tab, panel, session, active-tab, and active-panel identities, and
-queues recovery only after acceptance. Cross-window and cross-workspace tab or
-panel transfer is intentionally not claimed by this slice.
+queues recovery only after acceptance. Cross-workspace and cross-window
+transfers use a separate two-graph host transaction: the request carries both
+exact owner windows, both expected revisions, and both complete proposed
+graphs, while the receipt advances both graphs under one host gate and lists
+every changed live-session owner. Rejection or cancellation commits neither
+graph. The desktop moves the existing tab or panel object only after validating
+that receipt, reflows a moved panel through the destination layout's minimum
+size rules, and queues recovery only for accepted topology. Open-workspace Move
+commands have direct keyboard bindings and publish a polite live-region
+announcement. The same typed host operation accepts distinct source and
+destination windows when both are owned by the authenticated client.
 
 The current repository gate discovers 3,469 cases: 3,468 pass and the one
 native-vault case is intentionally skipped unless explicitly enabled. This
@@ -1569,9 +1578,8 @@ instead of being reinterpreted. Successful startup recovery registers before
 panel startup, records the already prepared recent-session identities, and
 resumes the graph watch from its accepted cursor. Saved-workspace and
 recent-session activation remain deliberate workspace-replacement flows.
-Cross-window or cross-workspace transfer, saved-screen-template agent
-targeting, and named-host accessibility or visual acceptance are not claimed
-by this slice.
+Saved-screen-template agent targeting and named-host accessibility or visual
+acceptance are not claimed by this slice.
 
 Runner 1.1/catalog 1.1 removes the obsolete forced macOS text-scale block:
 its fixed instructions require the production Appearance setting at 200% or

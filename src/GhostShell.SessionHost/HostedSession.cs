@@ -113,7 +113,7 @@ internal sealed class HostedSession
 
     public IPanelSession Engine { get; }
 
-    public SessionOwner Owner { get; }
+    public SessionOwner Owner { get; private set; }
 
     public PanelSessionRole Role { get; }
 
@@ -127,6 +127,26 @@ internal sealed class HostedSession
         {
             ExpireLeaseIfNeeded();
             return SnapshotUnsafe();
+        }
+    }
+
+    public void TransferOwner(SessionOwner expectedSource, SessionOwner destination)
+    {
+        ArgumentNullException.ThrowIfNull(expectedSource);
+        ArgumentNullException.ThrowIfNull(destination);
+        lock (_gate)
+        {
+            if (Owner != expectedSource)
+            {
+                throw new InvalidOperationException(
+                    "The live session owner changed before the graph transfer committed.");
+            }
+
+            Owner = destination;
+            _descriptor = _descriptor with { Owner = destination };
+            AppendEventUnsafe(
+                SessionEventKind.StateChanged,
+                "Session ownership transferred without recreating the session.");
         }
     }
 

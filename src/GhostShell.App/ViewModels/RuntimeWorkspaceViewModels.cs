@@ -1090,7 +1090,13 @@ public sealed class RuntimeTabViewModel : ObservableObject, IRuntimeTabStripItem
         return true;
     }
 
-    public bool RemovePanel(PanelInstanceId panelId)
+    public bool RemovePanel(PanelInstanceId panelId) =>
+        RemovePanelCore(panelId, dispose: true);
+
+    internal bool TakePanelForTransfer(PanelInstanceId panelId) =>
+        RemovePanelCore(panelId, dispose: false);
+
+    private bool RemovePanelCore(PanelInstanceId panelId, bool dispose)
     {
         var panel = Panels.SingleOrDefault(item => item.Id == panelId);
         if (panel is null)
@@ -1105,6 +1111,11 @@ public sealed class RuntimeTabViewModel : ObservableObject, IRuntimeTabStripItem
             is { } floatingPanel)
         {
             FloatingPanels.Remove(floatingPanel);
+            if (!dispose && !_dockLayout.Reattach(floatingPanel.Document))
+            {
+                FloatingPanels.Add(floatingPanel);
+                return false;
+            }
         }
 
         if (ZoomedPanelId == panelId)
@@ -1118,7 +1129,10 @@ public sealed class RuntimeTabViewModel : ObservableObject, IRuntimeTabStripItem
         var vacatedBottom = vacatedTop + Math.Max(1, panel.LayoutRowSpan);
         CollapseRuntimeSplit(panel);
         _dockLayout.Remove(panelId);
-        panel.Dispose();
+        if (dispose)
+        {
+            panel.Dispose();
+        }
         Panels.RemoveAt(removedIndex);
         if (wasActive)
         {

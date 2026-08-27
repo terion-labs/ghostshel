@@ -163,6 +163,35 @@ internal sealed class HostedWorkspaceGraph
         }
     }
 
+    public WorkspaceGraphSnapshot CommitTransfer(
+        WorkspaceInstance workspace,
+        TabInstanceId tabId,
+        PanelInstanceId? panelId)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+        lock (_gate)
+        {
+            if (_removed)
+            {
+                throw new InvalidOperationException(
+                    "A removed workspace graph cannot accept a transfer commit.");
+            }
+
+            if (workspace.Id != _workspace.Id)
+            {
+                throw new InvalidOperationException(
+                    "A transfer commit must preserve the workspace identity.");
+            }
+
+            _workspace = new WorkspaceInstance(workspace);
+            AppendEventUnsafe(
+                WorkspaceGraphEventKind.TransferCommitted,
+                tabId,
+                panelId);
+            return SnapshotUnsafe();
+        }
+    }
+
     public HostResult<WorkspaceGraphSnapshot> ValidateSessionOwner(
         TabInstanceId tabId,
         PanelInstanceId panelId,
