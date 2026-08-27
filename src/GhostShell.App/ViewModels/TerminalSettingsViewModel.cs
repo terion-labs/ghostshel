@@ -37,13 +37,18 @@ public sealed class TerminalSettingsViewModel : ObservableObject, IDisposable
     public TerminalProfile? ActiveTerminalProfile =>
         _snapshot.TerminalProfiles.FirstOrDefault()?.Value;
 
-    public void ApplyCatalog(DefinitionCatalogSnapshot snapshot)
+    public void ApplyCatalog(
+        DefinitionCatalogSnapshot snapshot,
+        bool preserveTerminalDraft = false)
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(snapshot);
         var previousActive = ActiveTerminalProfile;
         _snapshot = snapshot;
-        ApplyTerminalProfile(snapshot);
+        if (!preserveTerminalDraft)
+        {
+            ApplyTerminalProfile(snapshot);
+        }
         ApplyQuickTerminalSettings(snapshot);
         if (previousActive != ActiveTerminalProfile)
         {
@@ -51,8 +56,17 @@ public sealed class TerminalSettingsViewModel : ObservableObject, IDisposable
         }
     }
 
+    public void DiscardTerminalDraft()
+    {
+        ThrowIfDisposed();
+        TerminalEditor = null;
+        ApplyTerminalProfile(_snapshot);
+    }
+
     public async ValueTask<DefinitionStoreResult<StoredDefinition<TerminalProfile>>>
-        SaveTerminalProfileAsync(CancellationToken cancellationToken)
+        SaveTerminalProfileAsync(
+            CancellationToken cancellationToken,
+            long? expectedRevisionOverride = null)
     {
         ThrowIfDisposed();
         if (TerminalEditor is null)
@@ -73,20 +87,25 @@ public sealed class TerminalSettingsViewModel : ObservableObject, IDisposable
 
         // A no-op save must not publish a catalog change. Rebinding the editor
         // after that notification looks like another fresh edit to the view.
-        if (ActiveTerminalProfile is { } stored
+        var expectedRevision = expectedRevisionOverride ?? request.ExpectedRevision;
+        var activeStored = _snapshot.TerminalProfiles
+            .FirstOrDefault(item => item.Value.Id == request.Profile.Id);
+        if (activeStored is not null
+            && activeStored.Revision == expectedRevision
+            && ActiveTerminalProfile is { } stored
             && stored.RepresentsSameAs(request.Profile))
         {
             return DefinitionStoreResult<StoredDefinition<TerminalProfile>>.Success(
                 new StoredDefinition<TerminalProfile>(
                     stored,
-                    request.ExpectedRevision,
+                    expectedRevision,
                     DateTimeOffset.UnixEpoch,
                     DateTimeOffset.UnixEpoch));
         }
 
         return await _catalog.SaveTerminalProfileAsync(
             request.Profile,
-            request.ExpectedRevision,
+            expectedRevision,
             cancellationToken);
     }
 

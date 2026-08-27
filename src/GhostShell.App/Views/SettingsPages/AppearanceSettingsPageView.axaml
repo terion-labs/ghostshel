@@ -110,11 +110,14 @@
 
     <!-- Terminal palette -->
     <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
-      <Grid ColumnDefinitions="*,Auto">
+      <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
         <components:SectionHeader
             Heading="Terminal palette"
             Description="Pick a preset or start from a custom palette." />
-        <controls:StatusChip Shape="Rounded" Tone="Default" IsOutlined="False" Grid.Column="1" VerticalAlignment="Center" Content="{Binding TerminalSettingsEditor.PaletteName}" />
+        <Button Grid.Column="1" Click="OnResetTerminalPaletteClick" Content="Reset" />
+        <Button Grid.Column="2" Click="OnCancelTerminalClick" Content="Cancel" />
+        <Button Grid.Column="3" Classes="PrimaryButton" Click="OnApplyTerminalClick" Content="Apply terminal" />
+        <controls:StatusChip Shape="Rounded" Tone="Default" IsOutlined="False" Grid.Column="4" VerticalAlignment="Center" Content="{Binding TerminalSettingsEditor.PaletteName}" />
       </Grid>
       <ItemsControl x:Name="TerminalPalettePresets" ItemsSource="{Binding TerminalSettingsEditor.PalettePresets}">
         <ItemsControl.ItemsPanel><ItemsPanelTemplate><controls:CardGridPanel MinItemWidth="168" Spacing="{DynamicResource ShellSpaceMd}" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
@@ -125,7 +128,7 @@
                 Classes="PresetCard"
                 GroupName="TerminalPalette"
                 Click="OnSelectTerminalPaletteClick"
-                IsCheckedChanged="OnAppearanceChanged"
+                IsCheckedChanged="OnTerminalAppearanceChanged"
                 IsChecked="{Binding IsSelected, Mode=OneWay}"
                 AutomationProperties.Name="{Binding Name, StringFormat=Use the {0} palette}">
               <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
@@ -164,7 +167,7 @@
                 Label="Background">
               <TextBox
                   Text="{Binding TerminalSettingsEditor.Background}"
-                  LostFocus="OnAppearanceChanged"
+                  LostFocus="OnTerminalAppearanceChanged"
                   KeyDown="OnCommitKeyDown"
                   AutomationProperties.Name="Terminal background color" />
 
@@ -192,7 +195,7 @@
                 Label="Foreground">
               <TextBox
                   Text="{Binding TerminalSettingsEditor.Foreground}"
-                  LostFocus="OnAppearanceChanged"
+                  LostFocus="OnTerminalAppearanceChanged"
                   KeyDown="OnCommitKeyDown"
                   AutomationProperties.Name="Terminal foreground color" />
 
@@ -220,7 +223,7 @@
                 Label="Cursor">
               <TextBox
                   Text="{Binding TerminalSettingsEditor.Cursor}"
-                  LostFocus="OnAppearanceChanged"
+                  LostFocus="OnTerminalAppearanceChanged"
                   KeyDown="OnCommitKeyDown"
                   AutomationProperties.Name="Terminal cursor color" />
 
@@ -248,7 +251,7 @@
                 Label="Selection">
               <TextBox
                   Text="{Binding TerminalSettingsEditor.Selection}"
-                  LostFocus="OnAppearanceChanged"
+                  LostFocus="OnTerminalAppearanceChanged"
                   KeyDown="OnCommitKeyDown"
                   AutomationProperties.Name="Terminal selection color" />
 
@@ -266,6 +269,13 @@
           </Grid>
         </controls:SurfaceCard>
       </Grid>
+      <TextBlock
+          Classes="Muted"
+          AutomationProperties.Name="Terminal contrast status"
+          AutomationProperties.LiveSetting="Polite"
+          IsVisible="{Binding TerminalSettingsEditor.HasContrastWarning}"
+          Text="{Binding TerminalSettingsEditor.ContrastWarning}"
+          TextWrapping="Wrap" />
     </StackPanel>
 
     <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
@@ -344,7 +354,7 @@
             <ComboBox
                 ItemsSource="{Binding TerminalSettingsEditor.FontFamilies}"
                 SelectedItem="{Binding TerminalSettingsEditor.FontFamily, Mode=TwoWay}"
-                SelectionChanged="OnAppearanceChanged"
+                SelectionChanged="OnTerminalAppearanceChanged"
                 AutomationProperties.Name="Terminal font family" />
 
           </controls:LabeledField>
@@ -358,7 +368,7 @@
                 Increment="1"
                 FormatString="0"
                 Value="{Binding TerminalSettingsEditor.FontSize, Mode=TwoWay}"
-                ValueChanged="OnAppearanceChanged"
+                ValueChanged="OnTerminalAppearanceChanged"
                 AutomationProperties.Name="Terminal font size" />
 
           </controls:LabeledField>
@@ -386,7 +396,7 @@
                 TickFrequency="0.01"
                 IsSnapToTickEnabled="True"
                 Value="{Binding TerminalSettingsEditor.LineHeight, Mode=TwoWay}"
-                ValueChanged="OnAppearanceChanged"
+                ValueChanged="OnTerminalAppearanceChanged"
                 AutomationProperties.Name="Terminal line height" />
           </StackPanel>
         </controls:SurfaceCard>
@@ -503,14 +513,14 @@
           <ToggleSwitch x:Name="ShowTabBarSwitch" IsCheckedChanged="OnAppearanceChanged" AutomationProperties.Name="Show tab bar" />
         </controls:SettingRow>
         <controls:SettingRow Label="Blink cursor">
-          <ToggleSwitch IsChecked="{Binding TerminalSettingsEditor.CursorBlink}" IsCheckedChanged="OnAppearanceChanged" AutomationProperties.Name="Blink cursor" />
+          <ToggleSwitch IsChecked="{Binding TerminalSettingsEditor.CursorBlink}" IsCheckedChanged="OnTerminalAppearanceChanged" AutomationProperties.Name="Blink cursor" />
         </controls:SettingRow>
       </controls:SettingsGroup>
       <Grid ColumnDefinitions="*,*,*" ColumnSpacing="{DynamicResource ShellSpaceMd}">
         <controls:SurfaceCard Tone="Raised">
           <controls:LabeledField
               Label="Cursor shape">
-            <ComboBox ItemsSource="{Binding TerminalSettingsEditor.CursorStyles}" SelectedItem="{Binding TerminalSettingsEditor.CursorStyle}" SelectionChanged="OnAppearanceChanged" AutomationProperties.Name="Cursor shape" />
+            <ComboBox ItemsSource="{Binding TerminalSettingsEditor.CursorStyles}" SelectedItem="{Binding TerminalSettingsEditor.CursorStyle}" SelectionChanged="OnTerminalAppearanceChanged" AutomationProperties.Name="Cursor shape" />
 
           </controls:LabeledField>
         </controls:SurfaceCard>
@@ -687,15 +697,27 @@
           <TextBlock Text="{Binding ThemeMode, StringFormat={}Mode: {0}}" />
           <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ThemeProfile, StringFormat={}Platform: {0}}" />
           <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ThemeTextScale, StringFormat={}Text size: {0}}" />
-          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{DynamicResource ShellAppearanceStatus}" />
-          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{DynamicResource ShellAccentStatus}" />
+          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{DynamicResource ShellAppearanceStatus}" AutomationProperties.Name="Effective appearance status" AutomationProperties.LiveSetting="Polite" />
+          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{DynamicResource ShellAccentStatus}" AutomationProperties.Name="Effective accent status" AutomationProperties.LiveSetting="Polite" />
+          <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{DynamicResource ShellMaterialStatus}" AutomationProperties.Name="Effective material status" AutomationProperties.LiveSetting="Polite" />
         </StackPanel>
-        <TextBlock
-            Grid.Column="1"
-            VerticalAlignment="Center"
-            Classes="Muted"
-            FontSize="{DynamicResource ShellFontSize11}"
-            Text="Changes apply and save as you make them." />
+        <StackPanel Grid.Column="1" HorizontalAlignment="Right" Spacing="{DynamicResource ShellSpaceSm}">
+          <TextBlock
+              x:Name="AppearanceValidationStatus"
+              AutomationProperties.Name="Appearance validation status"
+              AutomationProperties.LiveSetting="Polite"
+              HorizontalAlignment="Right"
+              Classes="Muted"
+              FontSize="{DynamicResource ShellFontSize11}"
+              IsVisible="False" />
+          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+            <Button Click="OnImportClick" Content="Import…" />
+            <Button Click="OnExportClick" Content="Export…" />
+            <Button Click="OnResetClick" Content="Reset app defaults" />
+            <Button Click="OnCancelClick" Content="Cancel app" />
+            <Button Classes="PrimaryButton" Click="OnApplyClick" Content="Apply app" />
+          </StackPanel>
+        </StackPanel>
       </Grid>
     </controls:SurfaceCard>
   </StackPanel>

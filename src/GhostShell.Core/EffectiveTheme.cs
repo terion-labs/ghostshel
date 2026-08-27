@@ -13,6 +13,15 @@ public enum AccentSource
     GhostShellFallback,
 }
 
+public enum MaterialDisposition
+{
+    Enabled,
+    NotRequested,
+    DisabledByHighContrast,
+    DisabledByReducedTransparency,
+    UnsupportedByHost,
+}
+
 public sealed record EffectiveTheme(
     EffectiveAppearanceMode Appearance,
     PlatformProfile PlatformProfile,
@@ -26,4 +35,6 @@ public sealed record EffectiveTheme(
     bool ShowTabBar = true,
     bool ShowWorkspacesPanel = true,
     TabStripPlacement TabStripPlacement = TabStripPlacement.Top,
-    WorkspacePanelPlacement WorkspacePanelPlacement = WorkspacePanelPlacement.Left);
+    WorkspacePanelPlacement WorkspacePanelPlacement = WorkspacePanelPlacement.Left,
+    MaterialDisposition MaterialDisposition = MaterialDisposition.Enabled,
+    PlatformProfile RequestedPlatformProfile = PlatformProfile.Automatic);

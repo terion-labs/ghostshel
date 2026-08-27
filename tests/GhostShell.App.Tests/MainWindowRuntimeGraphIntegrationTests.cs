@@ -3850,6 +3850,120 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     }
 
     [Fact]
+    public async Task Terminal_preview_and_cancel_refresh_inactive_open_workspaces()
+    {
+        var saved = new TerminalProfile(
+            new TerminalProfileId("builtin.terminal.default"),
+            "Saved terminal",
+            "JetBrains Mono",
+            14,
+            1.2,
+            TerminalCursorStyle.Block,
+            cursorBlink: true,
+            10_000,
+            TerminalPalette.GhostShellDark,
+            BuiltInKeymaps.LinuxTerminalId);
+        var preview = new TerminalProfile(
+            saved.Id,
+            saved.Name,
+            saved.FontFamily,
+            19,
+            saved.LineHeight,
+            TerminalCursorStyle.Underline,
+            saved.CursorBlink,
+            saved.ScrollbackLines,
+            TerminalPalette.Nord,
+            saved.KeymapId);
+        var snapshot = CreateCatalogSnapshot() with
+        {
+            TerminalProfiles = [Store(saved)],
+            Themes = [Store(ThemePreference.Default)],
+        };
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, snapshot);
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        Assert.True(await viewModel.OpenWorkspaceAsync(SecondWorkspaceId));
+
+        Assert.True(viewModel.PreviewTerminalAppearance(preview));
+        var terminals = viewModel.OpenWorkspaces
+            .SelectMany(workspace => workspace.Tabs)
+            .SelectMany(tab => tab.Panels)
+            .OfType<TerminalRuntimePanelViewModel>()
+            .ToArray();
+        Assert.Equal(2, terminals.Length);
+        Assert.All(terminals, terminal =>
+            Assert.Equal(19, Assert.IsType<TerminalRenderProfileSnapshot>(terminal.RenderProfile).FontSize));
+
+        viewModel.CancelTerminalAppearanceDraft();
+
+        Assert.All(terminals, terminal =>
+            Assert.Equal(14, Assert.IsType<TerminalRenderProfileSnapshot>(terminal.RenderProfile).FontSize));
+    }
+
+    [Fact]
+    public void Appearance_route_has_one_window_owner_and_navigation_or_dispose_releases_it()
+    {
+        var savedTerminal = new TerminalProfile(
+            new TerminalProfileId("builtin.terminal.default"),
+            "Saved terminal",
+            "JetBrains Mono",
+            14,
+            1.2,
+            TerminalCursorStyle.Block,
+            cursorBlink: true,
+            10_000,
+            TerminalPalette.GhostShellDark,
+            BuiltInKeymaps.LinuxTerminalId);
+        var snapshot = CreateCatalogSnapshot() with
+        {
+            TerminalProfiles = [Store(savedTerminal)],
+            Themes = [Store(ThemePreference.Default)],
+        };
+        var coordinator = new AppearancePreviewCoordinator();
+        var (firstClient, _) = CreateSessionClient();
+        var (secondClient, _) = CreateSessionClient();
+        using var first = CreateViewModel(
+            firstClient,
+            snapshot,
+            appearancePreview: coordinator);
+        using var second = CreateViewModel(
+            secondClient,
+            snapshot,
+            appearancePreview: coordinator);
+
+        first.ShowSettings(SettingsPage.Appearance);
+        second.ShowSettings(SettingsPage.Appearance);
+
+        Assert.Equal(first.WindowId.Value, coordinator.Current.OwnerId);
+        Assert.Contains("another window", second.AppearancePreviewStatus, StringComparison.Ordinal);
+
+        first.ShowSettings(SettingsPage.Terminal);
+        second.ShowSettings(SettingsPage.Terminal);
+        second.ShowSettings(SettingsPage.Appearance);
+        Assert.Equal(second.WindowId.Value, coordinator.Current.OwnerId);
+
+        second.Dispose();
+        Assert.True(coordinator.Current.IsEmpty);
+    }
+
+    [Fact]
+    public void Disposed_window_cannot_reacquire_the_process_appearance_preview()
+    {
+        var coordinator = new AppearancePreviewCoordinator();
+        var (client, _) = CreateSessionClient();
+        var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            appearancePreview: coordinator);
+
+        viewModel.Dispose();
+
+        Assert.False(viewModel.BeginAppearanceEditing());
+        viewModel.ReleaseAppearanceEditing();
+        Assert.True(coordinator.Current.IsEmpty);
+    }
+
+    [Fact]
     public async Task Shutdown_quiescence_cancels_a_graph_item_waiting_for_ui_dispatch()
     {
         var (client, recorder) = CreateSessionClient();
@@ -3967,6 +4081,36 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         var graphTab = Assert.Single(registration.Request.Workspace.Tabs);
         Assert.Equal(request.Owner.TabId, graphTab.Id);
         Assert.Equal(request.Owner.PanelId, Assert.Single(graphTab.Panels).Id);
+    }
+
+    [Fact]
+    public async Task Quick_terminal_render_preview_does_not_replace_its_session_request()
+    {
+        var snapshot = CreateCatalogSnapshot();
+        var (client, _) = CreateSessionClient();
+        using var mainWindow = CreateViewModel(client, snapshot);
+        using var quickTerminal = new QuickTerminalViewModel(
+            mainWindow,
+            CreateFixedCatalog(snapshot),
+            new SuccessfulConnectionRuntime());
+        await quickTerminal.Initialization;
+        var request = Assert.IsType<EnsureTerminalSessionRequest>(quickTerminal.TerminalRequest);
+        var preview = new TerminalRenderProfileSnapshot(
+            16,
+            TerminalCursorStyle.Bar,
+            cursorBlink: false,
+            20_000,
+            TerminalPalette.Nord);
+
+        quickTerminal.PreviewRenderProfile(preview);
+
+        Assert.Same(request, quickTerminal.TerminalRequest);
+        Assert.Same(preview, quickTerminal.RenderProfile);
+
+        quickTerminal.PreviewRenderProfile(null);
+
+        Assert.Same(request, quickTerminal.TerminalRequest);
+        Assert.Null(quickTerminal.RenderProfile);
     }
 
     [Fact]
@@ -5391,7 +5535,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         AgentPolicyCoordinator? agentPolicyCoordinator = null,
         IBrowserProfilePreferences? browserProfilePreferences = null,
         IGitRepositoryClient? gitRepositoryClient = null,
-        ISecretVault? secretVault = null) =>
+        ISecretVault? secretVault = null,
+        AppearancePreviewCoordinator? appearancePreview = null) =>
         CreateViewModel(
             sessionClient,
             CreateFixedCatalog(snapshot),
@@ -5411,7 +5556,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             agentPolicyCoordinator,
             browserProfilePreferences,
             gitRepositoryClient,
-            secretVault);
+            secretVault,
+            appearancePreview);
 
     private static MainWindowViewModel CreateViewModel(
         ISessionHostClient sessionClient,
@@ -5432,7 +5578,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         AgentPolicyCoordinator? agentPolicyCoordinator = null,
         IBrowserProfilePreferences? browserProfilePreferences = null,
         IGitRepositoryClient? gitRepositoryClient = null,
-        ISecretVault? secretVault = null)
+        ISecretVault? secretVault = null,
+        AppearancePreviewCoordinator? appearancePreview = null)
     {
         var files = new EmptyFileClients();
         agentPolicyCoordinator ??= CreateConfiguredPolicyCoordinator(aiProfiles);
@@ -5456,7 +5603,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             agentRuntimeFactory: agentRuntimeFactory,
             agentPolicyCoordinator: agentPolicyCoordinator,
             browserProfilePreferences: browserProfilePreferences,
-            gitRepositoryClient: gitRepositoryClient);
+            gitRepositoryClient: gitRepositoryClient,
+            appearancePreview: appearancePreview);
     }
 
     private static AgentPolicyCoordinator? CreateConfiguredPolicyCoordinator(

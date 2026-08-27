@@ -39,9 +39,36 @@ public sealed class ThemePreferenceTests
         Assert.True(effective.HighContrast);
         Assert.False(effective.MotionEnabled);
         Assert.False(effective.AdvancedMaterialsEnabled);
+        Assert.Equal(
+            MaterialDisposition.DisabledByHighContrast,
+            effective.MaterialDisposition);
         Assert.Equal(1.5, effective.TextScale);
         Assert.Equal(ThemePreference.BronzeFallback, effective.Accent);
         Assert.Equal(AccentSource.GhostShellFallback, effective.AccentSource);
+    }
+
+    [Theory]
+    [InlineData(true, false, true, MaterialDisposition.DisabledByHighContrast)]
+    [InlineData(false, true, true, MaterialDisposition.DisabledByReducedTransparency)]
+    [InlineData(false, false, false, MaterialDisposition.UnsupportedByHost)]
+    public void Material_fallback_reports_the_reason(
+        bool highContrast,
+        bool reducedTransparency,
+        bool supportsMaterials,
+        MaterialDisposition expected)
+    {
+        var host = new HostAppearance(
+            HostOperatingSystem.MacOS,
+            HostColorScheme.Dark,
+            accent: null,
+            highContrast: highContrast,
+            reducedTransparency: reducedTransparency,
+            supportsAdvancedMaterials: supportsMaterials);
+
+        var effective = ThemePreference.Default.Resolve(host);
+
+        Assert.False(effective.AdvancedMaterialsEnabled);
+        Assert.Equal(expected, effective.MaterialDisposition);
     }
 
     [Fact]

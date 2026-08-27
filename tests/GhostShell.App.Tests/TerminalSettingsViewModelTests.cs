@@ -41,6 +41,22 @@ public sealed class TerminalSettingsViewModelTests
     }
 
     [Fact]
+    public void Forced_discard_rebuilds_dirty_fields_even_at_the_same_revision()
+    {
+        var fixture = CreateCatalog(Snapshot());
+        using var viewModel = new TerminalSettingsViewModel(fixture.Catalog);
+        var dirty = Assert.IsType<TerminalProfileEditorViewModel>(viewModel.TerminalEditor);
+        dirty.FontFamily = "Unsaved preview";
+
+        viewModel.DiscardTerminalDraft();
+
+        var restored = Assert.IsType<TerminalProfileEditorViewModel>(viewModel.TerminalEditor);
+        Assert.NotSame(dirty, restored);
+        Assert.Equal("JetBrains Mono", restored.FontFamily);
+        Assert.Equal(TerminalRevision, restored.ExpectedRevision);
+    }
+
+    [Fact]
     public async Task Terminal_save_forwards_the_editor_revision_and_conflict_keeps_the_draft()
     {
         var fixture = CreateCatalog(Snapshot());

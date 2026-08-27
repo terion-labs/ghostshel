@@ -1233,7 +1233,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog, IDisposable
                         WorkspaceDefinition.DefaultWorkspaceId,
                         StringComparison.Ordinal)))
             {
-                return await MigrateLegacyDefaultWorkspaceNameAsync(cancellationToken)
+                return await MigrateLegacyDefaultWorkspaceAsync(cancellationToken)
                     .ConfigureAwait(false);
             }
 
@@ -1243,7 +1243,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog, IDisposable
                         WorkspaceDefinition.CurrentSchemaVersion,
                         WorkspaceDefinition.DefaultWorkspaceName,
                         "Your local GhostSHELL workspace.",
-                        "#B8793A",
+                        null,
                         []),
                     null,
                     cancellationToken)
@@ -1341,26 +1341,44 @@ public sealed class DefinitionCatalog : IDefinitionCatalog, IDisposable
     /// never made a decision at all.
     /// </summary>
     private async ValueTask<DefinitionStoreResult<Unit>>
-        MigrateLegacyDefaultWorkspaceNameAsync(CancellationToken cancellationToken)
+        MigrateLegacyDefaultWorkspaceAsync(CancellationToken cancellationToken)
     {
         var stored = Snapshot.Workspaces.FirstOrDefault(item => string.Equals(item.Value.Id.Value, WorkspaceDefinition.DefaultWorkspaceId, StringComparison.Ordinal));
-        if (stored is null
-            || !string.Equals(
-                stored.Value.Name,
-                WorkspaceDefinition.LegacyDefaultWorkspaceName,
-                StringComparison.Ordinal))
+        if (stored is null)
         {
             return DefinitionStoreResult<Unit>.Success(Unit.Value);
         }
 
         var workspace = stored.Value;
+        var hasLegacyName = string.Equals(
+            workspace.Name,
+            WorkspaceDefinition.LegacyDefaultWorkspaceName,
+            StringComparison.Ordinal);
+        // Older builds could not record accent provenance. The default id/name,
+        // the old bronze value, and the missing explicit marker are the narrow
+        // one-time fingerprint. Unrelated workspace customization must not keep
+        // the accidental seed alive; a bronze selected after this migration is
+        // written with HasExplicitAccent and survives later starts.
+        var hasLegacySeedAccent = !workspace.HasExplicitAccent
+            && IsKnownDefaultWorkspaceSeed(workspace)
+            && string.Equals(
+            workspace.Accent,
+            ThemePreference.BronzeFallback.ToString(),
+            StringComparison.OrdinalIgnoreCase);
+        if (!hasLegacyName && !hasLegacySeedAccent)
+        {
+            return DefinitionStoreResult<Unit>.Success(Unit.Value);
+        }
+
         var saved = await _workspaces.SaveAsync(
                 new WorkspaceDefinition(
                     workspace.Id,
                     workspace.SchemaVersion,
-                    WorkspaceDefinition.DefaultWorkspaceName,
+                    hasLegacyName
+                        ? WorkspaceDefinition.DefaultWorkspaceName
+                        : workspace.Name,
                     workspace.Description,
-                    workspace.Accent,
+                    hasLegacySeedAccent ? null : workspace.Accent,
                     workspace.Entries,
                     workspace.AgentPolicyOverride,
                     workspace.Icon,
@@ -1368,7 +1386,8 @@ public sealed class DefinitionCatalog : IDefinitionCatalog, IDisposable
                     workspace.Color,
                     workspace.AgentPanelPinned,
                     workspace.TerminalMultiplexingOverride,
-                    workspace.BrowserProfileOverride),
+                    workspace.BrowserProfileOverride,
+                    workspace.HasExplicitAccent),
                 stored.Revision,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -1376,6 +1395,20 @@ public sealed class DefinitionCatalog : IDefinitionCatalog, IDisposable
             ? DefinitionStoreResult<Unit>.Success(Unit.Value)
             : DefinitionStoreResult<Unit>.Failure(saved.Error!);
     }
+
+    private static bool IsKnownDefaultWorkspaceSeed(WorkspaceDefinition workspace) =>
+        string.Equals(
+            workspace.Id.Value,
+            WorkspaceDefinition.DefaultWorkspaceId,
+            StringComparison.Ordinal)
+        && (string.Equals(
+                workspace.Name,
+                WorkspaceDefinition.DefaultWorkspaceName,
+                StringComparison.Ordinal)
+            || string.Equals(
+                workspace.Name,
+                WorkspaceDefinition.LegacyDefaultWorkspaceName,
+                StringComparison.Ordinal));
 
     private async ValueTask<DefinitionStoreResult<Unit>>
         MigrateLegacyDefaultTerminalPaletteAsync(CancellationToken cancellationToken)
@@ -1467,7 +1500,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog, IDisposable
             WorkspaceDefinition.CurrentSchemaVersion,
             WorkspaceDefinition.DefaultWorkspaceName,
             "Your local GhostSHELL workspace.",
-            "#B8793A",
+            null,
             [
                 new WorkspaceEntry.ConnectionReference(
                     new WorkspaceEntryId("local-connection"),

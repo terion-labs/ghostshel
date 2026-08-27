@@ -21,7 +21,8 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable, IAge
     private readonly IConnectionRuntime _connectionRuntime;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly SemaphoreSlim _workspaceGraphGate = new(1, 1);
-    private readonly TerminalRenderProfileSnapshot? _renderProfile;
+    private TerminalRenderProfileSnapshot? _renderProfile;
+    private TerminalRenderProfileSnapshot? _previewRenderProfile;
     private readonly TerminalKeymapSnapshot? _keymap;
     private readonly IGovernedAgentRuntime? _ownedAgentRuntime;
     private QuickTerminalTabViewModel? _activeTab;
@@ -263,6 +264,33 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable, IAge
     }
 
     public EnsureTerminalSessionRequest? TerminalRequest => ActiveTab?.TerminalRequest;
+
+    public TerminalRenderProfileSnapshot? RenderProfile =>
+        _previewRenderProfile ?? _renderProfile;
+
+    public void PreviewRenderProfile(TerminalRenderProfileSnapshot? renderProfile)
+    {
+        if (_previewRenderProfile?.RendersSameAs(renderProfile) == true
+            || _previewRenderProfile is null && renderProfile is null)
+        {
+            return;
+        }
+
+        _previewRenderProfile = renderProfile;
+        OnPropertyChanged(nameof(RenderProfile));
+    }
+
+    public void ApplySavedRenderProfile(TerminalRenderProfileSnapshot? renderProfile)
+    {
+        if (_renderProfile?.RendersSameAs(renderProfile) == true
+            || _renderProfile is null && renderProfile is null)
+        {
+            return;
+        }
+
+        _renderProfile = renderProfile;
+        OnPropertyChanged(nameof(RenderProfile));
+    }
 
     public IReadOnlyList<EnsureTerminalSessionRequest> TerminalRequests => [.. Tabs
         .Select(tab => tab.TerminalRequest)

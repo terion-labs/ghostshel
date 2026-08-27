@@ -98,7 +98,10 @@ public sealed partial class QuickTerminalWindow : Window
     /// </summary>
     public void ApplyBackdrop()
     {
-        if (_hostPreferences.ReducedTransparency
+        var hostAllowsMaterials = Avalonia.Application.Current is not App app
+            || app.HostAllowsAdvancedMaterials;
+        if (!hostAllowsMaterials
+            || _hostPreferences.ReducedTransparency
             || !QuickTerminalPresentationPolicy.ShouldUseBlur(
                 _settings,
                 _hostPreferences))
@@ -149,6 +152,8 @@ public sealed partial class QuickTerminalWindow : Window
             IsAgentPanelVisible: true,
             IsAgentPanelDocked: true,
         }
+            && (Avalonia.Application.Current is not App app
+                || app.HostAllowsAdvancedMaterials)
             && !_hostPreferences.ReducedTransparency
             && QuickTerminalPresentationPolicy.ShouldUseBlur(
                 _settings,

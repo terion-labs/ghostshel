@@ -270,9 +270,15 @@ public sealed record ThemePreference : IDurableDefinition
 
         var platformProfile = ResolvePlatformProfile(host);
         var (accent, source) = ResolveAccent(host);
-        var materialsEnabled = host.SupportsAdvancedMaterials
-            && !host.HighContrast
-            && !host.ReducedTransparency;
+        var materialDisposition = !IsTranslucent
+            ? MaterialDisposition.NotRequested
+            : host.HighContrast
+                ? MaterialDisposition.DisabledByHighContrast
+                : host.ReducedTransparency
+                    ? MaterialDisposition.DisabledByReducedTransparency
+                    : !host.SupportsAdvancedMaterials
+                        ? MaterialDisposition.UnsupportedByHost
+                        : MaterialDisposition.Enabled;
 
         // Transparency effects follow the host's own reduced-transparency and
         // high-contrast preferences, so an accessibility setting is never
@@ -284,13 +290,15 @@ public sealed record ThemePreference : IDurableDefinition
             source,
             host.HighContrast,
             !host.ReducedMotion,
-            materialsEnabled,
+            materialDisposition == MaterialDisposition.Enabled,
             TextScaleOverride ?? host.TextScale,
             Density,
             ShowTabBar,
             ShowWorkspacesPanel,
             TabStripPlacement,
-            WorkspacePanelPlacement);
+            WorkspacePanelPlacement,
+            materialDisposition,
+            PlatformProfile);
     }
 
     private PlatformProfile ResolvePlatformProfile(HostAppearance host)

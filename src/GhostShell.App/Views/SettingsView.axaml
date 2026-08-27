@@ -145,8 +145,17 @@
             <settingsPages:AppearanceSettingsPageView
                 x:Name="AppearanceSettingsPage"
                 IsVisible="{Binding IsAppearanceSettingsVisible}"
-                AppearanceChanged="OnAppearanceChangedRequested"
+                ApplicationAppearanceChanged="OnApplicationAppearanceChangedRequested"
+                TerminalAppearanceChanged="OnTerminalAppearanceChangedRequested"
+                ApplyRequested="OnAppearanceApplyRequested"
+                ApplyTerminalRequested="OnAppearanceApplyTerminalRequested"
+                CancelRequested="OnAppearanceCancelRequested"
+                CancelTerminalRequested="OnAppearanceCancelTerminalRequested"
+                ExportRequested="OnAppearanceExportRequested"
+                ImportRequested="OnAppearanceImportRequested"
                 PickColorRequested="OnPickColorRequested"
+                ResetRequested="OnAppearanceResetRequested"
+                ResetTerminalPaletteRequested="OnAppearanceResetTerminalPaletteRequested"
                 SelectTerminalPaletteRequested="OnSelectTerminalPaletteClick" />
 
             <StackPanel Spacing="{DynamicResource ShellSpaceXl}" IsVisible="{Binding IsWorkspaceSettingsVisible}">

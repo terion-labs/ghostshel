@@ -63,6 +63,97 @@ public sealed class AvaloniaHostAppearanceAdapterTests
     }
 
     [Fact]
+    public void Fresh_default_theme_maps_the_current_macos_accent_into_shared_resources()
+    {
+        var hostAccent = Color.FromRgb(0x18, 0x84, 0xF7);
+        var host = AvaloniaHostAppearanceAdapter.Map(
+            PlatformThemeVariant.Dark,
+            ColorContrastPreference.NoPreference,
+            hostAccent,
+            new HostPlatformCapabilities(
+                HostOperatingSystem.MacOS,
+                LinuxDesktopEnvironment.Unknown,
+                SupportsAdvancedMaterials: true,
+                SupportsLiquidGlass: false));
+
+        var effective = ThemePreference.Default.Resolve(host);
+        var resources = EffectiveAppearanceResourceMapper.Map(effective);
+
+        Assert.Equal(AccentSource.Host, effective.AccentSource);
+        Assert.Equal(hostAccent, resources.Accent);
+        Assert.Contains("host accent", resources.AccentStatus, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Explicit_saved_accent_replaces_the_host_accent()
+    {
+        var savedAccent = RgbColor.Parse("#C04080");
+        var preference = new ThemePreference(
+            ThemePreference.Default.Id,
+            ThemePreference.Default.Name,
+            AppearanceMode.System,
+            PlatformProfile.Automatic,
+            AccentPreference.Custom(savedAccent));
+        var host = new HostAppearance(
+            HostOperatingSystem.MacOS,
+            HostColorScheme.Light,
+            RgbColor.Parse("#1884F7"));
+
+        var effective = preference.Resolve(host);
+
+        Assert.Equal(savedAccent, effective.Accent);
+        Assert.Equal(AccentSource.Custom, effective.AccentSource);
+    }
+
+    [Fact]
+    public void Quick_terminal_material_permission_comes_only_from_host_capabilities()
+    {
+        var allowed = new HostAppearance(
+            HostOperatingSystem.MacOS,
+            HostColorScheme.Dark,
+            accent: null,
+            supportsAdvancedMaterials: true);
+        var unsupported = new HostAppearance(
+            HostOperatingSystem.MacOS,
+            HostColorScheme.Dark,
+            accent: null,
+            supportsAdvancedMaterials: false);
+        var highContrast = new HostAppearance(
+            HostOperatingSystem.MacOS,
+            HostColorScheme.Dark,
+            accent: null,
+            highContrast: true,
+            supportsAdvancedMaterials: true);
+        var reduced = new HostAppearance(
+            HostOperatingSystem.MacOS,
+            HostColorScheme.Dark,
+            accent: null,
+            reducedTransparency: true,
+            supportsAdvancedMaterials: true);
+
+        Assert.True(App.AllowsAdvancedMaterials(allowed));
+        Assert.False(App.AllowsAdvancedMaterials(unsupported));
+        Assert.False(App.AllowsAdvancedMaterials(highContrast));
+        Assert.False(App.AllowsAdvancedMaterials(reduced));
+    }
+
+    [Fact]
+    public void Requested_liquid_glass_reports_the_classic_fallback_exactly()
+    {
+        var host = new HostAppearance(
+            HostOperatingSystem.MacOS,
+            HostColorScheme.Dark,
+            accent: null,
+            supportsLiquidGlass: false);
+        var resources = EffectiveAppearanceResourceMapper.Map(
+            ProfilePreference(PlatformProfile.MacOsLiquidGlass).Resolve(host));
+
+        Assert.Equal(
+            "Liquid Glass unavailable; using macOS Classic",
+            resources.AppearanceStatus);
+    }
+
+    [Fact]
     public void Host_accessibility_snapshot_is_merged_with_Avalonia_colors()
     {
         var accessibility = new HostAccessibilityPreferences(

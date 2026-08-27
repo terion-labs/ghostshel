@@ -32,10 +32,12 @@ public sealed partial class AppearanceSettingsPageView : UserControl
     }
 
     /// <summary>
-    /// Raised whenever a control on the page changes. Appearance has no save
-    /// step: the shell persists and applies each change as it is made.
+    /// Raised whenever a control on the page changes. The shell previews the
+    /// draft; persistence is an explicit Apply action.
     /// </summary>
-    public event EventHandler<RoutedEventArgs>? AppearanceChanged;
+    public event EventHandler<RoutedEventArgs>? ApplicationAppearanceChanged;
+
+    public event EventHandler<RoutedEventArgs>? TerminalAppearanceChanged;
 
     public event EventHandler<RoutedEventArgs>? SelectTerminalPaletteRequested;
 
@@ -44,6 +46,62 @@ public sealed partial class AppearanceSettingsPageView : UserControl
     /// owns the window the colour is read from.
     /// </summary>
     public event EventHandler<RoutedEventArgs>? PickColorRequested;
+
+    public event EventHandler<RoutedEventArgs>? ApplyRequested;
+
+    public event EventHandler<RoutedEventArgs>? CancelRequested;
+
+    public event EventHandler<RoutedEventArgs>? ResetRequested;
+
+    public event EventHandler<RoutedEventArgs>? ImportRequested;
+
+    public event EventHandler<RoutedEventArgs>? ExportRequested;
+
+    public event EventHandler<RoutedEventArgs>? ResetTerminalPaletteRequested;
+
+    public event EventHandler<RoutedEventArgs>? ApplyTerminalRequested;
+
+    public event EventHandler<RoutedEventArgs>? CancelTerminalRequested;
+
+    internal void SetValidationStatus(string message, bool isWarning)
+    {
+        AppearanceValidationStatus.Text = message;
+        AppearanceValidationStatus.IsVisible = message.Length > 0;
+        AppearanceValidationStatus.Classes.Set("warning", isWarning);
+    }
+
+    private void OnApplyClick(object? sender, RoutedEventArgs e) =>
+        ApplyRequested?.Invoke(sender, e);
+
+    private void OnCancelClick(object? sender, RoutedEventArgs e) =>
+        CancelRequested?.Invoke(sender, e);
+
+    private void OnResetClick(object? sender, RoutedEventArgs e) =>
+        ResetRequested?.Invoke(sender, e);
+
+    private void OnResetTerminalPaletteClick(object? sender, RoutedEventArgs e)
+        => ResetTerminalPaletteRequested?.Invoke(sender, e);
+
+    private void OnApplyTerminalClick(object? sender, RoutedEventArgs e) =>
+        ApplyTerminalRequested?.Invoke(sender, e);
+
+    private void OnCancelTerminalClick(object? sender, RoutedEventArgs e) =>
+        CancelTerminalRequested?.Invoke(sender, e);
+
+    private void OnImportClick(object? sender, RoutedEventArgs e) =>
+        ImportRequested?.Invoke(sender, e);
+
+    private void OnExportClick(object? sender, RoutedEventArgs e) =>
+        ExportRequested?.Invoke(sender, e);
+
+    internal void ResetApplicationAppearance(ThemePreference defaultTheme)
+    {
+        ArgumentNullException.ThrowIfNull(defaultTheme);
+        ApplyAppearance(
+            defaultTheme,
+            _appearanceTextScaleOptions.First(option => option.Scale is null));
+        ApplicationAppearanceChanged?.Invoke(this, new RoutedEventArgs());
+    }
 
     internal void ConfigureAppearanceControls(
         IReadOnlyList<PlatformProfile> platformProfiles,
@@ -253,7 +311,15 @@ public sealed partial class AppearanceSettingsPageView : UserControl
             return;
         }
 
-        AppearanceChanged?.Invoke(sender, e);
+        ApplicationAppearanceChanged?.Invoke(sender, e);
+    }
+
+    private void OnTerminalAppearanceChanged(object? sender, RoutedEventArgs e)
+    {
+        if (!_isLoading)
+        {
+            TerminalAppearanceChanged?.Invoke(sender, e);
+        }
     }
 
     /// <summary>
@@ -271,8 +337,8 @@ public sealed partial class AppearanceSettingsPageView : UserControl
 
     /// <summary>
     /// Changing the accent source both re-enables the custom colour and is itself
-    /// a change to commit — switching from "Follow host" to the bronze accent has
-    /// to apply live like every other control on this page.
+    /// a change to preview — switching from "Follow host" to the bronze accent
+    /// updates the draft like every other control on this page.
     /// </summary>
     private void OnAccentModeSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
@@ -282,12 +348,12 @@ public sealed partial class AppearanceSettingsPageView : UserControl
 
     /// <summary>
     /// The colour picker reports its own event type, so it needs a matching
-    /// signature to reach the same live-commit path as every other control.
+    /// signature to reach the same terminal-preview path as every other control.
     /// </summary>
     private void OnColorChanged(object? sender, ColorChangedEventArgs e)
     {
         _ = e;
-        OnAppearanceChanged(sender, new RoutedEventArgs());
+        OnTerminalAppearanceChanged(sender, new RoutedEventArgs());
     }
 
     /// <summary>Enter commits a typed value without waiting for focus to move.</summary>
@@ -296,7 +362,14 @@ public sealed partial class AppearanceSettingsPageView : UserControl
         if (e.Key is Avalonia.Input.Key.Enter or Avalonia.Input.Key.Return)
         {
             e.Handled = true;
-            OnAppearanceChanged(sender, new RoutedEventArgs());
+            if (ReferenceEquals(sender, CustomAccentText))
+            {
+                OnAppearanceChanged(sender, new RoutedEventArgs());
+            }
+            else
+            {
+                OnTerminalAppearanceChanged(sender, new RoutedEventArgs());
+            }
         }
     }
 
@@ -322,7 +395,7 @@ public sealed partial class AppearanceSettingsPageView : UserControl
     {
         CustomAccentText.Text = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
         SyncCustomAccentPicker();
-        AppearanceChanged?.Invoke(this, new RoutedEventArgs());
+        ApplicationAppearanceChanged?.Invoke(this, new RoutedEventArgs());
     }
 
     /// <summary>

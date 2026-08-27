@@ -62,7 +62,9 @@ public sealed class SettingsViewContractTests
             ["ReviewOnboardingRequested"] = "OnReviewOnboardingClick",
             ["RestoreSessionsOnStartChangedRequested"] =
                 "OnRestoreSessionsOnStartChanged",
-            ["AppearanceChangedRequested"] = "OnAppearanceChanged",
+            ["ApplicationAppearanceChangedRequested"] =
+                "OnApplicationAppearanceChanged",
+            ["TerminalAppearanceChangedRequested"] = "OnTerminalAppearanceChanged",
             ["PickColorRequested"] = "OnPickColorRequested",
             ["SaveKeybindingsRequested"] = "OnSaveKeybindingsClick",
             ["SaveQuickTerminalSettingsRequested"] =
@@ -321,10 +323,14 @@ public sealed class SettingsViewContractTests
         Assert.Equal(
             "{Binding IsAppearanceSettingsVisible}",
             AttributeValue(appearancePage, "IsVisible"));
-        // Appearance has no save step; each change is forwarded as it happens.
+        // Appearance previews are forwarded by section; Apply/Cancel remain
+        // explicit operations owned by the page.
         Assert.Equal(
-            "OnAppearanceChangedRequested",
-            AttributeValue(appearancePage, "AppearanceChanged"));
+            "OnApplicationAppearanceChangedRequested",
+            AttributeValue(appearancePage, "ApplicationAppearanceChanged"));
+        Assert.Equal(
+            "OnTerminalAppearanceChangedRequested",
+            AttributeValue(appearancePage, "TerminalAppearanceChanged"));
         Assert.Null(AttributeValue(appearancePage, "SaveRequested"));
 
         var quickTerminalPage = Assert.Single(
@@ -487,8 +493,8 @@ public sealed class SettingsViewContractTests
                 .Select(element => AttributeValue(element, "Content"))
                 .ToArray());
 
-        // Appearance applies as you edit, so the page must not carry a save
-        // button that implies changes are pending until it is pressed.
+        // Appearance is previewed as it is edited and committed only by the
+        // section-specific Apply controls; the older generic Save label stays absent.
         Assert.DoesNotContain(
             root.Descendants(),
             element => string.Equals(element.Name.LocalName, "Button"
@@ -506,9 +512,37 @@ public sealed class SettingsViewContractTests
         var codeBehind = ApplicationViews.FindUniqueCodeBehindSourceContaining(
             "public sealed partial class AppearanceSettingsPageView");
         Assert.Contains(
-            "AppearanceChanged?.Invoke(sender, e);",
+            "ApplicationAppearanceChanged?.Invoke(sender, e);",
             codeBehind,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "TerminalAppearanceChanged?.Invoke(sender, e);",
+            codeBehind,
+            StringComparison.Ordinal);
+
+        foreach (var status in new[]
+                 {
+                     "AppearanceValidationStatus",
+                 })
+        {
+            var element = FindNamedElement(root, status);
+            Assert.Equal(
+                "Polite",
+                AttributeValue(element, "AutomationProperties.LiveSetting"));
+            Assert.False(string.IsNullOrWhiteSpace(
+                AttributeValue(element, "AutomationProperties.Name")));
+        }
+
+        Assert.Contains(
+            root.Descendants(),
+            element => string.Equals(
+                    AttributeValue(element, "AutomationProperties.Name"),
+                    "Terminal contrast status",
+                    StringComparison.Ordinal)
+                && string.Equals(
+                    AttributeValue(element, "AutomationProperties.LiveSetting"),
+                    "Polite",
+                    StringComparison.Ordinal));
         Assert.Contains(
             "UpdateCustomAccentAvailability();",
             codeBehind,

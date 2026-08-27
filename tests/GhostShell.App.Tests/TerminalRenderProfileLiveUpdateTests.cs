@@ -99,6 +99,51 @@ public sealed class TerminalRenderProfileLiveUpdateTests
             (string?)host.Attribute("RenderProfile"));
     }
 
+    [Fact]
+    public void Quick_terminal_binds_the_live_render_profile_separately_from_its_session_request()
+    {
+        var view = XDocument.Load(Path.Combine(
+            RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Views",
+            "QuickTerminalWindow.axaml"));
+        var host = Assert.Single(
+            view.Descendants(),
+            element => string.Equals(
+                element.Name.LocalName,
+                "TerminalPresentationHost",
+                StringComparison.Ordinal));
+
+        Assert.Equal("{Binding RenderProfile}", (string?)host.Attribute("RenderProfile"));
+        Assert.Equal("{Binding TerminalRequest}", (string?)host.Attribute("SessionRequest"));
+    }
+
+    [Fact]
+    public void Appearance_preview_keeps_theme_and_terminal_drafts_independent()
+    {
+        var preview = new AppearancePreviewCoordinator();
+        var renderProfile = TerminalRenderProfileSnapshot.FromProfile(Profile(16));
+        var acquisition = preview.TryAcquire("window-1", 4, 9);
+        Assert.NotNull(acquisition.Lease);
+        using var lease = acquisition.Lease;
+
+        Assert.True(lease.PreviewTerminal(renderProfile));
+
+        Assert.Null(preview.Current.Theme);
+        Assert.Same(renderProfile, preview.Current.TerminalRenderProfile);
+
+        Assert.True(lease.PreviewTheme(ThemePreference.Default));
+
+        Assert.Same(renderProfile, preview.Current.TerminalRenderProfile);
+        Assert.Equal(ThemePreference.Default, preview.Current.Theme);
+
+        Assert.True(lease.ClearTheme());
+        Assert.True(lease.ClearTerminal());
+
+        Assert.True(preview.Current.IsEmpty);
+    }
+
     private static string RepositoryRoot { get; } = FindRepositoryRoot();
 
     private static string FindRepositoryRoot()

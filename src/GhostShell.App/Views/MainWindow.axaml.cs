@@ -375,6 +375,7 @@ public sealed partial class MainWindow : Window
         if (DataContext is MainWindowViewModel viewModel)
         {
             viewModel.WorkspaceAccentChanged -= OnWorkspaceAccentChanged;
+            viewModel.ReleaseAppearanceEditing();
         }
 
         Deactivated -= OnWindowDeactivated;

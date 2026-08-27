@@ -32,6 +32,7 @@ public sealed partial class App : Avalonia.Application
     private readonly QuickTerminalController? _quickTerminalController;
     private readonly IHostAccessibilityPreferencesSource? _hostAccessibilityPreferences;
     private readonly IScreenColorSampler? _screenColorSampler;
+    private readonly AppearancePreviewCoordinator? _appearancePreview;
     private IPlatformSettings? _platformSettings;
     private AvaloniaHostAppearanceAdapter? _hostAppearance;
     private INotifyCollectionChanged? _windowCollection;
@@ -114,7 +115,8 @@ public sealed partial class App : Avalonia.Application
         LocalArtifactControlViewModel localArtifactControlViewModel,
         QuickTerminalController quickTerminalController,
         IHostAccessibilityPreferencesSource hostAccessibilityPreferences,
-        IScreenColorSampler screenColorSampler)
+        IScreenColorSampler screenColorSampler,
+        AppearancePreviewCoordinator? appearancePreview = null)
     {
         ArgumentNullException.ThrowIfNull(mainWindowViewModel);
         ArgumentNullException.ThrowIfNull(mainWindowViewModelFactory);
@@ -144,6 +146,7 @@ public sealed partial class App : Avalonia.Application
         _quickTerminalController = quickTerminalController;
         _hostAccessibilityPreferences = hostAccessibilityPreferences;
         _screenColorSampler = screenColorSampler;
+        _appearancePreview = appearancePreview ?? new AppearancePreviewCoordinator();
     }
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
@@ -307,6 +310,9 @@ public sealed partial class App : Avalonia.Application
         _platformSettings.ColorValuesChanged += OnPlatformColorValuesChanged;
         hostAccessibilityPreferences.Changed += OnHostAccessibilityPreferencesChanged;
         hostAccessibilityPreferences.Start();
+        (_appearancePreview ?? throw new InvalidOperationException(
+            "The desktop composition root did not provide appearance preview state."))
+            .Changed += OnAppearancePreviewChanged;
         ApplyAppearance();
         if (OperatingSystem.IsMacOSVersionAtLeast(26))
         {
@@ -354,6 +360,13 @@ public sealed partial class App : Avalonia.Application
     }
 
     private void OnHostAccessibilityPreferencesChanged(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        Dispatcher.UIThread.Post(ApplyAppearance);
+    }
+
+    private void OnAppearancePreviewChanged(object? sender, EventArgs e)
     {
         _ = sender;
         _ = e;
@@ -423,7 +436,8 @@ public sealed partial class App : Avalonia.Application
 
     private EffectiveAppearanceResources ResolveAppearanceResources()
     {
-        var preference = _definitionCatalog?.Snapshot.Themes
+        var preference = _appearancePreview?.Current.Theme
+            ?? _definitionCatalog?.Snapshot.Themes
             .FirstOrDefault(item => item.Value.Id == ThemePreference.Default.Id)?.Value
             ?? ThemePreference.Default;
         var hostAppearance = _hostAppearance?.GetCurrent()
@@ -564,7 +578,20 @@ public sealed partial class App : Avalonia.Application
     /// which is the same answer arrived at two ways.
     /// </summary>
     public bool WindowIsTranslucent =>
-        !PrefersReducedTransparency && StoredTheme.IsTranslucent;
+        ResolveStoredTheme().MaterialDisposition == MaterialDisposition.Enabled;
+
+    /// <summary>
+    /// Whether the host permits native material at all. Quick Terminal owns a
+    /// separate translucency preference, but it still obeys this host boundary.
+    /// </summary>
+    public bool HostAllowsAdvancedMaterials =>
+        _hostAppearance?.GetCurrent() is { } host
+        && AllowsAdvancedMaterials(host);
+
+    internal static bool AllowsAdvancedMaterials(HostAppearance host) =>
+        host.SupportsAdvancedMaterials
+        && !host.HighContrast
+        && !host.ReducedTransparency;
 
     /// <summary>
     /// How solid the base surface is, as stored — fully solid when the host
@@ -600,9 +627,27 @@ public sealed partial class App : Avalonia.Application
     public InterfaceDensity WindowDensity => StoredTheme.Density;
 
     private ThemePreference StoredTheme =>
-        _definitionCatalog?.Snapshot.Themes
+        _appearancePreview?.Current.Theme
+        ?? _definitionCatalog?.Snapshot.Themes
             .FirstOrDefault(item => item.Value.Id == ThemePreference.Default.Id)
             ?.Value ?? ThemePreference.Default;
+
+    private EffectiveTheme ResolveStoredTheme() => StoredTheme.Resolve(
+        _hostAppearance?.GetCurrent()
+        ?? new HostAppearance(
+            OperatingSystem.IsMacOS()
+                ? HostOperatingSystem.MacOS
+                : OperatingSystem.IsWindows()
+                    ? HostOperatingSystem.Windows
+                    : HostOperatingSystem.Linux,
+            HostColorScheme.Dark,
+            null,
+            highContrast: false,
+            reducedMotion: false,
+            reducedTransparency: false,
+            textScale: 1,
+            supportsAdvancedMaterials: false,
+            supportsLiquidGlass: false));
 
     private void ApplyApplicationResources(EffectiveAppearanceResources resources)
     {
@@ -864,6 +909,7 @@ public sealed partial class App : Avalonia.Application
             resources.CardCornerRadius.BottomLeft));
         Publish("ShellAppearanceStatus", resources.AppearanceStatus);
         Publish("ShellAccentStatus", resources.AccentStatus);
+        Publish("ShellMaterialStatus", resources.MaterialStatus);
         Publish("ShellPlatformProfileClass", resources.ProfileClass);
         Publish("ShellHighContrast", resources.HighContrast);
         Publish("ShellMotionEnabled", resources.MotionEnabled);
@@ -884,7 +930,7 @@ public sealed partial class App : Avalonia.Application
         window.Classes.Add(resources.AppearanceClass);
         // The backdrop is a stored setting, so a change to it has to reach the
         // window that is wearing it rather than only the next one opened.
-        (window as MainWindow)?.RefreshWindowBackdrop();
+        RefreshWindowBackdrop(window);
         if (resources.HighContrast)
         {
             window.Classes.Add("high-contrast");
@@ -898,6 +944,19 @@ public sealed partial class App : Avalonia.Application
             window.Classes.Add("materials-enabled");
         }
 
+    }
+
+    internal static void RefreshWindowBackdrop(Window window)
+    {
+        switch (window)
+        {
+            case MainWindow mainWindow:
+                mainWindow.RefreshWindowBackdrop();
+                break;
+            case QuickTerminalWindow quickTerminalWindow:
+                quickTerminalWindow.ApplyBackdrop();
+                break;
+        }
     }
 
     private static SolidColorBrush Brush(Color color) => new(color);
@@ -927,6 +986,7 @@ public sealed partial class App : Avalonia.Application
         _platformSettings?.ColorValuesChanged -= OnPlatformColorValuesChanged;
         _hostAccessibilityPreferences?.Changed -= OnHostAccessibilityPreferencesChanged;
         _definitionCatalog?.Changed -= OnDefinitionCatalogChanged;
+        _appearancePreview?.Changed -= OnAppearancePreviewChanged;
         _windowCollection?.CollectionChanged -= OnWindowCollectionChanged;
         _windowCollection = null;
         if (_applicationIconRefreshTimer is { } iconRefreshTimer)

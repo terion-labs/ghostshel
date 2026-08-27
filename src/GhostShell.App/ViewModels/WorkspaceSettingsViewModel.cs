@@ -98,7 +98,7 @@ public sealed class WorkspaceSettingsViewModel : ObservableObject, IDisposable
             WorkspaceDefinition.CurrentSchemaVersion,
             "Untitled workspace",
             description: null,
-            ThemePreference.BronzeFallback.ToString(),
+            accent: null,
             []);
         Editor = CreateEditor(definition, expectedRevision: null);
         identity = new(
@@ -169,7 +169,7 @@ public sealed class WorkspaceSettingsViewModel : ObservableObject, IDisposable
             WorkspaceDefinition.CurrentSchemaVersion,
             string.IsNullOrWhiteSpace(name) ? "Workspace" : name.Trim(),
             "A GhostSHELL workspace.",
-            ThemePreference.BronzeFallback.ToString(),
+            accent: null,
             []);
         return _catalog.SaveWorkspaceAsync(definition, null, cancellationToken);
     }
@@ -207,7 +207,8 @@ public sealed class WorkspaceSettingsViewModel : ObservableObject, IDisposable
             current.Color,
             isPinned,
             current.TerminalMultiplexingOverride,
-            current.BrowserProfileOverride);
+            current.BrowserProfileOverride,
+            current.HasExplicitAccent);
         return await _catalog.SaveWorkspaceAsync(
             updated,
             stored.Revision,

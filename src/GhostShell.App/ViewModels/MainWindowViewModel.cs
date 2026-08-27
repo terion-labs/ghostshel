@@ -75,6 +75,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private readonly TerminalMultiplexerCoordinator? _terminalMultiplexerCoordinator;
     private readonly IUiThreadDispatcher _uiThreadDispatcher;
     private readonly TimeProvider _timeProvider;
+    private readonly AppearancePreviewCoordinator _appearancePreview;
+    private AppearancePreviewLease? _appearancePreviewLease;
+    private string _appearancePreviewStatus =
+        "Preview changes, then apply or cancel each section independently.";
     private readonly CancellationTokenSource _runtimeGraphLifetime = new();
     private readonly SemaphoreSlim _runtimeGraphGate;
     private readonly object _mcpServerTestGate = new();
@@ -155,6 +159,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         IBrowserProfilePreferences? browserProfilePreferences = null,
         IBrowserProfileDataControl? browserProfileDataControl = null,
         INativeNotificationService? nativeNotificationService = null,
+        AppearancePreviewCoordinator? appearancePreview = null,
         MainWindowRole role = MainWindowRole.Primary)
     {
         SessionClient = sessionClient ?? throw new ArgumentNullException(nameof(sessionClient));
@@ -176,6 +181,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         DefinitionSettings.PropertyChanged += OnDefinitionSettingsPropertyChanged;
         TerminalSettings = new TerminalSettingsViewModel(_catalog);
         TerminalSettings.PropertyChanged += OnTerminalSettingsPropertyChanged;
+        _appearancePreview = appearancePreview ?? new AppearancePreviewCoordinator();
+        _appearancePreview.Changed += OnAppearancePreviewChanged;
         AppearanceSettings = new AppearanceSettingsViewModel(_catalog);
         AppearanceSettings.PropertyChanged += OnAppearanceSettingsPropertyChanged;
         AppearanceSettings.BackgroundSaveStarting += OnAppearanceBackgroundSaveStarting;
@@ -971,6 +978,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     {
         _ = sender;
         OnPropertyChanged(eventArgs.PropertyName);
+        if (IsSettingsVisible && SettingsPage == SettingsPage.Appearance)
+        {
+            _ = BeginAppearanceEditing();
+        }
+        else
+        {
+            ReleaseAppearanceEditing();
+        }
     }
 
     private void OnDefinitionEditPropertyChanged(
@@ -3614,6 +3629,209 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         var result = await TerminalSettings.SaveTerminalProfileAsync(cancellationToken);
         ApplyError(result.Error);
         return result;
+    }
+
+    public string AppearancePreviewStatus
+    {
+        get => _appearancePreviewStatus;
+        private set => SetProperty(ref _appearancePreviewStatus, value);
+    }
+
+    public bool HasThemeAppearanceDraft =>
+        OwnsAppearancePreview && _appearancePreview.Current.HasThemeDraft;
+
+    public bool HasTerminalAppearanceDraft =>
+        OwnsAppearancePreview && _appearancePreview.Current.HasTerminalDraft;
+
+    public bool HasUnresolvedAppearanceDrafts =>
+        HasThemeAppearanceDraft || HasTerminalAppearanceDraft;
+
+    private bool OwnsAppearancePreview =>
+        string.Equals(
+            _appearancePreview.Current.OwnerId,
+            WindowId.Value,
+            StringComparison.Ordinal);
+
+    public bool BeginAppearanceEditing()
+    {
+        if (_disposed)
+        {
+            return false;
+        }
+
+        if (_appearancePreviewLease is { IsActive: true })
+        {
+            return true;
+        }
+
+        var snapshot = _catalog.Snapshot;
+        var acquisition = _appearancePreview.TryAcquire(
+            WindowId.Value,
+            snapshot.Themes
+                .FirstOrDefault(item => item.Value.Id == ThemePreference.Default.Id)
+                ?.Revision,
+            snapshot.TerminalProfiles
+                .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault()
+                ?.Revision);
+        _appearancePreviewLease = acquisition.Lease;
+        AppearancePreviewStatus = acquisition.Conflict
+            ?? "Preview changes, then apply or cancel each section independently.";
+        PublishAppearanceDraftState();
+        return acquisition.IsSuccess;
+    }
+
+    public bool PreviewAppearanceTheme(ThemePreference theme)
+    {
+        ArgumentNullException.ThrowIfNull(theme);
+        if (!BeginAppearanceEditing()
+            || _appearancePreviewLease?.PreviewTheme(theme) != true)
+        {
+            return false;
+        }
+
+        AppearancePreviewStatus = "Application appearance preview active.";
+        PublishAppearanceDraftState();
+        return true;
+    }
+
+    public bool PreviewTerminalAppearance(TerminalProfile terminalProfile)
+    {
+        ArgumentNullException.ThrowIfNull(terminalProfile);
+        if (!BeginAppearanceEditing()
+            || _appearancePreviewLease?.PreviewTerminal(
+                TerminalRenderProfileSnapshot.FromProfile(terminalProfile)) != true)
+        {
+            return false;
+        }
+
+        AppearancePreviewStatus = "Terminal appearance preview active.";
+        PublishAppearanceDraftState();
+        return true;
+    }
+
+    public void CancelAppearanceThemeDraft()
+    {
+        _ = _appearancePreviewLease?.ClearTheme();
+        ReleaseInactiveAppearanceLease();
+        AppearancePreviewStatus = "Saved application appearance restored.";
+        PublishAppearanceDraftState();
+    }
+
+    public void CancelTerminalAppearanceDraft()
+    {
+        _ = _appearancePreviewLease?.ClearTerminal();
+        TerminalSettings.DiscardTerminalDraft();
+        OnPropertyChanged(nameof(TerminalSettingsEditor));
+        ReleaseInactiveAppearanceLease();
+        AppearancePreviewStatus = "Saved terminal appearance restored.";
+        PublishAppearanceDraftState();
+    }
+
+    public async ValueTask<DefinitionStoreResult<StoredDefinition<ThemePreference>>>
+        ApplyAppearanceThemeAsync(
+            ThemePreference theme,
+            CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(theme);
+        if (!BeginAppearanceEditing() || _appearancePreviewLease is null)
+        {
+            return DefinitionStoreResult<StoredDefinition<ThemePreference>>.Failure(new(
+                DefinitionStoreErrorCode.RevisionConflict,
+                AppearancePreviewStatus));
+        }
+
+        ClearError();
+        var result = await AppearanceSettings.SaveThemeAsync(
+            theme,
+            _appearancePreviewLease.BaselineThemeRevision,
+            cancellationToken);
+        ApplyError(result.Error);
+        if (result.IsSuccess)
+        {
+            _ = _appearancePreviewLease.AdvanceThemeBaseline(result.Value!.Revision);
+            _ = _appearancePreviewLease.ClearTheme();
+            ReleaseInactiveAppearanceLease();
+            AppearancePreviewStatus = "Application appearance saved.";
+            PublishAppearanceDraftState();
+        }
+
+        return result;
+    }
+
+    public async ValueTask<DefinitionStoreResult<StoredDefinition<TerminalProfile>>>
+        ApplyTerminalAppearanceAsync(CancellationToken cancellationToken)
+    {
+        if (!BeginAppearanceEditing() || _appearancePreviewLease is null)
+        {
+            return DefinitionStoreResult<StoredDefinition<TerminalProfile>>.Failure(new(
+                DefinitionStoreErrorCode.RevisionConflict,
+                AppearancePreviewStatus));
+        }
+
+        ClearError();
+        var result = await TerminalSettings.SaveTerminalProfileAsync(
+            cancellationToken,
+            _appearancePreviewLease.BaselineTerminalRevision);
+        ApplyError(result.Error);
+        if (result.IsSuccess)
+        {
+            _ = _appearancePreviewLease.AdvanceTerminalBaseline(result.Value!.Revision);
+            _ = _appearancePreviewLease.ClearTerminal();
+            TerminalSettings.DiscardTerminalDraft();
+            OnPropertyChanged(nameof(TerminalSettingsEditor));
+            ReleaseInactiveAppearanceLease();
+            AppearancePreviewStatus = "Terminal appearance saved.";
+            PublishAppearanceDraftState();
+        }
+
+        return result;
+    }
+
+    public void ReleaseAppearanceEditing()
+    {
+        if (_appearancePreviewLease is null)
+        {
+            return;
+        }
+
+        // Window shutdown may arrive after this view model has completed its
+        // own disposal. The process-wide lease still must be released, but its
+        // editor has already crossed its lifetime boundary and must not be
+        // queried or rebuilt.
+        var mayRefreshEditor = !_disposed;
+        var hadTerminalDraft = mayRefreshEditor && HasTerminalAppearanceDraft;
+        _appearancePreviewLease.Dispose();
+        _appearancePreviewLease = null;
+        if (!mayRefreshEditor)
+        {
+            return;
+        }
+
+        if (hadTerminalDraft)
+        {
+            TerminalSettings.DiscardTerminalDraft();
+            OnPropertyChanged(nameof(TerminalSettingsEditor));
+        }
+
+        AppearancePreviewStatus =
+            "Preview changes, then apply or cancel each section independently.";
+        PublishAppearanceDraftState();
+    }
+
+    private void ReleaseInactiveAppearanceLease()
+    {
+        if (_appearancePreviewLease is { IsActive: false })
+        {
+            _appearancePreviewLease = null;
+        }
+    }
+
+    private void PublishAppearanceDraftState()
+    {
+        OnPropertyChanged(nameof(HasThemeAppearanceDraft));
+        OnPropertyChanged(nameof(HasTerminalAppearanceDraft));
+        OnPropertyChanged(nameof(HasUnresolvedAppearanceDrafts));
     }
 
     public async ValueTask<DefinitionStoreResult<StoredDefinition<QuickTerminalSettings>>> SaveQuickTerminalSettingsAsync(
@@ -7017,18 +7235,32 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     /// </summary>
     private void RefreshOpenTerminalRenderProfiles()
     {
-        if (ActiveTerminalProfile is not { } profile || RuntimeWorkspace is null)
+        var snapshot = _appearancePreview.Current.TerminalRenderProfile
+            ?? (ActiveTerminalProfile is { } profile
+                ? TerminalRenderProfileSnapshot.FromProfile(profile)
+                : null);
+        if (snapshot is null)
         {
             return;
         }
 
-        var snapshot = TerminalRenderProfileSnapshot.FromProfile(profile);
-        foreach (var panel in RuntimeWorkspace.Tabs
+        var workspaces = _openWorkspaces
+            .Concat(RuntimeWorkspace is null ? [] : [RuntimeWorkspace])
+            .DistinctBy(workspace => workspace.Id);
+        foreach (var panel in workspaces
+                     .SelectMany(workspace => workspace.Tabs)
                      .SelectMany(tab => tab.Panels)
                      .OfType<TerminalRuntimePanelViewModel>())
         {
             panel.RenderProfile = snapshot;
         }
+    }
+
+    private void OnAppearancePreviewChanged(object? sender, EventArgs eventArgs)
+    {
+        _ = sender;
+        _ = eventArgs;
+        RefreshOpenTerminalRenderProfiles();
     }
 
     private RecentSessionHistoryItemViewModel ToRecentSessionItem(
@@ -7266,7 +7498,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         AiProviderSettings.ApplyCatalog(snapshot);
         RefreshMcpServerDefinitions(snapshot);
         DefinitionSettings.ApplyCatalog(snapshot);
-        TerminalSettings.ApplyCatalog(snapshot);
+        TerminalSettings.ApplyCatalog(
+            snapshot,
+            preserveTerminalDraft: HasTerminalAppearanceDraft);
         AppearanceSettings.ApplyCatalog(snapshot);
         OnPropertyChanged(nameof(PanelConnectionOptions));
         OnPropertyChanged(nameof(BrowserConnectionOptions));
@@ -10628,6 +10862,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
         _disposed = true;
         _shutdownStarted = true;
+        ReleaseAppearanceEditing();
         History.SealOperations();
 
         _catalog.Changed -= OnCatalogChanged;
@@ -10653,6 +10888,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         AppearanceSettings.PropertyChanged -= OnAppearanceSettingsPropertyChanged;
         AppearanceSettings.BackgroundSaveStarting -= OnAppearanceBackgroundSaveStarting;
         AppearanceSettings.BackgroundSaveCompleted -= OnAppearanceBackgroundSaveCompleted;
+        _appearancePreview.Changed -= OnAppearancePreviewChanged;
         WorkspaceSettings.PropertyChanged -= OnWorkspaceSettingsPropertyChanged;
         FileProviderSettings.PropertyChanged -= OnFileProviderSettingsPropertyChanged;
         AiProviderSettings.PropertyChanged -= OnAiProviderSettingsPropertyChanged;

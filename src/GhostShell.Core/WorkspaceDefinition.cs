@@ -41,7 +41,8 @@ public sealed record WorkspaceDefinition : IDurableDefinition
         string? color = null,
         bool agentPanelPinned = false,
         TerminalMultiplexingMode? terminalMultiplexingOverride = null,
-        WorkspaceBrowserProfileMode? browserProfileOverride = null)
+        WorkspaceBrowserProfileMode? browserProfileOverride = null,
+        bool hasExplicitAccent = false)
     {
         Id = id;
         SchemaVersion = schemaVersion;
@@ -68,6 +69,7 @@ public sealed record WorkspaceDefinition : IDurableDefinition
         }
 
         BrowserProfileOverride = browserProfileOverride;
+        HasExplicitAccent = hasExplicitAccent;
     }
 
     public static DefinitionKind Kind => DefinitionKind.Workspace;
@@ -90,6 +92,13 @@ public sealed record WorkspaceDefinition : IDurableDefinition
     /// one followed from the host, rather than pinning a colour of ours.
     /// </summary>
     public string? Accent { get; }
+
+    /// <summary>
+    /// Distinguishes a user-selected accent from the bronze value seeded by
+    /// older releases. This provenance marker makes the one-time migration
+    /// safe even when the selected color happens to equal the old seed.
+    /// </summary>
+    public bool HasExplicitAccent { get; }
 
     /// <summary>
     /// The colour this workspace is recognised by — its tile in the rail and
@@ -170,7 +179,8 @@ public sealed record WorkspaceDefinition : IDurableDefinition
             Color,
             AgentPanelPinned,
             TerminalMultiplexingOverride,
-            BrowserProfileOverride);
+            BrowserProfileOverride,
+            HasExplicitAccent);
     }
 
     public static bool IsValidIcon(string? icon)

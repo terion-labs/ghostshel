@@ -298,6 +298,7 @@ public static class DesktopComposition
         services.AddSingleton<LocalArtifactControlViewModel>();
         services.AddSingleton<IProductComponentCatalog, DesktopProductComponentCatalog>();
         services.AddSingleton<IBrowserRendererViewFactory, DesktopBrowserRendererViewFactory>();
+        services.AddSingleton<AppearancePreviewCoordinator>();
         services.AddSingleton<MainWindowViewModel>();
         services.AddSingleton<MainWindowViewModelFactory>(provider =>
             () => ActivatorUtilities.CreateInstance<MainWindowViewModel>(

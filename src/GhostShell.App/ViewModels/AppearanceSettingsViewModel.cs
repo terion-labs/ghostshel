@@ -134,14 +134,29 @@ public sealed class AppearanceSettingsViewModel : ObservableObject, IDisposable
             effective.BackdropOpacityPercent,
             effective.HasGlassPanels,
             effective.OverridesBackdropOpacity);
-        if (stored is not null && stored.Value == updated)
+        return await SaveThemeAsync(updated, stored?.Revision, cancellationToken);
+    }
+
+    public async ValueTask<DefinitionStoreResult<StoredDefinition<ThemePreference>>>
+        SaveThemeAsync(
+            ThemePreference updated,
+            long? expectedRevision,
+            CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(updated);
+        var stored = _catalog.Snapshot.Themes
+            .FirstOrDefault(item => item.Value.Id == updated.Id);
+        if (stored is not null
+            && stored.Revision == expectedRevision
+            && stored.Value == updated)
         {
             return DefinitionStoreResult<StoredDefinition<ThemePreference>>.Success(stored);
         }
 
         return await _catalog.SaveThemeAsync(
             updated,
-            stored?.Revision,
+            expectedRevision,
             cancellationToken);
     }
 

@@ -226,6 +226,61 @@ public sealed class TerminalProfileEditorViewModel : ObservableObject
 
     public string PaletteName => SelectedPalettePreset?.Name ?? "Custom";
 
+    public string ContrastWarning
+    {
+        get
+        {
+            if (!TryBuildCurrentPalette(out var palette))
+            {
+                return "Enter valid six-digit RGB values before this palette can be saved.";
+            }
+
+            var foreground = AppearanceContrast.TerminalForeground(palette);
+            var cursor = AppearanceContrast.TerminalCursor(palette);
+            var selectionBackground =
+                AppearanceContrast.TerminalSelectionBackground(palette);
+            var selectionText = AppearanceContrast.TerminalSelectionText(palette);
+            var failingAnsi = AppearanceContrast.TerminalAnsi(palette)
+                .Count(result => !result.MeetsRequirement);
+            var warnings = new List<string>();
+            if (!foreground.MeetsRequirement)
+            {
+                warnings.Add(FormattableString.Invariant(
+                    $"text is {foreground.Ratio:0.00}:1; 4.5:1 is recommended"));
+            }
+
+            if (!cursor.MeetsRequirement)
+            {
+                warnings.Add(FormattableString.Invariant(
+                    $"cursor is {cursor.Ratio:0.00}:1; 3:1 is recommended"));
+            }
+
+            if (!selectionBackground.MeetsRequirement)
+            {
+                warnings.Add(FormattableString.Invariant(
+                    $"selection edge is {selectionBackground.Ratio:0.00}:1; 3:1 is recommended"));
+            }
+
+            if (!selectionText.MeetsRequirement)
+            {
+                warnings.Add(FormattableString.Invariant(
+                    $"selected text is {selectionText.Ratio:0.00}:1; 4.5:1 is recommended"));
+            }
+
+            if (failingAnsi > 0)
+            {
+                warnings.Add(FormattableString.Invariant(
+                    $"{failingAnsi} ANSI colors are below 4.5:1 against the background"));
+            }
+
+            return warnings.Count == 0
+                ? string.Empty
+                : "Contrast warning: " + string.Join("; ", warnings) + ".";
+        }
+    }
+
+    public bool HasContrastWarning => ContrastWarning.Length > 0;
+
     /// <summary>
     /// Replaces every colour in the editor, including the sixteen ANSI entries,
     /// so choosing a preset changes the whole palette rather than only the four
@@ -279,6 +334,8 @@ public sealed class TerminalProfileEditorViewModel : ObservableObject
         OnPropertyChanged(nameof(NormalAnsiColors));
         OnPropertyChanged(nameof(SelectedPalettePreset));
         OnPropertyChanged(nameof(PaletteName));
+        OnPropertyChanged(nameof(ContrastWarning));
+        OnPropertyChanged(nameof(HasContrastWarning));
     }
 
     private void RefreshPaletteSelection()

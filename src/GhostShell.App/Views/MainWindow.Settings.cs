@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using GhostShell.App;
 using GhostShell.App.ViewModels;
@@ -92,6 +94,11 @@ public sealed partial class MainWindow
     {
         _ = SettingsRoute;
         ViewModel.ShowSettings(page);
+        if (page == SettingsPage.Appearance)
+        {
+            RefreshAppearanceControlsFromStoredProfile();
+        }
+
         if (ViewModel.IsSettingsVisible && !ViewModel.HasOverlay)
         {
             FocusNavigator.FocusSettingsBackButton();
@@ -286,17 +293,13 @@ public sealed partial class MainWindow
     internal void RefreshAppearanceControlsFromStoredProfile()
     {
         if (_settingsRoute is not { } settings
-            || DataContext is not MainWindowViewModel viewModel)
+            || DataContext is not MainWindowViewModel viewModel
+            || viewModel.HasThemeAppearanceDraft)
         {
             return;
         }
 
         var theme = viewModel.ActiveTheme;
-        if (_appearanceControlsSource == theme)
-        {
-            return;
-        }
-
         _applyingAppearanceControls = true;
         try
         {
@@ -772,7 +775,7 @@ public sealed partial class MainWindow
             default: return;
         }
 
-        OnAppearanceChanged(this, new RoutedEventArgs());
+        OnTerminalAppearanceChanged(this, new RoutedEventArgs());
     }
 
     private void OnColorSampleKeyDown(object? sender, KeyEventArgs e)
@@ -797,24 +800,15 @@ public sealed partial class MainWindow
     }
 
     /// <summary>
-    /// Appearance has no save button, so edits are coalesced briefly before they
-    /// reach the store. Dragging a slider would otherwise write once per pixel,
-    /// and every write reapplies the whole theme.
-    /// </summary>
-    private DispatcherTimer? _appearanceCommitTimer;
-
-    /// <summary>
     /// Set while the page is being filled in from the stored profile, so that
     /// writing a value into a control does not read as the user editing it.
     ///
-    /// Without this the page commits in a loop: a commit saves the theme, saving
-    /// notifies the catalog, the notification refills the controls, and refilling
-    /// raises the very change events that schedule the next commit. It settles at
-    /// about eight writes a second and pins a core.
+    /// Without this, refilling stored values raises the same events as a user
+    /// edit and creates a false preview draft.
     /// </summary>
     private bool _applyingAppearanceControls;
 
-    private void OnAppearanceChanged(object? sender, RoutedEventArgs e)
+    private void OnApplicationAppearanceChanged(object? sender, RoutedEventArgs e)
     {
         _ = sender;
         _ = e;
@@ -823,62 +817,181 @@ public sealed partial class MainWindow
             return;
         }
 
-        _appearanceCommitTimer ??= CreateAppearanceCommitTimer();
-        _appearanceCommitTimer.Stop();
-        _appearanceCommitTimer.Start();
-    }
-
-    private DispatcherTimer CreateAppearanceCommitTimer()
-    {
-        var timer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(220),
-        };
-        timer.Tick += async (_, _) =>
-        {
-            timer.Stop();
-            await CommitAppearanceAsync();
-        };
-        return timer;
-    }
-
-    private async Task CommitAppearanceAsync()
-    {
         try
         {
             var selection = SettingsRoute.CaptureAppearance();
-            var result = await ViewModel.SaveThemeAsync(
-                selection.Appearance,
-                selection.PlatformProfile,
-                selection.Accent,
-                selection.TextScale,
-                _lifetime.Token,
-                new ThemeChromePreference(
-                    selection.Density,
-                    selection.ShowTabBar,
-                    selection.ShowWorkspacesPanel,
-                    selection.TabStripPlacement,
-                    selection.WorkspacePanelPlacement,
-                    selection.IsTranslucent,
-                    selection.BackdropOpacityPercent,
-                    selection.HasGlassPanels,
-                    selection.OverridesBackdropOpacity));
+            var theme = ThemeFrom(selection);
+            if (!ViewModel.PreviewAppearanceTheme(theme))
+            {
+                SettingsRoute.SetAppearanceValidationStatus(
+                    ViewModel.AppearancePreviewStatus,
+                    isWarning: true);
+                return;
+            }
+
+            var status = AppearanceContrastStatus(theme, terminal: null);
+            SettingsRoute.SetAppearanceValidationStatus(
+                status,
+                isWarning: status.StartsWith(
+                    "Contrast warning",
+                    StringComparison.Ordinal));
+        }
+        catch (Exception exception) when (exception is
+            ArgumentException or FormatException or InvalidOperationException)
+        {
+            SettingsRoute.SetAppearanceValidationStatus(
+                $"Cannot preview: {exception.Message}",
+                isWarning: true);
+        }
+    }
+
+    private void OnTerminalAppearanceChanged(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (_applyingAppearanceControls)
+        {
+            return;
+        }
+
+        try
+        {
+            var terminal = ViewModel.TerminalSettingsEditor?.CreateSaveRequest().Profile
+                ?? throw new InvalidOperationException(
+                    "No terminal profile is available to preview.");
+            if (!ViewModel.PreviewTerminalAppearance(terminal))
+            {
+                SettingsRoute.SetAppearanceValidationStatus(
+                    ViewModel.AppearancePreviewStatus,
+                    isWarning: true);
+                return;
+            }
+
+            var status = AppearanceContrastStatus(theme: null, terminal);
+            SettingsRoute.SetAppearanceValidationStatus(
+                status,
+                isWarning: status.StartsWith(
+                    "Contrast warning",
+                    StringComparison.Ordinal));
+        }
+        catch (Exception exception) when (exception is
+            ArgumentException or FormatException or InvalidOperationException)
+        {
+            SettingsRoute.SetAppearanceValidationStatus(
+                $"Cannot preview: {exception.Message}",
+                isWarning: true);
+        }
+    }
+
+    private ThemePreference ThemeFrom(AppearanceSelection selection)
+    {
+        var current = ViewModel.ActiveTheme;
+        return new ThemePreference(
+            current.Id,
+            current.Name,
+            selection.Appearance,
+            selection.PlatformProfile,
+            selection.Accent,
+            selection.TextScale,
+            selection.Density,
+            selection.ShowTabBar,
+            selection.ShowWorkspacesPanel,
+            selection.TabStripPlacement,
+            selection.WorkspacePanelPlacement,
+            selection.IsTranslucent,
+            selection.BackdropOpacityPercent,
+            selection.HasGlassPanels,
+            selection.OverridesBackdropOpacity);
+    }
+
+    private static string AppearanceContrastStatus(
+        ThemePreference? theme,
+        TerminalProfile? terminal)
+    {
+        var warnings = new List<string>();
+        if (theme?.Accent is
+            { Kind: AccentPreferenceKind.Custom, CustomColor: { } customAccent })
+        {
+            EffectiveAppearanceMode[] modes = theme.Appearance switch
+            {
+                AppearanceMode.Light => [EffectiveAppearanceMode.Light],
+                AppearanceMode.Dark => [EffectiveAppearanceMode.Dark],
+                _ =>
+                [
+                    EffectiveAppearanceMode.Light,
+                    EffectiveAppearanceMode.Dark,
+                ],
+            };
+            if (modes.Select(mode => AppearanceContrast.Accent(customAccent, mode))
+                .Any(result => !result.MeetsRequirement))
+            {
+                warnings.Add("custom accent may be hard to distinguish in one color mode");
+            }
+        }
+
+        if (terminal is not null)
+        {
+            var foreground = AppearanceContrast.TerminalForeground(terminal.Palette);
+            var cursor = AppearanceContrast.TerminalCursor(terminal.Palette);
+            var selectionBackground =
+                AppearanceContrast.TerminalSelectionBackground(terminal.Palette);
+            var selectionText = AppearanceContrast.TerminalSelectionText(terminal.Palette);
+            var failingAnsi = AppearanceContrast.TerminalAnsi(terminal.Palette)
+                .Count(result => !result.MeetsRequirement);
+            if (!foreground.MeetsRequirement)
+            {
+                warnings.Add(FormattableString.Invariant(
+                    $"terminal text contrast is {foreground.Ratio:0.00}:1 (4.5:1 recommended)"));
+            }
+
+            if (!cursor.MeetsRequirement)
+            {
+                warnings.Add(FormattableString.Invariant(
+                    $"terminal cursor contrast is {cursor.Ratio:0.00}:1 (3:1 recommended)"));
+            }
+
+            if (!selectionBackground.MeetsRequirement)
+            {
+                warnings.Add(FormattableString.Invariant(
+                    $"terminal selection edge contrast is {selectionBackground.Ratio:0.00}:1 (3:1 recommended)"));
+            }
+
+            if (!selectionText.MeetsRequirement)
+            {
+                warnings.Add(FormattableString.Invariant(
+                    $"selected terminal text contrast is {selectionText.Ratio:0.00}:1 (4.5:1 recommended)"));
+            }
+
+            if (failingAnsi > 0)
+            {
+                warnings.Add(FormattableString.Invariant(
+                    $"{failingAnsi} ANSI colors are below 4.5:1 against the terminal background"));
+            }
+        }
+
+        return warnings.Count == 0
+            ? "Preview only — Apply saves; Cancel restores the exact saved appearance."
+            : "Contrast warning: " + string.Join("; ", warnings) + ".";
+    }
+
+    private async void OnAppearanceApplyClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        try
+        {
+            var result = await ViewModel.ApplyAppearanceThemeAsync(
+                ThemeFrom(SettingsRoute.CaptureAppearance()),
+                _lifetime.Token);
             if (!result.IsSuccess)
             {
                 return;
             }
 
-            // The page also edits the terminal palette, font, and cursor, which
-            // live on the terminal profile. Saving only the theme would discard
-            // everything the page shows below Theme.
-            if (ViewModel.TerminalSettingsEditor is not null)
-            {
-                _ = await ViewModel.SaveTerminalProfileAsync(_lifetime.Token);
-            }
-
-            // The controls are already showing what was just captured from them,
-            // so there is nothing to refill — only the record of what they show.
             _appearanceControlsSource = ViewModel.ActiveTheme;
+            SettingsRoute.SetAppearanceValidationStatus(
+                "Application appearance saved.",
+                isWarning: false);
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
         {
@@ -887,6 +1000,205 @@ public sealed partial class MainWindow
             ArgumentException or FormatException or InvalidOperationException)
         {
             ViewModel.SetError(exception.Message);
+        }
+    }
+
+    private void OnAppearanceCancelClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        ViewModel.CancelAppearanceThemeDraft();
+        _appearanceControlsSource = null;
+        RefreshAppearanceControlsFromStoredProfile();
+        SettingsRoute.SetAppearanceValidationStatus(
+            "Saved application appearance restored.",
+            isWarning: false);
+    }
+
+    private async void OnAppearanceApplyTerminalClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        try
+        {
+            var result = await ViewModel.ApplyTerminalAppearanceAsync(_lifetime.Token);
+            if (result.IsSuccess)
+            {
+                SettingsRoute.SetAppearanceValidationStatus(
+                    "Terminal appearance saved.",
+                    isWarning: false);
+            }
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception) when (exception is
+            ArgumentException or FormatException or InvalidOperationException)
+        {
+            ViewModel.SetError(exception.Message);
+        }
+    }
+
+    private void OnAppearanceCancelTerminalClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        ViewModel.CancelTerminalAppearanceDraft();
+        SettingsRoute.SetAppearanceValidationStatus(
+            "Saved terminal appearance restored.",
+            isWarning: false);
+    }
+
+    private void OnAppearanceResetClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        var operatingSystem = OperatingSystem.IsMacOS()
+            ? HostOperatingSystem.MacOS
+            : OperatingSystem.IsWindows()
+                ? HostOperatingSystem.Windows
+                : HostOperatingSystem.Linux;
+        SettingsRoute.ResetApplicationAppearance(
+            ThemePreference.DefaultFor(operatingSystem));
+    }
+
+    private void OnAppearanceResetTerminalPaletteClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        ViewModel.TerminalSettingsEditor?.ApplyPalettePreset(
+            TerminalPalette.GhostShellDark);
+        OnTerminalAppearanceChanged(sender, e);
+    }
+
+    private static FilePickerFileType AppearanceThemeFileType { get; } = new(
+        "GhostShell appearance theme")
+    {
+        Patterns = ["*.json"],
+        MimeTypes = ["application/json"],
+        AppleUniformTypeIdentifiers = ["public.json"],
+    };
+
+    private async void OnAppearanceExportClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        try
+        {
+            if (ViewModel.HasUnresolvedAppearanceDrafts)
+            {
+                SettingsRoute.SetAppearanceValidationStatus(
+                    "Apply or cancel appearance previews before exporting saved values.",
+                    isWarning: true);
+                return;
+            }
+
+            var destination = await StorageProvider.SaveFilePickerAsync(
+                new FilePickerSaveOptions
+                {
+                    Title = "Export GhostShell appearance",
+                    SuggestedFileName = PortableAppearanceThemeFile.SuggestedFileName,
+                    DefaultExtension = "json",
+                    FileTypeChoices = [AppearanceThemeFileType],
+                    ShowOverwritePrompt = true,
+                });
+            if (destination?.TryGetLocalPath() is not { } path)
+            {
+                return;
+            }
+
+            var theme = ViewModel.ActiveTheme;
+            var palette = ViewModel.ActiveTerminalProfile?.Palette;
+            await PortableAppearanceThemeFile.WriteAsync(
+                path,
+                PortableAppearanceTheme.Create(theme, palette),
+                _lifetime.Token);
+            SettingsRoute.SetAppearanceValidationStatus(
+                "Portable appearance theme exported.",
+                isWarning: false);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception) when (exception is
+            ArgumentException or IOException or JsonException
+            or NotSupportedException or UnauthorizedAccessException)
+        {
+            ViewModel.SetError($"Appearance export failed: {exception.Message}");
+        }
+    }
+
+    private async void OnAppearanceImportClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        try
+        {
+            var selected = await StorageProvider.OpenFilePickerAsync(
+                new FilePickerOpenOptions
+                {
+                    Title = "Import GhostShell appearance",
+                    AllowMultiple = false,
+                    FileTypeFilter = [AppearanceThemeFileType],
+                });
+            if (selected.Count == 0
+                || selected[0].TryGetLocalPath() is not { } path)
+            {
+                return;
+            }
+
+            var portable = await PortableAppearanceThemeFile.ReadAsync(
+                path,
+                _lifetime.Token);
+            if (!ViewModel.BeginAppearanceEditing())
+            {
+                SettingsRoute.SetAppearanceValidationStatus(
+                    ViewModel.AppearancePreviewStatus,
+                    isWarning: true);
+                return;
+            }
+
+            var theme = portable.Application.ApplyTo(ViewModel.ActiveTheme);
+            TerminalProfile? terminal = null;
+            _applyingAppearanceControls = true;
+            try
+            {
+                SettingsRoute.ApplyAppearance(
+                    theme,
+                    ResolveApplicationTextScaleOption(theme.TextScaleOverride));
+                if (portable.TerminalPalette is { } palette)
+                {
+                    ViewModel.TerminalSettingsEditor?.ApplyPalettePreset(palette);
+                    terminal = ViewModel.TerminalSettingsEditor?
+                        .CreateSaveRequest().Profile;
+                }
+            }
+            finally
+            {
+                _applyingAppearanceControls = false;
+            }
+
+            _ = ViewModel.PreviewAppearanceTheme(theme);
+            if (terminal is not null)
+            {
+                _ = ViewModel.PreviewTerminalAppearance(terminal);
+            }
+
+            var status = AppearanceContrastStatus(theme, terminal);
+            SettingsRoute.SetAppearanceValidationStatus(
+                status,
+                isWarning: status.StartsWith(
+                    "Contrast warning",
+                    StringComparison.Ordinal));
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception) when (exception is
+            ArgumentException or IOException or JsonException
+            or NotSupportedException or UnauthorizedAccessException)
+        {
+            ViewModel.SetError($"Appearance import failed: {exception.Message}");
         }
     }
 
@@ -900,6 +1212,7 @@ public sealed partial class MainWindow
         if (sender is Control { DataContext: TerminalPaletteOption option })
         {
             ViewModel.TerminalSettingsEditor?.ApplyPalettePreset(option.Palette);
+            OnTerminalAppearanceChanged(sender, e);
         }
     }
 

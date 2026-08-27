@@ -114,6 +114,7 @@
                 x:Name="QuickTerminalHost"
                 ClientId="{Binding ClientId}"
                 IsVisible="{Binding IsTerminalAvailable}"
+                RenderProfile="{Binding RenderProfile}"
                 SessionClient="{Binding SessionClient}"
                 SessionRequest="{Binding TerminalRequest}" />
 

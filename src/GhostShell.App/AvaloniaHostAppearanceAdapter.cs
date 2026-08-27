@@ -191,6 +191,7 @@ internal sealed record EffectiveAppearanceResources(
     ShellSpacingScale Spacing,
     string AppearanceStatus,
     string AccentStatus,
+    string MaterialStatus,
     bool HighContrast,
     bool MotionEnabled,
     bool AdvancedMaterialsEnabled)
@@ -446,14 +447,37 @@ internal static class EffectiveAppearanceResourceMapper
             new CornerRadius(999),
             new CornerRadius(Math.Max(2, controlRadius - 2)),
             ShellSpacingScale.From(metrics.SpaceUnit, theme.TextScale * densityScale),
-            $"Effective: {theme.PlatformProfile} · {(isLight ? "Light" : "Dark")}" +
-            (theme.HighContrast ? " · High contrast" : string.Empty),
+            AppearanceStatus(theme, isLight),
             $"Accent: {source}" +
             (accent == requestedAccent ? string.Empty : " · contrast adjusted"),
+            MaterialStatus(theme.MaterialDisposition),
             theme.HighContrast,
             theme.MotionEnabled,
             theme.AdvancedMaterialsEnabled);
     }
+
+    private static string AppearanceStatus(EffectiveTheme theme, bool isLight)
+    {
+        if (theme.RequestedPlatformProfile == PlatformProfile.MacOsLiquidGlass
+            && theme.PlatformProfile == PlatformProfile.MacOsClassic)
+        {
+            return "Liquid Glass unavailable; using macOS Classic";
+        }
+
+        return $"Effective: {theme.PlatformProfile} · {(isLight ? "Light" : "Dark")}" +
+            (theme.HighContrast ? " · High contrast" : string.Empty);
+    }
+
+    private static string MaterialStatus(MaterialDisposition disposition) => disposition switch
+    {
+        MaterialDisposition.Enabled => "Window material: active",
+        MaterialDisposition.NotRequested => "Window material: off",
+        MaterialDisposition.DisabledByHighContrast =>
+            "Window material: opaque fallback (high contrast)",
+        MaterialDisposition.DisabledByReducedTransparency =>
+            "Window material: opaque fallback (reduced transparency)",
+        _ => "Window material: opaque fallback (unsupported by this host)",
+    };
 
     /// <summary>
     /// Density scales the padding and minimum height the platform profile asks

@@ -85,6 +85,21 @@ public sealed class TerminalProfileEditorViewModelTests
     }
 
     [Fact]
+    public void Low_contrast_custom_colors_are_reported_before_save()
+    {
+        var editor = new TerminalProfileEditorViewModel(DefaultProfile(), expectedRevision: 1)
+        {
+            Background = "#111111",
+            Foreground = "#111111",
+            Cursor = "#111111",
+        };
+
+        Assert.True(editor.HasContrastWarning);
+        Assert.Contains("text is 1.00:1", editor.ContrastWarning, StringComparison.Ordinal);
+        Assert.Contains("cursor is 1.00:1", editor.ContrastWarning, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ProfileRangeValidationIsAppliedToEditedValues()
     {
         var editor = new TerminalProfileEditorViewModel(DefaultProfile(), expectedRevision: 1)

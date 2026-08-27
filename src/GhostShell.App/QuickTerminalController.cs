@@ -25,6 +25,7 @@ public sealed class QuickTerminalController : IDisposable
     private readonly RuntimeRecoveryWriter _runtimeRecoveryWriter;
     private readonly SessionRestoreCoordinator _sessionRestoreCoordinator;
     private readonly ApplicationStartupState _startupState;
+    private readonly AppearancePreviewCoordinator _appearancePreview;
     private readonly QuickTerminalDefinitionTracker _definitionTracker;
     private QuickTerminalViewModel _viewModel;
     private QuickTerminalSettings _settings = QuickTerminalSettings.Default;
@@ -61,6 +62,7 @@ public sealed class QuickTerminalController : IDisposable
         RuntimeRecoveryWriter runtimeRecoveryWriter,
         SessionRestoreCoordinator sessionRestoreCoordinator,
         ApplicationStartupState startupState,
+        AppearancePreviewCoordinator? appearancePreview = null,
         IAgentModelFavoriteStore? agentModelFavoriteStore = null,
         AgentPolicyCoordinator? agentPolicyCoordinator = null)
     {
@@ -87,6 +89,7 @@ public sealed class QuickTerminalController : IDisposable
         _sessionRestoreCoordinator = sessionRestoreCoordinator
             ?? throw new ArgumentNullException(nameof(sessionRestoreCoordinator));
         _startupState = startupState ?? throw new ArgumentNullException(nameof(startupState));
+        _appearancePreview = appearancePreview ?? new AppearancePreviewCoordinator();
         _definitionTracker = new QuickTerminalDefinitionTracker(_catalog.Snapshot);
         _viewModel = CreateViewModel();
     }
@@ -110,6 +113,7 @@ public sealed class QuickTerminalController : IDisposable
         _globalHotkey.Pressed += OnGlobalHotkeyPressed;
         _globalHotkey.EscapePressed += OnEscapePressed;
         _catalog.Changed += OnCatalogChanged;
+        _appearancePreview.Changed += OnAppearancePreviewChanged;
         _hostAccessibilityPreferences.Changed += OnHostAccessibilityPreferencesChanged;
         ApplyHostAccessibilityPreferences();
         ApplySettingsFromCatalog();
@@ -257,6 +261,7 @@ public sealed class QuickTerminalController : IDisposable
         _disposed = true;
         CancelTransition();
         _catalog.Changed -= OnCatalogChanged;
+        _appearancePreview.Changed -= OnAppearancePreviewChanged;
         _hostAccessibilityPreferences.Changed -= OnHostAccessibilityPreferencesChanged;
         _globalHotkey.Pressed -= OnGlobalHotkeyPressed;
         _globalHotkey.EscapePressed -= OnEscapePressed;
@@ -298,6 +303,8 @@ public sealed class QuickTerminalController : IDisposable
             _agentModelFavoriteStore,
             _agentRuntimeFactory,
             _agentPolicyCoordinator);
+        viewModel.PreviewRenderProfile(
+            _appearancePreview.Current.TerminalRenderProfile);
         viewModel.RecoveryStateChanged += OnRecoveryStateChanged;
         return viewModel;
     }
@@ -371,6 +378,11 @@ public sealed class QuickTerminalController : IDisposable
 
         var previousRestorePolicy = _settings.RestoreLastSession;
         var terminalDefinitionsChanged = _definitionTracker.Update(_catalog.Snapshot);
+        if (terminalDefinitionsChanged
+            && !_definitionTracker.LastChangeRequiresSessionReset)
+        {
+            _viewModel.ApplySavedRenderProfile(_definitionTracker.CurrentRenderProfile);
+        }
         var storedSettings = _catalog.Snapshot.QuickTerminalSettings
             .OrderByDescending(item => item.Value.Id == QuickTerminalSettings.DefaultId)
             .ThenBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
@@ -395,7 +407,8 @@ public sealed class QuickTerminalController : IDisposable
 
         var shouldResetSession = QuickTerminalRuntimeRules
             .ShouldResetForDefinitionOrPolicyChange(
-                terminalDefinitionsChanged,
+                terminalDefinitionsChanged
+                    && _definitionTracker.LastChangeRequiresSessionReset,
                 previousRestorePolicy,
                 _settings.RestoreLastSession,
                 IsVisible);
@@ -633,6 +646,15 @@ public sealed class QuickTerminalController : IDisposable
         _ = sender;
         _ = e;
         Dispatcher.UIThread.Post(ApplySettingsFromCatalog);
+    }
+
+    private void OnAppearancePreviewChanged(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        Dispatcher.UIThread.Post(() =>
+            _viewModel.PreviewRenderProfile(
+                _appearancePreview.Current.TerminalRenderProfile));
     }
 
     private async Task RestoreOnStartupAsync()

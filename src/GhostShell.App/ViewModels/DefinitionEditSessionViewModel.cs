@@ -101,7 +101,8 @@ public sealed class DefinitionEditSessionViewModel : ObservableObject
                 current.Color,
                 current.AgentPanelPinned,
                 current.TerminalMultiplexingOverride,
-                current.BrowserProfileOverride);
+                current.BrowserProfileOverride,
+                current.HasExplicitAccent);
             return ToUnit(await _catalog.SaveWorkspaceAsync(
                 updated,
                 revision,

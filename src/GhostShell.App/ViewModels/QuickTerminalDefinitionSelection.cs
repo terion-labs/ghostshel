@@ -70,22 +70,57 @@ internal readonly record struct QuickTerminalDefinitionSignature(
 
 internal sealed class QuickTerminalDefinitionTracker
 {
-    private QuickTerminalDefinitionSignature _current;
+    private QuickTerminalDefinitionSelection _current;
 
     public QuickTerminalDefinitionTracker(DefinitionCatalogSnapshot initialSnapshot)
     {
-        _current = QuickTerminalDefinitionSelection.Resolve(initialSnapshot).Signature;
+        _current = QuickTerminalDefinitionSelection.Resolve(initialSnapshot);
     }
+
+    public bool LastChangeRequiresSessionReset { get; private set; }
+
+    public TerminalRenderProfileSnapshot? CurrentRenderProfile =>
+        _current.TerminalProfile is { } profile
+            ? TerminalRenderProfileSnapshot.FromProfile(profile.Value)
+            : null;
 
     public bool Update(DefinitionCatalogSnapshot snapshot)
     {
-        var next = QuickTerminalDefinitionSelection.Resolve(snapshot).Signature;
-        if (next == _current)
+        var next = QuickTerminalDefinitionSelection.Resolve(snapshot);
+        if (next.Signature == _current.Signature)
         {
+            LastChangeRequiresSessionReset = false;
             return false;
         }
 
+        LastChangeRequiresSessionReset =
+            next.Connection?.Value.Id != _current.Connection?.Value.Id
+            || next.Connection?.Revision != _current.Connection?.Revision
+            || next.TerminalProfile?.Value.Id != _current.TerminalProfile?.Value.Id
+            || !HasSameSessionPolicy(
+                _current.TerminalProfile?.Value,
+                next.TerminalProfile?.Value)
+            || next.TerminalKeymap?.Value.Id != _current.TerminalKeymap?.Value.Id
+            || next.TerminalKeymap?.Revision != _current.TerminalKeymap?.Revision;
         _current = next;
         return true;
+    }
+
+    private static bool HasSameSessionPolicy(
+        TerminalProfile? previous,
+        TerminalProfile? next)
+    {
+        if (previous is null || next is null)
+        {
+            return previous is null && next is null;
+        }
+
+        return previous.ScrollbackLines == next.ScrollbackLines
+            && Equals(previous.ClipboardPolicy, next.ClipboardPolicy)
+            && previous.LinkPolicy == next.LinkPolicy
+            && previous.ImeEnabled == next.ImeEnabled
+            && previous.ShellIntegration == next.ShellIntegration
+            && previous.BellMode == next.BellMode
+            && previous.Compatibility == next.Compatibility;
     }
 }

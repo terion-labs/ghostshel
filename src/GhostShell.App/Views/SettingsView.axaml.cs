@@ -149,7 +149,25 @@ public sealed partial class SettingsView : UserControl
 
     public event EventHandler<RoutedEventArgs>? ForgetManagedRemoteSessionRequested;
 
-    public event EventHandler<RoutedEventArgs>? AppearanceChangedRequested;
+    public event EventHandler<RoutedEventArgs>? ApplicationAppearanceChangedRequested;
+
+    public event EventHandler<RoutedEventArgs>? TerminalAppearanceChangedRequested;
+
+    public event EventHandler<RoutedEventArgs>? AppearanceApplyRequested;
+
+    public event EventHandler<RoutedEventArgs>? AppearanceApplyTerminalRequested;
+
+    public event EventHandler<RoutedEventArgs>? AppearanceCancelRequested;
+
+    public event EventHandler<RoutedEventArgs>? AppearanceCancelTerminalRequested;
+
+    public event EventHandler<RoutedEventArgs>? AppearanceResetRequested;
+
+    public event EventHandler<RoutedEventArgs>? AppearanceImportRequested;
+
+    public event EventHandler<RoutedEventArgs>? AppearanceExportRequested;
+
+    public event EventHandler<RoutedEventArgs>? AppearanceResetTerminalPaletteRequested;
 
     public event EventHandler<RoutedEventArgs>? PickColorRequested;
 
@@ -212,6 +230,12 @@ public sealed partial class SettingsView : UserControl
 
     internal void SetCustomAccent(Avalonia.Media.Color color) =>
         AppearanceSettingsPage.SetCustomAccent(color);
+
+    internal void SetAppearanceValidationStatus(string message, bool isWarning) =>
+        AppearanceSettingsPage.SetValidationStatus(message, isWarning);
+
+    internal void ResetApplicationAppearance(ThemePreference defaultTheme) =>
+        AppearanceSettingsPage.ResetApplicationAppearance(defaultTheme);
 
     internal KeybindingPrefixOptionsSelection? CaptureKeybindingPrefixOptions()
     {
@@ -299,8 +323,41 @@ public sealed partial class SettingsView : UserControl
     private void OnAboutSettingsClick(object? sender, RoutedEventArgs e) =>
         AboutSettingsRequested?.Invoke(sender, e);
 
-    private void OnAppearanceChangedRequested(object? sender, RoutedEventArgs e) =>
-        AppearanceChangedRequested?.Invoke(sender, e);
+    private void OnApplicationAppearanceChangedRequested(
+        object? sender,
+        RoutedEventArgs e) =>
+        ApplicationAppearanceChangedRequested?.Invoke(sender, e);
+
+    private void OnTerminalAppearanceChangedRequested(
+        object? sender,
+        RoutedEventArgs e) =>
+        TerminalAppearanceChangedRequested?.Invoke(sender, e);
+
+    private void OnAppearanceApplyRequested(object? sender, RoutedEventArgs e) =>
+        AppearanceApplyRequested?.Invoke(sender, e);
+
+    private void OnAppearanceApplyTerminalRequested(object? sender, RoutedEventArgs e) =>
+        AppearanceApplyTerminalRequested?.Invoke(sender, e);
+
+    private void OnAppearanceCancelRequested(object? sender, RoutedEventArgs e) =>
+        AppearanceCancelRequested?.Invoke(sender, e);
+
+    private void OnAppearanceCancelTerminalRequested(object? sender, RoutedEventArgs e) =>
+        AppearanceCancelTerminalRequested?.Invoke(sender, e);
+
+    private void OnAppearanceResetRequested(object? sender, RoutedEventArgs e) =>
+        AppearanceResetRequested?.Invoke(sender, e);
+
+    private void OnAppearanceImportRequested(object? sender, RoutedEventArgs e) =>
+        AppearanceImportRequested?.Invoke(sender, e);
+
+    private void OnAppearanceExportRequested(object? sender, RoutedEventArgs e) =>
+        AppearanceExportRequested?.Invoke(sender, e);
+
+    private void OnAppearanceResetTerminalPaletteRequested(
+        object? sender,
+        RoutedEventArgs e) =>
+        AppearanceResetTerminalPaletteRequested?.Invoke(sender, e);
 
     private void OnPickColorRequested(object? sender, RoutedEventArgs e) =>
         PickColorRequested?.Invoke(sender, e);

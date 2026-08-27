@@ -111,7 +111,22 @@ public sealed class WorkspaceSettingsViewModelTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal("New workspace", fixture.Proxy.LastSavedWorkspace?.Name);
+        Assert.Null(fixture.Proxy.LastSavedWorkspace?.Accent);
+        Assert.False(fixture.Proxy.LastSavedWorkspace?.HasExplicitAccent);
         Assert.Null(fixture.Proxy.LastExpectedRevision);
+    }
+
+    [Fact]
+    public void New_editor_follows_the_system_accent_until_the_user_overrides_it()
+    {
+        var fixture = CreateCatalog(Snapshot());
+        using var viewModel = new WorkspaceSettingsViewModel(fixture.Catalog);
+
+        Assert.True(viewModel.TryBeginCreate(out _, out _));
+
+        var definition = viewModel.Editor!.CreateSaveRequest().Definition;
+        Assert.Null(definition.Accent);
+        Assert.False(definition.HasExplicitAccent);
     }
 
     [Fact]

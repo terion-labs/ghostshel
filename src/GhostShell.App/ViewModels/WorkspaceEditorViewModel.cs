@@ -800,7 +800,8 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         Color,
         _original.AgentPanelPinned,
         SelectedTerminalMultiplexing.Mode,
-        SelectedBrowserProfile.Mode);
+        SelectedBrowserProfile.Mode,
+        !string.IsNullOrWhiteSpace(Accent));
 
     private IReadOnlyList<DefinitionValidationIssue> Validate()
     {

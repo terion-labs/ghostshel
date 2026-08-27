@@ -45,6 +45,7 @@ public sealed class DefinitionCatalogTests
         Assert.Equal(ScreenPanelKind.Terminal, panel.Kind);
 
         var workspace = Assert.Single(snapshot.Workspaces).Value;
+        Assert.Null(workspace.Accent);
         Assert.Contains(workspace.Entries, entry =>
             entry is WorkspaceEntry.ConnectionReference reference
             && reference.ConnectionId == connection.Id);
@@ -120,6 +121,7 @@ public sealed class DefinitionCatalogTests
         var defaultWorkspace = Assert.Single(second.Value.Workspaces).Value;
         Assert.Equal(WorkspaceDefinition.DefaultWorkspaceId, defaultWorkspace.Id.Value);
         Assert.Empty(defaultWorkspace.Entries);
+        Assert.Null(defaultWorkspace.Accent);
         Assert.Equal(attemptsAfterFirstInitialization, fixture.TotalSaveAttempts);
     }
 
@@ -198,6 +200,7 @@ public sealed class DefinitionCatalogTests
         Assert.True(second.IsSuccess, second.Error?.Message);
         var stored = Assert.Single(second.Value!.Workspaces);
         Assert.Equal(WorkspaceDefinition.DefaultWorkspaceName, stored.Value.Name);
+        Assert.Null(stored.Value.Accent);
         Assert.Equal(4, stored.Revision);
         Assert.Equal(1, attemptsAfterFirstInitialization);
         Assert.Equal(attemptsAfterFirstInitialization, fixture.Workspaces.SaveAttempts);
@@ -213,6 +216,83 @@ public sealed class DefinitionCatalogTests
 
         Assert.True(result.IsSuccess, result.Error?.Message);
         Assert.Equal("Work", Assert.Single(result.Value!.Workspaces).Value.Name);
+        Assert.Equal(
+            ThemePreference.BronzeFallback.ToString(),
+            Assert.Single(result.Value.Workspaces).Value.Accent);
+        Assert.Equal(0, fixture.Workspaces.SaveAttempts);
+    }
+
+    [Fact]
+    public async Task Initialize_clears_the_known_bronze_seed_from_current_Main_once()
+    {
+        var fixture = new CatalogFixture();
+        fixture.Workspaces.Add(
+            CreateAlwaysPresentWorkspace(WorkspaceDefinition.DefaultWorkspaceName),
+            revision: 6);
+
+        var first = await fixture.Catalog.InitializeAsync(CancellationToken.None);
+        var saves = fixture.Workspaces.SaveAttempts;
+        var second = await fixture.CreateCatalog().InitializeAsync(CancellationToken.None);
+
+        Assert.True(first.IsSuccess, first.Error?.Message);
+        Assert.True(second.IsSuccess, second.Error?.Message);
+        var stored = Assert.Single(second.Value!.Workspaces);
+        Assert.Null(stored.Value.Accent);
+        Assert.Equal(7, stored.Revision);
+        Assert.Equal(1, saves);
+        Assert.Equal(saves, fixture.Workspaces.SaveAttempts);
+    }
+
+    [Fact]
+    public async Task Initialize_clears_the_old_seed_after_unrelated_workspace_customization()
+    {
+        var fixture = new CatalogFixture();
+        var seeded = CreateAlwaysPresentWorkspace(WorkspaceDefinition.DefaultWorkspaceName);
+        fixture.Workspaces.Add(
+            new WorkspaceDefinition(
+                seeded.Id,
+                seeded.SchemaVersion,
+                seeded.Name,
+                "My local workspace",
+                seeded.Accent,
+                seeded.Entries,
+                seeded.AgentPolicyOverride,
+                seeded.Icon,
+                autoSave: true,
+                color: "#224466",
+                agentPanelPinned: true),
+            revision: 9);
+
+        var result = await fixture.Catalog.InitializeAsync(CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.Message);
+        var stored = Assert.Single(result.Value!.Workspaces);
+        Assert.Null(stored.Value.Accent);
+        Assert.True(stored.Value.AutoSave);
+        Assert.True(stored.Value.AgentPanelPinned);
+        Assert.Equal("#224466", stored.Value.Color);
+    }
+
+    [Fact]
+    public async Task Initialize_preserves_an_explicit_bronze_Main_accent()
+    {
+        var fixture = new CatalogFixture();
+        var workspace = new WorkspaceDefinition(
+            new WorkspaceId(WorkspaceDefinition.DefaultWorkspaceId),
+            WorkspaceDefinition.CurrentSchemaVersion,
+            WorkspaceDefinition.DefaultWorkspaceName,
+            "Your local GhostSHELL workspace.",
+            ThemePreference.BronzeFallback.ToString(),
+            [],
+            hasExplicitAccent: true);
+        fixture.Workspaces.Add(workspace, revision: 6);
+
+        var result = await fixture.Catalog.InitializeAsync(CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.Message);
+        var stored = Assert.Single(result.Value!.Workspaces);
+        Assert.Equal(ThemePreference.BronzeFallback.ToString(), stored.Value.Accent);
+        Assert.True(stored.Value.HasExplicitAccent);
         Assert.Equal(0, fixture.Workspaces.SaveAttempts);
     }
 

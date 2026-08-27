@@ -14,7 +14,10 @@ public sealed class QuickTerminalDefinitionTrackerTests
 
         Assert.False(tracker.Update(initial));
         Assert.True(tracker.Update(Snapshot(Connection("builtin.local", "Renamed"), 3, Profile("builtin.terminal.default"), 4)));
+        Assert.True(tracker.LastChangeRequiresSessionReset);
         Assert.True(tracker.Update(Snapshot(Connection("builtin.local", "Renamed"), 3, Profile("builtin.terminal.default"), 5)));
+        Assert.False(tracker.LastChangeRequiresSessionReset);
+        Assert.NotNull(tracker.CurrentRenderProfile);
     }
 
     [Fact]
@@ -65,6 +68,51 @@ public sealed class QuickTerminalDefinitionTrackerTests
         Assert.Equal(keymapId, QuickTerminalDefinitionSelection.Resolve(changed).TerminalKeymap!.Value.Id);
     }
 
+    [Fact]
+    public void Presentation_only_terminal_changes_keep_the_quick_session()
+    {
+        var original = Profile("builtin.terminal.default");
+        var tracker = new QuickTerminalDefinitionTracker(
+            Snapshot(Connection("builtin.local", "Built in"), 1, original, 1));
+        var presentation = CopyProfile(
+            original,
+            fontSize: 18,
+            cursorStyle: TerminalCursorStyle.Underline,
+            palette: TerminalPalette.Nord);
+
+        Assert.True(tracker.Update(
+            Snapshot(Connection("builtin.local", "Built in"), 1, presentation, 2)));
+        Assert.False(tracker.LastChangeRequiresSessionReset);
+    }
+
+    [Fact]
+    public void Every_session_policy_change_discards_the_quick_session()
+    {
+        var original = Profile("builtin.terminal.default");
+        var variants = new[]
+        {
+            CopyProfile(original, scrollbackLines: 42),
+            CopyProfile(original, clipboardPolicy: new(
+                TerminalClipboardAccess.Deny,
+                TerminalClipboardAccess.Allow,
+                TerminalPasteSafetyPolicy.ProtectUnsafe)),
+            CopyProfile(original, linkPolicy: TerminalLinkPolicy.Disabled),
+            CopyProfile(original, imeEnabled: false),
+            CopyProfile(original, shellIntegration: TerminalShellIntegrationMode.Disabled),
+            CopyProfile(original, bellMode: TerminalBellMode.Disabled),
+            CopyProfile(original, compatibility: TerminalCompatibilityProfile.Legacy),
+        };
+
+        foreach (var variant in variants)
+        {
+            var tracker = new QuickTerminalDefinitionTracker(
+                Snapshot(Connection("builtin.local", "Built in"), 1, original, 1));
+            Assert.True(tracker.Update(
+                Snapshot(Connection("builtin.local", "Built in"), 1, variant, 2)));
+            Assert.True(tracker.LastChangeRequiresSessionReset);
+        }
+    }
+
     private static DefinitionCatalogSnapshot Snapshot(
         ConnectionProfile connection,
         long connectionRevision,
@@ -98,4 +146,33 @@ public sealed class QuickTerminalDefinitionTrackerTests
         10_000,
         TerminalPalette.GhostShellDark,
         keymapId ?? BuiltInKeymaps.LinuxTerminalId);
+
+    private static TerminalProfile CopyProfile(
+        TerminalProfile source,
+        double? fontSize = null,
+        TerminalCursorStyle? cursorStyle = null,
+        int? scrollbackLines = null,
+        TerminalPalette? palette = null,
+        TerminalClipboardPolicy? clipboardPolicy = null,
+        TerminalLinkPolicy? linkPolicy = null,
+        bool? imeEnabled = null,
+        TerminalShellIntegrationMode? shellIntegration = null,
+        TerminalBellMode? bellMode = null,
+        TerminalCompatibilityProfile? compatibility = null) => new(
+            source.Id,
+            source.Name,
+            source.FontFamily,
+            fontSize ?? source.FontSize,
+            source.LineHeight,
+            cursorStyle ?? source.CursorStyle,
+            source.CursorBlink,
+            scrollbackLines ?? source.ScrollbackLines,
+            palette ?? source.Palette,
+            source.KeymapId,
+            clipboardPolicy ?? source.ClipboardPolicy,
+            linkPolicy ?? source.LinkPolicy,
+            imeEnabled ?? source.ImeEnabled,
+            shellIntegration ?? source.ShellIntegration,
+            bellMode ?? source.BellMode,
+            compatibility ?? source.Compatibility);
 }

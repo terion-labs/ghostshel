@@ -50,5 +50,29 @@ reference at the identical route, content, interaction, viewport, and appearance
 - Floating native child surfaces are docked or captured as their real standalone
   Avalonia window because a window bitmap cannot include another platform surface.
 
+## Appearance named-host checks
+
+The deterministic gate proves resource mapping and the preview/persistence
+contract, but it does not prove a compositor or native settings notification.
+Before release, a named interactive macOS host must verify all of the following
+against one packaged build:
+
+1. With a fresh profile and no workspace accent override, the current macOS
+   accent appears in the main workspace, Quick Terminal, settings/dialogs, and
+   newly opened sibling windows.
+2. Changing the macOS accent while GhostShell is running updates those surfaces
+   without replacing terminal session identities or losing scrollback.
+3. An explicit saved application accent overrides macOS; selecting Follow host
+   restores live macOS tracking.
+4. High Contrast and Reduce Transparency replace native material with the opaque
+   fallback in the main window and Quick Terminal, including native chrome and
+   the docked agent surface. Re-enabling effects restores material without a
+   terminal restart.
+5. Appearance Preview reaches every open window and both terminal surfaces;
+   Cancel restores the exact saved values and Apply survives restart.
+
+Windows 11 and supported GNOME/KDE compositor behavior remains named-host work
+for the later cross-platform milestone; a cross-RID build is not that evidence.
+
 An intentional design deviation must be added here with its route and rationale
 before its reference is approved.
