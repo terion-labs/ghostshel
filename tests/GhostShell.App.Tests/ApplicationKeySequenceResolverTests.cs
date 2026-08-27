@@ -270,6 +270,117 @@ public sealed class ApplicationKeySequenceResolverTests
     }
 }
 
+public sealed class ApplicationKeyControllerTests
+{
+    [Fact]
+    public async Task Matched_binding_executes_once_and_reports_handling()
+    {
+        CommandBinding? executed = null;
+        using var controller = CreateController(binding =>
+        {
+            executed = binding;
+            return Task.CompletedTask;
+        });
+        var binding = new CommandBinding(
+            BuiltInCommands.NewTab,
+            KeySequence.Of(new KeyStroke("T", CoreKeyModifiers.Control)),
+            CommandContext.Workspace);
+        var profile = DirectProfile(binding);
+
+        var handling = await controller.HandleAsync(
+            binding.Sequence[0],
+            Snapshot(profile),
+            replay: null);
+
+        Assert.True(handling.WasResolved);
+        Assert.True(handling.ShouldHandle);
+        Assert.Same(binding, executed);
+    }
+
+    [Fact]
+    public async Task Pass_through_without_an_active_terminal_reports_the_boundary_error()
+    {
+        string? error = null;
+        using var controller = CreateController(
+            _ => Task.CompletedTask,
+            setError: message => error = message);
+        var prefix = new KeyStroke("B", CoreKeyModifiers.Control);
+        var profile = PassThroughProfile(prefix, TimeSpan.FromSeconds(1));
+
+        _ = await controller.HandleAsync(prefix, Snapshot(profile), replay: null);
+        var handling = await controller.HandleAsync(
+            new KeyStroke("Q"),
+            Snapshot(profile),
+            replay: null);
+
+        Assert.True(handling.WasResolved);
+        Assert.True(handling.ShouldHandle);
+        Assert.Contains("no terminal is active", error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Disposal_cancels_pending_expiry_and_replay()
+    {
+        var replayCount = 0;
+        var prefix = new KeyStroke("B", CoreKeyModifiers.Control);
+        var profile = PassThroughProfile(prefix, TimeSpan.FromMilliseconds(25));
+        var controller = CreateController(_ => Task.CompletedTask);
+
+        _ = await controller.HandleAsync(
+            prefix,
+            Snapshot(profile),
+            (_, _) =>
+            {
+                replayCount++;
+                return ValueTask.FromResult(true);
+            });
+        controller.Dispose();
+        await Task.Delay(TimeSpan.FromMilliseconds(100));
+
+        Assert.Equal(0, replayCount);
+    }
+
+    private static ApplicationKeyController CreateController(
+        Func<CommandBinding, Task> execute,
+        Action<string>? setError = null) => new(
+        new ApplicationKeyPresentation(
+            execute,
+            _ => { },
+            () => { },
+            setError ?? (_ => { })),
+        CancellationToken.None);
+
+    private static ApplicationKeyProfileSnapshot Snapshot(KeymapProfile profile) =>
+        new(profile, Revision: 1, profile.Name, CommandContext.Workspace);
+
+    private static KeymapProfile DirectProfile(CommandBinding binding) => new(
+        new KeymapProfileId("test.application.direct.controller"),
+        "Direct controller",
+        KeymapLayer.Application,
+        [binding],
+        prefix: null);
+
+    private static KeymapProfile PassThroughProfile(
+        KeyStroke prefix,
+        TimeSpan timeout)
+    {
+        var binding = new CommandBinding(
+            BuiltInCommands.NewTab,
+            KeySequence.Of(prefix, new KeyStroke("C")),
+            CommandContext.Workspace);
+        return new KeymapProfile(
+            new KeymapProfileId("test.application.pass-through.controller"),
+            "Pass-through controller",
+            KeymapLayer.Application,
+            [binding],
+            new PrefixConfiguration(
+                prefix,
+                timeout,
+                repeatable: false,
+                FailedSequenceBehavior.PassThrough));
+    }
+}
+
 public sealed class ApplicationCommandRouterTests
 {
     [Fact]

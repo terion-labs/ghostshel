@@ -30,11 +30,7 @@ public sealed partial class MainWindow : Window
                 window => window.WindowTitleBarContentMargin);
 
     private readonly CancellationTokenSource _lifetime = new();
-    private ApplicationKeySequenceResolver _applicationKeys = new(
-        BuiltInKeymaps.TmuxApplication);
-    private KeymapProfileId _activeApplicationKeymapId = BuiltInKeymaps.TmuxApplicationId;
-    private long _activeApplicationKeymapRevision;
-    private CancellationTokenSource? _applicationHintLifetime;
+    private ApplicationKeyController? _applicationKeyController;
     private CancellationTokenSource? _historyExportLifetime;
     private readonly IDefinitionBundleStore? _definitionBundleStore;
     private readonly IDefinitionCatalog? _definitionCatalog;
@@ -378,8 +374,7 @@ public sealed partial class MainWindow : Window
         _backingScaleSettledPass?.Dispose();
         _backingScaleSettledPass = null;
 
-        _applicationHintLifetime?.Cancel();
-        _applicationHintLifetime?.Dispose();
+        _applicationKeyController?.Dispose();
         _lifetime.Cancel();
         _lifetime.Dispose();
         base.OnClosed(e);
@@ -387,6 +382,15 @@ public sealed partial class MainWindow : Window
 
     private MainWindowViewModel ViewModel => DataContext as MainWindowViewModel
         ?? throw new InvalidOperationException("The main window view model is unavailable.");
+
+    private ApplicationKeyController ApplicationKeys =>
+        _applicationKeyController ??= new ApplicationKeyController(
+            new ApplicationKeyPresentation(
+                ExecuteCommandAsync,
+                ViewModel.ShowApplicationKeySequenceHint,
+                ViewModel.ClearApplicationKeySequenceHint,
+                ViewModel.SetError),
+            _lifetime.Token);
 
     private CommandPaletteView CommandPaletteOverlay => _commandPaletteOverlay
         ?? throw new InvalidOperationException(
@@ -1809,24 +1813,27 @@ public sealed partial class MainWindow : Window
 
         if (!ViewModel.HasOverlay)
         {
-            SynchronizeApplicationKeymap();
-            var resolution = _applicationKeys.Resolve(
+            var replayTarget = FindActiveTerminalHost();
+            ApplicationKeyReplay? replay = replayTarget is null
+                ? null
+                : replayTarget.ReplayApplicationKeyStrokesAsync;
+            var handling = await ApplicationKeys.HandleAsync(
                 ApplicationKeyStrokeMapper.Map(e.Key, e.KeyModifiers, e.KeySymbol),
-                ViewModel.ActiveCommandContexts,
-                DateTimeOffset.UtcNow);
-            if (resolution.Kind != ApplicationKeyResolutionKind.NotHandled)
+                new ApplicationKeyProfileSnapshot(
+                    ViewModel.ActiveApplicationKeymap,
+                    ViewModel.ActiveApplicationKeymapRevision,
+                    ViewModel.ActiveApplicationKeymapName,
+                    ViewModel.ActiveCommandContexts),
+                replay);
+            if (handling.WasResolved)
             {
-                e.Handled = resolution.ShouldHandle;
-                await ApplyApplicationKeyResolutionAsync(
-                    resolution,
-                    FindActiveTerminalHost());
+                e.Handled = handling.ShouldHandle;
                 return;
             }
         }
         else
         {
-            _applicationKeys.Reset();
-            ClearApplicationKeySequenceHint();
+            ApplicationKeys.Reset();
         }
 
         if (e.Key == Key.Escape && ViewModel.HasOverlay)
@@ -1877,145 +1884,6 @@ public sealed partial class MainWindow : Window
             // prevents ordinary key presses from mutating the live remote shell.
             e.Handled = true;
         }
-    }
-
-    private async Task ApplyApplicationKeyResolutionAsync(
-        ApplicationKeyResolution resolution,
-        TerminalPresentationHost? replayTarget)
-    {
-        if (resolution.Kind == ApplicationKeyResolutionKind.Matched
-            && resolution.Binding is { } binding)
-        {
-            ClearApplicationKeySequenceHint();
-            await ExecuteCommandAsync(binding);
-        }
-        else if (resolution.Kind == ApplicationKeyResolutionKind.Pending
-            && ViewModel.ActiveApplicationKeymap.Prefix is { } prefix)
-        {
-            ShowPendingApplicationKeySequenceHint(prefix, replayTarget);
-        }
-        else if (resolution.Kind == ApplicationKeyResolutionKind.Rejected
-            && resolution.ShouldHandle)
-        {
-            ShowApplicationKeySequenceHint(
-                "That key is not bound after the application prefix.",
-                TimeSpan.FromSeconds(2));
-        }
-        else if (resolution.Kind is ApplicationKeyResolutionKind.PassedThrough
-            or ApplicationKeyResolutionKind.Expired)
-        {
-            ClearApplicationKeySequenceHint();
-            await ReplayApplicationKeyStrokesAsync(
-                replayTarget,
-                resolution.ReplayStrokes);
-        }
-    }
-
-    private void SynchronizeApplicationKeymap()
-    {
-        var profile = ViewModel.ActiveApplicationKeymap;
-        var revision = ViewModel.ActiveApplicationKeymapRevision;
-        if (profile.Id == _activeApplicationKeymapId
-            && revision == _activeApplicationKeymapRevision)
-        {
-            return;
-        }
-
-        _applicationKeys = new ApplicationKeySequenceResolver(profile);
-        _activeApplicationKeymapId = profile.Id;
-        _activeApplicationKeymapRevision = revision;
-        ClearApplicationKeySequenceHint();
-    }
-
-    private void ShowApplicationKeySequenceHint(string message, TimeSpan duration)
-    {
-        _applicationHintLifetime?.Cancel();
-        _applicationHintLifetime?.Dispose();
-        _applicationHintLifetime = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
-        ViewModel.ShowApplicationKeySequenceHint(message);
-        _ = ClearApplicationKeySequenceHintAfterAsync(duration, _applicationHintLifetime.Token);
-    }
-
-    private void ShowPendingApplicationKeySequenceHint(
-        PrefixConfiguration prefix,
-        TerminalPresentationHost? replayTarget)
-    {
-        _applicationHintLifetime?.Cancel();
-        _applicationHintLifetime?.Dispose();
-        _applicationHintLifetime = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
-        ViewModel.ShowApplicationKeySequenceHint(
-            $"{prefix.Stroke} — waiting for a command · {ViewModel.ActiveApplicationKeymapName}");
-        _ = ExpireApplicationKeySequenceAsync(
-            prefix.Timeout,
-            replayTarget,
-            _applicationHintLifetime.Token);
-    }
-
-    private async Task ClearApplicationKeySequenceHintAfterAsync(
-        TimeSpan duration,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            await Task.Delay(duration, cancellationToken);
-            ViewModel.ClearApplicationKeySequenceHint();
-            _applicationKeys.Reset();
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-        }
-    }
-
-    private async Task ExpireApplicationKeySequenceAsync(
-        TimeSpan duration,
-        TerminalPresentationHost? replayTarget,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            await Task.Delay(duration, cancellationToken);
-            var expiration = _applicationKeys.Expire(
-                DateTimeOffset.UtcNow + TimeSpan.FromTicks(1));
-            ViewModel.ClearApplicationKeySequenceHint();
-            if (expiration.Kind == ApplicationKeyResolutionKind.Expired)
-            {
-                await ReplayApplicationKeyStrokesAsync(
-                    replayTarget,
-                    expiration.ReplayStrokes);
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-        }
-    }
-
-    private async Task ReplayApplicationKeyStrokesAsync(
-        TerminalPresentationHost? replayTarget,
-        IReadOnlyList<KeyStroke>? strokes)
-    {
-        if (strokes is null || strokes.Count == 0)
-        {
-            return;
-        }
-
-        if (replayTarget is null)
-        {
-            ViewModel.SetError("The application shortcut could not be passed through because no terminal is active.");
-            return;
-        }
-
-        if (!await replayTarget.ReplayApplicationKeyStrokesAsync(strokes, _lifetime.Token))
-        {
-            ViewModel.SetError("The application shortcut could not be passed through safely.");
-        }
-    }
-
-    private void ClearApplicationKeySequenceHint()
-    {
-        _applicationHintLifetime?.Cancel();
-        _applicationHintLifetime?.Dispose();
-        _applicationHintLifetime = null;
-        ViewModel.ClearApplicationKeySequenceHint();
     }
 
     private static bool IsTerminalCopyGesture(KeyEventArgs e) => OperatingSystem.IsMacOS()
