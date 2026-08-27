@@ -2,97 +2,126 @@ namespace GhostShell.App.Views;
 
 public sealed partial class MainWindow
 {
+    private ShellCommandExecutor? _shellCommands;
+
     private static App GhostShellApplication => Avalonia.Application.Current as App
         ?? throw new InvalidOperationException("The GhostSHELL application is unavailable.");
 
-    private void OnNewWindowMenuClick(object? sender, EventArgs e)
+    private ShellCommandExecutor ShellCommands => _shellCommands ??= new(
+        ViewModel,
+        new ApplicationCommandPresentation(
+            ShowNewItemLauncherAsync,
+            FocusActivePanel,
+            CloseActivePanelAsync,
+            RenameActiveTabAsync,
+            CloseActiveTabAsync,
+            position => OpenRuntimeWorkspaceAsync(token =>
+                ViewModel.SelectWorkspaceAtPositionAsync(position, token)),
+            SendLiteralPrefixAsync),
+        new NativeMenuCommandActions(
+            GhostShellApplication.OpenNewWindow,
+            () => GhostShellApplication.OpenNewTabAsync(this),
+            RequestNewTerminalAsync,
+            () => GhostShellApplication.CloseTabAsync(this),
+            ShowCommandPalette,
+            NavigateToLauncherAsync,
+            GhostShellApplication.ToggleQuickTerminal,
+            ToggleAgentPanel,
+            ShowNewPanelChooserAsync,
+            ShowLayoutDesignerAsync,
+            () => SelectRelativeTabAsync(-1),
+            () => SelectRelativeTabAsync(1),
+            RequestClosePanelAsync),
+        _lifetime.Token);
+
+    private async void OnNewWindowMenuClick(object? sender, EventArgs e)
     {
         _ = sender;
         _ = e;
-        GhostShellApplication.OpenNewWindow();
+        await ShellCommands.ExecuteNativeAsync(NativeMenuCommand.NewWindow);
     }
 
     private async void OnNewTabMenuClick(object? sender, EventArgs e)
     {
         _ = sender;
         _ = e;
-        await GhostShellApplication.OpenNewTabAsync(this);
+        await ShellCommands.ExecuteNativeAsync(NativeMenuCommand.NewTab);
     }
 
     private async void OnNewTerminalMenuClick(object? sender, EventArgs e)
     {
         _ = sender;
         _ = e;
-        await RequestNewTerminalAsync();
+        await ShellCommands.ExecuteNativeAsync(NativeMenuCommand.NewTerminal);
     }
 
     private async void OnCloseTabMenuClick(object? sender, EventArgs e)
     {
         _ = sender;
         _ = e;
-        await GhostShellApplication.CloseTabAsync(this);
+        await ShellCommands.ExecuteNativeAsync(NativeMenuCommand.CloseTab);
     }
 
-    private void OnCommandPaletteMenuClick(object? sender, EventArgs e)
+    private async void OnCommandPaletteMenuClick(object? sender, EventArgs e)
     {
         _ = sender;
         _ = e;
-        ShowCommandPalette();
+        await ShellCommands.ExecuteNativeAsync(NativeMenuCommand.CommandPalette);
     }
 
-    private void OnLauncherMenuClick(object? sender, EventArgs e)
+    private async void OnLauncherMenuClick(object? sender, EventArgs e)
     {
         _ = sender;
         _ = e;
-        _ = NavigateToLauncherAsync();
+        await ShellCommands.ExecuteNativeAsync(NativeMenuCommand.Launcher);
     }
 
-    private void OnQuickTerminalMenuClick(object? sender, EventArgs e)
+    private async void OnQuickTerminalMenuClick(object? sender, EventArgs e)
     {
         _ = sender;
         _ = e;
-        GhostShellApplication.ToggleQuickTerminal();
+        await ShellCommands.ExecuteNativeAsync(NativeMenuCommand.QuickTerminal);
     }
 
-    private void OnToggleAgentMenuClick(object? sender, EventArgs e)
+    private async void OnToggleAgentMenuClick(object? sender, EventArgs e)
     {
         _ = sender;
         _ = e;
-        ToggleAgentPanel();
+        await ShellCommands.ExecuteNativeAsync(NativeMenuCommand.ToggleAgent);
     }
 
     private async void OnAddPanelMenuClick(object? sender, EventArgs e)
     {
         _ = sender;
         _ = e;
-        await ShowNewPanelChooserAsync();
+        await ShellCommands.ExecuteNativeAsync(NativeMenuCommand.AddPanel);
     }
 
     private async void OnLayoutDesignerMenuClick(object? sender, EventArgs e)
     {
         _ = sender;
         _ = e;
-        await ShowLayoutDesignerAsync();
+        await ShellCommands.ExecuteNativeAsync(NativeMenuCommand.LayoutDesigner);
     }
 
     private async void OnPreviousTabMenuClick(object? sender, EventArgs e)
     {
         _ = sender;
         _ = e;
-        await SelectRelativeTabAsync(-1);
+        await ShellCommands.ExecuteNativeAsync(NativeMenuCommand.PreviousTab);
     }
 
     private async void OnNextTabMenuClick(object? sender, EventArgs e)
     {
         _ = sender;
         _ = e;
-        await SelectRelativeTabAsync(1);
+        await ShellCommands.ExecuteNativeAsync(NativeMenuCommand.NextTab);
     }
 
     private async void OnClosePanelMenuClick(object? sender, EventArgs e)
     {
         _ = sender;
         _ = e;
-        await RequestClosePanelAsync();
+        await ShellCommands.ExecuteNativeAsync(NativeMenuCommand.ClosePanel);
     }
 }

@@ -20,9 +20,7 @@ public sealed class NewTabCommandContractTests
     [Fact]
     public void The_new_tab_command_opens_a_tab_that_asks_what_to_open()
     {
-        var source = ApplicationViews.FindPartialClassSources("MainWindow");
-
-        foreach (var body in NewTabHandlerBodies(source))
+        foreach (var body in NewTabHandlerBodies())
         {
             Assert.Contains("ShowNewItemLauncherAsync", body, StringComparison.Ordinal);
             Assert.DoesNotContain("AddLocalTerminalTabAsync", body, StringComparison.Ordinal);
@@ -37,12 +35,19 @@ public sealed class NewTabCommandContractTests
     [Fact]
     public void Both_ways_of_asking_for_a_new_tab_are_wired()
     {
-        var source = ApplicationViews.FindPartialClassSources("MainWindow");
-
-        Assert.Equal(2, NewTabHandlerBodies(source).Count);
+        Assert.Equal(2, NewTabHandlerBodies().Count);
     }
 
-    private static IReadOnlyList<string> NewTabHandlerBodies(string source) =>
+    private static IReadOnlyList<string> NewTabHandlerBodies() =>
+        [.. FindNewTabHandlerBodies(
+                ApplicationViews.FindPartialClassSources("MainWindow"))
+            .Concat(FindNewTabHandlerBodies(File.ReadAllText(Path.Combine(
+                ApplicationViews.RepositoryRoot,
+                "src",
+                "GhostShell.App",
+                "ShellCommandExecutor.cs"))))];
+
+    private static IEnumerable<string> FindNewTabHandlerBodies(string source) =>
         [.. Regex.Matches(
                 source,
                 @"(case ApplicationCommandActionKind\.NewTab:|command\.Id == BuiltInCommands\.NewTab\))",

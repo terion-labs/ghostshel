@@ -1745,119 +1745,15 @@ public sealed partial class MainWindow : Window
     }
 
     public Task ExecuteCommandAsync(CommandId commandId) =>
-        ExecuteCommandAsync(commandId, EmptyCommandArguments.Instance);
+        ShellCommands.ExecuteAsync(commandId, EmptyCommandArguments.Instance);
 
     private Task ExecuteCommandAsync(CommandBinding binding) =>
-        ExecuteCommandAsync(binding.CommandId, binding.Arguments);
+        ShellCommands.ExecuteAsync(binding.CommandId, binding.Arguments);
 
-    private async Task ExecuteCommandAsync(
+    private Task ExecuteCommandAsync(
         CommandId commandId,
-        IReadOnlyDictionary<string, string> arguments)
-    {
-        var routed = ApplicationCommandRouter.Route(
-            commandId,
-            arguments,
-            ViewModel.ActiveCommandContexts);
-        if (routed.Action is not { } action)
-        {
-            ViewModel.SetError(routed.Error ?? "That command is unavailable.");
-            return;
-        }
-
-        try
-        {
-            switch (action.Kind)
-            {
-                // A new tab, which is a tab that asks what to open — the same
-                // thing the plus beside the tabs gives you. It used to arrive
-                // as a local terminal already running, which is one of the
-                // answers rather than the question, and the only way to get any
-                // of the others was to close it and press the plus instead.
-                case ApplicationCommandActionKind.NewTab:
-                    await ShowNewItemLauncherAsync();
-                    break;
-                case ApplicationCommandActionKind.SplitPanel:
-                    if (await ViewModel.AddLocalTerminalPanelAsync(
-                        action.SplitOrientation!.Value,
-                        _lifetime.Token))
-                    {
-                        FocusActivePanel();
-                    }
-                    break;
-                case ApplicationCommandActionKind.FocusPanel:
-                    _ = await ViewModel.FocusPanelAsync(
-                        action.FocusDirection!.Value,
-                        _lifetime.Token);
-                    FocusActivePanel();
-                    break;
-                case ApplicationCommandActionKind.TogglePanelZoom:
-                    _ = ViewModel.ToggleActivePanelZoom();
-                    FocusActivePanel();
-                    break;
-                case ApplicationCommandActionKind.ClosePanel:
-                    await CloseActivePanelAsync();
-                    FocusActivePanel();
-                    break;
-                case ApplicationCommandActionKind.RenameTab:
-                    await RenameActiveTabAsync();
-                    FocusActivePanel();
-                    break;
-                case ApplicationCommandActionKind.CloseTab:
-                    await CloseActiveTabAsync();
-                    FocusActivePanel();
-                    break;
-                case ApplicationCommandActionKind.MoveTab:
-                    _ = await ViewModel.MoveActiveTabAsync(
-                        action.TabOffset!.Value,
-                        _lifetime.Token);
-                    FocusActivePanel();
-                    break;
-                case ApplicationCommandActionKind.SelectRelativeTab:
-                    _ = await ViewModel.SelectRelativeTabAsync(
-                        action.TabOffset!.Value,
-                        _lifetime.Token);
-                    FocusActivePanel();
-                    break;
-                case ApplicationCommandActionKind.SelectLastTab:
-                    _ = await ViewModel.SelectLastActiveTabAsync(_lifetime.Token);
-                    FocusActivePanel();
-                    break;
-                case ApplicationCommandActionKind.SelectTab:
-                    if (!await ViewModel.SelectTabAtPositionAsync(
-                            action.TabPosition!.Value,
-                            _lifetime.Token))
-                    {
-                        ViewModel.SetError($"Tab position {action.TabPosition.Value} is not open.");
-                    }
-
-                    FocusActivePanel();
-                    break;
-                case ApplicationCommandActionKind.SelectWorkspace:
-                    await OpenRuntimeWorkspaceAsync(token =>
-                        ViewModel.SelectWorkspaceAtPositionAsync(
-                            action.WorkspacePosition!.Value,
-                            token));
-                    break;
-                case ApplicationCommandActionKind.EnterTerminalCopyMode:
-                    _ = ViewModel.EnterTerminalCopyMode();
-                    FocusActivePanel();
-                    break;
-                case ApplicationCommandActionKind.SendPrefix:
-                    await SendLiteralPrefixAsync();
-                    FocusActivePanel();
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(action), action.Kind, null);
-            }
-        }
-        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
-        {
-        }
-        catch (Exception exception) when (exception is InvalidOperationException or IOException)
-        {
-            ViewModel.SetError(exception.Message);
-        }
-    }
+        IReadOnlyDictionary<string, string> arguments) =>
+        ShellCommands.ExecuteAsync(commandId, arguments);
 
     private async Task SendLiteralPrefixAsync()
     {
