@@ -211,6 +211,34 @@ internal static class Confirmations
         });
     }
 
+    public static ConfirmationDialog AgentHistoryRetentionChange(
+        AgentHistoryRetentionOption option)
+    {
+        ArgumentNullException.ThrowIfNull(option);
+        return new ConfirmationDialog(new ConfirmationDialogOptions
+        {
+            Title = "Change agent-history retention",
+            Heading = "Apply and prune agent history?",
+            Detail = option.Description + ".",
+            Notice = "Saved conversations and their audit metadata outside the new limit are removed immediately. The current active run is protected. Prompts and tool content are never included in metadata exports.",
+            ConfirmLabel = "Apply and prune",
+            ConfirmAutomationName = "Confirm agent history retention change",
+            CancelAutomationName = "Cancel agent history retention change",
+        });
+    }
+
+    public static ConfirmationDialog AgentConversationDelete(string title) =>
+        new(new ConfirmationDialogOptions
+        {
+            Title = "Delete agent conversation",
+            Heading = "Delete this conversation?",
+            Detail = $"“{title}” and its retained audit metadata will be removed.",
+            Notice = "This cannot delete a run while it is working. GhostSHELL cannot undo the deletion.",
+            ConfirmLabel = "Delete conversation",
+            ConfirmAutomationName = "Confirm delete agent conversation",
+            CancelAutomationName = "Cancel delete agent conversation",
+        });
+
     public static ConfirmationDialog LocalArtifactClear(LocalArtifactItemViewModel item)
     {
         ArgumentNullException.ThrowIfNull(item);

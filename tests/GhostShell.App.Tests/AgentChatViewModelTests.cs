@@ -3510,13 +3510,68 @@ public sealed partial class AgentChatViewModelTests
     }
 
     [Fact]
-    public void Audit_evidence_ui_is_controlled_by_the_build_configuration()
+    public void Audit_evidence_ui_is_available_in_every_build_configuration()
     {
-#if DEBUG
         Assert.True(AgentChatViewModel.AuditEvidenceUiEnabled);
-#else
-        Assert.False(AgentChatViewModel.AuditEvidenceUiEnabled);
-#endif
+    }
+
+    [Fact]
+    public async Task Restored_conversation_owns_production_audit_and_policy_comparison()
+    {
+        var provider = Provider("provider", "Provider", order: 0);
+        var selectedRun = new AgentRunId("run-restored-history");
+        var baseline = AgentPolicy.Default.SelectPrimaryModel("provider", "model");
+        var runPolicy = baseline with
+        {
+            Permissions = baseline.Permissions.SetItem(
+                AgentCapability.ProcessControl,
+                AgentPermission.Ask),
+        };
+        var effective = runPolicy with
+        {
+            Permissions = runPolicy.Permissions.SetItem(
+                AgentCapability.ProcessControl,
+                AgentPermission.Yolo),
+        };
+        using var runtime = new StubGovernedRuntime
+        {
+            Snapshot = Snapshot(
+                providerId: provider.Id,
+                messages:
+                [
+                    new AgentChatMessage(
+                        AgentChatMessageRole.User,
+                        "Restored transcript."),
+                ],
+                effectivePolicy: effective,
+                selectedConversationRunId: selectedRun,
+                baselinePolicy: baseline,
+                runPolicy: runPolicy,
+                policyGeneration: 7),
+        };
+        using var profiles = new StubProfileRuntime { Profiles = [provider] };
+        var auditReader = new StubAgentRunAuditReader(
+            AuditStoreResult<AgentRunAuditPage>.Success(
+                new AgentRunAuditPage([], null)));
+        using var viewModel = new AgentChatViewModel(
+            runtime,
+            profiles,
+            ImmediateUiThreadDispatcher.Instance,
+            auditReader);
+
+        Assert.True(viewModel.CanShowAudit);
+        viewModel.IsAuditExpanded = true;
+        await WaitUntilAsync(() => auditReader.ReadCount == 1);
+
+        Assert.Equal(selectedRun, auditReader.Queries[0].RunId);
+        Assert.Equal(7, viewModel.PolicyGeneration);
+        var processControl = Assert.Single(
+            viewModel.PolicyComparison,
+            item => item.Capability == "Process control");
+        Assert.Equal("Off", processControl.Baseline);
+        Assert.Equal("Ask", processControl.Run);
+        Assert.Equal("Full access", processControl.Effective);
+        Assert.True(processControl.HasDifference);
     }
 
     [Fact]
@@ -3638,7 +3693,7 @@ public sealed partial class AgentChatViewModelTests
 
         Assert.Empty(viewModel.AuditEntries);
         Assert.Equal(
-            "Recorded actions could not be loaded.",
+            "The recorded audit chain is incomplete or corrupt and was hidden.",
             viewModel.AuditStatus);
         Assert.DoesNotContain(
             "must-not-surface-secret",
@@ -3887,7 +3942,11 @@ public sealed partial class AgentChatViewModelTests
         bool steeringAvailable = false,
         long? steeringGeneration = null,
         IReadOnlyList<GovernedAgentConversationSummary>? conversations = null,
-        GovernedAgentToolActivity? panelActivity = null)
+        GovernedAgentToolActivity? panelActivity = null,
+        AgentRunId? selectedConversationRunId = null,
+        AgentPolicy? baselinePolicy = null,
+        AgentPolicy? runPolicy = null,
+        long policyGeneration = 1)
     {
         var routeProvider = providerId?.Value ?? "provider";
         var policy = effectivePolicy ?? new AgentPolicy(
@@ -3925,7 +3984,11 @@ public sealed partial class AgentChatViewModelTests
             ProvisionalReasoningSummary: string.Empty,
             QueuedFollowUpCount: 0,
             Conversations: conversations?.ToImmutableArray() ?? [],
-            PanelActivity: panelActivity ?? activeTool);
+            PanelActivity: panelActivity ?? activeTool,
+            SelectedConversationRunId: selectedConversationRunId,
+            BaselinePolicy: baselinePolicy,
+            RunPolicy: runPolicy,
+            PolicyGeneration: policyGeneration);
     }
 
     private static GovernedAgentContextItem ContextItem(

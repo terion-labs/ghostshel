@@ -51,4 +51,54 @@ public interface IAgentSessionCheckpointStore
             AgentConversationScopeId conversationScopeId,
             int maximumCount,
             CancellationToken cancellationToken);
+
+    ValueTask<AgentSessionCheckpointStoreResult<Unit>> SaveHistoryMetadataAsync(
+        AgentConversationScopeId? conversationScopeId,
+        AgentRunHistoryMetadata metadata,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(AgentSessionCheckpointStoreResult<Unit>.Success(Unit.Value));
+
+    ValueTask<AgentSessionCheckpointStoreResult<AgentRunHistoryMetadata>>
+        LoadHistoryMetadataAsync(
+            AgentConversationScopeId? conversationScopeId,
+            AgentRunId runId,
+            CancellationToken cancellationToken) =>
+        ValueTask.FromResult(
+            AgentSessionCheckpointStoreResult<AgentRunHistoryMetadata>.Failure(
+                new AgentSessionCheckpointStoreError(
+                    AgentSessionCheckpointStoreErrorCode.NotFound,
+                    "Agent history metadata was not found.")));
+
+    ValueTask<AgentSessionCheckpointStoreResult<AgentRunHistoryRetention>>
+        GetHistoryRetentionAsync(CancellationToken cancellationToken) =>
+        ValueTask.FromResult(
+            AgentSessionCheckpointStoreResult<AgentRunHistoryRetention>.Failure(
+                new AgentSessionCheckpointStoreError(
+                    AgentSessionCheckpointStoreErrorCode.StorageFailure,
+                    "Agent history retention is unavailable.")));
+
+    ValueTask<AgentSessionCheckpointStoreResult<AgentRunHistoryRetention>>
+        UpdateHistoryRetentionAsync(
+            AgentConversationScopeId? conversationScopeId,
+            AgentRunHistoryRetention expected,
+            int maximumRuns,
+            TimeSpan maximumAge,
+            AgentRunId? protectedRunId,
+            CancellationToken cancellationToken) =>
+        ValueTask.FromResult(
+            AgentSessionCheckpointStoreResult<AgentRunHistoryRetention>.Failure(
+                new AgentSessionCheckpointStoreError(
+                    AgentSessionCheckpointStoreErrorCode.StorageFailure,
+                    "Agent history retention is unavailable.")));
+
+    ValueTask<AgentSessionCheckpointStoreResult<AgentRunHistoryExportReceipt>>
+        ExportHistoryAsync(
+            AgentConversationScopeId? conversationScopeId,
+            Stream destination,
+            CancellationToken cancellationToken) =>
+        ValueTask.FromResult(
+            AgentSessionCheckpointStoreResult<AgentRunHistoryExportReceipt>.Failure(
+                new AgentSessionCheckpointStoreError(
+                    AgentSessionCheckpointStoreErrorCode.StorageFailure,
+                    "Agent history export is unavailable.")));
 }

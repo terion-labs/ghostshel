@@ -248,6 +248,10 @@ public sealed partial class AgentWorkspaceView : UserControl
 
     public event EventHandler<RoutedEventArgs>? RefreshAgentAuditRequested;
 
+    public event EventHandler<RoutedEventArgs>? ApplyAgentHistoryRetentionRequested;
+
+    public event EventHandler<RoutedEventArgs>? ExportAgentHistoryRequested;
+
     public event EventHandler<RoutedEventArgs>? SendAgentChatRequested;
 
     public event EventHandler<RoutedEventArgs>? QueueAgentSteeringRequested;
@@ -546,6 +550,12 @@ public sealed partial class AgentWorkspaceView : UserControl
 
     private void OnRefreshAgentAuditClick(object? sender, RoutedEventArgs e) =>
         RefreshAgentAuditRequested?.Invoke(sender, e);
+
+    private void OnApplyAgentHistoryRetentionClick(object? sender, RoutedEventArgs e) =>
+        ApplyAgentHistoryRetentionRequested?.Invoke(sender, e);
+
+    private void OnExportAgentHistoryClick(object? sender, RoutedEventArgs e) =>
+        ExportAgentHistoryRequested?.Invoke(sender, e);
 
     private void OnSendAgentChatClick(object? sender, RoutedEventArgs e) =>
         SendAgentChatRequested?.Invoke(sender, e);

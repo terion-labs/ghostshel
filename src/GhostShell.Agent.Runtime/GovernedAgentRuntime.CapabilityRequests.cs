@@ -619,6 +619,9 @@ public sealed partial class GovernedAgentRuntime
                 TerminalMutationPermission =
                     update.Policy.GetPermission(AgentCapability.RunCommands),
                 EffectivePolicy = update.Policy,
+                BaselinePolicy = _baselinePolicy,
+                RunPolicy = _runPolicy,
+                PolicyGeneration = _policyGeneration,
                 Status =
                     "Capability set to Ask for this run; later actions still require approval.",
             };
@@ -663,6 +666,9 @@ public sealed partial class GovernedAgentRuntime
                 TerminalMutationPermission =
                     _baselinePolicy.GetPermission(AgentCapability.RunCommands),
                 EffectivePolicy = _baselinePolicy,
+                BaselinePolicy = _baselinePolicy,
+                RunPolicy = _runPolicy,
+                PolicyGeneration = _policyGeneration,
                 YoloAuthority = null,
                 Status = revocationError is null
                     ? "The capability policy update failed closed. The run was quarantined and its authority was revoked."

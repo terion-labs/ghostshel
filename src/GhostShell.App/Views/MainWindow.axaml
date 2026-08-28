@@ -436,6 +436,8 @@
         CloseWorkspaceRequested="OnCloseWorkspaceClick"
         CreateWorkspaceRequested="OnCreateWorkspaceClick"
         RefreshAgentAuditRequested="OnRefreshAgentAuditClick"
+        ApplyAgentHistoryRetentionRequested="OnApplyAgentHistoryRetentionClick"
+        ExportAgentHistoryRequested="OnExportAgentHistoryClick"
         StartNewAgentConversationRequested="OnStartNewAgentConversationClick"
         OpenAgentConversationRequested="OnOpenAgentConversationClick"
         DeleteAgentConversationRequested="OnDeleteAgentConversationClick"

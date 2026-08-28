@@ -136,9 +136,33 @@ public sealed record AgentConversationItemViewModel(
     string Title,
     string Model,
     string UpdatedAt,
-    bool IsCurrent)
+    bool IsCurrent,
+    GovernedAgentConversationAvailability Availability)
 {
-    public string Details => $"{Model} · {UpdatedAt}";
+    public bool IsAvailable =>
+        Availability is GovernedAgentConversationAvailability.Available
+            or GovernedAgentConversationAvailability.Partial;
+
+    public string Details => Availability switch
+    {
+        GovernedAgentConversationAvailability.Available => $"{Model} · {UpdatedAt}",
+        GovernedAgentConversationAvailability.Partial =>
+            $"Partial metadata · {UpdatedAt}",
+        GovernedAgentConversationAvailability.Corrupt =>
+            $"Corrupt — cannot open or export · {UpdatedAt}",
+        GovernedAgentConversationAvailability.Unavailable =>
+            $"Temporarily unavailable · {UpdatedAt}",
+        _ => $"Unavailable · {UpdatedAt}",
+    };
+}
+
+public sealed record AgentHistoryRetentionOption(
+    string DisplayName,
+    int MaximumRuns,
+    TimeSpan MaximumAge)
+{
+    public string Description =>
+        $"Keep up to {MaximumRuns} runs for {MaximumAge.TotalDays:N0} days";
 }
 
 public sealed record AgentApprovalArgumentViewModel(
@@ -296,6 +320,20 @@ public sealed record AgentPolicyCapabilityViewModel(
     public string AccessibleName => $"{Capability} · {Permission}";
 }
 
+public sealed record AgentPolicyComparisonViewModel(
+    string Capability,
+    string Baseline,
+    string Run,
+    string Effective)
+{
+    public bool HasDifference =>
+        !string.Equals(Baseline, Run, StringComparison.Ordinal)
+        || !string.Equals(Run, Effective, StringComparison.Ordinal);
+
+    public string AccessibleName =>
+        $"{Capability} · baseline {Baseline} · run {Run} · effective {Effective}";
+}
+
 public sealed record AgentYoloAuthorityViewModel(
     string Scope,
     string Duration,
@@ -331,6 +369,13 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
             new(AgentServiceTier.Default, "Standard"),
             new(AgentServiceTier.Flex, "Flex"),
             new(AgentServiceTier.Priority, "Priority"),
+        ]);
+    private static readonly IReadOnlyList<AgentHistoryRetentionOption>
+        AllHistoryRetentionOptions = Array.AsReadOnly<AgentHistoryRetentionOption>(
+        [
+            new("Compact", 10, TimeSpan.FromDays(30)),
+            new("Balanced", 50, TimeSpan.FromDays(90)),
+            new("Extended", 200, TimeSpan.FromDays(365)),
         ]);
 
     private readonly IGovernedAgentRuntime _runtime;
@@ -369,6 +414,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
     private string _capabilityNotice = PendingCapabilityNotice;
     private string _effectivePolicyProvider;
     private string _effectivePolicyModel;
+    private long _policyGeneration = 1;
     private GovernedAgentState _state;
     private AgentApprovalCardViewModel? _pendingApproval;
     private AgentQuestionCardViewModel? _pendingQuestion;
@@ -409,6 +455,13 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
     private int _refreshPending;
     private int _refreshLoopRunning;
     private AgentPolicy _effectivePolicy;
+    private AgentRunHistoryRetention? _historyRetention;
+    private AgentHistoryRetentionOption _selectedHistoryRetentionOption =
+        AllHistoryRetentionOptions[1];
+    private bool _isHistoryRetentionLoading;
+    private bool _isHistoryRetentionSaving;
+    private bool _isHistoryExporting;
+    private string _agentHistoryStatus = "Loading agent history controls…";
 
     /// <summary>
     /// Raised once when an active turn reaches a terminal presentation state.
@@ -442,6 +495,7 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
 
         Refresh();
         _ = RestoreLatestConversationAsync(_lifetime.Token);
+        _ = LoadHistoryRetentionAsync(_lifetime.Token);
     }
 
     private async Task RestoreLatestConversationAsync(CancellationToken cancellationToken)
@@ -486,9 +540,89 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
     public ObservableCollection<AgentPolicyCapabilityViewModel> EffectivePolicyCapabilities
     { get; } = [];
 
+    public ObservableCollection<AgentPolicyComparisonViewModel> PolicyComparison
+    { get; } = [];
+
     public ObservableCollection<AgentAuditEntryViewModel> AuditEntries { get; } = [];
 
     public ObservableCollection<AgentImageAttachment> PendingImages { get; } = [];
+
+    public IReadOnlyList<AgentHistoryRetentionOption> HistoryRetentionOptions =>
+        AllHistoryRetentionOptions;
+
+    public AgentHistoryRetentionOption SelectedHistoryRetentionOption
+    {
+        get => _selectedHistoryRetentionOption;
+        set
+        {
+            if (SetProperty(ref _selectedHistoryRetentionOption, value))
+            {
+                OnPropertyChanged(nameof(CanApplyHistoryRetention));
+                OnPropertyChanged(nameof(HistoryRetentionEffect));
+            }
+        }
+    }
+
+    public string HistoryRetentionEffect =>
+        $"Applying this setting immediately removes older saved conversations "
+        + $"outside {SelectedHistoryRetentionOption.MaximumRuns} runs or "
+        + $"{SelectedHistoryRetentionOption.MaximumAge.TotalDays:N0} days. "
+        + "The current active run is protected.";
+
+    public string AgentHistoryStatus
+    {
+        get => _agentHistoryStatus;
+        private set => SetProperty(ref _agentHistoryStatus, value);
+    }
+
+    public bool IsHistoryRetentionLoading
+    {
+        get => _isHistoryRetentionLoading;
+        private set
+        {
+            if (SetProperty(ref _isHistoryRetentionLoading, value))
+            {
+                NotifyHistoryAvailabilityChanged();
+            }
+        }
+    }
+
+    public bool IsHistoryRetentionSaving
+    {
+        get => _isHistoryRetentionSaving;
+        private set
+        {
+            if (SetProperty(ref _isHistoryRetentionSaving, value))
+            {
+                NotifyHistoryAvailabilityChanged();
+            }
+        }
+    }
+
+    public bool IsHistoryExporting
+    {
+        get => _isHistoryExporting;
+        private set
+        {
+            if (SetProperty(ref _isHistoryExporting, value))
+            {
+                NotifyHistoryAvailabilityChanged();
+            }
+        }
+    }
+
+    public bool CanApplyHistoryRetention =>
+        _historyRetention is not null
+        && !IsHistoryRetentionLoading
+        && !IsHistoryRetentionSaving
+        && !IsHistoryExporting
+        && (_historyRetention.MaximumRuns != SelectedHistoryRetentionOption.MaximumRuns
+            || _historyRetention.MaximumAge != SelectedHistoryRetentionOption.MaximumAge);
+
+    public bool CanExportHistory =>
+        !IsHistoryRetentionLoading
+        && !IsHistoryRetentionSaving
+        && !IsHistoryExporting;
 
     public IReadOnlyList<AiProviderModelDescriptor> Models
     {
@@ -985,23 +1119,12 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
     }
 
     public bool CanShowAudit =>
-        AuditEvidenceUiEnabled
-        && _auditReader is not null
+        _auditReader is not null
         && _auditRunId is not null;
 
-    internal static bool AuditEvidenceUiEnabled
-    {
-        get
-        {
-#if DEBUG
-            return true;
-#else
-            return false;
-#endif
-        }
-    }
+    internal static bool AuditEvidenceUiEnabled => true;
 
-    public bool HasAuditActivity => CanShowAudit && _hasActionActivity;
+    public bool HasAuditActivity => CanShowAudit;
 
     public bool HasAuditEntries => AuditEntries.Count > 0;
 
@@ -1104,6 +1227,21 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
 
     public string EffectivePolicySummary =>
         $"{EffectivePolicyProvider} · {EffectivePolicyModel}";
+
+    public long PolicyGeneration
+    {
+        get => _policyGeneration;
+        private set
+        {
+            if (SetProperty(ref _policyGeneration, value))
+            {
+                OnPropertyChanged(nameof(PolicyComparisonSummary));
+            }
+        }
+    }
+
+    public string PolicyComparisonSummary =>
+        $"Baseline → run → effective · generation {PolicyGeneration}";
 
     public string RendererModeDescription =>
         "AI agent for this workspace";
@@ -2003,12 +2141,129 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
             {
                 Status = "The saved conversation could not be deleted.";
             }
+            else
+            {
+                Status = "Conversation and its retained audit history were deleted.";
+            }
         }
         finally
         {
             _clearInFlight = false;
             NotifyAvailabilityChanged();
         }
+    }
+
+    public async Task LoadHistoryRetentionAsync(CancellationToken cancellationToken)
+    {
+        if (IsHistoryRetentionLoading)
+        {
+            return;
+        }
+
+        IsHistoryRetentionLoading = true;
+        try
+        {
+            var result = await _runtime.GetHistoryRetentionAsync(cancellationToken);
+            if (!result.IsSuccess || result.Value is not { } retention)
+            {
+                AgentHistoryStatus = result.Error?.Code
+                    == AgentSessionCheckpointStoreErrorCode.CorruptData
+                        ? "Agent history controls are unavailable because retained metadata is corrupt."
+                        : "Agent history controls are temporarily unavailable.";
+                return;
+            }
+
+            _historyRetention = retention;
+            SelectedHistoryRetentionOption = AllHistoryRetentionOptions
+                .FirstOrDefault(option =>
+                    option.MaximumRuns == retention.MaximumRuns
+                    && option.MaximumAge == retention.MaximumAge)
+                ?? new AgentHistoryRetentionOption(
+                    "Custom",
+                    retention.MaximumRuns,
+                    retention.MaximumAge);
+            AgentHistoryStatus =
+                $"Keeping up to {retention.MaximumRuns} runs for "
+                + $"{retention.MaximumAge.TotalDays:N0} days · revision {retention.Revision}.";
+        }
+        finally
+        {
+            IsHistoryRetentionLoading = false;
+        }
+    }
+
+    public async Task ApplyHistoryRetentionAsync(CancellationToken cancellationToken)
+    {
+        if (!CanApplyHistoryRetention || _historyRetention is not { } current)
+        {
+            return;
+        }
+
+        IsHistoryRetentionSaving = true;
+        try
+        {
+            var option = SelectedHistoryRetentionOption;
+            var result = await _runtime.UpdateHistoryRetentionAsync(
+                current,
+                option.MaximumRuns,
+                option.MaximumAge,
+                cancellationToken);
+            if (!result.IsSuccess || result.Value is not { } updated)
+            {
+                AgentHistoryStatus = result.Error?.Code switch
+                {
+                    AgentSessionCheckpointStoreErrorCode.RevisionConflict =>
+                        "Agent history retention changed elsewhere. Reload and try again.",
+                    AgentSessionCheckpointStoreErrorCode.CorruptData =>
+                        "Agent history retention is corrupt and was not changed.",
+                    _ => "Agent history retention could not be changed.",
+                };
+                return;
+            }
+
+            _historyRetention = updated;
+            AgentHistoryStatus =
+                $"Retention applied and older runs pruned · revision {updated.Revision}.";
+        }
+        finally
+        {
+            IsHistoryRetentionSaving = false;
+        }
+    }
+
+    public async ValueTask<AgentSessionCheckpointStoreResult<AgentRunHistoryExportReceipt>>
+        ExportHistoryAsync(Stream destination, CancellationToken cancellationToken)
+    {
+        if (!CanExportHistory)
+        {
+            return AgentSessionCheckpointStoreResult<AgentRunHistoryExportReceipt>.Failure(
+                new AgentSessionCheckpointStoreError(
+                    AgentSessionCheckpointStoreErrorCode.StorageUnavailable,
+                    "Another agent history operation is active."));
+        }
+
+        IsHistoryExporting = true;
+        try
+        {
+            var result = await _runtime.ExportHistoryAsync(destination, cancellationToken);
+            AgentHistoryStatus = result.IsSuccess && result.Value is { } receipt
+                ? $"Exported {receipt.RunCount} metadata-only agent runs."
+                : result.Error?.Code == AgentSessionCheckpointStoreErrorCode.CorruptData
+                    ? "Export stopped: a retained audit trail is incomplete or corrupt."
+                    : "Agent history export failed; no destination file was published.";
+            return result;
+        }
+        finally
+        {
+            IsHistoryExporting = false;
+        }
+    }
+
+    public void ReportHistoryExportPublicationFailure(bool cleanupUncertain = false)
+    {
+        AgentHistoryStatus = cleanupUncertain
+            ? "Agent history export failed before publication, and its temporary file could not be removed."
+            : "Agent history export failed; the existing destination was preserved.";
     }
 
     public async Task RefreshModelsAsync(CancellationToken cancellationToken)
@@ -2324,8 +2579,10 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
                     item.Title,
                     item.Model ?? "Model unavailable",
                     AgentPresentationTime.Friendly(item.UpdatedAt),
-                    item.RunId == snapshot.RunId
-                        || item.RunId == _runId && snapshot.HasMessages)));
+                    item.RunId == (snapshot.SelectedConversationRunId
+                        ?? snapshot.RunId)
+                        || item.RunId == _runId && snapshot.HasMessages,
+                    item.Availability)));
         RefreshFilteredConversations();
         OnPropertyChanged(nameof(HasConversationHistory));
         Replace(
@@ -2356,11 +2613,13 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
             : null;
         PendingCapabilityRequest = CreateCapabilityRequest(
             snapshot.PendingCapabilityRequest);
-        var auditRunChanged = _auditRunId != snapshot.RunId;
+        var selectedConversationRunId = snapshot.SelectedConversationRunId
+            ?? snapshot.RunId;
+        var auditRunChanged = _auditRunId != selectedConversationRunId;
         if (auditRunChanged)
         {
             _hasActionActivity = false;
-            ResetAudit(snapshot.RunId);
+            ResetAudit(selectedConversationRunId);
         }
 
         TargetTitle = snapshot.TargetTitle;
@@ -2379,6 +2638,20 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
                     AgentPolicyPresentation.CapabilityName(capability),
                     AgentPolicyPresentation.PermissionName(
                         effectivePolicy.GetPermission(capability)))));
+        var baselinePolicy = snapshot.BaselinePolicy ?? effectivePolicy;
+        var runPolicy = snapshot.RunPolicy ?? baselinePolicy;
+        Replace(
+            PolicyComparison,
+            AgentPolicy.Capabilities.Select(capability =>
+                new AgentPolicyComparisonViewModel(
+                    AgentPolicyPresentation.CapabilityName(capability),
+                    AgentPolicyPresentation.PermissionName(
+                        baselinePolicy.GetPermission(capability)),
+                    AgentPolicyPresentation.PermissionName(
+                        runPolicy.GetPermission(capability)),
+                    AgentPolicyPresentation.PermissionName(
+                        effectivePolicy.GetPermission(capability)))));
+        PolicyGeneration = snapshot.PolicyGeneration;
         TerminalMutationAvailable = snapshot.TerminalMutationAvailable;
         _runHasTerminal = snapshot.ContextItems.Length == 0
             || snapshot.ContextItems.Any(item => item.Kind == PanelKind.Terminal);
@@ -2696,9 +2969,9 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
             AuditStoreErrorCode.Cancelled =>
                 "Loading recorded actions was cancelled.",
             AuditStoreErrorCode.InvalidQuery =>
-                "The audit position changed. Refresh the current run.",
+                "The audit position changed. Refresh the selected run.",
             AuditStoreErrorCode.StorageFailure =>
-                "Recorded actions could not be loaded.",
+                "The recorded audit chain is incomplete or corrupt and was hidden.",
             _ => "Recorded actions are temporarily unavailable.",
         };
 
@@ -3029,6 +3302,12 @@ public sealed class AgentChatViewModel : ObservableObject, IDisposable
         NotifyPolicyAvailabilityChanged();
         NotifyQuestionAvailabilityChanged();
         NotifyCapabilityRequestAvailabilityChanged();
+    }
+
+    private void NotifyHistoryAvailabilityChanged()
+    {
+        OnPropertyChanged(nameof(CanApplyHistoryRetention));
+        OnPropertyChanged(nameof(CanExportHistory));
     }
 
     private static AgentToolActivityViewModel CreateToolActivity(

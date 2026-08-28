@@ -12,16 +12,20 @@ namespace GhostShell.Infrastructure;
 /// agent run. Every replacement is revision-fenced in an immediate SQLite
 /// transaction, so a stale writer cannot roll durable state backward.
 /// </summary>
-public sealed class SqliteAgentSessionCheckpointStore : IAgentSessionCheckpointStore
+public sealed partial class SqliteAgentSessionCheckpointStore : IAgentSessionCheckpointStore
 {
     public const int MaximumListedCheckpoints = 256;
 
     private readonly GhostShellDatabase _database;
+    private readonly TimeProvider _timeProvider;
 
-    public SqliteAgentSessionCheckpointStore(GhostShellDatabase database)
+    public SqliteAgentSessionCheckpointStore(
+        GhostShellDatabase database,
+        TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(database);
         _database = database;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public async ValueTask<AgentSessionCheckpointStoreResult<Unit>> SaveAsync(
@@ -329,6 +333,19 @@ public sealed class SqliteAgentSessionCheckpointStore : IAgentSessionCheckpointS
             {
                 throw new InvalidDataException(
                     "The agent checkpoint inventory is invalid.");
+            }
+
+            if (deleted == 1)
+            {
+                await DeleteRunDataAsync(
+                        connection,
+                        transaction,
+                        runId.Value,
+                        createTombstone: true,
+                        workspaceId: conversationScopeId?.Value,
+                        now: _timeProvider.GetUtcNow().ToUniversalTime(),
+                        cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
             }
 
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);

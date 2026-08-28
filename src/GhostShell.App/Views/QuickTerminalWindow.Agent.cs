@@ -14,6 +14,13 @@ namespace GhostShell.App.Views;
 
 public sealed partial class QuickTerminalWindow
 {
+    private static readonly FilePickerFileType AgentHistoryFileType = new(
+        "GhostShell agent history")
+    {
+        Patterns = ["*.json"],
+        MimeTypes = ["application/json"],
+        AppleUniformTypeIdentifiers = ["public.json"],
+    };
     private void OnToggleAgentClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;
@@ -212,13 +219,68 @@ public sealed partial class QuickTerminalWindow
 
     private async void OnDeleteAgentConversationClick(object? sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: AgentRunId runId })
+        if (sender is Button { Tag: AgentRunId runId }
+            && DataContext is QuickTerminalViewModel { AgentChat: { } agent }
+            && agent.Conversations.FirstOrDefault(item => item.RunId == runId) is { } item
+            && await Confirmations.AgentConversationDelete(item.Title).ShowDialog<bool>(this))
         {
             await RunQuickAgentConversationActionAsync(
                 sender,
                 (agent, token) => agent.DeleteConversationAsync(runId, token),
                 hideHistoryFlyout: false);
         }
+    }
+
+    private async void OnApplyAgentHistoryRetentionClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (DataContext is not QuickTerminalViewModel
+            {
+                AgentChat: { CanApplyHistoryRetention: true } agent,
+            }
+            || !await Confirmations
+                .AgentHistoryRetentionChange(agent.SelectedHistoryRetentionOption)
+                .ShowDialog<bool>(this))
+        {
+            return;
+        }
+
+        await agent.ApplyHistoryRetentionAsync(_lifetime.Token);
+    }
+
+    private async void OnExportAgentHistoryClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (DataContext is not QuickTerminalViewModel
+            {
+                AgentChat: { CanExportHistory: true } agent,
+            })
+        {
+            return;
+        }
+
+        var selected = await StorageProvider.SaveFilePickerAsync(
+            new FilePickerSaveOptions
+            {
+                Title = "Export metadata-only agent history",
+                SuggestedFileName = AgentRunHistoryExportController.SuggestedFileName,
+                DefaultExtension = "json",
+                FileTypeChoices = [AgentHistoryFileType],
+                ShowOverwritePrompt = true,
+            });
+        if (selected?.TryGetLocalPath() is not { } path)
+        {
+            return;
+        }
+
+        _ = await AgentRunHistoryExportController.ExportAsync(
+            agent,
+            path,
+            _lifetime.Token);
     }
 
     private async void OnCopyAgentMessageClick(object? sender, RoutedEventArgs e)

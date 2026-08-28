@@ -1865,7 +1865,7 @@ runtime then stops provider continuation and cancels the run instead of
 presenting the unconfirmed result as authority for another action.
 
 The desktop agent card now exposes a lazy, keyboard-accessible audit timeline
-for the runtime-owned current run. Its read model pages whole action chains and
+for the selected current or restored run in production builds. Its read model pages whole action chains and
 run-policy transitions newest-first through a run-bound opaque cursor. It
 accepts only strict requested/decision/started/terminal phase sequences and
 projects closed presentation DTOs containing trusted tool, policy, outcome,
@@ -1873,8 +1873,20 @@ duration/count, timestamp, and target-digest evidence. Raw storage JSON,
 arguments, content, labels, artifact references, and actor identifiers never
 cross this read boundary. A malformed row fails the complete page closed, while
 read cancellation or storage failure affects only the timeline and cannot
-interrupt or grant authority to the live run. Full cross-run history,
-retention/export, and policy comparison remain later work.
+interrupt or grant authority to the live run. The conversation inventory keeps
+corrupt and temporarily unavailable rows visible but non-openable. Its separate
+schema-19 agent-history metadata stores only run, provider-profile, model, policy,
+generation, timestamp, and closed audit fields; conversation checkpoints remain
+the separately reviewed recovery boundary that may contain bounded transcript
+state. A revision-fenced global retention preference prunes checkpoints,
+metadata, and exact run audit rows transactionally while protecting the active
+run. Retention changes have their own append-only revision log. Confirmed deletion
+removes the same exact dataset and leaves a bounded tombstone. Export revalidates
+every audit chain, fails the whole operation closed on malformed or unavailable
+evidence, writes a deterministic versioned allowlist with no prompt or tool
+content, and publishes through a same-directory atomic replacement. The policy
+inspector compares the selected run's baseline, run, and last effective policy
+without restoring historical Full access as live authority.
 
 `GhostShell.Agent.Runtime` now connects those boundaries without adding provider
 or terminal/browser/file-provider/process authority to the agent kernel. The

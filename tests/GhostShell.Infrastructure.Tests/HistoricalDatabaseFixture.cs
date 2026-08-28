@@ -94,6 +94,10 @@ internal static class HistoricalDatabaseFixture
                 "bounded-mcp-diagnostic-summary",
                 "0462131CB0ECD8233648B5C50D4A5B4E615F957FF5FBCF4148D31FC8D17D5299",
                 IsDestructive: false),
+            [19] = new(
+                "revisioned-agent-run-history",
+                "201C2A62A05649DE083A849A88D5330259D10526BDDC5A7D9F701D9477D9191C",
+                IsDestructive: false),
         };
 
     public static readonly DateTimeOffset ReferenceTime =
@@ -369,6 +373,7 @@ internal static class HistoricalDatabaseFixture
             15 => "git_panel_preference",
             16 => "default_profile_id",
             17 => "mcp_server_diagnostic_summary",
+            18 => "agent_run_history_retention",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(currentVersion),
                 currentVersion,

@@ -38,12 +38,20 @@ public sealed partial class GovernedAgentRuntime
 
         var catalog = await LoadConversationCatalogAsync(listed.Value, cancellationToken)
             .ConfigureAwait(false);
-        var restored = catalog.FirstOrDefault()?.Session;
+        var restored = catalog.FirstOrDefault(item => item.Session is not null)?.Session;
 
         if (restored is null)
         {
             return;
         }
+
+        var restoredHistoryResult = await LoadHistoryMetadataResultAsync(
+                restored.RunId,
+                cancellationToken)
+            .ConfigureAwait(false);
+        var restoredHistory = restoredHistoryResult.IsSuccess
+            ? restoredHistoryResult.Value
+            : null;
 
         lock (_gate)
         {
@@ -64,17 +72,32 @@ public sealed partial class GovernedAgentRuntime
                     providerId.Value,
                     descriptor.Model)
                 : _configuredPolicy;
-            _baselinePolicy = policy;
-            _runPolicy = policy;
-            _effectivePolicy = policy;
-            _snapshot = EmptySnapshot(policy) with
+            var baselinePolicy = restoredHistory?.BaselinePolicy is { } storedBaseline
+                ? RestoreHistoryPolicy(storedBaseline, policy)
+                : policy;
+            var runPolicy = restoredHistory?.RunPolicy is { } storedRun
+                ? RestoreHistoryPolicy(storedRun, baselinePolicy)
+                : baselinePolicy;
+            var historicalEffectivePolicy = restoredHistory?.EffectivePolicy is { } storedEffective
+                ? RestoreHistoryPolicy(storedEffective, runPolicy)
+                : runPolicy;
+            _baselinePolicy = baselinePolicy;
+            _runPolicy = runPolicy;
+            _effectivePolicy = runPolicy;
+            _policyGeneration = restoredHistory?.PolicyGeneration
+                ?? InitialPolicyGeneration;
+            _snapshot = EmptySnapshot(runPolicy) with
             {
                 State = GovernedAgentState.Ready,
                 Messages = CopyMessages(ProjectMessages(restored)),
                 ContextTokensUsed = restored.EstimateContextUsage().EstimatedTokens,
                 ProviderId = descriptor.ProviderId,
                 Model = descriptor.Model,
-                EffectivePolicy = policy,
+                EffectivePolicy = historicalEffectivePolicy,
+                SelectedConversationRunId = restored.RunId,
+                BaselinePolicy = baselinePolicy,
+                RunPolicy = runPolicy,
+                PolicyGeneration = _policyGeneration,
                 Status = string.Empty,
                 Conversations = [.. catalog.Select(item => item.Summary)],
             };
@@ -242,6 +265,27 @@ public sealed partial class GovernedAgentRuntime
                 providerId.Value,
                 descriptor.Model)
             : _configuredPolicy;
+        var storedHistoryResult = await LoadHistoryMetadataResultAsync(
+                runId,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (!storedHistoryResult.IsSuccess
+            && storedHistoryResult.Error?.Code
+                != AgentSessionCheckpointStoreErrorCode.NotFound)
+        {
+            return false;
+        }
+
+        var storedHistory = storedHistoryResult.Value;
+        var baselinePolicy = storedHistory?.BaselinePolicy is { } storedBaseline
+            ? RestoreHistoryPolicy(storedBaseline, policy)
+            : policy;
+        var runPolicy = storedHistory?.RunPolicy is { } storedRun
+            ? RestoreHistoryPolicy(storedRun, baselinePolicy)
+            : baselinePolicy;
+        var historicalEffectivePolicy = storedHistory?.EffectivePolicy is { } storedEffective
+            ? RestoreHistoryPolicy(storedEffective, runPolicy)
+            : runPolicy;
         lock (_gate)
         {
             if (_disposed || _turnCancellation is not null)
@@ -250,9 +294,11 @@ public sealed partial class GovernedAgentRuntime
             }
 
             _restoredSession = session;
-            _baselinePolicy = policy;
-            _runPolicy = policy;
-            _effectivePolicy = policy;
+            _baselinePolicy = baselinePolicy;
+            _runPolicy = runPolicy;
+            _effectivePolicy = runPolicy;
+            _policyGeneration = storedHistory?.PolicyGeneration
+                ?? InitialPolicyGeneration;
             _snapshot = _snapshot with
             {
                 State = GovernedAgentState.Ready,
@@ -261,7 +307,11 @@ public sealed partial class GovernedAgentRuntime
                 Model = descriptor.Model,
                 Messages = CopyMessages(ProjectMessages(session)),
                 ContextTokensUsed = session.EstimateContextUsage().EstimatedTokens,
-                EffectivePolicy = policy,
+                EffectivePolicy = historicalEffectivePolicy,
+                SelectedConversationRunId = session.RunId,
+                BaselinePolicy = baselinePolicy,
+                RunPolicy = runPolicy,
+                PolicyGeneration = _policyGeneration,
                 PanelActivity = null,
                 Status = string.Empty,
             };
@@ -357,6 +407,10 @@ public sealed partial class GovernedAgentRuntime
                 Messages = CopyMessages(ProjectMessages(fork)),
                 ContextTokensUsed = fork.EstimateContextUsage().EstimatedTokens,
                 EffectivePolicy = policy,
+                SelectedConversationRunId = fork.RunId,
+                BaselinePolicy = policy,
+                RunPolicy = policy,
+                PolicyGeneration = _policyGeneration,
                 PanelActivity = null,
                 Status = string.Empty,
             };
@@ -489,16 +543,66 @@ public sealed partial class GovernedAgentRuntime
                 .ConfigureAwait(false);
             if (!loaded.IsSuccess || loaded.Value is null)
             {
+                conversations.Add(new LoadedConversation(
+                    null,
+                    new GovernedAgentConversationSummary(
+                        item.RunId,
+                        "Unavailable conversation",
+                        null,
+                        null,
+                        0,
+                        item.UpdatedAt,
+                        loaded.Error?.Code ==
+                            AgentSessionCheckpointStoreErrorCode.CorruptData
+                                ? GovernedAgentConversationAvailability.Corrupt
+                                : GovernedAgentConversationAvailability.Unavailable)));
                 continue;
             }
 
             var restored = NativeAgentSession.RestoreCheckpoint(loaded.Value);
             if (!restored.Succeeded || restored.Session is not { } session)
             {
+                conversations.Add(new LoadedConversation(
+                    null,
+                    new GovernedAgentConversationSummary(
+                        item.RunId,
+                        "Corrupt conversation",
+                        null,
+                        null,
+                        0,
+                        item.UpdatedAt,
+                        GovernedAgentConversationAvailability.Corrupt)));
                 continue;
             }
 
             var descriptor = session.DescribeConversation();
+            var history = await LoadHistoryMetadataResultAsync(
+                    item.RunId,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!history.IsSuccess
+                && history.Error?.Code
+                    != AgentSessionCheckpointStoreErrorCode.NotFound)
+            {
+                conversations.Add(new LoadedConversation(
+                    null,
+                    new GovernedAgentConversationSummary(
+                        item.RunId,
+                        history.Error?.Code ==
+                            AgentSessionCheckpointStoreErrorCode.CorruptData
+                                ? "Corrupt conversation metadata"
+                                : descriptor.Title,
+                        descriptor.ProviderId,
+                        descriptor.Model,
+                        descriptor.MessageCount,
+                        item.UpdatedAt,
+                        history.Error?.Code ==
+                            AgentSessionCheckpointStoreErrorCode.CorruptData
+                                ? GovernedAgentConversationAvailability.Corrupt
+                                : GovernedAgentConversationAvailability.Unavailable)));
+                continue;
+            }
+
             conversations.Add(new LoadedConversation(
                 session,
                 new GovernedAgentConversationSummary(
@@ -507,14 +611,17 @@ public sealed partial class GovernedAgentRuntime
                     descriptor.ProviderId,
                     descriptor.Model,
                     descriptor.MessageCount,
-                    item.UpdatedAt)));
+                    item.UpdatedAt,
+                    history.IsSuccess
+                        ? GovernedAgentConversationAvailability.Available
+                        : GovernedAgentConversationAvailability.Partial)));
         }
 
         return conversations;
     }
 
     private sealed record LoadedConversation(
-        NativeAgentSession Session,
+        NativeAgentSession? Session,
         GovernedAgentConversationSummary Summary);
 
     private async ValueTask<AgentSessionCheckpointStoreResult<Unit>> SaveCheckpointAsync(
@@ -523,13 +630,37 @@ public sealed partial class GovernedAgentRuntime
     {
         try
         {
-            return _conversationScopeId is { } scopeId
+            var saved = _conversationScopeId is { } scopeId
                 ? await _checkpointStore!
                     .SaveAsync(scopeId, checkpoint, cancellationToken)
                     .ConfigureAwait(false)
                 : await _checkpointStore!
                     .SaveAsync(checkpoint, cancellationToken)
                     .ConfigureAwait(false);
+            if (!saved.IsSuccess)
+            {
+                return saved;
+            }
+
+            AgentRunHistoryMetadata metadata;
+            lock (_gate)
+            {
+                metadata = new AgentRunHistoryMetadata(
+                    checkpoint.RunId,
+                    _snapshot.ProviderId,
+                    _snapshot.Model,
+                    AgentRunHistoryPolicy.FromPolicy(_baselinePolicy),
+                    AgentRunHistoryPolicy.FromPolicy(_runPolicy),
+                    AgentRunHistoryPolicy.FromPolicy(_effectivePolicy),
+                    _policyGeneration,
+                    checkpoint.UpdatedAt);
+            }
+
+            return await _checkpointStore.SaveHistoryMetadataAsync(
+                    _conversationScopeId,
+                    metadata,
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -550,6 +681,87 @@ public sealed partial class GovernedAgentRuntime
         _conversationScopeId is { } scopeId
             ? _checkpointStore!.LoadAsync(scopeId, runId, cancellationToken)
             : _checkpointStore!.LoadAsync(runId, cancellationToken);
+
+    private ValueTask<AgentSessionCheckpointStoreResult<AgentRunHistoryMetadata>>
+        LoadHistoryMetadataResultAsync(
+        AgentRunId runId,
+        CancellationToken cancellationToken) =>
+        _checkpointStore!.LoadHistoryMetadataAsync(
+            _conversationScopeId,
+            runId,
+            cancellationToken);
+
+    private static AgentPolicy RestoreHistoryPolicy(
+        AgentRunHistoryPolicy history,
+        AgentPolicy fallback) =>
+        new(
+            history.ProviderId,
+            history.ModelId,
+            history.Permissions.ToImmutableDictionary(
+                item => item.Capability,
+                item => item.Permission))
+        {
+            CompactionModel = fallback.CompactionModel,
+            TitleModel = fallback.TitleModel,
+            SystemPrompt = fallback.SystemPrompt,
+        };
+
+    public ValueTask<AgentSessionCheckpointStoreResult<AgentRunHistoryRetention>>
+        GetHistoryRetentionAsync(CancellationToken cancellationToken) =>
+        _checkpointStore is null
+            ? ValueTask.FromResult(CheckpointStoreFailure<AgentRunHistoryRetention>(
+                AgentSessionCheckpointStoreErrorCode.StorageFailure,
+                "Agent history retention is unavailable."))
+            : _checkpointStore.GetHistoryRetentionAsync(cancellationToken);
+
+    public async ValueTask<AgentSessionCheckpointStoreResult<AgentRunHistoryRetention>>
+        UpdateHistoryRetentionAsync(
+            AgentRunHistoryRetention expected,
+            int maximumRuns,
+            TimeSpan maximumAge,
+            CancellationToken cancellationToken)
+    {
+        if (_checkpointStore is null)
+        {
+            return CheckpointStoreFailure<AgentRunHistoryRetention>(
+                AgentSessionCheckpointStoreErrorCode.StorageFailure,
+                "Agent history retention is unavailable.");
+        }
+
+        AgentRunId? protectedRunId;
+        lock (_gate)
+        {
+            protectedRunId = _session?.RunId;
+        }
+
+        var result = await _checkpointStore.UpdateHistoryRetentionAsync(
+                _conversationScopeId,
+                expected,
+                maximumRuns,
+                maximumAge,
+                protectedRunId,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (result.IsSuccess)
+        {
+            await RefreshConversationCatalogAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        return result;
+    }
+
+    public ValueTask<AgentSessionCheckpointStoreResult<AgentRunHistoryExportReceipt>>
+        ExportHistoryAsync(
+            Stream destination,
+            CancellationToken cancellationToken) =>
+        _checkpointStore is null
+            ? ValueTask.FromResult(CheckpointStoreFailure<AgentRunHistoryExportReceipt>(
+                AgentSessionCheckpointStoreErrorCode.StorageFailure,
+                "Agent history export is unavailable."))
+            : _checkpointStore.ExportHistoryAsync(
+                _conversationScopeId,
+                destination,
+                cancellationToken);
 
     private ValueTask<AgentSessionCheckpointStoreResult<bool>> DeleteCheckpointAsync(
         AgentRunId runId,

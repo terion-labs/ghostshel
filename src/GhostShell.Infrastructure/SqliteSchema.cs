@@ -428,5 +428,89 @@ internal static class SqliteSchema
                 updated_utc)
             VALUES (1, '[]', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
             """),
+        new(
+            19,
+            "revisioned-agent-run-history",
+            """
+            CREATE TABLE agent_run_history_retention (
+                singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+                revision INTEGER NOT NULL CHECK (revision > 0),
+                maximum_runs INTEGER NOT NULL CHECK (
+                    maximum_runs BETWEEN 1 AND 256),
+                maximum_age_ticks INTEGER NOT NULL CHECK (
+                    maximum_age_ticks BETWEEN 1 AND 315360000000000),
+                updated_utc TEXT NOT NULL CHECK (
+                    length(updated_utc) BETWEEN 20 AND 64)
+            );
+
+            INSERT INTO agent_run_history_retention(
+                singleton_id,
+                revision,
+                maximum_runs,
+                maximum_age_ticks,
+                updated_utc)
+            VALUES (
+                1,
+                1,
+                50,
+                77760000000000,
+                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+
+            CREATE TABLE agent_run_history_retention_events (
+                revision INTEGER PRIMARY KEY CHECK (revision > 1),
+                previous_maximum_runs INTEGER NOT NULL,
+                maximum_runs INTEGER NOT NULL,
+                previous_maximum_age_ticks INTEGER NOT NULL,
+                maximum_age_ticks INTEGER NOT NULL,
+                occurred_utc TEXT NOT NULL CHECK (
+                    length(occurred_utc) BETWEEN 20 AND 64)
+            ) WITHOUT ROWID;
+
+            CREATE TABLE agent_run_history_metadata (
+                run_id TEXT PRIMARY KEY CHECK (length(run_id) BETWEEN 1 AND 256),
+                workspace_id TEXT CHECK (
+                    workspace_id IS NULL
+                    OR length(workspace_id) BETWEEN 1 AND 256),
+                provider_id TEXT CHECK (
+                    provider_id IS NULL
+                    OR length(provider_id) BETWEEN 1 AND 256),
+                model_id TEXT CHECK (
+                    model_id IS NULL
+                    OR length(model_id) BETWEEN 1 AND 256),
+                baseline_policy_json TEXT NOT NULL CHECK (
+                    json_valid(baseline_policy_json)
+                    AND json_type(baseline_policy_json) = 'object'),
+                run_policy_json TEXT NOT NULL CHECK (
+                    json_valid(run_policy_json)
+                    AND json_type(run_policy_json) = 'object'),
+                effective_policy_json TEXT NOT NULL CHECK (
+                    json_valid(effective_policy_json)
+                    AND json_type(effective_policy_json) = 'object'),
+                policy_generation INTEGER NOT NULL CHECK (policy_generation > 0),
+                updated_utc TEXT NOT NULL CHECK (
+                    length(updated_utc) BETWEEN 20 AND 64)
+            ) WITHOUT ROWID;
+
+            CREATE INDEX agent_run_history_metadata_scope_idx
+                ON agent_run_history_metadata(
+                    workspace_id,
+                    updated_utc DESC,
+                    run_id);
+
+            CREATE TABLE agent_run_history_tombstones (
+                run_id TEXT PRIMARY KEY CHECK (length(run_id) BETWEEN 1 AND 256),
+                workspace_id TEXT CHECK (
+                    workspace_id IS NULL
+                    OR length(workspace_id) BETWEEN 1 AND 256),
+                deleted_utc TEXT NOT NULL CHECK (
+                    length(deleted_utc) BETWEEN 20 AND 64)
+            ) WITHOUT ROWID;
+
+            CREATE INDEX agent_run_history_tombstones_scope_idx
+                ON agent_run_history_tombstones(
+                    workspace_id,
+                    deleted_utc DESC,
+                    run_id);
+            """),
     ];
 }

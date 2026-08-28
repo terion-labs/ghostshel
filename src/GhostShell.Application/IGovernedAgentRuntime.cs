@@ -35,6 +35,36 @@ public interface IGovernedAgentRuntime : IDisposable, IAsyncDisposable
         CancellationToken cancellationToken) =>
         ValueTask.FromResult(false);
 
+    ValueTask<AgentSessionCheckpointStoreResult<AgentRunHistoryRetention>>
+        GetHistoryRetentionAsync(CancellationToken cancellationToken) =>
+        ValueTask.FromResult(
+            AgentSessionCheckpointStoreResult<AgentRunHistoryRetention>.Failure(
+                new AgentSessionCheckpointStoreError(
+                    AgentSessionCheckpointStoreErrorCode.StorageFailure,
+                    "Agent history retention is unavailable.")));
+
+    ValueTask<AgentSessionCheckpointStoreResult<AgentRunHistoryRetention>>
+        UpdateHistoryRetentionAsync(
+            AgentRunHistoryRetention expected,
+            int maximumRuns,
+            TimeSpan maximumAge,
+            CancellationToken cancellationToken) =>
+        ValueTask.FromResult(
+            AgentSessionCheckpointStoreResult<AgentRunHistoryRetention>.Failure(
+                new AgentSessionCheckpointStoreError(
+                    AgentSessionCheckpointStoreErrorCode.StorageFailure,
+                    "Agent history retention is unavailable.")));
+
+    ValueTask<AgentSessionCheckpointStoreResult<AgentRunHistoryExportReceipt>>
+        ExportHistoryAsync(
+            Stream destination,
+            CancellationToken cancellationToken) =>
+        ValueTask.FromResult(
+            AgentSessionCheckpointStoreResult<AgentRunHistoryExportReceipt>.Failure(
+                new AgentSessionCheckpointStoreError(
+                    AgentSessionCheckpointStoreErrorCode.StorageFailure,
+                    "Agent history export is unavailable.")));
+
     ValueTask<GovernedAgentSendResult> SendAsync(
         GovernedAgentPrompt request,
         CancellationToken cancellationToken);
@@ -513,7 +543,11 @@ public sealed record GovernedAgentSnapshot(
     ImmutableArray<GovernedAgentConversationSummary> Conversations = default,
     string? Model = null,
     long? ContextTokensUsed = null,
-    GovernedAgentToolActivity? PanelActivity = null)
+    GovernedAgentToolActivity? PanelActivity = null,
+    AgentRunId? SelectedConversationRunId = null,
+    AgentPolicy? BaselinePolicy = null,
+    AgentPolicy? RunPolicy = null,
+    long PolicyGeneration = 1)
 {
     public bool IsBusy => State is
         GovernedAgentState.StreamingProvider
@@ -564,7 +598,17 @@ public sealed record GovernedAgentConversationSummary(
     AiProviderProfileId? ProviderId,
     string? Model,
     int MessageCount,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    GovernedAgentConversationAvailability Availability =
+        GovernedAgentConversationAvailability.Available);
+
+public enum GovernedAgentConversationAvailability
+{
+    Available,
+    Partial,
+    Corrupt,
+    Unavailable,
+}
 
 public sealed record GovernedAgentSendResult(
     bool IsSuccess,

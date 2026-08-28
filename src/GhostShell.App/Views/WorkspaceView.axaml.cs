@@ -90,6 +90,10 @@ public sealed partial class WorkspaceView : UserControl
 
     public event EventHandler<RoutedEventArgs>? RefreshAgentAuditRequested;
 
+    public event EventHandler<RoutedEventArgs>? ApplyAgentHistoryRetentionRequested;
+
+    public event EventHandler<RoutedEventArgs>? ExportAgentHistoryRequested;
+
     public event EventHandler<RoutedEventArgs>? StartNewAgentConversationRequested;
 
     public event EventHandler<RoutedEventArgs>? OpenAgentConversationRequested;
@@ -231,6 +235,12 @@ public sealed partial class WorkspaceView : UserControl
 
     private void OnRefreshAgentAuditClick(object? sender, RoutedEventArgs e) =>
         RefreshAgentAuditRequested?.Invoke(sender, e);
+
+    private void OnApplyAgentHistoryRetentionClick(object? sender, RoutedEventArgs e) =>
+        ApplyAgentHistoryRetentionRequested?.Invoke(sender, e);
+
+    private void OnExportAgentHistoryClick(object? sender, RoutedEventArgs e) =>
+        ExportAgentHistoryRequested?.Invoke(sender, e);
 
     private void OnStartNewAgentConversationClick(object? sender, RoutedEventArgs e) =>
         StartNewAgentConversationRequested?.Invoke(sender, e);

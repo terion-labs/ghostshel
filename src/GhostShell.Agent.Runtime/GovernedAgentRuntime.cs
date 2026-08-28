@@ -604,6 +604,7 @@ public sealed partial class GovernedAgentRuntime :
                 {
                     State = GovernedAgentState.Ready,
                     RunId = null,
+                    SelectedConversationRunId = _restoredSession.RunId,
                     Status = "Resuming the conversation…",
                 };
             }
@@ -1153,6 +1154,9 @@ public sealed partial class GovernedAgentRuntime :
                     TerminalMutationPermission =
                         _baselinePolicy.GetPermission(AgentCapability.RunCommands),
                     EffectivePolicy = _baselinePolicy,
+                    BaselinePolicy = _baselinePolicy,
+                    RunPolicy = _runPolicy,
+                    PolicyGeneration = _policyGeneration,
                     YoloAuthority = null,
                     Status = cancellationError is null
                         ? "Agent stopped. Its panel authority was revoked."
@@ -1314,6 +1318,9 @@ public sealed partial class GovernedAgentRuntime :
             {
                 TerminalMutationPermission = AgentPermission.Yolo,
                 EffectivePolicy = update.Policy,
+                BaselinePolicy = _baselinePolicy,
+                RunPolicy = _runPolicy,
+                PolicyGeneration = _policyGeneration,
                 YoloAuthority = visibleAuthority,
                 State = supersededApproval is null
                     ? _snapshot.State
@@ -1401,7 +1408,7 @@ public sealed partial class GovernedAgentRuntime :
                 && _checkpointStore is not null
                 && runId is { } checkpointRun)
             {
-                var deleted = await _checkpointStore.DeleteAsync(
+                var deleted = await DeleteCheckpointAsync(
                         checkpointRun,
                         cancellationToken)
                     .ConfigureAwait(false);
@@ -1510,6 +1517,9 @@ public sealed partial class GovernedAgentRuntime :
                 TerminalMutationPermission =
                     _baselinePolicy.GetPermission(AgentCapability.RunCommands),
                 EffectivePolicy = _baselinePolicy,
+                BaselinePolicy = _baselinePolicy,
+                RunPolicy = _runPolicy,
+                PolicyGeneration = _policyGeneration,
                 YoloAuthority = null,
                 Status = _session is null
                     ? "Agent runtime disposed."
@@ -1620,6 +1630,9 @@ public sealed partial class GovernedAgentRuntime :
                 TerminalMutationPermission =
                     _runPolicy.GetPermission(AgentCapability.RunCommands),
                 EffectivePolicy = update.Policy,
+                BaselinePolicy = _baselinePolicy,
+                RunPolicy = _runPolicy,
+                PolicyGeneration = _policyGeneration,
                 YoloAuthority = null,
                 Status = reason == YoloEndReason.Expired
                     ? "YOLO expired. Per-action terminal policy is active again."
@@ -3195,11 +3208,15 @@ public sealed partial class GovernedAgentRuntime :
                 _snapshot = _snapshot with
                 {
                     RunId = runId,
+                    SelectedConversationRunId = runId,
                     Target = request.Target,
                     TargetTitle = TargetTitle(context),
                     TerminalMutationPermission =
                         requestedPolicy.GetPermission(AgentCapability.RunCommands),
                     EffectivePolicy = requestedPolicy,
+                    BaselinePolicy = requestedPolicy,
+                    RunPolicy = requestedPolicy,
+                    PolicyGeneration = _policyGeneration,
                 };
                 error = null;
                 return true;
@@ -3293,6 +3310,9 @@ public sealed partial class GovernedAgentRuntime :
                     {
                         TerminalMutationPermission = AgentPermission.Yolo,
                         EffectivePolicy = policy,
+                        BaselinePolicy = _baselinePolicy,
+                        RunPolicy = _runPolicy,
+                        PolicyGeneration = _policyGeneration,
                         YoloAuthority = visibleAuthority,
                     };
                 }
@@ -4530,6 +4550,9 @@ public sealed partial class GovernedAgentRuntime :
                     TerminalMutationPermission =
                         _baselinePolicy.GetPermission(AgentCapability.RunCommands),
                     EffectivePolicy = _baselinePolicy,
+                    BaselinePolicy = _baselinePolicy,
+                    RunPolicy = _runPolicy,
+                    PolicyGeneration = _policyGeneration,
                     YoloAuthority = null,
                     Status = authorityRevoked
                         ? "Agent stopped. Its panel authority was revoked."
@@ -5296,7 +5319,10 @@ public sealed partial class GovernedAgentRuntime :
             ProvisionalAssistantText: string.Empty,
             Status: "Choose an AI provider and an active terminal.",
             TerminalMutationPermission:
-                policy.GetPermission(AgentCapability.RunCommands));
+                policy.GetPermission(AgentCapability.RunCommands),
+            BaselinePolicy: policy,
+            RunPolicy: policy,
+            PolicyGeneration: InitialPolicyGeneration);
 
     private static bool PolicyAuthorityEqual(AgentPolicy left, AgentPolicy right) =>
         string.Equals(left.Provider, right.Provider, StringComparison.Ordinal)

@@ -202,7 +202,7 @@
           <icons:SymbolIcon Symbol="History" FontSize="13" />
           <Button.Flyout>
             <Flyout Placement="BottomEdgeAlignedRight" FlyoutPresenterClasses="AgentConversationMenu">
-              <Grid Width="330" MaxHeight="460" RowDefinitions="Auto,*,Auto">
+              <Grid Width="380" MaxHeight="620" RowDefinitions="Auto,*,Auto">
                 <Border Padding="{controls:Inset Sm}">
                   <TextBox
                       Padding="{controls:Inset Horizontal=Md}"
@@ -229,6 +229,7 @@
                                 Classes.current="{Binding IsCurrent}"
                                 Click="OnOpenConversationClick"
                                 Tag="{Binding RunId}"
+                                IsEnabled="{Binding IsAvailable}"
                                 AutomationProperties.Name="{Binding Title, StringFormat={}Open conversation {0}}">
                               <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
                                 <TextBlock FontWeight="SemiBold" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
@@ -273,17 +274,53 @@
                     Padding="{controls:Inset Sm}"
                     BorderBrush="{DynamicResource ShellBorderBrush}"
                     BorderThickness="0,1,0,0">
-                  <Button
-                      HorizontalAlignment="Stretch"
-                      HorizontalContentAlignment="Left"
-                      Classes="FlyoutMenuItem"
-                      Click="OnStartNewConversationClick"
-                      AutomationProperties.Name="Start a new AI conversation">
-                    <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
-                      <icons:SymbolIcon Symbol="Add" FontSize="13" />
-                      <TextBlock Text="New conversation" />
-                    </StackPanel>
-                  </Button>
+                  <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+                    <Button
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Left"
+                        Classes="FlyoutMenuItem"
+                        Click="OnStartNewConversationClick"
+                        AutomationProperties.Name="Start a new AI conversation">
+                      <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+                        <icons:SymbolIcon Symbol="Add" FontSize="13" />
+                        <TextBlock Text="New conversation" />
+                      </StackPanel>
+                    </Button>
+                    <TextBlock Classes="Eyebrow" Text="Retention and export" />
+                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceXs}">
+                      <ComboBox
+                          ItemsSource="{Binding AgentChat.HistoryRetentionOptions}"
+                          SelectedItem="{Binding AgentChat.SelectedHistoryRetentionOption, Mode=TwoWay}"
+                          IsEnabled="{Binding !AgentChat.IsHistoryRetentionLoading}"
+                          AutomationProperties.Name="Agent history retention">
+                        <ComboBox.ItemTemplate>
+                          <DataTemplate x:DataType="vm:AgentHistoryRetentionOption">
+                            <TextBlock Text="{Binding Description}" />
+                          </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                      </ComboBox>
+                      <Button
+                          Grid.Column="1"
+                          Classes="SecondaryButton"
+                          Click="OnApplyAgentHistoryRetentionClick"
+                          Content="Apply"
+                          IsEnabled="{Binding AgentChat.CanApplyHistoryRetention}"
+                          AutomationProperties.Name="Apply agent history retention" />
+                      <Button
+                          Grid.Column="2"
+                          Classes="SecondaryButton"
+                          Click="OnExportAgentHistoryClick"
+                          Content="Export…"
+                          IsEnabled="{Binding AgentChat.CanExportHistory}"
+                          AutomationProperties.Name="Export metadata-only agent history" />
+                    </Grid>
+                    <TextBlock
+                        Classes="Muted"
+                        FontSize="{DynamicResource ShellFontSize9}"
+                        Text="{Binding AgentChat.AgentHistoryStatus}"
+                        TextWrapping="Wrap"
+                        AutomationProperties.Name="Agent history status" />
+                  </StackPanel>
                 </Border>
               </Grid>
             </Flyout>
@@ -336,7 +373,7 @@
             BorderBrush="{DynamicResource ShellBorderBrush}"
             BorderThickness="1"
             CornerRadius="{DynamicResource ShellCardCornerRadius}"
-            IsVisible="False"
+            IsVisible="{Binding AgentChat.HasCapabilityNotice}"
             AutomationProperties.Name="{Binding AgentChat.CapabilityNotice, StringFormat={}AI agent terminal capability · {0}}">
           <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
             <icons:SymbolIcon
@@ -453,7 +490,7 @@
                         AutomationProperties.HelpText="Show the tool permissions for this conversation">
                       <Expander.Header>
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                          <TextBlock FontWeight="SemiBold" Text="Effective policy" />
+                          <TextBlock FontWeight="SemiBold" Text="Policy comparison" />
                           <TextBlock
                               Grid.Column="1"
                               Classes="Muted"
@@ -465,14 +502,20 @@
                         <TextBlock
                             Classes="Muted"
                             FontSize="{DynamicResource ShellFontSize9}"
-                            Text="{Binding AgentChat.EffectivePolicySummary}"
+                            Text="{Binding AgentChat.PolicyComparisonSummary}"
                             TextWrapping="Wrap" />
-                        <ItemsControl ItemsSource="{Binding AgentChat.EffectivePolicyCapabilities}">
+                        <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                          <TextBlock Classes="Eyebrow" Text="Capability" />
+                          <TextBlock Grid.Column="1" Classes="Eyebrow" Text="Baseline" />
+                          <TextBlock Grid.Column="2" Classes="Eyebrow" Text="Run" />
+                          <TextBlock Grid.Column="3" Classes="Eyebrow Accent" Text="Effective" />
+                        </Grid>
+                        <ItemsControl ItemsSource="{Binding AgentChat.PolicyComparison}">
                           <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:AgentPolicyCapabilityViewModel">
+                            <DataTemplate x:DataType="vm:AgentPolicyComparisonViewModel">
                               <Grid
                                   Margin="{controls:Inset Vertical=Xs}"
-                                  ColumnDefinitions="*,Auto"
+                                  ColumnDefinitions="*,Auto,Auto,Auto"
                                   ColumnSpacing="{DynamicResource ShellSpaceSm}"
                                   AutomationProperties.Name="{Binding AccessibleName}">
                                 <TextBlock
@@ -484,7 +527,17 @@
                                     Grid.Column="1"
                                     Classes="Eyebrow"
                                     FontSize="{DynamicResource ShellFontSize9}"
-                                    Text="{Binding Permission}" />
+                                    Text="{Binding Baseline}" />
+                                <TextBlock
+                                    Grid.Column="2"
+                                    Classes="Eyebrow"
+                                    FontSize="{DynamicResource ShellFontSize9}"
+                                    Text="{Binding Run}" />
+                                <TextBlock
+                                    Grid.Column="3"
+                                    Classes="Eyebrow Accent"
+                                    FontSize="{DynamicResource ShellFontSize9}"
+                                    Text="{Binding Effective}" />
                               </Grid>
                             </DataTemplate>
                           </ItemsControl.ItemTemplate>
