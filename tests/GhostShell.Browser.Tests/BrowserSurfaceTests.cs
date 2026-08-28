@@ -2093,6 +2093,60 @@ public sealed class BrowserSurfaceTests
         Assert.Equal(0, surface.State.DocumentRevision);
     }
 
+    [Theory]
+    [InlineData(
+        (int)NativeBrowserLoadFailureKind.NetworkUnavailable,
+        BrowserErrorCode.NetworkUnavailable,
+        "network_unavailable")]
+    [InlineData(
+        (int)NativeBrowserLoadFailureKind.TimedOut,
+        BrowserErrorCode.NavigationTimedOut,
+        "navigation_timed_out")]
+    [InlineData(
+        (int)NativeBrowserLoadFailureKind.CertificateRejected,
+        BrowserErrorCode.CertificateRejected,
+        "certificate_rejected")]
+    public void NavigationFailuresKeepTheirProductMeaning(
+        int failureKind,
+        BrowserErrorCode errorCode,
+        string stableCode)
+    {
+        var nativeView = new RecordingEmbeddedBrowserView();
+        var surface = Surface(nativeView);
+        var address = Address("https://example.test/distinct-failure");
+
+        nativeView.RaiseNavigationStarted(address);
+        nativeView.RaiseNavigationCompleted(
+            address,
+            isSuccess: false,
+            failureKind: (NativeBrowserLoadFailureKind)failureKind);
+
+        Assert.Equal(errorCode, surface.State.Failure?.Code);
+        Assert.Equal(stableCode, surface.State.Failure?.StableCode);
+    }
+
+    [Fact]
+    public void ProductEventsAndFindCommandsCrossOnlyTheEngineNeutralBoundary()
+    {
+        var nativeView = new RecordingEmbeddedBrowserView();
+        var surface = Surface(nativeView);
+        BrowserProductEvent? observed = null;
+        surface.ProductEvent += (_, productEvent) => observed = productEvent;
+        var productEvent = new BrowserProductEvent.PermissionDenied(
+            "https://example.test",
+            BrowserPermissionKind.Camera);
+
+        nativeView.RaiseProductEvent(productEvent);
+
+        Assert.Same(productEvent, observed);
+        Assert.True(surface.StartFind("needle"));
+        Assert.Equal("needle", nativeView.LastFindText);
+        Assert.True(surface.FindNext(BrowserFindDirection.Previous));
+        Assert.Equal(BrowserFindDirection.Previous, nativeView.LastFindDirection);
+        Assert.True(surface.StopFind());
+        Assert.Equal(1, nativeView.StopFindCount);
+    }
+
     [Fact]
     public void RejectedTopLevelNavigationKeepsTheLastSupportedAddress()
     {
@@ -3011,14 +3065,29 @@ public sealed class BrowserSurfaceTests
             BrowserTestDestinationPolicy.Public,
             InlineBrowserUiDispatcher.Instance,
             () => replacement);
+        var address = Address("https://example.test/volatile-form");
+        BrowserProductEvent? observed = null;
+        surface.ProductEvent += (_, productEvent) => observed = productEvent;
+        nativeView.RaiseNavigationStarted(address);
+        nativeView.RaiseNavigationCompleted(address, isSuccess: true);
 
         nativeView.RaiseRenderProcessFailed();
 
         Assert.True(nativeView.IsDisposed);
         Assert.False(replacement.IsDisposed);
         Assert.Same(replacement.View, surface.Content);
-        Assert.Equal(1, surface.State.DocumentRevision);
+        Assert.Equal(2, surface.State.DocumentRevision);
         Assert.Equal(BrowserLoadState.Ready, surface.State.LoadState);
+        var recovered = Assert.IsType<BrowserProductEvent.RendererRecovered>(observed);
+        Assert.Equal(address, recovered.LostAddress);
+
+        nativeView.RaiseProductEvent(
+            new BrowserProductEvent.DownloadCancelled(1));
+        Assert.Same(recovered, observed);
+
+        replacement.RaiseProductEvent(
+            new BrowserProductEvent.DownloadCancelled(2));
+        Assert.IsType<BrowserProductEvent.DownloadCancelled>(observed);
     }
 
     [Fact]

@@ -54,8 +54,9 @@ Clear-data requests bind the exact profile and partition. Cookies and HTTP-auth
 credentials can be cleared after inactive encrypted contexts are restored.
 Whole-profile reset requires zero active leases and deletes both runtime and
 encrypted state for every route of the selected partition. Cleanup never
-touches downloaded user files; downloads and browser permission requests remain
-blocked.
+touches downloaded user files. Browser permission requests remain denied and
+visible. Downloads require a user-selected Save As destination outside the
+profile and publish visible progress independently of profile retention.
 
 Optional HTTP-auth metadata remains limited to exact host, optional port and
 realm, Basic or Digest scheme, username, and a vault `SecretRef`. Portable

@@ -510,7 +510,10 @@ one no-cache-path partition per panel and destroys it at the final lease. The
 built-in profile preserves the existing shared/per-workspace partition choice.
 CEF's runtime-global `Local State` is encrypted alongside the context archives
 so OS-crypt metadata survives; initialization waits for startup unlock and
-recovery. Permission requests and downloads are blocked.
+recovery. Permission and media requests fail closed and publish a visible,
+typed denial. Downloads require Chromium's explicit Save As flow, publish typed
+start/progress/completion/cancellation events, and write only to the location
+the user chooses outside the encrypted browser profile.
 When application encryption is deliberately disabled, saved sessions are
 deleted and durable selections run session-only instead of writing plaintext.
 
@@ -768,6 +771,14 @@ Required common operations:
 - screenshot and viewport metadata;
 - profile/cookie/storage management through explicit capabilities;
 - downloads, dialogs, permission prompts, certificate failures, and new-window requests as events.
+
+`BrowserProductEvent` is the closed product event family for dialogs, file
+pickers, permission denials, certificate rejection, downloads, find results,
+and renderer-process recovery. CEF types remain private to `GhostShell.Browser`.
+The panel presents these states separately and exposes find-in-page through the
+engine-neutral `IBrowserFindController`. Renderer replacement starts a blank
+renderer and reports the prior address only as an optional reload target; the
+UI explicitly says unsaved form input and other volatile page state were lost.
 
 Console, network inspection, screenshots, and additional interaction families
 are optional future CEF capabilities. Unimplemented operations return

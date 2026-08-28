@@ -19,6 +19,72 @@ public sealed class BrowserRuntimePanelViewModelTests
         Assert.Empty(browser.AddressText);
     }
 
+    [Fact]
+    public void RendererRecoveryWarnsAboutLostVolatileStateAndOffersOnlyReload()
+    {
+        var browser = new BrowserPresentationHost();
+        var lostAddress = Address("https://example.test/unsaved-form");
+
+        browser.ApplyProductEvent(
+            new BrowserProductEvent.RendererRecovered(lostAddress));
+
+        Assert.True(browser.IsProductNoticeVisible);
+        Assert.Equal("Page process restarted", browser.ProductHeading);
+        Assert.Contains("volatile page state were lost", browser.ProductMessage);
+        Assert.DoesNotContain("restored", browser.ProductMessage);
+        Assert.True(browser.HasProductAction);
+        Assert.Equal("Reload page", browser.ProductActionLabel);
+    }
+
+    [Fact]
+    public void DownloadAndPermissionEventsHaveDistinctVisibleStates()
+    {
+        var browser = new BrowserPresentationHost();
+
+        browser.ApplyProductEvent(
+            new BrowserProductEvent.PermissionDenied(
+                "https://example.test",
+                BrowserPermissionKind.Camera | BrowserPermissionKind.Microphone));
+
+        Assert.Equal("Permission denied", browser.ProductHeading);
+        Assert.Contains("camera", browser.ProductMessage);
+        Assert.False(browser.HasDownloadProgress);
+
+        browser.ApplyProductEvent(
+            new BrowserProductEvent.DownloadProgressed(
+                7,
+                "report.pdf",
+                ReceivedBytes: 524_288,
+                TotalBytes: 1_048_576,
+                PercentComplete: 50));
+
+        Assert.Equal("Downloading report.pdf", browser.ProductHeading);
+        Assert.True(browser.HasDownloadProgress);
+        Assert.False(browser.IsDownloadProgressIndeterminate);
+        Assert.Equal(50, browser.DownloadProgress);
+    }
+
+    [Fact]
+    public void FindResultsStayInTheFindChromeInsteadOfReplacingProductNotices()
+    {
+        var browser = new BrowserPresentationHost();
+        browser.ApplyProductEvent(
+            new BrowserProductEvent.CertificateRejected(
+                Address("https://example.test"),
+                BrowserCertificateErrorKind.UntrustedAuthority,
+                "example.test",
+                "Unknown"));
+
+        browser.ApplyProductEvent(
+            new BrowserProductEvent.FindUpdated(
+                MatchCount: 4,
+                ActiveMatchOrdinal: 2,
+                IsFinal: true));
+
+        Assert.Equal("2 of 4", browser.FindResultText);
+        Assert.Equal("Certificate rejected", browser.ProductHeading);
+    }
+
     [Theory]
     [InlineData("https://example.test/sign-in")]
     [InlineData("http://localhost:8080/callback")]

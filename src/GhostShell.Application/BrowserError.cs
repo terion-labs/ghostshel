@@ -73,6 +73,9 @@ public sealed record BrowserError
         BrowserErrorCode.InteractionOutcomeUnknown =>
             "browser_interaction_outcome_unknown",
         BrowserErrorCode.NavigationFailed => "navigation_failed",
+        BrowserErrorCode.NetworkUnavailable => "network_unavailable",
+        BrowserErrorCode.NavigationTimedOut => "navigation_timed_out",
+        BrowserErrorCode.CertificateRejected => "certificate_rejected",
         BrowserErrorCode.SessionClosed => "session_closed",
         BrowserErrorCode.Cancelled => "cancelled",
         BrowserErrorCode.EngineFailed => "engine_failed",

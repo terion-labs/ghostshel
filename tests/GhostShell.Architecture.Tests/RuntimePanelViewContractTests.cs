@@ -1378,6 +1378,27 @@ public sealed class RuntimePanelViewContractTests
         Assert.Equal(
             "{Binding IsLive, ElementName=RuntimeBrowser}",
             AttributeValue(developerTools, "IsEnabled"));
+        var findInPage = FindUniqueAccessibleElement(root, "Find in page");
+        Assert.Equal("OnFindClick", AttributeValue(findInPage, "Click"));
+        Assert.Equal(
+            "{Binding IsLive, ElementName=RuntimeBrowser}",
+            AttributeValue(findInPage, "IsEnabled"));
+        var findText = FindUniqueAccessibleElement(root, "Find text in page");
+        Assert.Equal("OnFindBoxKeyDown", AttributeValue(findText, "KeyDown"));
+        Assert.Equal("OnFindTextChanged", AttributeValue(findText, "TextChanged"));
+        var eventNotice = FindUniqueAccessibleElement(root, "Browser event notice");
+        Assert.Equal(
+            "Polite",
+            AttributeValue(eventNotice, "AutomationProperties.LiveSetting"));
+        Assert.Equal(
+            "{Binding IsProductNoticeVisible, ElementName=RuntimeBrowser}",
+            AttributeValue(eventNotice, "IsVisible"));
+        var dismissNotice = FindUniqueAccessibleElement(
+            root,
+            "Dismiss browser event notice");
+        Assert.Equal(
+            "OnDismissProductNoticeClick",
+            AttributeValue(dismissNotice, "Click"));
         Assert.DoesNotContain(
             root.DescendantsAndSelf(),
             element => element.Attributes().Any(attribute =>
@@ -1425,6 +1446,9 @@ public sealed class RuntimePanelViewContractTests
             "BrowserStateChanged?.Invoke(sender, e);",
             codeBehind,
             StringComparison.Ordinal);
+        Assert.Contains("RoutingStrategies.Tunnel", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("OperatingSystem.IsMacOS()", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("BrowserFindDirection.Previous", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("async ", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("Dispose(", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("CancellationTokenSource", codeBehind, StringComparison.Ordinal);

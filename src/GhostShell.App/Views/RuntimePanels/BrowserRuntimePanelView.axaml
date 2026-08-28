@@ -44,7 +44,7 @@
 
     <controls:PanelChrome.HeaderContent>
       <Grid
-          ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto"
+          ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto,Auto"
           ColumnSpacing="{DynamicResource ShellSpaceXs}">
         <Button
             AutomationProperties.Name="Go back"
@@ -96,6 +96,15 @@
         </Button>
         <Button
             Grid.Column="4"
+            AutomationProperties.Name="Find in page"
+            Classes="IconButton"
+            Click="OnFindClick"
+            IsEnabled="{Binding IsLive, ElementName=RuntimeBrowser}"
+            ToolTip.Tip="Find in page">
+          <icons:SymbolIcon FontSize="{DynamicResource ShellFontSize13}" Symbol="Search" />
+        </Button>
+        <Button
+            Grid.Column="5"
             AutomationProperties.Name="Open current page in system browser"
             Classes="IconButton"
             Click="OnOpenInSystemBrowserClick"
@@ -104,7 +113,7 @@
           <icons:SymbolIcon FontSize="{DynamicResource ShellFontSize13}" Symbol="Open" />
         </Button>
         <Button
-            Grid.Column="5"
+            Grid.Column="6"
             AutomationProperties.Name="Open browser developer tools"
             Classes="IconButton"
             Click="OnDeveloperToolsClick"
@@ -171,6 +180,98 @@
             Glyph="ErrorCircle"
             Heading="Browser unavailable"
             Body="{Binding RouteErrorMessage}" />
+      </Border>
+
+      <Border
+          Margin="{controls:Inset Sm}"
+          Padding="{controls:Inset Horizontal=Md, Vertical=Sm}"
+          HorizontalAlignment="Stretch"
+          VerticalAlignment="Top"
+          AutomationProperties.LiveSetting="Polite"
+          AutomationProperties.Name="Browser event notice"
+          Background="{DynamicResource ShellPopupSurfaceBrush}"
+          BorderBrush="{DynamicResource ShellWarningBorderBrush}"
+          BorderThickness="{DynamicResource ShellHairline}"
+          CornerRadius="{DynamicResource ShellInnerCornerRadius}"
+          IsVisible="{Binding IsProductNoticeVisible, ElementName=RuntimeBrowser}">
+        <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+          <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+            <TextBlock
+                FontSize="{DynamicResource ShellFontSize10}"
+                FontWeight="SemiBold"
+                Text="{Binding ProductHeading, ElementName=RuntimeBrowser}" />
+            <TextBlock
+                Classes="Muted"
+                FontSize="{DynamicResource ShellFontSize9}"
+                Text="{Binding ProductMessage, ElementName=RuntimeBrowser}"
+                TextWrapping="Wrap" />
+          </StackPanel>
+          <Button
+              Grid.Column="1"
+              VerticalAlignment="Center"
+              AutomationProperties.Name="Run browser recovery action"
+              Click="OnProductActionClick"
+              Content="{Binding ProductActionLabel, ElementName=RuntimeBrowser}"
+              IsVisible="{Binding HasProductAction, ElementName=RuntimeBrowser}" />
+          <Button
+              Grid.Column="2"
+              VerticalAlignment="Center"
+              AutomationProperties.Name="Dismiss browser event notice"
+              Classes="IconButton"
+              Click="OnDismissProductNoticeClick"
+              ToolTip.Tip="Dismiss">
+            <icons:SymbolIcon FontSize="{DynamicResource ShellFontSize12}" Symbol="Dismiss" />
+          </Button>
+          <ProgressBar
+              Grid.Row="1"
+              Grid.ColumnSpan="3"
+              Margin="{controls:Inset Top=Sm}"
+              Height="2"
+              AutomationProperties.Name="Download progress"
+              IsIndeterminate="{Binding IsDownloadProgressIndeterminate, ElementName=RuntimeBrowser}"
+              IsVisible="{Binding HasDownloadProgress, ElementName=RuntimeBrowser}"
+              Maximum="100"
+              Value="{Binding DownloadProgress, ElementName=RuntimeBrowser}" />
+        </Grid>
+      </Border>
+
+      <Border
+          Margin="{controls:Inset Sm}"
+          Padding="{controls:Inset Sm}"
+          HorizontalAlignment="Right"
+          VerticalAlignment="Top"
+          Background="{DynamicResource ShellPopupSurfaceBrush}"
+          BorderBrush="{DynamicResource ShellAccentBrush}"
+          BorderThickness="{DynamicResource ShellHairline}"
+          CornerRadius="{DynamicResource ShellInnerCornerRadius}"
+          IsVisible="{Binding IsFindVisible, ElementName=RuntimeBrowser}">
+        <Grid ColumnDefinitions="220,Auto,Auto,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceXs}">
+          <TextBox
+              x:Name="FindBox"
+              AutomationProperties.Name="Find text in page"
+              KeyDown="OnFindBoxKeyDown"
+              Text="{Binding FindText, ElementName=RuntimeBrowser, Mode=TwoWay}"
+              TextChanged="OnFindTextChanged"
+              PlaceholderText="Find in page" />
+          <TextBlock
+              Grid.Column="1"
+              MinWidth="56"
+              VerticalAlignment="Center"
+              AutomationProperties.LiveSetting="Polite"
+              AutomationProperties.Name="Find result count"
+              Classes="Muted"
+              FontSize="{DynamicResource ShellFontSize9}"
+              Text="{Binding FindResultText, ElementName=RuntimeBrowser}" />
+          <Button Grid.Column="2" AutomationProperties.Name="Previous find match" Classes="IconButton" Click="OnFindPreviousClick" ToolTip.Tip="Previous match">
+            <icons:SymbolIcon FontSize="{DynamicResource ShellFontSize11}" Symbol="ChevronUp" />
+          </Button>
+          <Button Grid.Column="3" AutomationProperties.Name="Next find match" Classes="IconButton" Click="OnFindNextClick" ToolTip.Tip="Next match">
+            <icons:SymbolIcon FontSize="{DynamicResource ShellFontSize11}" Symbol="ChevronDown" />
+          </Button>
+          <Button Grid.Column="4" AutomationProperties.Name="Close find in page" Classes="IconButton" Click="OnCloseFindClick" ToolTip.Tip="Close find">
+            <icons:SymbolIcon FontSize="{DynamicResource ShellFontSize11}" Symbol="Dismiss" />
+          </Button>
+        </Grid>
       </Border>
     </Grid>
   </controls:PanelChrome>

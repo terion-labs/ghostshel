@@ -58,6 +58,12 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
 
     public int DeveloperToolsOpenCount { get; private set; }
 
+    public string? LastFindText { get; private set; }
+
+    public BrowserFindDirection? LastFindDirection { get; private set; }
+
+    public int StopFindCount { get; private set; }
+
     public int SnapshotCount { get; private set; }
 
     public BrowserSnapshotQuery? LastSnapshotQuery { get; private set; }
@@ -165,6 +171,8 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
 
     public event EventHandler<BrowserNewTabRequestedEventArgs>? NewTabRequested;
 
+    public event EventHandler<BrowserProductEvent>? ProductEvent;
+
     public void SetAgentActivity(bool isActive) => IsAgentActive = isActive;
 
     public void SetActiveNavigationRequestPolicy(
@@ -257,6 +265,26 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
     {
         DeveloperToolsOpenCount++;
         return AcceptDeveloperTools;
+    }
+
+    public bool StartFind(string searchText)
+    {
+        LastFindText = searchText;
+        LastFindDirection = BrowserFindDirection.Next;
+        return true;
+    }
+
+    public bool FindNext(BrowserFindDirection direction)
+    {
+        LastFindDirection = direction;
+        return LastFindText is not null;
+    }
+
+    public bool StopFind()
+    {
+        StopFindCount++;
+        LastFindText = null;
+        return true;
     }
 
     public Task<NativeBrowserSnapshotResult> CaptureSnapshotAsync(
@@ -409,7 +437,9 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
         BrowserAddress? address,
         bool isSuccess,
         long? navigationGeneration = null,
-        bool wasStopped = false)
+        bool wasStopped = false,
+        NativeBrowserLoadFailureKind failureKind =
+            NativeBrowserLoadFailureKind.None)
     {
         var generation = navigationGeneration
             ?? _activeNavigationGeneration
@@ -426,7 +456,8 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
                 address,
                 isSuccess,
                 generation,
-                wasStopped));
+                wasStopped,
+                failureKind));
     }
 
     public void RaiseNavigationRejected(
@@ -451,6 +482,9 @@ internal sealed class RecordingEmbeddedBrowserView : IEmbeddedBrowserView
         NewTabRequested?.Invoke(
             this,
             new BrowserNewTabRequestedEventArgs(address, userGesture));
+
+    public void RaiseProductEvent(BrowserProductEvent productEvent) =>
+        ProductEvent?.Invoke(this, productEvent);
 
     public void RaiseAddressChanged(BrowserAddress address) =>
         AddressChanged?.Invoke(

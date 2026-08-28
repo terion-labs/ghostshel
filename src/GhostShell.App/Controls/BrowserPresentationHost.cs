@@ -92,6 +92,73 @@ public sealed class BrowserPresentationHost : ContentControl
                 nameof(ShowFallback),
                 control => control.ShowFallback);
 
+    public static readonly DirectProperty<BrowserPresentationHost, bool>
+        IsFindVisibleProperty =
+            AvaloniaProperty.RegisterDirect<BrowserPresentationHost, bool>(
+                nameof(IsFindVisible),
+                control => control.IsFindVisible);
+
+    public static readonly DirectProperty<BrowserPresentationHost, string>
+        FindTextProperty =
+            AvaloniaProperty.RegisterDirect<BrowserPresentationHost, string>(
+                nameof(FindText),
+                control => control.FindText,
+                (control, value) => control.FindText = value);
+
+    public static readonly DirectProperty<BrowserPresentationHost, string>
+        FindResultTextProperty =
+            AvaloniaProperty.RegisterDirect<BrowserPresentationHost, string>(
+                nameof(FindResultText),
+                control => control.FindResultText);
+
+    public static readonly DirectProperty<BrowserPresentationHost, bool>
+        IsProductNoticeVisibleProperty =
+            AvaloniaProperty.RegisterDirect<BrowserPresentationHost, bool>(
+                nameof(IsProductNoticeVisible),
+                control => control.IsProductNoticeVisible);
+
+    public static readonly DirectProperty<BrowserPresentationHost, string>
+        ProductHeadingProperty =
+            AvaloniaProperty.RegisterDirect<BrowserPresentationHost, string>(
+                nameof(ProductHeading),
+                control => control.ProductHeading);
+
+    public static readonly DirectProperty<BrowserPresentationHost, string>
+        ProductMessageProperty =
+            AvaloniaProperty.RegisterDirect<BrowserPresentationHost, string>(
+                nameof(ProductMessage),
+                control => control.ProductMessage);
+
+    public static readonly DirectProperty<BrowserPresentationHost, bool>
+        HasProductActionProperty =
+            AvaloniaProperty.RegisterDirect<BrowserPresentationHost, bool>(
+                nameof(HasProductAction),
+                control => control.HasProductAction);
+
+    public static readonly DirectProperty<BrowserPresentationHost, string>
+        ProductActionLabelProperty =
+            AvaloniaProperty.RegisterDirect<BrowserPresentationHost, string>(
+                nameof(ProductActionLabel),
+                control => control.ProductActionLabel);
+
+    public static readonly DirectProperty<BrowserPresentationHost, bool>
+        HasDownloadProgressProperty =
+            AvaloniaProperty.RegisterDirect<BrowserPresentationHost, bool>(
+                nameof(HasDownloadProgress),
+                control => control.HasDownloadProgress);
+
+    public static readonly DirectProperty<BrowserPresentationHost, bool>
+        IsDownloadProgressIndeterminateProperty =
+            AvaloniaProperty.RegisterDirect<BrowserPresentationHost, bool>(
+                nameof(IsDownloadProgressIndeterminate),
+                control => control.IsDownloadProgressIndeterminate);
+
+    public static readonly DirectProperty<BrowserPresentationHost, double>
+        DownloadProgressProperty =
+            AvaloniaProperty.RegisterDirect<BrowserPresentationHost, double>(
+                nameof(DownloadProgress),
+                control => control.DownloadProgress);
+
     private CancellationTokenSource? _attachmentLifetime;
     private ISessionHostClient? _attachedClient;
     private ClientId? _attachedClientId;
@@ -111,6 +178,18 @@ public sealed class BrowserPresentationHost : ContentControl
     private bool _canGoForward;
     private bool _showFallback = true;
     private BrowserAddress _presentedAddress = BrowserAddress.Blank;
+    private bool _isFindVisible;
+    private string _findText = string.Empty;
+    private string _findResultText = string.Empty;
+    private bool _isProductNoticeVisible;
+    private string _productHeading = string.Empty;
+    private string _productMessage = string.Empty;
+    private bool _hasProductAction;
+    private string _productActionLabel = string.Empty;
+    private bool _hasDownloadProgress;
+    private bool _isDownloadProgressIndeterminate;
+    private double _downloadProgress;
+    private BrowserAddress? _recoveryAddress;
 
     public BrowserPresentationHost()
     {
@@ -217,6 +296,87 @@ public sealed class BrowserPresentationHost : ContentControl
         private set => SetAndRaise(ShowFallbackProperty, ref _showFallback, value);
     }
 
+    public bool IsFindVisible
+    {
+        get => _isFindVisible;
+        private set => SetAndRaise(IsFindVisibleProperty, ref _isFindVisible, value);
+    }
+
+    public string FindText
+    {
+        get => _findText;
+        set => SetAndRaise(FindTextProperty, ref _findText, value ?? string.Empty);
+    }
+
+    public string FindResultText
+    {
+        get => _findResultText;
+        private set => SetAndRaise(FindResultTextProperty, ref _findResultText, value);
+    }
+
+    public bool IsProductNoticeVisible
+    {
+        get => _isProductNoticeVisible;
+        private set => SetAndRaise(
+            IsProductNoticeVisibleProperty,
+            ref _isProductNoticeVisible,
+            value);
+    }
+
+    public string ProductHeading
+    {
+        get => _productHeading;
+        private set => SetAndRaise(ProductHeadingProperty, ref _productHeading, value);
+    }
+
+    public string ProductMessage
+    {
+        get => _productMessage;
+        private set => SetAndRaise(ProductMessageProperty, ref _productMessage, value);
+    }
+
+    public bool HasProductAction
+    {
+        get => _hasProductAction;
+        private set => SetAndRaise(HasProductActionProperty, ref _hasProductAction, value);
+    }
+
+    public string ProductActionLabel
+    {
+        get => _productActionLabel;
+        private set => SetAndRaise(
+            ProductActionLabelProperty,
+            ref _productActionLabel,
+            value);
+    }
+
+    public bool HasDownloadProgress
+    {
+        get => _hasDownloadProgress;
+        private set => SetAndRaise(
+            HasDownloadProgressProperty,
+            ref _hasDownloadProgress,
+            value);
+    }
+
+    public bool IsDownloadProgressIndeterminate
+    {
+        get => _isDownloadProgressIndeterminate;
+        private set => SetAndRaise(
+            IsDownloadProgressIndeterminateProperty,
+            ref _isDownloadProgressIndeterminate,
+            value);
+    }
+
+    public double DownloadProgress
+    {
+        get => _downloadProgress;
+        private set => SetAndRaise(
+            DownloadProgressProperty,
+            ref _downloadProgress,
+            value);
+    }
+
     internal bool RequestInputFocus() =>
         RendererView?.View.Focus() ?? Focus();
 
@@ -229,6 +389,76 @@ public sealed class BrowserPresentationHost : ContentControl
 
         SetOperationMessage(
             "Developer tools are unavailable until the browser is ready.");
+    }
+
+    internal void OpenFind()
+    {
+        IsFindVisible = true;
+        FindResultText = string.IsNullOrWhiteSpace(FindText)
+            ? string.Empty
+            : "Searching…";
+    }
+
+    internal void UpdateFind(string? searchText)
+    {
+        FindText = searchText ?? string.Empty;
+        if (_subscribedRenderer is not IBrowserFindController controller)
+        {
+            FindResultText = "Unavailable";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(FindText))
+        {
+            _ = controller.StopFind();
+            FindResultText = string.Empty;
+            return;
+        }
+
+        FindResultText = controller.StartFind(FindText)
+            ? "Searching…"
+            : "Unavailable";
+    }
+
+    internal void FindNext(BrowserFindDirection direction)
+    {
+        if (_subscribedRenderer is not IBrowserFindController controller
+            || !controller.FindNext(direction))
+        {
+            FindResultText = "Unavailable";
+        }
+    }
+
+    internal void CloseFind()
+    {
+        if (_subscribedRenderer is IBrowserFindController controller)
+        {
+            _ = controller.StopFind();
+        }
+
+        IsFindVisible = false;
+        FindResultText = string.Empty;
+        RequestInputFocus();
+    }
+
+    internal void DismissProductNotice()
+    {
+        IsProductNoticeVisible = false;
+        HasProductAction = false;
+        HasDownloadProgress = false;
+        _recoveryAddress = null;
+    }
+
+    internal async ValueTask PerformProductActionAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (_recoveryAddress is not { } address)
+        {
+            return;
+        }
+
+        DismissProductNotice();
+        await NavigateAddressAsync(address.ToString(), cancellationToken);
     }
 
     internal void OpenInSystemBrowser()
@@ -592,6 +822,11 @@ public sealed class BrowserPresentationHost : ContentControl
         UnsubscribeRenderer();
         _subscribedRenderer = renderer;
         _subscribedRenderer.StateChanged += OnRendererStateChanged;
+        if (_subscribedRenderer is IBrowserProductEventSource productEventSource)
+        {
+            productEventSource.ProductEvent += OnBrowserProductEvent;
+        }
+
         ApplyBrowserState(renderer.State);
     }
 
@@ -603,6 +838,11 @@ public sealed class BrowserPresentationHost : ContentControl
         }
 
         _subscribedRenderer.StateChanged -= OnRendererStateChanged;
+        if (_subscribedRenderer is IBrowserProductEventSource productEventSource)
+        {
+            productEventSource.ProductEvent -= OnBrowserProductEvent;
+        }
+
         _subscribedRenderer = null;
     }
 
@@ -612,6 +852,97 @@ public sealed class BrowserPresentationHost : ContentControl
     {
         _ = sender;
         ApplyBrowserState(eventArgs.State);
+    }
+
+    private void OnBrowserProductEvent(
+        object? sender,
+        BrowserProductEvent productEvent)
+    {
+        _ = sender;
+        ApplyProductEvent(productEvent);
+    }
+
+    internal void ApplyProductEvent(BrowserProductEvent productEvent)
+    {
+        ArgumentNullException.ThrowIfNull(productEvent);
+        switch (productEvent)
+        {
+            case BrowserProductEvent.FindUpdated find:
+                FindResultText = find.MatchCount == 0
+                    ? "No matches"
+                    : $"{find.ActiveMatchOrdinal} of {find.MatchCount}";
+                return;
+            case BrowserProductEvent.JavaScriptDialogBlocked dialog:
+                ShowProductNotice(
+                    "Page dialog blocked",
+                    string.IsNullOrWhiteSpace(dialog.Message)
+                        ? "This page tried to interrupt the browser with a dialog."
+                        : dialog.Message);
+                return;
+            case BrowserProductEvent.FileDialogBlocked fileDialog:
+                ShowProductNotice(
+                    "File access blocked",
+                    string.IsNullOrWhiteSpace(fileDialog.Title)
+                        ? "This page tried to open a file picker."
+                        : fileDialog.Title);
+                return;
+            case BrowserProductEvent.PermissionDenied permission:
+                ShowProductNotice(
+                    "Permission denied",
+                    $"{permission.Origin} requested {FormatPermissions(permission.Permissions)}. GhostSHELL denied it.");
+                return;
+            case BrowserProductEvent.CertificateRejected certificate:
+                ShowProductNotice(
+                    "Certificate rejected",
+                    $"GhostSHELL did not trust the certificate for {certificate.Address}.");
+                return;
+            case BrowserProductEvent.DownloadRequested download:
+                ShowProductNotice(
+                    "Choose download location",
+                    $"Select where to save {download.FileName}. The saved file is outside the encrypted browser profile.",
+                    hasDownloadProgress: true,
+                    progress: null);
+                return;
+            case BrowserProductEvent.DownloadProgressed download:
+                ShowProductNotice(
+                    $"Downloading {download.FileName}",
+                    FormatDownloadProgress(download.ReceivedBytes, download.TotalBytes),
+                    hasDownloadProgress: true,
+                    progress: download.PercentComplete);
+                return;
+            case BrowserProductEvent.DownloadCompleted download:
+                ShowProductNotice(
+                    "Download complete",
+                    string.IsNullOrWhiteSpace(download.FileName)
+                        ? "The file was saved to the location you selected."
+                        : $"{download.FileName} was saved to the location you selected.");
+                return;
+            case BrowserProductEvent.DownloadCancelled:
+                ShowProductNotice(
+                    "Download cancelled",
+                    "No file was saved by this download.");
+                return;
+            case BrowserProductEvent.RendererRecovered recovered:
+                _recoveryAddress = recovered.LostAddress == BrowserAddress.Blank
+                    ? null
+                    : recovered.LostAddress;
+                ShowProductNotice(
+                    "Page process restarted",
+                    "The page process stopped. Cookies and persisted site data remain, but unsaved form input and other volatile page state were lost.",
+                    hasAction: _recoveryAddress is not null,
+                    actionLabel: "Reload page");
+                return;
+            case BrowserProductEvent.RendererFailed failed:
+                _recoveryAddress = failed.LastAddress == BrowserAddress.Blank
+                    ? null
+                    : failed.LastAddress;
+                ShowProductNotice(
+                    "Page process stopped",
+                    "The browser could not start a replacement process. Volatile page state was lost.");
+                return;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(productEvent));
+        }
     }
 
     private void ApplyBrowserState(BrowserSessionState state)
@@ -627,7 +958,14 @@ public sealed class BrowserPresentationHost : ContentControl
         {
             BrowserLoadState.Ready => "Ready",
             BrowserLoadState.Loading => "Loading",
-            BrowserLoadState.Failed => "Failed",
+            BrowserLoadState.Failed => state.Failure?.Code switch
+            {
+                BrowserErrorCode.NetworkUnavailable => "Offline",
+                BrowserErrorCode.NavigationTimedOut => "Timed out",
+                BrowserErrorCode.CertificateRejected => "Blocked",
+                BrowserErrorCode.RendererUnavailable => "Process stopped",
+                _ => "Failed",
+            },
             _ => throw new ArgumentOutOfRangeException(nameof(state)),
         };
         StatusBrush = state.LoadState switch
@@ -669,6 +1007,38 @@ public sealed class BrowserPresentationHost : ContentControl
     {
         StatusMessage = message;
         UpdateAutomationStatus();
+    }
+
+    private void ShowProductNotice(
+        string heading,
+        string message,
+        bool hasAction = false,
+        string actionLabel = "",
+        bool hasDownloadProgress = false,
+        int? progress = null)
+    {
+        ProductHeading = heading;
+        ProductMessage = message;
+        HasProductAction = hasAction;
+        ProductActionLabel = actionLabel;
+        HasDownloadProgress = hasDownloadProgress;
+        IsDownloadProgressIndeterminate = hasDownloadProgress && progress is null;
+        DownloadProgress = progress ?? 0;
+        IsProductNoticeVisible = true;
+        UpdateAutomationStatus();
+    }
+
+    private static string FormatPermissions(BrowserPermissionKind permissions) =>
+        permissions == BrowserPermissionKind.None
+            ? "an unspecified browser permission"
+            : permissions.ToString().ToLowerInvariant();
+
+    private static string FormatDownloadProgress(long received, long? total)
+    {
+        static string Megabytes(long bytes) => $"{bytes / 1_048_576d:0.0} MB";
+        return total is { } totalBytes && totalBytes > 0
+            ? $"Received {Megabytes(received)} of {Megabytes(totalBytes)}."
+            : $"Received {Megabytes(received)}.";
     }
 
     private void UpdateAutomationStatus() =>

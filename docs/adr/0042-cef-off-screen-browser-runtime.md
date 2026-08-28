@@ -40,8 +40,13 @@ session attachment; they do not suspend, conceal, or recreate the browser.
 CEF subprocess dispatch happens before single-instance, storage, or Avalonia
 startup. Process initialization happens after Avalonia setup, uses an exact
 runtime-version check, private request contexts, no remote debugging
-port, an opt-in-disabled JavaScript bridge, and closed handlers for popups,
-dialogs, downloads, permissions, authentication, and certificate exceptions.
+port and an opt-in-disabled JavaScript bridge. Popups cross an explicit shell
+new-tab policy. JavaScript/file dialogs, permission requests, certificate
+exceptions, downloads, find results, and renderer failure cross a closed
+GhostSHELL-owned product-event family; vendor event types remain private.
+Dialogs, permissions, and certificate exceptions still default closed.
+Downloads use an explicit Save As destination and publish typed progress, while
+find-in-page delegates through a narrow engine-neutral controller.
 Durable named profiles use private runtime directories whose complete state is
 sealed into encrypted application storage after CEF flushes; private sessions
 receive no cache path. The lifecycle is specified by

@@ -59,6 +59,8 @@ internal interface IEmbeddedBrowserView : IDisposable
 
     event EventHandler<BrowserNewTabRequestedEventArgs>? NewTabRequested;
 
+    event EventHandler<BrowserProductEvent>? ProductEvent;
+
     void Navigate(BrowserAddress address);
 
     bool GoBack();
@@ -70,6 +72,12 @@ internal interface IEmbeddedBrowserView : IDisposable
     bool Stop();
 
     bool OpenDeveloperTools();
+
+    bool StartFind(string searchText);
+
+    bool FindNext(BrowserFindDirection direction);
+
+    bool StopFind();
 
     Task<NativeBrowserSnapshotResult> CaptureSnapshotAsync(
         BrowserSnapshotQuery? query = null);
@@ -138,7 +146,8 @@ internal sealed class NativeBrowserNavigationCompletedEventArgs(
     BrowserAddress? address,
     bool isSuccess,
     long navigationGeneration,
-    bool wasStopped = false) : EventArgs
+    bool wasStopped = false,
+    NativeBrowserLoadFailureKind failureKind = NativeBrowserLoadFailureKind.None) : EventArgs
 {
     public BrowserAddress? Address { get; } = address;
 
@@ -154,11 +163,27 @@ internal sealed class NativeBrowserNavigationCompletedEventArgs(
     /// </summary>
     public bool WasStopped { get; } = wasStopped;
 
+    public NativeBrowserLoadFailureKind FailureKind { get; } =
+        isSuccess || wasStopped
+            ? NativeBrowserLoadFailureKind.None
+            : Enum.IsDefined(failureKind)
+                ? failureKind
+                : throw new ArgumentOutOfRangeException(nameof(failureKind));
+
     public long NavigationGeneration { get; } =
         navigationGeneration > 0
             ? navigationGeneration
             : throw new ArgumentOutOfRangeException(
                 nameof(navigationGeneration));
+}
+
+internal enum NativeBrowserLoadFailureKind
+{
+    None,
+    NetworkUnavailable,
+    TimedOut,
+    CertificateRejected,
+    Other,
 }
 
 internal sealed class NativeBrowserNavigationRejectedEventArgs(

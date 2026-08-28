@@ -12,7 +12,7 @@ namespace GhostShell.Browser;
 /// contract. The Exclr8 control owns rendering and input; this type owns the
 /// stricter navigation, permission, and lifetime policy around it.
 /// </summary>
-internal sealed class CefBrowserView : IEmbeddedBrowserView
+internal sealed partial class CefBrowserView : IEmbeddedBrowserView
 {
     private const string LoadStringHost = "loadstring.exclr8cef.internal";
     private const int HeadlessViewportWidth = 1280;
@@ -134,6 +134,8 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
     public event EventHandler? RenderProcessFailed;
 
     public event EventHandler<BrowserNewTabRequestedEventArgs>? NewTabRequested;
+
+    public event EventHandler<BrowserProductEvent>? ProductEvent;
 
     public void Navigate(BrowserAddress address)
     {
@@ -542,7 +544,9 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         browser.BeforePopup += OnBeforePopup;
         browser.JsDialog += BlockJavaScriptDialog;
         browser.FileDialog += BlockFileDialog;
-        browser.DownloadStarting += BlockDownload;
+        browser.DownloadStarting += OnDownloadStarting;
+        browser.DownloadProgress += OnDownloadProgress;
+        browser.FindResult += OnFindResult;
         browser.AuthRequest += OnAuthenticationRequested;
         browser.PermissionRequest += BlockPermission;
         browser.MediaAccessRequest += BlockMediaAccess;
@@ -563,7 +567,9 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         browser.BeforePopup -= OnBeforePopup;
         browser.JsDialog -= BlockJavaScriptDialog;
         browser.FileDialog -= BlockFileDialog;
-        browser.DownloadStarting -= BlockDownload;
+        browser.DownloadStarting -= OnDownloadStarting;
+        browser.DownloadProgress -= OnDownloadProgress;
+        browser.FindResult -= OnFindResult;
         browser.AuthRequest -= OnAuthenticationRequested;
         browser.PermissionRequest -= BlockPermission;
         browser.MediaAccessRequest -= BlockMediaAccess;
@@ -979,7 +985,8 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
             CompleteNavigation(
                 args.FailedUrl,
                 isSuccess: false,
-                wasStopped: _activeNavigation?.StopRequested == true);
+                wasStopped: _activeNavigation?.StopRequested == true,
+                failureKind: MapLoadFailure(args.ErrorCode));
         });
     }
 
@@ -1012,7 +1019,9 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
     private void CompleteNavigation(
         string? url,
         bool isSuccess,
-        bool wasStopped = false)
+        bool wasStopped = false,
+        NativeBrowserLoadFailureKind failureKind =
+            NativeBrowserLoadFailureKind.None)
     {
         var navigation = _activeNavigation;
         if (_disposed || navigation is null)
@@ -1051,7 +1060,8 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
                     address,
                     completedSuccessfully,
                     navigation.Generation,
-                    wasStopped));
+                    wasStopped,
+                    failureKind));
         }
         catch
         {
@@ -1425,18 +1435,6 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         });
     }
 
-    private static void BlockJavaScriptDialog(
-        object? sender,
-        JsDialogEventArgs args) => args.Cancel();
-
-    private static void BlockFileDialog(
-        object? sender,
-        FileDialogEventArgs args) => args.Cancel();
-
-    private static void BlockDownload(
-        object? sender,
-        DownloadStartingEventArgs args) => args.Cancel();
-
     private async void OnAuthenticationRequested(
         object? sender,
         AuthRequestEventArgs args)
@@ -1479,18 +1477,6 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
             args.Cancel();
         }
     }
-
-    private static void BlockPermission(
-        object? sender,
-        PermissionRequestEventArgs args) => args.Deny();
-
-    private static void BlockMediaAccess(
-        object? sender,
-        MediaAccessRequestEventArgs args) => args.Deny();
-
-    private static void BlockCertificateError(
-        object? sender,
-        CertErrorEventArgs args) => args.Cancel();
 
     internal sealed class ActiveNativeNavigation(
         long generation,

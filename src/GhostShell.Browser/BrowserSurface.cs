@@ -16,6 +16,8 @@ public sealed partial class BrowserSurface :
     ContentControl,
     IBrowserRenderer,
     IBrowserNewTabRequestSource,
+    IBrowserProductEventSource,
+    IBrowserFindController,
     IBrowserElementReferenceRegistry,
     IBrowserPhysicalInputBarrier,
     IDisposable
@@ -55,6 +57,8 @@ public sealed partial class BrowserSurface :
     private bool _disposed;
 
     public event EventHandler<BrowserNewTabRequestedEventArgs>? NewTabRequested;
+
+    public event EventHandler<BrowserProductEvent>? ProductEvent;
 
     public BrowserSurface()
         : this(BrowserCapabilityProfile.Production)
@@ -174,6 +178,7 @@ public sealed partial class BrowserSurface :
         _nativeView.NavigationRejected += OnNavigationRejected;
         _nativeView.RenderProcessFailed += OnRenderProcessFailed;
         _nativeView.NewTabRequested += OnNativeNewTabRequested;
+        _nativeView.ProductEvent += OnNativeProductEvent;
 
         Focusable = true;
         HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Stretch;
@@ -256,6 +261,24 @@ public sealed partial class BrowserSurface :
         return _nativeView.OpenDeveloperTools();
     }
 
+    public bool StartFind(string searchText)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _nativeView.StartFind(searchText);
+    }
+
+    public bool FindNext(BrowserFindDirection direction)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _nativeView.FindNext(direction);
+    }
+
+    public bool StopFind()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _nativeView.StopFind();
+    }
+
     public void Dispose()
     {
         if (_disposed)
@@ -281,6 +304,7 @@ public sealed partial class BrowserSurface :
         nativeView.NavigationCompleted -= OnNavigationCompleted;
         nativeView.AddressChanged -= OnAddressChanged;
         nativeView.NewTabRequested -= OnNativeNewTabRequested;
+        nativeView.ProductEvent -= OnNativeProductEvent;
         nativeView.NavigationRejected -= OnNavigationRejected;
         nativeView.RenderProcessFailed -= OnRenderProcessFailed;
         Content = null;
@@ -3073,10 +3097,7 @@ public sealed partial class BrowserSurface :
         {
             PublishFailure(
                 address,
-                BrowserError.Create(
-                    BrowserErrorCode.NavigationFailed,
-                    "The browser could not load the requested page.",
-                    retryable: true));
+                NavigationFailure(args.FailureKind));
             return;
         }
 
@@ -3133,6 +3154,16 @@ public sealed partial class BrowserSurface :
         if (ReferenceEquals(sender, _nativeView) && !_disposed)
         {
             NewTabRequested?.Invoke(this, args);
+        }
+    }
+
+    private void OnNativeProductEvent(
+        object? sender,
+        BrowserProductEvent productEvent)
+    {
+        if (ReferenceEquals(sender, _nativeView) && !_disposed)
+        {
+            ProductEvent?.Invoke(this, productEvent);
         }
     }
 
@@ -3415,6 +3446,7 @@ public sealed partial class BrowserSurface :
         quarantined.NavigationCompleted -= OnNavigationCompleted;
         quarantined.AddressChanged -= OnAddressChanged;
         quarantined.NewTabRequested -= OnNativeNewTabRequested;
+        quarantined.ProductEvent -= OnNativeProductEvent;
         quarantined.NavigationRejected -= OnNavigationRejected;
         quarantined.RenderProcessFailed -= OnRenderProcessFailed;
         _nativeView = replacement;
@@ -3437,6 +3469,7 @@ public sealed partial class BrowserSurface :
             quarantined.NavigationCompleted += OnNavigationCompleted;
             quarantined.AddressChanged += OnAddressChanged;
             quarantined.NewTabRequested += OnNativeNewTabRequested;
+            quarantined.ProductEvent += OnNativeProductEvent;
             quarantined.NavigationRejected += OnNavigationRejected;
             quarantined.RenderProcessFailed += OnRenderProcessFailed;
             replacement.Dispose();
@@ -3447,6 +3480,7 @@ public sealed partial class BrowserSurface :
         _nativeView.NavigationCompleted += OnNavigationCompleted;
         _nativeView.AddressChanged += OnAddressChanged;
         _nativeView.NewTabRequested += OnNativeNewTabRequested;
+        _nativeView.ProductEvent += OnNativeProductEvent;
         _nativeView.NavigationRejected += OnNavigationRejected;
         _nativeView.RenderProcessFailed += OnRenderProcessFailed;
         quarantined.Dispose();
@@ -3484,8 +3518,12 @@ public sealed partial class BrowserSurface :
             return;
         }
 
+        var lostAddress = State.Address;
         if (TryReplaceQuarantinedNativeView())
         {
+            ProductEvent?.Invoke(
+                this,
+                new BrowserProductEvent.RendererRecovered(lostAddress));
             return;
         }
 
@@ -3496,7 +3534,31 @@ public sealed partial class BrowserSurface :
                 BrowserErrorCode.RendererUnavailable,
                 "The embedded browser process stopped unexpectedly.",
                 retryable: false));
+        ProductEvent?.Invoke(
+            this,
+            new BrowserProductEvent.RendererFailed(lostAddress));
     }
+
+    private static BrowserError NavigationFailure(
+        NativeBrowserLoadFailureKind failureKind) => failureKind switch
+        {
+            NativeBrowserLoadFailureKind.NetworkUnavailable => BrowserError.Create(
+                BrowserErrorCode.NetworkUnavailable,
+                "The page is unavailable because the network connection could not be reached.",
+                retryable: true),
+            NativeBrowserLoadFailureKind.TimedOut => BrowserError.Create(
+                BrowserErrorCode.NavigationTimedOut,
+                "The page took too long to respond.",
+                retryable: true),
+            NativeBrowserLoadFailureKind.CertificateRejected => BrowserError.Create(
+                BrowserErrorCode.CertificateRejected,
+                "The page was blocked because its certificate could not be trusted.",
+                retryable: false),
+            _ => BrowserError.Create(
+                BrowserErrorCode.NavigationFailed,
+                "The browser could not load the requested page.",
+                retryable: true),
+        };
 
     private void PublishGovernedFailure(
         PendingOriginConstrainedNavigation pending,

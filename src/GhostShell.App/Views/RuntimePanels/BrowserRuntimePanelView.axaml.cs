@@ -15,6 +15,11 @@ public sealed partial class BrowserRuntimePanelView : UserControl
     public BrowserRuntimePanelView()
     {
         InitializeComponent();
+        AddHandler(
+            KeyDownEvent,
+            OnPanelKeyDown,
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
     }
 
     public event EventHandler<KeyEventArgs>? AddressKeyDown;
@@ -130,5 +135,99 @@ public sealed partial class BrowserRuntimePanelView : UserControl
     {
         _ = sender;
         StopRequested?.Invoke(RuntimeBrowser, e);
+    }
+
+    private void OnPanelKeyDown(object? sender, KeyEventArgs e)
+    {
+        _ = sender;
+        var findModifier = OperatingSystem.IsMacOS()
+            ? KeyModifiers.Meta
+            : KeyModifiers.Control;
+        if (e.Key == Key.F && e.KeyModifiers.HasFlag(findModifier))
+        {
+            OpenFind();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape && RuntimeBrowser.IsFindVisible)
+        {
+            RuntimeBrowser.CloseFind();
+            e.Handled = true;
+        }
+    }
+
+    private void OnFindClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        OpenFind();
+    }
+
+    private void OpenFind()
+    {
+        RuntimeBrowser.OpenFind();
+        FindBox.Focus();
+        FindBox.SelectAll();
+    }
+
+    private void OnFindTextChanged(object? sender, TextChangedEventArgs e)
+    {
+        _ = e;
+        if (sender is TextBox textBox)
+        {
+            RuntimeBrowser.UpdateFind(textBox.Text);
+        }
+    }
+
+    private void OnFindBoxKeyDown(object? sender, KeyEventArgs e)
+    {
+        _ = sender;
+        if (e.Key == Key.Enter)
+        {
+            RuntimeBrowser.FindNext(
+                e.KeyModifiers.HasFlag(KeyModifiers.Shift)
+                    ? BrowserFindDirection.Previous
+                    : BrowserFindDirection.Next);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            RuntimeBrowser.CloseFind();
+            e.Handled = true;
+        }
+    }
+
+    private void OnFindPreviousClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        RuntimeBrowser.FindNext(BrowserFindDirection.Previous);
+    }
+
+    private void OnFindNextClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        RuntimeBrowser.FindNext(BrowserFindDirection.Next);
+    }
+
+    private void OnCloseFindClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        RuntimeBrowser.CloseFind();
+    }
+
+    private void OnDismissProductNoticeClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        RuntimeBrowser.DismissProductNotice();
+    }
+
+    private void OnProductActionClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        _ = RuntimeBrowser.PerformProductActionAsync().AsTask();
     }
 }
