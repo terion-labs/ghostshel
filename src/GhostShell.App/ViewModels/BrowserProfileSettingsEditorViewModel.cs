@@ -23,9 +23,9 @@ public sealed record BrowserProfileItemViewModel(
     public string PersistenceLabel => Persistence switch
     {
         BrowserProfilePersistence.DurableMetadata =>
-            "Durable settings, temporary web data",
+            "Encrypted session, restored between runs",
         BrowserProfilePersistence.PrivateSession =>
-            "Private session, temporary web data",
+            "Private session, discarded when the panel closes",
         _ => "Unsupported policy",
     };
 
@@ -34,9 +34,9 @@ public sealed record BrowserProfileItemViewModel(
 
 /// <summary>
 /// Manages named logical profiles. Profile definitions live in encrypted
-/// application storage, but Chromium cookies, local storage, IndexedDB, cache,
-/// and navigation state remain process-memory-only. Permissions and downloads
-/// are blocked.
+/// application storage. Durable profiles restore Chromium cookies, local
+/// storage, IndexedDB, cache, and navigation state from encrypted storage.
+/// Private profiles discard that state when their panel closes.
 /// </summary>
 public sealed class BrowserProfileSettingsEditorViewModel : ObservableObject
 {
@@ -56,7 +56,7 @@ public sealed class BrowserProfileSettingsEditorViewModel : ObservableObject
     private bool _hasAuthentication;
     private bool _isSavingAuthentication;
     private string _stateText =
-        "Web content is temporary and is destroyed when the final owning browser closes.";
+        "Durable browser session data is encrypted between app runs.";
     private string? _operationStatus;
     private CancellationTokenSource? _clearCancellation;
 
@@ -76,11 +76,11 @@ public sealed class BrowserProfileSettingsEditorViewModel : ObservableObject
             new(
                 BrowserProfileSharing.Shared,
                 "Shared across workspaces",
-                "Legacy default panels share one in-memory cookie jar during this app run."),
+                "Legacy default panels share one encrypted browser session."),
             new(
                 BrowserProfileSharing.PerWorkspace,
                 "Separate by workspace",
-                "Legacy default panels use a separate in-memory cookie jar for each workspace."),
+                "Legacy default panels keep a separate encrypted browser session for each workspace."),
         ];
         CreateDurableCommand = new AsyncActionCommand(
             () => CreateAsync(BrowserProfilePersistence.DurableMetadata),
@@ -352,7 +352,9 @@ public sealed class BrowserProfileSettingsEditorViewModel : ObservableObject
                 BrowserProfileDefinition.CurrentSchemaVersion,
                 NewProfileName,
                 persistence,
-                BrowserProfilePrivacyPolicy.Strict);
+                persistence == BrowserProfilePersistence.PrivateSession
+                    ? BrowserProfilePrivacyPolicy.PrivateSession
+                    : BrowserProfilePrivacyPolicy.Strict);
         }
         catch (ArgumentException exception)
         {
@@ -365,7 +367,9 @@ public sealed class BrowserProfileSettingsEditorViewModel : ObservableObject
             expectedRevision: null,
             CancellationToken.None);
         OperationStatus = result.IsSuccess
-            ? "Browser profile created. Its web content remains temporary."
+            ? persistence == BrowserProfilePersistence.PrivateSession
+                ? "Private browser profile created. Its session is discarded when its panel closes."
+                : "Browser profile created. Its session will be restored from encrypted storage."
             : result.Error!.Message;
         if (result.IsSuccess)
         {
@@ -786,16 +790,16 @@ public sealed class BrowserProfileSettingsEditorViewModel : ObservableObject
             StateText = SelectedProfile?.Persistence
                 == BrowserProfilePersistence.PrivateSession
                 ? "Each private panel owns a different in-memory context. Close that panel to destroy its cookies, cache, and site data."
-                : "The built-in profile currently has one in-memory partition per workspace. Close those panels to destroy their data; Settings will not issue a broad cross-workspace clear.";
+                : "The built-in profile has one encrypted browser session per workspace. Settings will not issue a broad cross-workspace clear.";
             return;
         }
 
         try
         {
             var state = _dataControl.ReadState(selection, revision);
-            StateText = state.HasEphemeralData
-                ? $"{state.ActiveContexts} in-memory context(s), {state.ActiveLeases} open browser owner(s). No Chromium data is stored on disk."
-                : "No in-memory web data for this exact profile revision. No Chromium data is stored on disk.";
+            StateText = state.HasData
+                ? $"{state.ActiveContexts} runtime context(s), {state.ActiveLeases} open browser owner(s), {state.StoredBytes} encrypted byte(s) saved between runs."
+                : "No saved or active web data for this profile.";
         }
         catch (ObjectDisposedException)
         {

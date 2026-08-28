@@ -3,7 +3,7 @@ namespace GhostShell.Core.Tests;
 public sealed class BrowserProfileDefinitionTests
 {
     [Fact]
-    public void DurableMetadataDoesNotPromiseDurableChromiumState()
+    public void DurableProfilePromisesEncryptedChromiumStateBetweenRuns()
     {
         var profile = new BrowserProfileDefinition(
             new BrowserProfileId("browser.work"),
@@ -13,7 +13,7 @@ public sealed class BrowserProfileDefinitionTests
             BrowserProfilePrivacyPolicy.Strict);
 
         Assert.Equal(
-            BrowserWebContentRetention.EphemeralOnly,
+            BrowserWebContentRetention.EncryptedBetweenRuns,
             profile.Privacy.WebContent);
         Assert.Equal(
             BrowserPermissionRetention.DenyAll,

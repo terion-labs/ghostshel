@@ -2,7 +2,8 @@ namespace GhostShell.Application;
 
 /// <summary>
 /// Encryption at rest for everything the application itself writes: the
-/// configuration database and the persistent preview cache. The keys live in
+/// configuration database, persistent preview cache, and saved browser
+/// sessions. The keys live in
 /// the operating system's keystore and nowhere else — the files on disk are
 /// unreadable without an unlocked OS account, and turning the setting off
 /// decrypts them and deletes the keys.
@@ -33,7 +34,7 @@ public interface IApplicationEncryption
     event EventHandler? Changed;
 
     /// <summary>
-    /// The password for the persistent preview-cache container, present
+    /// The password for persistent encrypted content containers, present
     /// exactly while encryption is enabled. Held in memory by this service;
     /// its durable copy is the keystore's.
     /// </summary>

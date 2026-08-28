@@ -525,7 +525,7 @@
             <StackPanel Spacing="{DynamicResource ShellSpaceLg}" IsVisible="{Binding IsBrowserSettingsVisible}">
               <components:SettingsPageHeader
                   Heading="Browser"
-                  Description="Manage named browser policies. Cookies, local storage, IndexedDB, cache, and navigation state stay in memory and disappear after the final owning browser closes. Permission requests and downloads are blocked." />
+                  Description="Manage named browser policies. Durable profiles restore cookies, local storage, IndexedDB, cache, and navigation state from encrypted storage. Permission requests and downloads are blocked." />
               <controls:SettingsGroup Heading="Defaults" ControlWidth="300">
                 <controls:SettingRow
                     Label="Default named profile"
@@ -547,7 +547,7 @@
                 </controls:SettingRow>
                 <controls:SettingRow
                     Label="Default profile sharing"
-                    Description="Preserves legacy shared/per-workspace in-memory isolation when the built-in Default browser profile is selected."
+                    Description="Preserves legacy shared/per-workspace session isolation when the built-in Default browser profile is selected."
                     IsLast="True">
                   <ComboBox
                       Width="260"
@@ -567,7 +567,7 @@
                   <TextBlock Classes="SectionHeading" Text="Named profiles" />
                   <TextBlock
                       Classes="Muted"
-                      Text="Durable settings never means durable web content. Every Chromium request context is memory-only and has no cache path."
+                      Text="Durable profiles are sealed into encrypted application storage when GhostSHELL closes and restored on the next run. Private profiles are discarded when their panel closes."
                       TextWrapping="Wrap" />
                   <ListBox
                       ItemsSource="{Binding BrowserProfileSettingsEditor.Profiles}"
@@ -681,7 +681,7 @@
               </controls:SurfaceCard>
               <controls:SurfaceCard Padding="{DynamicResource ShellCardPaddingCompact}">
                 <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
-                  <TextBlock Classes="SectionHeading" Text="Exact in-memory data control" />
+                  <TextBlock Classes="SectionHeading" Text="Exact browser data control" />
                   <TextBlock Classes="Muted" Text="{Binding BrowserProfileSettingsEditor.StateText}" TextWrapping="Wrap" />
                   <TextBlock
                       Classes="Muted"
@@ -699,7 +699,7 @@
                     <Button Classes="DestructiveButton"
                         Command="{Binding BrowserProfileSettingsEditor.ResetEphemeralContentCommand}"
                         Content="Reset full context"
-                        AutomationProperties.Name="Reset all ephemeral web content for selected browser profile revision" />
+                        AutomationProperties.Name="Reset all saved web content for selected browser profile revision" />
                     <Button Classes="SecondaryButton"
                         Command="{Binding BrowserProfileSettingsEditor.CancelClearCommand}"
                         Content="Cancel"
@@ -873,7 +873,7 @@
                 <controls:SettingsGroup>
                   <controls:SettingRow
                       Label="Enable app encryption"
-                      Description="Encrypts everything the app itself writes: the configuration database and the on-disk preview cache. The keys are random, live only in the OS keystore, and are deleted when this is turned off — the files are converted in place, both directions, the moment the switch moves. This protects data at rest: a stolen disk image, a synced backup, another local account. It is not a lock on the running app.">
+                      Description="Encrypts everything the app itself writes: the configuration database, preview cache, and saved browser sessions. The keys are random and live only in the OS keystore. Turning this off deletes saved browser sessions instead of converting them to plaintext; browser profiles still work for the current run but are not restored. This protects data at rest; it is not a lock on the running app.">
                     <ToggleSwitch VerticalAlignment="Center"
                         IsChecked="{Binding ApplicationSecurityEditor.IsEncryptionEnabled}"
                         IsEnabled="{Binding ApplicationSecurityEditor.IsEncryptionSupported}"

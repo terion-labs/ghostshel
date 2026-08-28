@@ -794,6 +794,15 @@ EXCEF_API int excef_set_cookie_in_context(int context_handle, const char* url,
                                             int secure, int httponly);
 EXCEF_API void excef_delete_cookies_in_context(int context_handle, const char* url, const char* name);
 
+// Completion callback for acknowledged request-context mutations. result is
+// the deleted cookie count for cookie deletion and 1 for other completions.
+typedef void (*excef_request_context_completion_cb_t)(int request_id, int result);
+EXCEF_API void excef_set_request_context_completion_callback(
+    excef_request_context_completion_cb_t cb);
+EXCEF_API int excef_delete_cookies_in_context_async(
+    int context_handle, const char* url, const char* name, int request_id);
+EXCEF_API int excef_flush_cookie_store_async(int context_handle, int request_id);
+
 // ---- Browser-closed event ------------------------------------------------
 
 typedef void (*excef_browser_closed_cb_t)(int browser_id);
@@ -1593,6 +1602,10 @@ EXCEF_API void excef_free_string(const char* s);
 // Returns 1 on success.
 EXCEF_API int excef_clear_http_auth_credentials(int context_handle);
 EXCEF_API int excef_close_all_connections(int context_handle);
+EXCEF_API int excef_clear_http_auth_credentials_async(
+    int context_handle, int request_id);
+EXCEF_API int excef_close_all_connections_async(
+    int context_handle, int request_id);
 // Note: ClearCertificateExceptions was removed from CefRequestContext in
 // recent CEF; equivalent path is via DevTools Security.setIgnoreCertificateErrors.
 

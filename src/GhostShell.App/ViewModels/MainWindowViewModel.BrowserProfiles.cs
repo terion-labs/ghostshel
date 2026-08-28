@@ -11,7 +11,7 @@ public sealed record BrowserProfileLaunchOption(
     public string Detail => Persistence switch
     {
         BrowserProfilePersistence.DurableMetadata =>
-            "Shared until the final owning browser closes",
+            "Encrypted session restored between runs",
         BrowserProfilePersistence.PrivateSession =>
             "Private to this new browser panel",
         _ => "Unsupported browser policy",

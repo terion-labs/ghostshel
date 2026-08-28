@@ -94,18 +94,43 @@ internal static class Program
                 mainWindowViewModel = services.GetRequiredService<MainWindowViewModel>();
                 lifetime.Exit += (_, _) =>
                     TeardownPresentationOrReport(mainWindowViewModel);
-                try
+                void InitializeBrowserRuntime()
                 {
-                    BrowserEngineRuntime.Initialize(CreateBrowserEngineOptions());
-                    cefInitialized = true;
+                    try
+                    {
+                        BrowserEngineRuntime.Initialize(
+                            CreateBrowserEngineOptions(services));
+                        cefInitialized = true;
+                    }
+                    catch (Exception error)
+                    {
+                        SecretSafeDiagnosticProjection.WriteStandardError(
+                            "desktop.cef-initialize.failed",
+                            error);
+                        throw;
+                    }
                 }
-                catch (Exception error)
+
+                var encryption = services
+                    .GetRequiredService<ApplicationEncryptionRuntime>();
+                if (encryption.AwaitingUnlock)
                 {
-                    SecretSafeDiagnosticProjection.WriteStandardError(
-                        "desktop.cef-initialize.failed",
-                        error);
-                    Environment.ExitCode = 1;
-                    return;
+                    DeferredStartupCoordinator.Arm(
+                        services.GetRequiredService<IStartupProtection>(),
+                        () => InitializeProfileCoreAsync(services),
+                        InitializeBrowserRuntime);
+                }
+                else
+                {
+                    try
+                    {
+                        InitializeBrowserRuntime();
+                    }
+                    catch
+                    {
+                        Environment.ExitCode = 1;
+                        return;
+                    }
                 }
 
                 Environment.ExitCode = lifetime.Start(args);
@@ -130,7 +155,9 @@ internal static class Program
                 // Startup and finalization failures also converge here before
                 // CEF closes browsers and stops its message pump.
                 TeardownPresentationOrReport(mainWindowViewModel);
-                if (cefInitialized && !BrowserEngineRuntime.Shutdown())
+                if (cefInitialized
+                    && !BrowserEngineRuntime.Shutdown(
+                        services.GetRequiredService<CefBrowserProfileStore>()))
                 {
                     Environment.ExitCode = 1;
                 }
@@ -221,17 +248,8 @@ internal static class Program
 
             Task<string?> InitializeProfileAsync() => InitializeProfileCoreAsync(services);
 
-            if (encryption.AwaitingUnlock)
-            {
-                // The keys arrive with the PIN; everything that needs the
-                // database runs then, behind the lock screen the window opens
-                // with. A failure at that point is fatal exactly as it would
-                // have been here.
-                DeferredStartupCoordinator.Arm(
-                    services.GetRequiredService<IStartupProtection>(),
-                    InitializeProfileAsync);
-            }
-            else if (await InitializeProfileAsync() is { } profileError)
+            if (!encryption.AwaitingUnlock
+                && await InitializeProfileAsync() is { } profileError)
             {
                 Environment.ExitCode = 1;
                 DesktopStartupFailurePresenter.TryShow(
@@ -259,6 +277,15 @@ internal static class Program
 
     private static async Task<string?> InitializeProfileCoreAsync(IServiceProvider services)
     {
+        if (!services.GetRequiredService<CefBrowserProfileStore>()
+                .RecoverOrphanedRuntimeState())
+        {
+            SecretSafeDiagnosticProjection.WriteStandardError(
+                "desktop.browser-profile-recovery.failed",
+                SecretSafeDiagnosticKind.Unexpected);
+            return "Saved browser sessions could not be recovered safely.";
+        }
+
         var runStore = services.GetRequiredService<IApplicationRunStore>();
         var startResult = await runStore.BeginRunAsync(CancellationToken.None);
         if (!startResult.IsSuccess)
@@ -363,13 +390,14 @@ internal static class Program
                 fontManager.AddFontCollection(new GhostShellTerminalFontCollection()))
             .SetDragPreviewOpacity(0.9);
 
-    private static BrowserEngineRuntimeOptions CreateBrowserEngineOptions()
+    private static BrowserEngineRuntimeOptions CreateBrowserEngineOptions(
+        IServiceProvider services)
     {
-        var dataDirectory = GhostShellDataPaths.CreateDefault().DataDirectory;
         var artifacts = LocalArtifactPaths.CreateDefault();
+        var browserPaths = services.GetRequiredService<BrowserProfileStoragePaths>();
         var version = typeof(Program).Assembly.GetName().Version;
         return new BrowserEngineRuntimeOptions(
-            Path.Combine(dataDirectory, "browser", "cef"),
+            browserPaths.RuntimeDirectory,
             Path.Combine(artifacts.ApplicationLogDirectory, "cef.log"),
             version is null ? "0.0.0" : version.ToString(3));
     }

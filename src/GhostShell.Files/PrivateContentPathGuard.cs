@@ -6,10 +6,10 @@ using System.Security.Principal;
 namespace GhostShell.Files;
 
 /// <summary>
-/// Establishes the local-user trust boundary for preview-cache paths before
-/// LiteDB or a cleanup operation is allowed to follow them.
+/// Establishes the local-user trust boundary for encrypted content paths
+/// before LiteDB or a cleanup operation is allowed to follow them.
 /// </summary>
-internal static class PreviewCachePathGuard
+internal static class PrivateContentPathGuard
 {
     private const ushort FileTypeMask = 0xF000;
     private const ushort DirectoryFileType = 0x4000;
@@ -34,7 +34,7 @@ internal static class PreviewCachePathGuard
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         if (File.Exists(path))
         {
-            throw new InvalidDataException("The preview-cache path is not a directory.");
+            throw new InvalidDataException("The private-content path is not a directory.");
         }
 
         if (!Directory.Exists(path))
@@ -140,7 +140,7 @@ internal static class PreviewCachePathGuard
         if ((entry.Mode & PermissionMask) != (ushort)expectedMode)
         {
             throw new UnauthorizedAccessException(
-                "Preview-cache paths must be accessible only to their owner.");
+                "Private-content paths must be accessible only to their owner.");
         }
     }
 
@@ -158,7 +158,7 @@ internal static class PreviewCachePathGuard
                 || info.Attributes.HasFlag(FileAttributes.Directory) != isDirectory)
             {
                 throw new InvalidDataException(
-                    "The preview cache contains a linked or non-regular path.");
+                    "Private content storage contains a linked or non-regular path.");
             }
 
             return;
@@ -168,13 +168,13 @@ internal static class PreviewCachePathGuard
         if ((entry.Mode & FileTypeMask) != expectedType)
         {
             throw new InvalidDataException(
-                "The preview cache contains a linked or non-regular path.");
+                "Private content storage contains a linked or non-regular path.");
         }
 
         if (entry.UserId != GetEffectiveUserId())
         {
             throw new UnauthorizedAccessException(
-                "The preview-cache path is not owned by the current user.");
+                "The private-content path is not owned by the current user.");
         }
     }
 
@@ -243,7 +243,7 @@ internal static class PreviewCachePathGuard
         if (!owner.Equals(permissions.GetOwner(typeof(SecurityIdentifier))))
         {
             throw new UnauthorizedAccessException(
-                "The preview-cache path is not owned by the current user.");
+                "The private-content path is not owned by the current user.");
         }
 
         foreach (FileSystemAccessRule rule in permissions.GetAccessRules(
@@ -255,7 +255,7 @@ internal static class PreviewCachePathGuard
                 && !owner.Equals(rule.IdentityReference))
             {
                 throw new UnauthorizedAccessException(
-                    "Preview-cache paths must be accessible only to their owner.");
+                    "Private-content paths must be accessible only to their owner.");
             }
         }
     }
@@ -286,12 +286,12 @@ internal static class PreviewCachePathGuard
         else
         {
             throw new PlatformNotSupportedException(
-                "The platform cannot validate preview-cache ownership safely.");
+                "The platform cannot validate private-content ownership safely.");
         }
 
         if (result != 0)
         {
-            throw new IOException("A preview-cache path could not be classified.");
+            throw new IOException("A private-content path could not be classified.");
         }
 
         return new UnixEntry(

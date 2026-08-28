@@ -65,7 +65,7 @@ public sealed class BrowserEngineRuntimeTests
     }
 
     [Fact]
-    public void RuntimeSettingsKeepTheGlobalContextEphemeral()
+    public void RuntimeSettingsProvideAParentForDurableRequestContexts()
     {
         var options = new BrowserEngineRuntimeOptions(
             Path.Combine("relative", "profile"),
@@ -75,8 +75,8 @@ public sealed class BrowserEngineRuntimeTests
         var settings = BrowserEngineRuntime.CreateSettings(options);
 
         Assert.Null(settings.CachePath);
-        Assert.Null(settings.RootCachePath);
-        Assert.False(settings.PersistSessionCookies);
+        Assert.Equal(options.ProfileDirectory, settings.RootCachePath);
+        Assert.True(settings.PersistSessionCookies);
         Assert.Equal(Cef.CefLogSeverity.Disable, settings.LogSeverity);
     }
 
@@ -111,36 +111,26 @@ public sealed class BrowserEngineRuntimeTests
             "1.0.0");
         var settings = BrowserEngineRuntime.CreateSettings(options);
 
-        Assert.Equal(
-            "use-mock-keychain",
-            BrowserEngineRuntime.GetMacOsSafeStorageSwitch(
-                isMacOs: true,
-                settings));
+        Assert.Null(BrowserEngineRuntime.GetMacOsSafeStorageSwitch(
+            isMacOs: true,
+            settings));
         Assert.Null(BrowserEngineRuntime.GetMacOsSafeStorageSwitch(
             isMacOs: false,
             settings));
 
-        var persistentSettings = new Cef.CefSettings
+        var ephemeralSettings = new Cef.CefSettings
         {
-            PersistSessionCookies = true,
+            PersistSessionCookies = false,
         };
-        Assert.Throws<InvalidOperationException>(() =>
+        Assert.Equal(
+            "use-mock-keychain",
             BrowserEngineRuntime.GetMacOsSafeStorageSwitch(
                 isMacOs: true,
-                persistentSettings));
-
-        var rootedSettings = new Cef.CefSettings
-        {
-            RootCachePath = Path.Combine("relative", "cef-root"),
-        };
-        Assert.Throws<InvalidOperationException>(() =>
-            BrowserEngineRuntime.GetMacOsSafeStorageSwitch(
-                isMacOs: true,
-                rootedSettings));
+                ephemeralSettings));
     }
 
     [Fact]
-    public void StartupRemovesTheCompleteLegacyPersistentCefRoot()
+    public void StartupPreservesRecoveredGlobalStateAndRecoveryContexts()
     {
         var root = Path.Combine(
             Path.GetTempPath(),
@@ -156,15 +146,21 @@ public sealed class BrowserEngineRuntimeTests
             Path.Combine(root, "profiles", "global", "local", "History"),
             "history");
         File.WriteAllText(Path.Combine(root, "Local State"), "state");
+        Directory.CreateDirectory(Path.Combine(root, "contexts", "orphan"));
+        File.WriteAllText(
+            Path.Combine(root, "contexts", "orphan", ".ghostshell-profile"),
+            "recovery");
         try
         {
             BrowserEngineRuntime.PrepareProfileLayout(root);
 
-            Assert.False(Directory.Exists(root));
-            Assert.False(Directory.Exists(legacy));
-            Assert.False(Directory.Exists(Path.Combine(root, "runtime")));
-            Assert.False(Directory.Exists(Path.Combine(root, "profiles")));
-            Assert.False(File.Exists(Path.Combine(root, "Local State")));
+            Assert.True(Directory.Exists(root));
+            Assert.True(Directory.Exists(legacy));
+            Assert.True(Directory.Exists(Path.Combine(root, "runtime")));
+            Assert.True(Directory.Exists(Path.Combine(root, "profiles")));
+            Assert.True(File.Exists(Path.Combine(root, "Local State")));
+            Assert.True(File.Exists(
+                Path.Combine(root, "contexts", "orphan", ".ghostshell-profile")));
         }
         finally
         {
@@ -176,7 +172,7 @@ public sealed class BrowserEngineRuntimeTests
     }
 
     [Fact]
-    public void LegacyCleanupRemovesChildLinkWithoutFollowingItsTarget()
+    public void StartupNeverFollowsAChildLinkInTheRecoveredRoot()
     {
         if (OperatingSystem.IsWindows())
         {
@@ -201,7 +197,8 @@ public sealed class BrowserEngineRuntimeTests
             BrowserEngineRuntime.PrepareProfileLayout(root);
 
             Assert.True(File.Exists(outsideFile));
-            Assert.False(Directory.Exists(root));
+            Assert.True(Directory.Exists(root));
+            Assert.True(Directory.Exists(Path.Combine(root, "linked")));
         }
         finally
         {

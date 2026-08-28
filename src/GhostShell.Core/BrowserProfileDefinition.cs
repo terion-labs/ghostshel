@@ -3,10 +3,10 @@ using System.Text.Json.Serialization;
 namespace GhostShell.Core;
 
 /// <summary>
-/// Controls how panels use one named logical browser profile. Both policies
-/// keep Chromium web content in memory only. DurableMetadata shares that
-/// temporary context between panels during one app run, while PrivateSession
-/// gives each panel its own context.
+/// Controls how panels use one named logical browser profile.
+/// DurableMetadata is the original serialized name for a durable encrypted
+/// session: Chromium state is restored between runs. PrivateSession gives each
+/// panel a separate context and discards it when that panel closes.
 /// </summary>
 public enum BrowserProfilePersistence
 {
@@ -16,6 +16,7 @@ public enum BrowserProfilePersistence
 
 public enum BrowserWebContentRetention
 {
+    EncryptedBetweenRuns,
     EphemeralOnly,
 }
 
@@ -37,8 +38,9 @@ public enum BrowserAuthenticationScheme
 
 /// <summary>
 /// The closed set of privacy choices implemented by the current browser host.
-/// Chromium content is never written to durable storage. Permission requests
-/// and downloads are blocked, and navigation is not recorded durably.
+/// Durable content is sealed into encrypted application storage. Permission
+/// requests and downloads are blocked, and navigation history is not projected
+/// into GhostSHELL's durable activity records.
 /// </summary>
 public sealed record BrowserProfilePrivacyPolicy
 {
@@ -66,6 +68,12 @@ public sealed record BrowserProfilePrivacyPolicy
     }
 
     public static BrowserProfilePrivacyPolicy Strict { get; } = new(
+        BrowserWebContentRetention.EncryptedBetweenRuns,
+        BrowserPermissionRetention.DenyAll,
+        BrowserActivityRetention.DoNotRecord,
+        BrowserActivityRetention.DoNotRecord);
+
+    public static BrowserProfilePrivacyPolicy PrivateSession { get; } = new(
         BrowserWebContentRetention.EphemeralOnly,
         BrowserPermissionRetention.DenyAll,
         BrowserActivityRetention.DoNotRecord,
@@ -162,8 +170,8 @@ public sealed record BrowserHttpAuthentication
 }
 
 /// <summary>
-/// Versioned browser-profile metadata. No Chromium profile path or web content
-/// is part of this definition.
+/// Versioned browser-profile policy metadata. Chromium web content lives in a
+/// separate encrypted state archive and never enters this definition.
 /// </summary>
 public sealed record BrowserProfileDefinition : IDurableDefinition
 {

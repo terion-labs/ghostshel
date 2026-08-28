@@ -768,6 +768,18 @@ public static partial class Cef
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void RequestContextCompletionTrampoline(
+        int requestId,
+        int result)
+    {
+        if (s_requestContextOperations.TryRemove(requestId, out var completion))
+        {
+            try { completion.TrySetResult(result); }
+            catch { }
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     internal static void PdfDoneTrampoline(int browserId, int success)
     {
         if (!s_browsers.TryGetValue(browserId, out var b)) return;

@@ -3,9 +3,8 @@ using GhostShell.Core;
 namespace GhostShell.Application;
 
 /// <summary>
-/// Identifies one exact in-memory browser partition. The profile id selects
-/// durable metadata; Partition identifies the cookie jar used by this panel or
-/// legacy workspace during the current application run.
+/// Identifies one exact browser partition. Durable profiles seal this
+/// partition into encrypted application storage; private sessions discard it.
 /// </summary>
 public readonly record struct BrowserProfileSelection
 {
@@ -163,7 +162,8 @@ public enum BrowserProfileDataCategory
     None = 0,
     Cookies = 1,
     HttpAuthentication = 2,
-    AllEphemeralWebContent = 4,
+    AllWebContent = 4,
+    AllEphemeralWebContent = AllWebContent,
 }
 
 public sealed record BrowserProfileClearRequest
@@ -181,7 +181,7 @@ public sealed record BrowserProfileClearRequest
         const BrowserProfileDataCategory supported =
             BrowserProfileDataCategory.Cookies
             | BrowserProfileDataCategory.HttpAuthentication
-            | BrowserProfileDataCategory.AllEphemeralWebContent;
+            | BrowserProfileDataCategory.AllWebContent;
         if (categories == BrowserProfileDataCategory.None
             || (categories & ~supported) != 0)
         {
@@ -204,7 +204,10 @@ public sealed record BrowserProfileDataState(
     BrowserProfileSelection Selection,
     long Revision,
     int ActiveContexts,
-    int ActiveLeases)
+    int ActiveLeases,
+    long StoredBytes = 0)
 {
+    public bool HasData => ActiveContexts > 0 || StoredBytes > 0;
+
     public bool HasEphemeralData => ActiveContexts > 0;
 }

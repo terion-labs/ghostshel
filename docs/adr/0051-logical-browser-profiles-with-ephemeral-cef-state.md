@@ -1,64 +1,80 @@
-# ADR 0051: Logical browser profiles with ephemeral CEF state
+# ADR 0051: Encrypted durable Chromium profile state
 
 **Status:** Accepted
 **Date:** 2026-08-28
 
 ## Context
 
-Named browser profiles are useful for choosing isolation and bounded HTTP
-authentication, but GhostSHELL cannot safely persist a Chromium profile today.
-The vendored Exclr8CEF boundary can create private request contexts and clear
-cookies and HTTP-auth credentials. It does not provide a reviewed, complete,
-cancellable export/import contract for cookies, local storage, IndexedDB,
-permissions, cache, service workers, or other Chromium state. Mounting a
-decrypted CEF profile directory would also leave a large plaintext tree while
-the app is running and would bypass the encrypted definition store.
+Named browser profiles exist to preserve authenticated web sessions. A useful
+durable profile therefore has to retain the complete Chromium request-context
+tree, including cookies, local storage, IndexedDB, cache, service workers, and
+navigation/session files. Definition metadata alone does not satisfy that
+contract.
+
+CEF requires a real directory for durable request-context state; it cannot use
+an application blob store directly. GhostSHELL already has an OS-keystore-backed
+application-encryption key and an encrypted LiteDB content-store pattern. A
+mounted decrypted disk image would expose a broadly discoverable volume while
+the app runs, so it is not used.
 
 ## Decision
 
-GhostSHELL stores versioned `BrowserProfileDefinition` metadata in its encrypted
-definition catalog. `DurableMetadata` means the name, enabled state, privacy
-policy, and optional bounded HTTP-auth `SecretRef` survive restart. It does not
-mean Chromium state survives. `PrivateSession` gives each panel a separate
-in-memory partition. Both policies keep cookies, local storage, IndexedDB,
-cache, navigation state, and other web content in process memory only.
-Permission requests and downloads remain blocked by the browser host.
+`DurableMetadata` remains the serialized enum name for compatibility, but its
+runtime meaning is a durable encrypted browser session. Definition revisions
+are deliberately not part of state identity: renaming a profile or changing
+its bounded HTTP-auth definition must not sign the user out. Profile,
+partition, and network route are isolation boundaries. `PrivateSession` gives
+each panel a separate context with no cache path and destroys it at the final
+lease.
 
-Every browser panel pins an exact profile definition and catalog revision for
-its lifetime. Popups and renderer replacements reuse that binding. A missing or
-disabled profile produces a visible unavailable panel; the runtime never falls
-back to another profile. The built-in profile preserves the existing shared or
-per-workspace partition choice, so the catalog addition does not merge legacy
-cookie jars.
+During a run, each durable request context receives an owner-only temporary
+directory under CEF's private runtime root. CEF may use that directory normally.
+After all browsers close, GhostSHELL releases request contexts, shuts CEF down
+so Chromium has flushed its files, archives the complete context directory into
+an encrypted LiteDB blob, atomically switches the manifest to the completed
+blob, and removes the plaintext runtime tree. The archive rejects links,
+absolute and escaping paths, duplicate targets, excessive entry counts, and
+excessive expanded size.
 
-`CefBrowserProfileStore` creates request contexts without `cache_path` and
-destroys local and routed contexts when their final lease ends. Clear-data
-requests bind profile id, partition, revision, and explicit categories. Cookies
-and HTTP-auth credentials may be cleared on the exact live contexts supported
-by Exclr8CEF. Whole-profile reset is valid only after every lease for that exact
-revision is gone. Settings does not offer a broad clear for private-session or
-per-workspace partitions whose exact identity it cannot know, and never deletes
-downloaded user files.
+CEF's runtime-global `Local State` is sealed separately in the same encrypted
+store because Chromium may need its OS-crypt metadata to reopen cookies and
+other protected context databases. CEF initialization waits for startup unlock
+and both global and per-context recovery.
 
-Optional HTTP-auth metadata is limited to exact host, optional port and realm,
-Basic or Digest scheme, username, and a vault `SecretRef`. The CEF adapter
-resolves it only for a matching non-proxy challenge and does not expose the
-secret to the catalog, UI projection, recovery payload, or portable bundle.
-Bundles omit the built-in profile, strip browser credential references, and
-import custom profiles disabled with authentication detached.
+Every runtime context directory has a bounded identity manifest outside its
+CEF cache subtree. After an unclean exit, startup seals such orphaned trees
+before profiles can open. If encrypted storage is expected but its key is
+unavailable, recovery and durable profile acquisition fail closed without
+deleting the orphan. Turning application encryption off is an explicit opt-out:
+saved browser-session archives are deleted and live runtime trees are discarded
+at shutdown rather than persisted in plaintext. Durable selections still open
+as session-only contexts while retention is deliberately disabled.
 
-Runtime recovery records profile id and the exact logical partition identity.
-Recovery re-resolves the current catalog revision and leaves a visible repair
-state if the profile is missing or disabled. OAuth is an explicit
-user-initiated “Open in system browser” action; navigation is not inspected for
-redirect heuristics.
+Clear-data requests bind the exact profile and partition. Cookies and HTTP-auth
+credentials can be cleared after inactive encrypted contexts are restored.
+Whole-profile reset requires zero active leases and deletes both runtime and
+encrypted state for every route of the selected partition. Cleanup never
+touches downloaded user files; downloads and browser permission requests remain
+blocked.
+
+Optional HTTP-auth metadata remains limited to exact host, optional port and
+realm, Basic or Digest scheme, username, and a vault `SecretRef`. Portable
+bundles strip credential references. OAuth remains an explicit user-initiated
+“Open in system browser” action.
 
 ## Consequences
 
-- A durable logical profile can share one in-memory session across panels in a
-  process, but signing in again is expected after its final lease or app exit.
-- The UI must consistently say “durable settings, temporary web data.”
-- No persistent CEF cache path, mounted decrypted directory, cookie
-  import/export, or plaintext browser-state tree is permitted by this decision.
-- Supporting durable web content later requires a separate reviewed encrypted
-  storage design and CEF capability boundary.
+- Cookies, local storage, IndexedDB, cache, and the rest of Chromium's context
+  state survive clean restarts for durable profiles.
+- A private temporary directory exists while GhostSHELL is running because CEF
+  requires filesystem storage. It is owner-only, is never presented as a
+  mounted volume, and is removed after a successful encrypted seal.
+- A crash can leave that private directory until next-start recovery; failure
+  to recover is visible and fails closed.
+- The macOS runtime uses Chromium's real Safe Storage integration for durable
+  state rather than `use-mock-keychain`.
+- The UI describes durable profiles as encrypted sessions restored between
+  runs and private profiles as discarded when their panel closes.
+- Cookie deletion is acknowledged by CEF and its cookie store is flushed before
+  Settings reports success; HTTP-auth clearing and connection closure likewise
+  wait for native completion callbacks.

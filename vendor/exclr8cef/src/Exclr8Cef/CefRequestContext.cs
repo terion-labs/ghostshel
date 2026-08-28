@@ -98,8 +98,14 @@ public sealed class CefRequestContext : IDisposable
     /// <summary>Drop cached HTTP-Basic / NTLM / Digest credentials.</summary>
     public void ClearHttpAuthCredentials() => Excef.excef_clear_http_auth_credentials(Handle);
 
+    public Task ClearHttpAuthCredentialsAsync() =>
+        Cef.ClearHttpAuthCredentialsAsyncInContext(Handle);
+
     /// <summary>Tear down all live TCP connections (useful on logout).</summary>
     public void CloseAllConnections() => Excef.excef_close_all_connections(Handle);
+
+    public Task CloseAllConnectionsAsync() =>
+        Cef.CloseAllConnectionsAsyncInContext(Handle);
 
     // ---- Cookies (per-context) ----------------------------------------
 
@@ -127,6 +133,12 @@ public sealed class CefRequestContext : IDisposable
     /// </summary>
     public void DeleteCookies(string? url = null, string? name = null)
         => Cef.DeleteCookiesInContext(Handle, url, name);
+
+    public Task<int> DeleteCookiesAsync(string? url = null, string? name = null) =>
+        Cef.DeleteCookiesAsyncInContext(Handle, url, name);
+
+    public Task FlushCookieStoreAsync() =>
+        Cef.FlushCookieStoreAsyncInContext(Handle);
 
     /// <summary>
     /// Process-wide / global request context — used by browsers created

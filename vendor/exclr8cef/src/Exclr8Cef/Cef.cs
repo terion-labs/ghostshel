@@ -1323,6 +1323,8 @@ public static partial class Cef
                 Excef.excef_set_browser_closed_callback(&BrowserClosedTrampoline);
                 Excef.excef_set_eval_result_callback(&EvalResultTrampoline);
                 Excef.excef_set_cookie_visit_callback(&CookieVisitTrampoline);
+                Excef.excef_set_request_context_completion_callback(
+                    &RequestContextCompletionTrampoline);
                 Excef.excef_set_cursor_change_callback(&CursorChangeTrampoline);
                 Excef.excef_set_console_message_callback(&ConsoleMessageTrampoline);
                 Excef.excef_set_load_start_callback(&LoadStartTrampoline);
@@ -1403,6 +1405,70 @@ public static partial class Cef
 
     private static int s_nextCookieRequestId;
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, (List<CookieInfo> List, TaskCompletionSource<List<CookieInfo>> Tcs)> s_cookieRequests = new();
+    private static int s_nextRequestContextOperationId;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, TaskCompletionSource<int>> s_requestContextOperations = new();
+
+    internal static Task<int> DeleteCookiesAsyncInContext(
+        int contextHandle,
+        string? url,
+        string? name)
+    {
+        unsafe
+        {
+            sbyte* urlPtr = url is null
+                ? null
+                : (sbyte*)Marshal.StringToCoTaskMemUTF8(url);
+            sbyte* namePtr = name is null
+                ? null
+                : (sbyte*)Marshal.StringToCoTaskMemUTF8(name);
+            try
+            {
+                return StartRequestContextOperation(requestId =>
+                    Excef.excef_delete_cookies_in_context_async(
+                        contextHandle,
+                        urlPtr,
+                        namePtr,
+                        requestId));
+            }
+            finally
+            {
+                if (urlPtr is not null) Marshal.FreeCoTaskMem((IntPtr)urlPtr);
+                if (namePtr is not null) Marshal.FreeCoTaskMem((IntPtr)namePtr);
+            }
+        }
+    }
+
+    internal static Task<int> FlushCookieStoreAsyncInContext(int contextHandle) =>
+        StartRequestContextOperation(requestId =>
+            Excef.excef_flush_cookie_store_async(contextHandle, requestId));
+
+    internal static Task<int> ClearHttpAuthCredentialsAsyncInContext(
+        int contextHandle) =>
+        StartRequestContextOperation(requestId =>
+            Excef.excef_clear_http_auth_credentials_async(
+                contextHandle,
+                requestId));
+
+    internal static Task<int> CloseAllConnectionsAsyncInContext(
+        int contextHandle) =>
+        StartRequestContextOperation(requestId =>
+            Excef.excef_close_all_connections_async(contextHandle, requestId));
+
+    private static Task<int> StartRequestContextOperation(Func<int, int> schedule)
+    {
+        var requestId = Interlocked.Increment(ref s_nextRequestContextOperationId);
+        var completion = new TaskCompletionSource<int>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        s_requestContextOperations[requestId] = completion;
+        if (schedule(requestId) == 0)
+        {
+            s_requestContextOperations.TryRemove(requestId, out _);
+            completion.TrySetException(new InvalidOperationException(
+                "The CEF request-context operation could not be scheduled."));
+        }
+
+        return completion.Task;
+    }
 
     // ---- argv / utf-8 helpers ------------------------------------------
 

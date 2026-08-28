@@ -67,7 +67,7 @@
     },
     {
       "path": "licenses/cef-runtime-components.json",
-      "sha256": "06e696f64572934ffa96e673a0ec16c7f8fc96b681153668e33037a143481c0c"
+      "sha256": "e49501ead2d430af150877d0aecb3b0f0be4f3c8683d308b7968e82432f210a0"
     },
     {
       "path": "licenses/managed-components.json",

@@ -428,10 +428,10 @@ public sealed class FilePanelClientContentSourceTests : IDisposable
         }
 
         var directory = Path.Combine(_root, "linked-entry-cache");
-        Directory.CreateDirectory(directory, PreviewCachePathGuard.OwnerDirectoryMode);
+        Directory.CreateDirectory(directory, PrivateContentPathGuard.OwnerDirectoryMode);
         var target = Path.Combine(_root, "link-target.txt");
         await File.WriteAllTextAsync(target, "must survive");
-        File.SetUnixFileMode(target, PreviewCachePathGuard.OwnerFileMode);
+        File.SetUnixFileMode(target, PrivateContentPathGuard.OwnerFileMode);
         File.CreateSymbolicLink(Path.Combine(directory, "store.db"), target);
 
         Assert.Throws<InvalidDataException>(() =>
@@ -448,7 +448,7 @@ public sealed class FilePanelClientContentSourceTests : IDisposable
         }
 
         var target = Path.Combine(_root, "real-cache");
-        Directory.CreateDirectory(target, PreviewCachePathGuard.OwnerDirectoryMode);
+        Directory.CreateDirectory(target, PrivateContentPathGuard.OwnerDirectoryMode);
         var linked = Path.Combine(_root, "linked-cache");
         Directory.CreateSymbolicLink(linked, target);
 

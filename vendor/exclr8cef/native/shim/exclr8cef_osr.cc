@@ -127,6 +127,7 @@ excef_touch_handle_state_cb_t g_touch_handle_state_cb = nullptr;
 excef_ime_composition_range_cb_t g_ime_composition_range_cb = nullptr;
 excef_virtual_keyboard_cb_t g_virtual_keyboard_cb = nullptr;
 excef_accelerated_paint_cb_t g_accelerated_paint_cb = nullptr;
+excef_request_context_completion_cb_t g_request_context_completion_cb = nullptr;
 
 // Deferred-response registries (one per callback type — the CEF callback
 // shape differs across handlers). The owning browser_id lets OnBeforeClose
@@ -2496,6 +2497,61 @@ extern "C" int excef_clear_http_auth_credentials(int context_handle) {
     return 1;
 }
 
+namespace {
+
+class RequestContextCompletionRelay : public CefCompletionCallback {
+public:
+    explicit RequestContextCompletionRelay(int request_id)
+        : request_id_(request_id) {}
+
+    void OnComplete() override {
+        if (exclr8cef::g_request_context_completion_cb)
+            exclr8cef::g_request_context_completion_cb(request_id_, 1);
+    }
+
+private:
+    int request_id_;
+    IMPLEMENT_REFCOUNTING(RequestContextCompletionRelay);
+};
+
+class CookieDeletionRelay : public CefDeleteCookiesCallback {
+public:
+    explicit CookieDeletionRelay(int request_id)
+        : request_id_(request_id) {}
+
+    void OnComplete(int num_deleted) override {
+        if (exclr8cef::g_request_context_completion_cb)
+            exclr8cef::g_request_context_completion_cb(request_id_, num_deleted);
+    }
+
+private:
+    int request_id_;
+    IMPLEMENT_REFCOUNTING(CookieDeletionRelay);
+};
+
+}  // namespace
+
+extern "C" void excef_set_request_context_completion_callback(
+    excef_request_context_completion_cb_t cb) {
+    exclr8cef::g_request_context_completion_cb = cb;
+}
+
+extern "C" int excef_clear_http_auth_credentials_async(
+    int context_handle, int request_id) {
+    auto ctx = ResolveContext(context_handle);
+    if (!ctx) return 0;
+    ctx->ClearHttpAuthCredentials(new RequestContextCompletionRelay(request_id));
+    return 1;
+}
+
+extern "C" int excef_close_all_connections_async(
+    int context_handle, int request_id) {
+    auto ctx = ResolveContext(context_handle);
+    if (!ctx) return 0;
+    ctx->CloseAllConnections(new RequestContextCompletionRelay(request_id));
+    return 1;
+}
+
 extern "C" int excef_close_all_connections(int context_handle) {
     auto ctx = ResolveContext(context_handle);
     if (!ctx) return 0;
@@ -4168,6 +4224,23 @@ extern "C" void excef_delete_cookies_in_context(int context_handle, const char* 
     auto mgr = CookieManagerForContext(context_handle);
     if (!mgr) return;
     mgr->DeleteCookies(url ? url : "", name ? name : "", nullptr);
+}
+
+extern "C" int excef_delete_cookies_in_context_async(
+    int context_handle, const char* url, const char* name, int request_id) {
+    auto mgr = CookieManagerForContext(context_handle);
+    if (!mgr) return 0;
+    return mgr->DeleteCookies(
+        url ? url : "",
+        name ? name : "",
+        new CookieDeletionRelay(request_id)) ? 1 : 0;
+}
+
+extern "C" int excef_flush_cookie_store_async(
+    int context_handle, int request_id) {
+    auto mgr = CookieManagerForContext(context_handle);
+    if (!mgr) return 0;
+    return mgr->FlushStore(new RequestContextCompletionRelay(request_id)) ? 1 : 0;
 }
 
 extern "C" int excef_get_cookies(const char* url, int request_id) {

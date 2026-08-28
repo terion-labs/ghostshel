@@ -3,7 +3,7 @@ using GhostShell.Core;
 namespace GhostShell.Application;
 
 /// <summary>
-/// Chooses whether ordinary browser panels share one in-memory application
+/// Chooses whether ordinary browser panels share one durable application
 /// profile or use the durable workspace identity as their partition key.
 /// </summary>
 public enum BrowserProfileSharing
@@ -55,9 +55,8 @@ public interface IBrowserProfilePreferences
 }
 
 /// <summary>
-/// A logical Chromium context partition. Browser state is process-memory only;
-/// the route is deliberately not part of this product identity because the CEF
-/// host may shard one profile by route for its proxy preferences.
+/// A logical Chromium context partition. The CEF host adds the network route
+/// when it resolves the durable state identity.
 /// </summary>
 public readonly record struct BrowserProfileKey
 {
@@ -165,8 +164,9 @@ public sealed record BrowserProfileClearResult
 }
 
 /// <summary>
-/// Inspects and clears only one exact in-memory profile revision. The current
-/// implementation never owns a persistent Chromium data directory.
+/// Inspects and clears one exact browser profile. Durable state is encrypted at
+/// rest and materialized only into the browser runtime directory while CEF owns
+/// the profile.
 /// </summary>
 public interface IBrowserProfileDataControl
 {

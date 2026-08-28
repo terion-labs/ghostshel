@@ -329,6 +329,15 @@ internal static unsafe partial class Excef
     public static extern void excef_delete_cookies_in_context(int context_handle, [NativeTypeName("const char *")] sbyte* url, [NativeTypeName("const char *")] sbyte* name);
 
     [DllImport("exclr8cef", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern void excef_set_request_context_completion_callback(delegate* unmanaged[Cdecl]<int, int, void> cb);
+
+    [DllImport("exclr8cef", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern int excef_delete_cookies_in_context_async(int context_handle, [NativeTypeName("const char *")] sbyte* url, [NativeTypeName("const char *")] sbyte* name, int request_id);
+
+    [DllImport("exclr8cef", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern int excef_flush_cookie_store_async(int context_handle, int request_id);
+
+    [DllImport("exclr8cef", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern void excef_set_browser_closed_callback([NativeTypeName("excef_browser_closed_cb_t")] delegate* unmanaged[Cdecl]<int, void> cb);
 
     [DllImport("exclr8cef", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
@@ -559,6 +568,12 @@ internal static unsafe partial class Excef
 
     [DllImport("exclr8cef", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern int excef_close_all_connections(int context_handle);
+
+    [DllImport("exclr8cef", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern int excef_clear_http_auth_credentials_async(int context_handle, int request_id);
+
+    [DllImport("exclr8cef", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern int excef_close_all_connections_async(int context_handle, int request_id);
 
     [DllImport("exclr8cef", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern int excef_create_offscreen_browser_in_context(int width, int height, float device_scale_factor, [NativeTypeName("const char *")] sbyte* url, [NativeTypeName("excef_paint_callback_t")] delegate* unmanaged[Cdecl]<int, void*, int, int, void> paint, int context_handle);

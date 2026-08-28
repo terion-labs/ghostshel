@@ -17,10 +17,12 @@ internal static class DeferredStartupCoordinator
 {
     public static void Arm(
         IStartupProtection protection,
-        Func<Task<string?>> initializeProfile)
+        Func<Task<string?>> initializeProfile,
+        Action initializeBrowserRuntime)
     {
         ArgumentNullException.ThrowIfNull(protection);
         ArgumentNullException.ThrowIfNull(initializeProfile);
+        ArgumentNullException.ThrowIfNull(initializeBrowserRuntime);
         var armed = 0;
         protection.Changed += OnChanged;
 
@@ -48,7 +50,18 @@ internal static class DeferredStartupCoordinator
 
             if (error is null)
             {
-                return;
+                try
+                {
+                    await Dispatcher.UIThread.InvokeAsync(initializeBrowserRuntime);
+                    return;
+                }
+                catch (Exception exception)
+                {
+                    SecretSafeDiagnosticProjection.WriteStandardError(
+                        "desktop.deferred-browser-initialize.failed",
+                        exception);
+                    error = "The embedded browser could not start after unlock.";
+                }
             }
 
             SecretSafeDiagnosticProjection.WriteStandardError(

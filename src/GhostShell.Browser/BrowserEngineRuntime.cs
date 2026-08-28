@@ -105,7 +105,9 @@ public static class BrowserEngineRuntime
     /// confirms OnBeforeClose for each one, then performs process shutdown.
     /// </summary>
     /// <returns>False when browser close confirmation timed out.</returns>
-    public static bool Shutdown(TimeSpan? timeout = null)
+    public static bool Shutdown(
+        CefBrowserProfileStore? profileStore = null,
+        TimeSpan? timeout = null)
     {
         lock (StateGate)
         {
@@ -140,10 +142,54 @@ public static class BrowserEngineRuntime
                 return false;
             }
 
-            Cef.Shutdown();
-            _shutdown = true;
-            _initialized = false;
-            return true;
+            var succeeded = true;
+            try
+            {
+                profileStore?.ReleaseContextsForEngineShutdown();
+            }
+            catch (Exception exception)
+                when (exception is IOException
+                    or InvalidDataException
+                    or InvalidOperationException)
+            {
+                SecretSafeDiagnosticProjection.WriteStandardError(
+                    "browser.shutdown.context-release-failed",
+                    exception);
+                succeeded = false;
+            }
+
+            try
+            {
+                Cef.Shutdown();
+            }
+            finally
+            {
+                _shutdown = true;
+                _initialized = false;
+            }
+
+            try
+            {
+                if (profileStore?.SealRuntimeStateAfterEngineShutdown() == false)
+                {
+                    SecretSafeDiagnosticProjection.WriteStandardError(
+                        "browser.shutdown.state-seal-failed",
+                        SecretSafeDiagnosticKind.Unexpected);
+                    succeeded = false;
+                }
+            }
+            catch (Exception exception)
+                when (exception is IOException
+                    or InvalidDataException
+                    or InvalidOperationException)
+            {
+                SecretSafeDiagnosticProjection.WriteStandardError(
+                    "browser.shutdown.state-seal-failed",
+                    exception);
+                succeeded = false;
+            }
+
+            return succeeded;
         }
     }
 
@@ -178,19 +224,17 @@ public static class BrowserEngineRuntime
         ArgumentNullException.ThrowIfNull(options);
         return new Cef.CefSettings
         {
-            // The global context and every user-visible request context are
-            // intentionally ephemeral. RootCachePath must also remain null:
-            // Chromium otherwise writes machine state outside any profile
-            // lease even when CachePath is null.
+            // The global context remains unused. Durable user request contexts
+            // receive child cache paths under this owner-private working root.
             CachePath = null,
-            RootCachePath = null,
+            RootCachePath = options.ProfileDirectory,
             UserAgentProduct = $"GhostSHELL/{options.ProductVersion}",
             // The vendor callback cannot suppress Chromium's default console
             // emission. Disable native persistence and project warning/error
             // callbacks through CefConsoleMessagePolicy instead.
             LogFile = options.LogFilePath,
             LogSeverity = Cef.CefLogSeverity.Disable,
-            PersistSessionCookies = false,
+            PersistSessionCookies = true,
             RemoteDebuggingPort = 0,
         };
     }
@@ -205,25 +249,35 @@ public static class BrowserEngineRuntime
             return null;
         }
 
-        if (settings.CachePath is not null
-            || settings.RootCachePath is not null
-            || settings.PersistSessionCookies)
-        {
-            throw new InvalidOperationException(
-                "The mock Chromium keychain is allowed only for ephemeral browser contexts.");
-        }
-
-        // Chromium's real Safe Storage key exists to encrypt durable profile
-        // credentials. GhostSHELL deliberately has no durable CEF contexts,
-        // so touching that key would add an OS prompt without protecting data.
-        return "use-mock-keychain";
+        // Durable Chromium state must use the platform Safe Storage service.
+        // The mock keychain is safe only in a completely ephemeral engine.
+        return settings.CachePath is null
+            && settings.RootCachePath is null
+            && !settings.PersistSessionCookies
+                ? "use-mock-keychain"
+                : null;
     }
 
     private static void PreparePrivateDirectory(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         var fullPath = Path.GetFullPath(path);
+        if (File.Exists(fullPath))
+        {
+            throw new InvalidDataException(
+                "A browser runtime directory is occupied by a file.");
+        }
+
         Directory.CreateDirectory(fullPath);
+        var info = new DirectoryInfo(fullPath);
+        info.Refresh();
+        if (info.LinkTarget is not null
+            || info.Attributes.HasFlag(FileAttributes.ReparsePoint))
+        {
+            throw new IOException(
+                "The browser runtime root is an unexpected filesystem link.");
+        }
+
         if (!OperatingSystem.IsWindows())
         {
             File.SetUnixFileMode(
@@ -239,11 +293,7 @@ public static class BrowserEngineRuntime
         ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
         var root = Path.GetFullPath(rootDirectory);
 
-        // Request contexts are now ephemeral. Remove the complete prior CEF
-        // root before initialization so Default/, runtime/, profiles/, Local
-        // State, and crash leftovers cannot silently outlive the migration.
-        // Do not recreate the root: CEF receives neither cache path setting.
-        CefBrowserProfileStore.DeleteOwnedDirectory(root);
+        PreparePrivateDirectory(root);
     }
 }
 

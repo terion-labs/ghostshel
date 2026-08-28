@@ -147,7 +147,6 @@ internal sealed class DesktopBrowserRendererViewFactory(
     {
         var key = new RemoteRouteKey(
             profile.Selection,
-            profile.Revision,
             connection.Id);
         lock (_routeGate)
         {
@@ -231,7 +230,6 @@ internal sealed class DesktopBrowserRendererViewFactory(
 
     private readonly record struct RemoteRouteKey(
         BrowserProfileSelection Profile,
-        long Revision,
         ConnectionId ConnectionId);
 
     private sealed class RemoteRoute(

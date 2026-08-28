@@ -74,6 +74,7 @@ public static class DesktopComposition
             };
         });
         services.AddSingleton(_ => LocalArtifactPaths.CreateDefault());
+        services.AddSingleton(_ => BrowserProfileStoragePaths.CreateDefault());
         services.AddSingleton<GhostShellDatabase>();
         services.AddSingleton<IAuditStore, SqliteAuditStore>();
         services.AddSingleton<IAgentRunAuditReader, SqliteAgentRunAuditReader>();
@@ -143,8 +144,17 @@ public static class DesktopComposition
             provider.GetRequiredService<SqliteBrowserProfilePreferences>());
         services.AddSingleton<IBrowserProfileAuthenticationResolver,
             BrowserProfileAuthenticationResolver>();
+        services.AddSingleton(provider => new EncryptedBrowserProfileStateStore(
+            provider.GetRequiredService<BrowserProfileStoragePaths>()
+                .PersistentDirectory,
+            provider.GetRequiredService<IApplicationEncryption>()));
+        services.AddSingleton<IBrowserProfileStateStore>(provider =>
+            provider.GetRequiredService<EncryptedBrowserProfileStateStore>());
         services.AddSingleton(provider => new CefBrowserProfileStore(
-            provider.GetRequiredService<IBrowserProfileAuthenticationResolver>()));
+            provider.GetRequiredService<IBrowserProfileAuthenticationResolver>(),
+            provider.GetRequiredService<IBrowserProfileStateStore>(),
+            provider.GetRequiredService<BrowserProfileStoragePaths>()
+                .RuntimeDirectory));
         services.AddSingleton<IBrowserProfileDataControl>(provider =>
             provider.GetRequiredService<CefBrowserProfileStore>());
         services.AddSingleton(provider => new PreviewContentCache(

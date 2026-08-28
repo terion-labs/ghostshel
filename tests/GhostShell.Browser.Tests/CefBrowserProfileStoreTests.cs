@@ -44,7 +44,7 @@ public sealed class CefBrowserProfileStoreTests
             Assert.Equal(0, first.ClearedBytes);
             Assert.Equal(BrowserProfileClearStatus.Cleared, second.Status);
             Assert.Equal(0, second.ClearedBytes);
-            Assert.Contains("exact profile revision", first.Message, StringComparison.Ordinal);
+            Assert.Contains("encrypted browser state", first.Message, StringComparison.Ordinal);
         }
         finally
         {
@@ -130,7 +130,25 @@ public sealed class CefBrowserProfileStoreTests
     }
 
     [Fact]
-    public void ProfileRevisionAndRouteEachFormAnIsolationBoundary()
+    public void RoutedConnectionNamedLocalDoesNotShareTheLocalContext()
+    {
+        var contexts = new RecordingRequestContextFactory();
+        using var store = new CefBrowserProfileStore(null, contexts.Create);
+        var binding = Binding("profile.route-namespace", revision: 1);
+
+        using var local = store.AcquireLocal(binding);
+        using var routed = store.AcquireRouted(binding, "local", 41501);
+
+        Assert.Equal(2, contexts.Created.Count);
+        Assert.Empty(contexts.Created[0].Preferences);
+        Assert.NotEmpty(contexts.Created[1].Preferences);
+        Assert.Equal(
+            2,
+            store.ReadState(binding.Selection, binding.Revision).ActiveContexts);
+    }
+
+    [Fact]
+    public void DefinitionRevisionsShareStateWhileRoutesRemainIsolated()
     {
         var contexts = new RecordingRequestContextFactory();
         using var store = new CefBrowserProfileStore(null, contexts.Create);
@@ -150,7 +168,7 @@ public sealed class CefBrowserProfileStoreTests
             "connection.two",
             42002);
 
-        Assert.Equal(5, contexts.Created.Count);
+        Assert.Equal(4, contexts.Created.Count);
         Assert.Equal(3, store.ReadState(
             firstRevision.Selection,
             firstRevision.Revision).ActiveContexts);
@@ -194,6 +212,7 @@ public sealed class CefBrowserProfileStoreTests
         Assert.All(contexts.Created.Take(2), context =>
         {
             Assert.Equal(1, context.DeleteCookiesCount);
+            Assert.Equal(1, context.FlushCookieStoreCount);
             Assert.Equal(1, context.ClearHttpAuthCredentialsCount);
             Assert.Equal(1, context.CloseAllConnectionsCount);
         });
@@ -267,6 +286,37 @@ public sealed class CefBrowserProfileStoreTests
     }
 
     [Fact]
+    public async Task CookieClearWaitsForDeletionAndDurableStoreFlush()
+    {
+        var contexts = new RecordingRequestContextFactory();
+        using var store = new CefBrowserProfileStore(null, contexts.Create);
+        var binding = Binding("profile.acknowledged", revision: 2);
+        using var lease = store.AcquireLocal(binding);
+        var context = Assert.Single(contexts.Created);
+        var deleted = new TaskCompletionSource<int>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var flushed = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        context.DeleteCookiesCompletion = deleted.Task;
+        context.FlushCookieStoreCompletion = flushed.Task;
+
+        var clear = store.ClearAsync(
+            new BrowserProfileClearRequest(
+                binding.Selection,
+                binding.Revision,
+                BrowserProfileDataCategory.Cookies),
+            CancellationToken.None).AsTask();
+
+        Assert.False(clear.IsCompleted);
+        deleted.SetResult(1);
+        await Task.Yield();
+        Assert.False(clear.IsCompleted);
+        flushed.SetResult();
+
+        Assert.Equal(BrowserProfileClearStatus.Cleared, (await clear).Status);
+    }
+
+    [Fact]
     public void LegacyProfileCleanupRefusesToFollowARootLink()
     {
         if (OperatingSystem.IsWindows())
@@ -295,11 +345,215 @@ public sealed class CefBrowserProfileStoreTests
         }
     }
 
+    [Fact]
+    public void DurableProfileSealsAndRestoresTheCompleteRuntimeTree()
+    {
+        var root = TemporaryRoot();
+        var state = new RecordingStateStore();
+        var binding = Binding(
+            "profile.persisted",
+            revision: 7,
+            BrowserProfilePersistence.DurableMetadata);
+        try
+        {
+            var firstContexts = new RecordingRequestContextFactory();
+            using (var first = new CefBrowserProfileStore(
+                       null,
+                       state,
+                       root,
+                       firstContexts.Create))
+            {
+                using (first.AcquireLocal(binding))
+                {
+                    var cachePath = Assert.Single(firstContexts.Created).CachePath;
+                    Assert.NotNull(cachePath);
+                    Directory.CreateDirectory(Path.Combine(cachePath, "Default"));
+                    File.WriteAllText(
+                        Path.Combine(cachePath, "Default", "Cookies"),
+                        "signed-in");
+                    File.WriteAllText(
+                        Path.Combine(root, "Local State"),
+                        "os-crypt-metadata");
+                }
+
+                Assert.Equal(0, Assert.Single(firstContexts.Created).DisposeCount);
+                first.ReleaseContextsForEngineShutdown();
+                Assert.True(first.SealRuntimeStateAfterEngineShutdown());
+            }
+
+            var secondContexts = new RecordingRequestContextFactory();
+            using var second = new CefBrowserProfileStore(
+                null,
+                state,
+                root,
+                secondContexts.Create);
+            Assert.True(second.RecoverOrphanedRuntimeState());
+            Assert.Equal(
+                "os-crypt-metadata",
+                File.ReadAllText(Path.Combine(root, "Local State")));
+            using var restored = second.AcquireLocal(binding);
+            var restoredPath = Assert.Single(secondContexts.Created).CachePath;
+            Assert.Equal(
+                "signed-in",
+                File.ReadAllText(Path.Combine(restoredPath!, "Default", "Cookies")));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void StartupRecoversAnOrphanedDurableRuntimeTree()
+    {
+        var root = TemporaryRoot();
+        var state = new RecordingStateStore();
+        var binding = Binding(
+            "profile.orphan",
+            revision: 3,
+            BrowserProfilePersistence.DurableMetadata);
+        try
+        {
+            var contexts = new RecordingRequestContextFactory();
+            using (var crashed = new CefBrowserProfileStore(
+                       null,
+                       state,
+                       root,
+                       contexts.Create))
+            {
+                using var lease = crashed.AcquireLocal(binding);
+                File.WriteAllText(
+                    Path.Combine(Assert.Single(contexts.Created).CachePath!, "Cookies"),
+                    "recover-me");
+            }
+
+            using var recovery = new CefBrowserProfileStore(
+                null,
+                state,
+                root,
+                new RecordingRequestContextFactory().Create);
+            Assert.True(recovery.RecoverOrphanedRuntimeState());
+            Assert.True(state.Inspect(binding.Selection).Exists);
+            Assert.False(Directory.Exists(Path.Combine(root, "contexts")));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void StartupDiscardsAPartialRestoreWithoutReplacingLastGoodState()
+    {
+        var root = TemporaryRoot();
+        var state = new RecordingStateStore();
+        var key = new BrowserProfileStateKey(
+            Selection("profile.partial"),
+            "local");
+        var entry = Path.Combine(root, "contexts", Guid.NewGuid().ToString("n"));
+        try
+        {
+            Directory.CreateDirectory(entry);
+            BrowserProfileRuntimeManifest.Write(entry, key);
+            Directory.CreateDirectory(Path.Combine(entry, "cache"));
+            File.WriteAllText(Path.Combine(entry, "cache", "Cookies"), "partial");
+
+            using var recovery = new CefBrowserProfileStore(
+                null,
+                state,
+                root,
+                new RecordingRequestContextFactory().Create);
+            Assert.True(recovery.RecoverOrphanedRuntimeState());
+            Assert.Equal(0, state.SealCount);
+            Assert.False(Directory.Exists(entry));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void StartupDiscardsAPartialEngineRestoreWithoutReplacingLastGoodState()
+    {
+        var parent = TemporaryRoot();
+        var root = Path.Combine(parent, "runtime");
+        var seed = Path.Combine(parent, "seed");
+        var state = new RecordingStateStore();
+        var engineKey = new BrowserProfileStateKey(
+            new BrowserProfileSelection(
+                new BrowserProfileId("builtin.browser.internal-runtime-state"),
+                BrowserProfileKey.Global),
+            "engine");
+        try
+        {
+            Directory.CreateDirectory(seed);
+            File.WriteAllText(Path.Combine(seed, "Local State"), "last-good");
+            _ = state.Seal(engineKey, seed);
+
+            Directory.CreateDirectory(root + ".restore");
+            File.WriteAllText(Path.Combine(root + ".restore", "Local State"), "partial");
+
+            using var recovery = new CefBrowserProfileStore(
+                null,
+                state,
+                root,
+                new RecordingRequestContextFactory().Create);
+            Assert.True(recovery.RecoverOrphanedRuntimeState());
+            Assert.Equal(1, state.SealCount);
+            Assert.Equal(
+                "last-good",
+                File.ReadAllText(Path.Combine(root, "Local State")));
+            Assert.False(Directory.Exists(root + ".restore"));
+        }
+        finally
+        {
+            Directory.Delete(parent, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void DurableSelectionRunsEphemerallyWhenEncryptionIsDisabled()
+    {
+        var root = TemporaryRoot();
+        var state = new RecordingStateStore
+        {
+            RetentionEnabled = false,
+            Available = false,
+        };
+        var contexts = new RecordingRequestContextFactory();
+        try
+        {
+            using var store = new CefBrowserProfileStore(
+                null,
+                state,
+                root,
+                contexts.Create);
+            using (store.AcquireLocal(Binding(
+                       "profile.opted-out",
+                       revision: 1,
+                       BrowserProfilePersistence.DurableMetadata)))
+            {
+                Assert.Null(Assert.Single(contexts.Created).CachePath);
+            }
+
+            Assert.Equal(1, Assert.Single(contexts.Created).DisposeCount);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static BrowserProfileSelection Selection(string id) => new(
         new BrowserProfileId(id),
         BrowserProfileKey.ForNamed(id));
 
-    private static BrowserProfileBinding Binding(string id, long revision)
+    private static BrowserProfileBinding Binding(
+        string id,
+        long revision,
+        BrowserProfilePersistence persistence =
+            BrowserProfilePersistence.PrivateSession)
     {
         var selection = Selection(id);
         return new BrowserProfileBinding(
@@ -308,8 +562,10 @@ public sealed class CefBrowserProfileStoreTests
                 selection.ProfileId,
                 BrowserProfileDefinition.CurrentSchemaVersion,
                 id,
-                BrowserProfilePersistence.DurableMetadata,
-                BrowserProfilePrivacyPolicy.Strict),
+                persistence,
+                persistence == BrowserProfilePersistence.PrivateSession
+                    ? BrowserProfilePrivacyPolicy.PrivateSession
+                    : BrowserProfilePrivacyPolicy.Strict),
             revision);
     }
 
@@ -327,25 +583,34 @@ public sealed class CefBrowserProfileStoreTests
     {
         public List<RecordingRequestContext> Created { get; } = [];
 
-        public ICefBrowserRequestContext Create()
+        public ICefBrowserRequestContext Create(string? cachePath)
         {
-            var context = new RecordingRequestContext();
+            var context = new RecordingRequestContext(cachePath);
             Created.Add(context);
             return context;
         }
     }
 
-    private sealed class RecordingRequestContext : ICefBrowserRequestContext
+    private sealed class RecordingRequestContext(string? cachePath) :
+        ICefBrowserRequestContext
     {
+        public string? CachePath { get; } = cachePath;
+
         public Dictionary<string, string> Preferences { get; } = [];
 
         public Action? CookiesDeleted { get; set; }
+
+        public Task<int>? DeleteCookiesCompletion { get; set; }
+
+        public Task? FlushCookieStoreCompletion { get; set; }
 
         public int DeleteCookiesCount { get; private set; }
 
         public int ClearHttpAuthCredentialsCount { get; private set; }
 
         public int CloseAllConnectionsCount { get; private set; }
+
+        public int FlushCookieStoreCount { get; private set; }
 
         public int DisposeCount { get; private set; }
 
@@ -355,16 +620,30 @@ public sealed class CefBrowserProfileStoreTests
             return true;
         }
 
-        public void DeleteCookies()
+        public Task<int> DeleteCookiesAsync()
         {
             DeleteCookiesCount++;
             CookiesDeleted?.Invoke();
+            return DeleteCookiesCompletion ?? Task.FromResult(1);
         }
 
-        public void ClearHttpAuthCredentials() =>
-            ClearHttpAuthCredentialsCount++;
+        public Task FlushCookieStoreAsync()
+        {
+            FlushCookieStoreCount++;
+            return FlushCookieStoreCompletion ?? Task.CompletedTask;
+        }
 
-        public void CloseAllConnections() => CloseAllConnectionsCount++;
+        public Task ClearHttpAuthCredentialsAsync()
+        {
+            ClearHttpAuthCredentialsCount++;
+            return Task.CompletedTask;
+        }
+
+        public Task CloseAllConnectionsAsync()
+        {
+            CloseAllConnectionsCount++;
+            return Task.CompletedTask;
+        }
 
         public CefBrowserView CreateView(
             BrowserProfileBinding profile,
@@ -373,5 +652,83 @@ public sealed class CefBrowserProfileStoreTests
                 "The profile-store tests do not create native browser views.");
 
         public void Dispose() => DisposeCount++;
+    }
+
+    private sealed class RecordingStateStore : IBrowserProfileStateStore
+    {
+        private readonly Dictionary<BrowserProfileStateKey, Dictionary<string, byte[]>>
+            _states = [];
+
+        public bool RetentionEnabled { get; init; } = true;
+
+        public bool Available { get; init; } = true;
+
+        public int SealCount { get; private set; }
+
+        public bool IsRetentionEnabled => RetentionEnabled;
+
+        public bool IsAvailable => Available;
+
+        public string? UnavailableReason => null;
+
+        public BrowserProfileStoredState Inspect(BrowserProfileSelection selection)
+        {
+            var matching = _states
+                .Where(item => item.Key.Selection == selection)
+                .ToArray();
+            return new BrowserProfileStoredState(
+                matching.Length > 0,
+                matching.SelectMany(item => item.Value.Values).Sum(bytes => bytes.LongLength));
+        }
+
+        public IReadOnlyList<BrowserProfileStateKey> ListKeys(
+            BrowserProfileSelection selection) =>
+            [.. _states.Keys.Where(key => key.Selection == selection)];
+
+        public void Restore(BrowserProfileStateKey key, string destinationDirectory)
+        {
+            Directory.CreateDirectory(destinationDirectory);
+            if (!_states.TryGetValue(key, out var files))
+            {
+                return;
+            }
+
+            foreach (var file in files)
+            {
+                var path = Path.Combine(destinationDirectory, file.Key);
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.WriteAllBytes(path, file.Value);
+            }
+        }
+
+        public long Seal(BrowserProfileStateKey key, string sourceDirectory)
+        {
+            SealCount++;
+            var files = Directory.EnumerateFiles(
+                    sourceDirectory,
+                    "*",
+                    SearchOption.AllDirectories)
+                .ToDictionary(
+                    path => Path.GetRelativePath(sourceDirectory, path),
+                    File.ReadAllBytes,
+                    StringComparer.Ordinal);
+            _states[key] = files;
+            return files.Values.Sum(bytes => bytes.LongLength);
+        }
+
+        public long Delete(BrowserProfileSelection selection)
+        {
+            var keys = _states.Keys
+                .Where(key => key.Selection == selection)
+                .ToArray();
+            var bytes = keys.Sum(key =>
+                _states[key].Values.Sum(value => value.LongLength));
+            foreach (var key in keys)
+            {
+                _states.Remove(key);
+            }
+
+            return bytes;
+        }
     }
 }

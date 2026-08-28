@@ -66,7 +66,7 @@ public sealed class PreviewContentCache : IPreviewCacheControl, IDisposable
                 nameof(directory));
         }
 
-        PreviewCachePathGuard.EnsurePrivateDirectory(_directory);
+        PrivateContentPathGuard.EnsurePrivateDirectory(_directory);
         ValidateExistingEntries();
         SweepDeadSessions();
         _preferences?.Changed += OnPreferencesChanged;
@@ -444,11 +444,11 @@ public sealed class PreviewContentCache : IPreviewCacheControl, IDisposable
         // bytes whose only copy is this string. The session id in the file
         // name is a label for the sweep, not key material.
         var key = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
-        _sessionLock ??= PreviewCachePathGuard.CreatePrivateFile(
+        _sessionLock ??= PrivateContentPathGuard.CreatePrivateFile(
             SessionLockPath,
             FileShare.None);
-        PreviewCachePathGuard.EnsurePrivateFile(SessionPath);
-        PreviewCachePathGuard.ValidateOptionalPrivateFile(LogPathFor(SessionPath));
+        PrivateContentPathGuard.EnsurePrivateFile(SessionPath);
+        PrivateContentPathGuard.ValidateOptionalPrivateFile(LogPathFor(SessionPath));
         _session = new LiteDatabase(new ConnectionString
         {
             Filename = SessionPath,
@@ -476,8 +476,8 @@ public sealed class PreviewContentCache : IPreviewCacheControl, IDisposable
             connection.Password = password;
         }
 
-        PreviewCachePathGuard.EnsurePrivateFile(PersistentPath);
-        PreviewCachePathGuard.ValidateOptionalPrivateFile(LogPathFor(PersistentPath));
+        PrivateContentPathGuard.EnsurePrivateFile(PersistentPath);
+        PrivateContentPathGuard.ValidateOptionalPrivateFile(LogPathFor(PersistentPath));
 
         try
         {
@@ -492,7 +492,7 @@ public sealed class PreviewContentCache : IPreviewCacheControl, IDisposable
             // it costs a re-download, keeping it costs the feature.
             TryDelete(PersistentPath);
             TryDelete(LogPathFor(PersistentPath));
-            PreviewCachePathGuard.EnsurePrivateFile(PersistentPath);
+            PrivateContentPathGuard.EnsurePrivateFile(PersistentPath);
             _persistent = new LiteDatabase(connection);
             HardenGeneratedFiles();
             return _persistent;
@@ -577,7 +577,7 @@ public sealed class PreviewContentCache : IPreviewCacheControl, IDisposable
         {
             try
             {
-                PreviewCachePathGuard.ValidatePrivateFile(lockPath);
+                PrivateContentPathGuard.ValidatePrivateFile(lockPath);
                 // Taking the lock proves its owner is gone; a live owner holds
                 // it exclusively and this open fails.
                 using (new FileStream(
@@ -626,11 +626,11 @@ public sealed class PreviewContentCache : IPreviewCacheControl, IDisposable
 
             if (OperatingSystem.IsWindows())
             {
-                PreviewCachePathGuard.HardenGeneratedFile(path);
+                PrivateContentPathGuard.HardenGeneratedFile(path);
             }
             else
             {
-                PreviewCachePathGuard.ValidatePrivateFile(path);
+                PrivateContentPathGuard.ValidatePrivateFile(path);
             }
         }
     }
@@ -668,7 +668,7 @@ public sealed class PreviewContentCache : IPreviewCacheControl, IDisposable
                      LogPathFor(PersistentPath),
                  })
         {
-            PreviewCachePathGuard.HardenGeneratedFile(path);
+            PrivateContentPathGuard.HardenGeneratedFile(path);
         }
     }
 
@@ -678,7 +678,7 @@ public sealed class PreviewContentCache : IPreviewCacheControl, IDisposable
         {
             if (File.Exists(path))
             {
-                PreviewCachePathGuard.ValidatePrivateFile(path);
+                PrivateContentPathGuard.ValidatePrivateFile(path);
             }
 
             File.Delete(path);

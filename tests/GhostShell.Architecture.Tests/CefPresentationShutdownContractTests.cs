@@ -32,7 +32,7 @@ public sealed class CefPresentationShutdownContractTests
             finallyBlock);
         var cefShutdown = RequiredIndexOf(
             program,
-            "BrowserEngineRuntime.Shutdown()",
+            "BrowserEngineRuntime.Shutdown(",
             failureFallback);
 
         Assert.True(exitRegistration < lifetimeStart);
@@ -50,7 +50,7 @@ public sealed class CefPresentationShutdownContractTests
 
         var initialization = RequiredIndexOf(
             program,
-            "BrowserEngineRuntime.Initialize(CreateBrowserEngineOptions());");
+            "BrowserEngineRuntime.Initialize(");
         var chromiumFailure = RequiredIndexOf(
             program,
             "desktop.cef-initialize.failed",
