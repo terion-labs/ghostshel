@@ -29,6 +29,7 @@ internal static class DefinitionJson
             FileProviderProfile value => JsonSerializer.Serialize(value, Context.FileProviderProfile),
             AiProviderProfile value => JsonSerializer.Serialize(value, Context.AiProviderProfile),
             McpServerProfile value => JsonSerializer.Serialize(value, Context.McpServerProfile),
+            BrowserProfileDefinition value => JsonSerializer.Serialize(value, Context.BrowserProfileDefinition),
             DatabaseConnectionProfile value => JsonSerializer.Serialize(value, Context.DatabaseConnectionProfile),
             QuickTerminalSettings value => JsonSerializer.Serialize(value, Context.QuickTerminalSettings),
             _ => throw new NotSupportedException(
@@ -58,6 +59,8 @@ internal static class DefinitionJson
                 JsonSerializer.Deserialize(payloadJson, Context.AiProviderProfile),
             var value when value == DefinitionKind.McpServerProfile =>
                 JsonSerializer.Deserialize(payloadJson, Context.McpServerProfile),
+            var value when value == DefinitionKind.BrowserProfile =>
+                JsonSerializer.Deserialize(payloadJson, Context.BrowserProfileDefinition),
             var value when value == DefinitionKind.DatabaseConnection =>
                 JsonSerializer.Deserialize(payloadJson, Context.DatabaseConnectionProfile),
             var value when value == DefinitionKind.QuickTerminalSettings =>
@@ -112,6 +115,11 @@ internal static class DefinitionJson
         AddStrictStringEnumConverter<QuickTerminalMonitorPolicy>(options);
         AddStrictStringEnumConverter<TerminalMultiplexingMode>(options);
         AddStrictStringEnumConverter<WorkspaceBrowserProfileMode>(options);
+        AddStrictStringEnumConverter<BrowserProfilePersistence>(options);
+        AddStrictStringEnumConverter<BrowserWebContentRetention>(options);
+        AddStrictStringEnumConverter<BrowserPermissionRetention>(options);
+        AddStrictStringEnumConverter<BrowserActivityRetention>(options);
+        AddStrictStringEnumConverter<BrowserAuthenticationScheme>(options);
 
         return new DefinitionJsonContext(options);
     }
@@ -143,6 +151,7 @@ internal static class DefinitionJson
 [JsonSerializable(typeof(FileProviderProfile))]
 [JsonSerializable(typeof(AiProviderProfile))]
 [JsonSerializable(typeof(McpServerProfile))]
+[JsonSerializable(typeof(BrowserProfileDefinition))]
 [JsonSerializable(typeof(DatabaseConnectionProfile))]
 [JsonSerializable(typeof(QuickTerminalSettings))]
 [JsonSerializable(typeof(AgentPolicy))]

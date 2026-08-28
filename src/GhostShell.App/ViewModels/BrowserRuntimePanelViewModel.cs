@@ -9,7 +9,7 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
     private readonly CancellationTokenSource _lifetime = new();
     private readonly IBrowserRendererViewFactory _rendererViewFactory;
     private readonly ConnectionProfile _connection;
-    private readonly BrowserProfileKey _profile;
+    private readonly BrowserProfileBinding _profile;
     private BrowserRendererView? _rendererView;
     private BrowserAddress _currentAddress;
     private Task _initialization = Task.CompletedTask;
@@ -34,7 +34,7 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
             sessionClient,
             clientId,
             connection,
-            BrowserProfileKey.Global,
+            BrowserProfileBinding.Legacy(BrowserProfileKey.Global),
             rendererViewFactory)
     {
     }
@@ -49,6 +49,29 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
         ConnectionProfile connection,
         BrowserProfileKey profile,
         IBrowserRendererViewFactory rendererViewFactory)
+        : this(
+            id,
+            title,
+            owner,
+            initialAddress,
+            sessionClient,
+            clientId,
+            connection,
+            BrowserProfileBinding.Legacy(profile),
+            rendererViewFactory)
+    {
+    }
+
+    public BrowserRuntimePanelViewModel(
+        PanelInstanceId id,
+        string title,
+        SessionOwner owner,
+        BrowserAddress initialAddress,
+        ISessionHostClient sessionClient,
+        ClientId clientId,
+        ConnectionProfile connection,
+        BrowserProfileBinding profile,
+        IBrowserRendererViewFactory rendererViewFactory)
         : base(id, PanelKind.Browser, title, "Browser")
     {
         ArgumentNullException.ThrowIfNull(owner);
@@ -57,7 +80,7 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
             ?? throw new ArgumentNullException(nameof(sessionClient));
         ClientId = clientId;
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
-        _profile = profile;
+        _profile = profile ?? throw new ArgumentNullException(nameof(profile));
         if (connection.Endpoint is not (ConnectionEndpoint.Local or ConnectionEndpoint.Ssh))
         {
             throw new ArgumentException(
@@ -83,7 +106,11 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
 
     public ConnectionId ConnectionId => _connection.Id;
 
-    public BrowserProfileKey Profile => _profile;
+    public BrowserProfileKey Profile => _profile.Selection.Partition;
+
+    public BrowserProfileBinding ProfileBinding => _profile;
+
+    public string BrowserProfileDisplayName => _profile.Definition.Name;
 
     public string ConnectionDisplayName => _connection.Endpoint is ConnectionEndpoint.Local
         ? "Local"

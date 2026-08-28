@@ -24,8 +24,11 @@ public sealed class SqliteBrowserProfilePreferencesTests
         var changed = 0;
         preferences.Changed += (_, _) => changed++;
 
+        var selectedProfile = new GhostShell.Core.BrowserProfileId("browser.work");
         await preferences.ApplyAsync(
-            new BrowserProfileSettings(BrowserProfileSharing.PerWorkspace),
+            new BrowserProfileSettings(
+                BrowserProfileSharing.PerWorkspace,
+                selectedProfile),
             CancellationToken.None);
 
         Assert.Equal(BrowserProfileSharing.PerWorkspace, preferences.Current.Sharing);
@@ -33,5 +36,6 @@ public sealed class SqliteBrowserProfilePreferencesTests
         var restored = new SqliteBrowserProfilePreferences(temporary.Database);
         await restored.InitializeAsync(CancellationToken.None);
         Assert.Equal(BrowserProfileSharing.PerWorkspace, restored.Current.Sharing);
+        Assert.Equal(selectedProfile, restored.Current.DefaultProfileId);
     }
 }

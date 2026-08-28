@@ -60,6 +60,9 @@ public sealed class DefinitionCatalogTests
             BuiltInKeymaps.All.Select(item => item.Id).OrderBy(item => item.Value, StringComparer.Ordinal),
             snapshot.Keymaps.Select(item => item.Value.Id).OrderBy(item => item.Value, StringComparer.Ordinal));
         Assert.Equal(QuickTerminalSettings.Default, Assert.Single(snapshot.QuickTerminalSettings).Value);
+        var browserProfile = Assert.Single(snapshot.BrowserProfiles);
+        Assert.Equal(BuiltInBrowserProfiles.Default, browserProfile.Value);
+        Assert.True(browserProfile.Value.IsEnabled);
     }
 
     [Fact]

@@ -399,5 +399,14 @@ internal static class SqliteSchema
                 staged_view_is_tree)
             VALUES (1, 1, 1);
             """),
+        new(
+            17,
+            "named-browser-profile-preference",
+            """
+            ALTER TABLE browser_profile_preference
+                ADD COLUMN default_profile_id TEXT CHECK (
+                    default_profile_id IS NULL
+                    OR length(default_profile_id) BETWEEN 1 AND 256);
+            """),
     ];
 }

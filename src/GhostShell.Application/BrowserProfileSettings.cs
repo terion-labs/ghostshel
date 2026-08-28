@@ -1,3 +1,5 @@
+using GhostShell.Core;
+
 namespace GhostShell.Application;
 
 /// <summary>
@@ -12,7 +14,9 @@ public enum BrowserProfileSharing
 
 public sealed record BrowserProfileSettings
 {
-    public BrowserProfileSettings(BrowserProfileSharing sharing)
+    public BrowserProfileSettings(
+        BrowserProfileSharing sharing,
+        BrowserProfileId? defaultProfileId = null)
     {
         if (!Enum.IsDefined(sharing))
         {
@@ -20,12 +24,19 @@ public sealed record BrowserProfileSettings
         }
 
         Sharing = sharing;
+        DefaultProfileId = defaultProfileId;
     }
 
     public static BrowserProfileSettings Default { get; } = new(
         BrowserProfileSharing.Shared);
 
     public BrowserProfileSharing Sharing { get; }
+
+    /// <summary>
+    /// Null preserves the legacy built-in shared/per-workspace behavior.
+    /// A concrete id selects that named profile for new panels.
+    /// </summary>
+    public BrowserProfileId? DefaultProfileId { get; }
 }
 
 /// <summary>
@@ -95,6 +106,14 @@ public readonly record struct BrowserProfileKey
     public static BrowserProfileKey ForWebApp(string identity) => new(
         BrowserProfileKind.WebApp,
         identity);
+
+    public static BrowserProfileKey ForNamed(string identity) => new(
+        BrowserProfileKind.Named,
+        identity);
+
+    public static BrowserProfileKey ForSession(string identity) => new(
+        BrowserProfileKind.Session,
+        identity);
 }
 
 public enum BrowserProfileKind
@@ -102,29 +121,17 @@ public enum BrowserProfileKind
     Global,
     Workspace,
     WebApp,
-}
-
-public enum BrowserProfileDataScope
-{
-    Global,
-    Workspaces,
-    WebApps,
-    All,
+    Named,
+    Session,
 }
 
 public enum BrowserProfileClearStatus
 {
     Cleared,
     InUse,
+    RevisionMismatch,
+    Cancelled,
     Failed,
-}
-
-public sealed record BrowserProfileStorageUsage(
-    long GlobalBytes,
-    long WorkspaceBytes,
-    long WebAppBytes)
-{
-    public long TotalBytes => checked(GlobalBytes + WorkspaceBytes + WebAppBytes);
 }
 
 public sealed record BrowserProfileClearResult
@@ -158,15 +165,17 @@ public sealed record BrowserProfileClearResult
 }
 
 /// <summary>
-/// Reports legacy on-disk browser data and deliberately erases cookies, cache,
-/// local storage, and other state held by a profile partition.
+/// Inspects and clears only one exact in-memory profile revision. The current
+/// implementation never owns a persistent Chromium data directory.
 /// </summary>
 public interface IBrowserProfileDataControl
 {
-    BrowserProfileStorageUsage ReadUsage();
+    BrowserProfileDataState ReadState(
+        BrowserProfileSelection selection,
+        long expectedRevision);
 
     ValueTask<BrowserProfileClearResult> ClearAsync(
-        BrowserProfileDataScope scope,
+        BrowserProfileClearRequest request,
         CancellationToken cancellationToken);
 }
 

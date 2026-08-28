@@ -34,6 +34,29 @@
         <controls:ChooserTile Icon="Box" Title="Docker" Description="Containers &amp; images" Click="OnAddDockerPanelClick" AutomationProperties.Name="Add Docker panel" />
         <controls:ChooserTile Icon="BranchFork" Title="Git" Description="Stage, commit &amp; history" Click="OnAddGitPanelClick" AutomationProperties.Name="Add Git panel" />
       </controls:CardGridPanel>
+      <controls:SurfaceCard Padding="{DynamicResource ShellCardPaddingCompact}">
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource ShellSpaceLg}">
+          <StackPanel VerticalAlignment="Center">
+            <TextBlock FontWeight="SemiBold" Text="Browser profile" />
+            <TextBlock Classes="Muted" Text="Pinned only for the new browser panel" />
+          </StackPanel>
+          <ComboBox
+              Grid.Column="1"
+              HorizontalAlignment="Stretch"
+              ItemsSource="{Binding BrowserPanelProfileOptions}"
+              SelectedItem="{Binding SelectedBrowserPanelProfile, Mode=TwoWay}"
+              AutomationProperties.Name="Profile for new browser panel">
+            <ComboBox.ItemTemplate>
+              <DataTemplate>
+                <StackPanel>
+                  <TextBlock Text="{Binding Name}" />
+                  <TextBlock Classes="Muted" Text="{Binding Detail}" />
+                </StackPanel>
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+        </Grid>
+      </controls:SurfaceCard>
       <!-- A new panel is not only a blank adapter: a saved connection or screen
            is just as likely to be what belongs here, so both are offered
            alongside the adapters rather than behind another navigation step. -->

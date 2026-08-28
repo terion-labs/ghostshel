@@ -45,6 +45,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     public FileTransferClipboard FileTransferClipboard { get; } = new();
     private readonly IBrowserRendererViewFactory? _browserRendererViewFactory;
     private readonly IBrowserProfilePreferences _browserProfilePreferences;
+    private readonly CatalogBrowserProfileRuntime _browserProfileRuntime;
     private readonly IDatabasePanelClient? _databasePanelClient;
     private readonly IDatabaseConnectionCatalog? _databaseConnectionCatalog;
     private readonly IRedisPanelSessionFactory? _redisPanelSessionFactory;
@@ -175,6 +176,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             () => IsWorkspaceCanvasVisible);
         _navigation.PropertyChanged += OnShellNavigationPropertyChanged;
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
+        _browserProfileRuntime = new CatalogBrowserProfileRuntime(_catalog);
         DefinitionEdit = new DefinitionEditSessionViewModel(_catalog);
         DefinitionEdit.PropertyChanged += OnDefinitionEditPropertyChanged;
         DefinitionSettings = new DefinitionSettingsViewModel(_catalog);
@@ -253,7 +255,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             previewCacheControl);
         BrowserProfileSettingsEditor = new BrowserProfileSettingsEditorViewModel(
             _browserProfilePreferences,
-            browserProfileDataControl);
+            browserProfileDataControl,
+            _catalog,
+            _secretVault);
+        RefreshBrowserPanelProfileOptions(_catalog.Snapshot);
         ApplicationSecurityEditor = new ApplicationSecurityEditorViewModel(
             applicationEncryption,
             startupProtection,
@@ -2909,7 +2914,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         }
     }
 
+    public Task<bool> OpenLocalBrowserWorkspaceAsync(
+        CancellationToken cancellationToken = default) =>
+        OpenLocalBrowserWorkspaceAsync(profileId: null, cancellationToken);
+
     public async Task<bool> OpenLocalBrowserWorkspaceAsync(
+        BrowserProfileId? profileId,
         CancellationToken cancellationToken = default)
     {
         ClearError();
@@ -2936,10 +2946,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 tab.Id,
                 PanelInstanceId.New(),
                 "Browser",
-                BrowserAddress.Blank);
+                BrowserAddress.Blank,
+                requestedProfileId: profileId);
             if (panel is not BrowserRuntimePanelViewModel)
             {
-                SetError("The embedded browser could not be initialized.");
+                SetError(BrowserCreationFailure(panel));
                 panel.Dispose();
                 return false;
             }
@@ -4997,7 +5008,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 livePanel.Id,
                 livePanel.Title,
                 browser.CurrentAddress,
-                connection);
+                connection,
+                browser.ProfileBinding);
         }
         else if (livePanel is DockerRuntimePanelViewModel)
         {
@@ -5138,7 +5150,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             cancellationToken);
     }
 
+    public Task<bool> AddBrowserPanelAsync(
+        CancellationToken cancellationToken = default) =>
+        AddBrowserPanelAsync(profileId: null, cancellationToken);
+
     public async Task<bool> AddBrowserPanelAsync(
+        BrowserProfileId? profileId,
         CancellationToken cancellationToken = default)
     {
         var workspace = RuntimeWorkspace;
@@ -5160,10 +5177,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             tab.Id,
             PanelInstanceId.New(),
             "Browser",
-            BrowserAddress.Blank);
+            BrowserAddress.Blank,
+            requestedProfileId: profileId);
         if (panel is not BrowserRuntimePanelViewModel)
         {
-            SetError("The embedded browser could not be initialized.");
+            SetError(BrowserCreationFailure(panel));
             panel.Dispose();
             return false;
         }
@@ -5737,31 +5755,36 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public Task<bool> AddBrowserTabAsync(
         CancellationToken cancellationToken = default) =>
-        AddSinglePanelTabAsync(PanelKind.Browser, cancellationToken);
+        AddBrowserTabAsync(profileId: null, cancellationToken);
+
+    public Task<bool> AddBrowserTabAsync(
+        BrowserProfileId? profileId,
+        CancellationToken cancellationToken = default) =>
+        AddSinglePanelTabAsync(PanelKind.Browser, profileId, cancellationToken);
 
     public Task<bool> AddFileViewerTabAsync(
         CancellationToken cancellationToken = default) =>
-        AddSinglePanelTabAsync(PanelKind.FileViewer, cancellationToken);
+        AddSinglePanelTabAsync(PanelKind.FileViewer, profileId: null, cancellationToken);
 
     public Task<bool> AddStatisticsTabAsync(
         CancellationToken cancellationToken = default) =>
-        AddSinglePanelTabAsync(PanelKind.Statistics, cancellationToken);
+        AddSinglePanelTabAsync(PanelKind.Statistics, profileId: null, cancellationToken);
 
     public Task<bool> AddDatabaseTabAsync(
         CancellationToken cancellationToken = default) =>
-        AddSinglePanelTabAsync(PanelKind.DatabaseViewer, cancellationToken);
+        AddSinglePanelTabAsync(PanelKind.DatabaseViewer, profileId: null, cancellationToken);
 
     public Task<bool> AddDockerTabAsync(
         CancellationToken cancellationToken = default) =>
-        AddSinglePanelTabAsync(PanelKind.Docker, cancellationToken);
+        AddSinglePanelTabAsync(PanelKind.Docker, profileId: null, cancellationToken);
 
     public Task<bool> AddGitTabAsync(
         CancellationToken cancellationToken = default) =>
-        AddSinglePanelTabAsync(PanelKind.Git, cancellationToken);
+        AddSinglePanelTabAsync(PanelKind.Git, profileId: null, cancellationToken);
 
     public Task<bool> AddProcessMonitorTabAsync(
         CancellationToken cancellationToken = default) =>
-        AddSinglePanelTabAsync(PanelKind.ProcessMonitor, cancellationToken);
+        AddSinglePanelTabAsync(PanelKind.ProcessMonitor, profileId: null, cancellationToken);
 
     /// <summary>
     /// Appends a one-panel tab for a local adapter. The New Tab catalog uses this
@@ -5770,6 +5793,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     /// </summary>
     private Task<bool> AddSinglePanelTabAsync(
         PanelKind kind,
+        BrowserProfileId? profileId,
         CancellationToken cancellationToken)
     {
         if (kind is not (PanelKind.Browser
@@ -5805,14 +5829,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
         return AppendRuntimeTabAsync(
             workspace,
-            runtime => CreateSinglePanelTab(runtime.Id, kind),
+            runtime => CreateSinglePanelTab(runtime.Id, kind, profileId),
             $"{SinglePanelTabTitle(kind)} tab creation",
             cancellationToken);
     }
 
     private RuntimeTabViewModel? CreateSinglePanelTab(
         WorkspaceInstanceId workspaceId,
-        PanelKind kind)
+        PanelKind kind,
+        BrowserProfileId? profileId)
     {
         var title = SinglePanelTabTitle(kind);
         var source = kind is PanelKind.Statistics or PanelKind.ProcessMonitor
@@ -5828,7 +5853,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                     tab.Id,
                     PanelInstanceId.New(),
                     title,
-                    BrowserAddress.Blank),
+                    BrowserAddress.Blank,
+                    requestedProfileId: profileId),
                 PanelKind.FileViewer => CreateFilePanel(
                     workspaceId,
                     tab.Id,
@@ -5856,7 +5882,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             if (kind == PanelKind.Browser
                 && panel is not BrowserRuntimePanelViewModel)
             {
-                SetError("The embedded browser could not be initialized.");
+                SetError(BrowserCreationFailure(panel));
                 panel.Dispose();
                 return null;
             }
@@ -5882,6 +5908,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         PanelKind.Git => "Git",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
+
+    private static string BrowserCreationFailure(RuntimePanelViewModel panel) =>
+        panel is UnavailableRuntimePanelViewModel unavailable
+            ? unavailable.CapabilityMessage
+            : "The embedded browser could not be initialized.";
 
     private bool CanAppendSavedDefinitionTab()
     {
@@ -7502,6 +7533,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             snapshot,
             preserveTerminalDraft: HasTerminalAppearanceDraft);
         AppearanceSettings.ApplyCatalog(snapshot);
+        BrowserProfileSettingsEditor.ApplyCatalog(snapshot);
+        RefreshBrowserPanelProfileOptions(snapshot);
         OnPropertyChanged(nameof(PanelConnectionOptions));
         OnPropertyChanged(nameof(BrowserConnectionOptions));
         OnPropertyChanged(nameof(DatabasePanelConnectionOptions));
@@ -8708,22 +8741,36 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                     "The recovered browser connection is no longer available.");
             }
 
-            return BrowserAddress.TryParse(
-                recovered.StartupLocation,
-                out var address)
+            if (!BrowserAddress.TryParse(recovered.StartupLocation, out var address))
+            {
+                return new UnavailableRuntimePanelViewModel(
+                    PanelInstanceId.New(),
+                    PanelKind.Browser,
+                    recovered.Title,
+                    "Browser",
+                    "The recovered browser address is invalid.");
+            }
+
+            var profileId = new BrowserProfileId(recovered.BrowserProfileId!);
+            var partition = new BrowserProfileKey(
+                recovered.BrowserProfileKind!.Value,
+                recovered.BrowserProfileIdentity!);
+            var pinned = _browserProfileRuntime.Pin(profileId, partition);
+            return pinned.IsSuccess
                 ? CreateBrowserPanel(
                     workspaceId,
                     tabId,
                     PanelInstanceId.New(),
                     recovered.Title,
                     address,
-                    connection)
+                    connection,
+                    pinned.Binding)
                 : new UnavailableRuntimePanelViewModel(
                     PanelInstanceId.New(),
                     PanelKind.Browser,
                     recovered.Title,
                     "Browser",
-                    "The recovered browser address is invalid.");
+                    $"Recovered browser profile unavailable. {pinned.Message}");
         }
 
         if (recovered.Kind == RuntimePanelRecoveryKind.DatabaseViewer)
@@ -9247,7 +9294,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         string title,
         BrowserAddress initialAddress,
         ConnectionProfile? connection = null,
-        BrowserProfileKey? profile = null)
+        BrowserProfileBinding? profile = null,
+        BrowserProfileId? requestedProfileId = null)
     {
         if (_browserRendererViewFactory is null)
         {
@@ -9270,6 +9318,19 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 "This browser route is not a local or SSH connection.");
         }
 
+        var pinned = profile is null
+            ? ResolveBrowserProfile(workspaceId, panelId, requestedProfileId)
+            : BrowserProfilePinResult.Success(profile);
+        if (!pinned.IsSuccess)
+        {
+            return new UnavailableRuntimePanelViewModel(
+                panelId,
+                PanelKind.Browser,
+                title,
+                "Browser",
+                pinned.Message!);
+        }
+
         var browser = new BrowserRuntimePanelViewModel(
             panelId,
             title,
@@ -9283,14 +9344,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             SessionClient,
             ClientId,
             connection,
-            profile ?? ResolveBrowserProfile(workspaceId),
+            pinned.Binding!,
             _browserRendererViewFactory);
         browser.NewTabRequested += OnBrowserNewTabRequested;
         return browser;
     }
 
-    private BrowserProfileKey ResolveBrowserProfile(
-        WorkspaceInstanceId workspaceId)
+    private BrowserProfilePinResult ResolveBrowserProfile(
+        WorkspaceInstanceId workspaceId,
+        PanelInstanceId panelId,
+        BrowserProfileId? requestedProfileId = null)
     {
         WorkspaceDefinition? definition = null;
         if (_runtimeSources.TryGetValue(workspaceId, out var source)
@@ -9309,13 +9372,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 == BrowserProfileSharing.PerWorkspace,
             _ => throw new ArgumentOutOfRangeException(),
         };
-        if (!isolated)
-        {
-            return BrowserProfileKey.Global;
-        }
-
-        return BrowserProfileKey.ForWorkspace(
-            definition?.Id.Value ?? workspaceId.Value);
+        var legacyPartition = isolated
+            ? BrowserProfileKey.ForWorkspace(
+                definition?.Id.Value ?? workspaceId.Value)
+            : BrowserProfileKey.Global;
+        var profileId = requestedProfileId
+            ?? _browserProfilePreferences.Current.DefaultProfileId
+            ?? BuiltInBrowserProfiles.Default.Id;
+        return _browserProfileRuntime.PinNewPanel(
+            profileId,
+            legacyPartition,
+            panelId);
     }
 
     private async void OnBrowserNewTabRequested(
@@ -9378,7 +9445,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 runtime.Id,
                 address,
                 connection,
-                source.Profile),
+                source.ProfileBinding),
             "browser new-tab creation",
             cancellationToken);
     }
@@ -9387,7 +9454,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         WorkspaceInstanceId workspaceId,
         BrowserAddress address,
         ConnectionProfile connection,
-        BrowserProfileKey profile)
+        BrowserProfileBinding profile)
     {
         var title = "Browser";
         var tab = new RuntimeTabViewModel(

@@ -9,7 +9,7 @@ namespace GhostShell.App.ViewModels;
 internal static class RuntimeWorkspaceRecoveryCodec
 {
     public const string SnapshotKey = "desktop.main-window";
-    public const int SchemaVersion = 8;
+    public const int SchemaVersion = 9;
 
     private const int MaximumTabs = WorkspaceInstance.MaximumPanelCount;
     private const int MaximumPanelsPerTab = WorkspaceInstance.MaximumPanelCount;
@@ -173,7 +173,10 @@ internal static class RuntimeWorkspaceRecoveryCodec
                     multiplexer.Mode,
                     multiplexer.SessionName,
                     multiplexer.IsEstablished)
-                : null);
+                : null,
+            browser?.ProfileBinding.Definition.Id.Value,
+            browser?.ProfileBinding.Selection.Partition.Kind,
+            browser?.ProfileBinding.Selection.Partition.Identity);
     }
 
     private static bool TryValidate(
@@ -372,7 +375,11 @@ internal static class RuntimeWorkspaceRecoveryCodec
                 && panel.FileProviderProfileId is null
                 && panel.FileLocation is null
                 && !panel.ShowHidden
-                && panel.Filter is null,
+                && panel.Filter is null
+                && IsIdentifier(panel.BrowserProfileId)
+                && IsBrowserProfilePartition(
+                    panel.BrowserProfileKind,
+                    panel.BrowserProfileIdentity),
             RuntimePanelRecoveryKind.Unavailable =>
                 panel.Multiplexer is null
                 && IsDisplayText(panel.KindLabel, 128)
@@ -428,6 +435,10 @@ internal static class RuntimeWorkspaceRecoveryCodec
         if (!IsIdentifier(panel.Key)
             || !IsDisplayText(panel.Title, 256)
             || !validKindData
+            || panel.Kind != RuntimePanelRecoveryKind.Browser
+                && (panel.BrowserProfileId is not null
+                    || panel.BrowserProfileKind is not null
+                    || panel.BrowserProfileIdentity is not null)
             || panel.Column < 0
             || panel.Row < 0
             || panel.ColumnSpan <= 0
@@ -460,6 +471,26 @@ internal static class RuntimeWorkspaceRecoveryCodec
 
     private static bool IsOptionalText(string? value, int maximumLength) =>
         value is null || value.Length <= maximumLength && !value.Contains('\0');
+
+    private static bool IsBrowserProfilePartition(
+        BrowserProfileKind? kind,
+        string? identity)
+    {
+        if (kind is null || !Enum.IsDefined(kind.Value) || identity is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            _ = new BrowserProfileKey(kind.Value, identity);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
 }
 
 internal sealed record RuntimeWindowRecoveryPayload(RuntimeWorkspaceRecoveryPayload? Workspace);
@@ -677,7 +708,10 @@ internal sealed record RuntimePanelRecoveryPayload(
     int RowSpan,
     double MinimumWidth,
     double MinimumHeight,
-    RuntimeTerminalMultiplexerRecoveryPayload? Multiplexer = null);
+    RuntimeTerminalMultiplexerRecoveryPayload? Multiplexer = null,
+    string? BrowserProfileId = null,
+    BrowserProfileKind? BrowserProfileKind = null,
+    string? BrowserProfileIdentity = null);
 
 internal sealed record RuntimeTerminalMultiplexerRecoveryPayload(
     TerminalMultiplexingMode Mode,

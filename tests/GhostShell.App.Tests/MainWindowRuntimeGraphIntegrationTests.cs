@@ -825,6 +825,249 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     }
 
     [Fact]
+    public async Task NamedBrowserProfileRevisionIsPinnedAndReusedByPopup()
+    {
+        var profile = new BrowserProfileDefinition(
+            new BrowserProfileId("browser.operations"),
+            BrowserProfileDefinition.CurrentSchemaVersion,
+            "Operations browser",
+            BrowserProfilePersistence.DurableMetadata,
+            BrowserProfilePrivacyPolicy.Strict);
+        var preferences = new InMemoryBrowserProfilePreferences();
+        await preferences.ApplyAsync(
+            new BrowserProfileSettings(BrowserProfileSharing.Shared, profile.Id),
+            CancellationToken.None);
+        var snapshot = CreateCatalogSnapshot() with
+        {
+            BrowserProfiles =
+            [
+                Store(BuiltInBrowserProfiles.Default),
+                Store(profile, revision: 19),
+            ],
+        };
+        var browserFactory = new RecordingBrowserRendererViewFactory();
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            snapshot,
+            browserRendererFactory: browserFactory,
+            browserProfilePreferences: preferences);
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        var original = Assert.Single(browserFactory.CreatedBindings);
+        var recoveryJson = RuntimeWorkspaceRecoveryCodec.Serialize(
+            viewModel.RuntimeWorkspace);
+        var recoverySnapshot = new RuntimeRecoverySnapshot(
+            "browser-profile-recovery",
+            RuntimeWorkspaceRecoveryCodec.SnapshotKey,
+            RuntimeWorkspaceRecoveryCodec.SchemaVersion,
+            recoveryJson,
+            DateTimeOffset.UtcNow);
+        Assert.True(RuntimeWorkspaceRecoveryCodec.TryDeserialize(
+            recoverySnapshot,
+            out var payload,
+            out var recoveryError), recoveryError);
+        var recoveredPanel = Assert.Single(
+            payload!.Workspace!.Tabs.SelectMany(tab => tab.Panels),
+            panel => panel.Kind == RuntimePanelRecoveryKind.Browser);
+        Assert.Equal(profile.Id.Value, recoveredPanel.BrowserProfileId);
+        Assert.Equal(BrowserProfileKind.Named, recoveredPanel.BrowserProfileKind);
+        Assert.Equal(profile.Id.Value, recoveredPanel.BrowserProfileIdentity);
+
+        Assert.Single(browserFactory.Renderers).RaiseNewTabRequested(
+            new BrowserAddress(new Uri("https://docs.example.test/profile-popup")));
+
+        await WaitForAsync(() => browserFactory.CreatedBindings.Count == 2);
+        var popup = browserFactory.CreatedBindings[1];
+        Assert.Equal(profile.Id, original.Selection.ProfileId);
+        Assert.Equal(19, original.Revision);
+        Assert.Equal(original.Selection, popup.Selection);
+        Assert.Equal(original.Revision, popup.Revision);
+        Assert.Same(original.Definition, popup.Definition);
+
+        var missingSnapshot = snapshot with
+        {
+            BrowserProfiles = [Store(BuiltInBrowserProfiles.Default)],
+        };
+        var (recoveredClient, _) = CreateSessionClient();
+        using var recovered = CreateViewModel(
+            recoveredClient,
+            missingSnapshot,
+            browserRendererFactory: new RecordingBrowserRendererViewFactory(),
+            browserProfilePreferences: preferences);
+        Assert.True(await recovered.RestoreRuntimeSnapshotsAsync([recoverySnapshot]));
+        var unavailable = Assert.IsType<UnavailableRuntimePanelViewModel>(
+            Assert.Single(
+                recovered.RuntimeWorkspace!.Tabs.SelectMany(tab => tab.Panels),
+                panel => panel.Kind == PanelKind.Browser));
+        Assert.Contains(
+            "profile unavailable",
+            unavailable.CapabilityMessage,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "no longer exists",
+            unavailable.CapabilityMessage,
+            StringComparison.OrdinalIgnoreCase);
+
+        var disabledProfile = new BrowserProfileDefinition(
+            profile.Id,
+            profile.SchemaVersion,
+            profile.Name,
+            profile.Persistence,
+            profile.Privacy,
+            isEnabled: false);
+        var disabledSnapshot = snapshot with
+        {
+            BrowserProfiles =
+            [
+                Store(BuiltInBrowserProfiles.Default),
+                Store(disabledProfile, revision: 20),
+            ],
+        };
+        var (disabledClient, _) = CreateSessionClient();
+        using var disabledRecovery = CreateViewModel(
+            disabledClient,
+            disabledSnapshot,
+            browserRendererFactory: new RecordingBrowserRendererViewFactory(),
+            browserProfilePreferences: preferences);
+        Assert.True(await disabledRecovery.RestoreRuntimeSnapshotsAsync([recoverySnapshot]));
+        var disabled = Assert.IsType<UnavailableRuntimePanelViewModel>(
+            Assert.Single(
+                disabledRecovery.RuntimeWorkspace!.Tabs.SelectMany(tab => tab.Panels),
+                panel => panel.Kind == PanelKind.Browser));
+        Assert.Contains(
+            "disabled",
+            disabled.CapabilityMessage,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PrivateBrowserProfileRecoveryKeepsItsExactSessionPartition()
+    {
+        var profile = new BrowserProfileDefinition(
+            new BrowserProfileId("browser.private-recovery"),
+            BrowserProfileDefinition.CurrentSchemaVersion,
+            "Private recovery",
+            BrowserProfilePersistence.PrivateSession,
+            BrowserProfilePrivacyPolicy.Strict);
+        var preferences = new InMemoryBrowserProfilePreferences();
+        await preferences.ApplyAsync(
+            new BrowserProfileSettings(BrowserProfileSharing.Shared, profile.Id),
+            CancellationToken.None);
+        var snapshot = CreateCatalogSnapshot() with
+        {
+            BrowserProfiles =
+            [
+                Store(BuiltInBrowserProfiles.Default),
+                Store(profile, revision: 4),
+            ],
+        };
+        var browserFactory = new RecordingBrowserRendererViewFactory();
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            snapshot,
+            browserRendererFactory: browserFactory,
+            browserProfilePreferences: preferences);
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        var original = Assert.Single(browserFactory.CreatedBindings);
+        Assert.Equal(BrowserProfileKind.Session, original.Selection.Partition.Kind);
+        var recoverySnapshot = new RuntimeRecoverySnapshot(
+            "private-browser-profile-recovery",
+            RuntimeWorkspaceRecoveryCodec.SnapshotKey,
+            RuntimeWorkspaceRecoveryCodec.SchemaVersion,
+            RuntimeWorkspaceRecoveryCodec.Serialize(viewModel.RuntimeWorkspace),
+            DateTimeOffset.UtcNow);
+
+        var recoveredFactory = new RecordingBrowserRendererViewFactory();
+        var (recoveredClient, _) = CreateSessionClient();
+        using var recovered = CreateViewModel(
+            recoveredClient,
+            snapshot,
+            browserRendererFactory: recoveredFactory,
+            browserProfilePreferences: preferences);
+        Assert.True(await recovered.RestoreRuntimeSnapshotsAsync([recoverySnapshot]));
+
+        var restored = Assert.Single(recoveredFactory.CreatedBindings);
+        Assert.Equal(original.Selection, restored.Selection);
+        Assert.Equal(original.Revision, restored.Revision);
+    }
+
+    [Fact]
+    public async Task NewBrowserPanelCanPinAnExplicitProfileInsteadOfTheDefault()
+    {
+        var profile = new BrowserProfileDefinition(
+            new BrowserProfileId("browser.explicit"),
+            BrowserProfileDefinition.CurrentSchemaVersion,
+            "Explicit browser",
+            BrowserProfilePersistence.DurableMetadata,
+            BrowserProfilePrivacyPolicy.Strict);
+        var snapshot = CreateCatalogSnapshot() with
+        {
+            BrowserProfiles =
+            [
+                Store(BuiltInBrowserProfiles.Default),
+                Store(profile, revision: 23),
+            ],
+        };
+        var browserFactory = new RecordingBrowserRendererViewFactory();
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            snapshot,
+            browserRendererFactory: browserFactory);
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        var option = Assert.Single(
+            viewModel.BrowserPanelProfileOptions,
+            item => item.Id == profile.Id);
+        viewModel.SelectedBrowserPanelProfile = option;
+
+        Assert.True(await viewModel.AddBrowserPanelAsync(
+            viewModel.SelectedBrowserPanelProfile!.Id));
+
+        var selected = browserFactory.CreatedBindings[^1];
+        Assert.Equal(profile.Id, selected.Selection.ProfileId);
+        Assert.Equal(BrowserProfileKey.ForNamed(profile.Id.Value), selected.Selection.Partition);
+        Assert.Equal(23, selected.Revision);
+        Assert.Same(profile, selected.Definition);
+    }
+
+    [Fact]
+    public async Task ExplicitDisabledBrowserProfileFailsVisiblyWithoutFallback()
+    {
+        var profile = new BrowserProfileDefinition(
+            new BrowserProfileId("browser.disabled-explicit"),
+            BrowserProfileDefinition.CurrentSchemaVersion,
+            "Disabled browser",
+            BrowserProfilePersistence.DurableMetadata,
+            BrowserProfilePrivacyPolicy.Strict,
+            isEnabled: false);
+        var snapshot = CreateCatalogSnapshot() with
+        {
+            BrowserProfiles =
+            [
+                Store(BuiltInBrowserProfiles.Default),
+                Store(profile, revision: 7),
+            ],
+        };
+        var browserFactory = new RecordingBrowserRendererViewFactory();
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            snapshot,
+            browserRendererFactory: browserFactory);
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        var bindingsBefore = browserFactory.CreatedBindings.Count;
+        Assert.DoesNotContain(
+            viewModel.BrowserPanelProfileOptions,
+            item => item.Id == profile.Id);
+
+        Assert.False(await viewModel.AddBrowserPanelAsync(profile.Id));
+
+        Assert.Equal(bindingsBefore, browserFactory.CreatedBindings.Count);
+        Assert.Contains("disabled", viewModel.OperationError, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task BrowserPopupWithoutAUserGestureDoesNotOpenATab()
     {
         var browserFactory = new RecordingBrowserRendererViewFactory();
@@ -5873,7 +6116,10 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             [],
             [],
             [],
-            []);
+            [])
+        {
+            BrowserProfiles = [Store(BuiltInBrowserProfiles.Default)],
+        };
     }
 
     private static DefinitionCatalogSnapshot CreateTabAppendCatalogSnapshot()
@@ -6335,6 +6581,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
         public List<BrowserProfileKey> CreatedProfiles { get; } = [];
 
+        public List<BrowserProfileBinding> CreatedBindings { get; } = [];
+
         public List<RecordingBrowserRenderer> Renderers { get; } = [];
 
         public int CreateCount { get; private set; }
@@ -6373,6 +6621,15 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             CreatedConnections.Add(connection.Id);
             CreatedProfiles.Add(profile);
             return ValueTask.FromResult(Create());
+        }
+
+        public ValueTask<BrowserRendererView> CreateAsync(
+            ConnectionProfile connection,
+            BrowserProfileBinding profile,
+            CancellationToken cancellationToken)
+        {
+            CreatedBindings.Add(profile);
+            return CreateAsync(connection, profile.Selection.Partition, cancellationToken);
         }
     }
 

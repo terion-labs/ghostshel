@@ -39,12 +39,25 @@ public sealed class SqliteDefinitionBundleStore : IDefinitionBundleStore
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
                 var document = ReadDocument(reader);
-                if (!KnownDefinitionRegistry.TryParse(document, out _, out var problem))
+                if (!KnownDefinitionRegistry.TryParse(
+                        document,
+                        out var definition,
+                        out var problem))
                 {
                     return FromProblem<PortableDefinitionBundle>(problem!);
                 }
 
-                documents.Add(document);
+                if (definition is BrowserProfileDefinition
+                    {
+                        Id: var browserProfileId,
+                    } && browserProfileId == BuiltInBrowserProfiles.Default.Id)
+                {
+                    continue;
+                }
+
+                documents.Add(definition is BrowserProfileDefinition profile
+                    ? SanitizeExportedBrowserProfile(document, profile)
+                    : document);
             }
 
             return DefinitionStoreResult<PortableDefinitionBundle>.Success(
@@ -398,6 +411,29 @@ public sealed class SqliteDefinitionBundleStore : IDefinitionBundleStore
                     "The imported MCP server was disabled. Review its executable, arguments, vault bindings, and tool allowlist in Settings before enabling it.",
                     false));
             }
+            else if (definition is BrowserProfileDefinition browserProfile)
+            {
+                var disabledProfile = new BrowserProfileDefinition(
+                    browserProfile.Id,
+                    browserProfile.SchemaVersion,
+                    browserProfile.Name,
+                    browserProfile.Persistence,
+                    browserProfile.Privacy,
+                    authentication: null,
+                    isEnabled: false);
+                definition = disabledProfile;
+                importedDocument = document with
+                {
+                    SchemaVersion = disabledProfile.SchemaVersion,
+                    Name = disabledProfile.Name,
+                    PayloadJson = DefinitionJson.Serialize(disabledProfile),
+                };
+                parsed.Issues.Add(new(
+                    DefinitionImportIssueCode.ImportedBrowserProfileDisabled,
+                    disabledProfile.Key,
+                    "The imported browser profile was disabled and its machine-local credential binding was detached. Web content is never included in a definition bundle.",
+                    false));
+            }
 
             if (!parsed.Definitions.TryAdd(definition!.Key, definition))
             {
@@ -430,6 +466,24 @@ public sealed class SqliteDefinitionBundleStore : IDefinitionBundleStore
                 authentication,
                 "The imported AI-provider authentication method is not supported."),
         };
+
+    private static PortableDefinitionDocument SanitizeExportedBrowserProfile(
+        PortableDefinitionDocument document,
+        BrowserProfileDefinition profile)
+    {
+        var sanitized = new BrowserProfileDefinition(
+            profile.Id,
+            profile.SchemaVersion,
+            profile.Name,
+            profile.Persistence,
+            profile.Privacy,
+            authentication: null,
+            isEnabled: profile.IsEnabled);
+        return document with
+        {
+            PayloadJson = DefinitionJson.Serialize(sanitized),
+        };
+    }
 
     private static DefinitionImportIssue InvalidBundle(string message) =>
         new(DefinitionImportIssueCode.InvalidBundle, null, message, true);

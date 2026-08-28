@@ -229,7 +229,7 @@ public sealed class SqliteDatabaseTests
             sourceVersion switch
             {
                 8 => "next migration collision",
-                13 => "duplicate column name",
+                13 or 16 => "duplicate column name",
                 _ => "already exists",
             },
             error.Message,

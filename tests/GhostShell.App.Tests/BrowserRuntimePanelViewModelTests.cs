@@ -19,6 +19,36 @@ public sealed class BrowserRuntimePanelViewModelTests
         Assert.Empty(browser.AddressText);
     }
 
+    [Theory]
+    [InlineData("https://example.test/sign-in")]
+    [InlineData("http://localhost:8080/callback")]
+    public void System_browser_handoff_accepts_only_the_presented_http_page(
+        string value)
+    {
+        var presented = new BrowserAddress(new Uri(value));
+
+        Assert.True(BrowserPresentationHost.TryGetSystemBrowserAddress(
+            presented,
+            out var address));
+        Assert.Equal(presented.Value, address);
+    }
+
+    [Fact]
+    public void System_browser_handoff_rejects_blank_document_and_local_file_addresses()
+    {
+        var localPath = Path.Combine(Path.GetTempPath(), "ghostshell-browser-handoff.html");
+
+        Assert.False(BrowserPresentationHost.TryGetSystemBrowserAddress(
+            BrowserAddress.Blank,
+            out _));
+        Assert.False(BrowserPresentationHost.TryGetSystemBrowserAddress(
+            BrowserAddress.ForDocument("<html></html>"),
+            out _));
+        Assert.False(BrowserPresentationHost.TryGetSystemBrowserAddress(
+            BrowserAddress.ForLocalFile(localPath),
+            out _));
+    }
+
     /// <summary>
     /// Hiding a native surface must never give it up.
     ///

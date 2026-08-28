@@ -27,6 +27,7 @@ internal static class KnownDefinitionRegistry
         || kind == DefinitionKind.FileProviderProfile
         || kind == DefinitionKind.AiProviderProfile
         || kind == DefinitionKind.McpServerProfile
+        || kind == DefinitionKind.BrowserProfile
         || kind == DefinitionKind.DatabaseConnection
         || kind == DefinitionKind.QuickTerminalSettings;
 
@@ -249,6 +250,30 @@ internal static class KnownDefinitionRegistry
                 return InvalidEnum(key);
             }
 
+            if (definition is BrowserProfileDefinition browserProfile
+                && (!Enum.IsDefined(browserProfile.Persistence)
+                    || !Enum.IsDefined(browserProfile.Privacy.WebContent)
+                    || !Enum.IsDefined(browserProfile.Privacy.Permissions)
+                    || !Enum.IsDefined(browserProfile.Privacy.History)
+                    || !Enum.IsDefined(browserProfile.Privacy.Downloads)
+                    || browserProfile.Authentication is { } authentication
+                    && !Enum.IsDefined(authentication.Scheme)))
+            {
+                return InvalidEnum(key);
+            }
+
+            if (definition is BrowserProfileDefinition builtInBrowser
+                && builtInBrowser.Id == BuiltInBrowserProfiles.Default.Id
+                && (!builtInBrowser.IsEnabled
+                    || builtInBrowser.Persistence
+                        != BrowserProfilePersistence.DurableMetadata
+                    || builtInBrowser.Authentication is not null))
+            {
+                return Invalid(
+                    key,
+                    "The built-in default browser profile has an invalid policy.");
+            }
+
             if (definition is ScreenDefinition screen
                 && (string.IsNullOrWhiteSpace(screen.LayoutId.Value)
                     || screen.Panels.Any(panel =>
@@ -334,6 +359,8 @@ internal static class KnownDefinitionRegistry
                 AiProviderProfile.CurrentSchemaVersion,
             var value when value == DefinitionKind.McpServerProfile =>
                 McpServerProfile.CurrentSchemaVersion,
+            var value when value == DefinitionKind.BrowserProfile =>
+                BrowserProfileDefinition.CurrentSchemaVersion,
             var value when value == DefinitionKind.DatabaseConnection =>
                 DatabaseConnectionProfile.CurrentSchemaVersion,
             var value when value == DefinitionKind.QuickTerminalSettings =>
@@ -357,6 +384,8 @@ internal static class KnownDefinitionRegistry
                 type == typeof(AiProviderProfile),
             var value when value == DefinitionKind.McpServerProfile =>
                 type == typeof(McpServerProfile),
+            var value when value == DefinitionKind.BrowserProfile =>
+                type == typeof(BrowserProfileDefinition),
             var value when value == DefinitionKind.DatabaseConnection =>
                 type == typeof(DatabaseConnectionProfile),
             var value when value == DefinitionKind.QuickTerminalSettings =>

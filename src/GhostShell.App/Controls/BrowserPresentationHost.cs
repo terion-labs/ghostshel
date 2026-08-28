@@ -110,6 +110,7 @@ public sealed class BrowserPresentationHost : ContentControl
     private bool _canGoBack;
     private bool _canGoForward;
     private bool _showFallback = true;
+    private BrowserAddress _presentedAddress = BrowserAddress.Blank;
 
     public BrowserPresentationHost()
     {
@@ -228,6 +229,34 @@ public sealed class BrowserPresentationHost : ContentControl
 
         SetOperationMessage(
             "Developer tools are unavailable until the browser is ready.");
+    }
+
+    internal void OpenInSystemBrowser()
+    {
+        if (!TryGetSystemBrowserAddress(_presentedAddress, out var address))
+        {
+            SetOperationMessage(
+                "Navigate this panel to an HTTP or HTTPS page before opening it in the system browser.");
+            return;
+        }
+
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = address.AbsoluteUri,
+                UseShellExecute = true,
+            });
+            if (process is null)
+            {
+                SetOperationMessage("The system browser could not be opened.");
+            }
+        }
+        catch (Exception exception) when (exception is InvalidOperationException
+            or System.ComponentModel.Win32Exception)
+        {
+            SetOperationMessage("The system browser could not be opened.");
+        }
     }
 
     public async ValueTask NavigateAddressAsync(
@@ -587,6 +616,7 @@ public sealed class BrowserPresentationHost : ContentControl
 
     private void ApplyBrowserState(BrowserSessionState state)
     {
+        _presentedAddress = state.Address;
         AddressText = state.Address == BrowserAddress.Blank
             ? string.Empty
             : state.Address.ToString();
@@ -689,6 +719,26 @@ public sealed class BrowserPresentationHost : ContentControl
         }
 
         address = BrowserAddress.Blank;
+        return false;
+    }
+
+    internal static bool TryGetSystemBrowserAddress(
+        BrowserAddress? presentedAddress,
+        out Uri address)
+    {
+        if (presentedAddress is { IsLocalFile: false, Document: null }
+            && (presentedAddress.Value.Scheme.Equals(
+                    Uri.UriSchemeHttp,
+                    StringComparison.OrdinalIgnoreCase)
+                || presentedAddress.Value.Scheme.Equals(
+                    Uri.UriSchemeHttps,
+                    StringComparison.OrdinalIgnoreCase)))
+        {
+            address = presentedAddress.Value;
+            return true;
+        }
+
+        address = null!;
         return false;
     }
 

@@ -525,11 +525,29 @@
             <StackPanel Spacing="{DynamicResource ShellSpaceLg}" IsVisible="{Binding IsBrowserSettingsVisible}">
               <components:SettingsPageHeader
                   Heading="Browser"
-                  Description="Choose how tabs share cookies and site data for this app session, and clear legacy stored profiles deliberately." />
-              <controls:SettingsGroup Heading="Profiles" ControlWidth="280">
+                  Description="Manage named browser policies. Cookies, local storage, IndexedDB, cache, and navigation state stay in memory and disappear after the final owning browser closes. Permission requests and downloads are blocked." />
+              <controls:SettingsGroup Heading="Defaults" ControlWidth="300">
+                <controls:SettingRow
+                    Label="Default named profile"
+                    Description="Applies to new browser panels. A disabled or missing selection fails visibly and is never replaced with another profile.">
+                  <ComboBox
+                      Width="280"
+                      ItemsSource="{Binding BrowserProfileSettingsEditor.Profiles}"
+                      SelectedItem="{Binding BrowserProfileSettingsEditor.SelectedDefaultProfile, Mode=TwoWay}"
+                      AutomationProperties.Name="Default named browser profile">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate>
+                        <StackPanel>
+                          <TextBlock Text="{Binding Name}" />
+                          <TextBlock Classes="Muted" Text="{Binding PersistenceLabel}" />
+                        </StackPanel>
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                </controls:SettingRow>
                 <controls:SettingRow
                     Label="Default profile sharing"
-                    Description="Applies to new browser tabs. A workspace can override it in that workspace's settings."
+                    Description="Preserves legacy shared/per-workspace in-memory isolation when the built-in Default browser profile is selected."
                     IsLast="True">
                   <ComboBox
                       Width="260"
@@ -546,25 +564,147 @@
               </controls:SettingsGroup>
               <controls:SurfaceCard Padding="{DynamicResource ShellCardPaddingCompact}">
                 <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
-                  <TextBlock Classes="SectionHeading" Text="Stored browser data" />
-                  <TextBlock Classes="Muted" Text="{Binding BrowserProfileSettingsEditor.UsageText}" TextWrapping="Wrap" />
+                  <TextBlock Classes="SectionHeading" Text="Named profiles" />
                   <TextBlock
                       Classes="Muted"
-                      Text="Cookies, cache, local storage, IndexedDB, and service-worker data are removed together. Close tabs using a profile before clearing it."
+                      Text="Durable settings never means durable web content. Every Chromium request context is memory-only and has no cache path."
+                      TextWrapping="Wrap" />
+                  <ListBox
+                      ItemsSource="{Binding BrowserProfileSettingsEditor.Profiles}"
+                      SelectedItem="{Binding BrowserProfileSettingsEditor.SelectedProfile, Mode=TwoWay}"
+                      AutomationProperties.Name="Named browser profiles"
+                      MaxHeight="220">
+                    <ListBox.ItemTemplate>
+                      <DataTemplate>
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+                          <StackPanel>
+                            <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
+                            <TextBlock Classes="Muted" Text="{Binding PersistenceLabel}" />
+                          </StackPanel>
+                          <TextBlock Grid.Column="1" VerticalAlignment="Center" Classes="Muted" Text="{Binding StateLabel}" />
+                        </Grid>
+                      </DataTemplate>
+                    </ListBox.ItemTemplate>
+                  </ListBox>
+                  <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                    <TextBox
+                        Text="{Binding BrowserProfileSettingsEditor.NewProfileName, Mode=TwoWay}"
+                        PlaceholderText="Profile name"
+                        AutomationProperties.Name="New browser profile name" />
+                    <Button Grid.Column="1" Classes="SecondaryButton"
+                        Command="{Binding BrowserProfileSettingsEditor.CreateDurableCommand}"
+                        Content="Add shared profile"
+                        AutomationProperties.Name="Add durable-settings browser profile" />
+                    <Button Grid.Column="2" Classes="SecondaryButton"
+                        Command="{Binding BrowserProfileSettingsEditor.CreatePrivateCommand}"
+                        Content="Add private profile"
+                        AutomationProperties.Name="Add private-session browser profile" />
+                  </Grid>
+                  <WrapPanel Orientation="Horizontal" ItemSpacing="{DynamicResource ShellSpaceSm}" LineSpacing="{DynamicResource ShellSpaceSm}">
+                    <Button Classes="SecondaryButton"
+                        Command="{Binding BrowserProfileSettingsEditor.ToggleEnabledCommand}"
+                        Content="Enable or disable selected"
+                        AutomationProperties.Name="Enable or disable selected browser profile" />
+                    <Button Classes="DestructiveButton"
+                        Command="{Binding BrowserProfileSettingsEditor.DeleteCommand}"
+                        Content="Delete selected metadata"
+                        AutomationProperties.Name="Delete selected browser profile metadata" />
+                  </WrapPanel>
+                </StackPanel>
+              </controls:SurfaceCard>
+              <controls:SurfaceCard Padding="{DynamicResource ShellCardPaddingCompact}">
+                <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+                  <TextBlock Classes="SectionHeading" Text="HTTP authentication" />
+                  <TextBlock
+                      Classes="Muted"
+                      Text="Optionally answer one exact Basic or Digest challenge for the selected custom profile. The password is stored only in the operating-system vault. Proxy authentication is never answered."
+                      TextWrapping="Wrap" />
+                  <Grid ColumnDefinitions="2*,Auto,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                    <controls:LabeledField Label="Host">
+                      <TextBox
+                          Text="{Binding BrowserProfileSettingsEditor.AuthenticationHost, Mode=TwoWay}"
+                          PlaceholderText="internal.example.com"
+                          AutomationProperties.Name="Browser HTTP authentication host" />
+                    </controls:LabeledField>
+                    <controls:LabeledField Grid.Column="1" Label="Port (optional)">
+                      <TextBox
+                          Width="110"
+                          Text="{Binding BrowserProfileSettingsEditor.AuthenticationPort, Mode=TwoWay}"
+                          PlaceholderText="443"
+                          AutomationProperties.Name="Browser HTTP authentication port" />
+                    </controls:LabeledField>
+                    <controls:LabeledField Grid.Column="2" Label="Scheme">
+                      <ComboBox
+                          ItemsSource="{Binding BrowserProfileSettingsEditor.AuthenticationSchemes}"
+                          SelectedItem="{Binding BrowserProfileSettingsEditor.AuthenticationScheme, Mode=TwoWay}"
+                          AutomationProperties.Name="Browser HTTP authentication scheme" />
+                    </controls:LabeledField>
+                  </Grid>
+                  <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                    <controls:LabeledField Label="Realm (optional)">
+                      <TextBox
+                          Text="{Binding BrowserProfileSettingsEditor.AuthenticationRealm, Mode=TwoWay}"
+                          PlaceholderText="Operations"
+                          AutomationProperties.Name="Browser HTTP authentication realm" />
+                    </controls:LabeledField>
+                    <controls:LabeledField Grid.Column="1" Label="Username">
+                      <TextBox
+                          Text="{Binding BrowserProfileSettingsEditor.AuthenticationUsername, Mode=TwoWay}"
+                          PlaceholderText="operator"
+                          AutomationProperties.Name="Browser HTTP authentication username" />
+                    </controls:LabeledField>
+                  </Grid>
+                  <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                    <TextBox
+                        PasswordChar="●"
+                        Text="{Binding BrowserProfileSettingsEditor.AuthenticationPassword, Mode=TwoWay}"
+                        PlaceholderText="Required when attaching; leave empty to keep the stored password"
+                        AutomationProperties.Name="Browser HTTP authentication password" />
+                    <Button
+                        Grid.Column="1"
+                        Classes="PrimaryButton"
+                        Command="{Binding BrowserProfileSettingsEditor.SaveAuthenticationCommand}"
+                        Content="Save authentication"
+                        AutomationProperties.Name="Save selected browser profile HTTP authentication" />
+                    <Button
+                        Grid.Column="2"
+                        Classes="SecondaryButton"
+                        Command="{Binding BrowserProfileSettingsEditor.DetachAuthenticationCommand}"
+                        Content="Detach"
+                        AutomationProperties.Name="Detach selected browser profile HTTP authentication" />
+                  </Grid>
+                  <TextBlock
+                      Classes="Muted"
+                      Text="The built-in profile cannot store authentication. Existing browser panels keep their pinned profile revision until they close."
+                      TextWrapping="Wrap" />
+                </StackPanel>
+              </controls:SurfaceCard>
+              <controls:SurfaceCard Padding="{DynamicResource ShellCardPaddingCompact}">
+                <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+                  <TextBlock Classes="SectionHeading" Text="Exact in-memory data control" />
+                  <TextBlock Classes="Muted" Text="{Binding BrowserProfileSettingsEditor.StateText}" TextWrapping="Wrap" />
+                  <TextBlock
+                      Classes="Muted"
+                      Text="Cookies and HTTP authentication can be cleared independently for the selected profile revision. A full context reset requires every browser using that exact profile to be closed. Downloads are blocked, and cleanup never touches existing user files."
                       TextWrapping="Wrap" />
                   <WrapPanel Orientation="Horizontal" ItemSpacing="{DynamicResource ShellSpaceSm}" LineSpacing="{DynamicResource ShellSpaceSm}">
                     <Button Classes="SecondaryButton"
-                        Command="{Binding BrowserProfileSettingsEditor.ClearGlobalCommand}"
-                        Content="Clear shared profile"
-                        AutomationProperties.Name="Clear shared browser profile" />
+                        Command="{Binding BrowserProfileSettingsEditor.ClearCookiesCommand}"
+                        Content="Clear cookies"
+                        AutomationProperties.Name="Clear cookies from selected browser profile revision" />
                     <Button Classes="SecondaryButton"
-                        Command="{Binding BrowserProfileSettingsEditor.ClearWorkspacesCommand}"
-                        Content="Clear workspace profiles"
-                        AutomationProperties.Name="Clear workspace browser profiles" />
+                        Command="{Binding BrowserProfileSettingsEditor.ClearAuthenticationCommand}"
+                        Content="Clear HTTP authentication"
+                        AutomationProperties.Name="Clear HTTP authentication from selected browser profile revision" />
                     <Button Classes="DestructiveButton"
-                        Command="{Binding BrowserProfileSettingsEditor.ClearAllCommand}"
-                        Content="Clear all browser data"
-                        AutomationProperties.Name="Clear all browser profile data" />
+                        Command="{Binding BrowserProfileSettingsEditor.ResetEphemeralContentCommand}"
+                        Content="Reset full context"
+                        AutomationProperties.Name="Reset all ephemeral web content for selected browser profile revision" />
+                    <Button Classes="SecondaryButton"
+                        Command="{Binding BrowserProfileSettingsEditor.CancelClearCommand}"
+                        Content="Cancel"
+                        IsVisible="{Binding BrowserProfileSettingsEditor.IsClearing}"
+                        AutomationProperties.Name="Cancel browser profile clearing" />
                   </WrapPanel>
                   <controls:Callout
                       Tone="Notice"

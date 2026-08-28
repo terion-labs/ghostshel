@@ -75,6 +75,65 @@ public sealed class DefinitionBundleTests
     }
 
     [Fact]
+    public async Task BrowserProfileBundleExcludesCredentialBindingsAndImportsDisabled()
+    {
+        await using var temporary = TemporaryDatabase.Create();
+        var reference = new SecretRef("vault-browser-password");
+        var profile = new BrowserProfileDefinition(
+            new BrowserProfileId("browser.production"),
+            BrowserProfileDefinition.CurrentSchemaVersion,
+            "Production browser",
+            BrowserProfilePersistence.DurableMetadata,
+            BrowserProfilePrivacyPolicy.Strict,
+            new BrowserHttpAuthentication(
+                "internal.example",
+                8443,
+                "Production",
+                BrowserAuthenticationScheme.Basic,
+                "operator",
+                reference));
+        var repository = new SqliteDefinitionRepository<BrowserProfileDefinition>(
+            temporary.Database,
+            TimeProvider.System);
+        Assert.True((await repository.SaveAsync(
+            profile,
+            expectedRevision: null,
+            CancellationToken.None)).IsSuccess);
+        var bundles = CreateBundleStore(temporary);
+
+        var exported = await bundles.ExportAsync(CancellationToken.None);
+
+        Assert.True(exported.IsSuccess, exported.Error?.Message);
+        var document = Assert.Single(exported.Value!.Definitions);
+        Assert.Equal(DefinitionKind.BrowserProfile, document.Kind);
+        Assert.DoesNotContain(reference.Value, document.PayloadJson, StringComparison.Ordinal);
+        Assert.Contains("\"authentication\":null", document.PayloadJson, StringComparison.Ordinal);
+
+        await using var importedTemporary = TemporaryDatabase.Create();
+        var importedBundles = CreateBundleStore(importedTemporary);
+        var preflight = await importedBundles.PreflightImportAsync(
+            Bundle(document),
+            DefinitionImportMode.FailOnConflict,
+            CancellationToken.None);
+        Assert.True(preflight.IsSuccess, preflight.Error?.Message);
+        Assert.True(preflight.Value!.CanCommit);
+        Assert.Contains(
+            preflight.Value.Issues,
+            issue => issue.Code == DefinitionImportIssueCode.ImportedBrowserProfileDisabled
+                && !issue.IsBlocking);
+        Assert.True((await importedBundles.CommitImportAsync(
+            preflight.Value,
+            CancellationToken.None)).IsSuccess);
+        var importedRepository = new SqliteDefinitionRepository<BrowserProfileDefinition>(
+            importedTemporary.Database,
+            TimeProvider.System);
+        var loaded = await importedRepository.GetAsync(profile.Key, CancellationToken.None);
+        Assert.True(loaded.IsSuccess, loaded.Error?.Message);
+        Assert.False(loaded.Value!.Value.IsEnabled);
+        Assert.Null(loaded.Value.Value.Authentication);
+    }
+
+    [Fact]
     public async Task McpProfileImportsExportsAndKeepsVaultReferencesOutOfTheDefinitionGraph()
     {
         await using var temporary = TemporaryDatabase.Create();

@@ -141,11 +141,10 @@ public static class DesktopComposition
         services.AddSingleton<SqliteBrowserProfilePreferences>();
         services.AddSingleton<IBrowserProfilePreferences>(provider =>
             provider.GetRequiredService<SqliteBrowserProfilePreferences>());
-        services.AddSingleton(_ => new CefBrowserProfileStore(Path.Combine(
-            GhostShellDataPaths.CreateDefault().DataDirectory,
-            "browser",
-            "cef",
-            "profiles")));
+        services.AddSingleton<IBrowserProfileAuthenticationResolver,
+            BrowserProfileAuthenticationResolver>();
+        services.AddSingleton(provider => new CefBrowserProfileStore(
+            provider.GetRequiredService<IBrowserProfileAuthenticationResolver>()));
         services.AddSingleton<IBrowserProfileDataControl>(provider =>
             provider.GetRequiredService<CefBrowserProfileStore>());
         services.AddSingleton(provider => new PreviewContentCache(

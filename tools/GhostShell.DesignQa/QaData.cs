@@ -469,6 +469,22 @@ problem.
         [Stored(QuickTerminalSettings.Default)])
     {
         DatabaseConnections = DatabaseConnections,
+        BrowserProfiles =
+        [
+            Stored(BuiltInBrowserProfiles.Default),
+            Stored(new BrowserProfileDefinition(
+                new BrowserProfileId("qa.browser.shared"),
+                BrowserProfileDefinition.CurrentSchemaVersion,
+                "Operations",
+                BrowserProfilePersistence.DurableMetadata,
+                BrowserProfilePrivacyPolicy.Strict)),
+            Stored(new BrowserProfileDefinition(
+                new BrowserProfileId("qa.browser.private"),
+                BrowserProfileDefinition.CurrentSchemaVersion,
+                "Private sign-in",
+                BrowserProfilePersistence.PrivateSession,
+                BrowserProfilePrivacyPolicy.Strict)),
+        ],
     };
 }
 

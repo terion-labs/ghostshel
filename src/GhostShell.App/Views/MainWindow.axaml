@@ -255,6 +255,7 @@
           CloseRequested="OnCloseRuntimePanelClick"
           ConnectionSelected="OnPanelConnectionSelected"
           DeveloperToolsRequested="OnBrowserDeveloperToolsClick"
+          OpenInSystemBrowserRequested="OnBrowserOpenInSystemBrowserClick"
           ForwardRequested="OnBrowserForwardClick"
           GotFocus="OnRuntimePanelGotFocus"
           NewConnectionRequested="OnPanelNewConnectionRequested"

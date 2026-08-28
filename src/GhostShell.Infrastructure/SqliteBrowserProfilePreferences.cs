@@ -1,4 +1,5 @@
 using GhostShell.Application;
+using GhostShell.Core;
 using Microsoft.Data.Sqlite;
 
 namespace GhostShell.Infrastructure;
@@ -31,18 +32,29 @@ public sealed class SqliteBrowserProfilePreferences : IBrowserProfilePreferences
                 .ConfigureAwait(false);
             await using var command = connection.CreateCommand();
             command.CommandText = """
-                SELECT sharing
+                SELECT sharing, default_profile_id
                 FROM browser_profile_preference
                 WHERE singleton_id = 1;
                 """;
-            var value = await command.ExecuteScalarAsync(cancellationToken)
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken)
                 .ConfigureAwait(false);
-            _current = value switch
+            if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                0L => new BrowserProfileSettings(BrowserProfileSharing.Shared),
-                1L => new BrowserProfileSettings(BrowserProfileSharing.PerWorkspace),
-                _ => BrowserProfileSettings.Default,
+                _current = BrowserProfileSettings.Default;
+                return;
+            }
+
+            var sharing = reader.GetInt64(0) switch
+            {
+                0L => BrowserProfileSharing.Shared,
+                1L => BrowserProfileSharing.PerWorkspace,
+                _ => throw new InvalidOperationException(
+                    "The browser profile sharing preference is invalid."),
             };
+            var defaultProfileId = reader.IsDBNull(1)
+                ? (BrowserProfileId?)null
+                : new BrowserProfileId(reader.GetString(1));
+            _current = new BrowserProfileSettings(sharing, defaultProfileId);
         }
         catch (Exception exception) when (IsStorageFailure(exception))
         {
@@ -65,12 +77,18 @@ public sealed class SqliteBrowserProfilePreferences : IBrowserProfilePreferences
             await using var command = connection.CreateCommand();
             command.CommandText = """
                 UPDATE browser_profile_preference
-                SET sharing = $sharing
+                SET sharing = $sharing,
+                    default_profile_id = $defaultProfileId
                 WHERE singleton_id = 1;
                 """;
             command.Parameters.AddWithValue(
                 "$sharing",
                 settings.Sharing == BrowserProfileSharing.PerWorkspace ? 1 : 0);
+            command.Parameters.AddWithValue(
+                "$defaultProfileId",
+                settings.DefaultProfileId is { } profileId
+                    ? profileId.Value
+                    : DBNull.Value);
             await command.ExecuteNonQueryAsync(cancellationToken)
                 .ConfigureAwait(false);
         }

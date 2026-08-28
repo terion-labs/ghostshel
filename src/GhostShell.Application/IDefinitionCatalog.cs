@@ -111,6 +111,15 @@ public interface IDefinitionCatalog
         long? expectedRevision,
         CancellationToken cancellationToken);
 
+    ValueTask<DefinitionStoreResult<StoredDefinition<BrowserProfileDefinition>>> SaveBrowserProfileAsync(
+        BrowserProfileDefinition definition,
+        long? expectedRevision,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(
+            DefinitionStoreResult<StoredDefinition<BrowserProfileDefinition>>.Failure(new(
+                DefinitionStoreErrorCode.UnsupportedKind,
+                "This catalog cannot store browser profiles.")));
+
     ValueTask<DefinitionStoreResult<StoredDefinition<QuickTerminalSettings>>> SaveQuickTerminalSettingsAsync(
         QuickTerminalSettings definition,
         long? expectedRevision,

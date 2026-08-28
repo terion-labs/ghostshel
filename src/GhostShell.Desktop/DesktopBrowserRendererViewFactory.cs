@@ -41,9 +41,17 @@ internal sealed class DesktopBrowserRendererViewFactory(
             BrowserProfileKey.Global,
             cancellationToken);
 
-    public async ValueTask<BrowserRendererView> CreateAsync(
+    public ValueTask<BrowserRendererView> CreateAsync(
         ConnectionProfile connection,
         BrowserProfileKey profile,
+        CancellationToken cancellationToken) => CreateAsync(
+            connection,
+            BrowserProfileBinding.Legacy(profile),
+            cancellationToken);
+
+    public async ValueTask<BrowserRendererView> CreateAsync(
+        ConnectionProfile connection,
+        BrowserProfileBinding profile,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(connection);
@@ -133,11 +141,14 @@ internal sealed class DesktopBrowserRendererViewFactory(
     }
 
     private async ValueTask<RemoteRoute> AcquireRemoteRouteAsync(
-        BrowserProfileKey profile,
+        BrowserProfileBinding profile,
         ConnectionProfile connection,
         CancellationToken cancellationToken)
     {
-        var key = new RemoteRouteKey(profile, connection.Id);
+        var key = new RemoteRouteKey(
+            profile.Selection,
+            profile.Revision,
+            connection.Id);
         lock (_routeGate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -219,7 +230,8 @@ internal sealed class DesktopBrowserRendererViewFactory(
     }
 
     private readonly record struct RemoteRouteKey(
-        BrowserProfileKey Profile,
+        BrowserProfileSelection Profile,
+        long Revision,
         ConnectionId ConnectionId);
 
     private sealed class RemoteRoute(

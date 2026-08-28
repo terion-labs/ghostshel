@@ -30,6 +30,12 @@ public interface IBrowserRendererViewFactory
         BrowserProfileKey profile,
         CancellationToken cancellationToken) =>
         CreateAsync(connection, cancellationToken);
+
+    ValueTask<BrowserRendererView> CreateAsync(
+        ConnectionProfile connection,
+        BrowserProfileBinding profile,
+        CancellationToken cancellationToken) =>
+        CreateAsync(connection, profile.Selection.Partition, cancellationToken);
 }
 
 /// <summary>

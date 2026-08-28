@@ -86,6 +86,10 @@ internal static class HistoricalDatabaseFixture
                 "git-panel-preference",
                 "AE0074C7A043DD94596610E86285AAA5A19B927C96ADA184AD8B9342F6D95B64",
                 IsDestructive: false),
+            [17] = new(
+                "named-browser-profile-preference",
+                "AE3205BDBF925D000BB9041FE7EE4415D0ED5D5399DA5AEEDCC173D7423856B1",
+                IsDestructive: false),
         };
 
     public static readonly DateTimeOffset ReferenceTime =
@@ -140,6 +144,8 @@ internal static class HistoricalDatabaseFixture
                 5 => $"CREATE INDEX {schemaObjectName} ON audit_events(sequence);",
                 13 => "ALTER TABLE agent_session_checkpoints "
                       + "ADD COLUMN workspace_id TEXT;",
+                16 => "ALTER TABLE browser_profile_preference "
+                      + "ADD COLUMN default_profile_id TEXT;",
                 // Migration 9 adds no schema object of its own — it rewrites a
                 // row — so there is no name to collide with. A trigger that
                 // refuses the write is the same obstruction by other means.
@@ -167,6 +173,7 @@ internal static class HistoricalDatabaseFixture
             {
                 5 => $"DROP INDEX {schemaObjectName};",
                 13 => "ALTER TABLE agent_session_checkpoints DROP COLUMN workspace_id;",
+                16 => "ALTER TABLE browser_profile_preference DROP COLUMN default_profile_id;",
                 8 => $"DROP TRIGGER {schemaObjectName};",
                 _ => $"DROP TABLE {schemaObjectName};",
             });
@@ -331,6 +338,7 @@ internal static class HistoricalDatabaseFixture
         {
             throw new InvalidOperationException(
                 $"Migration {migration.Version} no longer matches its released fixture receipt. "
+                + $"Actual checksum: {checksum}. "
                 + "Add a forward migration instead of editing a shipped schema.");
         }
 
@@ -355,6 +363,7 @@ internal static class HistoricalDatabaseFixture
             13 => "agent_session_checkpoints_workspace_updated_idx",
             14 => "browser_profile_preference",
             15 => "git_panel_preference",
+            16 => "default_profile_id",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(currentVersion),
                 currentVersion,

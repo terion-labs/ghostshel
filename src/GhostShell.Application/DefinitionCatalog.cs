@@ -42,6 +42,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog, IDisposable
     private readonly IDefinitionRepository<McpServerProfile> _mcpServerProfiles;
     private readonly IDefinitionRepository<DatabaseConnectionProfile> _databaseConnections;
     private readonly IDefinitionRepository<QuickTerminalSettings> _quickTerminalSettings;
+    private readonly IDefinitionRepository<BrowserProfileDefinition> _browserProfiles;
     private readonly ILayoutGraphStore? _layoutGraph;
     private readonly ThemePreference _defaultTheme;
     private readonly SemaphoreSlim _mutationGate = new(1, 1);
@@ -62,7 +63,8 @@ public sealed class DefinitionCatalog : IDefinitionCatalog, IDisposable
         IDefinitionRepository<QuickTerminalSettings> quickTerminalSettings,
         ILayoutGraphStore? layoutGraph = null,
         IDefinitionRepository<DatabaseConnectionProfile>? databaseConnections = null,
-        ThemePreference? defaultTheme = null)
+        ThemePreference? defaultTheme = null,
+        IDefinitionRepository<BrowserProfileDefinition>? browserProfiles = null)
     {
         _layoutGraph = layoutGraph;
         _connections = connections ?? throw new ArgumentNullException(nameof(connections));
@@ -83,6 +85,8 @@ public sealed class DefinitionCatalog : IDefinitionCatalog, IDisposable
             ?? throw new ArgumentNullException(nameof(quickTerminalSettings));
         _databaseConnections = databaseConnections
             ?? new EphemeralRepository<DatabaseConnectionProfile>();
+        _browserProfiles = browserProfiles
+            ?? new EphemeralRepository<BrowserProfileDefinition>();
         _defaultTheme = defaultTheme ?? ThemePreference.Default;
     }
 
@@ -593,6 +597,17 @@ public sealed class DefinitionCatalog : IDefinitionCatalog, IDisposable
             ValidateMcpServerProfile,
             cancellationToken);
 
+    public ValueTask<DefinitionStoreResult<StoredDefinition<BrowserProfileDefinition>>> SaveBrowserProfileAsync(
+        BrowserProfileDefinition definition,
+        long? expectedRevision,
+        CancellationToken cancellationToken) =>
+        SaveValidatedAsync(
+            definition,
+            expectedRevision,
+            _browserProfiles,
+            ValidateBrowserProfile,
+            cancellationToken);
+
     public ValueTask<DefinitionStoreResult<StoredDefinition<QuickTerminalSettings>>> SaveQuickTerminalSettingsAsync(
         QuickTerminalSettings definition,
         long? expectedRevision,
@@ -682,6 +697,17 @@ public sealed class DefinitionCatalog : IDefinitionCatalog, IDisposable
                         .ConfigureAwait(false),
                 var kind when kind == DatabaseConnectionProfile.Kind =>
                     await _databaseConnections.DeleteAsync(key, expectedRevision, cancellationToken)
+                        .ConfigureAwait(false),
+                var kind when kind == BrowserProfileDefinition.Kind
+                    && string.Equals(
+                        key.Value,
+                        BuiltInBrowserProfiles.DefaultProfileId,
+                        StringComparison.Ordinal) =>
+                    DefinitionStoreResult<Unit>.Failure(new DefinitionStoreError(
+                        DefinitionStoreErrorCode.DependencyConflict,
+                        "The built-in default browser profile cannot be deleted.")),
+                var kind when kind == BrowserProfileDefinition.Kind =>
+                    await _browserProfiles.DeleteAsync(key, expectedRevision, cancellationToken)
                         .ConfigureAwait(false),
                 _ => DefinitionStoreResult<Unit>.Failure(new DefinitionStoreError(
                     DefinitionStoreErrorCode.UnsupportedKind,
@@ -1038,6 +1064,23 @@ public sealed class DefinitionCatalog : IDefinitionCatalog, IDisposable
     private DefinitionStoreError? ValidateMcpServerProfile(McpServerProfile definition) =>
         ValidateName(Snapshot.McpServerProfiles, definition);
 
+    private DefinitionStoreError? ValidateBrowserProfile(BrowserProfileDefinition definition)
+    {
+        var duplicate = ValidateName(Snapshot.BrowserProfiles, definition);
+        if (duplicate is not null)
+        {
+            return duplicate;
+        }
+
+        return definition.Id == BuiltInBrowserProfiles.Default.Id
+            && (!definition.IsEnabled
+                || definition.Persistence != BrowserProfilePersistence.DurableMetadata
+                || definition.Authentication is not null)
+            ? Invalid(
+                "The built-in default browser profile must remain enabled, use durable metadata, and have no credential binding.")
+            : null;
+    }
+
     private DefinitionStoreError? ValidateDatabaseConnection(
         DatabaseConnectionProfile definition)
     {
@@ -1086,6 +1129,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog, IDisposable
         var mcpServersTask = _mcpServerProfiles.ListAsync(cancellationToken).AsTask();
         var quickTerminalTask = _quickTerminalSettings.ListAsync(cancellationToken).AsTask();
         var databaseConnectionsTask = _databaseConnections.ListAsync(cancellationToken).AsTask();
+        var browserProfilesTask = _browserProfiles.ListAsync(cancellationToken).AsTask();
         await Task.WhenAll(
                 connectionsTask,
                 layoutsTask,
@@ -1098,7 +1142,8 @@ public sealed class DefinitionCatalog : IDefinitionCatalog, IDisposable
                 aiProvidersTask,
                 mcpServersTask,
                 quickTerminalTask,
-                databaseConnectionsTask)
+                databaseConnectionsTask,
+                browserProfilesTask)
             .ConfigureAwait(false);
 
         var connections = await connectionsTask.ConfigureAwait(false);
@@ -1113,6 +1158,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog, IDisposable
         var mcpServers = await mcpServersTask.ConfigureAwait(false);
         var quickTerminal = await quickTerminalTask.ConfigureAwait(false);
         var databaseConnections = await databaseConnectionsTask.ConfigureAwait(false);
+        var browserProfiles = await browserProfilesTask.ConfigureAwait(false);
 
         var errors = new DefinitionStoreError?[]
         {
@@ -1128,6 +1174,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog, IDisposable
             mcpServers.Error,
             quickTerminal.Error,
             databaseConnections.Error,
+            browserProfiles.Error,
         };
         var error = errors.FirstOrDefault(item => item is not null);
         if (error is not null)
@@ -1149,6 +1196,7 @@ public sealed class DefinitionCatalog : IDefinitionCatalog, IDisposable
             AiProviderProfiles = aiProviders.Value!,
             McpServerProfiles = mcpServers.Value!,
             DatabaseConnections = databaseConnections.Value!,
+            BrowserProfiles = browserProfiles.Value!,
         };
         Volatile.Write(ref _snapshot, snapshot);
         return DefinitionStoreResult<DefinitionCatalogSnapshot>.Success(snapshot);
@@ -1157,6 +1205,20 @@ public sealed class DefinitionCatalog : IDefinitionCatalog, IDisposable
     private async ValueTask<DefinitionStoreResult<Unit>> SeedDefaultsAsync(
         CancellationToken cancellationToken)
     {
+        if (Snapshot.BrowserProfiles.All(item =>
+                item.Value.Id != BuiltInBrowserProfiles.Default.Id))
+        {
+            var saved = await _browserProfiles.SaveAsync(
+                    BuiltInBrowserProfiles.Default,
+                    null,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!saved.IsSuccess)
+            {
+                return DefinitionStoreResult<Unit>.Failure(saved.Error!);
+            }
+        }
+
         foreach (var keymap in BuiltInKeymaps.All)
         {
             var existing = Snapshot.Keymaps.SingleOrDefault(item => item.Value.Id == keymap.Id);

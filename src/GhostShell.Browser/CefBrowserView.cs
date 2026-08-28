@@ -22,6 +22,9 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
 
     private readonly CefWebView _webView;
     private readonly CefBrowserContentPolicy _contentPolicy;
+    private readonly BrowserProfileBinding? _profile;
+    private readonly IBrowserProfileAuthenticationResolver? _authenticationResolver;
+    private readonly CancellationTokenSource _lifetime = new();
     private readonly Grid _view;
     private readonly CefAgentCursorOverlay _agentCursorOverlay;
     private readonly TaskCompletionSource<bool> _rendererReady = new(
@@ -45,9 +48,13 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
 
     public CefBrowserView(
         CefRequestContext? requestContext = null,
-        CefBrowserContentPolicy contentPolicy = CefBrowserContentPolicy.Ordinary)
+        CefBrowserContentPolicy contentPolicy = CefBrowserContentPolicy.Ordinary,
+        BrowserProfileBinding? profile = null,
+        IBrowserProfileAuthenticationResolver? authenticationResolver = null)
     {
         _contentPolicy = contentPolicy;
+        _profile = profile;
+        _authenticationResolver = authenticationResolver;
         _webView = new CefWebView
         {
             Url = BrowserAddress.Blank.Value.AbsoluteUri,
@@ -381,6 +388,7 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         }
 
         _disposed = true;
+        _lifetime.Cancel();
         _queuedAddress = null;
         _activeNavigation = null;
         Volatile.Write(ref _resourceRequestPolicy, null);
@@ -535,7 +543,7 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         browser.JsDialog += BlockJavaScriptDialog;
         browser.FileDialog += BlockFileDialog;
         browser.DownloadStarting += BlockDownload;
-        browser.AuthRequest += BlockAuthentication;
+        browser.AuthRequest += OnAuthenticationRequested;
         browser.PermissionRequest += BlockPermission;
         browser.MediaAccessRequest += BlockMediaAccess;
         browser.CertError += BlockCertificateError;
@@ -556,7 +564,7 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         browser.JsDialog -= BlockJavaScriptDialog;
         browser.FileDialog -= BlockFileDialog;
         browser.DownloadStarting -= BlockDownload;
-        browser.AuthRequest -= BlockAuthentication;
+        browser.AuthRequest -= OnAuthenticationRequested;
         browser.PermissionRequest -= BlockPermission;
         browser.MediaAccessRequest -= BlockMediaAccess;
         browser.CertError -= BlockCertificateError;
@@ -1429,9 +1437,48 @@ internal sealed class CefBrowserView : IEmbeddedBrowserView
         object? sender,
         DownloadStartingEventArgs args) => args.Cancel();
 
-    private static void BlockAuthentication(
+    private async void OnAuthenticationRequested(
         object? sender,
-        AuthRequestEventArgs args) => args.Cancel();
+        AuthRequestEventArgs args)
+    {
+        _ = sender;
+        if (_disposed
+            || _profile is null
+            || _authenticationResolver is null
+            || _profile.Definition.Authentication is null)
+        {
+            args.Cancel();
+            return;
+        }
+
+        try
+        {
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(
+                _lifetime.Token);
+            deadline.CancelAfter(TimeSpan.FromSeconds(15));
+            var credentials = await _authenticationResolver.ResolveAsync(
+                    _profile,
+                    new BrowserAuthenticationChallenge(
+                        args.IsProxy,
+                        args.Host,
+                        args.Port,
+                        args.Realm,
+                        args.Scheme),
+                    deadline.Token)
+                .ConfigureAwait(false);
+            if (credentials is null || _disposed)
+            {
+                args.Cancel();
+                return;
+            }
+
+            args.Continue(credentials.Username, credentials.Password);
+        }
+        catch
+        {
+            args.Cancel();
+        }
+    }
 
     private static void BlockPermission(
         object? sender,

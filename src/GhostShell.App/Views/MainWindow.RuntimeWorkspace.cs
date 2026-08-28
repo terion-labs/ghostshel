@@ -104,7 +104,10 @@ public sealed partial class MainWindow
         }
     }
 
-    public async Task RequestNewBrowserAsync()
+    public Task RequestNewBrowserAsync() =>
+        RequestNewBrowserAsync(profileId: null);
+
+    public async Task RequestNewBrowserAsync(BrowserProfileId? profileId)
     {
         if (ViewModel.HasOverlay && !await TryCloseOverlayAsync())
         {
@@ -114,7 +117,7 @@ public sealed partial class MainWindow
         if (!ViewModel.HasRuntimeWorkspace)
         {
             await OpenRuntimeWorkspaceAsync(
-                ViewModel.OpenLocalBrowserWorkspaceAsync);
+                token => ViewModel.OpenLocalBrowserWorkspaceAsync(profileId, token));
             return;
         }
 
@@ -125,7 +128,7 @@ public sealed partial class MainWindow
             return;
         }
 
-        if (await ViewModel.AddBrowserPanelAsync(_lifetime.Token))
+        if (await ViewModel.AddBrowserPanelAsync(profileId, _lifetime.Token))
         {
             FocusActivePanel();
         }
@@ -1310,6 +1313,15 @@ public sealed partial class MainWindow
         }
     }
 
+    private void OnBrowserOpenInSystemBrowserClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if (sender is BrowserPresentationHost browser)
+        {
+            browser.OpenInSystemBrowser();
+        }
+    }
+
     private async void OnBrowserReloadClick(object? sender, RoutedEventArgs e)
     {
         _ = e;
@@ -1888,7 +1900,8 @@ public sealed partial class MainWindow
     {
         _ = sender;
         _ = e;
-        if (await ViewModel.AddBrowserPanelAsync(_lifetime.Token))
+        var profileId = ViewModel.SelectedBrowserPanelProfile?.Id;
+        if (await ViewModel.AddBrowserPanelAsync(profileId, _lifetime.Token))
         {
             FocusActivePanel();
         }

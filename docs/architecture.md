@@ -500,11 +500,33 @@ Desktop browser panels use the pinned Chromium Embedded Framework runtime:
 | Windows | CPU OSR; flat runtime (release blocked on the CEF 150 sandbox bootstrap) |
 | Linux | CPU OSR; flat runtime plus qualified Chromium sandbox |
 
-Profiles partition cookies, storage, permissions, cache, and history in memory
-for the application session. Persistent CEF state is disabled until its whole
-profile can participate in the application-encryption lifecycle. OAuth and
-security-sensitive authentication flows SHOULD be opened in the system browser
-when the identity provider disallows embedded user agents.
+Profiles partition cookies, storage, cache, and navigation state in memory.
+Named `BrowserProfileDefinition` records are durable encrypted metadata, not
+Chromium profiles: even `DurableMetadata` keeps cookies, local storage,
+IndexedDB, cache, and navigation state process-memory only. Permission requests
+and downloads are blocked. CEF request contexts have no cache path and are
+destroyed at their final lease. `PrivateSession` creates one partition per
+panel; the built-in profile preserves the existing shared/per-workspace
+partition choice. Supporting durable web content requires a separate decision
+and reviewed CEF export/import boundary.
+
+Each browser panel pins its exact profile definition and catalog revision for
+its lifetime, including renderer replacement and popup ownership. Missing or
+disabled profiles fail visibly without fallback. Clear-data operations bind an
+exact profile id, partition, and revision, serialize requests, honor
+cancellation, and name supported categories. CEF currently supports exact live
+cookie and HTTP-auth clearing; whole-profile ephemeral reset requires zero
+leases. Settings does not invent a target for private-session or per-workspace
+partitions, and browser cleanup never deletes downloaded user files.
+
+Optional Basic/Digest HTTP credentials bind an exact host, optional port and
+realm, username, and vault `SecretRef`; the desktop adapter resolves them only
+for the matching non-proxy CEF challenge. Portable bundles strip that binding
+and import custom profiles disabled. Recovery retains the exact logical profile
+identity and shows a repair state if it cannot be resolved. OAuth and other
+security-sensitive flows use an explicit user-gesture “Open in system browser”
+action, never redirect heuristics. [ADR 0051](adr/0051-logical-browser-profiles-with-ephemeral-cef-state.md)
+records the profile boundary and privacy guarantees.
 
 In desktop mode, a browser session and its CEF renderer follow the lifetime of
 the owning panel, independently of whether that panel's Avalonia visual is

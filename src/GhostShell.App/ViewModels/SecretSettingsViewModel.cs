@@ -432,10 +432,15 @@ public sealed class SecretSettingsViewModel : ObservableObject, IDisposable
             .Select(item => item.Value)
             .Where(profile => SecretDefinitionReferences.Uses(profile, reference))
             .Select(profile => $"MCP server {profile.Name}");
+        var browserProfiles = snapshot.BrowserProfiles
+            .Select(item => item.Value)
+            .Where(profile => SecretDefinitionReferences.Uses(profile, reference))
+            .Select(profile => $"browser profile {profile.Name}");
         return [.. connections
             .Concat(fileProviders)
             .Concat(aiProviders)
             .Concat(mcpServers)
+            .Concat(browserProfiles)
             .Order(StringComparer.OrdinalIgnoreCase)];
     }
 

@@ -198,6 +198,48 @@ public sealed class SecretVaultScopeAuthorizationTests
     }
 
     [Fact]
+    public async Task Browser_authentication_is_authorized_only_for_the_exact_browser_profile_scope()
+    {
+        using var vault = new InMemorySecretVault();
+        var reference = SecretRef.New();
+        var scope = new SecretScope(SecretScopeKind.BrowserProfile, "browser.internal");
+        var purpose = new SecretUsePurpose(
+            SecretUseKind.BrowserProfileAuthentication,
+            "browser.internal");
+        using var material = SecretMaterial.CopyFrom([4, 2]);
+
+        Success(await vault.CreateAsync(
+            new CreateSecretRequest(
+                reference,
+                "Browser HTTP password",
+                SecretKind.Password,
+                scope,
+                purpose),
+            material,
+            default));
+
+        using var resolved = Success(await vault.ResolveAsync(
+            new ResolveSecretRequest(reference, scope, purpose),
+            default));
+        Assert.Equal(2, resolved.Length);
+
+        AssertDenied(await vault.ResolveAsync(
+            new ResolveSecretRequest(
+                reference,
+                new SecretScope(SecretScopeKind.BrowserProfile, "browser.other"),
+                new SecretUsePurpose(
+                    SecretUseKind.BrowserProfileAuthentication,
+                    "browser.other")),
+            default));
+        AssertDenied(await vault.ResolveAsync(
+            new ResolveSecretRequest(
+                reference,
+                new SecretScope(SecretScopeKind.Connection, "browser.internal"),
+                purpose),
+            default));
+    }
+
+    [Fact]
     public async Task Create_denial_happens_before_an_adapter_reads_secret_material()
     {
         var wrongPurpose = new SecretUsePurpose(

@@ -178,11 +178,12 @@ public static class BrowserEngineRuntime
         ArgumentNullException.ThrowIfNull(options);
         return new Cef.CefSettings
         {
-            // User-visible request contexts are intentionally ephemeral until
-            // CEF profile persistence can participate in the application-
-            // encryption lock, rekey, and shutdown lifecycle.
+            // The global context and every user-visible request context are
+            // intentionally ephemeral. RootCachePath must also remain null:
+            // Chromium otherwise writes machine state outside any profile
+            // lease even when CachePath is null.
             CachePath = null,
-            RootCachePath = options.ProfileDirectory,
+            RootCachePath = null,
             UserAgentProduct = $"GhostSHELL/{options.ProductVersion}",
             // The vendor callback cannot suppress Chromium's default console
             // emission. Disable native persistence and project warning/error
@@ -204,7 +205,9 @@ public static class BrowserEngineRuntime
             return null;
         }
 
-        if (settings.CachePath is not null || settings.PersistSessionCookies)
+        if (settings.CachePath is not null
+            || settings.RootCachePath is not null
+            || settings.PersistSessionCookies)
         {
             throw new InvalidOperationException(
                 "The mock Chromium keychain is allowed only for ephemeral browser contexts.");
@@ -238,11 +241,9 @@ public static class BrowserEngineRuntime
 
         // Request contexts are now ephemeral. Remove the complete prior CEF
         // root before initialization so Default/, runtime/, profiles/, Local
-        // State, and crash leftovers cannot silently outlive the encrypted-
-        // default migration. The shared deletion boundary rejects filesystem
-        // links before recursive removal.
+        // State, and crash leftovers cannot silently outlive the migration.
+        // Do not recreate the root: CEF receives neither cache path setting.
         CefBrowserProfileStore.DeleteOwnedDirectory(root);
-        PreparePrivateDirectory(root);
     }
 }
 
@@ -267,7 +268,4 @@ public sealed record BrowserEngineRuntimeOptions
 
     public string ProductVersion { get; }
 
-    public string BrowserProfilesDirectory => Path.Combine(
-        ProfileDirectory,
-        "profiles");
 }

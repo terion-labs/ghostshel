@@ -75,8 +75,8 @@ public sealed class BrowserEngineRuntimeTests
         var settings = BrowserEngineRuntime.CreateSettings(options);
 
         Assert.Null(settings.CachePath);
+        Assert.Null(settings.RootCachePath);
         Assert.False(settings.PersistSessionCookies);
-        Assert.Equal(options.ProfileDirectory, settings.RootCachePath);
         Assert.Equal(Cef.CefLogSeverity.Disable, settings.LogSeverity);
     }
 
@@ -128,6 +128,15 @@ public sealed class BrowserEngineRuntimeTests
             BrowserEngineRuntime.GetMacOsSafeStorageSwitch(
                 isMacOs: true,
                 persistentSettings));
+
+        var rootedSettings = new Cef.CefSettings
+        {
+            RootCachePath = Path.Combine("relative", "cef-root"),
+        };
+        Assert.Throws<InvalidOperationException>(() =>
+            BrowserEngineRuntime.GetMacOsSafeStorageSwitch(
+                isMacOs: true,
+                rootedSettings));
     }
 
     [Fact]
@@ -151,7 +160,7 @@ public sealed class BrowserEngineRuntimeTests
         {
             BrowserEngineRuntime.PrepareProfileLayout(root);
 
-            Assert.True(Directory.Exists(root));
+            Assert.False(Directory.Exists(root));
             Assert.False(Directory.Exists(legacy));
             Assert.False(Directory.Exists(Path.Combine(root, "runtime")));
             Assert.False(Directory.Exists(Path.Combine(root, "profiles")));
@@ -192,8 +201,7 @@ public sealed class BrowserEngineRuntimeTests
             BrowserEngineRuntime.PrepareProfileLayout(root);
 
             Assert.True(File.Exists(outsideFile));
-            Assert.True(Directory.Exists(root));
-            Assert.Empty(Directory.EnumerateFileSystemEntries(root));
+            Assert.False(Directory.Exists(root));
         }
         finally
         {

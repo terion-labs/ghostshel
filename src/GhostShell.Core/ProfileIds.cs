@@ -74,6 +74,18 @@ public readonly record struct McpServerProfileId
     public override string ToString() => Value;
 }
 
+public readonly record struct BrowserProfileId
+{
+    [JsonConstructor]
+    public BrowserProfileId(string value) => Value = RuntimeId.Require(value, nameof(value));
+
+    public string Value { get; }
+
+    public static BrowserProfileId New() => new(RuntimeId.NewValue());
+
+    public override string ToString() => Value;
+}
+
 public readonly record struct CommandId
 {
     [JsonConstructor]

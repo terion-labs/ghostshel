@@ -44,7 +44,7 @@
 
     <controls:PanelChrome.HeaderContent>
       <Grid
-          ColumnDefinitions="Auto,Auto,*,Auto,Auto"
+          ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto"
           ColumnSpacing="{DynamicResource ShellSpaceXs}">
         <Button
             AutomationProperties.Name="Go back"
@@ -96,6 +96,15 @@
         </Button>
         <Button
             Grid.Column="4"
+            AutomationProperties.Name="Open current page in system browser"
+            Classes="IconButton"
+            Click="OnOpenInSystemBrowserClick"
+            IsEnabled="{Binding IsLive, ElementName=RuntimeBrowser}"
+            ToolTip.Tip="Open in system browser for sign-in">
+          <icons:SymbolIcon FontSize="{DynamicResource ShellFontSize13}" Symbol="Open" />
+        </Button>
+        <Button
+            Grid.Column="5"
             AutomationProperties.Name="Open browser developer tools"
             Classes="IconButton"
             Click="OnDeveloperToolsClick"
@@ -125,6 +134,13 @@
             FontSize="{DynamicResource ShellFontSize9}"
             Text="{Binding StatusMessage, ElementName=RuntimeBrowser}"
             TextTrimming="CharacterEllipsis" />
+        <TextBlock
+            Grid.Column="2"
+            VerticalAlignment="Center"
+            AutomationProperties.Name="Pinned browser profile"
+            Classes="Muted"
+            FontSize="{DynamicResource ShellFontSize9}"
+            Text="{Binding BrowserProfileDisplayName, StringFormat=Profile: {0}}" />
       </Grid>
     </controls:PanelChrome.Footer>
 

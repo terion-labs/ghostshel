@@ -42,8 +42,10 @@ startup. Process initialization happens after Avalonia setup, uses an exact
 runtime-version check, private in-memory browser profiles, no remote debugging
 port, an opt-in-disabled JavaScript bridge, and closed handlers for popups,
 dialogs, downloads, permissions, authentication, and certificate exceptions.
-Disk cache and persistent session cookies remain disabled until whole-profile
-storage can participate in the application-encryption lifecycle.
+Disk cache and persistent session cookies remain disabled. Named logical
+profiles and their all-ephemeral CEF lifecycle are specified by
+[ADR 0051](0051-logical-browser-profiles-with-ephemeral-cef-state.md); durable
+Chromium web content remains outside that decision.
 Top-level navigation is admitted by a cancellable main-frame callback; the
 resource-request gate separately prevents unapproved local-file subresources.
 Callback and dispatcher failures deny requests.

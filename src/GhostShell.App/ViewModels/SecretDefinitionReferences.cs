@@ -50,6 +50,9 @@ internal static class SecretDefinitionReferences
         EnumerateMcpServerCredentialBindings(profile).Any(binding =>
             binding.Reference == reference);
 
+    public static bool Uses(BrowserProfileDefinition profile, SecretRef reference) =>
+        profile.Authentication?.PasswordSecret == reference;
+
     public static IEnumerable<McpServerCredentialBindingDescriptor>
         EnumerateMcpServerCredentialBindings(McpServerProfile profile)
     {

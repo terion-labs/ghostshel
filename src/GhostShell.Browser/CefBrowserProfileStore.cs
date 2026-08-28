@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using Exclr8Cef;
 using GhostShell.Application;
 
@@ -7,67 +5,107 @@ namespace GhostShell.Browser;
 
 /// <summary>
 /// Owns the ephemeral CEF request contexts behind GhostSHELL browser profiles.
-/// A profile is further sharded by network route because Chromium's proxy
+/// A profile revision is further sharded by network route because Chromium's proxy
 /// preference belongs to the request context that also owns in-memory state.
-/// The data-control API remains for compatibility and reports no retained data
-/// after startup removes legacy persistent CEF storage.
+/// No request context has a cache path. The final lease always destroys it.
 /// </summary>
 public sealed class CefBrowserProfileStore : IBrowserProfileDataControl, IDisposable
 {
     private const string LocalRoute = "local";
     private readonly object _gate = new();
-    private readonly string _rootDirectory;
+    private readonly SemaphoreSlim _clearGate = new(1, 1);
+    private readonly IBrowserProfileAuthenticationResolver? _authenticationResolver;
+    private readonly Func<ICefBrowserRequestContext> _createContext;
     private readonly Dictionary<ContextKey, ContextEntry> _contexts = [];
     private bool _disposed;
 
-    public CefBrowserProfileStore(string rootDirectory)
+    public CefBrowserProfileStore(
+        IBrowserProfileAuthenticationResolver? authenticationResolver = null)
+        : this(authenticationResolver, CefBrowserRequestContext.Create)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
-        _rootDirectory = Path.GetFullPath(rootDirectory);
+    }
+
+    internal CefBrowserProfileStore(
+        IBrowserProfileAuthenticationResolver? authenticationResolver,
+        Func<ICefBrowserRequestContext> createContext)
+    {
+        _authenticationResolver = authenticationResolver;
+        _createContext = createContext
+            ?? throw new ArgumentNullException(nameof(createContext));
     }
 
     public CefBrowserProfileLease AcquireLocal(BrowserProfileKey profile) =>
+        AcquireLocal(BrowserProfileBinding.Legacy(profile));
+
+    public CefBrowserProfileLease AcquireLocal(BrowserProfileBinding profile) =>
         Acquire(profile, LocalRoute, socksProxyPort: null);
 
     public CefBrowserProfileLease AcquireRouted(
         BrowserProfileKey profile,
         string routeIdentity,
         int socksProxyPort)
+        => AcquireRouted(
+            BrowserProfileBinding.Legacy(profile),
+            routeIdentity,
+            socksProxyPort);
+
+    public CefBrowserProfileLease AcquireRouted(
+        BrowserProfileBinding profile,
+        string routeIdentity,
+        int socksProxyPort)
     {
+        ArgumentNullException.ThrowIfNull(profile);
         ArgumentException.ThrowIfNullOrWhiteSpace(routeIdentity);
         return Acquire(profile, routeIdentity, socksProxyPort);
     }
 
-    public BrowserProfileStorageUsage ReadUsage()
+    public BrowserProfileDataState ReadState(
+        BrowserProfileSelection selection,
+        long expectedRevision)
     {
+        if (expectedRevision <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(expectedRevision));
+        }
+
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            var matching = _contexts
+                .Where(item => item.Key.Selection == selection
+                    && item.Key.Revision == expectedRevision)
+                .Select(item => item.Value)
+                .ToArray();
+            return new BrowserProfileDataState(
+                selection,
+                expectedRevision,
+                matching.Length,
+                matching.Sum(item => item.ActiveLeases));
         }
-
-        // Cache trees can contain thousands of small files. Do not hold the
-        // context-lifecycle gate while callers account for them; a concurrent
-        // clear may make this approximate, which is preferable to delaying a
-        // browser launch for a display-only byte count.
-        return new BrowserProfileStorageUsage(
-            DirectoryBytes(ScopeDirectory(BrowserProfileKind.Global)),
-            DirectoryBytes(ScopeDirectory(BrowserProfileKind.Workspace)),
-            DirectoryBytes(ScopeDirectory(BrowserProfileKind.WebApp)));
     }
 
-    public ValueTask<BrowserProfileClearResult> ClearAsync(
-        BrowserProfileDataScope scope,
+    public async ValueTask<BrowserProfileClearResult> ClearAsync(
+        BrowserProfileClearRequest request,
         CancellationToken cancellationToken)
     {
-        if (!Enum.IsDefined(scope))
+        ArgumentNullException.ThrowIfNull(request);
+        try
         {
-            throw new ArgumentOutOfRangeException(nameof(scope));
+            await _clearGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return Cancelled();
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
-        return new ValueTask<BrowserProfileClearResult>(Task.Run(
-            () => Clear(scope, cancellationToken),
-            cancellationToken));
+        try
+        {
+            return Clear(request, cancellationToken);
+        }
+        finally
+        {
+            _clearGate.Release();
+        }
     }
 
     public void Dispose()
@@ -87,6 +125,7 @@ public sealed class CefBrowserProfileStore : IBrowserProfileDataControl, IDispos
 
             _contexts.Clear();
         }
+
     }
 
     internal void Release(ContextKey key)
@@ -105,7 +144,7 @@ public sealed class CefBrowserProfileStore : IBrowserProfileDataControl, IDispos
             }
 
             entry.ActiveLeases--;
-            if (entry.ActiveLeases == 0 && entry.SocksProxyPort is not null)
+            if (entry.ActiveLeases == 0)
             {
                 entry.Context.Dispose();
                 _contexts.Remove(key);
@@ -114,11 +153,15 @@ public sealed class CefBrowserProfileStore : IBrowserProfileDataControl, IDispos
     }
 
     private CefBrowserProfileLease Acquire(
-        BrowserProfileKey profile,
+        BrowserProfileBinding profile,
         string routeIdentity,
         int? socksProxyPort)
     {
-        var key = new ContextKey(profile, RouteKey(routeIdentity));
+        ArgumentNullException.ThrowIfNull(profile);
+        var key = new ContextKey(
+            profile.Selection,
+            profile.Revision,
+            RouteKey(routeIdentity));
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -135,14 +178,14 @@ public sealed class CefBrowserProfileStore : IBrowserProfileDataControl, IDispos
                     this,
                     key,
                     existing.Context,
+                    profile,
+                    _authenticationResolver,
                     existing.SocksProxyPort is null
                         ? BrowserNetworkRouteKind.Local
                         : BrowserNetworkRouteKind.SshRouted);
             }
 
-            var context = Cef.CreateRequestContext()
-                ?? throw new InvalidOperationException(
-                    "The embedded browser could not create its ephemeral profile.");
+            var context = _createContext();
             try
             {
                 if (socksProxyPort is { } port)
@@ -168,6 +211,8 @@ public sealed class CefBrowserProfileStore : IBrowserProfileDataControl, IDispos
                     this,
                     key,
                     context,
+                    profile,
+                    _authenticationResolver,
                     socksProxyPort is null
                         ? BrowserNetworkRouteKind.Local
                         : BrowserNetworkRouteKind.SshRouted);
@@ -181,151 +226,98 @@ public sealed class CefBrowserProfileStore : IBrowserProfileDataControl, IDispos
     }
 
     private BrowserProfileClearResult Clear(
-        BrowserProfileDataScope scope,
+        BrowserProfileClearRequest request,
         CancellationToken cancellationToken)
     {
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return Cancelled();
+            }
+
+            var otherRevision = _contexts.Keys.Any(key =>
+                key.Selection == request.Selection
+                && key.Revision != request.ExpectedRevision);
+            if (otherRevision)
+            {
+                return new BrowserProfileClearResult(
+                    BrowserProfileClearStatus.RevisionMismatch,
+                    0,
+                    "An open browser still owns another revision of this profile. Close it before clearing data.");
+            }
+
             var matching = _contexts
-                .Where(item => Includes(scope, item.Key.Profile.Kind))
+                .Where(item => item.Key.Selection == request.Selection
+                    && item.Key.Revision == request.ExpectedRevision)
                 .ToArray();
-            if (matching.Any(item => item.Value.ActiveLeases > 0))
+            if (request.Categories.HasFlag(
+                    BrowserProfileDataCategory.AllEphemeralWebContent)
+                && matching.Any(item => item.Value.ActiveLeases > 0))
             {
                 return new BrowserProfileClearResult(
                     BrowserProfileClearStatus.InUse,
                     0,
-                    "Close browser tabs using this profile, then clear it again.");
+                    "Close browser tabs using this exact profile, then reset its ephemeral web content.");
             }
 
-            var before = ScopeBytes(scope);
             try
             {
                 foreach (var item in matching)
                 {
-                    item.Value.Context.CloseAllConnections();
-                    item.Value.Context.DeleteCookies();
-                    item.Value.Context.Dispose();
-                    _contexts.Remove(item.Key);
-                }
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        return Cancelled();
+                    }
 
-                foreach (var directory in ScopeDirectories(scope))
-                {
-                    DeleteOwnedDirectory(directory);
+                    if (request.Categories.HasFlag(BrowserProfileDataCategory.Cookies))
+                    {
+                        item.Value.Context.DeleteCookies();
+                    }
+
+                    if (request.Categories.HasFlag(
+                            BrowserProfileDataCategory.HttpAuthentication))
+                    {
+                        item.Value.Context.ClearHttpAuthCredentials();
+                        item.Value.Context.CloseAllConnections();
+                    }
                 }
 
                 return new BrowserProfileClearResult(
                     BrowserProfileClearStatus.Cleared,
-                    before,
-                    before == 0
-                        ? "This browser profile was already empty."
-                        : "Browser cookies, cache, and site storage were cleared.");
+                    0,
+                    matching.Length == 0
+                        ? "This exact profile revision has no ephemeral web data."
+                        : ClearMessage(request.Categories));
             }
-            catch (Exception exception) when (exception is IOException
-                or UnauthorizedAccessException)
+            catch (InvalidOperationException)
             {
                 return new BrowserProfileClearResult(
                     BrowserProfileClearStatus.Failed,
                     0,
-                    "Browser profile data could not be cleared from disk.");
+                    "The embedded browser could not clear this exact profile revision.");
             }
         }
     }
 
-    private long ScopeBytes(BrowserProfileDataScope scope) =>
-        ScopeDirectories(scope).Sum(DirectoryBytes);
+    private static string RouteKey(string routeIdentity) => routeIdentity;
 
-    private IEnumerable<string> ScopeDirectories(BrowserProfileDataScope scope)
-    {
-        if (scope is BrowserProfileDataScope.Global or BrowserProfileDataScope.All)
+    private static BrowserProfileClearResult Cancelled() => new(
+        BrowserProfileClearStatus.Cancelled,
+        0,
+        "Browser profile clearing was cancelled.");
+
+    private static string ClearMessage(BrowserProfileDataCategory categories) =>
+        categories switch
         {
-            yield return ScopeDirectory(BrowserProfileKind.Global);
-        }
-
-        if (scope is BrowserProfileDataScope.Workspaces or BrowserProfileDataScope.All)
-        {
-            yield return ScopeDirectory(BrowserProfileKind.Workspace);
-        }
-
-        if (scope is BrowserProfileDataScope.WebApps or BrowserProfileDataScope.All)
-        {
-            yield return ScopeDirectory(BrowserProfileKind.WebApp);
-        }
-    }
-
-    private string ScopeDirectory(BrowserProfileKind kind) => Path.Combine(
-        _rootDirectory,
-        kind switch
-        {
-            BrowserProfileKind.Global => "global",
-            BrowserProfileKind.Workspace => "workspaces",
-            BrowserProfileKind.WebApp => "webapps",
-            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
-        });
-
-    private static string RouteKey(string routeIdentity) =>
-        string.Equals(routeIdentity, LocalRoute, StringComparison.Ordinal)
-            ? LocalRoute
-            : StableName(routeIdentity);
-
-    private static string StableName(string value)
-    {
-        var digest = SHA256.HashData(Encoding.UTF8.GetBytes(value));
-        return Convert.ToHexStringLower(digest.AsSpan(0, 16));
-    }
-
-    private static bool Includes(
-        BrowserProfileDataScope scope,
-        BrowserProfileKind kind) => scope == BrowserProfileDataScope.All
-        || (scope == BrowserProfileDataScope.Global
-            && kind == BrowserProfileKind.Global)
-        || (scope == BrowserProfileDataScope.Workspaces
-            && kind == BrowserProfileKind.Workspace)
-        || (scope == BrowserProfileDataScope.WebApps
-            && kind == BrowserProfileKind.WebApp);
-
-    private static long DirectoryBytes(string directory)
-    {
-        if (!Directory.Exists(directory))
-        {
-            return 0;
-        }
-
-        try
-        {
-            long bytes = 0;
-            var pending = new Stack<DirectoryInfo>();
-            pending.Push(new DirectoryInfo(directory));
-            while (pending.TryPop(out var current))
-            {
-                foreach (var item in current.EnumerateFileSystemInfos())
-                {
-                    if (item.Attributes.HasFlag(FileAttributes.ReparsePoint))
-                    {
-                        continue;
-                    }
-
-                    if (item is DirectoryInfo child)
-                    {
-                        pending.Push(child);
-                    }
-                    else if (item is FileInfo file)
-                    {
-                        bytes = checked(bytes + file.Length);
-                    }
-                }
-            }
-
-            return bytes;
-        }
-        catch (Exception exception) when (exception is IOException
-            or UnauthorizedAccessException
-            or OverflowException)
-        {
-            return 0;
-        }
-    }
+            BrowserProfileDataCategory.Cookies =>
+                "Cookies were cleared from this exact in-memory profile revision.",
+            BrowserProfileDataCategory.HttpAuthentication =>
+                "HTTP authentication was cleared from this exact in-memory profile revision.",
+            _ =>
+                "The selected in-memory browser data categories were cleared from this exact profile revision.",
+        };
 
     internal static void DeleteOwnedDirectory(string directory)
     {
@@ -343,21 +335,21 @@ public sealed class CefBrowserProfileStore : IBrowserProfileDataControl, IDispos
             return;
         }
 
-        // Chromium creates singleton and version symlinks inside its profile.
-        // Recursive Directory.Delete removes those directory entries without
-        // following their targets. Only the root itself must never be a link.
+        // Startup uses this only to remove profile trees written by older
+        // releases. Current request contexts never receive a cache path.
         root.Delete(recursive: true);
     }
 
     internal readonly record struct ContextKey(
-        BrowserProfileKey Profile,
+        BrowserProfileSelection Selection,
+        long Revision,
         string Route);
 
     private sealed class ContextEntry(
-        CefRequestContext context,
+        ICefBrowserRequestContext context,
         int? socksProxyPort)
     {
-        public CefRequestContext Context { get; } = context;
+        public ICefBrowserRequestContext Context { get; } = context;
 
         public int? SocksProxyPort { get; } = socksProxyPort;
 
@@ -373,23 +365,82 @@ public sealed class CefBrowserProfileLease : IDisposable
 {
     private CefBrowserProfileStore? _owner;
     private readonly CefBrowserProfileStore.ContextKey _key;
-    private readonly CefRequestContext _context;
+    private readonly ICefBrowserRequestContext _context;
+    private readonly BrowserProfileBinding _profile;
+    private readonly IBrowserProfileAuthenticationResolver? _authenticationResolver;
 
     internal CefBrowserProfileLease(
         CefBrowserProfileStore owner,
         CefBrowserProfileStore.ContextKey key,
-        CefRequestContext context,
+        ICefBrowserRequestContext context,
+        BrowserProfileBinding profile,
+        IBrowserProfileAuthenticationResolver? authenticationResolver,
         BrowserNetworkRouteKind routeKind)
     {
         _owner = owner;
         _key = key;
         _context = context;
+        _profile = profile;
+        _authenticationResolver = authenticationResolver;
         RouteKind = routeKind;
     }
 
     internal BrowserNetworkRouteKind RouteKind { get; }
 
-    internal CefBrowserView CreateView() => new(_context);
+    internal CefBrowserView CreateView() => _context.CreateView(
+        _profile,
+        _authenticationResolver);
 
     public void Dispose() => Interlocked.Exchange(ref _owner, null)?.Release(_key);
+}
+
+/// <summary>
+/// Adapts the vendor request context at the single ownership boundary used by
+/// the profile store. Tests replace this boundary without initializing CEF.
+/// </summary>
+internal interface ICefBrowserRequestContext : IDisposable
+{
+    bool SetPreference(string name, string value);
+
+    void DeleteCookies();
+
+    void ClearHttpAuthCredentials();
+
+    void CloseAllConnections();
+
+    CefBrowserView CreateView(
+        BrowserProfileBinding profile,
+        IBrowserProfileAuthenticationResolver? authenticationResolver);
+}
+
+internal sealed class CefBrowserRequestContext(
+    CefRequestContext context) : ICefBrowserRequestContext
+{
+    private readonly CefRequestContext _context = context
+        ?? throw new ArgumentNullException(nameof(context));
+
+    public static ICefBrowserRequestContext Create() => new CefBrowserRequestContext(
+        Cef.CreateRequestContext()
+        ?? throw new InvalidOperationException(
+            "The embedded browser could not create its ephemeral profile."));
+
+    public bool SetPreference(string name, string value) =>
+        _context.SetPreference(name, value);
+
+    public void DeleteCookies() => _context.DeleteCookies();
+
+    public void ClearHttpAuthCredentials() =>
+        _context.ClearHttpAuthCredentials();
+
+    public void CloseAllConnections() => _context.CloseAllConnections();
+
+    public CefBrowserView CreateView(
+        BrowserProfileBinding profile,
+        IBrowserProfileAuthenticationResolver? authenticationResolver) => new(
+        _context,
+        CefBrowserContentPolicy.Ordinary,
+        profile,
+        authenticationResolver);
+
+    public void Dispose() => _context.Dispose();
 }

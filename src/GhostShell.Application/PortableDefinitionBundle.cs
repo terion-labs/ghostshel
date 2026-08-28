@@ -35,6 +35,7 @@ public enum DefinitionImportIssueCode
     MissingDependency,
     ImportedMcpProfileDisabled,
     ImportedAiProviderProfileDisabled,
+    ImportedBrowserProfileDisabled,
 }
 
 public sealed record DefinitionImportIssue(

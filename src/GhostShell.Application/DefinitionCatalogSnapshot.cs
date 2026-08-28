@@ -20,4 +20,6 @@ public sealed record DefinitionCatalogSnapshot(
     public IReadOnlyList<StoredDefinition<McpServerProfile>> McpServerProfiles { get; init; } = [];
 
     public IReadOnlyList<StoredDefinition<DatabaseConnectionProfile>> DatabaseConnections { get; init; } = [];
+
+    public IReadOnlyList<StoredDefinition<BrowserProfileDefinition>> BrowserProfiles { get; init; } = [];
 }
