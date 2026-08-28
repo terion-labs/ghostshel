@@ -279,7 +279,7 @@ The security objective is:
 | Runtime workspace graph | A run cannot cross its immutable panel/session/`OpenTab`/Workspace/selection identity. Refreshing eligible topology inside the same Workspace or `OpenTab` is not target widening. |
 | Browser profiles, authenticated pages, and snapshot references | Navigation, page data, one-shot exact-object handles, cookies, storage, downloads, and permissions remain separately governed. |
 | Local process metadata | Observation is limited to one authorized hosted local Process Monitor, excludes command lines/paths/users/environment, and never implies remote-host process authority. |
-| MCP server profiles, child processes, remote endpoints, transport secrets, and frozen tool manifests | Only enabled revisioned stdio/Streamable-HTTP definitions, broker-authorized opens, and exact allowlisted run-frozen aliases can reach the generic governed call boundary. Imported profiles are forced disabled. Credential rotation closes every referencing session before returning. |
+| MCP server profiles, child processes, remote endpoints, transport secrets, and frozen tool manifests | Only trusted, enabled, revisioned stdio/Streamable-HTTP definitions, broker-authorized opens, and exact allowlisted run-frozen aliases can reach the generic governed call boundary. Imported profiles are forced disabled and untrusted; reviewed trusted profiles may be tested while disabled without becoming agent-selectable. Credential rotation closes every referencing session before returning. |
 | Process mutation, Git, Docker, and network authority | Each family has an independent capability and risk rule. |
 | Approval decisions | Decisions are tied to an actor, run, proposal, exact material arguments, target revision, scope, and expiry. |
 | Audit history | Requested, decided, started, and agent-action outcomes are durable, correlated, ordered, and secret-free. |
@@ -610,7 +610,9 @@ Every enabled provider/tool bridge must have automated coverage for:
   bounded discovery without `tools/call`; count-only projection with
   server-chosen identifiers withheld; explicit directly launched process
   disposal; and no broker permit, agent-action authority, retained stderr/log
-  content, reconnect, or persistent health state;
+  content, reconnect, or server-authored persistent health state; the Settings
+  diagnostic journal retains only bounded app-authored lifecycle events and
+  count-only stderr shape metadata;
 - requested/approved/denied/started/succeeded/failed/cancelled audit
   completeness, including ambiguous completion persistence, exact immutable
   retry/reconciliation, run quarantine, peer-permit revocation, and no provider

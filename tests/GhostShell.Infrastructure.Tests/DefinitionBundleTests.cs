@@ -180,6 +180,7 @@ public sealed class DefinitionBundleTests
             loaded.Value!.Value.Transport);
         Assert.Equal(reference, Assert.Single(loadedTransport.Environment).Reference);
         Assert.False(loaded.Value.Value.IsEnabled);
+        Assert.False(loaded.Value.Value.IsTrusted);
         Assert.Empty(DefinitionReferenceExtractor.Extract(loaded.Value.Value));
     }
 

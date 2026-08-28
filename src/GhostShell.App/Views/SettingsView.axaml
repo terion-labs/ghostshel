@@ -1319,13 +1319,24 @@
                 <components:SettingsPageHeader
                     Heading="MCP servers"
                     Description="Connect local or remote MCP servers and choose which tools they provide." />
-                <Button
+                <StackPanel
                     Grid.Column="1"
-                    VerticalAlignment="Center"
-                    Classes="PrimaryButton"
-                    Click="OnAddMcpServerClick"
-                    Content="Add server"
-                    AutomationProperties.Name="Add MCP server" />
+                    Orientation="Horizontal"
+                    Spacing="{DynamicResource ShellSpaceSm}">
+                  <Button
+                      VerticalAlignment="Center"
+                      Classes="SecondaryButton"
+                      Click="OnClearMcpServerDiagnosticHistoryClick"
+                      Content="Clear history"
+                      IsVisible="{Binding HasMcpDiagnosticHistory}"
+                      AutomationProperties.Name="Clear MCP diagnostic history" />
+                  <Button
+                      VerticalAlignment="Center"
+                      Classes="PrimaryButton"
+                      Click="OnAddMcpServerClick"
+                      Content="Add server"
+                      AutomationProperties.Name="Add MCP server" />
+                </StackPanel>
               </Grid>
 
               <ItemsControl ItemsSource="{Binding McpServerDefinitions}" IsVisible="{Binding HasMcpServers}">

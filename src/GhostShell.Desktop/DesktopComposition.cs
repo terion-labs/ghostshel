@@ -219,6 +219,8 @@ public static class DesktopComposition
         services.AddSingleton<IAgentModelFavoriteStore, SqliteAgentModelFavoriteStore>();
         services.AddSingleton<IAgentPolicyPreferenceStore,
             SqliteAgentPolicyPreferenceStore>();
+        services.AddSingleton<IMcpServerDiagnosticStore,
+            SqliteMcpServerDiagnosticStore>();
         services.AddSingleton<AgentPolicyCoordinator>();
         services.AddSingleton<AgentMcpSessionHost>();
         services.AddSingleton<IAgentMcpSessionHost>(provider =>

@@ -69,6 +69,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _workspaceAgentChats = [];
     private readonly IAiProviderAuthenticationRuntime? _aiProviderAuthenticationRuntime;
     private readonly IMcpServerDiagnostics? _mcpServerDiagnostics;
+    private McpServerDiagnosticsSnapshot _mcpDiagnosticsSnapshot =
+        new([], cleanupUncertain: false, cleanupUncertainAtUtc: null);
     private readonly IMcpCredentialSessionInvalidator?
         _mcpCredentialSessionInvalidator;
     private readonly IConnectionSecurityRuntime? _connectionSecurityRuntime;
@@ -209,6 +211,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _agentModelFavoriteStore = agentModelFavoriteStore;
         _aiProviderAuthenticationRuntime = aiProviderAuthenticationRuntime;
         _mcpServerDiagnostics = mcpServerDiagnostics;
+        if (_mcpServerDiagnostics is not null)
+        {
+            _mcpDiagnosticsSnapshot = _mcpServerDiagnostics.Snapshot;
+            _mcpServerDiagnostics.Changed += OnMcpServerDiagnosticsChanged;
+        }
+
         _mcpCredentialSessionInvalidator = mcpCredentialSessionInvalidator;
         SecretSettings = new SecretSettingsViewModel(
             _catalog,
@@ -813,6 +821,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public bool HasNoMcpServers => !HasMcpServers;
 
+    public bool HasMcpDiagnosticHistory =>
+        _mcpDiagnosticsSnapshot.Summaries.Count > 0;
+
+    public bool IsMcpCleanupUncertain =>
+        _mcpDiagnosticsSnapshot.CleanupUncertain;
+
     public bool HasMcpServerSecretTargets => McpServerSecretTargets.Count > 0;
 
     public bool HasFileTransfers => FileTransferState.HasTransfers;
@@ -1158,6 +1172,34 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         _ = eventArgs;
         AiProviderSettings.ApplyCatalog(_catalog.Snapshot);
         RefreshMcpServerDefinitions(_catalog.Snapshot);
+    }
+
+    private async void OnMcpServerDiagnosticsChanged(
+        object? sender,
+        McpServerDiagnosticsChangedEventArgs eventArgs)
+    {
+        _ = sender;
+        try
+        {
+            await _uiThreadDispatcher.InvokeAsync(
+                () =>
+                {
+                    if (_disposed)
+                    {
+                        return;
+                    }
+
+                    _mcpDiagnosticsSnapshot = eventArgs.Snapshot;
+                    RefreshMcpServerDefinitions(_catalog.Snapshot);
+                    OnPropertyChanged(nameof(HasMcpDiagnosticHistory));
+                    OnPropertyChanged(nameof(IsMcpCleanupUncertain));
+                },
+                _runtimeGraphLifetime.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Window shutdown owns cancellation of presentation refreshes.
+        }
     }
 
     private void OnTerminalContinuityPropertyChanged(
@@ -3504,6 +3546,36 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         {
             RefreshMcpServerDefinitions(_catalog.Snapshot);
         }
+    }
+
+    public async ValueTask RefreshMcpServerDiagnosticsAsync(
+        CancellationToken cancellationToken)
+    {
+        if (_mcpServerDiagnostics is null)
+        {
+            return;
+        }
+
+        await _mcpServerDiagnostics.RefreshAsync(cancellationToken)
+            .ConfigureAwait(true);
+        _mcpDiagnosticsSnapshot = _mcpServerDiagnostics.Snapshot;
+        RefreshMcpServerDefinitions(_catalog.Snapshot);
+        OnPropertyChanged(nameof(HasMcpDiagnosticHistory));
+        OnPropertyChanged(nameof(IsMcpCleanupUncertain));
+    }
+
+    public async ValueTask ClearMcpServerDiagnosticHistoryAsync(
+        CancellationToken cancellationToken)
+    {
+        if (_mcpServerDiagnostics is null)
+        {
+            return;
+        }
+
+        _ = await _mcpServerDiagnostics.ClearHistoryAsync(
+                OperationContext.ForHuman(ClientId),
+                cancellationToken)
+            .ConfigureAwait(true);
     }
 
     public async ValueTask<bool> CreateConnectionSecretAsync(
@@ -7705,6 +7777,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 item,
                 Secrets,
                 GetMcpServerTest(item),
+                GetMcpServerDiagnostic(item),
+                _mcpDiagnosticsSnapshot.CleanupUncertain,
                 _mcpServerDiagnostics is not null))
             .ToArray();
         ReconcileMcpServerDefinitions(projectedProfiles);
@@ -7785,12 +7859,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             stored,
             secrets,
             test: null,
+            diagnostic: null,
+            cleanupUncertain: false,
             diagnosticsAvailable: false);
 
     private static McpServerProfileItemViewModel ProjectMcpServerProfile(
         StoredDefinition<McpServerProfile> stored,
         IReadOnlyCollection<SecretMetadataViewModel> secrets,
         McpServerTestPresentation? test,
+        McpServerDiagnosticSummary? diagnostic,
+        bool cleanupUncertain,
         bool diagnosticsAvailable)
     {
         ArgumentNullException.ThrowIfNull(stored);
@@ -7808,15 +7886,19 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                     profile.Id.Value,
                     StringComparison.Ordinal)));
         var hasNoEnabledTools = profile.EnabledTools.Count == 0;
-        var baselineStatus = !profile.IsEnabled
-            ? "Disabled for future runs"
+        var baselineStatus = !profile.IsTrusted
+            ? "Untrusted"
+            : !profile.IsEnabled
+            ? "Trusted · disabled for runs"
             : hasNoEnabledTools
                 ? "No tools enabled"
                 : missingSecretCount > 0
                     ? "Credential missing"
                     : "Enabled for new runs";
-        var baselineDetail = !profile.IsEnabled
-            ? "This server is disabled."
+        var baselineDetail = !profile.IsTrusted
+            ? "Review this server definition before testing or enabling it."
+            : !profile.IsEnabled
+            ? "Testing is available, but agent runs cannot select this server."
             : hasNoEnabledTools
                 ? "Choose at least one tool before enabling this server."
                 : missingSecretCount > 0
@@ -7828,10 +7910,22 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             && test?.Revision == stored.Revision
                 ? test
                 : null;
+        var currentDiagnostic = diagnostic?.Revision == stored.Revision
+            ? diagnostic
+            : null;
         var isTesting = currentTest?.State
-            == McpServerTestPresentationState.Testing;
+                == McpServerTestPresentationState.Testing
+            || currentDiagnostic?.State == McpServerLifecycleState.Testing;
         var testFailed = currentTest?.State
             == McpServerTestPresentationState.Failed;
+        var diagnosticPresentation = currentTest is null
+            ? ProjectMcpServerDiagnostic(currentDiagnostic)
+            : null;
+        var cleanupPresentation = cleanupUncertain && profile.IsTrusted
+            ? (
+                Status: "Cleanup uncertain",
+                Detail: "A previous MCP process may still be alive. Restart GhostSHELL before retrying.")
+            : ((string Status, string Detail)?)null;
         return new McpServerProfileItemViewModel(
             profile.Id,
             stored.Revision,
@@ -7849,17 +7943,65 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 : 0,
             credentialBindings.Length,
             profile.EnabledTools.Count,
-            currentTest?.Status ?? baselineStatus,
-            currentTest?.Detail ?? baselineDetail,
+            cleanupPresentation?.Status
+                ?? currentTest?.Status
+                ?? diagnosticPresentation?.Status
+                ?? baselineStatus,
+            cleanupPresentation?.Detail
+                ?? currentTest?.Detail
+                ?? diagnosticPresentation?.Detail
+                ?? baselineDetail,
             profile.IsEnabled,
-            (profile.IsEnabled
+            !profile.IsTrusted
+            || cleanupUncertain
+            || (profile.IsEnabled
                 && (hasNoEnabledTools || missingSecretCount > 0))
             || testFailed,
             isTesting,
             diagnosticsAvailable
-                && profile.IsEnabled
+                && profile.IsTrusted
                 && missingSecretCount == 0
-                && !isTesting);
+                && !cleanupUncertain
+                && !isTesting,
+            profile.IsTrusted);
+    }
+
+    private McpServerDiagnosticSummary? GetMcpServerDiagnostic(
+        StoredDefinition<McpServerProfile> stored) =>
+        _mcpDiagnosticsSnapshot.Summaries.SingleOrDefault(summary =>
+            summary.ProfileId == stored.Value.Id
+            && summary.Revision == stored.Revision);
+
+    private static (string Status, string Detail)? ProjectMcpServerDiagnostic(
+        McpServerDiagnosticSummary? summary)
+    {
+        if (summary is null)
+        {
+            return null;
+        }
+
+        var session = summary.SessionId[..Math.Min(8, summary.SessionId.Length)];
+        var kind = summary.SessionKind == McpServerSessionKind.Test
+            ? "Test"
+            : "Live session";
+        var detail = $"{kind} {session} · {summary.Events[^1].Message}";
+        return summary.State switch
+        {
+            McpServerLifecycleState.Testing => ("Testing", detail),
+            McpServerLifecycleState.Starting => ("Starting", detail),
+            McpServerLifecycleState.Healthy => ("Healthy", detail),
+            McpServerLifecycleState.Degraded => ("Degraded", detail),
+            McpServerLifecycleState.Failed => ("Failed", detail),
+            McpServerLifecycleState.CleanupUncertain =>
+                ("Cleanup uncertain", detail),
+            McpServerLifecycleState.Stopped => ("Stopped", detail),
+            McpServerLifecycleState.Untrusted => ("Untrusted", detail),
+            McpServerLifecycleState.Disabled => ("Disabled", detail),
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(summary),
+                summary.State,
+                null),
+        };
     }
 
     private McpServerTestPresentation? GetMcpServerTest(
@@ -10909,6 +11051,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         }
 
         _catalog.Changed -= OnCatalogChanged;
+        _mcpServerDiagnostics?.Changed -= OnMcpServerDiagnosticsChanged;
+
         FileTransferState.Dispose();
         TerminalContinuity.Dispose();
         WorkspaceAutoSave.Seal();
@@ -10933,6 +11077,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         History.SealOperations();
 
         _catalog.Changed -= OnCatalogChanged;
+        _mcpServerDiagnostics?.Changed -= OnMcpServerDiagnosticsChanged;
+
         FileTransferState.PropertyChanged -= OnFileTransferStatePropertyChanged;
         FileTransferState.Dispose();
         TerminalContinuity.PropertyChanged -=

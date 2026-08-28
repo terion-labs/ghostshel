@@ -27,7 +27,8 @@ public sealed class McpServerProfileTests
                 "/srv/ghostshell",
                 environment),
             enabledTools,
-            isEnabled: false);
+            isEnabled: false,
+            isTrusted: false);
 
         arguments[0] = "--changed";
         environment[0] = new McpServerEnvironmentVariable(
@@ -50,6 +51,7 @@ public sealed class McpServerProfileTests
             restored.EnabledTools);
         Assert.Equal(secret, restoredStdio.Environment[1].Reference);
         Assert.False(restored.IsEnabled);
+        Assert.False(restored.IsTrusted);
         Assert.Contains("\"$type\":\"stdio\"", json, StringComparison.Ordinal);
         Assert.Contains(secret.Value, json, StringComparison.Ordinal);
         Assert.DoesNotContain("secretValue", json, StringComparison.OrdinalIgnoreCase);

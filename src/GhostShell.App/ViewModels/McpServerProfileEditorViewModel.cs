@@ -723,6 +723,11 @@ public sealed class McpServerProfileEditorViewModel : ObservableObject
         }
         else
         {
+            if (!_original.IsTrusted)
+            {
+                changes.Add("Trust this imported server definition");
+            }
+
             if (profile.Transport.Kind != _original.Transport.Kind)
             {
                 changes.Add("Change the MCP server transport");

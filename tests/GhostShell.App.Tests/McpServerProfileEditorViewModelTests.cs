@@ -427,6 +427,28 @@ public sealed class McpServerProfileEditorViewModelTests
     }
 
     [Fact]
+    public void Imported_untrusted_server_requires_review_even_without_other_changes()
+    {
+        var editor = new McpServerProfileEditorViewModel(
+            Profile(
+                enabledTools: ["read"],
+                isEnabled: false,
+                isTrusted: false),
+            expectedRevision: 5);
+
+        var request = editor.CreateSaveRequest();
+
+        Assert.True(request.RequiresTrustConfirmation);
+        Assert.Contains(
+            request.TrustReview.Changes,
+            change => change.Contains(
+                "Trust this imported server definition",
+                StringComparison.Ordinal));
+        Assert.True(request.Profile.IsTrusted);
+        Assert.True(request.ConfirmTrust().IsAuthorizedForSave);
+    }
+
+    [Fact]
     public void Relative_launch_paths_are_rejected_before_review()
     {
         var editor = NewEditor();
@@ -793,6 +815,7 @@ public sealed class McpServerProfileEditorViewModelTests
     {
         var profile = Profile(
             enabledTools: ["read"],
+            isEnabled: false,
             hasEnvironment: false);
         var stored = new StoredDefinition<McpServerProfile>(
             profile,
@@ -869,6 +892,67 @@ public sealed class McpServerProfileEditorViewModelTests
         Assert.Equal(
             stored.Revision,
             diagnosticsProxy.Context.ExpectedRevision);
+    }
+
+    [Fact]
+    public void Settings_projects_correlated_live_diagnostic_state()
+    {
+        var profile = Profile(
+            enabledTools: ["read"],
+            hasEnvironment: false);
+        var stored = new StoredDefinition<McpServerProfile>(
+            profile,
+            14,
+            DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch);
+        var catalog = DispatchProxy.Create<IDefinitionCatalog, CatalogProxy>();
+        ((CatalogProxy)(object)catalog).SnapshotValue =
+            DefinitionCatalogSnapshot.Empty with
+            {
+                McpServerProfiles = [stored],
+            };
+        var diagnostics = DispatchProxy.Create<
+            IMcpServerDiagnostics,
+            McpDiagnosticsProxy>();
+        ((McpDiagnosticsProxy)(object)diagnostics).SnapshotValue =
+            new McpServerDiagnosticsSnapshot(
+                [
+                    new McpServerDiagnosticSummary(
+                        profile.Id,
+                        stored.Revision,
+                        "0123456789abcdef",
+                        McpServerSessionKind.AgentRun,
+                        McpServerLifecycleState.Starting,
+                        DateTimeOffset.UnixEpoch,
+                        DateTimeOffset.UnixEpoch,
+                        [
+                            new McpServerDiagnosticEvent(
+                                DateTimeOffset.UnixEpoch,
+                                McpServerLifecycleState.Starting,
+                                "mcp_starting",
+                                "Starting the MCP server and negotiating its protocol."),
+                        ]),
+                ],
+                cleanupUncertain: false,
+                cleanupUncertainAtUtc: null);
+        using var viewModel = new MainWindowViewModel(
+            DispatchProxy.Create<ISessionHostClient, RejectingProxy>(),
+            catalog,
+            DispatchProxy.Create<IConnectionRuntime, RejectingProxy>(),
+            DispatchProxy.Create<ISecretVault, SecretVaultProxy>(),
+            DispatchProxy.Create<IFilePanelClient, FilePanelProxy>(),
+            DispatchProxy.Create<
+                IFileTransferQueueClient,
+                FileTransferQueueProxy>(),
+            new TerminalStartupCommandDispatcher(
+                new UnusedAuditStore(),
+                TimeProvider.System),
+            mcpServerDiagnostics: diagnostics);
+
+        var item = Assert.Single(viewModel.McpServerDefinitions);
+        Assert.Equal("Starting", item.Status);
+        Assert.Contains("01234567", item.StatusDetail, StringComparison.Ordinal);
+        Assert.True(viewModel.HasMcpDiagnosticHistory);
     }
 
     [Fact]
@@ -1101,7 +1185,8 @@ public sealed class McpServerProfileEditorViewModelTests
     private static McpServerProfile Profile(
         IReadOnlyList<string> enabledTools,
         bool isEnabled = true,
-        bool hasEnvironment = true) =>
+        bool hasEnvironment = true,
+        bool isTrusted = true) =>
         new(
             new McpServerProfileId("mcp.local-tools"),
             McpServerProfile.CurrentSchemaVersion,
@@ -1116,7 +1201,8 @@ public sealed class McpServerProfileEditorViewModelTests
                         new SecretRef("vault-ref"))]
                     : []),
             enabledTools,
-            isEnabled);
+            isEnabled,
+            isTrusted);
 
     private static McpServerProfile RemoteProfile() =>
         new(
@@ -1167,6 +1253,9 @@ public sealed class McpServerProfileEditorViewModelTests
 
     public class McpDiagnosticsProxy : DispatchProxy
     {
+        public McpServerDiagnosticsSnapshot SnapshotValue { get; set; } =
+            new([], cleanupUncertain: false, cleanupUncertainAtUtc: null);
+
         public McpServerTestResult Result { get; set; } =
             new McpServerTestResult.Failure(
                 new McpServerTestError(
@@ -1190,6 +1279,19 @@ public sealed class McpServerProfileEditorViewModelTests
             MethodInfo? targetMethod,
             object?[]? arguments)
         {
+            if (string.Equals(
+                    targetMethod?.Name,
+                    "get_Snapshot",
+                    StringComparison.Ordinal))
+            {
+                return SnapshotValue;
+            }
+
+            if (targetMethod?.Name is "add_Changed" or "remove_Changed")
+            {
+                return null;
+            }
+
             if (string.Equals(targetMethod?.Name
 , nameof(IMcpServerDiagnostics.TestAsync)
 , StringComparison.Ordinal) && arguments is

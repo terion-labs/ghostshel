@@ -48,6 +48,7 @@ public sealed class McpServerProfileItemViewModel : ObservableObject
     private bool _hasWarning;
     private bool _isTesting;
     private bool _canTest;
+    private bool _isTrusted;
 
     public McpServerProfileItemViewModel(
         McpServerProfileId id,
@@ -63,7 +64,8 @@ public sealed class McpServerProfileItemViewModel : ObservableObject
         bool isEnabled,
         bool hasWarning,
         bool isTesting,
-        bool canTest)
+        bool canTest,
+        bool isTrusted = true)
     {
         Id = id;
         _revision = revision;
@@ -79,6 +81,7 @@ public sealed class McpServerProfileItemViewModel : ObservableObject
         _hasWarning = hasWarning;
         _isTesting = isTesting;
         _canTest = canTest;
+        _isTrusted = isTrusted;
     }
 
     public McpServerProfileId Id { get; }
@@ -114,6 +117,8 @@ public sealed class McpServerProfileItemViewModel : ObservableObject
     public bool IsTesting => _isTesting;
 
     public bool CanTest => _canTest;
+
+    public bool IsTrusted => _isTrusted;
 
     public string TransportSummary => TransportKind switch
     {
@@ -214,6 +219,7 @@ public sealed class McpServerProfileItemViewModel : ObservableObject
         }
 
         _ = SetProperty(ref _canTest, source.CanTest, nameof(CanTest));
+        _ = SetProperty(ref _isTrusted, source.IsTrusted, nameof(IsTrusted));
     }
 }
 
@@ -243,4 +249,3 @@ public sealed record McpServerSecretTargetViewModel(
     public string DisplayName =>
         $"{ServerName} · {BindingKindName} {BindingName} → {Reference.Value}";
 }
-

@@ -633,10 +633,15 @@ public sealed class AgentMcpSessionHostTests
         await using (fixture)
         {
             typeof(AgentMcpSessionHost)
-                .GetField(
-                    "_cleanupUncertain",
+                .GetMethod(
+                    "MarkCleanupUncertain",
                     BindingFlags.Instance | BindingFlags.NonPublic)!
-                .SetValue(fixture.Host, 1);
+                .Invoke(fixture.Host, null);
+
+            Assert.True(await fixture.Host.ClearHistoryAsync(
+                OperationContext.ForHuman(HostFixture.ClientId()),
+                CancellationToken.None));
+            Assert.True(fixture.Host.Snapshot.CleanupUncertain);
 
             var tested = await fixture.Host.TestAsync(
                 new McpServerTestRequest(
@@ -857,7 +862,7 @@ public sealed class AgentMcpSessionHostTests
     }
 
     [Fact]
-    public async Task SettingsTestRejectsDisabledProfileBeforeResolvingSecrets()
+    public async Task DisabledTrustedProfileCanBeTestedButIsExcludedFromAgentRuns()
     {
         var fixture = await HostFixture.CreateAsync(
             mode: "normal",
@@ -874,12 +879,35 @@ public sealed class AgentMcpSessionHostTests
                     deadlineUtc: HostFixture.Now.AddSeconds(30)),
                 CancellationToken.None);
 
-            var failure = Assert.IsType<
-                McpServerTestResult.Failure>(result);
-            Assert.Equal(
-                "mcp_profile_disabled",
-                failure.Error.StableCode);
+            var success = Assert.IsType<
+                McpServerTestResult.Success>(result);
+            Assert.Equal(1, success.Report.DiscoveredToolCount);
+            Assert.Empty((await fixture.OpenAsync()).Tools);
+        }
+    }
+
+    [Fact]
+    public async Task UntrustedProfileCannotBeTestedOrSelectedByAgentRuns()
+    {
+        var fixture = await HostFixture.CreateAsync(
+            mode: "normal",
+            isTrusted: false);
+        await using (fixture)
+        {
+            var result = await fixture.Host.TestAsync(
+                new McpServerTestRequest(
+                    HostFixture.ProfileId(),
+                    HostFixture.ProfileRevision),
+                OperationContext.ForHuman(
+                    HostFixture.ClientId(),
+                    expectedRevision: HostFixture.ProfileRevision,
+                    deadlineUtc: HostFixture.Now.AddSeconds(30)),
+                CancellationToken.None);
+
+            var failure = Assert.IsType<McpServerTestResult.Failure>(result);
+            Assert.Equal("mcp_profile_untrusted", failure.Error.StableCode);
             Assert.Empty(fixture.Vault.Purposes);
+            Assert.Empty((await fixture.OpenAsync()).Tools);
         }
     }
 
@@ -987,6 +1015,52 @@ public sealed class AgentMcpSessionHostTests
                 typeof(McpServerTestReport).GetProperties(),
                 property => property.PropertyType
                     == typeof(IReadOnlyList<string>));
+        }
+    }
+
+    [Fact]
+    public async Task SettingsTestPublishesCorrelatedBoundedSecretSafeLifecycle()
+    {
+        var fixture = await HostFixture.CreateAsync(mode: "stderr");
+        await using (fixture)
+        {
+            var snapshots = new List<McpServerDiagnosticsSnapshot>();
+            fixture.Host.Changed += (_, eventArgs) =>
+                snapshots.Add(eventArgs.Snapshot);
+
+            var result = await fixture.Host.TestAsync(
+                new McpServerTestRequest(
+                    HostFixture.ProfileId(),
+                    HostFixture.ProfileRevision),
+                OperationContext.ForHuman(
+                    HostFixture.ClientId(),
+                    expectedRevision: HostFixture.ProfileRevision,
+                    deadlineUtc: HostFixture.Now.AddSeconds(30)),
+                CancellationToken.None);
+
+            _ = Assert.IsType<McpServerTestResult.Success>(result);
+            var summary = Assert.Single(fixture.Host.Snapshot.Summaries);
+            Assert.Equal(McpServerSessionKind.Test, summary.SessionKind);
+            Assert.Equal(McpServerLifecycleState.Stopped, summary.State);
+            Assert.Equal(
+                [
+                    McpServerLifecycleState.Testing,
+                    McpServerLifecycleState.Healthy,
+                    McpServerLifecycleState.Stopped,
+                ],
+                summary.Events.Select(item => item.State));
+            Assert.InRange(
+                summary.Events.Count,
+                1,
+                McpServerDiagnosticSummary.MaximumRetainedEvents);
+            Assert.True(summary.Events[^1].ObservedStderrBytes > 0);
+            Assert.DoesNotContain(
+                "LEAK-ME-NOT",
+                summary.ToString(),
+                StringComparison.Ordinal);
+            Assert.All(
+                snapshots.SelectMany(snapshot => snapshot.Summaries),
+                item => Assert.Equal(summary.SessionId, item.SessionId));
         }
     }
 
@@ -1629,6 +1703,7 @@ public sealed class AgentMcpSessionHostTests
             string[]? hostArguments = null,
             IReadOnlyList<string>? enabledTools = null,
             bool isEnabled = true,
+            bool isTrusted = true,
             int profileCount = 1,
             bool omitWorkingDirectory = false,
             TimeSpan? shutdownGracePeriod = null,
@@ -1697,14 +1772,16 @@ public sealed class AgentMcpSessionHostTests
                                     : Path.GetDirectoryName(assemblyPath),
                                 environment),
                             enabledTools ?? ["control"],
-                            isEnabled)
+                            isEnabled,
+                            isTrusted)
                         : new McpServerProfile(
                             ProfileId(index),
                             McpServerProfile.CurrentSchemaVersion,
                             $"Test MCP {index + 1}",
                             transport,
                             enabledTools ?? ["control"],
-                            isEnabled);
+                            isEnabled,
+                            isTrusted);
                     return new StoredDefinition<McpServerProfile>(
                         profile,
                         Revision: ProfileRevision,

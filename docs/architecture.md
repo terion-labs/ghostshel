@@ -1188,17 +1188,18 @@ Adding a server, changing its transport authority, credential bindings, or
 expanding tools requires explicit confirmation. MCP tools are wrapped by the
 same capability and audit path as built-in tools.
 
-**Implementation status (2026-08-13):** governed stdio and Streamable HTTP MCP
+**Implementation status (2026-08-29):** governed stdio and Streamable HTTP MCP
 transports are production-composed. Schema-two `McpServerProfile` definitions
 use a closed transport discriminator: stdio contains one absolute executable,
 ordered arguments, optional working directory, and environment-name-to-
 `SecretRef` bindings; Streamable HTTP contains one bounded HTTP(S) endpoint,
 an explicit acknowledgement for plaintext HTTP, and HTTP-header-name-to-
-`SecretRef` bindings. Both carry exact enabled-tool names and enabled state.
+`SecretRef` bindings. Both carry exact enabled-tool names, enabled state, and
+trust provenance.
 Only the current schema-two MCP profile is accepted; non-current schemas are
 rejected at the infrastructure boundary without migration. SQLite,
 import/export, and dependency-aware secret handling preserve references rather
-than values. Every imported MCP profile is normalized to disabled before
+than values. Every imported MCP profile is normalized to disabled and untrusted before
 publication. The Settings editor and trust-confirmation dialog author both
 transport variants. Remote authoring requires HTTPS except for exact loopback
 HTTP, persists the Core insecure-transport acknowledgement only for that
@@ -1269,16 +1270,30 @@ revision, serializes one initialization-and-discovery probe under a maximum
 30-second deadline, projects discovered and enabled counts while withholding
 server-chosen tool identifiers, and explicitly disposes the transport session
 before returning. The probe never calls a tool, creates broker or
-agent-action authority, or exposes retained stderr or log content. In schema
-two, Test remains limited to enabled profiles because trust provenance
-is not yet persisted separately from enablement; a later schema may allow a
-trusted-but-disabled profile to be tested without making an imported,
-unreviewed definition executable.
+agent-action authority. Trust and enablement are independent: a reviewed,
+trusted profile can be tested while disabled, but only a trusted and enabled
+profile can enter an agent run. Imported definitions remain untrusted until the
+normal confirmation flow is completed.
+
+Every Test and live profile launch publishes an immediate, closed lifecycle
+state with an opaque per-session correlation identifier. Settings distinguishes
+untrusted, disabled, testing, starting, healthy, degraded, failed,
+cleanup-uncertain, and stopped states. The retained journal contains at most 32
+app-authored events per profile for at most 24 hours. It persists only stable
+codes, fixed bounded messages, timestamps, and count-only stderr shape metadata;
+raw stderr, endpoints, arguments, environment names or values, and
+server-selected text have no storage shape. Profile-revision and credential
+changes invalidate the corresponding live/test session, and stale durable
+summaries are ignored. An authenticated user can clear retained history, but
+that operation does not clear or bypass the host-lifetime cleanup circuit.
+Retry remains unavailable after uncertain cleanup and requires an application
+restart.
 
 The intentionally excluded protocol surfaces are legacy SSE fallback,
 resources, prompts, sampling, elicitation, tasks, durable session resume,
-per-scope server selection, persistent health polling, and retained log
-viewing. The SDK may reconnect an interrupted SSE response up to two times
+per-scope server selection, persistent health polling, and retained viewing of
+server-authored log text. HTTP/SSE diagnostic lifecycle expansion remains
+deferred. The SDK may reconnect an interrupted SSE response up to two times
 inside one live Streamable HTTP session, but GhostSHELL never retries a
 dispatched tool call and does not persist a remote session for later resume.
 MCP profile add/edit/disable/delete/import/reload rotates a host-owned catalog

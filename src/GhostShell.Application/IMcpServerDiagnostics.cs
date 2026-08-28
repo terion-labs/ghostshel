@@ -8,9 +8,32 @@ namespace GhostShell.Application;
 /// </summary>
 public interface IMcpServerDiagnostics
 {
+    event EventHandler<McpServerDiagnosticsChangedEventArgs>? Changed;
+
+    McpServerDiagnosticsSnapshot Snapshot { get; }
+
+    ValueTask RefreshAsync(CancellationToken cancellationToken);
+
+    ValueTask<bool> ClearHistoryAsync(
+        OperationContext context,
+        CancellationToken cancellationToken);
+
     ValueTask<McpServerTestResult> TestAsync(
         McpServerTestRequest request,
         OperationContext context,
+        CancellationToken cancellationToken);
+}
+
+public interface IMcpServerDiagnosticStore
+{
+    ValueTask<ApplicationRunResult<McpServerDiagnosticsSnapshot>> ReadAsync(
+        CancellationToken cancellationToken);
+
+    ValueTask<ApplicationRunResult<Unit>> WriteAsync(
+        McpServerDiagnosticsSnapshot snapshot,
+        CancellationToken cancellationToken);
+
+    ValueTask<ApplicationRunResult<Unit>> ClearAsync(
         CancellationToken cancellationToken);
 }
 

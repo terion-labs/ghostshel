@@ -399,7 +399,8 @@ public sealed class SqliteDefinitionBundleStore : IDefinitionBundleStore
                     profile.Name,
                     profile.Transport,
                     profile.EnabledTools,
-                    isEnabled: false);
+                    isEnabled: false,
+                    isTrusted: false);
                 definition = disabledProfile;
                 importedDocument = importedDocument with
                 {

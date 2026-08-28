@@ -37,7 +37,8 @@ public sealed record McpServerProfile : IDurableDefinition
         string name,
         McpServerTransport transport,
         IReadOnlyList<string> enabledTools,
-        bool isEnabled = true)
+        bool isEnabled = true,
+        bool isTrusted = true)
     {
         ValidateIdentifier(id.Value, nameof(id), MaximumIdentifierBytes);
         if (schemaVersion != CurrentSchemaVersion)
@@ -57,6 +58,7 @@ public sealed record McpServerProfile : IDurableDefinition
             ?? throw new ArgumentNullException(nameof(transport));
         EnabledTools = CopyEnabledTools(enabledTools);
         IsEnabled = isEnabled;
+        IsTrusted = isTrusted;
     }
 
     public static DefinitionKind Kind => DefinitionKind.McpServerProfile;
@@ -75,6 +77,13 @@ public sealed record McpServerProfile : IDurableDefinition
     public IReadOnlyList<string> EnabledTools { get; }
 
     public bool IsEnabled { get; }
+
+    /// <summary>
+    /// True only after a local user reviewed the executable/endpoint, ordered
+    /// arguments, credential bindings, and tool allowlist. Enablement controls
+    /// agent selection independently from this launch authority.
+    /// </summary>
+    public bool IsTrusted { get; }
 
     internal static void ValidateSecretReference(
         SecretRef reference,

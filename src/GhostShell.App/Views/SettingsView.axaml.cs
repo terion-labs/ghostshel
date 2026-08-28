@@ -57,6 +57,9 @@ public sealed partial class SettingsView : UserControl
 
     public event EventHandler<RoutedEventArgs>? ClearKeybindingPrefixRequested;
 
+    public event EventHandler<RoutedEventArgs>?
+        ClearMcpServerDiagnosticHistoryRequested;
+
     public event EventHandler<RoutedEventArgs>? CloneKeybindingPresetRequested;
 
     public event EventHandler<RoutedEventArgs>? CreateAiProviderSecretRequested;
@@ -382,6 +385,11 @@ public sealed partial class SettingsView : UserControl
 
     private void OnClearKeybindingPrefixClick(object? sender, RoutedEventArgs e) =>
         ClearKeybindingPrefixRequested?.Invoke(sender, e);
+
+    private void OnClearMcpServerDiagnosticHistoryClick(
+        object? sender,
+        RoutedEventArgs e) =>
+        ClearMcpServerDiagnosticHistoryRequested?.Invoke(sender, e);
 
     private void OnCloneKeybindingPresetClick(object? sender, RoutedEventArgs e) =>
         CloneKeybindingPresetRequested?.Invoke(sender, e);

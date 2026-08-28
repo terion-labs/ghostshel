@@ -241,8 +241,22 @@ public sealed partial class MainWindow
         await ViewModel.SaveDefaultAgentPolicyAsync(CancellationToken.None);
     }
 
-    private void OnMcpSettingsClick(object? sender, RoutedEventArgs e) =>
+    private async void OnMcpSettingsClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
         SetSettingsPage(SettingsPage.Mcp);
+        await ViewModel.RefreshMcpServerDiagnosticsAsync(_lifetime.Token);
+    }
+
+    private async void OnClearMcpServerDiagnosticHistoryClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        await ViewModel.ClearMcpServerDiagnosticHistoryAsync(_lifetime.Token);
+    }
 
     private void OnAboutSettingsClick(object? sender, RoutedEventArgs e) =>
         SetSettingsPage(SettingsPage.About);

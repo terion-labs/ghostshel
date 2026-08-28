@@ -408,5 +408,25 @@ internal static class SqliteSchema
                     default_profile_id IS NULL
                     OR length(default_profile_id) BETWEEN 1 AND 256);
             """),
+        new(
+            18,
+            "bounded-mcp-diagnostic-summary",
+            """
+            CREATE TABLE mcp_server_diagnostic_summary (
+                singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+                payload_json TEXT NOT NULL CHECK (
+                    json_valid(payload_json)
+                    AND json_type(payload_json) = 'array'
+                    AND length(CAST(payload_json AS BLOB)) BETWEEN 2 AND 262144),
+                updated_utc TEXT NOT NULL CHECK (
+                    length(updated_utc) BETWEEN 20 AND 64)
+            );
+
+            INSERT INTO mcp_server_diagnostic_summary(
+                singleton_id,
+                payload_json,
+                updated_utc)
+            VALUES (1, '[]', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+            """),
     ];
 }

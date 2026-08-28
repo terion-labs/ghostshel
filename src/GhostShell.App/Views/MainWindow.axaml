@@ -77,6 +77,7 @@
           AgentSettingsRequested="OnAgentSettingsClick"
           AppearanceSettingsRequested="OnAppearanceSettingsClick"
           ClearKeybindingPrefixRequested="OnClearKeybindingPrefixClick"
+          ClearMcpServerDiagnosticHistoryRequested="OnClearMcpServerDiagnosticHistoryClick"
           CloneKeybindingPresetRequested="OnCloneKeybindingPresetClick"
           CreateAiProviderSecretRequested="OnCreateAiProviderSecretClick"
           CreateConnectionSecretRequested="OnCreateConnectionSecretClick"

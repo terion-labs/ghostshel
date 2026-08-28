@@ -28,6 +28,8 @@ public sealed class AgentMcpSessionHost :
         TimeSpan.FromSeconds(15);
     private static readonly TimeSpan MaximumTestDuration =
         TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan MaximumDiagnosticEventAge =
+        TimeSpan.FromHours(24);
     private static readonly UTF8Encoding StrictUtf8 = new(
         encoderShouldEmitUTF8Identifier: false,
         throwOnInvalidBytes: true);
@@ -38,6 +40,7 @@ public sealed class AgentMcpSessionHost :
     private readonly IAgentAuthorizationConsumer _authorizationConsumer;
     private readonly IAgentMcpRunAuthorityVerifier _mcpRunAuthorityVerifier;
     private readonly IAgentApprovalPrincipal _approvalPrincipal;
+    private readonly IMcpServerDiagnosticStore? _diagnosticStore;
     private readonly AgentMcpToolCallActionComposer _composer;
     private readonly TimeProvider _timeProvider;
     private readonly McpSessionOptions _clientOptions;
@@ -45,8 +48,13 @@ public sealed class AgentMcpSessionHost :
         _streamableHttpHandlerFactory;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly SemaphoreSlim _testGate = new(1, 1);
+    private readonly SemaphoreSlim _diagnosticLoadGate = new(1, 1);
     private readonly CancellationTokenSource _testShutdown = new();
     private readonly ConcurrentDictionary<AgentRunId, RunSession> _runs = [];
+    private readonly object _diagnosticGate = new();
+    private readonly Dictionary<
+        McpServerProfileId,
+        McpServerDiagnosticSummary> _diagnosticSummaries = [];
     private readonly object _catalogStateGate = new();
     private readonly SemaphoreSlim _catalogCleanupSignal = new(0, 1);
     private readonly CancellationTokenSource _catalogCleanupShutdown = new();
@@ -62,7 +70,75 @@ public sealed class AgentMcpSessionHost :
     private bool _catalogEventsStopped;
     private int _disposeStarted;
     private int _cleanupUncertain;
+    private DateTimeOffset? _cleanupUncertainAtUtc;
+    private volatile bool _diagnosticsLoaded;
     private volatile bool _disposed;
+
+    public event EventHandler<McpServerDiagnosticsChangedEventArgs>? Changed;
+
+    public McpServerDiagnosticsSnapshot Snapshot
+    {
+        get
+        {
+            lock (_diagnosticGate)
+            {
+                PruneDiagnosticsUnsafe(
+                    _timeProvider.GetUtcNow().ToUniversalTime());
+                return CaptureDiagnosticSnapshotUnsafe();
+            }
+        }
+    }
+
+    public ValueTask RefreshAsync(CancellationToken cancellationToken) =>
+        EnsureDiagnosticsLoadedAsync(cancellationToken);
+
+    public async ValueTask<bool> ClearHistoryAsync(
+        OperationContext context,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        if (!IsAuthenticatedHuman(context))
+        {
+            return false;
+        }
+
+        await EnsureDiagnosticsLoadedAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (_diagnosticStore is not null)
+        {
+            ApplicationRunResult<Unit> cleared;
+            try
+            {
+                cleared = await _diagnosticStore.ClearAsync(cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception exception) when (
+                exception is not OutOfMemoryException
+                && (exception is not OperationCanceledException
+                    || !cancellationToken.IsCancellationRequested))
+            {
+                _ = exception;
+                return false;
+            }
+
+            if (!cleared.IsSuccess)
+            {
+                return false;
+            }
+        }
+
+        McpServerDiagnosticsSnapshot snapshot;
+        lock (_diagnosticGate)
+        {
+            _diagnosticSummaries.Clear();
+            snapshot = CaptureDiagnosticSnapshotUnsafe();
+        }
+
+        Changed?.Invoke(
+            this,
+            new McpServerDiagnosticsChangedEventArgs(snapshot));
+        return true;
+    }
 
     public AgentMcpSessionHost(
         IDefinitionCatalog catalog,
@@ -72,7 +148,8 @@ public sealed class AgentMcpSessionHost :
         IAgentMcpRunAuthorityVerifier mcpRunAuthorityVerifier,
         AgentMcpToolCallActionComposer composer,
         TimeProvider timeProvider,
-        IAgentApprovalPrincipal approvalPrincipal)
+        IAgentApprovalPrincipal approvalPrincipal,
+        IMcpServerDiagnosticStore diagnosticStore)
         : this(
             catalog,
             secretVault,
@@ -83,7 +160,8 @@ public sealed class AgentMcpSessionHost :
             timeProvider,
             approvalPrincipal,
             CreateDefaultOptions(),
-            streamableHttpHandlerFactory: null)
+            streamableHttpHandlerFactory: null,
+            diagnosticStore: diagnosticStore)
     {
     }
 
@@ -97,7 +175,8 @@ public sealed class AgentMcpSessionHost :
         TimeProvider timeProvider,
         IAgentApprovalPrincipal approvalPrincipal,
         McpSessionOptions clientOptions,
-        Func<Uri, HttpMessageHandler?>? streamableHttpHandlerFactory = null)
+        Func<Uri, HttpMessageHandler?>? streamableHttpHandlerFactory = null,
+        IMcpServerDiagnosticStore? diagnosticStore = null)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _secretVault =
@@ -111,6 +190,7 @@ public sealed class AgentMcpSessionHost :
                 nameof(mcpRunAuthorityVerifier));
         _approvalPrincipal = approvalPrincipal
             ?? throw new ArgumentNullException(nameof(approvalPrincipal));
+        _diagnosticStore = diagnosticStore;
         if (_approvalPrincipal.Actor.Kind != ActorKind.Human
             || _approvalPrincipal.Actor.ClientId is not { } principalClient
             || !string.Equals(
@@ -187,6 +267,9 @@ public sealed class AgentMcpSessionHost :
                 "The MCP run does not have live launch authority.");
         }
 
+        await EnsureDiagnosticsLoadedAsync(cancellationToken)
+            .ConfigureAwait(false);
+
         var catalogGenerationToken =
             CaptureCatalogGenerationToken();
         using var discoveryCancellation =
@@ -244,6 +327,7 @@ public sealed class AgentMcpSessionHost :
             var profiles = _catalog.Snapshot.McpServerProfiles
                 .Where(stored =>
                     stored.Value.IsEnabled
+                    && stored.Value.IsTrusted
                     && stored.Value.EnabledTools.Count > 0)
                 .OrderBy(stored => stored.Value.Name, StringComparer.Ordinal)
                 .ThenBy(
@@ -571,25 +655,16 @@ public sealed class AgentMcpSessionHost :
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(context);
-        var principal = _approvalPrincipal.Actor;
-        if (context.Actor.Kind != ActorKind.Human
-            || context.Actor.ClientId is not { } clientId
-            || !string.Equals(
-                context.Actor.Id.Value,
-                clientId.Value,
-                StringComparison.Ordinal)
-            || !string.Equals(
-                context.Actor.Id.Value,
-                principal.Id.Value,
-                StringComparison.Ordinal)
-            || principal.ClientId is not { } principalClientId
-            || principalClientId != clientId)
+        if (!IsAuthenticatedHuman(context))
         {
             return TestFailure(
                 "mcp_test_not_authenticated",
                 "The MCP server test requires an authenticated human client.",
                 retryable: false);
         }
+
+        await EnsureDiagnosticsLoadedAsync(cancellationToken)
+            .ConfigureAwait(false);
 
         if (context.ExpectedRevision != request.ExpectedRevision)
         {
@@ -667,16 +742,23 @@ public sealed class AgentMcpSessionHost :
                     retryable: false);
             }
 
-            if (!stored.Value.IsEnabled)
+            if (!stored.Value.IsTrusted)
             {
                 return TestFailure(
-                    "mcp_profile_disabled",
-                    "Enable and trust the MCP server profile before testing it.",
+                    "mcp_profile_untrusted",
+                    "Review and trust the MCP server profile before testing it.",
                     retryable: false);
             }
 
+            var diagnostic = BeginDiagnostic(
+                stored,
+                McpServerSessionKind.Test,
+                McpServerLifecycleState.Testing,
+                "mcp_testing",
+                "Testing the MCP server connection and tool discovery.");
             var session = await OpenProfileAsync(
                     stored,
+                    diagnostic,
                     timeout.Token)
                 .ConfigureAwait(false);
             McpServerTestResult result;
@@ -838,8 +920,11 @@ public sealed class AgentMcpSessionHost :
 
         await _testGate.WaitAsync().ConfigureAwait(false);
         _testGate.Release();
+        await _diagnosticLoadGate.WaitAsync().ConfigureAwait(false);
+        _diagnosticLoadGate.Release();
         _gate.Dispose();
         _testGate.Dispose();
+        _diagnosticLoadGate.Dispose();
         _testShutdown.Dispose();
         catalogGeneration.Dispose();
         foreach (var generation in testProfileGenerations)
@@ -1114,8 +1199,15 @@ public sealed class AgentMcpSessionHost :
         {
             foreach (var profile in profiles)
             {
+                var diagnostic = BeginDiagnostic(
+                    profile,
+                    McpServerSessionKind.AgentRun,
+                    McpServerLifecycleState.Starting,
+                    "mcp_starting",
+                    "Starting the MCP server and negotiating its protocol.");
                 sessions.Add(await OpenProfileAsync(
                         profile,
+                        diagnostic,
                         cancellationToken)
                     .ConfigureAwait(false));
                 if (sessions.Sum(session => session.DiscoveredToolCount)
@@ -1177,6 +1269,7 @@ public sealed class AgentMcpSessionHost :
 
     private async Task<ProfileSession> OpenProfileAsync(
         StoredDefinition<McpServerProfile> stored,
+        McpDiagnosticSession diagnostic,
         CancellationToken cancellationToken)
     {
         var profile = stored.Value;
@@ -1329,13 +1422,20 @@ public sealed class AgentMcpSessionHost :
                     tool.Name);
             }
 
+            PublishDiagnostic(
+                diagnostic,
+                McpServerLifecycleState.Healthy,
+                "mcp_healthy",
+                "MCP initialization and bounded tool discovery succeeded.");
             return new ProfileSession(
                 stored,
                 client,
                 secrets.DetachRedactor(),
                 manifests,
                 protocolToolNames,
-                listedTools.Count);
+                listedTools.Count,
+                diagnostic,
+                CompleteDiagnosticSessionAsync);
         }
         catch (Exception exception)
         {
@@ -1354,10 +1454,29 @@ public sealed class AgentMcpSessionHost :
             if (cleanupUncertain
                 && exception is not OutOfMemoryException)
             {
+                PublishDiagnostic(
+                    diagnostic,
+                    McpServerLifecycleState.CleanupUncertain,
+                    "mcp_cleanup_uncertain",
+                    "MCP process cleanup could not be confirmed.");
+                await PersistDiagnosticsAsync().ConfigureAwait(false);
                 throw new McpHostFailureException(
                     "mcp_cleanup_uncertain",
                     "MCP process cleanup could not be confirmed.",
                     exception);
+            }
+
+            if (exception is not OutOfMemoryException)
+            {
+                var stableCode = exception is McpHostFailureException failure
+                    ? failure.StableCode
+                    : "mcp_discovery_failed";
+                PublishDiagnostic(
+                    diagnostic,
+                    McpServerLifecycleState.Failed,
+                    stableCode,
+                    "The MCP server failed during bounded startup or discovery.");
+                await PersistDiagnosticsAsync().ConfigureAwait(false);
             }
 
             throw;
@@ -1513,6 +1632,15 @@ public sealed class AgentMcpSessionHost :
             var stableCode = error.OutcomeUncertain
                 ? "mcp_tool_outcome_unknown"
                 : StableMcpCode(error.Code);
+            PublishDiagnostic(
+                profileSession.Diagnostic,
+                error.OutcomeUncertain
+                    ? McpServerLifecycleState.Failed
+                    : McpServerLifecycleState.Degraded,
+                stableCode,
+                error.OutcomeUncertain
+                    ? "The live MCP session returned an outcome that could not be confirmed."
+                    : "The live MCP session reported a bounded tool failure.");
             var completed = await CompleteAsync(
                     permit,
                     AgentActionOutcome.Failed,
@@ -1957,11 +2085,291 @@ public sealed class AgentMcpSessionHost :
             or "mcp_cancelled"
             or "mcp_discovery_failed";
 
+    private McpDiagnosticSession BeginDiagnostic(
+        StoredDefinition<McpServerProfile> stored,
+        McpServerSessionKind sessionKind,
+        McpServerLifecycleState state,
+        string stableCode,
+        string message)
+    {
+        var startedAtUtc = _timeProvider.GetUtcNow().ToUniversalTime();
+        var session = new McpDiagnosticSession(
+            stored.Value.Id,
+            stored.Revision,
+            Convert.ToHexString(RandomNumberGenerator.GetBytes(16))
+                .ToLowerInvariant(),
+            sessionKind,
+            startedAtUtc);
+        PublishDiagnostic(session, state, stableCode, message);
+        return session;
+    }
+
+    private bool IsAuthenticatedHuman(OperationContext context)
+    {
+        var principal = _approvalPrincipal.Actor;
+        return context.Actor.Kind == ActorKind.Human
+            && context.Actor.ClientId is { } clientId
+            && string.Equals(
+                context.Actor.Id.Value,
+                clientId.Value,
+                StringComparison.Ordinal)
+            && string.Equals(
+                context.Actor.Id.Value,
+                principal.Id.Value,
+                StringComparison.Ordinal)
+            && principal.ClientId is { } principalClientId
+            && principalClientId == clientId;
+    }
+
+    private async ValueTask EnsureDiagnosticsLoadedAsync(
+        CancellationToken cancellationToken)
+    {
+        if (_diagnosticsLoaded)
+        {
+            return;
+        }
+
+        await _diagnosticLoadGate.WaitAsync(cancellationToken)
+            .ConfigureAwait(false);
+        McpServerDiagnosticsSnapshot? changed = null;
+        try
+        {
+            if (_diagnosticsLoaded)
+            {
+                return;
+            }
+
+            if (_diagnosticStore is not null)
+            {
+                ApplicationRunResult<McpServerDiagnosticsSnapshot>? read = null;
+                try
+                {
+                    read = await _diagnosticStore.ReadAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception exception) when (
+                    exception is not OutOfMemoryException
+                    && (exception is not OperationCanceledException
+                        || !cancellationToken.IsCancellationRequested))
+                {
+                    _ = exception;
+                }
+
+                if (read?.IsSuccess == true && read.Value is { } stored)
+                {
+                    var currentRevisions = _catalog.Snapshot.McpServerProfiles
+                        .ToDictionary(
+                            item => item.Value.Id,
+                            item => item.Revision);
+                    lock (_diagnosticGate)
+                    {
+                        foreach (var summary in stored.Summaries)
+                        {
+                            if (currentRevisions.TryGetValue(
+                                    summary.ProfileId,
+                                    out var revision)
+                                && revision == summary.Revision
+                                && summary.UpdatedAtUtc
+                                    >= _timeProvider.GetUtcNow().ToUniversalTime()
+                                        - MaximumDiagnosticEventAge)
+                            {
+                                _diagnosticSummaries[summary.ProfileId] = summary;
+                            }
+                        }
+
+                        changed = CaptureDiagnosticSnapshotUnsafe();
+                    }
+                }
+            }
+
+            _diagnosticsLoaded = true;
+        }
+        finally
+        {
+            _diagnosticLoadGate.Release();
+        }
+
+        if (changed is not null)
+        {
+            Changed?.Invoke(
+                this,
+                new McpServerDiagnosticsChangedEventArgs(changed));
+        }
+    }
+
+    private async ValueTask PersistDiagnosticsAsync()
+    {
+        if (_diagnosticStore is null)
+        {
+            return;
+        }
+
+        McpServerDiagnosticsSnapshot snapshot;
+        lock (_diagnosticGate)
+        {
+            snapshot = new McpServerDiagnosticsSnapshot(
+                CaptureDiagnosticSnapshotUnsafe().Summaries,
+                cleanupUncertain: false,
+                cleanupUncertainAtUtc: null);
+        }
+
+        try
+        {
+            _ = await _diagnosticStore.WriteAsync(
+                    snapshot,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            _ = exception;
+            // Diagnostics persistence cannot change MCP execution semantics.
+        }
+    }
+
+    private void PublishDiagnostic(
+        McpDiagnosticSession session,
+        McpServerLifecycleState state,
+        string stableCode,
+        string message,
+        McpStderrDiagnostics? stderr = null)
+    {
+        var now = _timeProvider.GetUtcNow().ToUniversalTime();
+        var diagnosticEvent = new McpServerDiagnosticEvent(
+            now,
+            state,
+            stableCode,
+            message,
+            stderr?.ObservedByteCount ?? 0,
+            stderr?.ObservedLineCount ?? 0,
+            stderr?.WasTruncated ?? false);
+        McpServerDiagnosticsSnapshot snapshot;
+        lock (_diagnosticGate)
+        {
+            PruneDiagnosticsUnsafe(now);
+            IReadOnlyList<McpServerDiagnosticEvent> events;
+            if (_diagnosticSummaries.TryGetValue(
+                    session.ProfileId,
+                    out var current)
+                && current.Revision == session.Revision
+                && string.Equals(
+                    current.SessionId,
+                    session.SessionId,
+                    StringComparison.Ordinal))
+            {
+                var oldest = now - MaximumDiagnosticEventAge;
+                events = [.. current.Events
+                    .Where(item => item.OccurredAtUtc >= oldest)
+                    .Append(diagnosticEvent)
+                    .TakeLast(McpServerDiagnosticSummary.MaximumRetainedEvents)];
+            }
+            else
+            {
+                events = [diagnosticEvent];
+            }
+
+            _diagnosticSummaries[session.ProfileId] =
+                new McpServerDiagnosticSummary(
+                    session.ProfileId,
+                    session.Revision,
+                    session.SessionId,
+                    session.SessionKind,
+                    state,
+                    session.StartedAtUtc,
+                    now,
+                    events);
+            EnforceDiagnosticProfileLimitUnsafe();
+            snapshot = CaptureDiagnosticSnapshotUnsafe();
+        }
+
+        Changed?.Invoke(
+            this,
+            new McpServerDiagnosticsChangedEventArgs(snapshot));
+    }
+
+    private async ValueTask CompleteDiagnosticSessionAsync(
+        McpDiagnosticSession session,
+        McpStderrDiagnostics stderr,
+        bool cleanupUncertain)
+    {
+        if (cleanupUncertain)
+        {
+            MarkCleanupUncertain();
+            PublishDiagnostic(
+                session,
+                McpServerLifecycleState.CleanupUncertain,
+                "mcp_cleanup_uncertain",
+                "MCP process cleanup could not be confirmed.",
+                stderr);
+            await PersistDiagnosticsAsync().ConfigureAwait(false);
+            return;
+        }
+
+        PublishDiagnostic(
+            session,
+            McpServerLifecycleState.Stopped,
+            "mcp_stopped",
+            stderr.ObservedByteCount == 0 && !stderr.ReadFailed
+                ? "The MCP process stopped cleanly."
+                : "The MCP process stopped; bounded stderr shape metadata was retained.",
+            stderr);
+        await PersistDiagnosticsAsync().ConfigureAwait(false);
+    }
+
+    private McpServerDiagnosticsSnapshot CaptureDiagnosticSnapshotUnsafe() =>
+        new(
+            [.. _diagnosticSummaries.Values
+                .OrderByDescending(summary => summary.UpdatedAtUtc)
+                .ThenBy(summary => summary.ProfileId.Value, StringComparer.Ordinal)],
+            IsCleanupUncertain,
+            _cleanupUncertainAtUtc);
+
+    private void PruneDiagnosticsUnsafe(DateTimeOffset now)
+    {
+        var oldest = now - MaximumDiagnosticEventAge;
+        foreach (var profileId in (McpServerProfileId[])[.. _diagnosticSummaries
+                     .Where(item => item.Value.UpdatedAtUtc < oldest)
+                     .Select(item => item.Key)])
+        {
+            _diagnosticSummaries.Remove(profileId);
+        }
+    }
+
+    private void EnforceDiagnosticProfileLimitUnsafe()
+    {
+        while (_diagnosticSummaries.Count
+               > McpServerDiagnosticsSnapshot.MaximumRetainedProfiles)
+        {
+            var oldest = _diagnosticSummaries
+                .OrderBy(item => item.Value.UpdatedAtUtc)
+                .ThenBy(item => item.Key.Value, StringComparer.Ordinal)
+                .First();
+            _diagnosticSummaries.Remove(oldest.Key);
+        }
+    }
+
     private bool IsCleanupUncertain =>
         Volatile.Read(ref _cleanupUncertain) != 0;
 
-    private void MarkCleanupUncertain() =>
-        Interlocked.Exchange(ref _cleanupUncertain, 1);
+    private void MarkCleanupUncertain()
+    {
+        if (Interlocked.Exchange(ref _cleanupUncertain, 1) != 0)
+        {
+            return;
+        }
+
+        McpServerDiagnosticsSnapshot snapshot;
+        lock (_diagnosticGate)
+        {
+            _cleanupUncertainAtUtc =
+                _timeProvider.GetUtcNow().ToUniversalTime();
+            snapshot = CaptureDiagnosticSnapshotUnsafe();
+        }
+
+        Changed?.Invoke(
+            this,
+            new McpServerDiagnosticsChangedEventArgs(snapshot));
+    }
 
     private static McpSessionOptions CreateDefaultOptions() =>
         new()
@@ -2052,6 +2460,7 @@ public sealed class AgentMcpSessionHost :
                 snapshot.McpServerProfiles
                     .Where(stored =>
                         stored.Value.IsEnabled
+                        && stored.Value.IsTrusted
                         && stored.Value.EnabledTools.Count > 0)
                     .ToDictionary(
                     stored => stored.Value.Id,
@@ -2098,6 +2507,13 @@ public sealed class AgentMcpSessionHost :
     private readonly record struct McpTestProfileFingerprint(
         long Revision,
         bool IsEnabled);
+
+    private readonly record struct McpDiagnosticSession(
+        McpServerProfileId ProfileId,
+        long Revision,
+        string SessionId,
+        McpServerSessionKind SessionKind,
+        DateTimeOffset StartedAtUtc);
 
     private sealed class RunSession : IAsyncDisposable
     {
@@ -2252,8 +2668,13 @@ public sealed class AgentMcpSessionHost :
         McpSecretRedactor redactor,
         IReadOnlyList<AgentMcpToolManifest> manifests,
         IReadOnlyDictionary<string, string> protocolToolNames,
-        int discoveredToolCount) : IAsyncDisposable
+        int discoveredToolCount,
+        McpDiagnosticSession diagnostic,
+        Func<McpDiagnosticSession, McpStderrDiagnostics, bool, ValueTask>
+            diagnosticCompletion) : IAsyncDisposable
     {
+        private int _disposeStarted;
+
         public StoredDefinition<McpServerProfile> Stored { get; } = stored;
 
         public McpClientSession Client { get; } = client;
@@ -2272,10 +2693,17 @@ public sealed class AgentMcpSessionHost :
 
         public int DiscoveredToolCount { get; } = discoveredToolCount;
 
+        public McpDiagnosticSession Diagnostic { get; } = diagnostic;
+
         public bool CleanupUncertain { get; private set; }
 
         public async ValueTask DisposeAsync()
         {
+            if (Interlocked.Exchange(ref _disposeStarted, 1) != 0)
+            {
+                return;
+            }
+
             try
             {
                 await Client.DisposeAsync().ConfigureAwait(false);
@@ -2283,7 +2711,18 @@ public sealed class AgentMcpSessionHost :
             }
             finally
             {
-                Redactor.Dispose();
+                try
+                {
+                    await diagnosticCompletion(
+                            Diagnostic,
+                            Client.StandardErrorDiagnostics,
+                            CleanupUncertain)
+                        .ConfigureAwait(false);
+                }
+                finally
+                {
+                    Redactor.Dispose();
+                }
             }
         }
     }
