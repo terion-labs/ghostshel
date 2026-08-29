@@ -2684,8 +2684,10 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
             ConnectionError = ConnectionRuntimeError.Create(ConnectionRuntimeErrorCode.ProcessFailed);
             ConnectionState = ConnectionPanelState.Failed;
             ReconnectState = ConnectionReconnectState.Idle;
-            ConnectionStatus = "Session ended";
-            ConnectionDetail = "The terminal process exited. Reconnect manually to start a new session.";
+            ConnectionStatus = _connection.Endpoint is ConnectionEndpoint.Ssh
+                ? "Connection failed"
+                : "Session ended";
+            ConnectionDetail = snapshot.Descriptor.StatusDetail;
         }
     }
 

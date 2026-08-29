@@ -1,3 +1,5 @@
+using GhostShell.Core;
+
 namespace GhostShell.Application;
 
 /// <summary>
@@ -56,6 +58,86 @@ public sealed record ConnectionRuntimeError(
             New(code, "connection_process_failed", "The connection runtime failed.", true, ConnectionRecoveryAction.Retry),
         _ => throw new ArgumentOutOfRangeException(nameof(code), code, null),
     };
+
+    /// <summary>
+    /// Classifies bounded process output into a stable, non-sensitive connection error. The raw
+    /// process text is inspected but never copied into the returned value.
+    /// </summary>
+    public static ConnectionRuntimeError ClassifyProcessFailure(
+        ConnectionKind kind,
+        string processError)
+    {
+        ArgumentNullException.ThrowIfNull(processError);
+        if (kind == ConnectionKind.Ssh)
+        {
+            if (Contains(processError, "REMOTE HOST IDENTIFICATION HAS CHANGED"))
+            {
+                return Create(ConnectionRuntimeErrorCode.HostKeyChanged);
+            }
+
+            if (Contains(processError, "Host key verification failed")
+                || Contains(processError, "authenticity of host")
+                || Contains(processError, "No ED25519 host key is known"))
+            {
+                return Create(ConnectionRuntimeErrorCode.UnknownHostKey);
+            }
+
+            if (Contains(processError, "Permission denied")
+                || Contains(processError, "Authentication failed"))
+            {
+                return Create(ConnectionRuntimeErrorCode.AuthenticationFailed);
+            }
+        }
+
+        if (kind == ConnectionKind.Docker)
+        {
+            if (Contains(processError, "No such container")
+                || Contains(processError, "is not running"))
+            {
+                return Create(ConnectionRuntimeErrorCode.ContainerNotFound);
+            }
+
+            if (Contains(processError, "permission denied")
+                || Contains(processError, "access is denied"))
+            {
+                return Create(ConnectionRuntimeErrorCode.PermissionDenied);
+            }
+        }
+
+        if (kind == ConnectionKind.Wsl
+            && (Contains(processError, "There is no distribution with the supplied name")
+                || Contains(processError, "WSL_E_DISTRO_NOT_FOUND")))
+        {
+            return Create(ConnectionRuntimeErrorCode.DistributionNotFound);
+        }
+
+        if (Contains(processError, "permission denied")
+            || Contains(processError, "access is denied"))
+        {
+            return Create(ConnectionRuntimeErrorCode.PermissionDenied);
+        }
+
+        if (Contains(processError, "timed out"))
+        {
+            return Create(ConnectionRuntimeErrorCode.Timeout);
+        }
+
+        if (Contains(processError, "No route to host")
+            || Contains(processError, "Network is unreachable")
+            || Contains(processError, "Could not resolve hostname")
+            || Contains(processError, "Connection refused")
+            || Contains(processError, "Cannot connect to the Docker daemon")
+            || Contains(processError, "error during connect")
+            || Contains(processError, "connection failed"))
+        {
+            return Create(ConnectionRuntimeErrorCode.Offline);
+        }
+
+        return Create(ConnectionRuntimeErrorCode.ProcessFailed);
+    }
+
+    private static bool Contains(string value, string fragment) =>
+        value.Contains(fragment, StringComparison.OrdinalIgnoreCase);
 
     private static ConnectionRuntimeError New(
         ConnectionRuntimeErrorCode code,

@@ -16,6 +16,7 @@ internal static class SshConnectionArguments
         TerminalMultiplexerSession? multiplexerSession = null)
     {
         var arguments = Common(profile, endpoint, knownHostBinding);
+        AddOption(arguments, "ConnectTimeout", "12");
         foreach (var variable in profile.Startup.Environment)
         {
             AddOption(arguments, "SendEnv", variable.Name);

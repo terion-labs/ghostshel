@@ -437,12 +437,11 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
 
             if (_processExited)
             {
-                var suffix = _exitCode is { } exitCode ? $" with code {exitCode}" : string.Empty;
                 return ValueTask.FromResult(new PanelSessionSnapshot(
                     SessionLifecycle.Closed,
                     SessionHealth.Ended,
                     false,
-                    $"The terminal process exited{suffix}."));
+                    DescribeProcessExitUnsafe()));
             }
 
             var hasActiveWork = NeedsCloseConfirmationUnsafe();
@@ -774,21 +773,40 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
     {
         lock (_gate)
         {
-            if (_closed || _processExited)
+            if (_closed)
             {
                 return;
             }
 
-            _processExited = true;
-            _exitCode = exitCode;
-            _writes.Writer.TryComplete();
+            _exitCode = exitCode ?? _exitCode;
+            if (!_processExited)
+            {
+                _processExited = true;
+                _writes.Writer.TryComplete();
+            }
+
             PublishUnsafe(
                 SessionLifecycle.Closed,
                 SessionHealth.Ended,
-                exitCode is { } known
-                    ? $"Terminal process exited with code {known}."
-                    : "Terminal process exited.");
+                DescribeProcessExitUnsafe());
         }
+    }
+
+    private string DescribeProcessExitUnsafe()
+    {
+        string screen;
+        try
+        {
+            screen = BuildScreenSnapshotUnsafe(BuildRenderFrameUnsafe()).PlainText;
+        }
+        catch
+        {
+            // Exit reporting must remain available even if the renderer cannot produce a final
+            // frame. No renderer exception or terminal content crosses this presentation boundary.
+            screen = string.Empty;
+        }
+
+        return TerminalProcessExitDescription.Describe(_launch, screen, _exitCode);
     }
 
     private void Fail(string stableCode, Exception exception)

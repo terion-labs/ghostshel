@@ -1110,6 +1110,47 @@ public sealed class GhosttyVtTerminalSessionTests
     }
 
     [Fact]
+    public async Task RealOpenSshProcessExitReportsAClassifiedConnectionFailureWithoutEndpointText()
+    {
+        _ = GhosttyVtTestRuntime.RequireStagedRuntime();
+        if (!OperatingSystem.IsMacOS() || !File.Exists("/usr/bin/ssh"))
+        {
+            return;
+        }
+
+        var listener = new System.Net.Sockets.TcpListener(
+            System.Net.IPAddress.Loopback,
+            port: 0);
+        listener.Start();
+        var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+        listener.Stop();
+        var factory = new GhosttyVtTerminalSessionFactory();
+        await using var session = await factory.CreateAsync(
+            SessionId.New(),
+            new TerminalLaunchRequest(
+                Environment.CurrentDirectory,
+                "/usr/bin/ssh",
+                [
+                    "-o", "BatchMode=yes",
+                    "-o", "ConnectTimeout=2",
+                    "-p", port.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    "127.0.0.1",
+                ],
+                connectionMetadata: new TerminalConnectionMetadata(
+                    $"SSH: root@private-endpoint:{port}",
+                    initialWorkingDirectory: null)),
+            default);
+
+        await WaitUntilAsync(async () =>
+            (await session.SnapshotAsync(default)).Lifecycle == SessionLifecycle.Closed);
+        var snapshot = await session.SnapshotAsync(default);
+
+        Assert.Equal("The connection endpoint is offline or unreachable.", snapshot.StatusDetail);
+        Assert.DoesNotContain("127.0.0.1", snapshot.StatusDetail, StringComparison.Ordinal);
+        Assert.DoesNotContain(port.ToString(System.Globalization.CultureInfo.InvariantCulture), snapshot.StatusDetail, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Initial_command_is_typed_into_the_pty_before_any_user_input()
     {
         _ = GhosttyVtTestRuntime.RequireStagedRuntime();

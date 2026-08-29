@@ -128,6 +128,37 @@ public sealed class TerminalRuntimePanelViewModelTests
     }
 
     [Fact]
+    public async Task ClosedSshProcessPresentsTheSafeEngineFailureInsteadOfGenericSessionEndedText()
+    {
+        var connection = SshAgentConnection();
+        using var panel = CreatePanel(
+            new QueueConnectionRuntime(SuccessfulSshPlan(connection)),
+            connection,
+            PanelStartupBehavior.None);
+        await panel.Initialization;
+        var request = Assert.IsType<EnsureTerminalSessionRequest>(panel.SessionRequest);
+
+        panel.ObserveSessionSnapshot(new SessionSnapshot(
+            new SessionDescriptor(
+                request.SessionId,
+                PanelKind.Terminal,
+                SessionLifecycle.Closed,
+                SessionHealth.Ended,
+                request.Owner,
+                CapabilitySet.Empty,
+                Revision: 2,
+                HasActiveWork: false,
+                StatusDetail: "The connection attempt timed out."),
+            LastSequence: 2,
+            Attachments: [],
+            InputLease: null));
+
+        Assert.Equal("Connection failed", panel.ConnectionStatus);
+        Assert.Equal("The connection attempt timed out.", panel.ConnectionDetail);
+        Assert.Null(panel.SessionRequest);
+    }
+
+    [Fact]
     public async Task NotificationWatchStartsWhenHostAcceptsAStartingSession()
     {
         var connection = LocalConnection();

@@ -71,6 +71,7 @@ public sealed class SshConnectionRuntimeAdapterTests
         Assert.Equal(SshHostKeyPolicy.Strict, plan.HostKeyPolicy);
         Assert.Equal(ConnectionReconnectMode.BoundedBackoff, plan.ReconnectMode);
         Assert.Contains("StrictHostKeyChecking=yes", plan.Launch.Arguments, StringComparer.Ordinal);
+        Assert.Contains("ConnectTimeout=12", plan.Launch.Arguments, StringComparer.Ordinal);
         Assert.Contains("ServerAliveInterval=17", plan.Launch.Arguments, StringComparer.Ordinal);
         Assert.Contains("ServerAliveCountMax=4", plan.Launch.Arguments, StringComparer.Ordinal);
         Assert.Contains("PreferredAuthentications=publickey", plan.Launch.Arguments, StringComparer.Ordinal);
