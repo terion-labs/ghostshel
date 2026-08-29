@@ -1558,6 +1558,120 @@ public sealed partial class AgentChatViewModelTests
         });
 
     [Fact]
+    public Task Markdown_table_scrolls_to_its_rightmost_column_in_a_narrow_reader() =>
+        RunAgentComposerHeadlessAsync(async () =>
+        {
+            const string markdown = """
+                | Date/time | Finding | Source address | Recovery action |
+                |---|---|---|---|
+                | 27 Aug 19:05:12 | Encryption began at exactly the same second | 89.117.94.35 | Rebuild from a clean host and rotate every key |
+                """;
+            var preview = new MarkdownPreviewView
+            {
+                Text = markdown,
+                ContinuousSelection = true,
+            };
+            var window = new Window
+            {
+                Width = 300,
+                Height = 320,
+                Content = preview,
+            };
+
+            try
+            {
+                window.Show();
+                await WaitForVisualAsync<SelectableTextBlock>(
+                    preview,
+                    window,
+                    cell => RenderedText(cell).Contains(
+                        "Recovery action",
+                        StringComparison.Ordinal),
+                    "the rightmost Markdown table column");
+
+                var tableViewport = Assert.Single(
+                    preview.GetVisualDescendants().OfType<ScrollViewer>(),
+                    viewer => string.Equals(
+                        AutomationProperties.GetName(viewer),
+                        "Scrollable Markdown table",
+                        StringComparison.Ordinal));
+                window.UpdateLayout();
+                Assert.True(
+                    tableViewport.Bounds.Width <= preview.Bounds.Width,
+                    $"table viewport {tableViewport.Bounds.Width:F0} exceeds reader {preview.Bounds.Width:F0}");
+                var maximumOffset = Math.Max(
+                    0,
+                    tableViewport.Extent.Width - tableViewport.Viewport.Width);
+                Assert.True(
+                    maximumOffset > 0,
+                    $"Expected horizontal overflow, extent={tableViewport.Extent}, viewport={tableViewport.Viewport}.");
+
+                tableViewport.Offset = new Vector(maximumOffset, 0);
+                window.UpdateLayout();
+                Assert.True(
+                    tableViewport.Offset.X >= maximumOffset - 1,
+                    $"Expected right edge {maximumOffset:F0}, actual {tableViewport.Offset.X:F0}.");
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+    [Fact]
+    public Task Markdown_two_column_table_wraps_to_the_narrow_reader_width() =>
+        RunAgentComposerHeadlessAsync(async () =>
+        {
+            const string markdown = """
+                | Date/time | Finding |
+                |---|---|
+                | 27 Aug 19:05:12 | Malicious webshell requests started encryption at exactly the same second |
+                """;
+            var preview = new MarkdownPreviewView
+            {
+                Text = markdown,
+                ContinuousSelection = true,
+            };
+            var window = new Window
+            {
+                Width = 300,
+                Height = 320,
+                Content = preview,
+            };
+
+            try
+            {
+                window.Show();
+                var finding = await WaitForVisualAsync<SelectableTextBlock>(
+                    preview,
+                    window,
+                    cell => RenderedText(cell).Contains(
+                        "Malicious webshell",
+                        StringComparison.Ordinal),
+                    "the wrapped Markdown table finding");
+                var tableViewport = Assert.Single(
+                    preview.GetVisualDescendants().OfType<ScrollViewer>(),
+                    viewer => string.Equals(
+                        AutomationProperties.GetName(viewer),
+                        "Scrollable Markdown table",
+                        StringComparison.Ordinal));
+                window.UpdateLayout();
+
+                Assert.True(
+                    tableViewport.Extent.Width
+                        <= tableViewport.Viewport.Width + 1,
+                    $"Two columns should fit: extent={tableViewport.Extent}, viewport={tableViewport.Viewport}.");
+                Assert.True(
+                    finding.Bounds.Height > 20,
+                    $"Expected the finding to wrap, actual bounds={finding.Bounds}.");
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+    [Fact]
     public Task Incident_report_markdown_never_collapses_to_a_blank_message() =>
         RunAgentComposerHeadlessAsync(async () =>
         {

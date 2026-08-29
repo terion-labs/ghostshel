@@ -5,6 +5,7 @@ using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
+using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 using CSharpMath.Avalonia;
@@ -33,6 +34,12 @@ public sealed partial class MarkdownPreviewView : UserControl
 
     /// <summary>Body size for prose, a step above the shell's dense UI text.</summary>
     private const double BodyFontSize = 13;
+
+    /// <summary>
+    /// Below this width a table column stops being readable. Tables with more
+    /// columns keep this floor and scroll inside their own viewport.
+    /// </summary>
+    private const double MinimumTableColumnWidth = 120;
 
     public MarkdownPreviewView()
     {
@@ -588,7 +595,7 @@ public sealed partial class MarkdownPreviewView : UserControl
         var grid = new Grid();
         for (var column = 0; column < columns; column++)
         {
-            grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
+            grid.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(1, GridUnitType.Star)));
         }
 
         var row = 0;
@@ -624,8 +631,9 @@ public sealed partial class MarkdownPreviewView : UserControl
         {
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(6),
-            Margin = new Thickness(0, 4, 0, 4),
-            HorizontalAlignment = HorizontalAlignment.Left,
+            MinWidth = columns * MinimumTableColumnWidth,
+            Width = columns * MinimumTableColumnWidth,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             Child = grid,
         };
         if (Brush("ShellBorderBrush") is { } outline)
@@ -633,7 +641,25 @@ public sealed partial class MarkdownPreviewView : UserControl
             table.BorderBrush = outline;
         }
 
-        return table;
+        var viewport = new ScrollViewer
+        {
+            Margin = new Thickness(0, 4),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Left,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            BringIntoViewOnFocusChange = false,
+            Content = table,
+        };
+        AutomationProperties.SetName(viewport, "Scrollable Markdown table");
+        AutomationProperties.SetHelpText(
+            viewport,
+            "Scroll horizontally to read every table column.");
+        viewport.SizeChanged += (_, e) =>
+        {
+            table.Width = Math.Max(table.MinWidth, e.NewSize.Width);
+        };
+        return viewport;
     }
 
     private Control Cell(ImmutableArray<MarkdownRun> runs, bool isHeader)
