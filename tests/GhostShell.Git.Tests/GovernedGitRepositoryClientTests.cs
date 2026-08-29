@@ -344,6 +344,45 @@ public sealed class GovernedGitRepositoryClientTests
         Assert.False(File.Exists(marker));
     }
 
+    [Theory]
+    [InlineData("global")]
+    [InlineData("system")]
+    public async Task GovernedStateIgnoresExecutableConfigurationOutsideTheRepository(
+        string scope)
+    {
+        await using var repository = await LocalRepository.CreateAsync();
+        var executor = new AdditionalConfigurationExecutor(
+            repository.Executor,
+            $"{scope}\0filter.lfs.process\ngit-lfs filter-process\0");
+        var client = new GitRepositoryClient(executor, TimeProvider.System);
+
+        var result = await client.ReadGovernedStateAsync(
+            repository.Handle,
+            generation: 10,
+            CancellationToken.None);
+
+        Assert.IsType<GitResult<GitGovernedState>.Success>(result);
+    }
+
+    [Fact]
+    public async Task GovernedStateRejectsExecutableWorktreeConfiguration()
+    {
+        await using var repository = await LocalRepository.CreateAsync();
+        var executor = new AdditionalConfigurationExecutor(
+            repository.Executor,
+            "worktree\0filter.evil.process\nevil-filter\0");
+        var client = new GitRepositoryClient(executor, TimeProvider.System);
+
+        var result = await client.ReadGovernedStateAsync(
+            repository.Handle,
+            generation: 10,
+            CancellationToken.None);
+
+        Assert.Equal(
+            GitErrorCode.Unsupported,
+            Assert.IsType<GitResult<GitGovernedState>.Failure>(result).Error.Code);
+    }
+
     [Fact]
     public async Task GovernedStateSuppressesConfiguredFsmonitorHook()
     {
@@ -509,6 +548,35 @@ public sealed class GovernedGitRepositoryClientTests
             }
 
             return result;
+        }
+
+        public ValueTask<ConnectionBinaryCommandResult> ExecuteBinaryAsync(
+            ConnectionBinaryCommand request,
+            CancellationToken cancellationToken) =>
+            inner.ExecuteBinaryAsync(request, cancellationToken);
+
+        public ValueTask<ConnectionStreamingCommandResult<T>> ExecuteStreamingAsync<T>(
+            ConnectionBinaryCommand request,
+            Func<Stream, CancellationToken, ValueTask<T>> consumeOutput,
+            CancellationToken cancellationToken) =>
+            inner.ExecuteStreamingAsync(request, consumeOutput, cancellationToken);
+    }
+
+    private sealed class AdditionalConfigurationExecutor(
+        IConnectionCommandExecutor inner,
+        string additionalConfiguration) : IConnectionCommandExecutor
+    {
+        public async ValueTask<ConnectionCommandResult> ExecuteAsync(
+            ConnectionCommand request,
+            CancellationToken cancellationToken)
+        {
+            var result = await inner.ExecuteAsync(request, cancellationToken);
+            return request.Arguments.Contains("--show-scope", StringComparer.Ordinal)
+                ? result with
+                {
+                    StandardOutput = result.StandardOutput + additionalConfiguration,
+                }
+                : result;
         }
 
         public ValueTask<ConnectionBinaryCommandResult> ExecuteBinaryAsync(

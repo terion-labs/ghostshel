@@ -1009,9 +1009,9 @@ public sealed partial class GitRepositoryClient
             var separator = record.IndexOf('\n', StringComparison.Ordinal);
             var key = separator < 0 ? record : record[..separator];
             var value = separator < 0 ? string.Empty : record[(separator + 1)..];
-            if (IsExecutableConfiguration(key, value)
-                || string.Equals(scope, "local", StringComparison.Ordinal)
-                    && IsSensitiveHttpConfiguration(key, value))
+            if (IsRepositoryControlledScope(scope)
+                && (IsExecutableConfiguration(key, value)
+                    || IsSensitiveHttpConfiguration(key, value)))
             {
                 return Failure<GitUnit>(
                     GitErrorCode.Unsupported,
@@ -1021,6 +1021,10 @@ public sealed partial class GitRepositoryClient
 
         return new GitResult<GitUnit>.Success(GitUnit.Value);
     }
+
+    private static bool IsRepositoryControlledScope(string scope) =>
+        string.Equals(scope, "local", StringComparison.Ordinal)
+        || string.Equals(scope, "worktree", StringComparison.Ordinal);
 
     private static bool IsExecutableConfiguration(string key, string value)
     {
