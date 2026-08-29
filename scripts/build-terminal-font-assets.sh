@@ -8,6 +8,10 @@ source_dir="${dependencies_dir}/ghostty-vt"
 artifact_parent_dir="${repository_dir}/native/artifacts"
 component_catalog="${repository_dir}/licenses/terminal-font-assets.json"
 dotnet="${GHOSTSHELL_DOTNET:-${repository_dir}/.dotnet/dotnet}"
+dotnet_artifacts_arguments=()
+if [[ -n "${GHOSTSHELL_BUILD_ARTIFACTS_ROOT:-}" ]]; then
+    dotnet_artifacts_arguments=(--artifacts-path "${GHOSTSHELL_BUILD_ARTIFACTS_ROOT}")
+fi
 
 ghostty_repository="https://github.com/ghostty-org/ghostty.git"
 ghostty_commit="08f039fbb3dea9c6b1cdb5ff4550666598122346"
@@ -285,6 +289,7 @@ receipt="${artifact_dir}/terminal-font-assets-build-receipt.json"
 "${dotnet}" run \
     --project "${repository_dir}/tools/GhostShell.Packaging/GhostShell.Packaging.csproj" \
     --configuration Release \
+    ${dotnet_artifacts_arguments[@]+"${dotnet_artifacts_arguments[@]}"} \
     -- \
     native-publish-artifacts \
     --staged-directory "${artifact_dir}" \
