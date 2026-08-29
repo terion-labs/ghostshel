@@ -193,6 +193,11 @@ public sealed class ConnectionEditorViewModelTests
 
         public SshHostKeyTrustRequest? LastTrustRequest { get; private set; }
 
+        public ValueTask<ConnectionRuntimeResult<SshHostKeyReview>> PrepareSshHostKeyAsync(
+            ConnectionProfile profile,
+            IProgress<ConnectionProgress>? progress,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
         public ValueTask<ConnectionRuntimeResult<SshHostKeyReview>> InspectSshHostKeyAsync(
             ConnectionProfile profile,
             IProgress<ConnectionProgress>? progress,

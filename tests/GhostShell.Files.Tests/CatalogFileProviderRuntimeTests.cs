@@ -458,6 +458,12 @@ internal sealed class RecordingConnectionSecurityRuntime(ConnectionProfile expec
 
     public SshHostKeyTrustRequest? TrustRequest { get; private set; }
 
+    public ValueTask<ConnectionRuntimeResult<SshHostKeyReview>> PrepareSshHostKeyAsync(
+        ConnectionProfile profile,
+        IProgress<ConnectionProgress>? progress,
+        CancellationToken cancellationToken) =>
+        InspectSshHostKeyAsync(profile, progress, cancellationToken);
+
     public ValueTask<ConnectionRuntimeResult<SshHostKeyReview>> InspectSshHostKeyAsync(
         ConnectionProfile profile,
         IProgress<ConnectionProgress>? progress,

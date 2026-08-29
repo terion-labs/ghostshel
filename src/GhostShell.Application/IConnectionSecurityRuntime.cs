@@ -8,6 +8,15 @@ namespace GhostShell.Application;
 /// </summary>
 public interface IConnectionSecurityRuntime
 {
+    /// <summary>
+    /// Resolves the host-key trust needed to launch a connection. An existing pin can be enforced
+    /// by the connection runtime without opening a second network session.
+    /// </summary>
+    ValueTask<ConnectionRuntimeResult<SshHostKeyReview>> PrepareSshHostKeyAsync(
+        ConnectionProfile profile,
+        IProgress<ConnectionProgress>? progress,
+        CancellationToken cancellationToken);
+
     ValueTask<ConnectionRuntimeResult<SshHostKeyReview>> InspectSshHostKeyAsync(
         ConnectionProfile profile,
         IProgress<ConnectionProgress>? progress,

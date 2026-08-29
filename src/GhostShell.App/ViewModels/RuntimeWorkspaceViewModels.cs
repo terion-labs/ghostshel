@@ -2962,7 +2962,7 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
             return null;
         }
 
-        var inspected = await _connectionSecurityRuntime.InspectSshHostKeyAsync(
+        var inspected = await _connectionSecurityRuntime.PrepareSshHostKeyAsync(
             _connection,
             progress,
             cancellationToken);

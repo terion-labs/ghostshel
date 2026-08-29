@@ -758,6 +758,29 @@ public sealed class TerminalRuntimePanelViewModelTests
     }
 
     [Fact]
+    public async Task PinnedHostKeyPreparationReachesSystemSshPlanWithoutRemoteInspection()
+    {
+        var connection = SshAgentConnection();
+        var runtime = new QueueConnectionRuntime(SuccessfulSshPlan(connection));
+        var security = new FixedConnectionSecurityRuntime(
+            connection,
+            SshHostKeyDisposition.Trusted);
+        using var panel = CreatePanel(
+            runtime,
+            connection,
+            PanelStartupBehavior.None,
+            security: security);
+
+        await panel.Initialization;
+
+        Assert.Equal(ConnectionPanelState.Ready, panel.ConnectionState);
+        Assert.NotNull(panel.SessionRequest);
+        Assert.Equal(1, runtime.PlanCount);
+        Assert.Equal(1, security.PrepareCount);
+        Assert.Equal(0, security.InspectCount);
+    }
+
+    [Fact]
     public async Task CopyModeIsExplicitAndCanBeExitedWithoutChangingTheSession()
     {
         var connection = LocalConnection();
@@ -1206,11 +1229,34 @@ public sealed class TerminalRuntimePanelViewModelTests
         ConnectionProfile profile,
         SshHostKeyDisposition disposition) : IConnectionSecurityRuntime
     {
+        public int PrepareCount { get; private set; }
+
+        public int InspectCount { get; private set; }
+
         public int TrustCount { get; private set; }
+
+        public ValueTask<ConnectionRuntimeResult<SshHostKeyReview>> PrepareSshHostKeyAsync(
+            ConnectionProfile inspectedProfile,
+            IProgress<ConnectionProgress>? progress,
+            CancellationToken cancellationToken)
+        {
+            _ = progress;
+            PrepareCount++;
+            return Review(inspectedProfile, cancellationToken);
+        }
 
         public ValueTask<ConnectionRuntimeResult<SshHostKeyReview>> InspectSshHostKeyAsync(
             ConnectionProfile inspectedProfile,
             IProgress<ConnectionProgress>? progress,
+            CancellationToken cancellationToken)
+        {
+            _ = progress;
+            InspectCount++;
+            return Review(inspectedProfile, cancellationToken);
+        }
+
+        private ValueTask<ConnectionRuntimeResult<SshHostKeyReview>> Review(
+            ConnectionProfile inspectedProfile,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();

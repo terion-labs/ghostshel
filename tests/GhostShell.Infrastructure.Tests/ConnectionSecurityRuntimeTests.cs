@@ -130,6 +130,30 @@ public sealed class ConnectionSecurityRuntimeTests : IDisposable
     }
 
     [Fact]
+    public async Task Preparing_a_pinned_connection_does_not_open_a_redundant_scanner_session()
+    {
+        var pinned = Candidate(14);
+        var scanner = new FixedHostKeyScanner(pinned);
+        var store = new SshKnownHostStore(_knownHostsDirectory);
+        var profile = SshProfile("prepared-pin");
+        Assert.Equal(
+            SshKnownHostWriteResult.Stored,
+            await store.WriteAsync(profile.Id, pinned, null, CancellationToken.None));
+        using var vault = new RecordingSecretVault();
+        var runtime = Runtime(store, vault, scanner);
+
+        var review = Success(await runtime.PrepareSshHostKeyAsync(
+            profile,
+            null,
+            CancellationToken.None));
+
+        Assert.Equal(SshHostKeyDisposition.Trusted, review.Disposition);
+        Assert.Equal(pinned.Identity, review.Presented);
+        Assert.Equal(pinned.Identity, review.Trusted);
+        Assert.Equal(0, scanner.CallCount);
+    }
+
+    [Fact]
     public async Task Changed_key_requires_the_explicit_replacement_action()
     {
         var first = Candidate(1);

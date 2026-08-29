@@ -50,6 +50,40 @@ public sealed class ConnectionSecurityRuntime : IConnectionSecurityRuntime
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     }
 
+    public async ValueTask<ConnectionRuntimeResult<SshHostKeyReview>> PrepareSshHostKeyAsync(
+        ConnectionProfile profile,
+        IProgress<ConnectionProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        if (profile.Endpoint is not ConnectionEndpoint.Ssh)
+        {
+            return FailReview(ConnectionRuntimeErrorCode.InvalidProfile);
+        }
+
+        SshHostKeyCandidate? pinned;
+        try
+        {
+            pinned = await _knownHosts.ReadAsync(profile.Id, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return FailReview(ConnectionRuntimeErrorCode.Cancelled);
+        }
+        catch (Exception exception) when (exception is
+            IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            return FailReview(ConnectionRuntimeErrorCode.ProcessFailed);
+        }
+
+        // The OpenSSH launch receives this exact per-connection known-host file and applies strict
+        // checking. Re-scanning here would create a second connection with different SSH behavior
+        // before the authoritative client is even allowed to start.
+        return pinned is not null
+            ? ConnectionRuntimeResult<SshHostKeyReview>.Succeed(CreatePinnedReview(profile, pinned))
+            : await InspectSshHostKeyAsync(profile, progress, cancellationToken).ConfigureAwait(false);
+    }
+
     public async ValueTask<ConnectionRuntimeResult<SshHostKeyReview>> InspectSshHostKeyAsync(
         ConnectionProfile profile,
         IProgress<ConnectionProgress>? progress,
