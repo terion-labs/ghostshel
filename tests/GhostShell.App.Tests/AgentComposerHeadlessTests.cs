@@ -868,17 +868,31 @@ public sealed partial class AgentChatViewModelTests
             try
             {
                 window.Show();
-                await Task.Delay(100);
-                window.UpdateLayout();
-
-                var reasoningDisclosure = Assert.Single(
-                    view.GetVisualDescendants().OfType<ToggleButton>(),
+                var reasoningDisclosure = await WaitForVisualAsync<ToggleButton>(
+                    view,
+                    window,
                     toggle => string.Equals(AutomationProperties.GetName(toggle)
 , "Show or hide AI reasoning summary"
-, StringComparison.Ordinal) && toggle.IsEffectivelyVisible);
+, StringComparison.Ordinal) && toggle.IsEffectivelyVisible,
+                    "the reasoning disclosure");
                 Assert.False(reasoningDisclosure.IsChecked);
                 reasoningDisclosure.IsChecked = true;
-                await Task.Delay(80);
+                _ = await WaitForVisualAsync<SelectableMarkdownDocument>(
+                    view,
+                    window,
+                    block => block.Text.Contains("Hello", StringComparison.Ordinal),
+                    "the rendered user message");
+                _ = await WaitForVisualAsync<SelectableMarkdownDocument>(
+                    view,
+                    window,
+                    block => block.Text.Contains("Answer", StringComparison.Ordinal)
+                        && block.Text.Contains("First item", StringComparison.Ordinal),
+                    "the rendered assistant answer");
+                _ = await WaitForVisualAsync<SelectableMarkdownDocument>(
+                    view,
+                    window,
+                    block => block.Text.Contains("Checked", StringComparison.Ordinal),
+                    "the rendered reasoning summary");
                 window.UpdateLayout();
 
                 var renderedText = view.GetVisualDescendants()
