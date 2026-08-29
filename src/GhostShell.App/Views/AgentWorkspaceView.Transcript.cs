@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -19,6 +20,7 @@ public partial class AgentWorkspaceView
     private readonly ObservableCollection<AgentChatMessageViewModel>
         _materializedAgentChatMessages = [];
     private readonly HashSet<Control> _agentChatAnchorCandidates = [];
+    private IAgentWorkspaceHost? _agentChatHost;
     private ObservableCollection<AgentChatMessageViewModel>? _agentChatMessageSource;
     private int _materializedAgentChatStartIndex;
     private bool _agentChatSourceSynchronizationPending;
@@ -45,13 +47,13 @@ public partial class AgentWorkspaceView
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
-        BindAgentChatMessageSource();
+        SetAgentChatHost(DataContext as IAgentWorkspaceHost);
         RequestAgentChatScrollToEnd(force: true);
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
-        SetAgentChatMessageSource(null);
+        SetAgentChatHost(null);
         foreach (var candidate in _agentChatAnchorCandidates)
         {
             AgentChatTranscript.UnregisterAnchorCandidate(candidate);
@@ -70,13 +72,64 @@ public partial class AgentWorkspaceView
             return;
         }
 
+        SetAgentChatHost(DataContext as IAgentWorkspaceHost);
+        RequestAgentChatScrollToEnd(force: true);
+    }
+
+    private void SetAgentChatHost(IAgentWorkspaceHost? host)
+    {
+        if (ReferenceEquals(_agentChatHost, host))
+        {
+            BindAgentChatMessageSource();
+            return;
+        }
+
+        if (_agentChatHost is INotifyPropertyChanged previousNotifications)
+        {
+            previousNotifications.PropertyChanged -=
+                OnAgentChatHostPropertyChanged;
+        }
+
+        _agentChatHost = host;
+        if (_agentChatHost is INotifyPropertyChanged notifications)
+        {
+            notifications.PropertyChanged += OnAgentChatHostPropertyChanged;
+        }
+
+        BindAgentChatMessageSource();
+    }
+
+    private void OnAgentChatHostPropertyChanged(
+        object? sender,
+        PropertyChangedEventArgs e)
+    {
+        _ = sender;
+        if (!string.IsNullOrEmpty(e.PropertyName)
+            && !string.Equals(
+                e.PropertyName,
+                nameof(IAgentWorkspaceHost.AgentChat),
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(RebindAgentChatMessageSource);
+            return;
+        }
+
+        RebindAgentChatMessageSource();
+    }
+
+    private void RebindAgentChatMessageSource()
+    {
         BindAgentChatMessageSource();
         RequestAgentChatScrollToEnd(force: true);
     }
 
     private void BindAgentChatMessageSource() =>
-        SetAgentChatMessageSource(
-            (DataContext as IAgentWorkspaceHost)?.AgentChat?.Messages);
+        SetAgentChatMessageSource(_agentChatHost?.AgentChat?.Messages);
 
     private void SetAgentChatMessageSource(
         ObservableCollection<AgentChatMessageViewModel>? source)

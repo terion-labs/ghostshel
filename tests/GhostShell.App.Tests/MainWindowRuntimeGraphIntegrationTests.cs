@@ -4,8 +4,12 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading.Channels;
 using Avalonia.Controls;
+using Avalonia.Headless;
+using Avalonia.VisualTree;
 using GhostShell.App;
 using GhostShell.App.ViewModels;
+using GhostShell.App.Views;
+using GhostShell.App.Views.Components;
 using GhostShell.Application;
 using GhostShell.Core;
 using GhostShell.Docker;
@@ -13,6 +17,7 @@ using GhostShell.Git;
 
 namespace GhostShell.App.Tests;
 
+[Collection(AvaloniaUiCollection.Name)]
 public sealed class MainWindowRuntimeGraphIntegrationTests
 {
     [Fact]
@@ -1346,6 +1351,99 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         Assert.Equal(
             [browserWorkspace.Id, statisticsWorkspace.Id],
             factory.CreatedWorkspaceIds);
+    }
+
+    [Fact]
+    public async Task Attached_agent_view_renders_workspace_chat_created_after_attachment()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var session = HeadlessUnitTestSession.StartNew(
+            typeof(SqlEditorHeadlessApplication));
+        try
+        {
+            var completed = await session.Dispatch(
+                async () =>
+                {
+                    var provider = CreateAgentProvider();
+                    using var profiles = new FixedAiProfileRuntime([provider]);
+                    var factory = new RecordingAgentWorkspaceRuntimeFactory();
+                    var (client, _) = CreateSessionClient();
+                    using var viewModel = CreateViewModel(
+                        client,
+                        CreateCatalogSnapshot(),
+                        aiProfiles: profiles,
+                        agentRuntimeFactory: factory);
+                    var view = new AgentWorkspaceView
+                    {
+                        DataContext = viewModel,
+                    };
+                    var window = new Window
+                    {
+                        Width = 700,
+                        Height = 600,
+                        Content = view,
+                    };
+
+                    try
+                    {
+                        window.Show();
+                        window.UpdateLayout();
+                        Assert.Null(viewModel.AgentChat);
+
+                        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+                        var runtime = Assert.Single(factory.CreatedRuntimes);
+                        runtime.SetSnapshot(runtime.Snapshot with
+                        {
+                            ProviderId = provider.Id,
+                            Messages =
+                            [
+                                new AgentChatMessage(
+                                    AgentChatMessageRole.Assistant,
+                                    "This production-host message must render."),
+                            ],
+                        });
+                        await WaitForAsync(() =>
+                            viewModel.AgentChat?.Messages.Count == 1);
+                        await Task.Delay(80);
+                        window.UpdateLayout();
+
+                        var transcript = Assert.IsType<ItemsControl>(
+                            view.FindControl<ItemsControl>("AgentChatMessages"));
+                        Assert.Equal(1, transcript.ItemCount);
+                        for (var attempt = 0;
+                             attempt < 80
+                             && !view.GetVisualDescendants()
+                                 .OfType<SelectableMarkdownDocument>()
+                                 .Any(document => document.Text.Contains(
+                                     "This production-host message must render.",
+                                     StringComparison.Ordinal));
+                             attempt++)
+                        {
+                            await Task.Delay(10);
+                            window.UpdateLayout();
+                        }
+
+                        Assert.Contains(
+                            view.GetVisualDescendants()
+                                .OfType<SelectableMarkdownDocument>(),
+                            document => document.Text.Contains(
+                                "This production-host message must render.",
+                                StringComparison.Ordinal));
+                    }
+                    finally
+                    {
+                        window.Close();
+                    }
+
+                    return true;
+                },
+                timeout.Token);
+            Assert.True(completed);
+        }
+        finally
+        {
+            await session.DisposeAsync();
+        }
     }
 
     [Fact]
