@@ -32,6 +32,8 @@ namespace GhostShell.DesignQa;
 /// </summary>
 internal static class Program
 {
+    private const string FixtureTimeZone = "Europe/Kyiv";
+
     public static string OutputDirectory { get; private set; } = string.Empty;
 
     /// <summary>
@@ -101,6 +103,13 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        // File metadata is intentionally presented in the reader's local
+        // time. Pin that environment input before any view model formats a
+        // timestamp so captures mean the same thing on developer and hosted
+        // machines.
+        Environment.SetEnvironmentVariable("TZ", FixtureTimeZone);
+        TimeZoneInfo.ClearCachedData();
+
         if (args is ["--compare", var sourcePath, var implementationPath, var outputPath])
         {
             WriteSideBySideComparison(sourcePath, implementationPath, outputPath);

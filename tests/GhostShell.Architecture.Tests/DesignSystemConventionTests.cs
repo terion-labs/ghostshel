@@ -349,6 +349,14 @@ public sealed partial class DesignSystemConventionTests
             harness,
             StringComparison.Ordinal);
         Assert.Contains(
+            "Environment.SetEnvironmentVariable(\"TZ\", FixtureTimeZone)",
+            harness,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "TimeZoneInfo.ClearCachedData()",
+            harness,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "GHOSTSHELL_DESIGN_QA_CAPTURE_DIR",
             gate,
             StringComparison.Ordinal);
