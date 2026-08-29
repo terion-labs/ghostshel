@@ -269,7 +269,7 @@ verify_release_source() {
         --source-commit "${GHOSTSHELL_RELEASE_SOURCE_COMMIT}" \
         --source-tree "${GHOSTSHELL_RELEASE_SOURCE_TREE}" \
         --tag "${GHOSTSHELL_RELEASE_SOURCE_TAG}" \
-        "${identity_arguments[@]}"
+        ${identity_arguments[@]+"${identity_arguments[@]}"}
 }
 
 if [[ ! -x "${dotnet}" ]]; then
@@ -470,7 +470,7 @@ fi
 "${dotnet}" run \
     --project "${repository_dir}/tools/GhostShell.Packaging/GhostShell.Packaging.csproj" \
     --configuration Release \
-    "${dotnet_artifacts_arguments[@]}" \
+    ${dotnet_artifacts_arguments[@]+"${dotnet_artifacts_arguments[@]}"} \
     -- \
     cef-runtime-validate \
     --runtime-root "${cef_runtime_root}" \
@@ -520,7 +520,7 @@ if [[ -n "${source_seal}" ]]; then
 fi
 "${dotnet}" restore \
     "${desktop_project}" \
-    "${dotnet_artifacts_arguments[@]}" \
+    ${dotnet_artifacts_arguments[@]+"${dotnet_artifacts_arguments[@]}"} \
     -maxcpucount:4 \
     --runtime "${runtime_identifier}" \
     --locked-mode \
@@ -537,7 +537,7 @@ if [[ -n "${source_seal}" ]]; then
 fi
 "${dotnet}" publish \
     "${desktop_project}" \
-    "${dotnet_artifacts_arguments[@]}" \
+    ${dotnet_artifacts_arguments[@]+"${dotnet_artifacts_arguments[@]}"} \
     -maxcpucount:4 \
     --configuration "${configuration}" \
     --runtime "${runtime_identifier}" \
@@ -556,7 +556,7 @@ if [[ -n "${source_seal}" ]]; then
 fi
 "${dotnet}" publish \
     "${desktop_project}" \
-    "${dotnet_artifacts_arguments[@]}" \
+    ${dotnet_artifacts_arguments[@]+"${dotnet_artifacts_arguments[@]}"} \
     -maxcpucount:4 \
     --configuration "${configuration}" \
     --runtime "${runtime_identifier}" \
@@ -786,7 +786,7 @@ fi
 "${dotnet}" run \
     --project "${repository_dir}/tools/GhostShell.Packaging/GhostShell.Packaging.csproj" \
     --configuration Release \
-    "${dotnet_artifacts_arguments[@]}" \
+    ${dotnet_artifacts_arguments[@]+"${dotnet_artifacts_arguments[@]}"} \
     -- \
     macos \
     --publish "${publish_dir}" \
@@ -910,7 +910,7 @@ fi
     --project \
     "${repository_dir}/tools/GhostShell.AccessibilityAcceptance/GhostShell.AccessibilityAcceptance.csproj" \
     --configuration Release \
-    "${dotnet_artifacts_arguments[@]}" \
+    ${dotnet_artifacts_arguments[@]+"${dotnet_artifacts_arguments[@]}"} \
     -- \
     publish-macos-package \
     --build-label "macos-${version}-${build_version}" \

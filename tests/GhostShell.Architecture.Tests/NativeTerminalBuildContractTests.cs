@@ -179,6 +179,30 @@ public sealed partial class NativeTerminalBuildContractTests
     }
 
     [Fact]
+    public void Macos_packaging_expands_optional_arrays_safely_on_bash_3()
+    {
+        var script = File.ReadAllText(
+            Path.Combine(RepositoryRoot, "scripts", "package-macos.sh"));
+
+        Assert.Contains(
+            "${identity_arguments[@]+\"${identity_arguments[@]}\"}",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "${dotnet_artifacts_arguments[@]+\"${dotnet_artifacts_arguments[@]}\"}",
+            script,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "        \"${identity_arguments[@]}\"\n",
+            script,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "    \"${dotnet_artifacts_arguments[@]}\" \\\n",
+            script,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Repository_gate_runs_only_for_version_tags()
     {
         var workflow = File.ReadAllText(Path.Combine(
