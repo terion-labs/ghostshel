@@ -1003,6 +1003,12 @@ public sealed class ManagedTerminalSurface : Control
             return;
         }
 
+        if (ManagedTerminalInput.IsModifierOnly(e.PhysicalKey))
+        {
+            e.Handled = true;
+            return;
+        }
+
         var action = e.PhysicalKey != PhysicalKey.None
             && !_pressedPhysicalKeys.Add(e.PhysicalKey)
                 ? TerminalKeyAction.Repeat

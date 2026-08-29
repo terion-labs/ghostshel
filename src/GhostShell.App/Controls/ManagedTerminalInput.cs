@@ -39,6 +39,21 @@ internal interface IManagedTerminalInputSink
 
 internal static class ManagedTerminalInput
 {
+    /// <summary>
+    /// Modifier state belongs to the following key event. Sending a standalone
+    /// modifier to the terminal engine also counts as terminal input and clears
+    /// its selection before a desktop shortcut such as Command+C can read it.
+    /// </summary>
+    public static bool IsModifierOnly(PhysicalKey physicalKey) => physicalKey is
+        PhysicalKey.ShiftLeft
+        or PhysicalKey.ShiftRight
+        or PhysicalKey.ControlLeft
+        or PhysicalKey.ControlRight
+        or PhysicalKey.AltLeft
+        or PhysicalKey.AltRight
+        or PhysicalKey.MetaLeft
+        or PhysicalKey.MetaRight;
+
     public static TerminalPhysicalKeyEvent CreatePhysicalKeyEvent(
         Key logicalKey,
         PhysicalKey physicalKey,

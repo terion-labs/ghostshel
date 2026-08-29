@@ -47,6 +47,12 @@ Xcode `actool` 26 or newer and compiles the same layered source into
 `assetutil` to require a named `GhostShell` icon image. Copying a raw `.icon`
 document into an application bundle is not a supported substitute.
 
+On macOS 26, the running application recolors its Dock icon from the current
+system accent. That runtime rendition keeps the artwork inside the same
+optically inset 1024-pixel canvas used by Apple's production grid; the outer
+transparent margin is intentional and must not be cropped when changing the
+runtime SVG.
+
 `assets/macos/product-identity.json` is the reviewed macOS identity contract.
 It records the canonical display name, executable, bundle identifier, icon
 name, first-party ownership and license, maintainer approval, the six required

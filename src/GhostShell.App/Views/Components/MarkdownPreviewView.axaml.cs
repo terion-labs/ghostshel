@@ -8,6 +8,7 @@ using Avalonia.Controls.Documents;
 using Avalonia.Layout;
 using Avalonia.Media;
 using CSharpMath.Avalonia;
+using GhostShell.Application;
 
 namespace GhostShell.App.Views.Components;
 
@@ -36,6 +37,16 @@ public sealed partial class MarkdownPreviewView : UserControl
     public MarkdownPreviewView()
     {
         InitializeComponent();
+        EffectiveViewportChanged += (_, e) =>
+        {
+            if (e.EffectiveViewport.Height <= 0 || e.EffectiveViewport.Width <= 0)
+            {
+                return;
+            }
+
+            _isInView = true;
+            Render();
+        };
     }
 
     public string? Text
@@ -61,14 +72,29 @@ public sealed partial class MarkdownPreviewView : UserControl
         // Resources resolve against the tree, so a render before attachment
         // would silently draw every themed brush as nothing.
         _hasRendered = false;
-        Render();
+        if (string.IsNullOrEmpty(Text))
+        {
+            Render();
+        }
+        else
+        {
+            RenderingState.IsVisible = true;
+            PlainTextFallback.IsVisible = false;
+        }
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
+        _buildGeneration++;
         _building?.Cancel();
         _building?.Dispose();
         _building = null;
+        Blocks.Children.Clear();
+        RenderingState.IsVisible = false;
+        PlainTextFallback.Text = null;
+        PlainTextFallback.IsVisible = false;
+        _hasRendered = false;
+        _isInView = false;
         base.OnDetachedFromVisualTree(e);
     }
 
@@ -83,31 +109,63 @@ public sealed partial class MarkdownPreviewView : UserControl
                 _hasRendered = false;
             }
 
-            Render();
+            if (_isInView || string.IsNullOrEmpty(Text))
+            {
+                Render();
+            }
+            else
+            {
+                RenderingState.IsVisible = true;
+                PlainTextFallback.IsVisible = false;
+            }
         }
     }
 
     /// <summary>The text the blocks on screen were built from.</summary>
     private string? _rendered;
 
+    private bool _renderedContinuousSelection;
+
     private bool _hasRendered;
+
+    private bool _isInView;
+
+    private int _buildGeneration;
 
     private void Render()
     {
         // Rebuilding costs a syntax-highlighting installation per fenced block,
         // so the same text is never laid out twice. Switching a preview to its
         // source and back hands us the identical string.
-        if (_hasRendered && string.Equals(_rendered, Text, StringComparison.Ordinal))
+        var continuousSelection = ContinuousSelection;
+        if ((_hasRendered || _building is not null)
+            && string.Equals(_rendered, Text, StringComparison.Ordinal)
+            && _renderedContinuousSelection == continuousSelection)
         {
             return;
         }
 
         _rendered = Text;
-        _hasRendered = true;
+        _renderedContinuousSelection = continuousSelection;
+        _hasRendered = false;
+        var generation = ++_buildGeneration;
         _building?.Cancel();
         _building?.Dispose();
+        if (string.IsNullOrEmpty(Text))
+        {
+            _building = null;
+            Blocks.Children.Clear();
+            RenderingState.IsVisible = false;
+            PlainTextFallback.IsVisible = false;
+            _hasRendered = true;
+            return;
+        }
+
+        RenderingState.IsVisible = Blocks.Children.Count == 0;
+        PlainTextFallback.Text = null;
+        PlainTextFallback.IsVisible = false;
         _building = new CancellationTokenSource();
-        _ = BuildAsync(Text, _building.Token);
+        _ = BuildAsync(Text, continuousSelection, generation, _building.Token);
     }
 
     /// <summary>
@@ -116,7 +174,11 @@ public sealed partial class MarkdownPreviewView : UserControl
     /// into steps and the thread handed back between them; a document twice as
     /// long then takes twice as many steps rather than one twice as long.
     /// </summary>
-    private async Task BuildAsync(string? markdown, CancellationToken token)
+    private async Task BuildAsync(
+        string? markdown,
+        bool continuousSelection,
+        int generation,
+        CancellationToken token)
     {
         try
         {
@@ -128,34 +190,120 @@ public sealed partial class MarkdownPreviewView : UserControl
                 () => MarkdownPreviewDocument.Parse(markdown),
                 token);
             token.ThrowIfCancellationRequested();
-            Blocks.Children.Clear();
-            if (ContinuousSelection)
+            if (continuousSelection)
             {
-                if (!blocks.IsEmpty)
-                {
-                    Blocks.Children.Add(ContinuousDocument(blocks));
-                }
-
+                CommitContinuousDocument(blocks, generation, token);
                 return;
             }
 
-            for (var index = 0; index < blocks.Length; index++)
+            BeginBlockCommit(generation, token);
+            for (var start = 0; start < blocks.Length; start += BlocksPerStep)
             {
                 token.ThrowIfCancellationRequested();
-                if (Build(blocks[index]) is { } control)
-                {
-                    Blocks.Children.Add(control);
-                }
-
-                if ((index + 1) % BlocksPerStep == 0 && index + 1 < blocks.Length)
+                var first = start;
+                var count = Math.Min(BlocksPerStep, blocks.Length - start);
+                CommitBlockBatch(blocks, first, count, generation, token);
+                if (start + count < blocks.Length)
                 {
                     await Task.Yield();
                 }
             }
+
+            CompleteBuild(generation, token);
         }
         catch (OperationCanceledException)
         {
         }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            SecretSafeDiagnosticProjection.WriteStandardError(
+                "markdown.render.failed",
+                SecretSafeDiagnosticKind.Unexpected);
+            CommitPlainTextFallback(generation, markdown);
+        }
+    }
+
+    private bool IsCurrentBuild(int generation, CancellationToken token) =>
+        generation == _buildGeneration
+        && !token.IsCancellationRequested
+        && VisualRoot is not null;
+
+    private void CommitContinuousDocument(
+        ImmutableArray<MarkdownBlock> blocks,
+        int generation,
+        CancellationToken token)
+    {
+        if (!IsCurrentBuild(generation, token))
+        {
+            return;
+        }
+
+        Blocks.Children.Clear();
+        if (!blocks.IsEmpty)
+        {
+            Blocks.Children.Add(ContinuousDocument(blocks));
+        }
+
+        CompleteBuild(generation, token);
+    }
+
+    private void BeginBlockCommit(int generation, CancellationToken token)
+    {
+        if (IsCurrentBuild(generation, token))
+        {
+            Blocks.Children.Clear();
+        }
+    }
+
+    private void CommitBlockBatch(
+        ImmutableArray<MarkdownBlock> blocks,
+        int start,
+        int count,
+        int generation,
+        CancellationToken token)
+    {
+        if (!IsCurrentBuild(generation, token))
+        {
+            return;
+        }
+
+        for (var index = start; index < start + count; index++)
+        {
+            if (Build(blocks[index]) is { } control)
+            {
+                Blocks.Children.Add(control);
+            }
+        }
+    }
+
+    private void CompleteBuild(int generation, CancellationToken token)
+    {
+        if (!IsCurrentBuild(generation, token))
+        {
+            return;
+        }
+
+        RenderingState.IsVisible = false;
+        PlainTextFallback.IsVisible = false;
+        _hasRendered = true;
+        _building?.Dispose();
+        _building = null;
+    }
+
+    private void CommitPlainTextFallback(int generation, string? markdown)
+    {
+        if (generation != _buildGeneration || VisualRoot is null)
+        {
+            return;
+        }
+
+        Blocks.Children.Clear();
+        PlainTextFallback.Text = markdown;
+        PlainTextFallback.IsVisible = !string.IsNullOrEmpty(markdown);
+        RenderingState.IsVisible = false;
+        _hasRendered = true;
+        _building?.Dispose();
+        _building = null;
     }
 
     /// <summary>
@@ -198,7 +346,7 @@ public sealed partial class MarkdownPreviewView : UserControl
             }
 
             AddContinuousText(document, prose);
-            document.Children.Add(IsMermaid(block) ? Mermaid(block) : Code(block));
+            document.Children.Add(EmbeddedBlock(block));
         }
 
         AddContinuousText(document, prose);
@@ -239,7 +387,14 @@ public sealed partial class MarkdownPreviewView : UserControl
         && string.Equals(block.Language?.Trim(), "mermaid", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsEmbeddedBlock(MarkdownBlock block) =>
-        block.Kind == MarkdownBlockKind.Code;
+        block.Kind is MarkdownBlockKind.Code or MarkdownBlockKind.Table;
+
+    private Control EmbeddedBlock(MarkdownBlock block) => block.Kind switch
+    {
+        MarkdownBlockKind.Table => Table(block),
+        _ when IsMermaid(block) => Mermaid(block),
+        _ => Code(block),
+    };
 
     private Control Mermaid(MarkdownBlock block)
     {

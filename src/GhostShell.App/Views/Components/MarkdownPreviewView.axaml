@@ -14,10 +14,24 @@
       <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
   </UserControl.Styles>
-  <StackPanel
-      x:Name="Blocks"
+  <Grid
       Margin="{Binding Padding, ElementName=Root}"
       MaxWidth="820"
-      HorizontalAlignment="Stretch"
-      Spacing="{DynamicResource ShellSpaceSm}" />
+      HorizontalAlignment="Stretch">
+    <StackPanel
+        x:Name="Blocks"
+        HorizontalAlignment="Stretch"
+        Spacing="{DynamicResource ShellSpaceSm}" />
+    <TextBlock
+        x:Name="RenderingState"
+        Classes="Muted"
+        FontSize="{DynamicResource ShellFontSize9}"
+        Text="Rendering message…"
+        IsVisible="False"
+        AutomationProperties.Name="Rendering Markdown message" />
+    <SelectableTextBlock
+        x:Name="PlainTextFallback"
+        IsVisible="False"
+        AutomationProperties.Name="Message shown as plain text" />
+  </Grid>
 </UserControl>

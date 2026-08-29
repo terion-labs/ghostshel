@@ -39,4 +39,18 @@ public sealed class MacOsApplicationIconTests
             svg.IndexOf("fill=\"#000000\"", StringComparison.Ordinal)
             < svg.IndexOf("fill=\"#F7821B\"", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public void Runtime_dock_icon_keeps_the_macos_optical_margin()
+    {
+        var svg = MacOsApplicationIcon.CreateSvg(new RgbColor(247, 130, 27), dark: false);
+
+        Assert.Contains(
+            "transform=\"translate(86.71 86.71) scale(0.830645)\"",
+            svg,
+            StringComparison.Ordinal);
+        Assert.True(
+            svg.IndexOf("translate(86.71 86.71)", StringComparison.Ordinal)
+            < svg.IndexOf("<rect x=\"16\"", StringComparison.Ordinal));
+    }
 }

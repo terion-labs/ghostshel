@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -27,12 +28,15 @@ public sealed partial class AgentWorkspaceView : UserControl
     private double? _floatingWidth;
     private double? _floatingHeight;
     private double? _dockedWidth;
+    private bool _followAgentChatEnd = true;
+    private bool _agentChatScrollPending;
     private QueuedFollowUpDrag? _queuedFollowUpDrag;
     private Grid? _queuedFollowUpDropTarget;
 
     public AgentWorkspaceView()
     {
         InitializeComponent();
+        AgentChatMessages.PropertyChanged += OnAgentChatMessagesPropertyChanged;
         AgentChatPromptInput.AddHandler(
             InputElement.KeyDownEvent,
             OnAgentPromptKeyDown,
@@ -45,6 +49,93 @@ public sealed partial class AgentWorkspaceView : UserControl
             UpdateResizeCursor();
         };
         UpdateResizeCursor();
+    }
+
+    private INotifyCollectionChanged? _agentChatMessages;
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        SubscribeToAgentChatMessages(
+            AgentChatMessages.ItemsSource as INotifyCollectionChanged);
+        RequestAgentChatScrollToEnd(force: true);
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        SubscribeToAgentChatMessages(null);
+        base.OnDetachedFromVisualTree(e);
+    }
+
+    private void OnAgentChatMessagesPropertyChanged(
+        object? sender,
+        AvaloniaPropertyChangedEventArgs e)
+    {
+        _ = sender;
+        if (e.Property != ItemsControl.ItemsSourceProperty)
+        {
+            return;
+        }
+
+        if (VisualRoot is not null)
+        {
+            SubscribeToAgentChatMessages(e.NewValue as INotifyCollectionChanged);
+            RequestAgentChatScrollToEnd(force: true);
+        }
+    }
+
+    private void SubscribeToAgentChatMessages(INotifyCollectionChanged? messages)
+    {
+        if (ReferenceEquals(_agentChatMessages, messages))
+        {
+            return;
+        }
+
+        _agentChatMessages?.CollectionChanged -= OnAgentChatMessagesCollectionChanged;
+
+        _agentChatMessages = messages;
+        _agentChatMessages?.CollectionChanged += OnAgentChatMessagesCollectionChanged;
+    }
+
+    private void OnAgentChatMessagesCollectionChanged(
+        object? sender,
+        NotifyCollectionChangedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        RequestAgentChatScrollToEnd(force: false);
+    }
+
+    private void RequestAgentChatScrollToEnd(bool force)
+    {
+        if (force)
+        {
+            _followAgentChatEnd = true;
+        }
+
+        if (!_followAgentChatEnd || _agentChatScrollPending)
+        {
+            return;
+        }
+
+        _agentChatScrollPending = true;
+        Avalonia.Threading.Dispatcher.UIThread.Post(
+            () =>
+            {
+                _agentChatScrollPending = false;
+                ScrollAgentChatToEnd();
+            },
+            Avalonia.Threading.DispatcherPriority.Background);
+    }
+
+    private void ScrollAgentChatToEnd()
+    {
+        if (AgentChatMessages.ItemCount > 0)
+        {
+            AgentChatMessages.ScrollIntoView(AgentChatMessages.ItemCount - 1);
+        }
+
+        AgentChatTranscript.ScrollToEnd();
     }
 
     private void PreserveSizeAcrossPresentationChanges()
@@ -272,25 +363,34 @@ public sealed partial class AgentWorkspaceView : UserControl
 
     public event EventHandler<RoutedEventArgs>? ToggleAgentPinRequested;
 
-    private static void OnAgentChatTranscriptScrollChanged(
+    private void OnAgentChatTranscriptScrollChanged(
         object? sender,
         ScrollChangedEventArgs e)
     {
-        if (sender is not ScrollViewer transcript || e.ExtentDelta.Y <= 0)
+        if (sender is not ScrollViewer transcript)
         {
             return;
         }
 
-        var previousExtentHeight = transcript.Extent.Height - e.ExtentDelta.Y;
-        var previousEndOffset = Math.Max(
+        var endOffset = Math.Max(
             0,
-            previousExtentHeight - transcript.Viewport.Height);
-        if (transcript.Offset.Y < previousEndOffset - 12)
+            transcript.Extent.Height - transcript.Viewport.Height);
+        if (e.ExtentDelta.Y == 0)
         {
-            return;
+            if (e.OffsetDelta.Y < 0)
+            {
+                _followAgentChatEnd = false;
+            }
+            else if (transcript.Offset.Y >= endOffset - 12)
+            {
+                _followAgentChatEnd = true;
+            }
         }
 
-        Avalonia.Threading.Dispatcher.UIThread.Post(transcript.ScrollToEnd);
+        if (e.ExtentDelta.Y > 0)
+        {
+            RequestAgentChatScrollToEnd(force: false);
+        }
     }
 
     private void OnAgentQuestionResponseKeyDown(object? sender, KeyEventArgs e) =>

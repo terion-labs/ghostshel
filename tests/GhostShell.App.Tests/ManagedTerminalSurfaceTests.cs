@@ -163,6 +163,18 @@ public sealed class ManagedTerminalSurfaceTests
         Assert.Equal(TerminalKeyModifiers.Shift, shiftedCyrillic.ConsumedModifiers);
     }
 
+    [Theory]
+    [InlineData(PhysicalKey.MetaLeft)]
+    [InlineData(PhysicalKey.MetaRight)]
+    [InlineData(PhysicalKey.ControlLeft)]
+    [InlineData(PhysicalKey.ShiftRight)]
+    public void Modifier_only_keys_stay_in_the_desktop_shortcut_layer(PhysicalKey key) =>
+        Assert.True(ManagedTerminalInput.IsModifierOnly(key));
+
+    [Fact]
+    public void Modified_character_key_still_reaches_the_terminal_or_keymap() =>
+        Assert.False(ManagedTerminalInput.IsModifierOnly(PhysicalKey.C));
+
     [Fact]
     public async Task SelectedKeymapControlsCopyAndPasteInsteadOfPlatformHardCoding()
     {

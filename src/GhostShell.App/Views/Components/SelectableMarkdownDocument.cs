@@ -39,6 +39,13 @@ internal sealed class SelectableMarkdownDocument : Control
 
     internal SelectableMarkdownDocument(ImmutableArray<MarkdownBlock> blocks)
     {
+        if (blocks.Any(block => block.Kind == MarkdownBlockKind.Table))
+        {
+            throw new ArgumentException(
+                "Tables must be rendered as embedded controls.",
+                nameof(blocks));
+        }
+
         Focusable = true;
         Cursor = new Cursor(StandardCursorType.Ibeam);
         (_sourceBlocks, _plainText) = BuildSource(blocks);
@@ -509,52 +516,12 @@ internal sealed class SelectableMarkdownDocument : Control
             return [new SourceRun("────────────────", MarkdownRunStyle.None, false, true)];
         }
 
-        if (block.Kind != MarkdownBlockKind.Table)
-        {
-            return [.. block.Runs
-                .Select(run => new SourceRun(
-                    run.Text,
-                    run.Style,
-                    run.LinkTarget is not null,
-                    false))];
-        }
-
-        var rows = ImmutableArray.CreateBuilder<SourceRun>();
-        AppendTableRow(rows, block.HeaderCells, isHeader: true);
-        foreach (var row in block.Rows)
-        {
-            if (rows.Count > 0)
-            {
-                rows.Add(new SourceRun("\n", MarkdownRunStyle.None, false, false));
-            }
-
-            AppendTableRow(rows, row, isHeader: false);
-        }
-
-        return rows.MoveToImmutable();
-    }
-
-    private static void AppendTableRow(
-        ImmutableArray<SourceRun>.Builder output,
-        ImmutableArray<ImmutableArray<MarkdownRun>> cells,
-        bool isHeader)
-    {
-        for (var column = 0; column < cells.Length; column++)
-        {
-            if (column > 0)
-            {
-                output.Add(new SourceRun("  │  ", MarkdownRunStyle.None, false, true));
-            }
-
-            foreach (var run in cells[column])
-            {
-                output.Add(new SourceRun(
-                    run.Text,
-                    isHeader ? run.Style | MarkdownRunStyle.Bold : run.Style,
-                    run.LinkTarget is not null,
-                    false));
-            }
-        }
+        return [.. block.Runs
+            .Select(run => new SourceRun(
+                run.Text,
+                run.Style,
+                run.LinkTarget is not null,
+                false))];
     }
 
     private static double ContentOffset(SourceBlock block) => block.Kind switch
@@ -664,7 +631,7 @@ internal sealed class SelectableMarkdownDocument : Control
                 offset += run.Text.Length;
             }
 
-            _segments = segments.MoveToImmutable();
+            _segments = segments.ToImmutable();
         }
 
         public TextRun GetTextRun(int textSourceIndex)

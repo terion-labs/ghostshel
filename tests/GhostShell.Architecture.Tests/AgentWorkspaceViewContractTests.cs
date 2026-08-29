@@ -311,6 +311,12 @@ public sealed class AgentWorkspaceViewContractTests
 , "HorizontalContentAlignment"
 , StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Value"), "Stretch", StringComparison.Ordinal));
         Assert.Contains(
+            messages.Descendants(),
+            element => string.Equals(
+                element.Name.LocalName,
+                "VirtualizingStackPanel",
+                StringComparison.Ordinal));
+        Assert.Contains(
             root.Descendants(),
             element => string.Equals(element.Name.LocalName, "MarkdownPreviewView"
 , StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Text"), "{Binding Content}", StringComparison.Ordinal));
@@ -557,11 +563,11 @@ public sealed class AgentWorkspaceViewContractTests
             codeBehind,
             StringComparison.Ordinal);
         Assert.Contains(
-            "private static void OnAgentChatTranscriptScrollChanged(",
+            "private void OnAgentChatTranscriptScrollChanged(",
             codeBehind,
             StringComparison.Ordinal);
         Assert.Contains(
-            "Dispatcher.UIThread.Post(transcript.ScrollToEnd);",
+            "RequestAgentChatScrollToEnd(force: false);",
             codeBehind,
             StringComparison.Ordinal);
 

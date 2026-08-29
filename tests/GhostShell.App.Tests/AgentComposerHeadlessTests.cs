@@ -28,7 +28,7 @@ public sealed partial class AgentChatViewModelTests
         RunAgentComposerHeadlessAsync(async () =>
         {
             var provider = Provider("provider", "Provider", order: 0);
-            var committedMessages = Enumerable.Range(0, 24)
+            var committedMessages = Enumerable.Range(0, 100)
                 .SelectMany(index => new[]
                 {
                     new AgentChatMessage(
@@ -104,12 +104,15 @@ public sealed partial class AgentChatViewModelTests
                     "the committed assistant response");
 
                 Assert.False(viewModel.HasCurrentProgress);
-                Assert.Equal(49, viewModel.Messages.Count);
+                Assert.Equal(201, viewModel.Messages.Count);
                 Assert.Contains(
                     view.GetVisualDescendants().OfType<SelectableMarkdownDocument>(),
                     document => document.Text.Contains(
                         "The full panel test passed.",
                         StringComparison.Ordinal));
+                var messages = Assert.IsType<ItemsControl>(
+                    view.FindControl<ItemsControl>("AgentChatMessages"));
+                Assert.InRange(messages.GetRealizedContainers().Count(), 1, 24);
             }
             finally
             {
@@ -1357,6 +1360,91 @@ public sealed partial class AgentChatViewModelTests
         });
 
     [Fact]
+    public Task Incident_report_markdown_never_collapses_to_a_blank_message() =>
+        RunAgentComposerHeadlessAsync(async () =>
+        {
+            const string markdown = """
+                ## Assessment
+
+                **Treat this as a confirmed data breach, not merely ransomware.** Read-only triage found direct evidence that sensitive data was collected before encryption.
+
+                ### What was collected
+
+                A Zimbra-owned archive was created in `/tmp` on **20 Aug 2026, 17:03 EEST**:
+
+                - Compressed size: **29.9 MB**
+                - Uncompressed: **123.7 MB**
+                - Contents: **1,260 files**
+
+                It contains:
+
+                - Complete LDAP user exports
+                - **1,214 MySQL CSV exports** covering mailbox groups
+                - Zimbra authentication-token and pre-authentication keys
+                - Numerous TLS private keys
+
+                ## Reconstructed timeline
+
+                | Time, EEST | Activity |
+                |---|---|
+                | **14 Aug** | Malicious JSP webshell `c1c5b4f8.jsp` active |
+                | **20 Aug 17:01–17:03** | LDAP, mailbox databases, keys, and secrets exported and zipped |
+                | **27 Aug 19:05:12** | Encryption begins at exactly the same second |
+
+                ## Required response
+
+                1. **Snapshot the Droplet and attached volumes first** for evidence.
+                2. Then isolate or power it down.
+                3. Build a new mail server from a clean, supported OS.
+                4. Rotate every password, certificate, private key, and session.
+
+                **Bottom line:** account-directory data, mailbox metadata, password material, and server-side cryptographic secrets should be considered stolen.
+                """;
+            var preview = new MarkdownPreviewView
+            {
+                Text = markdown,
+                ContinuousSelection = true,
+            };
+            var window = new Window
+            {
+                Width = 700,
+                Height = 900,
+                Content = preview,
+            };
+
+            try
+            {
+                window.Show();
+                var document = await WaitForVisualAsync<SelectableMarkdownDocument>(
+                    preview,
+                    window,
+                    candidate => candidate.Bounds.Height > 0
+                        && candidate.Text.Contains("Bottom line", StringComparison.Ordinal),
+                    "the incident report Markdown body");
+
+                Assert.Contains("Snapshot the Droplet", document.Text, StringComparison.Ordinal);
+                var renderedText = preview.GetVisualDescendants()
+                    .OfType<Control>()
+                    .Select(RenderedMarkdownText)
+                    .OfType<string>()
+                    .ToArray();
+                Assert.Contains(
+                    renderedText,
+                    text => text.Contains("Reconstructed timeline", StringComparison.Ordinal));
+                Assert.Contains(
+                    renderedText,
+                    text => text.Contains("27 Aug 19:05:12", StringComparison.Ordinal));
+                Assert.False(Assert.IsType<SelectableTextBlock>(
+                    preview.FindControl<SelectableTextBlock>("PlainTextFallback"))
+                    .IsVisible);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+    [Fact]
     public Task Code_only_fence_renders_in_chat_mode() =>
         RunAgentComposerHeadlessAsync(async () =>
         {
@@ -1745,7 +1833,28 @@ public sealed partial class AgentChatViewModelTests
             await Task.Delay(10);
         }
 
-        Assert.Fail($"Timed out waiting for {description}.");
+        var messages = root.FindControl<ItemsControl>("AgentChatMessages");
+        var transcript = root.FindControl<ScrollViewer>("AgentChatTranscript");
+        var realized = messages?.GetRealizedContainers().ToArray() ?? [];
+        var realizedIndexes = messages is null
+            ? string.Empty
+            : string.Join(",", realized.Select(messages.IndexFromContainer));
+        var previews = root.GetVisualDescendants()
+            .OfType<MarkdownPreviewView>()
+            .Prepend(root as MarkdownPreviewView)
+            .OfType<MarkdownPreviewView>()
+            .ToArray();
+        Assert.Fail(
+            $"Timed out waiting for {description}. "
+            + $"messages={messages?.ItemCount}; "
+            + $"realized={realized.Length} [{realizedIndexes}]; "
+            + $"panel={messages?.ItemsPanelRoot?.Bounds}; "
+            + $"offset={transcript?.Offset}; "
+            + $"extent={transcript?.Extent}; "
+            + $"viewport={transcript?.Viewport}; "
+            + $"previews={previews.Length}; "
+            + $"rendering={previews.Count(preview => preview.FindControl<TextBlock>("RenderingState")?.IsVisible == true)}; "
+            + $"fallbacks={previews.Count(preview => preview.FindControl<SelectableTextBlock>("PlainTextFallback")?.IsVisible == true)}.");
         return null!;
     }
 

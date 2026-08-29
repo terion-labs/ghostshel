@@ -633,7 +633,17 @@
             sides a bordered bubble halved the usable width of an already narrow
             panel and made a paragraph of prose read like a stack of receipts.
           -->
-          <ItemsControl ItemsSource="{Binding AgentChat.Messages}">
+          <ItemsControl
+              x:Name="AgentChatMessages"
+              ItemsSource="{Binding AgentChat.Messages}">
+            <!-- A conversation can contain hundreds of complex Markdown turns.
+                 Realize only the messages near the viewport so bringing a
+                 workspace forward never constructs its whole transcript. -->
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <VirtualizingStackPanel />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
             <ItemsControl.ItemContainerTheme>
               <ControlTheme TargetType="ContentPresenter">
                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
