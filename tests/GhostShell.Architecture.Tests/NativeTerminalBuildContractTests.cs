@@ -143,6 +143,22 @@ public sealed partial class NativeTerminalBuildContractTests
     }
 
     [Fact]
+    public void Native_runtime_build_supports_an_unset_custom_dotnet_artifacts_root()
+    {
+        var script = File.ReadAllText(
+            Path.Combine(RepositoryRoot, "scripts", "build-libghostty-vt.sh"));
+
+        Assert.Contains(
+            "${dotnet_artifacts_arguments[@]+\"${dotnet_artifacts_arguments[@]}\"}",
+            script,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "    \"${dotnet_artifacts_arguments[@]}\" \\\n",
+            script,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Repository_gate_runs_only_for_version_tags()
     {
         var workflow = File.ReadAllText(Path.Combine(

@@ -489,7 +489,7 @@ printf '%s\n' \
 "${dotnet}" run \
     --project "${repository_dir}/tools/GhostShell.Packaging/GhostShell.Packaging.csproj" \
     --configuration Release \
-    "${dotnet_artifacts_arguments[@]}" \
+    ${dotnet_artifacts_arguments[@]+"${dotnet_artifacts_arguments[@]}"} \
     -- \
     native-publish-artifacts \
     --staged-directory "${artifact_dir}" \
