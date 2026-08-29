@@ -112,7 +112,183 @@ public sealed partial class AgentChatViewModelTests
                         StringComparison.Ordinal));
                 var messages = Assert.IsType<ItemsControl>(
                     view.FindControl<ItemsControl>("AgentChatMessages"));
+                Assert.Equal(24, messages.ItemCount);
                 Assert.InRange(messages.GetRealizedContainers().Count(), 1, 24);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+    [Fact]
+    public Task Replacing_a_long_transcript_with_a_short_one_rebuilds_the_tail() =>
+        RunAgentComposerHeadlessAsync(async () =>
+        {
+            var provider = Provider("provider", "Provider", order: 0);
+            using var runtime = new StubGovernedRuntime
+            {
+                Snapshot = Snapshot(
+                    runId: new AgentRunId("run-replaced-history"),
+                    providerId: provider.Id,
+                    target: Target(),
+                    messages:
+                    [
+                        .. Enumerable.Range(0, 80)
+                        .Select(index => new AgentChatMessage(
+                            AgentChatMessageRole.Assistant,
+                            $"Old response {index}.")),
+                    ]),
+            };
+            using var profiles = new StubProfileRuntime { Profiles = [provider] };
+            using var viewModel = new AgentChatViewModel(
+                runtime,
+                profiles,
+                ImmediateUiThreadDispatcher.Instance);
+            var view = new AgentWorkspaceView
+            {
+                DataContext = new AgentComposerHost(viewModel),
+            };
+            var window = new Window
+            {
+                Width = 700,
+                Height = 460,
+                Content = view,
+            };
+
+            try
+            {
+                window.Show();
+                await Task.Delay(80);
+                window.UpdateLayout();
+                var materialized = Assert.IsType<ItemsControl>(
+                    view.FindControl<ItemsControl>("AgentChatMessages"));
+                Assert.Equal(24, materialized.ItemCount);
+
+                runtime.Snapshot = runtime.Snapshot with
+                {
+                    Messages =
+                    [
+                        new AgentChatMessage(
+                            AgentChatMessageRole.Assistant,
+                            "Replacement response."),
+                    ],
+                };
+                runtime.RaiseChanged();
+                await Task.Delay(80);
+                window.UpdateLayout();
+
+                Assert.Equal(1, materialized.ItemCount);
+                Assert.Equal("Replacement response.", viewModel.Messages[0].Content);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+    [Fact]
+    public Task Long_agent_history_materializes_in_exact_height_pages_and_remains_scrollable() =>
+        RunAgentComposerHeadlessAsync(async () =>
+        {
+            var provider = Provider("provider", "Provider", order: 0);
+            var messages = Enumerable.Range(0, 80)
+                .Select(index => new AgentChatMessage(
+                    index % 2 == 0
+                        ? AgentChatMessageRole.User
+                        : AgentChatMessageRole.Assistant,
+                    string.Join(
+                        "\n\n",
+                        Enumerable.Range(0, (index % 7) + 1)
+                            .Select(paragraph =>
+                                $"Message {index}, paragraph {paragraph}. "
+                                + "Variable-height Markdown must keep an exact scroll position."))))
+                .ToArray();
+            using var runtime = new StubGovernedRuntime
+            {
+                Snapshot = Snapshot(
+                    runId: new AgentRunId("run-materialized-history"),
+                    providerId: provider.Id,
+                    target: Target(),
+                    messages: messages),
+            };
+            using var profiles = new StubProfileRuntime { Profiles = [provider] };
+            using var viewModel = new AgentChatViewModel(
+                runtime,
+                profiles,
+                ImmediateUiThreadDispatcher.Instance);
+            var view = new AgentWorkspaceView
+            {
+                DataContext = new AgentComposerHost(viewModel),
+            };
+            var window = new Window
+            {
+                Width = 700,
+                Height = 460,
+                Content = view,
+            };
+
+            try
+            {
+                window.Show();
+                await Task.Delay(150);
+                window.UpdateLayout();
+
+                var transcript = Assert.IsType<ScrollViewer>(
+                    view.FindControl<ScrollViewer>("AgentChatTranscript"));
+                var scrollTrace = new List<string>();
+                transcript.ScrollChanged += (_, args) => scrollTrace.Add(
+                    $"offset={transcript.Offset.Y:F0}, extent={transcript.Extent.Height:F0}, "
+                    + $"offset-delta={args.OffsetDelta.Y:F0}, extent-delta={args.ExtentDelta.Y:F0}");
+                var materialized = Assert.IsType<ItemsControl>(
+                    view.FindControl<ItemsControl>("AgentChatMessages"));
+                Assert.Equal(24, materialized.ItemCount);
+                Assert.IsType<StackPanel>(materialized.ItemsPanelRoot);
+                Assert.True(transcript.Extent.Height > transcript.Viewport.Height);
+
+                transcript.ScrollToEnd();
+                window.UpdateLayout();
+                Assert.True(transcript.Offset.Y > 0);
+                transcript.Offset = new Vector(0, 0);
+                transcript.RaiseEvent(new ScrollChangedEventArgs(
+                    Vector.Zero,
+                    new Vector(0, -1),
+                    Vector.Zero));
+                for (var attempt = 0;
+                     attempt < 80 && materialized.ItemCount == 24;
+                     attempt++)
+                {
+                    await Task.Delay(10);
+                    window.UpdateLayout();
+                }
+
+                Assert.Equal(48, materialized.ItemCount);
+                await Task.Delay(80);
+                window.UpdateLayout();
+                scrollTrace.Clear();
+                var downwardTarget = Math.Min(
+                    transcript.Offset.Y + 120,
+                    transcript.Extent.Height - transcript.Viewport.Height);
+                transcript.Offset = new Vector(0, downwardTarget);
+                await Task.Delay(80);
+                window.UpdateLayout();
+                var settledOffset = transcript.Offset.Y;
+                var secondTarget = Math.Min(
+                    settledOffset + 120,
+                    transcript.Extent.Height - transcript.Viewport.Height);
+                transcript.Offset = new Vector(0, secondTarget);
+                await Task.Delay(80);
+                window.UpdateLayout();
+
+                Assert.True(
+                    transcript.Offset.Y > settledOffset,
+                    $"Expected downward progress from {settledOffset:F0}, "
+                    + $"actual {transcript.Offset.Y:F0}. "
+                    + string.Join("; ", scrollTrace));
+                Assert.True(
+                    transcript.Offset.Y
+                        < transcript.Extent.Height - transcript.Viewport.Height,
+                    "Manual scrolling must not snap the transcript back to the end.");
             }
             finally
             {
@@ -891,6 +1067,28 @@ public sealed partial class AgentChatViewModelTests
                 Assert.NotNull(transcript);
                 Assert.False(transcript.BringIntoViewOnFocusChange);
                 Assert.True(transcript.Extent.Height > transcript.Viewport.Height);
+
+                // The reasoning and answer are intentionally rendered only
+                // after each enters the viewport. Visit both once so this
+                // selection test has both documents to move between.
+                var reasoningPreview = Assert.Single(
+                    view.GetVisualDescendants().OfType<MarkdownPreviewView>(),
+                    preview => preview.Text?.Contains(
+                        "Reasoning checkpoint",
+                        StringComparison.Ordinal) == true
+                        && preview.IsEffectivelyVisible);
+                reasoningPreview.BringIntoView();
+                await Task.Delay(80);
+                window.UpdateLayout();
+                var answerPreview = Assert.Single(
+                    view.GetVisualDescendants().OfType<MarkdownPreviewView>(),
+                    preview => preview.Text?.Contains(
+                        "Answer paragraph",
+                        StringComparison.Ordinal) == true
+                        && preview.IsEffectivelyVisible);
+                answerPreview.BringIntoView();
+                await Task.Delay(80);
+                window.UpdateLayout();
 
                 var prose = view.GetVisualDescendants()
                     .OfType<SelectableMarkdownDocument>()

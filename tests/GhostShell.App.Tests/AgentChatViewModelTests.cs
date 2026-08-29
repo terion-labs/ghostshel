@@ -1445,7 +1445,7 @@ public sealed partial class AgentChatViewModelTests
             input.Ancestors(viewNamespace + "StackPanel"),
             panel => string.Equals(
                 panel.Attribute("Grid.Row")?.Value,
-                "4",
+                "3",
                 StringComparison.Ordinal));
         Assert.Contains(
             composer.Elements(viewNamespace + "Border"),

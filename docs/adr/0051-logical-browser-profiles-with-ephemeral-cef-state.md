@@ -37,9 +37,12 @@ absolute and escaping paths, duplicate targets, excessive entry counts, and
 excessive expanded size.
 
 CEF's runtime-global `Local State` is sealed separately in the same encrypted
-store because Chromium may need its OS-crypt metadata to reopen cookies and
-other protected context databases. CEF initialization waits for startup unlock
-and both global and per-context recovery.
+store because Chromium needs its OS-crypt metadata to reopen cookies and other
+protected context databases. On macOS the private runtime uses Chromium's mock
+Safe Storage key, while GhostSHELL's application encryption protects the full
+archive at rest. This avoids a second, Chromium-owned login-keychain prompt.
+CEF initialization waits for startup unlock and both global and per-context
+recovery.
 
 Every runtime context directory has a bounded identity manifest outside its
 CEF cache subtree. After an unclean exit, startup seals such orphaned trees
@@ -72,8 +75,9 @@ bundles strip credential references. OAuth remains an explicit user-initiated
   mounted volume, and is removed after a successful encrypted seal.
 - A crash can leave that private directory until next-start recovery; failure
   to recover is visible and fails closed.
-- The macOS runtime uses Chromium's real Safe Storage integration for durable
-  state rather than `use-mock-keychain`.
+- The macOS runtime uses `use-mock-keychain`; GhostSHELL's encrypted archive,
+  rather than Chromium's separate login-keychain item, protects durable state
+  at rest.
 - The UI describes durable profiles as encrypted sessions restored between
   runs and private profiles as discarded when their panel closes.
 - Cookie deletion is acknowledged by CEF and its cookie store is flushed before

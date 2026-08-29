@@ -103,30 +103,12 @@ public sealed class BrowserEngineRuntimeTests
     }
 
     [Fact]
-    public void MacRuntimeUsesMockSafeStorageOnlyForEphemeralContexts()
+    public void MacRuntimeUsesMockSafeStorageForTheAppEncryptedRuntimeTree()
     {
-        var options = new BrowserEngineRuntimeOptions(
-            Path.Combine("relative", "profile"),
-            Path.Combine("relative", "logs", "cef.log"),
-            "1.0.0");
-        var settings = BrowserEngineRuntime.CreateSettings(options);
-
-        Assert.Null(BrowserEngineRuntime.GetMacOsSafeStorageSwitch(
-            isMacOs: true,
-            settings));
-        Assert.Null(BrowserEngineRuntime.GetMacOsSafeStorageSwitch(
-            isMacOs: false,
-            settings));
-
-        var ephemeralSettings = new Cef.CefSettings
-        {
-            PersistSessionCookies = false,
-        };
         Assert.Equal(
             "use-mock-keychain",
-            BrowserEngineRuntime.GetMacOsSafeStorageSwitch(
-                isMacOs: true,
-                ephemeralSettings));
+            BrowserEngineRuntime.GetMacOsSafeStorageSwitch(isMacOs: true));
+        Assert.Null(BrowserEngineRuntime.GetMacOsSafeStorageSwitch(isMacOs: false));
     }
 
     [Fact]

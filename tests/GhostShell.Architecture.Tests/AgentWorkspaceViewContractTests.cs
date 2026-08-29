@@ -64,7 +64,7 @@ public sealed class AgentWorkspaceViewContractTests
         var layout = Assert.Single(
             panel.Elements(),
             element => string.Equals(element.Name.LocalName, "Grid", StringComparison.Ordinal));
-        Assert.Equal("Auto,Auto,*,Auto,Auto", AttributeValue(layout, "RowDefinitions"));
+        Assert.Equal("Auto,*,Auto,Auto", AttributeValue(layout, "RowDefinitions"));
 
         // The ordinary floating surface uses the corner grip. Edge-attached
         // hosts reuse it as a full inner-edge handle, including while docked.
@@ -131,6 +131,18 @@ public sealed class AgentWorkspaceViewContractTests
             root.Descendants(),
             element => string.Equals(AttributeValue(element, "IsVisible")
 , "{Binding AgentChat.CanStartConversation}", StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            root.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "Text"),
+                "{Binding AgentChat.CapabilityNotice}",
+                StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            root.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "Name"),
+                "AgentContextDetailsButton",
+                StringComparison.Ordinal));
 
         var providerSettings = Assert.Single(
             root.Descendants(),
@@ -155,7 +167,7 @@ public sealed class AgentWorkspaceViewContractTests
         var statusRow = Assert.Single(
             footerStatus.Ancestors(),
             element => string.Equals(element.Name.LocalName, "Grid"
-, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Grid.Row"), "3", StringComparison.Ordinal));
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Grid.Row"), "2", StringComparison.Ordinal));
         Assert.NotNull(statusRow);
 
         var clearRetainedSession = Assert.Single(
@@ -179,7 +191,7 @@ public sealed class AgentWorkspaceViewContractTests
             element => string.Equals(element.Name.LocalName, "StackPanel"
 , StringComparison.Ordinal) && string.Equals(
                     AttributeValue(element, "Grid.Row"),
-                    "4",
+                    "3",
                     StringComparison.Ordinal));
         var composer = Assert.Single(
             prompt.Ancestors(),
@@ -302,15 +314,16 @@ public sealed class AgentWorkspaceViewContractTests
         var messages = Assert.Single(
             root.Descendants(),
             element => string.Equals(element.Name.LocalName, "ItemsControl"
-, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "ItemsSource")
-, "{Binding AgentChat.Messages}", StringComparison.Ordinal));
+, StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Name")
+, "AgentChatMessages", StringComparison.Ordinal));
+        Assert.Null(AttributeValue(messages, "ItemsSource"));
         Assert.Contains(
             messages.Descendants(),
             element => string.Equals(element.Name.LocalName, "Setter"
 , StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Property")
 , "HorizontalContentAlignment"
 , StringComparison.Ordinal) && string.Equals(AttributeValue(element, "Value"), "Stretch", StringComparison.Ordinal));
-        Assert.Contains(
+        Assert.DoesNotContain(
             messages.Descendants(),
             element => string.Equals(
                 element.Name.LocalName,
@@ -548,6 +561,8 @@ public sealed class AgentWorkspaceViewContractTests
     {
         var codeBehind = ApplicationViews.FindUniqueCodeBehindSourceContaining(
             "public sealed partial class AgentWorkspaceView");
+        var transcriptCode = ApplicationViews.FindUniqueCodeBehindSourceContaining(
+            "private const int AgentTranscriptPageSize");
 
         foreach (var interaction in Interactions.Keys)
         {
@@ -564,11 +579,11 @@ public sealed class AgentWorkspaceViewContractTests
             StringComparison.Ordinal);
         Assert.Contains(
             "private void OnAgentChatTranscriptScrollChanged(",
-            codeBehind,
+            transcriptCode,
             StringComparison.Ordinal);
         Assert.Contains(
             "RequestAgentChatScrollToEnd(force: false);",
-            codeBehind,
+            transcriptCode,
             StringComparison.Ordinal);
 
         Assert.DoesNotContain("async ", codeBehind, StringComparison.Ordinal);
@@ -606,7 +621,6 @@ public sealed class AgentWorkspaceViewContractTests
     [
         "AgentChatTranscript",
         "AgentComposerToolbar",
-        "AgentContextInspector",
         "AgentCurrentProgress",
         "AgentRunAudit",
         "AgentChatPromptInput",

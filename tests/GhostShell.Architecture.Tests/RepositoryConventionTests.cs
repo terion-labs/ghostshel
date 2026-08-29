@@ -638,7 +638,7 @@ public sealed partial class RepositoryConventionTests
             element => string.Equals(element.Name.LocalName, "Grid", StringComparison.Ordinal));
 
         Assert.Equal(
-            "Auto,Auto,*,Auto,Auto",
+            "Auto,*,Auto,Auto",
             AttributeValue(agentLayout, "RowDefinitions"));
         Assert.All(
             agentLayout.Elements()
@@ -654,41 +654,7 @@ public sealed partial class RepositoryConventionTests
                     AttributeValue(element, "Name"),
                     "AgentChatTranscript",
                     StringComparison.Ordinal));
-        Assert.Equal("2", AttributeValue(activityScroller, "Grid.Row"));
-
-        var contextInspector = Assert.Single(
-            agentLayout.Descendants(),
-            element => string.Equals(element.Name.LocalName, "Expander"
-, StringComparison.Ordinal) && string.Equals(
-                    AttributeValue(element, "Name"),
-                    "AgentContextInspector",
-                    StringComparison.Ordinal));
-        Assert.Equal(
-            "{Binding AgentChat.HasContextItems}",
-            AttributeValue(contextInspector, "IsVisible"));
-        Assert.Contains(
-            "AgentChat.ContextInspectorAccessibleName",
-            AttributeValue(contextInspector, "AutomationProperties.Name"),
-            StringComparison.Ordinal);
-        Assert.False(
-            string.IsNullOrWhiteSpace(
-                AttributeValue(
-                    contextInspector,
-                    "AutomationProperties.HelpText")));
-        Assert.Contains(
-            contextInspector.Descendants(),
-            element => string.Equals(element.Name.LocalName, "ItemsControl"
-, StringComparison.Ordinal) && string.Equals(
-                    AttributeValue(element, "ItemsSource"),
-                    "{Binding AgentChat.ContextItems}",
-                    StringComparison.Ordinal));
-        Assert.Contains(
-            contextInspector.Descendants(),
-            element => string.Equals(element.Name.LocalName, "Border"
-, StringComparison.Ordinal) && string.Equals(
-                    AttributeValue(element, "AutomationProperties.Name"),
-                    "{Binding AccessibleName}",
-                    StringComparison.Ordinal));
+        Assert.Equal("1", AttributeValue(activityScroller, "Grid.Row"));
         var actionCancel = Assert.Single(
             activityScroller.Descendants(),
             element => string.Equals(element.Name.LocalName, "Button"

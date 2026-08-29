@@ -39,13 +39,8 @@ public sealed partial class MarkdownPreviewView : UserControl
         InitializeComponent();
         EffectiveViewportChanged += (_, e) =>
         {
-            if (e.EffectiveViewport.Height <= 0 || e.EffectiveViewport.Width <= 0)
-            {
-                return;
-            }
-
-            _isInView = true;
-            Render();
+            _effectiveViewport = e.EffectiveViewport;
+            RenderWhenInViewport();
         };
     }
 
@@ -95,12 +90,21 @@ public sealed partial class MarkdownPreviewView : UserControl
         PlainTextFallback.IsVisible = false;
         _hasRendered = false;
         _isInView = false;
+        _effectiveViewport = null;
         base.OnDetachedFromVisualTree(e);
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
+        if (change.Property == BoundsProperty && !_isInView)
+        {
+            // A newly attached preview can receive its viewport before its
+            // first arrange gives it nonzero bounds. Retry after layout so it
+            // cannot remain a permanent empty placeholder.
+            RenderWhenInViewport();
+        }
+
         if ((change.Property == TextProperty || change.Property == ContinuousSelectionProperty)
             && VisualRoot is not null)
         {
@@ -130,7 +134,30 @@ public sealed partial class MarkdownPreviewView : UserControl
 
     private bool _isInView;
 
+    private Rect? _effectiveViewport;
+
     private int _buildGeneration;
+
+    private void RenderWhenInViewport()
+    {
+        if (_isInView || _effectiveViewport is not { } effectiveViewport)
+        {
+            return;
+        }
+
+        // EffectiveViewport is expressed in this control's coordinates and
+        // can remain non-empty while the control sits outside the scroller.
+        var bounds = new Rect(Bounds.Size);
+        if (bounds.Width <= 0
+            || bounds.Height <= 0
+            || !effectiveViewport.Intersects(bounds))
+        {
+            return;
+        }
+
+        _isInView = true;
+        Render();
+    }
 
     private void Render()
     {

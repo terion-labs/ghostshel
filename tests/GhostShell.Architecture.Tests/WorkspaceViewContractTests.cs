@@ -681,7 +681,6 @@ public sealed class WorkspaceViewContractTests
     private static readonly string[] AgentControlNames =
     [
         "AgentChatTranscript",
-        "AgentContextInspector",
         "AgentCurrentProgress",
         "AgentPendingQuestion",
         "AgentQuestionResponseInput",

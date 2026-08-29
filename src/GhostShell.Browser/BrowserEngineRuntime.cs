@@ -82,8 +82,7 @@ public static class BrowserEngineRuntime
                 "disable-features",
                 DisabledChromiumFeatures);
             if (GetMacOsSafeStorageSwitch(
-                    OperatingSystem.IsMacOS(),
-                    settings) is { } safeStorageSwitch)
+                    OperatingSystem.IsMacOS()) is { } safeStorageSwitch)
             {
                 Cef.AddCommandLineSwitch(safeStorageSwitch);
             }
@@ -239,23 +238,18 @@ public static class BrowserEngineRuntime
         };
     }
 
-    internal static string? GetMacOsSafeStorageSwitch(
-        bool isMacOs,
-        Cef.CefSettings settings)
+    internal static string? GetMacOsSafeStorageSwitch(bool isMacOs)
     {
-        ArgumentNullException.ThrowIfNull(settings);
         if (!isMacOs)
         {
             return null;
         }
 
-        // Durable Chromium state must use the platform Safe Storage service.
-        // The mock keychain is safe only in a completely ephemeral engine.
-        return settings.CachePath is null
-            && settings.RootCachePath is null
-            && !settings.PersistSessionCookies
-                ? "use-mock-keychain"
-                : null;
+        // GhostSHELL restores Chromium into an owner-only runtime directory and
+        // seals the complete tree with its application-encryption key after CEF
+        // shuts down. Chromium's separate Safe Storage integration adds login-
+        // keychain prompts without adding at-rest protection to the sealed blob.
+        return "use-mock-keychain";
     }
 
     private static void PreparePrivateDirectory(string path)
