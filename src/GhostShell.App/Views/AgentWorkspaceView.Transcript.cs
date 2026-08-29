@@ -14,6 +14,7 @@ namespace GhostShell.App.Views;
 public partial class AgentWorkspaceView
 {
     private const int AgentTranscriptPageSize = 24;
+    private const int AgentTranscriptScrollSettlePasses = 3;
     private const double AgentTranscriptEndTolerance = 12;
     private const double AgentTranscriptHistoryThreshold = 48;
 
@@ -27,7 +28,9 @@ public partial class AgentWorkspaceView
     private bool _agentChatShowsTail = true;
     private bool _followAgentChatEnd = true;
     private bool _agentChatScrollPending;
+    private bool _agentChatMaterializationInProgress;
     private bool _agentChatHistoryLoadPending;
+    private int _agentChatScrollGeneration;
 
     private void InitializeAgentChatTranscript()
     {
@@ -54,6 +57,8 @@ public partial class AgentWorkspaceView
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         SetAgentChatHost(null);
+        _agentChatScrollGeneration++;
+        _agentChatScrollPending = false;
         foreach (var candidate in _agentChatAnchorCandidates)
         {
             AgentChatTranscript.UnregisterAnchorCandidate(candidate);
@@ -175,6 +180,19 @@ public partial class AgentWorkspaceView
     }
 
     private void SynchronizeMaterializedAgentChatMessages()
+    {
+        _agentChatMaterializationInProgress = true;
+        try
+        {
+            SynchronizeMaterializedAgentChatMessagesCore();
+        }
+        finally
+        {
+            _agentChatMaterializationInProgress = false;
+        }
+    }
+
+    private void SynchronizeMaterializedAgentChatMessagesCore()
     {
         if (_agentChatMessageSource is null)
         {
@@ -310,6 +328,8 @@ public partial class AgentWorkspaceView
         if (force)
         {
             _followAgentChatEnd = true;
+            _agentChatScrollGeneration++;
+            _agentChatScrollPending = false;
         }
 
         if (!_followAgentChatEnd || _agentChatScrollPending)
@@ -318,18 +338,36 @@ public partial class AgentWorkspaceView
         }
 
         _agentChatScrollPending = true;
+        var generation = _agentChatScrollGeneration;
         Dispatcher.UIThread.Post(
-            () =>
-            {
-                _agentChatScrollPending = false;
-                if (!_followAgentChatEnd || VisualRoot is null)
-                {
-                    return;
-                }
+            () => SettleAgentChatScrollToEnd(generation, pass: 0),
+            DispatcherPriority.Loaded);
+    }
 
-                AgentChatTranscript.ScrollToEnd();
-            },
-            DispatcherPriority.Background);
+    private void SettleAgentChatScrollToEnd(int generation, int pass)
+    {
+        if (generation != _agentChatScrollGeneration)
+        {
+            return;
+        }
+
+        if (!_followAgentChatEnd || VisualRoot is null)
+        {
+            _agentChatScrollPending = false;
+            return;
+        }
+
+        AgentChatTranscript.UpdateLayout();
+        AgentChatTranscript.ScrollToEnd();
+        if (pass + 1 < AgentTranscriptScrollSettlePasses)
+        {
+            Dispatcher.UIThread.Post(
+                () => SettleAgentChatScrollToEnd(generation, pass + 1),
+                DispatcherPriority.Loaded);
+            return;
+        }
+
+        _agentChatScrollPending = false;
     }
 
     private void OnAgentChatTranscriptScrollChanged(
@@ -344,9 +382,12 @@ public partial class AgentWorkspaceView
         var endOffset = Math.Max(
             0,
             transcript.Extent.Height - transcript.Viewport.Height);
-        if (e.OffsetDelta.Y < 0)
+        var isUpdatingTranscriptLayout = _agentChatScrollPending
+            || _agentChatMaterializationInProgress;
+        if (e.OffsetDelta.Y < 0 && !isUpdatingTranscriptLayout)
         {
             _followAgentChatEnd = false;
+            _agentChatScrollGeneration++;
         }
         else if (transcript.Offset.Y >= endOffset - AgentTranscriptEndTolerance)
         {
@@ -359,6 +400,7 @@ public partial class AgentWorkspaceView
         }
 
         if (!_agentChatHistoryLoadPending
+            && !isUpdatingTranscriptLayout
             && e.OffsetDelta.Y < 0
             && transcript.Offset.Y <= AgentTranscriptHistoryThreshold)
         {
@@ -370,12 +412,18 @@ public partial class AgentWorkspaceView
         object? sender,
         PointerWheelEventArgs e)
     {
-        if (sender is ScrollViewer transcript
-            && e.Delta.Y > 0
-            && transcript.Offset.Y <= AgentTranscriptHistoryThreshold
-            && !_agentChatHistoryLoadPending)
+        if (sender is not ScrollViewer transcript || e.Delta.Y <= 0)
         {
-            _followAgentChatEnd = false;
+            return;
+        }
+
+        _followAgentChatEnd = false;
+        _agentChatScrollGeneration++;
+        _agentChatScrollPending = false;
+        if (transcript.Offset.Y <= AgentTranscriptHistoryThreshold
+            && !_agentChatHistoryLoadPending
+            && !_agentChatMaterializationInProgress)
+        {
             LoadOlderAgentChatMessages();
         }
     }

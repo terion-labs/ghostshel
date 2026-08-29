@@ -1,8 +1,10 @@
 using System.Collections.Immutable;
+using System.Collections.Specialized;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading.Channels;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.VisualTree;
@@ -1354,7 +1356,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     }
 
     [Fact]
-    public async Task Attached_agent_view_renders_workspace_chat_created_after_attachment()
+    public async Task Attached_agent_view_renders_late_workspace_chat_at_its_end()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var session = HeadlessUnitTestSession.StartNew(
@@ -1379,8 +1381,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                     };
                     var window = new Window
                     {
-                        Width = 700,
-                        Height = 600,
+                        Width = 360,
+                        Height = 760,
                         Content = view,
                     };
 
@@ -1392,30 +1394,57 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
                         Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
                         var runtime = Assert.Single(factory.CreatedRuntimes);
+                        const string expectedContent =
+                            "This production-host message must render.";
+                        var persistedMessages = Enumerable.Range(0, 40)
+                            .Select(index => new AgentChatMessage(
+                                AgentChatMessageRole.Assistant,
+                                $"## Persisted section {index}\n\n"
+                                + $"{expectedContent} Section {index}.\n\n"
+                                + "- Complete LDAP user exports\n"
+                                + "- Mailbox database CSV exports\n"
+                                + "- Authentication keys and TLS private keys"))
+                            .ToArray();
+                        var transcript = Assert.IsType<ItemsControl>(
+                            view.FindControl<ItemsControl>("AgentChatMessages"));
+                        var scrollViewer = Assert.IsType<ScrollViewer>(
+                            view.FindControl<ScrollViewer>("AgentChatTranscript"));
+                        var materializedMessages = Assert.IsAssignableFrom<
+                            INotifyCollectionChanged>(transcript.ItemsSource);
+                        var simulatedInitialLayoutCorrection = false;
+                        materializedMessages.CollectionChanged += (_, _) =>
+                        {
+                            if (simulatedInitialLayoutCorrection)
+                            {
+                                return;
+                            }
+
+                            simulatedInitialLayoutCorrection = true;
+                            scrollViewer.RaiseEvent(new ScrollChangedEventArgs(
+                                new Vector(0, 1),
+                                new Vector(0, -1),
+                                Vector.Zero));
+                        };
                         runtime.SetSnapshot(runtime.Snapshot with
                         {
                             ProviderId = provider.Id,
-                            Messages =
-                            [
-                                new AgentChatMessage(
-                                    AgentChatMessageRole.Assistant,
-                                    "This production-host message must render."),
-                            ],
+                            Messages = persistedMessages,
                         });
                         await WaitForAsync(() =>
-                            viewModel.AgentChat?.Messages.Count == 1);
-                        await Task.Delay(80);
+                            viewModel.AgentChat?.Messages.Count
+                                == persistedMessages.Length);
                         window.UpdateLayout();
 
-                        var transcript = Assert.IsType<ItemsControl>(
-                            view.FindControl<ItemsControl>("AgentChatMessages"));
-                        Assert.Equal(1, transcript.ItemCount);
+                        await WaitForAsync(() => transcript.ItemCount == 24);
+                        window.UpdateLayout();
+                        Assert.True(simulatedInitialLayoutCorrection);
+                        Assert.Equal(24, transcript.ItemCount);
                         for (var attempt = 0;
                              attempt < 80
                              && !view.GetVisualDescendants()
                                  .OfType<SelectableMarkdownDocument>()
                                  .Any(document => document.Text.Contains(
-                                     "This production-host message must render.",
+                                     expectedContent,
                                      StringComparison.Ordinal));
                              attempt++)
                         {
@@ -1427,8 +1456,18 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                             view.GetVisualDescendants()
                                 .OfType<SelectableMarkdownDocument>(),
                             document => document.Text.Contains(
-                                "This production-host message must render.",
+                                expectedContent,
                                 StringComparison.Ordinal));
+
+                        var maximumOffset = Math.Max(
+                            0,
+                            scrollViewer.Extent.Height
+                                - scrollViewer.Viewport.Height);
+                        Assert.True(maximumOffset > 0);
+                        Assert.True(
+                            scrollViewer.Offset.Y >= maximumOffset - 12,
+                            $"Expected initial offset at {maximumOffset:F0}, "
+                            + $"actual {scrollViewer.Offset.Y:F0}.");
                     }
                     finally
                     {
