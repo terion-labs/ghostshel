@@ -98,6 +98,10 @@ internal static class HistoricalDatabaseFixture
                 "revisioned-agent-run-history",
                 "201C2A62A05649DE083A849A88D5330259D10526BDDC5A7D9F701D9477D9191C",
                 IsDestructive: false),
+            [20] = new(
+                "migrate-durable-definition-payloads",
+                "90A375AB80FE3B05EC6346D5E5DFF00A62A91CCC6DEAF3B9F73D935CD05A1CD6",
+                IsDestructive: true),
         };
 
     public static readonly DateTimeOffset ReferenceTime =
@@ -374,6 +378,7 @@ internal static class HistoricalDatabaseFixture
             16 => "default_profile_id",
             17 => "mcp_server_diagnostic_summary",
             18 => "agent_run_history_retention",
+            19 => "definition_payload_migration_v20_guard",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(currentVersion),
                 currentVersion,

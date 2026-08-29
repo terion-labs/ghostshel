@@ -88,6 +88,281 @@ public sealed class SqliteDatabaseTests
             StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task LegacyDefinitionPayloadsUpgradeWithoutLosingUserConfiguration()
+    {
+        await using var temporary = TemporaryDatabase.Create();
+        var payloadMigration = SqliteSchema.Migrations.Single(migration =>
+            string.Equals(
+                migration.Name,
+                "migrate-durable-definition-payloads",
+                StringComparison.Ordinal));
+        await HistoricalDatabaseFixture.CreateAsync(
+            temporary.DatabasePath,
+            payloadMigration.Version - 1);
+        await using (var legacy = await HistoricalDatabaseFixture.OpenAsync(
+            temporary.DatabasePath))
+        {
+            await InsertLegacyDefinitionAsync(
+                legacy,
+                DefinitionKind.Theme,
+                "theme.legacy",
+                "Legacy theme",
+                """
+                {"id":{"value":"theme.legacy"},"schemaVersion":1,"name":"Legacy theme","appearance":"Dark","platformProfile":"Custom","accent":{"kind":"GhostShellBronze","customColor":null},"textScaleOverride":1.25}
+                """);
+            await InsertLegacyDefinitionAsync(
+                legacy,
+                DefinitionKind.QuickTerminalSettings,
+                "quick-terminal.legacy",
+                "Legacy Quick Terminal",
+                """
+                {"id":{"value":"quick-terminal.legacy"},"schemaVersion":1,"name":"Legacy Quick Terminal","hotkey":{"key":"GRAVE","modifiers":"Meta"},"monitorPolicy":"MainWindow","heightFraction":0.6,"opacity":0.7,"blurRadius":0,"animateSlide":true,"animationDurationMilliseconds":180,"reduceMotion":false,"restoreLastSession":true,"hideOnFocusLoss":true}
+                """);
+            await InsertLegacyDefinitionAsync(
+                legacy,
+                DefinitionKind.AiProviderProfile,
+                "ai.legacy",
+                "Legacy OpenAI",
+                """
+                {"id":{"value":"ai.legacy"},"schemaVersion":1,"name":"Legacy OpenAI","providerKind":"OpenAi","endpoint":"https://api.openai.com/v1/","authentication":{"$type":"api-key","secret":{"value":"vault-legacy-ai"}},"defaultModel":"gpt-legacy","order":3,"isEnabled":true}
+                """);
+            await InsertLegacyDefinitionAsync(
+                legacy,
+                DefinitionKind.AiProviderProfile,
+                "ai.anthropic.legacy",
+                "Legacy Anthropic",
+                """
+                {"id":{"value":"ai.anthropic.legacy"},"schemaVersion":1,"name":"Legacy Anthropic","providerKind":"Anthropic","endpoint":"https://api.anthropic.com/v1/","authentication":{"$type":"api-key","secret":{"value":"vault-legacy-anthropic"}},"defaultModel":"claude-legacy","order":4,"isEnabled":true}
+                """);
+            await InsertLegacyDefinitionAsync(
+                legacy,
+                DefinitionKind.AiProviderProfile,
+                "ai.compatible.legacy",
+                "Legacy compatible provider",
+                """
+                {"id":{"value":"ai.compatible.legacy"},"schemaVersion":1,"name":"Legacy compatible provider","providerKind":"OpenAiCompatible","endpoint":"http://localhost:11434/v1/","authentication":{"$type":"api-key","secret":{"value":"vault-legacy-compatible"}},"defaultModel":"local-legacy","order":5,"isEnabled":true}
+                """);
+            await InsertLegacyDefinitionAsync(
+                legacy,
+                DefinitionKind.McpServerProfile,
+                "mcp.legacy",
+                "Legacy MCP",
+                """
+                {"id":{"value":"mcp.legacy"},"schemaVersion":1,"name":"Legacy MCP","executable":"/opt/mcp/server","arguments":["--stdio"],"workingDirectory":"/srv/mcp","environment":[{"name":"TOKEN","reference":{"value":"vault-legacy-mcp"}}],"enabledTools":["status.read"],"isEnabled":false}
+                """);
+        }
+
+        await temporary.Database.EnsureInitializedAsync(CancellationToken.None);
+
+        var theme = await new SqliteDefinitionRepository<ThemePreference>(
+            temporary.Database,
+            TimeProvider.System).GetAsync(
+                new(DefinitionKind.Theme, "theme.legacy"),
+                CancellationToken.None);
+        Assert.True(theme.IsSuccess, theme.Error?.Message);
+        Assert.Equal(1.25, theme.Value!.Value.TextScaleOverride);
+        Assert.True(theme.Value.Value.IsTranslucent);
+
+        var quickTerminal = await new SqliteDefinitionRepository<QuickTerminalSettings>(
+            temporary.Database,
+            TimeProvider.System).GetAsync(
+                new(DefinitionKind.QuickTerminalSettings, "quick-terminal.legacy"),
+                CancellationToken.None);
+        Assert.True(quickTerminal.IsSuccess, quickTerminal.Error?.Message);
+        Assert.False(quickTerminal.Value!.Value.IsTranslucent);
+        Assert.True(quickTerminal.Value.Value.RestoreOnStart);
+
+        var aiProvider = await new SqliteDefinitionRepository<AiProviderProfile>(
+            temporary.Database,
+            TimeProvider.System).GetAsync(
+                new(DefinitionKind.AiProviderProfile, "ai.legacy"),
+                CancellationToken.None);
+        Assert.True(aiProvider.IsSuccess, aiProvider.Error?.Message);
+        Assert.Equal(AiProviderProtocol.OpenAiResponses, aiProvider.Value!.Value.Protocol);
+        Assert.Equal(AiProviderCapabilities.Responses, aiProvider.Value.Value.Capabilities);
+        Assert.Equal("gpt-legacy", aiProvider.Value.Value.DefaultModel);
+
+        var anthropic = await new SqliteDefinitionRepository<AiProviderProfile>(
+            temporary.Database,
+            TimeProvider.System).GetAsync(
+                new(DefinitionKind.AiProviderProfile, "ai.anthropic.legacy"),
+                CancellationToken.None);
+        Assert.True(anthropic.IsSuccess, anthropic.Error?.Message);
+        Assert.Equal(
+            AiProviderProtocol.AnthropicMessages,
+            anthropic.Value!.Value.Protocol);
+        Assert.Equal(
+            AiProviderCatalog.Get(AiProviderKind.Anthropic).Capabilities,
+            anthropic.Value.Value.Capabilities);
+
+        var compatible = await new SqliteDefinitionRepository<AiProviderProfile>(
+            temporary.Database,
+            TimeProvider.System).GetAsync(
+                new(DefinitionKind.AiProviderProfile, "ai.compatible.legacy"),
+                CancellationToken.None);
+        Assert.True(compatible.IsSuccess, compatible.Error?.Message);
+        Assert.Equal(
+            AiProviderProtocol.OpenAiChatCompletions,
+            compatible.Value!.Value.Protocol);
+        Assert.Equal(
+            AiProviderCapabilities.ChatCompletions,
+            compatible.Value.Value.Capabilities);
+
+        var mcpServer = await new SqliteDefinitionRepository<McpServerProfile>(
+            temporary.Database,
+            TimeProvider.System).GetAsync(
+                new(DefinitionKind.McpServerProfile, "mcp.legacy"),
+                CancellationToken.None);
+        Assert.True(mcpServer.IsSuccess, mcpServer.Error?.Message);
+        var stdio = Assert.IsType<McpServerTransport.Stdio>(mcpServer.Value!.Value.Transport);
+        Assert.Equal("/opt/mcp/server", stdio.Executable);
+        Assert.Equal(["--stdio"], stdio.Arguments);
+        Assert.Equal(
+            new SecretRef("vault-legacy-mcp"),
+            Assert.Single(stdio.Environment).Reference);
+        Assert.False(mcpServer.Value.Value.IsEnabled);
+        Assert.True(mcpServer.Value.Value.IsTrusted);
+
+        await using var migrated = await temporary.Database.OpenConnectionAsync(
+            CancellationToken.None);
+        Assert.Equal(
+            "6",
+            await ScalarAsync(
+                migrated,
+                """
+                SELECT COUNT(*)
+                FROM definitions
+                WHERE kind IN (
+                    'theme',
+                    'quick-terminal-settings',
+                    'ai-provider-profile',
+                    'mcp-server-profile')
+                    AND schema_version = 2
+                    AND json_extract(payload_json, '$.schemaVersion') = 2
+                    AND revision = 7;
+                """));
+        Assert.Equal(
+            "6",
+            await ScalarAsync(
+                migrated,
+                """
+                SELECT COUNT(*)
+                FROM definitions
+                WHERE id LIKE '%.legacy'
+                    AND updated_utc = '2026-07-23T08:30:00.0000000+00:00';
+                """));
+        Assert.Equal(
+            "object",
+            await ScalarAsync(
+                migrated,
+                """
+                SELECT json_type(payload_json, '$.transport')
+                FROM definitions
+                WHERE kind = 'mcp-server-profile' AND id = 'mcp.legacy';
+                """));
+        Assert.Equal(
+            "4",
+            await ScalarAsync(
+                migrated,
+                """
+                SELECT
+                    (SELECT json_type(payload_json, '$.cornerRadiusOverride') IS NULL
+                     FROM definitions WHERE id = 'theme.legacy')
+                    + (SELECT json_type(payload_json, '$.backdropBlurRadius') IS NULL
+                       FROM definitions WHERE id = 'theme.legacy')
+                    + (SELECT json_type(payload_json, '$.blurRadius') IS NULL
+                       FROM definitions WHERE id = 'quick-terminal.legacy')
+                    + (SELECT json_type(payload_json, '$.executable') IS NULL
+                       FROM definitions WHERE id = 'mcp.legacy');
+                """));
+        Assert.Single(Directory.GetFiles(
+            new SqliteStorageOptions(temporary.DatabasePath).BackupDirectory,
+            $"ghostshell-before-v{payloadMigration.Version}-*.db"));
+    }
+
+    [Fact]
+    public async Task UnknownLegacyDefinitionVersionRollsBackAndCanRetry()
+    {
+        await using var temporary = TemporaryDatabase.Create();
+        var payloadMigration = SqliteSchema.Migrations.Single(migration =>
+            string.Equals(
+                migration.Name,
+                "migrate-durable-definition-payloads",
+                StringComparison.Ordinal));
+        await HistoricalDatabaseFixture.CreateAsync(
+            temporary.DatabasePath,
+            payloadMigration.Version - 1);
+        await using (var legacy = await HistoricalDatabaseFixture.OpenAsync(
+            temporary.DatabasePath))
+        {
+            await InsertLegacyDefinitionAsync(
+                legacy,
+                DefinitionKind.AiProviderProfile,
+                "ai.unknown",
+                "Unknown provider",
+                """
+                {"id":{"value":"ai.unknown"},"schemaVersion":1,"name":"Unknown provider","providerKind":"FutureProvider","endpoint":"https://example.test/v1/","authentication":{"$type":"api-key","secret":{"value":"vault-unknown"}},"defaultModel":"future","order":0,"isEnabled":true}
+                """);
+        }
+
+        await Assert.ThrowsAsync<SqliteException>(async () =>
+            await temporary.Database.EnsureInitializedAsync(CancellationToken.None));
+
+        await using (var unchanged = await HistoricalDatabaseFixture.OpenAsync(
+            temporary.DatabasePath))
+        {
+            Assert.Equal(
+                (payloadMigration.Version - 1).ToString(
+                    System.Globalization.CultureInfo.InvariantCulture),
+                await ScalarAsync(
+                    unchanged,
+                    "SELECT MAX(version) FROM schema_migrations;"));
+            Assert.Equal(
+                "1|1|FutureProvider",
+                await ScalarAsync(
+                    unchanged,
+                    """
+                    SELECT schema_version
+                        || '|'
+                        || json_extract(payload_json, '$.schemaVersion')
+                        || '|'
+                        || json_extract(payload_json, '$.providerKind')
+                    FROM definitions
+                    WHERE kind = 'ai-provider-profile' AND id = 'ai.unknown';
+                    """));
+            await using var repair = unchanged.CreateCommand();
+            repair.CommandText = """
+                UPDATE definitions
+                SET payload_json = json_set(
+                    payload_json,
+                    '$.providerKind',
+                    'OpenAi')
+                WHERE kind = 'ai-provider-profile' AND id = 'ai.unknown';
+                """;
+            await repair.ExecuteNonQueryAsync();
+        }
+
+        await temporary.Database.EnsureInitializedAsync(CancellationToken.None);
+        await using var retried = await temporary.Database.OpenConnectionAsync(
+            CancellationToken.None);
+        Assert.Equal(
+            payloadMigration.Version.ToString(
+                System.Globalization.CultureInfo.InvariantCulture),
+            await ScalarAsync(retried, "SELECT MAX(version) FROM schema_migrations;"));
+        Assert.Equal(
+            "2|OpenAiResponses",
+            await ScalarAsync(
+                retried,
+                """
+                SELECT schema_version
+                    || '|'
+                    || json_extract(payload_json, '$.protocol')
+                FROM definitions
+                WHERE kind = 'ai-provider-profile' AND id = 'ai.unknown';
+                """));
+    }
+
     public static TheoryData<int> HistoricalSchemaVersions
     {
         get
@@ -646,6 +921,46 @@ public sealed class SqliteDatabaseTests
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
         return Convert.ToString(await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture)!;
+    }
+
+    private static async Task InsertLegacyDefinitionAsync(
+        SqliteConnection connection,
+        DefinitionKind kind,
+        string id,
+        string name,
+        string payloadJson)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO definitions(
+                kind,
+                id,
+                schema_version,
+                revision,
+                name,
+                payload_json,
+                created_utc,
+                updated_utc)
+            VALUES (
+                $kind,
+                $id,
+                1,
+                7,
+                $name,
+                $payloadJson,
+                $timestamp,
+                $timestamp);
+            """;
+        command.Parameters.AddWithValue("$kind", kind.Value);
+        command.Parameters.AddWithValue("$id", id);
+        command.Parameters.AddWithValue("$name", name);
+        command.Parameters.AddWithValue("$payloadJson", payloadJson);
+        command.Parameters.AddWithValue(
+            "$timestamp",
+            HistoricalDatabaseFixture.ReferenceTime.ToString(
+                "O",
+                System.Globalization.CultureInfo.InvariantCulture));
+        await command.ExecuteNonQueryAsync();
     }
 
     private static async Task EncryptDatabaseAsync(string path, string password)

@@ -8,8 +8,8 @@ namespace GhostShell.Core;
 /// </summary>
 public sealed record QuickTerminalSettings : IDurableDefinition
 {
-    // Not moved: see ThemePreference. The switch is optional so a stored
-    // payload without it still constructs.
+    // The translucency switch did not require schema 3. Database migration 20
+    // translates the older schema-1 blur radius before strict deserialization.
     public const int CurrentSchemaVersion = 2;
     public const double MinimumHeightFraction = 0.25;
     public const double MaximumHeightFraction = 0.90;

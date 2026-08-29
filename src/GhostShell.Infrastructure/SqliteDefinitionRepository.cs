@@ -98,10 +98,6 @@ public sealed class SqliteDefinitionRepository<TDefinition> : IDefinitionReposit
                 """;
             command.Parameters.AddWithValue("$kind", TDefinition.Kind.Value);
             var definitions = new List<StoredDefinition<TDefinition>>();
-            var discarded = new List<string>();
-
-            // The reader is closed before anything is deleted; SQLite will not
-            // accept a write on this connection while a read is still streaming.
             await using (var reader = await command.ExecuteReaderAsync(cancellationToken)
                 .ConfigureAwait(false))
             {
@@ -114,18 +110,14 @@ public sealed class SqliteDefinitionRepository<TDefinition> : IDefinitionReposit
                         continue;
                     }
 
-                    // A row this build cannot read is dropped rather than failing
-                    // the whole list. One outdated or corrupt definition used to
-                    // make the entire profile — connections, screens, workspaces
-                    // — unavailable.
-                    discarded.Add(reader.GetString(1));
+                    // Released payload versions migrate before repositories open.
+                    // Anything unreadable here is corruption or a version this
+                    // binary cannot safely interpret. Preserve the row and fail
+                    // instead of turning a read into irreversible data loss.
+                    return Failure<IReadOnlyList<StoredDefinition<TDefinition>>>(
+                        item.Error!.Code,
+                        item.Error.Message);
                 }
-            }
-
-            if (discarded.Count > 0)
-            {
-                await DeleteUnreadableAsync(connection, discarded, cancellationToken)
-                    .ConfigureAwait(false);
             }
 
             return DefinitionStoreResult<IReadOnlyList<StoredDefinition<TDefinition>>>.Success(
@@ -619,27 +611,6 @@ public sealed class SqliteDefinitionRepository<TDefinition> : IDefinitionReposit
             insert.Parameters.AddWithValue("$targetId", reference.Target.Value);
             insert.Parameters.AddWithValue("$role", reference.Role);
             await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
-    }
-
-    /// <summary>
-    /// Removes rows the current build cannot read, so the next start is clean
-    /// instead of repeating the same failure. The definitions are gone, not
-    /// hidden: whatever seeds defaults will recreate them.
-    /// </summary>
-    private static async ValueTask DeleteUnreadableAsync(
-        SqliteConnection connection,
-        IReadOnlyList<string> ids,
-        CancellationToken cancellationToken)
-    {
-        foreach (var id in ids)
-        {
-            await using var delete = connection.CreateCommand();
-            delete.CommandText =
-                "DELETE FROM definitions WHERE kind = $kind AND id = $id;";
-            delete.Parameters.AddWithValue("$kind", TDefinition.Kind.Value);
-            delete.Parameters.AddWithValue("$id", id);
-            await delete.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 

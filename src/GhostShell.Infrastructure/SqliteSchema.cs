@@ -512,5 +512,194 @@ internal static class SqliteSchema
                     deleted_utc DESC,
                     run_id);
             """),
+        new(
+            20,
+            "migrate-durable-definition-payloads",
+            """
+            -- A definition schema change is a database migration, not a read-time
+            -- fallback. The guard makes an unrecognized legacy version abort the
+            -- transaction before any payload is rewritten.
+            CREATE TABLE definition_payload_migration_v20_guard (
+                valid INTEGER NOT NULL CHECK (valid = 1)
+            );
+
+            INSERT INTO definition_payload_migration_v20_guard(valid)
+            SELECT CASE
+                WHEN json_type(payload_json, '$.schemaVersion') = 'integer'
+                    AND json_extract(payload_json, '$.schemaVersion') = schema_version
+                    AND (
+                        (kind = 'theme' AND schema_version IN (1, 2))
+                        OR (
+                            kind = 'quick-terminal-settings'
+                            AND schema_version IN (1, 2)
+                            AND (
+                                schema_version = 2
+                                OR json_type(payload_json, '$.blurRadius') = 'integer'))
+                        OR (
+                            kind = 'ai-provider-profile'
+                            AND (
+                                schema_version = 2
+                                OR (
+                                    schema_version = 1
+                                    AND lower(json_extract(
+                                        payload_json,
+                                        '$.providerKind')) IN (
+                                            'anthropic',
+                                            'openai',
+                                            'openaicompatible'))))
+                        OR (
+                            kind = 'mcp-server-profile'
+                            AND (
+                                schema_version = 2
+                                OR (
+                                    schema_version = 1
+                                    AND json_type(
+                                        payload_json,
+                                        '$.executable') = 'text'
+                                    AND json_type(
+                                        payload_json,
+                                        '$.arguments') = 'array'
+                                    AND json_type(
+                                        payload_json,
+                                        '$.environment') = 'array'))))
+                THEN 1
+                ELSE 0
+            END
+            FROM definitions
+            WHERE kind IN (
+                'theme',
+                'quick-terminal-settings',
+                'ai-provider-profile',
+                'mcp-server-profile');
+
+            -- Theme schema 1 gains the schema-2 defaults. Older schema-2
+            -- payloads may still carry settings removed while the format was
+            -- in development; translate the blur switch and remove those
+            -- retired properties so strict current deserialization succeeds.
+            UPDATE definitions
+            SET schema_version = 2,
+                payload_json = json_remove(
+                    CASE
+                        WHEN json_type(
+                            payload_json,
+                            '$.backdropBlurRadius') = 'integer'
+                        THEN json_set(
+                            payload_json,
+                            '$.schemaVersion',
+                            2,
+                            '$.isTranslucent',
+                            json(CASE
+                                WHEN json_extract(
+                                    payload_json,
+                                    '$.backdropBlurRadius') > 0
+                                THEN 'true'
+                                ELSE 'false'
+                            END))
+                        ELSE json_set(payload_json, '$.schemaVersion', 2)
+                    END,
+                    '$.cornerRadiusOverride',
+                    '$.backdropBlurRadius')
+            WHERE kind = 'theme'
+                AND (
+                    schema_version = 1
+                    OR json_type(
+                        payload_json,
+                        '$.cornerRadiusOverride') IS NOT NULL
+                    OR json_type(
+                        payload_json,
+                        '$.backdropBlurRadius') IS NOT NULL);
+
+            -- Quick Terminal schema 1 represented translucency as a blur
+            -- radius. Preserve the only behavior that value controlled.
+            UPDATE definitions
+            SET schema_version = 2,
+                payload_json = json_remove(
+                    CASE
+                        WHEN json_type(payload_json, '$.blurRadius') = 'integer'
+                        THEN json_set(
+                            payload_json,
+                            '$.schemaVersion',
+                            2,
+                            '$.isTranslucent',
+                            json(CASE
+                                WHEN json_extract(
+                                    payload_json,
+                                    '$.blurRadius') > 0
+                                THEN 'true'
+                                ELSE 'false'
+                            END))
+                        ELSE json_set(payload_json, '$.schemaVersion', 2)
+                    END,
+                    '$.blurRadius')
+            WHERE kind = 'quick-terminal-settings'
+                AND (
+                    schema_version = 1
+                    OR json_type(payload_json, '$.blurRadius') IS NOT NULL);
+
+            -- AI-provider schema 2 split provider identity from wire protocol.
+            -- Version 1 had only these three identities, so the mapping is
+            -- complete and deterministic. Persist the matching registered
+            -- capability ceiling because every schema-2 constructor argument
+            -- is required by the strict durable-definition codec.
+            UPDATE definitions
+            SET schema_version = 2,
+                payload_json = json_set(
+                    payload_json,
+                    '$.schemaVersion',
+                    2,
+                    '$.protocol',
+                    CASE lower(json_extract(payload_json, '$.providerKind'))
+                        WHEN 'anthropic' THEN 'AnthropicMessages'
+                        WHEN 'openai' THEN 'OpenAiResponses'
+                        WHEN 'openaicompatible' THEN 'OpenAiChatCompletions'
+                    END,
+                    '$.capabilities',
+                    json_object(
+                        'supportsToolCalling', json('true'),
+                        'supportsToolBatches', json('true'),
+                        'supportsImageInput', json('true'),
+                        'supportsReasoning',
+                            json(CASE
+                                WHEN lower(json_extract(
+                                    payload_json,
+                                    '$.providerKind')) = 'openaicompatible'
+                                THEN 'false'
+                                ELSE 'true'
+                            END),
+                        'supportsModelDiscovery', json('true')))
+            WHERE kind = 'ai-provider-profile'
+                AND schema_version = 1;
+
+            -- MCP schema 2 wraps the original stdio fields in a discriminated
+            -- transport. All version-1 profiles were stdio profiles.
+            UPDATE definitions
+            SET schema_version = 2,
+                payload_json = json_remove(
+                    json_set(
+                        payload_json,
+                        '$.schemaVersion',
+                        2,
+                        '$.transport',
+                        json_object(
+                            '$type',
+                            'stdio',
+                            'executable',
+                            json_extract(payload_json, '$.executable'),
+                            'arguments',
+                            json(json_extract(payload_json, '$.arguments')),
+                            'workingDirectory',
+                            json_extract(payload_json, '$.workingDirectory'),
+                            'environment',
+                            json(json_extract(payload_json, '$.environment')))),
+                    '$.executable',
+                    '$.arguments',
+                    '$.workingDirectory',
+                    '$.environment')
+            WHERE kind = 'mcp-server-profile'
+                AND schema_version = 1;
+
+            DROP TABLE definition_payload_migration_v20_guard;
+            """,
+            IsDestructive: true),
     ];
 }

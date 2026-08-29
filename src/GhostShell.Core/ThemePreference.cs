@@ -48,20 +48,13 @@ public enum WorkspacePanelPlacement
 public sealed record ThemePreference : IDurableDefinition
 {
     /// <summary>
-    /// Version 2 adds the window-chrome settings. Every one of them is optional
-    /// with a defined default, so a stored version 1 document still deserializes.
+    /// Version 2 adds the window-chrome settings. Database migration 20 upgrades
+    /// version-1 documents before the strict durable-definition codec reads them.
     /// </summary>
-    // Not moved for the translucency change. A stored payload that still
-    // carries a blur radius reads correctly: the property is ignored and the
-    // switch takes its default. Moving it would have every saved theme fail
-    // validation as an unsupported schema and be replaced by defaults, which
-    // is how a corner radius someone had chosen came back as the fallback.
+    // The later translucency change did not require schema 3. Migration 20 also
+    // normalizes the older schema-2 blur and corner properties before strict
+    // deserialization.
     public const int CurrentSchemaVersion = 2;
-
-
-
-
-
     /// <summary>Whether the shell sits on a translucent base surface at all.</summary>
     public const bool DefaultIsTranslucent = true;
 
@@ -223,10 +216,6 @@ public sealed record ThemePreference : IDurableDefinition
 
     public WorkspacePanelPlacement WorkspacePanelPlacement { get; }
 
-    /// <summary>
-    /// How far the desktop is blurred behind the base surface. Zero turns the
-    /// translucency off with it — an opaque shell has nothing to blur behind.
-    /// </summary>
     /// <summary>
     /// Whether the shell sits on a translucent base surface.
     ///
