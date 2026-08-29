@@ -3947,6 +3947,7 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
                     window.UpdateLayout();
                 }
 
+                await SettleDeferredPresentationAsync(window);
                 FreezeNondeterministicPresentation(window);
 
                 var path = Path.Combine(Program.OutputDirectory, $"{route.Name}.png");
@@ -4086,6 +4087,35 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
             ?? throw new InvalidOperationException(
                 $"The extracted presentation resource has no '{methodName}' materializer.");
         _ = method.Invoke(window, null);
+    }
+
+    private static async Task SettleDeferredPresentationAsync(MainWindow window)
+    {
+        const string pendingMarkdownName = "Rendering Markdown message";
+        const int maximumAttempts = 400;
+        for (var attempt = 0; attempt < maximumAttempts; attempt++)
+        {
+            Dispatcher.UIThread.RunJobs();
+            window.UpdateLayout();
+            var markdownIsRendering = window.GetVisualDescendants()
+                .OfType<Control>()
+                .Any(control => control.IsVisible
+                    && string.Equals(
+                        AutomationProperties.GetName(control),
+                        pendingMarkdownName,
+                        StringComparison.Ordinal));
+            if (!markdownIsRendering)
+            {
+                Dispatcher.UIThread.RunJobs();
+                window.UpdateLayout();
+                return;
+            }
+
+            await Task.Delay(25);
+        }
+
+        throw new InvalidOperationException(
+            "The design QA route did not finish rendering Markdown within 10 seconds.");
     }
 
     private static void FreezeNondeterministicPresentation(Visual root)

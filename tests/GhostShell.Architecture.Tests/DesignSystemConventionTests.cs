@@ -336,6 +336,14 @@ public sealed partial class DesignSystemConventionTests
         Assert.Contains("--gate", gate, StringComparison.Ordinal);
         Assert.Contains("check-design-qa.sh", fullCheck, StringComparison.Ordinal);
         Assert.Contains("check-design-qa.sh", hostedGate, StringComparison.Ordinal);
+        Assert.Contains(
+            "await SettleDeferredPresentationAsync(window)",
+            harness,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Rendering Markdown message",
+            harness,
+            StringComparison.Ordinal);
         Assert.Contains("Primary-surface ledger", ledger, StringComparison.Ordinal);
         Assert.Contains("Explicit blockers and platform adaptations", ledger, StringComparison.Ordinal);
     }
