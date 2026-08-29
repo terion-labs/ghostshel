@@ -3,13 +3,20 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repository_dir="$(cd "${script_dir}/.." && pwd)"
-capture_dir="$(mktemp -d "${TMPDIR:-/tmp}/ghostshell-design-qa.XXXXXX")"
+if [[ -n "${GHOSTSHELL_DESIGN_QA_CAPTURE_DIR:-}" ]]; then
+    capture_dir="${GHOSTSHELL_DESIGN_QA_CAPTURE_DIR}"
+    mkdir -p "${capture_dir}"
+    preserve_captures=1
+else
+    capture_dir="$(mktemp -d "${TMPDIR:-/tmp}/ghostshell-design-qa.XXXXXX")"
+    preserve_captures=0
+fi
 
 cleanup() {
     status=$?
-    if [[ "${status}" == "0" ]]; then
+    if [[ "${status}" == "0" && "${preserve_captures}" == "0" ]]; then
         rm -rf "${capture_dir}"
-    else
+    elif [[ "${status}" != "0" ]]; then
         echo "Failed design QA captures preserved at ${capture_dir}" >&2
     fi
 }

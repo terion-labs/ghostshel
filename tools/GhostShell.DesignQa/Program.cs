@@ -4109,7 +4109,12 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
                 .Where(preview => preview.IsEffectivelyVisible
                     && !string.IsNullOrEmpty(preview.Text))
                 .ToArray();
-            if (visibleMarkdown.All(preview => preview.IsPresentationReady))
+            var visibleCode = window.GetVisualDescendants()
+                .OfType<CodePreviewView>()
+                .Where(preview => preview.IsEffectivelyVisible)
+                .ToArray();
+            if (visibleMarkdown.All(preview => preview.IsPresentationReady)
+                && visibleCode.All(preview => preview.IsPresentationReady))
             {
                 stablePasses++;
                 if (stablePasses >= requiredStablePasses)
@@ -4126,7 +4131,7 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
         }
 
         throw new InvalidOperationException(
-            "The design QA route did not finish and settle Markdown presentation within 10 seconds.");
+            "The design QA route did not finish and settle deferred presentation within 10 seconds.");
     }
 
     private static void FreezeNondeterministicPresentation(Visual root)

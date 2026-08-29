@@ -345,6 +345,18 @@ public sealed partial class DesignSystemConventionTests
             harness,
             StringComparison.Ordinal);
         Assert.Contains(
+            "OfType<CodePreviewView>()",
+            harness,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "GHOSTSHELL_DESIGN_QA_CAPTURE_DIR",
+            gate,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "failed-native-visual-captures",
+            hostedGate,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "requiredStablePasses",
             harness,
             StringComparison.Ordinal);

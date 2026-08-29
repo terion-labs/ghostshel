@@ -11,6 +11,43 @@ namespace GhostShell.App.Tests;
 public sealed class CodePreviewViewHeadlessTests
 {
     [Fact]
+    public Task DeferredGrammarReportsWhenItsPresentationIsReady() =>
+        RunHeadlessAsync(async () =>
+        {
+            var preview = new CodePreviewView
+            {
+                FileName = "controller.py",
+                Text = "def step(target, actual):\n    return target - actual",
+            };
+            var window = new Window
+            {
+                Width = 800,
+                Height = 500,
+                Content = preview,
+            };
+
+            try
+            {
+                Assert.False(preview.IsPresentationReady);
+                window.Show();
+                Assert.False(preview.IsPresentationReady);
+
+                for (var attempt = 0;
+                     attempt < 100 && !preview.IsPresentationReady;
+                     attempt++)
+                {
+                    await Task.Delay(10);
+                }
+
+                Assert.True(preview.IsPresentationReady);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+    [Fact]
     public Task FullDocumentPreviewCannotScrollBelowItsLastLine() =>
         RunHeadlessAsync(async () =>
         {

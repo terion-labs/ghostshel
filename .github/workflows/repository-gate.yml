@@ -174,7 +174,18 @@ jobs:
       - name: Run the fast repository gate
         run: ./scripts/check.sh --quick
       - name: Gate native visual coherence
+        id: design-qa
+        env:
+          GHOSTSHELL_DESIGN_QA_CAPTURE_DIR: ${{ runner.temp }}/ghostshell-design-qa
         run: ./scripts/check-design-qa.sh
+      - name: Upload failed native visual captures
+        if: failure() && steps.design-qa.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: failed-native-visual-captures
+          path: ${{ runner.temp }}/ghostshell-design-qa
+          if-no-files-found: error
+          retention-days: 7
 
   dependency-security-evidence:
     name: Exact dependency security evidence

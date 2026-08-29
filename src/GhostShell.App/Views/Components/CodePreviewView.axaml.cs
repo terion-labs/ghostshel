@@ -54,7 +54,15 @@ public sealed partial class CodePreviewView : UserControl
     private RegistryOptions? _registryOptions;
     private TextMate.Installation? _textMate;
     private bool _highlightPending;
+    private bool _presentationReady;
     private bool _isInView;
+
+    /// <summary>
+    /// Whether the currently visible editor has finished its deferred grammar
+    /// installation. Design captures use this to avoid recording the plain
+    /// text frame that precedes syntax highlighting.
+    /// </summary>
+    internal bool IsPresentationReady => _presentationReady && !_highlightPending;
 
     public CodePreviewView()
     {
@@ -143,6 +151,7 @@ public sealed partial class CodePreviewView : UserControl
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
+        _presentationReady = false;
         // Text set hard against the line-number column reads as one run-on
         // column; a few pixels separate the two.
         ApplyTypography();
@@ -156,6 +165,7 @@ public sealed partial class CodePreviewView : UserControl
         _textMate?.Dispose();
         _textMate = null;
         _registryOptions = null;
+        _presentationReady = false;
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -195,11 +205,20 @@ public sealed partial class CodePreviewView : UserControl
         // A block sized to its content lives inside a scrolling document, so
         // it waits until the reader has scrolled to it. A full-file preview
         // fills the panel and is always the thing being looked at.
-        if (_highlightPending || !IsAttachedToVisualTree() || (FitsContent && !_isInView))
+        if (_highlightPending || !IsAttachedToVisualTree())
         {
             return;
         }
 
+        if (FitsContent && !_isInView)
+        {
+            // Off-screen fenced blocks deliberately stay plain until scrolled
+            // into view. Their current presentation is therefore complete.
+            _presentationReady = true;
+            return;
+        }
+
+        _presentationReady = false;
         _highlightPending = true;
         Dispatcher.UIThread.Post(
             () =>
@@ -216,11 +235,13 @@ public sealed partial class CodePreviewView : UserControl
                 // would pay it for a highlighting that never happens.
                 if (_textMate is null && ResolveLanguage(FileName) is null)
                 {
+                    _presentationReady = true;
                     return;
                 }
 
                 _textMate ??= Editor.InstallTextMate(options);
                 SyncGrammar();
+                _presentationReady = true;
             },
             DispatcherPriority.Background);
     }
