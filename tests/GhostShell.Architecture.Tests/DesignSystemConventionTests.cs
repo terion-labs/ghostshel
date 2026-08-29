@@ -341,7 +341,23 @@ public sealed partial class DesignSystemConventionTests
             harness,
             StringComparison.Ordinal);
         Assert.Contains(
-            "Rendering Markdown message",
+            "preview.IsPresentationReady",
+            harness,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "requiredStablePasses",
+            harness,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "control.Classes.Remove(\"PanelAgentGlow\")",
+            harness,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "control.Classes.Remove(\"PanelAgentActivity\")",
+            harness,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "control.Classes.Contains(\"PanelNotificationPulse\")",
             harness,
             StringComparison.Ordinal);
         Assert.Contains("Primary-surface ledger", ledger, StringComparison.Ordinal);

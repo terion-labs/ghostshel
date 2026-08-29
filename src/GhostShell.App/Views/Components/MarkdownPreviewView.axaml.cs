@@ -68,6 +68,14 @@ public sealed partial class MarkdownPreviewView : UserControl
         set => SetValue(ContinuousSelectionProperty, value);
     }
 
+    /// <summary>
+    /// Whether the current text has reached a committed presentation. The
+    /// design harness uses this instead of inferring completion from the
+    /// transient rendering label, which can disappear before the resulting
+    /// layout and enclosing scroll viewers have settled.
+    /// </summary>
+    internal bool IsPresentationReady => string.IsNullOrEmpty(Text) || _hasRendered;
+
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);

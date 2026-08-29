@@ -1515,6 +1515,7 @@ public sealed partial class AgentChatViewModelTests
 
             try
             {
+                Assert.False(preview.IsPresentationReady);
                 window.Show();
                 for (var attempt = 0; attempt < 80
                     && !preview.GetVisualDescendants().OfType<SelectableMarkdownDocument>().Any();
@@ -1526,6 +1527,7 @@ public sealed partial class AgentChatViewModelTests
                 var prose = Assert.Single(
                     preview.GetVisualDescendants().OfType<SelectableMarkdownDocument>(),
                     block => block.Text.Contains("First item", StringComparison.Ordinal));
+                Assert.True(preview.IsPresentationReady);
                 Assert.Contains("# Answer", "# " + prose.Text.Split('\n')[0], StringComparison.Ordinal);
                 Assert.Equal(2, prose.ListLayouts.Length);
                 Assert.True(prose.ListLayouts[0].VisualLineCount > 1);

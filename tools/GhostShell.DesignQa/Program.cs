@@ -16,6 +16,7 @@ using Avalonia.VisualTree;
 using GhostShell.App.Controls;
 using GhostShell.App.ViewModels;
 using GhostShell.App.Views;
+using GhostShell.App.Views.Components;
 using GhostShell.Application;
 using GhostShell.Application.Previews;
 using GhostShell.Core;
@@ -4091,31 +4092,41 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
 
     private static async Task SettleDeferredPresentationAsync(MainWindow window)
     {
-        const string pendingMarkdownName = "Rendering Markdown message";
         const int maximumAttempts = 400;
+        const int requiredStablePasses = 4;
+        var stablePasses = 0;
         for (var attempt = 0; attempt < maximumAttempts; attempt++)
         {
+            // Give background-priority collection synchronization and
+            // renderer continuations a chance to materialize before deciding
+            // that a route has no deferred work.
+            await Task.Delay(25);
             Dispatcher.UIThread.RunJobs();
             window.UpdateLayout();
-            var markdownIsRendering = window.GetVisualDescendants()
-                .OfType<Control>()
-                .Any(control => control.IsVisible
-                    && string.Equals(
-                        AutomationProperties.GetName(control),
-                        pendingMarkdownName,
-                        StringComparison.Ordinal));
-            if (!markdownIsRendering)
-            {
-                Dispatcher.UIThread.RunJobs();
-                window.UpdateLayout();
-                return;
-            }
 
-            await Task.Delay(25);
+            var visibleMarkdown = window.GetVisualDescendants()
+                .OfType<MarkdownPreviewView>()
+                .Where(preview => preview.IsEffectivelyVisible
+                    && !string.IsNullOrEmpty(preview.Text))
+                .ToArray();
+            if (visibleMarkdown.All(preview => preview.IsPresentationReady))
+            {
+                stablePasses++;
+                if (stablePasses >= requiredStablePasses)
+                {
+                    Dispatcher.UIThread.RunJobs();
+                    window.UpdateLayout();
+                    return;
+                }
+            }
+            else
+            {
+                stablePasses = 0;
+            }
         }
 
         throw new InvalidOperationException(
-            "The design QA route did not finish rendering Markdown within 10 seconds.");
+            "The design QA route did not finish and settle Markdown presentation within 10 seconds.");
     }
 
     private static void FreezeNondeterministicPresentation(Visual root)
@@ -4131,6 +4142,35 @@ System.Globalization.CultureInfo.InvariantCulture, out var requested) ? requeste
             progress.Value = 65;
         }
 
+        foreach (var control in root.GetVisualDescendants().OfType<Control>())
+        {
+            if (control.Classes.Remove("PanelAgentGlow"))
+            {
+                control.Opacity = 1;
+            }
+
+            if (control.Classes.Contains("AgentActivityPulse")
+                || control.Classes.Contains("AgentToolbarActivityPulse"))
+            {
+                control.Classes.Remove("running");
+                control.Opacity = 1;
+            }
+
+            if (control.Classes.Remove("PanelAgentActivity"))
+            {
+                control.Opacity = 1;
+            }
+
+            if (control.Classes.Contains("PanelNotificationPulse"))
+            {
+                control.IsVisible = false;
+            }
+        }
+
         Dispatcher.UIThread.RunJobs();
+        if (root is Control layoutRoot)
+        {
+            layoutRoot.UpdateLayout();
+        }
     }
 }
