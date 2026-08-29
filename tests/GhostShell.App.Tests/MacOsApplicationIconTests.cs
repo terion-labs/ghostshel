@@ -53,4 +53,15 @@ public sealed class MacOsApplicationIconTests
             svg.IndexOf("translate(86.71 86.71)", StringComparison.Ordinal)
             < svg.IndexOf("<rect x=\"16\"", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public void Runtime_mark_matches_the_base_icons_optical_lift()
+    {
+        var svg = MacOsApplicationIcon.CreateSvg(new RgbColor(247, 130, 27), dark: false);
+
+        Assert.Contains(
+            "transform=\"translate(143.5 185) scale(1.416)\"",
+            svg,
+            StringComparison.Ordinal);
+    }
 }

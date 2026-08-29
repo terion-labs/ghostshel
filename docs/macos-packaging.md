@@ -51,7 +51,8 @@ On macOS 26, the running application recolors its Dock icon from the current
 system accent. That runtime rendition keeps the artwork inside the same
 optically inset 1024-pixel canvas used by Apple's production grid; the outer
 transparent margin is intentional and must not be cropped when changing the
-runtime SVG.
+runtime SVG. Both sources also apply the same upward optical correction to the
+triangular mark, whose broad base makes geometric centering look low.
 
 `assets/macos/product-identity.json` is the reviewed macOS identity contract.
 It records the canonical display name, executable, bundle identifier, icon
