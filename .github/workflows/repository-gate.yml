@@ -306,13 +306,11 @@ jobs:
             --output "${source_seal}"
           mkdir -p \
             "${sealed_source}/.deps" \
-            "${sealed_source}/native/artifacts" \
-            "${sealed_source}/native/sql-language-worker/target"
+            "${sealed_source}/native/artifacts"
           chmod -R a-w "${sealed_source}"
           chmod -R u+rwX \
             "${sealed_source}/.deps" \
-            "${sealed_source}/native/artifacts" \
-            "${sealed_source}/native/sql-language-worker/target"
+            "${sealed_source}/native/artifacts"
           {
             echo "GHOSTSHELL_RELEASE_SOURCE_ROOT=${sealed_source}"
             echo "GHOSTSHELL_RELEASE_SOURCE_SEAL=${source_seal}"

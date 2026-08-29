@@ -11,6 +11,7 @@
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <ghostshell.build.directory>${project.basedir}/target</ghostshell.build.directory>
     <maven.compiler.release>21</maven.compiler.release>
     <calcite.version>1.42.0</calcite.version>
     <jackson.version>2.18.9</jackson.version>
@@ -89,6 +90,7 @@
   </dependencies>
 
   <build>
+    <directory>${ghostshell.build.directory}</directory>
     <finalName>ghostshell-sql-language-worker</finalName>
     <plugins>
       <plugin>

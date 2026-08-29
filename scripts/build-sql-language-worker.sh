@@ -190,7 +190,7 @@ sha256_file() {
 
 legal_property() {
     local key="$1"
-    local properties_file="$WORKER_DIRECTORY/target/legal-closure.properties"
+    local properties_file="$worker_build_directory/legal-closure.properties"
     awk -F= -v key="$key" '
         $1 == key { value = $2; matches++ }
         END { if (matches != 1 || value == "") exit 2; print value }
@@ -228,6 +228,10 @@ verify_native_image_version "$native_image_version"
 
 artifact_directory="$ARTIFACTS_DIRECTORY/$rid"
 artifact_path="$artifact_directory/$binary_name"
+worker_build_directory="$WORKER_DIRECTORY/target"
+if [[ -n "${GHOSTSHELL_BUILD_ARTIFACTS_ROOT:-}" ]]; then
+    worker_build_directory="$GHOSTSHELL_BUILD_ARTIFACTS_ROOT/sql-language-worker/$rid"
+fi
 mkdir -p "$ARTIFACTS_DIRECTORY"
 staging_directory="$(mktemp -d "$ARTIFACTS_DIRECTORY/.sql-language-$rid.XXXXXX")"
 staged_artifact_path="$staging_directory/$binary_name"
@@ -262,40 +266,44 @@ native_image_common_arguments=(
 )
 
 if [[ "$mode" == "local" ]]; then
+    maven_local_arguments=(
+        "-Dmaven.repo.local=$locked_maven_repository"
+        "-Dghostshell.build.directory=$worker_build_directory"
+    )
     (
         cd "$WORKER_DIRECTORY"
         if [[ "$skip_tests" == true ]]; then
-            mvn -B --offline "-Dmaven.repo.local=$locked_maven_repository" clean package -DskipTests
+            mvn -B --offline "${maven_local_arguments[@]}" clean package -DskipTests
         else
-            mvn -B --offline "-Dmaven.repo.local=$locked_maven_repository" clean verify
+            mvn -B --offline "${maven_local_arguments[@]}" clean verify
         fi
-        mvn -B --offline "-Dmaven.repo.local=$locked_maven_repository" \
+        mvn -B --offline "${maven_local_arguments[@]}" \
             org.apache.maven.plugins:maven-dependency-plugin:3.8.1:list \
             -DincludeScope=runtime \
-            -DoutputFile=target/runtime-dependencies.raw.txt \
+            "-DoutputFile=$worker_build_directory/runtime-dependencies.raw.txt" \
             -DappendOutput=false \
             org.apache.maven.plugins:maven-dependency-plugin:3.8.1:copy-dependencies \
             -DincludeScope=runtime \
-            -DoutputDirectory=target/runtime-jars \
+            "-DoutputDirectory=$worker_build_directory/runtime-jars" \
             -DoverWriteReleases=true \
             -DoverWriteSnapshots=true \
             -DoverWriteIfNewer=true
         "$LEGAL_CLOSURE_GENERATOR" \
-            --dependency-list target/runtime-dependencies.raw.txt \
-            --jar-directory target/runtime-jars \
-            --manifest target/runtime-dependencies.txt \
-            --output target/THIRD-PARTY-NOTICES.md \
-            --metadata target/legal-closure.properties
-        mvn -B --offline "-Dmaven.repo.local=$locked_maven_repository" \
+            --dependency-list "$worker_build_directory/runtime-dependencies.raw.txt" \
+            --jar-directory "$worker_build_directory/runtime-jars" \
+            --manifest "$worker_build_directory/runtime-dependencies.txt" \
+            --output "$worker_build_directory/THIRD-PARTY-NOTICES.md" \
+            --metadata "$worker_build_directory/legal-closure.properties"
+        mvn -B --offline "${maven_local_arguments[@]}" \
             -Dtest=LegalClosurePolicyTest \
-            "-Dlegal.runtimeDependencies=$WORKER_DIRECTORY/target/runtime-dependencies.txt" \
-            "-Dlegal.thirdPartyNotices=$WORKER_DIRECTORY/target/THIRD-PARTY-NOTICES.md" \
-            "-Dlegal.metadata=$WORKER_DIRECTORY/target/legal-closure.properties" \
+            "-Dlegal.runtimeDependencies=$worker_build_directory/runtime-dependencies.txt" \
+            "-Dlegal.thirdPartyNotices=$worker_build_directory/THIRD-PARTY-NOTICES.md" \
+            "-Dlegal.metadata=$worker_build_directory/legal-closure.properties" \
             test
     )
     native_image_arguments=(
         "${native_image_common_arguments[@]}"
-        -jar "$WORKER_DIRECTORY/target/ghostshell-sql-language-worker.jar"
+        -jar "$worker_build_directory/ghostshell-sql-language-worker.jar"
         -o "$staged_artifact_path"
     )
     if [[ "$rid" == osx-* ]]; then
@@ -303,7 +311,7 @@ if [[ "$mode" == "local" ]]; then
             "${native_image_common_arguments[@]}"
             "--native-compiler-options=-mmacosx-version-min=$MINIMUM_MACOS_VERSION"
             "-H:NativeLinkerOption=-mmacosx-version-min=$MINIMUM_MACOS_VERSION"
-            -jar "$WORKER_DIRECTORY/target/ghostshell-sql-language-worker.jar"
+            -jar "$worker_build_directory/ghostshell-sql-language-worker.jar"
             -o "$staged_artifact_path"
         )
         MACOSX_DEPLOYMENT_TARGET="$MINIMUM_MACOS_VERSION" \
@@ -418,7 +426,7 @@ fi
 if [[ "$mode" == "local" ]]; then
     (
         cd "$WORKER_DIRECTORY"
-        mvn -B --offline "-Dmaven.repo.local=$locked_maven_repository" \
+        mvn -B --offline "${maven_local_arguments[@]}" \
             -Dtest=NativeExecutableSmokeTest \
             "-Dnative.executable=$staged_artifact_path" \
             test
@@ -438,8 +446,8 @@ else
             test
 fi
 
-cp "$WORKER_DIRECTORY/target/THIRD-PARTY-NOTICES.md" "$staging_directory/THIRD-PARTY-NOTICES.md"
-cp "$WORKER_DIRECTORY/target/runtime-dependencies.txt" "$staging_directory/runtime-dependencies.txt"
+cp "$worker_build_directory/THIRD-PARTY-NOTICES.md" "$staging_directory/THIRD-PARTY-NOTICES.md"
+cp "$worker_build_directory/runtime-dependencies.txt" "$staging_directory/runtime-dependencies.txt"
 
 artifact_sha256="$(sha256_file "$staged_artifact_path")"
 legal_closure_format_version="$(legal_property formatVersion)"

@@ -459,6 +459,46 @@ public sealed class SqlLanguageWorkerPackagingTests
     }
 
     [Fact]
+    public void SqlWorkerRoutesLocalMavenOutputsOutsideASealedSource()
+    {
+        var script = File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            "scripts",
+            "build-sql-language-worker.sh"));
+        var project = File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            "native",
+            "sql-language-worker",
+            "pom.xml"));
+        var workflow = File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            ".github",
+            "workflows",
+            "repository-gate.yml"));
+
+        Assert.Contains(
+            "worker_build_directory=\"$GHOSTSHELL_BUILD_ARTIFACTS_ROOT/sql-language-worker/$rid\"",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "\"-Dghostshell.build.directory=$worker_build_directory\"",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "<directory>${ghostshell.build.directory}</directory>",
+            project,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "\"$WORKER_DIRECTORY/target/",
+            script,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "${sealed_source}/native/sql-language-worker/target",
+            workflow,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EverySupportedSelfContainedPackageUsesTheServicedRuntimePack()
     {
         var project = XDocument.Load(Path.Combine(
