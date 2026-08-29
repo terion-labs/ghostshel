@@ -235,6 +235,13 @@ internal sealed class SingleInstanceCoordinator : IAsyncDisposable
             {
                 return;
             }
+            catch (Exception) when (_shutdown.IsCancellationRequested)
+            {
+                // macOS can surface an internal pipe-transport exception after a pending accept
+                // is canceled and the server is disposed. Once shutdown owns the endpoint, that
+                // exception is completion of the teardown rather than an activation failure.
+                return;
+            }
             catch (Exception exception) when (IsActivationBoundaryFailure(exception))
             {
                 // A malformed or abandoned same-user request must not terminate the activation

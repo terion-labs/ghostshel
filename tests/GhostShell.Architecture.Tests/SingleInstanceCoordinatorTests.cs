@@ -135,10 +135,14 @@ public sealed class SingleInstanceCoordinatorTests
     public async Task DisposalIsIdempotentAndReleasesTheProfileForANewPrimary()
     {
         await using var profile = TemporaryProfile.Create();
-        var primary = await StartPrimaryAsync(profile.DirectoryPath);
+        for (var iteration = 0; iteration < 32; iteration++)
+        {
+            var primary = await StartPrimaryAsync(profile.DirectoryPath);
+            await Task.Yield();
 
-        await primary.DisposeAsync();
-        await primary.DisposeAsync();
+            await primary.DisposeAsync();
+            await primary.DisposeAsync();
+        }
 
         await using var replacement = await StartPrimaryAsync(profile.DirectoryPath);
     }
