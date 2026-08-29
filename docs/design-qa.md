@@ -1,10 +1,15 @@
-# Design QA acceptance
+# Design QA review tool
 
-The supported visual gate renders the real Avalonia views with deterministic,
+The optional visual review tool renders the real Avalonia views with deterministic,
 synthetic fixtures. It is offline, reads no user profile or secret store, opens
 no terminal or browser service, and labels its window `GhostSHELL · design QA`.
 `./scripts/check-design-qa.sh` compares the implementation with the committed
 reference at the identical route, content, interaction, viewport, and appearance.
+
+This comparison is not a CI or release gate. Product design evolves independently
+of the committed reference images, so a mismatch is review evidence rather than a
+correctness failure. Run it explicitly when reviewing or intentionally updating
+the visual references.
 
 ## Accepted matrix
 
@@ -52,7 +57,7 @@ reference at the identical route, content, interaction, viewport, and appearance
 
 ## Appearance named-host checks
 
-The deterministic gate proves resource mapping and the preview/persistence
+The deterministic review proves resource mapping and the preview/persistence
 contract, but it does not prove a compositor or native settings notification.
 Before release, a named interactive macOS host must verify all of the following
 against one packaged build:

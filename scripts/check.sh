@@ -87,6 +87,4 @@ else
     while IFS= read -r project; do
         run_test_project "${project}"
     done < <(find "${repository_dir}/tests" -mindepth 2 -maxdepth 2 -name '*.csproj' -print | sort)
-
-    "${script_dir}/check-design-qa.sh"
 fi

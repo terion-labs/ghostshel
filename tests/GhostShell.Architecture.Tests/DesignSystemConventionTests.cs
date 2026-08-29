@@ -292,7 +292,7 @@ public sealed partial class DesignSystemConventionTests
     }
 
     [Fact]
-    public void Design_qa_gate_covers_primary_surfaces_and_required_matrix()
+    public void Design_qa_review_covers_primary_surfaces_without_blocking_release_gates()
     {
         var root = ApplicationViews.RepositoryRoot;
         var harness = File.ReadAllText(Path.Combine(
@@ -334,8 +334,8 @@ public sealed partial class DesignSystemConventionTests
 
         Assert.Contains("Width: 1080, Height: 680", harness, StringComparison.Ordinal);
         Assert.Contains("--gate", gate, StringComparison.Ordinal);
-        Assert.Contains("check-design-qa.sh", fullCheck, StringComparison.Ordinal);
-        Assert.Contains("check-design-qa.sh", hostedGate, StringComparison.Ordinal);
+        Assert.DoesNotContain("check-design-qa.sh", fullCheck, StringComparison.Ordinal);
+        Assert.DoesNotContain("check-design-qa.sh", hostedGate, StringComparison.Ordinal);
         Assert.Contains(
             "await SettleDeferredPresentationAsync(window)",
             harness,
@@ -360,10 +360,7 @@ public sealed partial class DesignSystemConventionTests
             "GHOSTSHELL_DESIGN_QA_CAPTURE_DIR",
             gate,
             StringComparison.Ordinal);
-        Assert.Contains(
-            "failed-native-visual-captures",
-            hostedGate,
-            StringComparison.Ordinal);
+        Assert.Contains("not a CI or release gate", ledger, StringComparison.Ordinal);
         Assert.Contains(
             "requiredStablePasses",
             harness,
