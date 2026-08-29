@@ -213,6 +213,10 @@ public sealed partial class AgentWorkspaceView : UserControl
 
     public event EventHandler<RoutedEventArgs>? ClearAgentChatRequested;
 
+    public event EventHandler<RoutedEventArgs>? ClearAgentSavedScreenTargetRequested;
+
+    public event EventHandler<RoutedEventArgs>? CreateAgentSavedScreenTargetRequested;
+
     public event EventHandler<RoutedEventArgs>? DeclineAgentQuestionRequested;
 
     public event EventHandler<RoutedEventArgs>? DenyAgentActionRequested;
@@ -249,6 +253,8 @@ public sealed partial class AgentWorkspaceView : UserControl
     public event EventHandler<RoutedEventArgs>? RefreshAgentAuditRequested;
 
     public event EventHandler<RoutedEventArgs>? ApplyAgentHistoryRetentionRequested;
+
+    public event EventHandler<RoutedEventArgs>? AuthorizeAgentSavedScreenTargetRequested;
 
     public event EventHandler<RoutedEventArgs>? ExportAgentHistoryRequested;
 
@@ -521,6 +527,12 @@ public sealed partial class AgentWorkspaceView : UserControl
     private void OnClearAgentChatClick(object? sender, RoutedEventArgs e) =>
         ClearAgentChatRequested?.Invoke(sender, e);
 
+    private void OnClearAgentSavedScreenTargetClick(object? sender, RoutedEventArgs e) =>
+        ClearAgentSavedScreenTargetRequested?.Invoke(sender, e);
+
+    private void OnCreateAgentSavedScreenTargetClick(object? sender, RoutedEventArgs e) =>
+        CreateAgentSavedScreenTargetRequested?.Invoke(sender, e);
+
     private void OnDeclineAgentQuestionClick(object? sender, RoutedEventArgs e) =>
         DeclineAgentQuestionRequested?.Invoke(sender, e);
 
@@ -553,6 +565,9 @@ public sealed partial class AgentWorkspaceView : UserControl
 
     private void OnApplyAgentHistoryRetentionClick(object? sender, RoutedEventArgs e) =>
         ApplyAgentHistoryRetentionRequested?.Invoke(sender, e);
+
+    private void OnAuthorizeAgentSavedScreenTargetClick(object? sender, RoutedEventArgs e) =>
+        AuthorizeAgentSavedScreenTargetRequested?.Invoke(sender, e);
 
     private void OnExportAgentHistoryClick(object? sender, RoutedEventArgs e) =>
         ExportAgentHistoryRequested?.Invoke(sender, e);

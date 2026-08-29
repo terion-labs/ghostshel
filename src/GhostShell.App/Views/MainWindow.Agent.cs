@@ -335,6 +335,46 @@ public sealed partial class MainWindow
         }
     }
 
+    private void OnClearAgentSavedScreenTargetClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        ViewModel.ClearAgentSavedScreenTarget();
+    }
+
+    private async void OnCreateAgentSavedScreenTargetClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        try
+        {
+            await ViewModel.CreateAgentSavedScreenTargetAsync(_lifetime.Token);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async void OnAuthorizeAgentSavedScreenTargetClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (ViewModel.AgentSavedScreenLiveTarget is not { IsAuthorized: false } target
+            || !await Confirmations.AgentSavedScreenTarget(target).ShowDialog<bool>(this))
+        {
+            return;
+        }
+
+        if (!ViewModel.TryAuthorizeAgentSavedScreenTarget(out var error))
+        {
+            ViewModel.AgentChat?.ReportTargetUnavailable(error);
+        }
+    }
+
     private async void OnStartNewAgentConversationClick(object? sender, RoutedEventArgs e) =>
         await RunAgentConversationActionAsync(
             sender,

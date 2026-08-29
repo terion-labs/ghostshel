@@ -9,6 +9,24 @@ public interface IAgentWorkspaceHost
 {
     AgentChatViewModel? AgentChat { get; }
 
+    IReadOnlyList<LauncherScreenViewModel> AgentSavedScreenTemplates => [];
+
+    LauncherScreenViewModel? SelectedAgentSavedScreenTemplate
+    {
+        get => null;
+        set { }
+    }
+
+    bool HasAgentSavedScreenTemplates => false;
+
+    bool HasPendingAgentSavedScreenTarget => false;
+
+    bool CanCreateAgentSavedScreenTarget => false;
+
+    bool CanAuthorizeAgentSavedScreenTarget => false;
+
+    string AgentSavedScreenTargetStatus => string.Empty;
+
     bool IsAgentPanelDocked { get; }
 
     string AgentPanelPinTip { get; }

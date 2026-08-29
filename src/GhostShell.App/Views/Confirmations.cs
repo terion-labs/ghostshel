@@ -239,6 +239,22 @@ internal static class Confirmations
             CancelAutomationName = "Cancel delete agent conversation",
         });
 
+    public static ConfirmationDialog AgentSavedScreenTarget(
+        AgentSavedScreenLiveTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        return new ConfirmationDialog(new ConfirmationDialogOptions
+        {
+            Title = "Authorize live agent target",
+            Heading = $"Authorize the live tab “{target.TabName}”?",
+            Detail = $"This exact tab contains {target.PanelCount} panels in “{target.WorkspaceName}”. It was created from template “{target.TemplateName}” revision {target.TemplateRevision}.",
+            Notice = $"Only the live identity {target.ExactIdentity} is accepted. The template itself grants no authority, and later template edits cannot retarget this context.",
+            ConfirmLabel = "Authorize live target",
+            ConfirmAutomationName = "Authorize exact live saved screen target",
+            CancelAutomationName = "Keep live target pending",
+        });
+    }
+
     public static ConfirmationDialog LocalArtifactClear(LocalArtifactItemViewModel item)
     {
         ArgumentNullException.ThrowIfNull(item);

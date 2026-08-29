@@ -4870,6 +4870,167 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     }
 
     [Fact]
+    public async Task SavedScreenAgentTargetRequiresLiveReviewAndBindsOnlyRuntimeIdentity()
+    {
+        var policy = Policy(
+            "agent-provider",
+            "saved-target-model",
+            _ => AgentPermission.Ask);
+        var snapshot = CreateAgentPolicyCatalogSnapshot(policy, policy);
+        var catalog = CreateFixedCatalog(snapshot);
+        var catalogProxy = (FixedCatalogProxy)(object)catalog;
+        var provider = CreateAgentProvider();
+        using var agentRuntime = new RecordingGovernedAgentRuntime();
+        using var aiProfiles = new FixedAiProfileRuntime([provider]);
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            catalog,
+            agentRuntime: agentRuntime,
+            aiProfiles: aiProfiles);
+        var template = viewModel.Screens.Single(
+            screen => screen.Id == snapshot.Screens[0].Value.Id);
+
+        viewModel.SelectedAgentSavedScreenTemplate = template;
+        viewModel.AgentChat!.Prompt = "Do not run from a template.";
+        await viewModel.SendAgentPromptAsync();
+
+        Assert.Null(agentRuntime.LastRequest);
+        Assert.Null(viewModel.AgentSavedScreenLiveTarget);
+        Assert.Contains(
+            "No live target or agent authority",
+            viewModel.AgentSavedScreenTargetStatus,
+            StringComparison.Ordinal);
+
+        await viewModel.CreateAgentSavedScreenTargetAsync();
+
+        var pending = Assert.IsType<AgentSavedScreenLiveTarget>(
+            viewModel.AgentSavedScreenLiveTarget);
+        var workspace = Assert.IsType<RuntimeWorkspaceViewModel>(
+            viewModel.RuntimeWorkspace);
+        var tab = Assert.IsType<RuntimeTabViewModel>(workspace.ActiveTab);
+        Assert.False(pending.IsAuthorized);
+        Assert.Equal(template.Revision, pending.TemplateRevision);
+        Assert.Equal(workspace.Id, pending.WorkspaceId);
+        Assert.Equal(tab.Id, pending.TabId);
+        Assert.Contains(
+            tab.AgentPolicy.Sources,
+            source => source.Definition == snapshot.Screens[0].Value.Key
+                && source.Revision == template.Revision);
+
+        viewModel.AgentChat.Prompt = "Still pending.";
+        await viewModel.SendAgentPromptAsync();
+        Assert.Null(agentRuntime.LastRequest);
+
+        Assert.True(viewModel.TryAuthorizeAgentSavedScreenTarget(out var error));
+        Assert.Equal(string.Empty, error);
+
+        var edited = snapshot.Screens[0].Value;
+        catalogProxy.Snapshot = snapshot with
+        {
+            Screens =
+            [
+                Store(
+                    new ScreenDefinition(
+                        edited.Id,
+                        edited.SchemaVersion,
+                        "Edited after authorization",
+                        edited.Description,
+                        edited.LayoutId,
+                        edited.Panels,
+                        edited.Tags,
+                        policy),
+                    revision: 99),
+                snapshot.Screens[1],
+            ],
+        };
+
+        viewModel.AgentChat.Prompt = "Run against the reviewed live tab.";
+        await viewModel.SendAgentPromptAsync();
+
+        var request = Assert.IsType<GovernedAgentPrompt>(agentRuntime.LastRequest);
+        var target = Assert.IsType<AgentTarget.OpenTab>(request.Target);
+        Assert.Equal(viewModel.WindowId, target.WindowId);
+        Assert.Equal(workspace.Id, target.WorkspaceId);
+        Assert.Equal(tab.Id, target.TabId);
+    }
+
+    [Fact]
+    public async Task SavedScreenAgentTargetScopeChangeRequiresNewAuthorizationContext()
+    {
+        var policy = Policy(
+            "agent-provider",
+            "saved-target-model",
+            _ => AgentPermission.Ask);
+        var snapshot = CreateAgentPolicyCatalogSnapshot(policy, policy);
+        var provider = CreateAgentProvider();
+        using var agentRuntime = new RecordingGovernedAgentRuntime();
+        using var aiProfiles = new FixedAiProfileRuntime([provider]);
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            CreateFixedCatalog(snapshot),
+            agentRuntime: agentRuntime,
+            aiProfiles: aiProfiles);
+        viewModel.SelectedAgentSavedScreenTemplate = viewModel.Screens[0];
+        await viewModel.CreateAgentSavedScreenTargetAsync();
+        Assert.True(viewModel.TryAuthorizeAgentSavedScreenTarget(out _));
+
+        viewModel.SelectedAgentRunScope = Assert.Single(
+            viewModel.AgentRunScopeOptions,
+            option => option.Kind == AgentRunScopeKind.Workspace);
+
+        Assert.Null(viewModel.SelectedAgentSavedScreenTemplate);
+        Assert.Null(viewModel.AgentSavedScreenLiveTarget);
+        Assert.False(viewModel.HasAuthorizedAgentSavedScreenTarget);
+        Assert.Contains(
+            "grants no agent authority",
+            viewModel.AgentSavedScreenTargetStatus,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SavedScreenAgentTargetRejectsTemplateRevisionDriftBeforeInstantiation()
+    {
+        var policy = Policy(
+            "agent-provider",
+            "saved-target-model",
+            _ => AgentPermission.Ask);
+        var snapshot = CreateAgentPolicyCatalogSnapshot(policy, policy);
+        var catalog = CreateFixedCatalog(snapshot);
+        var catalogProxy = (FixedCatalogProxy)(object)catalog;
+        var provider = CreateAgentProvider();
+        using var agentRuntime = new RecordingGovernedAgentRuntime();
+        using var aiProfiles = new FixedAiProfileRuntime([provider]);
+        var (client, recorder) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            catalog,
+            agentRuntime: agentRuntime,
+            aiProfiles: aiProfiles);
+        var template = viewModel.Screens[0];
+        viewModel.SelectedAgentSavedScreenTemplate = template;
+        catalogProxy.Snapshot = snapshot with
+        {
+            Screens =
+            [
+                Store(snapshot.Screens[0].Value, revision: 99),
+                snapshot.Screens[1],
+            ],
+        };
+
+        await viewModel.CreateAgentSavedScreenTargetAsync();
+
+        Assert.Null(viewModel.AgentSavedScreenLiveTarget);
+        Assert.Null(viewModel.SelectedAgentSavedScreenTemplate);
+        Assert.Empty(recorder.Registrations);
+        Assert.Contains(
+            "changed or was removed",
+            viewModel.AgentSavedScreenTargetStatus,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task BroadAgentScopesUsePerCapabilityLeastPrivilegeFromCapturedTabs()
     {
         var firstPolicy = Policy(

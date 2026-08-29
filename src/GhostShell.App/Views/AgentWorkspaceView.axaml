@@ -413,6 +413,63 @@
                           Text="{Binding AgentChat.TargetContextLabel}"
                           TextWrapping="Wrap" />
                     </StackPanel>
+                    <StackPanel
+                        Spacing="{DynamicResource ShellSpaceSm}"
+                        IsVisible="{Binding HasAgentSavedScreenTemplates}">
+                      <TextBlock Classes="Eyebrow" Text="Saved screen template" />
+                      <TextBlock
+                          Classes="Muted"
+                          FontSize="{DynamicResource ShellFontSize9}"
+                          Text="A template is only a durable definition. Selecting it grants no terminal, file, browser, process, or workspace authority."
+                          TextWrapping="Wrap" />
+                      <ComboBox
+                          ItemsSource="{Binding AgentSavedScreenTemplates}"
+                          SelectedItem="{Binding SelectedAgentSavedScreenTemplate, Mode=TwoWay}"
+                          IsEnabled="{Binding AgentChat.CanChangeProvider}"
+                          PlaceholderText="Select a saved screen template"
+                          AutomationProperties.Name="Saved screen template for a reviewed agent target">
+                        <ComboBox.ItemTemplate>
+                          <DataTemplate x:DataType="vm:LauncherScreenViewModel">
+                            <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+                              <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
+                              <TextBlock
+                                  Classes="Muted"
+                                  FontSize="{DynamicResource ShellFontSize9}"
+                                  Text="{Binding Revision, StringFormat={}Template revision {0}}" />
+                            </StackPanel>
+                          </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                      </ComboBox>
+                      <TextBlock
+                          Classes="Muted"
+                          FontSize="{DynamicResource ShellFontSize9}"
+                          Text="{Binding AgentSavedScreenTargetStatus}"
+                          TextWrapping="Wrap"
+                          AutomationProperties.Name="Saved screen agent target status" />
+                      <Button
+                          HorizontalContentAlignment="Left"
+                          Classes="FlyoutMenuItem"
+                          Click="OnCreateAgentSavedScreenTargetClick"
+                          Content="Create pending live instance"
+                          IsEnabled="{Binding CanCreateAgentSavedScreenTarget}"
+                          AutomationProperties.Name="Create a non-authoritative live instance from the selected saved screen" />
+                      <Button
+                          HorizontalContentAlignment="Left"
+                          Classes="PrimaryButton"
+                          Click="OnAuthorizeAgentSavedScreenTargetClick"
+                          Content="Authorize this exact live target"
+                          IsVisible="{Binding HasPendingAgentSavedScreenTarget}"
+                          IsEnabled="{Binding CanAuthorizeAgentSavedScreenTarget}"
+                          AutomationProperties.Name="Authorize the reviewed live saved screen target" />
+                      <Button
+                          HorizontalContentAlignment="Left"
+                          Classes="TextButton"
+                          Click="OnClearAgentSavedScreenTargetClick"
+                          Content="Use ordinary live scope"
+                          IsVisible="{Binding SelectedAgentSavedScreenTemplate, Converter={x:Static ObjectConverters.IsNotNull}}"
+                          IsEnabled="{Binding AgentChat.CanChangeProvider}"
+                          AutomationProperties.Name="Clear saved screen template targeting" />
+                    </StackPanel>
                     <Expander
                         x:Name="AgentContextInspector"
                         HorizontalContentAlignment="Stretch"

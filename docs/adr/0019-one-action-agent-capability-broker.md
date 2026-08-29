@@ -340,9 +340,11 @@ shows the selected approval mode directly in the composer.
   run-local authority while retaining their typed host and session checks.
 - Completion-audit uncertainty quarantines the immutable result, revokes run
   authority, prevents provider continuation, and never retries terminal input.
-- Saved-screen-template targeting, additional visible scope choices, and
-  session/persistent approvals remain separate M3 work. Broad terminal scope
-  does not create persistent or cross-run authority.
+- Saved-screen-template targeting is now a separate two-phase UI workflow:
+  template selection is non-authoritative, the normal activation path creates
+  a revisioned live tab, and explicit review accepts only its ordinary
+  `OpenTab` identity. Additional persistent approvals remain separate work.
+  Broad scope does not create persistent or cross-run authority.
 
 ## Alternatives rejected
 

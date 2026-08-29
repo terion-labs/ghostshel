@@ -866,6 +866,18 @@ prompt, per-schema, and aggregate tool-schema budget changes.
 
 The context resolver translates a target into currently authorized panels and resources. The agent sees stable IDs, human titles, connection boundaries, working directories, visibility, and capabilities. Widening scope always requires a visible user action or an approval governed by policy.
 
+Saved-screen targeting is a two-phase presentation workflow, not a new
+`AgentTarget` kind. Selecting a durable template records only its exact catalog
+revision and grants no authority. The existing saved-screen activation path
+must first resolve its layout, connections, panel capabilities, and policy
+provenance into a live tab. That tab remains pending while the user reviews it;
+a separate confirmation accepts its exact window/workspace/tab identity. Only
+then may prompt dispatch use an ordinary `AgentTarget.OpenTab`. Revision drift
+before activation, missing dependencies, a replaced live identity, or a
+non-visible pending tab fails visibly without falling back to another scope.
+Later definition edits cannot rewrite the accepted tab's captured policy or
+provenance, and choosing another scope clears this authorization context.
+
 An exact terminal-panel or connection-session tool schema omits `panel_id`.
 Every broader Workspace schema and every internal `OpenTab` or
 selected-terminal schema requires a host-enumerated eligible `panel_id`, even
@@ -2299,8 +2311,7 @@ confirmed bypass, live pending-approval replacement, target mismatch,
 broad-scope binding, active-action revocation, next-action approval, ambiguous
 audit commit, and audit-failure suspension.
 
-Saved-screen template targeting and additional visible agent scopes, browser
-profiles and permission/download/error flows, reference-backed interactions
+Additional browser profiles and permission/download/error flows, reference-backed interactions
 beyond click/fill/check, named-platform snapshot/redirect/click/fill/check, and browser
 automation conformance and document automation remain incomplete. The
 CEF browser foundation, governed state/navigation tools, closed
@@ -2397,8 +2408,9 @@ the concrete terminal engine.
 The governed agent surface reports its native in-process .NET boundary, the
 visible workspace target, live mixed terminal/browser/File Viewer/Statistics/
 Process Monitor membership, live capabilities, and effective policy. It
-does not claim saved-screen-template targeting,
-browser interactions beyond exact-object click/fill/check, cross-platform browser
+also offers reviewed saved-screen-template activation that binds only the
+resulting exact live tab. It does not claim browser interactions beyond
+exact-object click/fill/check, cross-platform browser
 automation conformance, persistent MCP
 health/session resume, or
 unattended MCP decision routing.

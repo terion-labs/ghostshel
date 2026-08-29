@@ -97,6 +97,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private readonly ShellNavigationViewModel _navigation = new();
     private RuntimeWorkspaceViewModel? _runtimeWorkspace;
     private AgentChatViewModel? _agentChat;
+    private LauncherScreenViewModel? _selectedAgentSavedScreenTemplate;
+    private AgentSavedScreenLiveTarget? _agentSavedScreenLiveTarget;
+    private bool _isPreparingAgentSavedScreenTarget;
+    private bool _isChangingAgentScopeForSavedScreen;
+    private string _agentSavedScreenTargetStatus =
+        "A saved screen template grants no agent authority until its live instance is created, reviewed, and authorized.";
     private string? _operationError;
     private string _tabReorderStatus = string.Empty;
     private string _workspaceTransferStatus = string.Empty;
@@ -463,7 +469,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     public AgentChatViewModel? AgentChat
     {
         get => _agentChat;
-        private set => SetProperty(ref _agentChat, value);
+        private set
+        {
+            if (SetProperty(ref _agentChat, value))
+            {
+                OnPropertyChanged(nameof(HasAgentSavedScreenTemplates));
+                OnPropertyChanged(nameof(CanCreateAgentSavedScreenTarget));
+                OnPropertyChanged(nameof(CanAuthorizeAgentSavedScreenTarget));
+            }
+        }
     }
 
     public DefaultAgentPolicySettingsViewModel DefaultAgentPolicySettings { get; }
@@ -583,6 +597,80 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         });
 
     public ObservableCollection<LauncherScreenViewModel> Screens => Launcher.Screens;
+
+    public IReadOnlyList<LauncherScreenViewModel> AgentSavedScreenTemplates => Screens;
+
+    public bool HasAgentSavedScreenTemplates =>
+        AgentChat is not null && Screens.Count > 0;
+
+    public LauncherScreenViewModel? SelectedAgentSavedScreenTemplate
+    {
+        get => _selectedAgentSavedScreenTemplate;
+        set
+        {
+            if (ReferenceEquals(_selectedAgentSavedScreenTemplate, value))
+            {
+                return;
+            }
+
+            if (value is not null && !Screens.Contains(value))
+            {
+                throw new ArgumentException(
+                    "The selected saved-screen template is not in the current catalog.",
+                    nameof(value));
+            }
+
+            if (AgentChat is { CanChangeProvider: false })
+            {
+                return;
+            }
+
+            _selectedAgentSavedScreenTemplate = value;
+            _agentSavedScreenLiveTarget = null;
+            AgentSavedScreenTargetStatus = value is null
+                ? "A saved screen template grants no agent authority until its live instance is created, reviewed, and authorized."
+                : $"Template selected: {value.Name} · revision {value.Revision}. No live target or agent authority exists yet.";
+            NotifyAgentSavedScreenTargetChanged();
+        }
+    }
+
+    public AgentSavedScreenLiveTarget? AgentSavedScreenLiveTarget =>
+        _agentSavedScreenLiveTarget;
+
+    public bool HasPendingAgentSavedScreenTarget =>
+        _agentSavedScreenLiveTarget is { IsAuthorized: false };
+
+    public bool HasAuthorizedAgentSavedScreenTarget =>
+        _agentSavedScreenLiveTarget is { IsAuthorized: true };
+
+    public bool IsPreparingAgentSavedScreenTarget
+    {
+        get => _isPreparingAgentSavedScreenTarget;
+        private set
+        {
+            if (SetProperty(ref _isPreparingAgentSavedScreenTarget, value))
+            {
+                OnPropertyChanged(nameof(CanCreateAgentSavedScreenTarget));
+                OnPropertyChanged(nameof(CanAuthorizeAgentSavedScreenTarget));
+            }
+        }
+    }
+
+    public bool CanCreateAgentSavedScreenTarget =>
+        SelectedAgentSavedScreenTemplate is not null
+        && AgentChat is { CanChangeProvider: true }
+        && !IsPreparingAgentSavedScreenTarget;
+
+    public bool CanAuthorizeAgentSavedScreenTarget =>
+        HasPendingAgentSavedScreenTarget
+        && AgentChat is { CanChangeProvider: true }
+        && !IsPreparingAgentSavedScreenTarget;
+
+    public string AgentSavedScreenTargetStatus
+    {
+        get => _agentSavedScreenTargetStatus;
+        private set => SetProperty(ref _agentSavedScreenTargetStatus, value);
+    }
 
     public ObservableCollection<LayoutCardViewModel> Layouts => DefinitionSettings.Layouts;
 
@@ -968,6 +1056,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 SyncAgentPanelPlacement(value);
                 StartTrackingRecovery(value);
                 AgentWorkspaceScope.AttachWorkspace(value);
+                if (!IsPreparingAgentSavedScreenTarget
+                    && _selectedAgentSavedScreenTemplate is not null)
+                {
+                    ClearAgentSavedScreenTarget();
+                }
                 _activation?.Mark("tracking");
                 _activation?.Mark("agent terminals");
                 OnPropertyChanged(nameof(HasRuntimeWorkspace));
@@ -1256,6 +1349,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         PropertyChangedEventArgs eventArgs)
     {
         _ = sender;
+        if (!IsPreparingAgentSavedScreenTarget
+            && !_isChangingAgentScopeForSavedScreen
+            && _selectedAgentSavedScreenTemplate is not null
+            && eventArgs.PropertyName is
+                nameof(AgentWorkspaceScopeViewModel.SelectedScope)
+                or nameof(AgentWorkspaceScopeViewModel.SelectedTerminalCount))
+        {
+            ClearAgentSavedScreenTarget();
+        }
+
         string[] propertyNames = eventArgs.PropertyName switch
         {
             nameof(AgentWorkspaceScopeViewModel.SelectedScope) =>
@@ -1644,6 +1747,121 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public RuntimePanelViewModel? ActivePanel => RuntimeWorkspace?.ActiveTab?.ActivePanel;
 
+    public async Task CreateAgentSavedScreenTargetAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (!CanCreateAgentSavedScreenTarget
+            || SelectedAgentSavedScreenTemplate is not { } selected)
+        {
+            return;
+        }
+
+        var stored = _catalog.Snapshot.Screens.SingleOrDefault(
+            item => item.Value.Id == selected.Id);
+        if (stored is null || stored.Revision != selected.Revision)
+        {
+            AgentSavedScreenTargetStatus =
+                "The selected template changed or was removed. Select its current revision and review it again.";
+            _selectedAgentSavedScreenTemplate = null;
+            _agentSavedScreenLiveTarget = null;
+            NotifyAgentSavedScreenTargetChanged();
+            return;
+        }
+
+        IsPreparingAgentSavedScreenTarget = true;
+        AgentSavedScreenTargetStatus =
+            $"Creating a pending live instance from {selected.Name} revision {selected.Revision}. The template still grants no agent authority.";
+        try
+        {
+            if (!await LaunchScreenAsync(selected.Id, cancellationToken))
+            {
+                AgentSavedScreenTargetStatus = string.IsNullOrWhiteSpace(OperationError)
+                    ? "The template could not create a live instance. No agent authority was granted."
+                    : $"The template could not create a live instance: {OperationError}";
+                return;
+            }
+
+            if (RuntimeWorkspace is not { ActiveTab: { } tab } workspace
+                || tab.HistorySource?.SourceDefinition != stored.Value.Key
+                || !tab.AgentPolicy.Sources.Any(source =>
+                    source.Definition == stored.Value.Key
+                    && source.Revision == stored.Revision))
+            {
+                AgentSavedScreenTargetStatus =
+                    "The created tab did not preserve the selected template revision. No agent authority was granted.";
+                return;
+            }
+
+            _agentSavedScreenLiveTarget = new AgentSavedScreenLiveTarget(
+                selected.Id,
+                selected.Revision,
+                selected.Name,
+                WindowId,
+                workspace.Id,
+                workspace.Name,
+                tab.Id,
+                tab.Title,
+                tab.Panels.Count);
+            _isChangingAgentScopeForSavedScreen = true;
+            try
+            {
+                SelectedAgentRunScope = AgentRunScopeOptions.Single(
+                    option => option.Kind == AgentRunScopeKind.CurrentTab);
+            }
+            finally
+            {
+                _isChangingAgentScopeForSavedScreen = false;
+            }
+
+            AgentSavedScreenTargetStatus =
+                $"Pending live instance: {tab.Title} · {tab.Panels.Count} panels · template revision {selected.Revision}. Review the visible tab, then authorize this exact live target.";
+            NotifyAgentSavedScreenTargetChanged();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            AgentSavedScreenTargetStatus =
+                "Creating the pending live instance was cancelled. No agent authority was granted.";
+            throw;
+        }
+        finally
+        {
+            IsPreparingAgentSavedScreenTarget = false;
+        }
+    }
+
+    public bool TryAuthorizeAgentSavedScreenTarget(out string error)
+    {
+        if (_agentSavedScreenLiveTarget is not { IsAuthorized: false } pending)
+        {
+            error = "Create a pending live instance before authorizing a saved-screen target.";
+            return false;
+        }
+
+        if (!TryResolveAgentSavedScreenLiveTarget(pending, requireVisibleReview: true, out _))
+        {
+            error =
+                "The pending live instance is no longer the visible reviewed tab. Return to that exact tab or create a new instance.";
+            AgentSavedScreenTargetStatus = error;
+            return false;
+        }
+
+        _agentSavedScreenLiveTarget = pending.Authorize();
+        error = string.Empty;
+        AgentSavedScreenTargetStatus =
+            $"Authorized live target: {pending.TabName} · {pending.PanelCount} panels · {pending.ExactIdentity}. Later template edits cannot retarget this run context.";
+        NotifyAgentSavedScreenTargetChanged();
+        return true;
+    }
+
+    public void ClearAgentSavedScreenTarget()
+    {
+        _selectedAgentSavedScreenTemplate = null;
+        _agentSavedScreenLiveTarget = null;
+        AgentSavedScreenTargetStatus =
+            "A saved screen template grants no agent authority until its live instance is created, reviewed, and authorized.";
+        NotifyAgentSavedScreenTargetChanged();
+    }
+
     public Task SendAgentPromptAsync(CancellationToken cancellationToken = default)
     {
         if (AgentChat is not { } agentChat)
@@ -1656,7 +1874,31 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             return agentChat.QueueFollowUpAsync(cancellationToken);
         }
 
-        if (!AgentWorkspaceScope.TryCreateTarget(out var target, out var targetError))
+        AgentTarget target;
+        string targetError;
+        if (_selectedAgentSavedScreenTemplate is not null)
+        {
+            if (_agentSavedScreenLiveTarget is not { IsAuthorized: true } accepted)
+            {
+                agentChat.ReportTargetUnavailable(
+                    "The saved screen is still a template or pending live instance. Review and authorize its exact live target before sending.");
+                return Task.CompletedTask;
+            }
+
+            if (!TryResolveAgentSavedScreenLiveTarget(
+                    accepted,
+                    requireVisibleReview: false,
+                    out target))
+            {
+                AgentSavedScreenTargetStatus =
+                    "The authorized live target is no longer available. No replacement was selected; create and review a new live instance.";
+                agentChat.ReportTargetUnavailable(AgentSavedScreenTargetStatus);
+                return Task.CompletedTask;
+            }
+
+            targetError = string.Empty;
+        }
+        else if (!AgentWorkspaceScope.TryCreateTarget(out target, out targetError))
         {
             agentChat.ReportTargetUnavailable(targetError);
             return Task.CompletedTask;
@@ -1679,6 +1921,36 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             policy ?? throw new InvalidOperationException(
                 "Policy resolution succeeded without a complete agent policy."),
             cancellationToken);
+    }
+
+    private bool TryResolveAgentSavedScreenLiveTarget(
+        AgentSavedScreenLiveTarget candidate,
+        bool requireVisibleReview,
+        out AgentTarget target)
+    {
+        target = null!;
+        if (candidate.WindowId != WindowId
+            || RuntimeWorkspace is not { } workspace
+            || workspace.Id != candidate.WorkspaceId
+            || workspace.Tabs.SingleOrDefault(tab => tab.Id == candidate.TabId)
+                is not { } tab
+            || (requireVisibleReview && !ReferenceEquals(workspace.ActiveTab, tab)))
+        {
+            return false;
+        }
+
+        target = candidate.Target;
+        return true;
+    }
+
+    private void NotifyAgentSavedScreenTargetChanged()
+    {
+        OnPropertyChanged(nameof(SelectedAgentSavedScreenTemplate));
+        OnPropertyChanged(nameof(AgentSavedScreenLiveTarget));
+        OnPropertyChanged(nameof(HasPendingAgentSavedScreenTarget));
+        OnPropertyChanged(nameof(HasAuthorizedAgentSavedScreenTarget));
+        OnPropertyChanged(nameof(CanCreateAgentSavedScreenTarget));
+        OnPropertyChanged(nameof(CanAuthorizeAgentSavedScreenTarget));
     }
 
     private RuntimeAgentPolicyProvenance CurrentAgentPolicyProvenance() =>
@@ -7587,6 +7859,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             fileConnections,
             databaseConnections,
             screens);
+        ReconcileAgentSavedScreenTemplate();
         // A rail item that was replaced arrives with its runtime flags cleared,
         // and the flags are derived rather than stored, so nothing else would
         // put them back. Saving the workspace you are working in bumps its
@@ -7619,6 +7892,33 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         OnPropertyChanged(nameof(KeybindingConflictCount));
         RefreshRecentSessionAvailability();
         Launcher.RefreshSearchResults();
+    }
+
+    private void ReconcileAgentSavedScreenTemplate()
+    {
+        OnPropertyChanged(nameof(HasAgentSavedScreenTemplates));
+        if (_selectedAgentSavedScreenTemplate is not { } selected
+            || _agentSavedScreenLiveTarget is not null)
+        {
+            return;
+        }
+
+        var current = Screens.SingleOrDefault(screen => screen.Id == selected.Id);
+        if (current is not null && current.Revision == selected.Revision)
+        {
+            if (!ReferenceEquals(current, selected))
+            {
+                _selectedAgentSavedScreenTemplate = current;
+                NotifyAgentSavedScreenTargetChanged();
+            }
+
+            return;
+        }
+
+        _selectedAgentSavedScreenTemplate = null;
+        AgentSavedScreenTargetStatus =
+            "The selected template changed or was removed. Select its current revision before creating a live target.";
+        NotifyAgentSavedScreenTargetChanged();
     }
 
     private void RefreshRecentSessionAvailability()
