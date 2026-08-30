@@ -313,6 +313,11 @@ GRYPE_DB_CACHE_DIR="${repository_dir}/.deps/tools/grype-cache" \
     --fail-on low
 
 git archive --format=tar "${commit}" | tar -xf - -C "${sealed_source}"
+if ! git cat-file -e "${commit}:.DS_Store" 2>/dev/null \
+    && [[ -f "${sealed_source}/.DS_Store" && ! -L "${sealed_source}/.DS_Store" ]]; then
+    unlink "${sealed_source}/.DS_Store"
+fi
+chmod a-w "${sealed_source}"
 NUGET_PACKAGES="${nuget_packages}" "${dotnet}" publish \
     "${sealed_source}/tools/GhostShell.SecurityCampaign/GhostShell.SecurityCampaign.csproj" \
     --configuration Release \
@@ -325,10 +330,6 @@ campaign_dll="${campaign_tool}/GhostShell.SecurityCampaign.dll"
     --nuget "${release_artifacts}/dependency-scan/nuget-audit.json" \
     --maven "${release_artifacts}/dependency-scan/maven-audit.json" \
     --output "${release_artifacts}/dependency-security-evidence"
-if ! git cat-file -e "${commit}:.DS_Store" 2>/dev/null \
-    && [[ -f "${sealed_source}/.DS_Store" && ! -L "${sealed_source}/.DS_Store" ]]; then
-    unlink "${sealed_source}/.DS_Store"
-fi
 "${dotnet}" "${campaign_dll}" \
     seal-release-source \
     --repository "${repository_dir}" \
@@ -337,7 +338,9 @@ fi
     --source-tree "${tree}" \
     --tag "${tag}" \
     --output "${source_seal}"
-mkdir -p "${sealed_source}/.deps" "${sealed_source}/native/artifacts"
+chmod u+w "${sealed_source}" "${sealed_source}/native"
+mkdir "${sealed_source}/.deps" "${sealed_source}/native/artifacts"
+chmod a-w "${sealed_source}" "${sealed_source}/native"
 chmod -R a-w "${sealed_source}"
 chmod -R u+rwX "${sealed_source}/.deps" "${sealed_source}/native/artifacts"
 

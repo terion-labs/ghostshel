@@ -338,6 +338,31 @@ public sealed class SecurityCampaignEvidenceTests
             "unlink \"${sealed_source}/.DS_Store\"",
             rehearsal,
             StringComparison.Ordinal);
+        var discardMacMetadata = rehearsal.IndexOf(
+            "unlink \"${sealed_source}/.DS_Store\"",
+            StringComparison.Ordinal);
+        var lockSealedSource = rehearsal.IndexOf(
+            "chmod a-w \"${sealed_source}\"",
+            StringComparison.Ordinal);
+        var publishCampaignTool = rehearsal.IndexOf(
+            "NUGET_PACKAGES=\"${nuget_packages}\" \"${dotnet}\" publish",
+            StringComparison.Ordinal);
+        var sealReleaseSource = rehearsal.IndexOf(
+            "seal-release-source",
+            StringComparison.Ordinal);
+        Assert.True(
+            discardMacMetadata >= 0
+            && discardMacMetadata < lockSealedSource
+            && lockSealedSource < publishCampaignTool
+            && publishCampaignTool < sealReleaseSource);
+        Assert.Contains(
+            "chmod u+w \"${sealed_source}\" \"${sealed_source}/native\"",
+            rehearsal,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "chmod a-w \"${sealed_source}\" \"${sealed_source}/native\"",
+            rehearsal,
+            StringComparison.Ordinal);
         Assert.Contains(
             "NUGET_PACKAGES=\"${nuget_packages}\" \"${dotnet}\" restore",
             rehearsal,
