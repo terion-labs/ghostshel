@@ -79,12 +79,12 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             "icns",
             Encoding.ASCII.GetString(File.ReadAllBytes(appIcon), 0, 4));
         Assert.Equal(
-            "RATC",
+            "BOMStore",
             Encoding.ASCII.GetString(File.ReadAllBytes(Path.Combine(
                 output,
                 "Contents",
                 "Resources",
-                "Assets.car")), 0, 4));
+                "Assets.car")), 0, 8));
         Assert.True(File.Exists(Path.Combine(
             output,
             "Contents",
@@ -397,6 +397,21 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         var publish = CreatePublishPayload();
         var evidence = _evidenceInputs[publish];
         File.WriteAllBytes(evidence.AssetCatalogPath, "not-a-car"u8.ToArray());
+
+        var exception = Assert.Throws<InvalidDataException>(() =>
+            new MacOsAppBundleBuilder().Build(Request(publish, OutputPath())));
+
+        Assert.Contains("not an Assets.car", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Builder_rejects_the_legacy_fake_ratc_asset_marker()
+    {
+        var publish = CreatePublishPayload();
+        var evidence = _evidenceInputs[publish];
+        File.WriteAllBytes(
+            evidence.AssetCatalogPath,
+            [.. "RATC"u8.ToArray(), 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0]);
 
         var exception = Assert.Throws<InvalidDataException>(() =>
             new MacOsAppBundleBuilder().Build(Request(publish, OutputPath())));
@@ -2193,7 +2208,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         var assetCatalogPath = Path.Combine(fixtureDirectory, "Assets.car");
         File.WriteAllBytes(
             assetCatalogPath,
-            [.. "RATC"u8.ToArray(), 0, 0, 0, 1]);
+            [.. "BOMStore"u8.ToArray(), 0, 0, 0, 1, 0, 0, 0, 0]);
         return new ProductIdentityInputs(
             manifestPath,
             sourceRoot,

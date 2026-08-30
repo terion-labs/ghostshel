@@ -97,8 +97,8 @@ internal static class MacOsProductIdentity
             assetCatalogPath,
             "Xcode asset catalog",
             MaximumAssetCatalogBytes);
-        if (assetCatalog.Length < 8
-            || !assetCatalog.AsSpan(0, 4).SequenceEqual("RATC"u8))
+        if (assetCatalog.Length < 16
+            || !assetCatalog.AsSpan(0, 8).SequenceEqual("BOMStore"u8))
         {
             throw new InvalidDataException(
                 "The compiled macOS application icon is not an Assets.car archive.");
