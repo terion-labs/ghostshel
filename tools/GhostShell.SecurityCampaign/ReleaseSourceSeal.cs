@@ -24,6 +24,7 @@ internal static class ReleaseSourceSeal
     internal const string SealSchemaRelativePath =
         "scripts/acceptance/security-campaign/source-seal.schema.json";
     private const string RepositoryIdentity = "https://github.com/terion-labs/ghostshell";
+    private const string RootFinderMetadataPath = ".DS_Store";
     private const int MaximumManifestEntries = 20_000;
     private const long MaximumSealBytes = 16L * 1024 * 1024;
 
@@ -53,10 +54,11 @@ internal static class ReleaseSourceSeal
         RequireExactHead(gitRoot, expectedCommit, expectedTree);
         RequireTagTarget(gitRoot, tag, expectedCommit);
         RequireCleanTrackedState(gitRoot);
-        RequireNoUntrackedPaths(gitRoot);
 
         var archive = ReadTaggedArchive(gitRoot, expectedCommit);
-        var exported = ReadDirectoryManifest(exportRoot, []);
+        RequireNoUntrackedPaths(gitRoot, archive.Files);
+        var ignoreRootFinderMetadata = !ContainsPath(archive.Files, RootFinderMetadataPath);
+        var exported = ReadDirectoryManifest(exportRoot, [], ignoreRootFinderMetadata);
         RequireSameManifest(archive.Files, exported.Files, "The exported release source differs from the exact tagged archive.");
         if (archive.Files.Any(entry => IsGeneratedPath(entry.RelativePath)))
         {
@@ -105,7 +107,10 @@ internal static class ReleaseSourceSeal
         var seal = CampaignFiles.ReadJson<ReleaseSourceSealDocument>(sealPath);
         ValidateSeal(seal, root, expectedCommit, expectedTree, tag);
 
-        var observed = ReadDirectoryManifest(root, seal.GeneratedRoots);
+        var observed = ReadDirectoryManifest(
+            root,
+            seal.GeneratedRoots,
+            !ContainsPath(seal.Files, RootFinderMetadataPath));
         var status = string.Equals(
             observed.ManifestSha256,
             seal.ManifestSha256,
@@ -309,7 +314,8 @@ internal static class ReleaseSourceSeal
 
     private static DirectoryManifest ReadDirectoryManifest(
         string sourceRoot,
-        IReadOnlyList<string> generatedRoots)
+        IReadOnlyList<string> generatedRoots,
+        bool ignoreRootFinderMetadata)
     {
         var root = Path.GetFullPath(sourceRoot);
         if (!Directory.Exists(root) || (File.GetAttributes(root) & FileAttributes.ReparsePoint) != 0)
@@ -337,6 +343,13 @@ internal static class ReleaseSourceSeal
                 }
 
                 var attributes = File.GetAttributes(path);
+                if (ignoreRootFinderMetadata
+                    && string.Equals(relativePath, RootFinderMetadataPath, StringComparison.Ordinal)
+                    && (attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint)) == 0)
+                {
+                    continue;
+                }
+
                 if ((attributes & FileAttributes.ReparsePoint) != 0)
                 {
                     throw new InvalidDataException($"The release source contains a symbolic-link boundary: {relativePath}");
@@ -412,6 +425,11 @@ internal static class ReleaseSourceSeal
         IReadOnlyList<ReleaseSourceManifestEntry> actual) =>
         expected.SequenceEqual(actual);
 
+    private static bool ContainsPath(
+        IReadOnlyList<ReleaseSourceManifestEntry> files,
+        string relativePath) =>
+        files.Any(file => string.Equals(file.RelativePath, relativePath, StringComparison.Ordinal));
+
     private static void RequireSameManifest(
         IReadOnlyList<ReleaseSourceManifestEntry> expected,
         IReadOnlyList<ReleaseSourceManifestEntry> actual,
@@ -464,19 +482,44 @@ internal static class ReleaseSourceSeal
         }
     }
 
-    private static void RequireNoUntrackedPaths(string repository)
+    private static void RequireNoUntrackedPaths(
+        string repository,
+        IReadOnlyList<ReleaseSourceManifestEntry> taggedFiles)
     {
+        var ignoreRootFinderMetadata = !ContainsPath(taggedFiles, RootFinderMetadataPath);
         var ordinary = Git(repository, "ls-files", "--others", "--exclude-standard", "-z");
         var ignored = Git(repository, "ls-files", "--others", "--ignored", "--exclude-standard", "-z");
         var unexpected = ordinary.Split('\0', StringSplitOptions.RemoveEmptyEntries)
             .Concat(ignored.Split('\0', StringSplitOptions.RemoveEmptyEntries))
             .Distinct(StringComparer.Ordinal)
+            .Where(path => !IsIgnorableRootFinderMetadata(repository, path, ignoreRootFinderMetadata))
             .Order(StringComparer.Ordinal)
             .FirstOrDefault();
         if (unexpected is not null)
         {
             throw new InvalidDataException($"The release checkout contains an untracked or ignored path: {unexpected}");
         }
+    }
+
+    private static bool IsIgnorableRootFinderMetadata(
+        string repository,
+        string relativePath,
+        bool ignoreRootFinderMetadata)
+    {
+        if (!ignoreRootFinderMetadata
+            || !string.Equals(relativePath, RootFinderMetadataPath, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var path = Path.Combine(repository, RootFinderMetadataPath);
+        if (!File.Exists(path))
+        {
+            return false;
+        }
+
+        var attributes = File.GetAttributes(path);
+        return (attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint)) == 0;
     }
 
     private static string Git(string repository, params string[] arguments)

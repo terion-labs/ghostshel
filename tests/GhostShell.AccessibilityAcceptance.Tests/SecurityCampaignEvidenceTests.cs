@@ -197,6 +197,38 @@ public sealed class SecurityCampaignEvidenceTests
     }
 
     [Fact]
+    public void ExactSourceTreeIgnoresOnlyUntrackedRootFinderMetadataExcludedFromTag()
+    {
+        using var fixture = new GitRepositoryFixture();
+        File.WriteAllText(Path.Combine(fixture.Path, ".DS_Store"), "finder", Encoding.UTF8);
+        File.WriteAllText(Path.Combine(fixture.ExportPath, ".DS_Store"), "finder", Encoding.UTF8);
+
+        var sealedSource = fixture.CreateSeal();
+        var verified = fixture.VerifySealedSource();
+
+        Assert.DoesNotContain(sealedSource.Seal.Files, file => file.RelativePath == ".DS_Store");
+        Assert.Equal(sealedSource.Seal.ManifestSha256, verified.ObservedManifestSha256);
+
+        var nestedDirectory = Path.Combine(fixture.Path, "nested");
+        Directory.CreateDirectory(nestedDirectory);
+        File.WriteAllText(Path.Combine(nestedDirectory, ".DS_Store"), "finder", Encoding.UTF8);
+        var error = Assert.Throws<InvalidDataException>(() => fixture.CreateSeal());
+        Assert.Contains("nested/.DS_Store", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SourceSealIncludesTrackedRootFinderMetadataAndDetectsMutation()
+    {
+        using var fixture = new GitRepositoryFixture(trackRootFinderMetadata: true);
+        var sealedSource = fixture.CreateSeal();
+
+        Assert.Contains(sealedSource.Seal.Files, file => file.RelativePath == ".DS_Store");
+        File.WriteAllText(Path.Combine(fixture.ExportPath, ".DS_Store"), "tamper", Encoding.UTF8);
+        var error = Assert.Throws<InvalidDataException>(() => fixture.VerifySealedSource());
+        Assert.Contains("sealed tagged manifest", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SourceSealRejectsIgnoredDirectoryBuildImport()
     {
         using var fixture = new GitRepositoryFixture();
@@ -328,39 +360,6 @@ public sealed class SecurityCampaignEvidenceTests
         Assert.Contains("security delete-keychain", rehearsal, StringComparison.Ordinal);
         Assert.Contains(
             "working_directory=\"$(cd -- \"${working_directory}\" && pwd -P)\"",
-            rehearsal,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "git cat-file -e \"${commit}:.DS_Store\"",
-            rehearsal,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "unlink \"${sealed_source}/.DS_Store\"",
-            rehearsal,
-            StringComparison.Ordinal);
-        var discardMacMetadata = rehearsal.IndexOf(
-            "unlink \"${sealed_source}/.DS_Store\"",
-            StringComparison.Ordinal);
-        var lockSealedSource = rehearsal.IndexOf(
-            "chmod a-w \"${sealed_source}\"",
-            StringComparison.Ordinal);
-        var publishCampaignTool = rehearsal.IndexOf(
-            "NUGET_PACKAGES=\"${nuget_packages}\" \"${dotnet}\" publish",
-            StringComparison.Ordinal);
-        var sealReleaseSource = rehearsal.IndexOf(
-            "seal-release-source",
-            StringComparison.Ordinal);
-        Assert.True(
-            discardMacMetadata >= 0
-            && discardMacMetadata < lockSealedSource
-            && lockSealedSource < publishCampaignTool
-            && publishCampaignTool < sealReleaseSource);
-        Assert.Contains(
-            "chmod u+w \"${sealed_source}\" \"${sealed_source}/native\"",
-            rehearsal,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "chmod a-w \"${sealed_source}\" \"${sealed_source}/native\"",
             rehearsal,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -678,13 +677,17 @@ public sealed class SecurityCampaignEvidenceTests
         private readonly DirectoryFixture _evidence = new();
         private readonly DirectoryFixture _export = new();
 
-        public GitRepositoryFixture()
+        public GitRepositoryFixture(bool trackRootFinderMetadata = false)
         {
             RunGit(Path, "init", "--quiet");
             RunGit(Path, "config", "user.name", "GhostShell test");
             RunGit(Path, "config", "user.email", "ghostshell-test@example.invalid");
             RunGit(Path, "remote", "add", "origin", "https://github.com/terion-labs/ghostshell.git");
             File.WriteAllText(System.IO.Path.Combine(Path, "tracked.txt"), "tracked", Encoding.UTF8);
+            if (trackRootFinderMetadata)
+            {
+                File.WriteAllText(System.IO.Path.Combine(Path, ".DS_Store"), "tracked finder", Encoding.UTF8);
+            }
             var schema = System.IO.Path.Combine(
                 Path,
                 "scripts",
@@ -694,6 +697,10 @@ public sealed class SecurityCampaignEvidenceTests
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(schema)!);
             File.WriteAllText(schema, "{}", new UTF8Encoding(false));
             RunGit(Path, "add", "tracked.txt", "scripts");
+            if (trackRootFinderMetadata)
+            {
+                RunGit(Path, "add", ".DS_Store");
+            }
             RunGit(Path, "commit", "--quiet", "-m", "fixture");
             Commit = RunGit(Path, "rev-parse", "HEAD");
             Tree = RunGit(Path, "rev-parse", "HEAD^{tree}");
@@ -701,6 +708,12 @@ public sealed class SecurityCampaignEvidenceTests
             File.Copy(
                 System.IO.Path.Combine(Path, "tracked.txt"),
                 System.IO.Path.Combine(ExportPath, "tracked.txt"));
+            if (trackRootFinderMetadata)
+            {
+                File.Copy(
+                    System.IO.Path.Combine(Path, ".DS_Store"),
+                    System.IO.Path.Combine(ExportPath, ".DS_Store"));
+            }
             var exportedSchema = System.IO.Path.Combine(
                 ExportPath,
                 "scripts",
