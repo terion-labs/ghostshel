@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -48,6 +49,107 @@ public sealed class NativeTerminalPackageProvenanceTests : IDisposable
                 fixture.LicenseDirectory,
                 fixture.CatalogPath,
                 fixture.ReceiptPath));
+    }
+
+    [Fact]
+    public void Macos_codesign_transformation_preserves_post_sign_provenance_contract()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var fixture = CreateFixture();
+        var libraryPath = Path.Combine(
+            fixture.ExecutableDirectory,
+            "libghostty-vt.dylib");
+        File.Copy("/usr/bin/true", libraryPath, overwrite: true);
+        UpdateLibraryEvidence(fixture, libraryPath);
+        NativeTerminalPackageProvenance.Validate(
+            fixture.ExecutableDirectory,
+            fixture.ExecutableDirectory,
+            fixture.ExecutableDirectory,
+            fixture.LicenseDirectory,
+            fixture.CatalogPath,
+            fixture.ReceiptPath);
+        var unsignedSha256 = Sha256(libraryPath);
+
+        var start = new ProcessStartInfo("/usr/bin/codesign")
+        {
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+        };
+        foreach (var argument in new[] { "--force", "--sign", "-", libraryPath })
+        {
+            start.ArgumentList.Add(argument);
+        }
+
+        using var process = Process.Start(start)!;
+        var error = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+
+        Assert.True(process.ExitCode == 0, error);
+        Assert.NotEqual(
+            unsignedSha256,
+            Sha256(libraryPath),
+            StringComparer.Ordinal);
+        Assert.Throws<InvalidDataException>(() =>
+            NativeTerminalPackageProvenance.Validate(
+                fixture.ExecutableDirectory,
+                fixture.ExecutableDirectory,
+                fixture.ExecutableDirectory,
+                fixture.LicenseDirectory,
+                fixture.CatalogPath,
+                fixture.ReceiptPath));
+
+        NativeTerminalPackageProvenance.ValidateAfterCodeSigning(
+            fixture.ExecutableDirectory,
+            fixture.ExecutableDirectory,
+            fixture.ExecutableDirectory,
+            fixture.LicenseDirectory,
+            fixture.CatalogPath,
+            fixture.ReceiptPath);
+    }
+
+    [Fact]
+    public void Signed_package_metadata_rejects_an_invalid_build_digest()
+    {
+        var fixture = CreateFixture();
+        var receipt = JsonNode.Parse(File.ReadAllText(fixture.ReceiptPath))!.AsObject();
+        receipt["artifact"]!["sha256"] = "not-a-sha256";
+        File.WriteAllText(fixture.ReceiptPath, receipt.ToJsonString());
+        File.Copy(
+            fixture.ReceiptPath,
+            Path.Combine(
+                fixture.LicenseDirectory,
+                "Native",
+                "native-terminal-build-receipt.json"),
+            overwrite: true);
+
+        Assert.Throws<InvalidDataException>(() =>
+            NativeTerminalPackageProvenance.ValidateAfterCodeSigning(
+                fixture.ExecutableDirectory,
+                fixture.ExecutableDirectory,
+                fixture.ExecutableDirectory,
+                fixture.LicenseDirectory,
+                fixture.CatalogPath,
+                fixture.ReceiptPath));
+    }
+
+    private static void UpdateLibraryEvidence(Fixture fixture, string libraryPath)
+    {
+        var receipt = JsonNode.Parse(File.ReadAllText(fixture.ReceiptPath))!.AsObject();
+        receipt["artifact"]!["bytes"] = new FileInfo(libraryPath).Length;
+        receipt["artifact"]!["sha256"] = Sha256(libraryPath);
+        File.WriteAllText(fixture.ReceiptPath, receipt.ToJsonString());
+        File.Copy(
+            fixture.ReceiptPath,
+            Path.Combine(
+                fixture.LicenseDirectory,
+                "Native",
+                "native-terminal-build-receipt.json"),
+            overwrite: true);
     }
 
     [Fact]

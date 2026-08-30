@@ -90,11 +90,11 @@ internal static class CampaignAssembler
             inputs.SourceSeal,
             inputs.BuildIdentity,
             initialSeal);
-        var components = InspectComponents(root, extracted.PackagePath);
         NativeMacVerifier.Verify(
             extracted.PackagePath,
             signing.TeamIdentifier,
             signing.CertificateSha256);
+        var components = InspectComponents(root, extracted.PackagePath);
         var finalSeal = ReleaseSourceSeal.Verify(
             root,
             inputs.SourceSeal,
@@ -380,13 +380,6 @@ internal static class CampaignAssembler
         var licenses = Path.Combine(resources, "Licenses");
         var nativeLicenses = Path.Combine(licenses, "Native");
         var releaseLicenses = Path.Combine(licenses, "Release");
-        NativeTerminalPackageProvenance.Validate(
-            executable,
-            resources,
-            Path.Combine(resources, "Native"),
-            licenses,
-            Path.Combine(nativeLicenses, "native-terminal-components.json"),
-            Path.Combine(nativeLicenses, "native-terminal-build-receipt.json"));
         TerminalFontPackageProvenance.Validate(
             resources,
             licenses,
@@ -405,6 +398,7 @@ internal static class CampaignAssembler
         var componentPaths = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["legal"] = packagedLegal,
+            ["native-terminal-library"] = Path.Combine(executable, "libghostty-vt.dylib"),
             ["native-terminal-receipt"] = Path.Combine(nativeLicenses, "native-terminal-build-receipt.json"),
             ["terminal-font-receipt"] = Path.Combine(nativeLicenses, "terminal-font-assets-build-receipt.json"),
             ["cef-receipt"] = Path.Combine(nativeLicenses, "cef-runtime-build-receipt.json"),

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO.Compression;
+using GhostShell.Packaging;
 
 namespace GhostShell.SecurityCampaign;
 
@@ -45,6 +46,19 @@ internal static class NativeMacVerifier
 
         Run("/usr/bin/xcrun", ["stapler", "validate", package]);
         Run("/usr/sbin/spctl", ["--assess", "--type", "execute", "--verbose=2", package]);
+
+        var contents = Path.Combine(package, "Contents");
+        var executable = Path.Combine(contents, "MacOS");
+        var resources = Path.Combine(contents, "Resources");
+        var licenses = Path.Combine(resources, "Licenses");
+        var nativeLicenses = Path.Combine(licenses, "Native");
+        NativeTerminalPackageProvenance.ValidateAfterCodeSigning(
+            executable,
+            resources,
+            Path.Combine(resources, "Native"),
+            licenses,
+            Path.Combine(nativeLicenses, "native-terminal-components.json"),
+            Path.Combine(nativeLicenses, "native-terminal-build-receipt.json"));
     }
 
     private static string Run(string fileName, IReadOnlyList<string> arguments)

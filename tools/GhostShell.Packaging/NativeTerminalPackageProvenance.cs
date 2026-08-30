@@ -55,6 +55,50 @@ internal static class NativeTerminalPackageProvenance
         string catalogPath,
         string receiptPath)
     {
+        ValidateCore(
+            executableDirectory,
+            resourceDirectory,
+            nativeMetadataDirectory,
+            licenseDirectory,
+            catalogPath,
+            receiptPath,
+            requireExactLibrary: true);
+    }
+
+    /// <summary>
+    /// Validates the immutable native-terminal metadata after macOS code signing.
+    /// The assembly path must call <see cref="Validate"/> before signing because
+    /// codesign replaces the linker's embedded signature and therefore changes
+    /// the dylib length and digest. The release verifier separately validates
+    /// the package's deep signature and records the exact signed dylib digest.
+    /// </summary>
+    public static void ValidateAfterCodeSigning(
+        string executableDirectory,
+        string resourceDirectory,
+        string nativeMetadataDirectory,
+        string licenseDirectory,
+        string catalogPath,
+        string receiptPath)
+    {
+        ValidateCore(
+            executableDirectory,
+            resourceDirectory,
+            nativeMetadataDirectory,
+            licenseDirectory,
+            catalogPath,
+            receiptPath,
+            requireExactLibrary: false);
+    }
+
+    private static void ValidateCore(
+        string executableDirectory,
+        string resourceDirectory,
+        string nativeMetadataDirectory,
+        string licenseDirectory,
+        string catalogPath,
+        string receiptPath,
+        bool requireExactLibrary)
+    {
         var catalogBytes = ReadDocument(
             catalogPath,
             "native terminal component catalog");
@@ -88,10 +132,18 @@ internal static class NativeTerminalPackageProvenance
 
         var artifact = RequireObject(receipt.RootElement, "artifact");
         RequireString(artifact, "path", LibraryFileName);
-        ValidateFile(
-            Path.Combine(executableDirectory, LibraryFileName),
-            artifact,
-            "packaged libghostty-vt");
+        var libraryPath = Path.Combine(executableDirectory, LibraryFileName);
+        if (requireExactLibrary)
+        {
+            ValidateFile(
+                libraryPath,
+                artifact,
+                "packaged libghostty-vt");
+        }
+        else
+        {
+            ValidateSignedLibraryMetadata(libraryPath, artifact);
+        }
 
         var build = RequireObject(receipt.RootElement, "build");
         RequireBoolean(build, "testsPassed", expected: true);
@@ -164,6 +216,33 @@ internal static class NativeTerminalPackageProvenance
                 throw new InvalidDataException(
                     $"The libghostty-vt package still contains retired runtime {retiredFile}.");
             }
+        }
+    }
+
+    private static void ValidateSignedLibraryMetadata(
+        string path,
+        JsonElement expected)
+    {
+        var info = new FileInfo(path);
+        if (!info.Exists || info.LinkTarget is not null || info.Length == 0)
+        {
+            throw new InvalidDataException(
+                "The signed packaged libghostty-vt is missing, linked, or empty.");
+        }
+
+        if (RequireInt64(expected, "bytes") == 0)
+        {
+            throw new InvalidDataException(
+                "The native terminal build receipt has an empty library artifact.");
+        }
+
+        var sha256 = RequireString(expected, "sha256");
+        if (sha256.Length != 64
+            || sha256.Any(static character =>
+                character is not (>= '0' and <= '9' or >= 'a' and <= 'f')))
+        {
+            throw new InvalidDataException(
+                "The native terminal build receipt has an invalid library SHA-256.");
         }
     }
 
