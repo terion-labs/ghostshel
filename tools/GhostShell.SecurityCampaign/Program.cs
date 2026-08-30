@@ -50,6 +50,9 @@ internal static class Program
             case "assemble-release-evidence":
                 AssembleReleaseEvidence(options);
                 break;
+            case "validate-local-release-inputs":
+                ValidateLocalReleaseInputs(options);
+                break;
             case "validate-evidence":
                 ValidateEvidence(options);
                 break;
@@ -237,11 +240,18 @@ internal static class Program
 
     private static void AssembleReleaseEvidence(Options options)
     {
-        var inputs = ReleaseInputsFrom(options, includeOutput: true);
+        var inputs = ReleaseInputsFrom(options, finalOption: "output");
         var receipt = CampaignAssembler.CreateReleaseReceipt(inputs);
         CampaignAssembler.ValidateReceipt(receipt);
         CampaignFiles.WriteReceipt(options.Require("output"), receipt);
         Console.WriteLine("Wrote passing macOS arm64 release-candidate evidence.");
+    }
+
+    private static void ValidateLocalReleaseInputs(Options options)
+    {
+        var inputs = ReleaseInputsFrom(options, finalOption: null);
+        CampaignAssembler.ValidateLocalReleaseInputs(inputs);
+        Console.WriteLine("Validated local signed and notarized macOS arm64 release inputs.");
     }
 
     private static void ValidateEvidence(Options options)
@@ -274,7 +284,7 @@ internal static class Program
 
     private static void ValidateReleaseEvidence(Options options)
     {
-        var inputs = ReleaseInputsFrom(options, includeOutput: false);
+        var inputs = ReleaseInputsFrom(options, finalOption: "evidence");
         var actual = CampaignFiles.ReadReceipt(options.Require("evidence"));
         CampaignAssembler.ValidateReceipt(actual);
         var expected = CampaignAssembler.CreateReleaseReceipt(inputs);
@@ -290,7 +300,7 @@ internal static class Program
         JsonSerializer.SerializeToUtf8Bytes(left, CampaignFiles.StrictJson)
             .SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(right, CampaignFiles.StrictJson));
 
-    private static ReleaseInputs ReleaseInputsFrom(Options options, bool includeOutput)
+    private static ReleaseInputs ReleaseInputsFrom(Options options, string? finalOption)
     {
         List<string> names =
         [
@@ -298,7 +308,10 @@ internal static class Program
             "source-seal", "build-identity", "archive", "package", "test-results",
             "dependency-evidence", "notarization-evidence",
         ];
-        names.Add(includeOutput ? "output" : "evidence");
+        if (finalOption is not null)
+        {
+            names.Add(finalOption);
+        }
         options.RequireOnly([.. names]);
         return new ReleaseInputs(
             options.Require("repository"),
@@ -327,7 +340,8 @@ internal static class Program
     private static string Usage() =>
         "Commands: validate-definition, list-test-projects, assemble-source-evidence, "
         + "assemble-dependency-evidence, seal-release-source, verify-release-source, "
-        + "assemble-release-evidence, validate-evidence, validate-release-evidence. "
+        + "assemble-release-evidence, validate-local-release-inputs, validate-evidence, "
+        + "validate-release-evidence. "
         + "Every argument uses --name value.";
 
     private sealed class Options

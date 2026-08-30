@@ -403,7 +403,7 @@ evidence_arguments=(
     --source-commit "${commit}"
     --source-tree "${tree}"
     --tag "${tag}"
-    --run-id local
+    --run-id 0
     --run-attempt 1
     --source-seal "${source_seal}"
     --build-identity "${release_artifacts}/release-evidence/release-build-identity.json"
@@ -414,13 +414,8 @@ evidence_arguments=(
     --notarization-evidence "${release_artifacts}/release-evidence/notarization.json"
 )
 "${dotnet}" "${campaign_dll}" \
-    assemble-release-evidence \
-    "${evidence_arguments[@]}" \
-    --output "${release_artifacts}/security-campaign"
-"${dotnet}" "${campaign_dll}" \
-    validate-release-evidence \
-    "${evidence_arguments[@]}" \
-    --evidence "${release_artifacts}/security-campaign"
+    validate-local-release-inputs \
+    "${evidence_arguments[@]}"
 
 mkdir -p "${receipt_directory}"
 archive_sha256="$(shasum -a 256 "${archive}" | awk '{print $1}')"

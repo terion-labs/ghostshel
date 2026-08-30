@@ -52,6 +52,32 @@ internal static class CampaignAssembler
     {
         RequireMacOsArm64();
         RequireGitHubReleaseContext(inputs);
+        var evidence = ValidateReleaseInputs(inputs);
+        return new CampaignReceipt(
+            1,
+            "ghostshell-security-campaign-receipt-v1",
+            "release-candidate",
+            ReleaseScope(),
+            evidence.Source,
+            evidence.Definition,
+            evidence.Cases,
+            evidence.Secrecy,
+            evidence.Candidate,
+            evidence.Dependencies,
+            evidence.Components,
+            evidence.Signing,
+            ["windows-porting-deferred", "linux-porting-deferred"],
+            "pass");
+    }
+
+    public static void ValidateLocalReleaseInputs(ReleaseInputs inputs)
+    {
+        RequireMacOsArm64();
+        _ = ValidateReleaseInputs(inputs);
+    }
+
+    private static ValidatedReleaseInputs ValidateReleaseInputs(ReleaseInputs inputs)
+    {
         var root = Path.GetFullPath(inputs.Repository);
         var initialSeal = ReleaseSourceSeal.Verify(
             root,
@@ -109,11 +135,7 @@ internal static class CampaignAssembler
             throw new InvalidDataException("The sealed source changed while release evidence was assembled.");
         }
 
-        return new CampaignReceipt(
-            1,
-            "ghostshell-security-campaign-receipt-v1",
-            "release-candidate",
-            ReleaseScope(),
+        return new ValidatedReleaseInputs(
             source,
             Definition(registryPath, schemaPath),
             cases,
@@ -121,9 +143,7 @@ internal static class CampaignAssembler
             candidate,
             dependencies,
             components,
-            signing,
-            ["windows-porting-deferred", "linux-porting-deferred"],
-            "pass");
+            signing);
     }
 
     public static void ValidateReceipt(CampaignReceipt receipt)
@@ -649,3 +669,13 @@ internal sealed record ReleaseInputs(
     string TestResults,
     string DependencyEvidence,
     string NotarizationEvidence);
+
+internal sealed record ValidatedReleaseInputs(
+    SourceEvidence Source,
+    DefinitionEvidence Definition,
+    IReadOnlyList<CaseEvidence> Cases,
+    SecrecyEvidence Secrecy,
+    CandidateEvidence Candidate,
+    DependencyEvidence Dependencies,
+    IReadOnlyList<FileEvidence> Components,
+    SigningEvidence Signing);

@@ -370,8 +370,10 @@ public sealed class SecurityCampaignEvidenceTests
             StringComparison.Ordinal);
         Assert.Contains("codesign --verify --deep --strict", rehearsal, StringComparison.Ordinal);
         Assert.Contains("spctl --assess --type execute", rehearsal, StringComparison.Ordinal);
-        Assert.Contains("assemble-release-evidence", rehearsal, StringComparison.Ordinal);
-        Assert.Contains("validate-release-evidence", rehearsal, StringComparison.Ordinal);
+        Assert.Contains("validate-local-release-inputs", rehearsal, StringComparison.Ordinal);
+        Assert.DoesNotContain("assemble-release-evidence", rehearsal, StringComparison.Ordinal);
+        Assert.DoesNotContain("validate-release-evidence", rehearsal, StringComparison.Ordinal);
+        Assert.Contains("--run-id 0", rehearsal, StringComparison.Ordinal);
         Assert.DoesNotContain("gh workflow run", rehearsal, StringComparison.Ordinal);
         Assert.DoesNotContain("gh run rerun", rehearsal, StringComparison.Ordinal);
     }
