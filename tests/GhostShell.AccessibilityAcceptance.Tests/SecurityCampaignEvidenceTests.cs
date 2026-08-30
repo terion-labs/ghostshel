@@ -300,6 +300,39 @@ public sealed class SecurityCampaignEvidenceTests
     }
 
     [Fact]
+    public void ReleaseTagsRequireTheCompleteLocalSignedRehearsal()
+    {
+        var root = RepositoryRoot();
+        var hook = File.ReadAllText(
+            Path.Combine(root, ".githooks", "pre-push"),
+            Encoding.UTF8);
+        var rehearsal = File.ReadAllText(
+            Path.Combine(root, "scripts", "rehearse-macos-release.sh"),
+            Encoding.UTF8);
+
+        Assert.Contains("refs/tags/v*", hook, StringComparison.Ordinal);
+        Assert.Contains("scripts/rehearse-macos-release.sh", hook, StringComparison.Ordinal);
+        Assert.Contains("--reuse-pass", hook, StringComparison.Ordinal);
+        Assert.Contains("./scripts/check.sh --full", rehearsal, StringComparison.Ordinal);
+        Assert.Contains("chmod -R a-w \"${sealed_source}\"", rehearsal, StringComparison.Ordinal);
+        Assert.Contains("./scripts/build-libghostty-vt.sh --rid osx-arm64", rehearsal, StringComparison.Ordinal);
+        Assert.Contains("./scripts/build-sql-language-worker.sh --local --rid osx-arm64", rehearsal, StringComparison.Ordinal);
+        Assert.Contains("./scripts/build-cef-runtime.sh --rid osx-arm64", rehearsal, StringComparison.Ordinal);
+        Assert.Contains("--sign-identity \"${signing_identity}\"", rehearsal, StringComparison.Ordinal);
+        Assert.Contains("--notary-profile \"${notary_profile}\"", rehearsal, StringComparison.Ordinal);
+        Assert.Contains("APPLE_CERTIFICATE_P12_BASE64", rehearsal, StringComparison.Ordinal);
+        Assert.Contains("APPLE_NOTARY_PRIVATE_KEY_BASE64", rehearsal, StringComparison.Ordinal);
+        Assert.Contains("security create-keychain", rehearsal, StringComparison.Ordinal);
+        Assert.Contains("security delete-keychain", rehearsal, StringComparison.Ordinal);
+        Assert.Contains("codesign --verify --deep --strict", rehearsal, StringComparison.Ordinal);
+        Assert.Contains("spctl --assess --type execute", rehearsal, StringComparison.Ordinal);
+        Assert.Contains("assemble-release-evidence", rehearsal, StringComparison.Ordinal);
+        Assert.Contains("validate-release-evidence", rehearsal, StringComparison.Ordinal);
+        Assert.DoesNotContain("gh workflow run", rehearsal, StringComparison.Ordinal);
+        Assert.DoesNotContain("gh run rerun", rehearsal, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void MacOsSigningEvidencePassesTheCertificatePrefixAsOneCodesignArgument()
     {
         var root = RepositoryRoot();

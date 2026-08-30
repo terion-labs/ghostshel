@@ -2,4 +2,21 @@
 set -euo pipefail
 
 repository_dir="$(git rev-parse --show-toplevel)"
-exec "${repository_dir}/scripts/check.sh" --full
+release_tags=()
+
+while read -r local_ref local_oid remote_ref remote_oid; do
+    if [[ "${remote_ref}" == refs/tags/v* \
+        && "${local_oid}" != "0000000000000000000000000000000000000000" ]]; then
+        release_tags+=("${local_ref#refs/tags/}")
+    fi
+done
+
+if [[ ${#release_tags[@]} -eq 0 ]]; then
+    exec "${repository_dir}/scripts/check.sh" --full
+fi
+
+for release_tag in "${release_tags[@]}"; do
+    "${repository_dir}/scripts/rehearse-macos-release.sh" \
+        --tag "${release_tag}" \
+        --reuse-pass
+done

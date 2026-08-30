@@ -60,10 +60,12 @@ run_test_project() {
     local project="$1"
     local project_name
     local results_directory
+    local results_root
     local -a test_command
 
     project_name="$(basename "${project}" .csproj)"
-    results_directory="${repository_dir}/.test-results/${project_name}"
+    results_root="${GHOSTSHELL_TEST_RESULTS_ROOT:-${repository_dir}/.test-results}"
+    results_directory="${results_root}/${project_name}"
 
     test_command=("${dotnet}" test "${project}" \
         --configuration Release \
