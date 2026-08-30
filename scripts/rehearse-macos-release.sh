@@ -179,6 +179,7 @@ for required_command in assetutil cmake curl ditto file mvn python3 security sha
 done
 
 working_directory="$(mktemp -d "${TMPDIR:-/tmp}/ghostshell-release-rehearsal.XXXXXX")"
+working_directory="$(cd -- "${working_directory}" && pwd -P)"
 sealed_source="${working_directory}/sealed-source"
 dependency_source="${working_directory}/dependency-source"
 campaign_tool="${working_directory}/campaign-tool"

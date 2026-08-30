@@ -327,6 +327,10 @@ public sealed class SecurityCampaignEvidenceTests
         Assert.Contains("security create-keychain", rehearsal, StringComparison.Ordinal);
         Assert.Contains("security delete-keychain", rehearsal, StringComparison.Ordinal);
         Assert.Contains(
+            "working_directory=\"$(cd -- \"${working_directory}\" && pwd -P)\"",
+            rehearsal,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "NUGET_PACKAGES=\"${nuget_packages}\" \"${dotnet}\" restore",
             rehearsal,
             StringComparison.Ordinal);
