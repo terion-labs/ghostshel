@@ -325,6 +325,10 @@ campaign_dll="${campaign_tool}/GhostShell.SecurityCampaign.dll"
     --nuget "${release_artifacts}/dependency-scan/nuget-audit.json" \
     --maven "${release_artifacts}/dependency-scan/maven-audit.json" \
     --output "${release_artifacts}/dependency-security-evidence"
+if ! git cat-file -e "${commit}:.DS_Store" 2>/dev/null \
+    && [[ -f "${sealed_source}/.DS_Store" && ! -L "${sealed_source}/.DS_Store" ]]; then
+    unlink "${sealed_source}/.DS_Store"
+fi
 "${dotnet}" "${campaign_dll}" \
     seal-release-source \
     --repository "${repository_dir}" \

@@ -331,6 +331,14 @@ public sealed class SecurityCampaignEvidenceTests
             rehearsal,
             StringComparison.Ordinal);
         Assert.Contains(
+            "git cat-file -e \"${commit}:.DS_Store\"",
+            rehearsal,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "unlink \"${sealed_source}/.DS_Store\"",
+            rehearsal,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "NUGET_PACKAGES=\"${nuget_packages}\" \"${dotnet}\" restore",
             rehearsal,
             StringComparison.Ordinal);
