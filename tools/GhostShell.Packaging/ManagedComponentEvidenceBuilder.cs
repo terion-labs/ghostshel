@@ -74,6 +74,7 @@ internal static class ManagedComponentEvidenceBuilder
         "GhostShell.Redis.dll",
         "GhostShell.SessionHost.dll",
         "GhostShell.Terminal.dll",
+        "GhostShell.Updates.dll",
     ];
 
     private static readonly string[] TerminalNativeFiles =

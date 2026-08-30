@@ -740,6 +740,7 @@
           "GhostShell.Redis": "[1.0.0, )",
           "GhostShell.SessionHost": "[1.0.0, )",
           "GhostShell.Terminal": "[1.0.0, )",
+          "GhostShell.Updates": "[1.0.0, )",
           "Microsoft.Extensions.DependencyInjection": "[10.0.10, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.7, )",
           "Tmds.DBus.Protocol": "[0.92.0, )"
@@ -922,6 +923,13 @@
           "GhostShell.Application": "[1.0.0, )",
           "GhostShell.Core": "[1.0.0, )",
           "Porta.Pty": "[1.0.7, )"
+        }
+      },
+      "ghostshell.updates": {
+        "type": "Project",
+        "dependencies": {
+          "GhostShell.Application": "[1.0.0, )",
+          "Velopack": "[1.2.0, )"
         }
       },
       "Avalonia": {
@@ -1342,6 +1350,12 @@
         "requested": "[0.92.0, )",
         "resolved": "0.92.0",
         "contentHash": "h7IMakm0PF2jxiagoysoAjrzzLQ0UBdnSXQL5kb17YW0Fvyo12Tg96A99QkzwktWRrd7H+Uw9EzjasNLUfGYlA=="
+      },
+      "Velopack": {
+        "type": "CentralTransitive",
+        "requested": "[1.2.0, )",
+        "resolved": "1.2.0",
+        "contentHash": "Rz67gJL619fSBS6omaSINUxyDuwhIxkm5mmubf7uLd5Qgi6LLKaKCha+QFP6n+Bw/UjA0vutnH4JQfYzn6ANtw=="
       }
     }
   }

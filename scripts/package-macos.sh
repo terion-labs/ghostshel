@@ -723,6 +723,7 @@ first_party_assemblies=(
     "GhostShell.Redis.dll"
     "GhostShell.SessionHost.dll"
     "GhostShell.Terminal.dll"
+    "GhostShell.Updates.dll"
 )
 for assembly in "${first_party_assemblies[@]}"; do
     if [[ ! -f "${managed_evidence_dir}/${assembly}" ]]; then

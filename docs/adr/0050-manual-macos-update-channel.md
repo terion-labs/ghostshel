@@ -1,6 +1,6 @@
 # ADR 0050: Manual macOS update channel
 
-**Status:** Accepted
+**Status:** Superseded by [ADR 0052](0052-source-aware-velopack-updates.md)
 **Date:** 2026-08-26
 
 ## Context

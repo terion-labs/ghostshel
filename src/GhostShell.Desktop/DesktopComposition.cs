@@ -3,6 +3,7 @@ using GhostShell.Agent.Runtime;
 using GhostShell.App;
 using GhostShell.App.ViewModels;
 using GhostShell.Application;
+using GhostShell.Application.ApplicationUpdates;
 using GhostShell.Application.Previews;
 using GhostShell.Browser;
 using GhostShell.Core;
@@ -17,6 +18,7 @@ using GhostShell.Previews;
 using GhostShell.Redis;
 using GhostShell.SessionHost;
 using GhostShell.Terminal;
+using GhostShell.Updates;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace GhostShell.Desktop;
@@ -27,6 +29,10 @@ public static class DesktopComposition
     {
         var services = new ServiceCollection();
         services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<DesktopUpdateShutdown>();
+        services.AddSingleton<IApplicationUpdateService>(provider =>
+            InstalledApplicationUpdates.Create(
+                provider.GetRequiredService<DesktopUpdateShutdown>().Request));
         services.AddSingleton(_ => ThemePreference.DefaultFor(CurrentOperatingSystem()));
         services.AddSingleton<INativeNotificationService>(_ =>
             NativeNotificationServiceSelector.CreateForCurrentPlatform());

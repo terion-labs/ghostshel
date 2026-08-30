@@ -11,6 +11,7 @@ using GhostShell.Browser;
 using GhostShell.Infrastructure;
 using GhostShell.SessionHost;
 using GhostShell.Terminal;
+using GhostShell.Updates;
 using Microsoft.Extensions.DependencyInjection;
 using GhostShellApplication = GhostShell.App.App;
 
@@ -21,6 +22,8 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        VelopackStartup.Run(args);
+
         if (ConnectionCredentialProcessHost.IsPrivateHelperInvocation(args))
         {
             Environment.ExitCode = ConnectionCredentialProcessHost
@@ -86,6 +89,9 @@ internal static class Program
                     Args = args,
                     ShutdownMode = Avalonia.Controls.ShutdownMode.OnMainWindowClose,
                 };
+                var updateShutdown = services
+                    .GetRequiredService<DesktopUpdateShutdown>();
+                updateShutdown.Attach(lifetime);
                 BrowserEngineRuntime.Configure(BuildAvaloniaApp(services))
                     .SetupWithLifetime(lifetime);
                 nativeNotifications =
@@ -149,6 +155,7 @@ internal static class Program
             }
             finally
             {
+                services.GetRequiredService<DesktopUpdateShutdown>().Detach();
                 instanceCoordinator.StopAcceptingActivations();
                 nativeNotifications?.Activated -= OnNativeNotificationActivated;
 

@@ -17,6 +17,7 @@
     <ProjectReference Include="..\GhostShell.Monitoring\GhostShell.Monitoring.csproj" />
     <ProjectReference Include="..\GhostShell.SessionHost\GhostShell.SessionHost.csproj" />
     <ProjectReference Include="..\GhostShell.Terminal\GhostShell.Terminal.csproj" />
+    <ProjectReference Include="..\GhostShell.Updates\GhostShell.Updates.csproj" />
   </ItemGroup>
 
   <ItemGroup>

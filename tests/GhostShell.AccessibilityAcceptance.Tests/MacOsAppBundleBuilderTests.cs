@@ -40,6 +40,7 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
         "GhostShell.Redis",
         "GhostShell.SessionHost",
         "GhostShell.Terminal",
+        "GhostShell.Updates",
     ];
 
     private readonly string _temporaryDirectory = Path.Combine(
@@ -92,6 +93,17 @@ public sealed class MacOsAppBundleBuilderTests : IDisposable
             "Licenses",
             "ProductIdentity",
             "product-identity.json")));
+        var distributionManifest = JsonNode.Parse(File.ReadAllText(Path.Combine(
+            output,
+            "Contents",
+            "Resources",
+            "distribution.json")))!.AsObject();
+        Assert.Equal(1, (int)distributionManifest["schemaVersion"]!);
+        Assert.Equal("github-release", (string?)distributionManifest["source"]);
+        Assert.Equal("velopack", (string?)distributionManifest["updateStrategy"]);
+        Assert.Equal("app.ghostshell", (string?)distributionManifest["packageId"]);
+        Assert.Equal("osx-arm64-stable", (string?)distributionManifest["channel"]);
+        Assert.Equal("osx-arm64", (string?)distributionManifest["runtimeIdentifier"]);
         var infoPlist = File.ReadAllText(Path.Combine(
             output,
             "Contents",

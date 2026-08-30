@@ -21,6 +21,7 @@
     <Project Path="src/GhostShell.Redis/GhostShell.Redis.csproj" />
     <Project Path="src/GhostShell.SessionHost/GhostShell.SessionHost.csproj" />
     <Project Path="src/GhostShell.Terminal/GhostShell.Terminal.csproj" />
+    <Project Path="src/GhostShell.Updates/GhostShell.Updates.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/GhostShell.App.Tests/GhostShell.App.Tests.csproj" />
@@ -47,6 +48,7 @@
     <Project Path="tests/GhostShell.SoakAcceptance.Tests/GhostShell.SoakAcceptance.Tests.csproj" />
     <Project Path="tests/GhostShell.Terminal.Tests/GhostShell.Terminal.Tests.csproj" />
     <Project Path="tests/GhostShell.TerminalAcceptance.Tests/GhostShell.TerminalAcceptance.Tests.csproj" />
+    <Project Path="tests/GhostShell.Updates.Tests/GhostShell.Updates.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/GhostShell.AccessibilityAcceptance/GhostShell.AccessibilityAcceptance.csproj" />

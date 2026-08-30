@@ -9,6 +9,7 @@ using System.Text;
 using FluentIcons.Common;
 using GhostShell.App;
 using GhostShell.Application;
+using GhostShell.Application.ApplicationUpdates;
 using GhostShell.Application.Previews;
 using GhostShell.Core;
 using GhostShell.Docker;
@@ -169,10 +170,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         IBrowserProfileDataControl? browserProfileDataControl = null,
         INativeNotificationService? nativeNotificationService = null,
         AppearancePreviewCoordinator? appearancePreview = null,
+        IApplicationUpdateService? applicationUpdateService = null,
         MainWindowRole role = MainWindowRole.Primary)
     {
         SessionClient = sessionClient ?? throw new ArgumentNullException(nameof(sessionClient));
         _uiThreadDispatcher = uiThreadDispatcher ?? AvaloniaUiThreadDispatcher.Instance;
+        ApplicationUpdates = new ApplicationUpdateViewModel(
+            applicationUpdateService
+                ?? new PassiveApplicationUpdateService(
+                    DistributionIdentity.Development),
+            _uiThreadDispatcher);
         OpenWorkspaces = new(_openWorkspaces);
         Notifications = new ShellNotificationCenter(
             () => RuntimeWorkspace,
@@ -773,11 +780,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         ? "Unavailable · provider runtime not composed"
         : AgentChat.RendererModeDescription;
 
-    public string UpdateChannel =>
-        "Manual · GitHub Releases";
-
-    public string UpdateStatus =>
-        "Not checked · automatic updates are off";
+    public ApplicationUpdateViewModel ApplicationUpdates { get; }
 
     public IReadOnlyList<ProductComponentViewModel> ProductComponents { get; }
 
@@ -11453,6 +11456,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         History.PropertyChanged -= OnHistoryPropertyChanged;
         History.SnapshotChanged -= OnHistorySnapshotChanged;
         History.Dispose();
+        ApplicationUpdates.Dispose();
         Launcher.Dispose();
         _runtimeGraphLifetime.Cancel();
         RuntimeGraph.Dispose();

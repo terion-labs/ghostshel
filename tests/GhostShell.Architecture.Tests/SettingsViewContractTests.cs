@@ -19,6 +19,7 @@ public sealed class SettingsViewContractTests
             ["AppearanceSettingsRequested"] = "OnAppearanceSettingsClick",
             ["BrowserSettingsRequested"] = "OnBrowserSettingsClick",
             ["ClearKeybindingPrefixRequested"] = "OnClearKeybindingPrefixClick",
+            ["CheckForUpdatesRequested"] = "OnCheckForUpdatesClick",
             ["CloneKeybindingPresetRequested"] = "OnCloneKeybindingPresetClick",
             ["CreateAiProviderSecretRequested"] = "OnCreateAiProviderSecretClick",
             ["CreateConnectionSecretRequested"] = "OnCreateConnectionSecretClick",
@@ -31,6 +32,7 @@ public sealed class SettingsViewContractTests
             ["DeleteSecretRequested"] = "OnDeleteSecretClick",
             ["DeleteWorkspaceRequested"] = "OnDeleteWorkspaceClick",
             ["DiagnosticsSettingsRequested"] = "OnDiagnosticsSettingsClick",
+            ["DownloadUpdateRequested"] = "OnDownloadUpdateClick",
             ["DismissSavedScreenDeleteUndoRequested"] =
                 "OnDismissSavedScreenDeleteUndoClick",
             ["EditAiProviderRequested"] = "OnEditAiProviderClick",
@@ -60,6 +62,7 @@ public sealed class SettingsViewContractTests
             ["ResetKeybindingRequested"] = "OnResetKeybindingClick",
             ["ReviewHistoryPrivacyRequested"] = "OnReviewHistoryPrivacyClick",
             ["ReviewOnboardingRequested"] = "OnReviewOnboardingClick",
+            ["RestartToApplyUpdateRequested"] = "OnRestartToApplyUpdateClick",
             ["RestoreSessionsOnStartChangedRequested"] =
                 "OnRestoreSessionsOnStartChanged",
             ["ApplicationAppearanceChangedRequested"] =
@@ -122,7 +125,7 @@ public sealed class SettingsViewContractTests
     }
 
     [Fact]
-    public void About_reports_the_manual_channel_without_update_controls()
+    public void About_exposes_source_aware_update_controls()
     {
         var settings = LoadView("SettingsView");
         var about = Assert.Single(
@@ -142,28 +145,32 @@ public sealed class SettingsViewContractTests
             visibleText,
             text => string.Equals(
                 text,
-                "{Binding UpdateChannel}",
+                "{Binding ApplicationUpdates.Channel}",
                 StringComparison.Ordinal));
         Assert.Contains(
             visibleText,
             text => string.Equals(
                 text,
-                "{Binding UpdateStatus}",
+                "{Binding ApplicationUpdates.Status}",
                 StringComparison.Ordinal));
         Assert.Contains(
-            visibleText,
-            text => text!.Contains(
-                "never checks for or installs updates",
-                StringComparison.Ordinal));
-        Assert.DoesNotContain(
             about.Descendants(),
             element => string.Equals(
-                element.Name.LocalName,
-                "Button",
-                StringComparison.Ordinal)
-                && (AttributeValue(element, "Content")?.Contains(
-                    "update",
-                    StringComparison.OrdinalIgnoreCase) ?? false));
+                AttributeValue(element, "Content"),
+                "Check for updates",
+                StringComparison.Ordinal));
+        Assert.Contains(
+            about.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "Content"),
+                "Download update",
+                StringComparison.Ordinal));
+        Assert.Contains(
+            about.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "Content"),
+                "Restart to update",
+                StringComparison.Ordinal));
 
         var viewModel = File.ReadAllText(Path.Combine(
             ApplicationViews.RepositoryRoot,
@@ -171,11 +178,8 @@ public sealed class SettingsViewContractTests
             "GhostShell.App",
             "ViewModels",
             "MainWindowViewModel.cs"));
-        Assert.Contains("Manual · GitHub Releases", viewModel, StringComparison.Ordinal);
-        Assert.Contains(
-            "Not checked · automatic updates are off",
-            viewModel,
-            StringComparison.Ordinal);
+        Assert.Contains("ApplicationUpdateViewModel", viewModel, StringComparison.Ordinal);
+        Assert.DoesNotContain("Manual · GitHub Releases", viewModel, StringComparison.Ordinal);
     }
 
     [Fact]

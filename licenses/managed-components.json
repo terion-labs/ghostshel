@@ -669,6 +669,13 @@
       "file": "GhostShell.Terminal.dll"
     },
     {
+      "identity": "GhostShell.Updates/${productVersion}",
+      "kind": "project",
+      "depsType": "project",
+      "licenseDeclared": "NOASSERTION",
+      "file": "GhostShell.Updates.dll"
+    },
+    {
       "identity": "GhostShell/${productVersion}",
       "kind": "project",
       "depsType": "project",
@@ -1656,6 +1663,17 @@
       "nuGetId": "Vanara.PInvoke.Shared",
       "contentHash": "EVLvS02V6mL3xWo4cMv0OCo5H3uVR0eWxb0TtfcoI/SVaCKYWi1F000nax+uuEBJGmS90cfpYDvsgPn408b2ag==",
       "nupkgSha512": "K+uvwIX9FEnuCLl8pz8l+jiEcDRZ5hsttHlpNCUwcX8C4fG8Rtfsc4RrxJTLN5G5jsUMANV/SLD4opjSYmcuTA==",
+      "nuspecLicenseType": "expression",
+      "nuspecLicense": "MIT"
+    },
+    {
+      "identity": "Velopack/1.2.0",
+      "kind": "nuget",
+      "depsType": "package",
+      "licenseDeclared": "MIT",
+      "nuGetId": "Velopack",
+      "contentHash": "Rz67gJL619fSBS6omaSINUxyDuwhIxkm5mmubf7uLd5Qgi6LLKaKCha+QFP6n+Bw/UjA0vutnH4JQfYzn6ANtw==",
+      "nupkgSha512": "MJ6Ieafc15PZkDFZiVIcE0wrePMF/07UyboeDoXBFeyQXSzGgx37AurKE8mg8aKcA01yNhjN4TrAstfV9raZFw==",
       "nuspecLicenseType": "expression",
       "nuspecLicense": "MIT"
     },

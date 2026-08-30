@@ -206,19 +206,25 @@ before GitHub Release publication.
 
 ## Update and rollback policy
 
-The macOS arm64 application uses a manual GitHub Releases channel. GhostSHELL
-does not fetch an appcast or release API, check in the background, show remote
-release notes, download an archive, or replace its own bundle. Doing nothing
-defers updates indefinitely and produces no update notification or network
-request. The application contains no release-signing or notarization
-credential.
+The macOS arm64 bundle now records `github-release`, `velopack`, and
+`osx-arm64-stable` in `Contents/Resources/distribution.json`. GhostSHELL never
+checks in the background. A user can check and download from the About page only
+when Velopack confirms that the running bundle contains its installation
+metadata and updater. The application contains no release-signing,
+notarization, or GitHub credential.
 
-To update, download the ZIP and checksum from the project's GitHub Releases
-page, compare the archive SHA-256, extract it, quit GhostSHELL, and replace the
-application bundle. macOS verifies the Developer ID signature, stapled
-notarization ticket, and Gatekeeper policy independently of the app. A failed
-download or rejected package leaves the installed bundle and user data
-untouched.
+The current release archive predates the Velopack bundle stage. It therefore
+reports that in-place updates are unavailable. The release lane must assemble
+Velopack's `UpdateMac`, `sq.version`, portable archive, full package, and channel
+feed before the existing signing, notarization, and exact-artifact evidence
+checks. See ADR 0052. It must not publish a Velopack package produced after those
+checks.
+
+Until that release-lane gate lands, update by downloading the ZIP and checksum
+from the project's GitHub Releases page, comparing the archive SHA-256,
+extracting it, quitting GhostSHELL, and replacing the application bundle. macOS
+verifies the Developer ID signature, stapled notarization ticket, and Gatekeeper
+policy independently of the app.
 
 Keep the previous application bundle until the new version has launched and
 opened the existing profile. Replacing the bundle does not move the profile
@@ -230,8 +236,8 @@ pre-update backup/export. The application never claims that an older binary
 can read a newer schema.
 
 macOS arm64 is the only current release package. Windows, Linux, Intel macOS,
-platform stores, signed feeds, delta updates, and unattended installation have
-no update channel until their packaging milestones are implemented and tested.
+and platform stores have no update channel until their packaging milestones are
+implemented and tested.
 
 ## Validated payload
 

@@ -39,11 +39,12 @@ public sealed class MacOsAppBundleBuilder
     private const string AppIconFileName = "GhostShell.icns";
     private const string AssetCatalogFileName = "Assets.car";
     private const string ProductIdentityFileName = "product-identity.json";
+    private const string DistributionManifestFileName = "distribution.json";
     private const string ProductIdentityDirectoryName = "ProductIdentity";
     private const string ProductVersionPlaceholder = "__GHOSTSHELL_VERSION__";
     private const string BuildVersionPlaceholder = "__GHOSTSHELL_BUILD_VERSION__";
     private const int NativeEvidenceDirectoryCount = 1;
-    private const int GeneratedBundleFileCount = 4;
+    private const int GeneratedBundleFileCount = 5;
     private const int GeneratedBundleDirectoryCount = 1;
     private const string NativeTerminalCatalogFileName =
         "native-terminal-components.json";
@@ -138,11 +139,14 @@ public sealed class MacOsAppBundleBuilder
                 "macos-release-legal.json"),
             request.ProductIdentitySourceRoot);
         var infoPlist = RenderInfoPlist(request.ProductVersion, request.BuildVersion);
+        var distributionManifest = DistributionManifestBuilder.BuildGitHubVelopack(
+            request.CefRuntimeIdentifier);
         var generatedBundleBytes = checked(
             Encoding.UTF8.GetByteCount(infoPlist)
             + identity.Manifest.Length
             + identity.IcnsFallback.Length
-            + identity.AssetCatalog.Length);
+            + identity.AssetCatalog.Length
+            + distributionManifest.Length);
         var publishDirectory = MacOsPackagePaths.RequireExistingDirectory(
             request.PublishDirectory,
             nameof(request.PublishDirectory));
@@ -223,6 +227,9 @@ public sealed class MacOsAppBundleBuilder
             WriteNewFile(
                 Path.Combine(resourcesDirectory, AssetCatalogFileName),
                 identity.AssetCatalog);
+            WriteNewFile(
+                Path.Combine(resourcesDirectory, DistributionManifestFileName),
+                distributionManifest);
             var identityDirectory = Path.Combine(
                 licenseDirectory,
                 ProductIdentityDirectoryName);

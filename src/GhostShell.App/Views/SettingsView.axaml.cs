@@ -57,6 +57,8 @@ public sealed partial class SettingsView : UserControl
 
     public event EventHandler<RoutedEventArgs>? ClearKeybindingPrefixRequested;
 
+    public event EventHandler<RoutedEventArgs>? CheckForUpdatesRequested;
+
     public event EventHandler<RoutedEventArgs>?
         ClearMcpServerDiagnosticHistoryRequested;
 
@@ -83,6 +85,8 @@ public sealed partial class SettingsView : UserControl
     public event EventHandler<RoutedEventArgs>? DeleteWorkspaceRequested;
 
     public event EventHandler<RoutedEventArgs>? DiagnosticsSettingsRequested;
+
+    public event EventHandler<RoutedEventArgs>? DownloadUpdateRequested;
 
     public event EventHandler<RoutedEventArgs>? DismissSavedScreenDeleteUndoRequested;
 
@@ -142,6 +146,8 @@ public sealed partial class SettingsView : UserControl
     public event EventHandler<RoutedEventArgs>? ReviewHistoryPrivacyRequested;
 
     public event EventHandler<RoutedEventArgs>? ReviewOnboardingRequested;
+
+    public event EventHandler<RoutedEventArgs>? RestartToApplyUpdateRequested;
 
     public event EventHandler<RoutedEventArgs>?
         RestoreSessionsOnStartChangedRequested;
@@ -469,6 +475,12 @@ public sealed partial class SettingsView : UserControl
     private void OnBrowserSettingsClick(object? sender, RoutedEventArgs e) =>
         BrowserSettingsRequested?.Invoke(sender, e);
 
+    private void OnCheckForUpdatesClick(object? sender, RoutedEventArgs e) =>
+        CheckForUpdatesRequested?.Invoke(sender, e);
+
+    private void OnDownloadUpdateClick(object? sender, RoutedEventArgs e) =>
+        DownloadUpdateRequested?.Invoke(sender, e);
+
     private void OnLockNowClick(object? sender, RoutedEventArgs e) =>
         LockNowRequested?.Invoke(sender, e);
 
@@ -512,6 +524,9 @@ public sealed partial class SettingsView : UserControl
 
     private void OnReviewOnboardingClick(object? sender, RoutedEventArgs e) =>
         ReviewOnboardingRequested?.Invoke(sender, e);
+
+    private void OnRestartToApplyUpdateClick(object? sender, RoutedEventArgs e) =>
+        RestartToApplyUpdateRequested?.Invoke(sender, e);
 
     private void OnRestoreSessionsOnStartChanged(object? sender, RoutedEventArgs e) =>
         RestoreSessionsOnStartChangedRequested?.Invoke(sender, e);

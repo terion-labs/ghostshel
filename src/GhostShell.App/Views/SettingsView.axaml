@@ -1510,7 +1510,17 @@
                   <StackPanel Grid.Row="2" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Platform" /><TextBlock Text="{Binding PlatformDescription}" /></StackPanel>
                   <StackPanel Grid.Row="2" Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Runtime" /><TextBlock Text="{Binding RuntimeDescription}" /></StackPanel>
                   <StackPanel Grid.Row="3" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Agent runtime" /><TextBlock Text="{Binding AgentRuntimeDescription}" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Target architecture: native .NET in process, without an external JavaScript runtime." TextWrapping="Wrap" /></StackPanel>
-                  <StackPanel Grid.Row="3" Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}"><TextBlock Classes="Eyebrow" Text="Update channel" /><TextBlock Text="{Binding UpdateChannel}" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding UpdateStatus}" TextWrapping="Wrap" /><TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="Download signed, notarized builds from the GhostShell GitHub Releases page. This app never checks for or installs updates." TextWrapping="Wrap" /></StackPanel>
+                  <StackPanel Grid.Row="3" Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
+                    <TextBlock Classes="Eyebrow" Text="Update channel" />
+                    <TextBlock Text="{Binding ApplicationUpdates.Channel}" />
+                    <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding ApplicationUpdates.Status}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Application update status" />
+                    <ProgressBar Minimum="0" Maximum="100" Value="{Binding ApplicationUpdates.DownloadProgress}" IsVisible="{Binding ApplicationUpdates.IsDownloading}" AutomationProperties.Name="Update download progress" />
+                    <WrapPanel Orientation="Horizontal">
+                      <Button Margin="{controls:Inset Right=Xs, Bottom=Xs}" Classes="SecondaryButton" Click="OnCheckForUpdatesClick" Content="Check for updates" IsEnabled="{Binding ApplicationUpdates.CanCheck}" IsVisible="{Binding ApplicationUpdates.CanCheck}" AutomationProperties.Name="Check for application updates" />
+                      <Button Margin="{controls:Inset Right=Xs, Bottom=Xs}" Classes="PrimaryButton" Click="OnDownloadUpdateClick" Content="Download update" IsEnabled="{Binding ApplicationUpdates.CanDownload}" IsVisible="{Binding ApplicationUpdates.CanDownload}" AutomationProperties.Name="Download application update" />
+                      <Button Margin="{controls:Inset Bottom=Xs}" Classes="PrimaryButton" Click="OnRestartToApplyUpdateClick" Content="Restart to update" IsEnabled="{Binding ApplicationUpdates.CanRestartToApply}" IsVisible="{Binding ApplicationUpdates.CanRestartToApply}" AutomationProperties.Name="Restart to apply application update" />
+                    </WrapPanel>
+                  </StackPanel>
                 </Grid>
               </controls:SurfaceCard>
 

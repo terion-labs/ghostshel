@@ -213,6 +213,7 @@ materials and platform-specific owner decision.
 | `Vanara.Core` | `4.2.1` | MIT |
 | `Vanara.PInvoke.Kernel32` | `4.2.1` | MIT |
 | `Vanara.PInvoke.Shared` | `4.2.1` | MIT |
+| `Velopack` | `1.2.0` | MIT |
 | `bblanchon.PDFium.macOS` | `152.0.7961` | Apache-2.0 |
 ## Lucide icon geometry
 

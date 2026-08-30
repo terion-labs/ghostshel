@@ -189,6 +189,39 @@ public sealed partial class MainWindow
     private void OnBrowserSettingsClick(object? sender, RoutedEventArgs e) =>
         SetSettingsPage(SettingsPage.Browser);
 
+    private async void OnCheckForUpdatesClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        try
+        {
+            await ViewModel.ApplicationUpdates.CheckAsync(_lifetime.Token);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async void OnDownloadUpdateClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        try
+        {
+            await ViewModel.ApplicationUpdates.DownloadAsync(_lifetime.Token);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+    }
+
+    private void OnRestartToApplyUpdateClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        ViewModel.ApplicationUpdates.RestartToApply();
+    }
+
     private void OnEnableStartupProtectionClick(object? sender, RoutedEventArgs e)
     {
         _ = sender;

@@ -14,7 +14,6 @@ public sealed partial class RepositoryConventionTests
     [InlineData("api.github.com/repos/terion-labs/ghostshell/releases")]
     [InlineData("releases/latest/download/GhostShell-macOS")]
     [InlineData("Sparkle")]
-    [InlineData("Velopack")]
     [InlineData("appcast")]
     public void Desktop_has_no_automatic_update_client(string updateClientMarker)
     {
@@ -30,7 +29,25 @@ public sealed partial class RepositoryConventionTests
         Assert.All(productionSource, path => Assert.DoesNotContain(
             updateClientMarker,
             File.ReadAllText(path),
-            StringComparison.OrdinalIgnoreCase));
+                StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Velopack_dependency_is_isolated_to_the_updates_boundary()
+    {
+        var sourceRoot = Path.Combine(RepositoryRoot, "src");
+        var projectsReferencingVelopack = Directory
+            .EnumerateFiles(sourceRoot, "*.csproj", SearchOption.AllDirectories)
+            .Where(path => File.ReadAllText(path).Contains(
+                "<PackageReference Include=\"Velopack\"",
+                StringComparison.Ordinal))
+            .Select(path => Path.GetRelativePath(RepositoryRoot, path))
+            .ToArray();
+
+        Assert.Equal(
+            ["src/GhostShell.Updates/GhostShell.Updates.csproj"],
+            projectsReferencingVelopack,
+            StringComparer.Ordinal);
     }
 
     [Fact]
@@ -345,7 +362,7 @@ public sealed partial class RepositoryConventionTests
             expectedRows,
             noticeLines[(tableStart + 2)..tableEnd],
             StringComparer.Ordinal);
-        Assert.Equal(128, expectedRows.Count(row => !row.Contains("Exclr8Cef", StringComparison.Ordinal)));
+        Assert.Equal(129, expectedRows.Count(row => !row.Contains("Exclr8Cef", StringComparison.Ordinal)));
         Assert.Contains(expectedRows, row => row.Contains("DuckDB.NET.Bindings.Full` | `1.5.5` | MIT", StringComparison.Ordinal));
         Assert.DoesNotContain(expectedRows, row => row.Contains("DuckDB.NET.Bindings.Full` | `1.2.1`", StringComparison.Ordinal));
     }
@@ -468,6 +485,7 @@ public sealed partial class RepositoryConventionTests
         Assert.Contains("\"GhostShell.Git.dll\"", packageScript, StringComparison.Ordinal);
         Assert.Contains("\"GhostShell.Previews.dll\"", packageScript, StringComparison.Ordinal);
         Assert.Contains("\"GhostShell.Redis.dll\"", packageScript, StringComparison.Ordinal);
+        Assert.Contains("\"GhostShell.Updates.dll\"", packageScript, StringComparison.Ordinal);
     }
 
     [Fact]
