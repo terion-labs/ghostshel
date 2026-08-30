@@ -211,7 +211,7 @@ if [[ ! "${team_identifier}" =~ ^[A-Za-z0-9]{1,32}$ ]]; then
     exit 1
 fi
 certificate_prefix="${notary_directory}/certificate"
-/usr/bin/codesign --display --extract-certificates "${certificate_prefix}" "${app}"
+/usr/bin/codesign --display "--extract-certificates=${certificate_prefix}" "${app}"
 if [[ ! -f "${certificate_prefix}0" ]]; then
     echo "The signing certificate could not be extracted." >&2
     exit 1

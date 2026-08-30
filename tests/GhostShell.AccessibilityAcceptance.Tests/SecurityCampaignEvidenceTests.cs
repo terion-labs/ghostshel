@@ -300,6 +300,24 @@ public sealed class SecurityCampaignEvidenceTests
     }
 
     [Fact]
+    public void MacOsSigningEvidencePassesTheCertificatePrefixAsOneCodesignArgument()
+    {
+        var root = RepositoryRoot();
+        var signingScript = File.ReadAllText(
+            Path.Combine(root, "scripts", "sign-notarize-macos.sh"),
+            Encoding.UTF8);
+
+        Assert.Contains(
+            "\"--extract-certificates=${certificate_prefix}\" \"${app}\"",
+            signingScript,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "--extract-certificates \"${certificate_prefix}\"",
+            signingScript,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void CheckedInAuthorityRegistryMatchesCurrentActionCatalog()
     {
         var root = RepositoryRoot();
