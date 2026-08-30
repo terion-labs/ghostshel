@@ -224,7 +224,7 @@ printf '%s' "${APPLE_CERTIFICATE_P12_BASE64}" \
 printf '%s' "${APPLE_NOTARY_PRIVATE_KEY_BASE64}" \
     | /usr/bin/base64 -D > "${signing_directory}/AuthKey.p8"
 security create-keychain -p "${signing_password}" "${signing_keychain}"
-security set-keychain-settings -lut 21600 "${signing_keychain}"
+security set-keychain-settings "${signing_keychain}"
 security unlock-keychain -p "${signing_password}" "${signing_keychain}"
 security import "${signing_directory}/certificate.p12" \
     -k "${signing_keychain}" \
@@ -364,6 +364,9 @@ cd "${sealed_source}"
 ./scripts/build-libghostty-vt.sh --rid osx-arm64
 ./scripts/build-sql-language-worker.sh --local --rid osx-arm64
 ./scripts/build-cef-runtime.sh --rid osx-arm64 --dotnet "${dotnet}"
+security unlock-keychain -p "${signing_password}" "${signing_keychain}"
+security find-identity -v -p codesigning "${signing_keychain}" \
+    | grep -Fq "${signing_identity}"
 ./scripts/package-macos-github-release.sh \
     --version "${version}" \
     --build-version "${build_version}" \
