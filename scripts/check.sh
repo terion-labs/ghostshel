@@ -55,6 +55,7 @@ cd "${repository_dir}"
     --configuration Release \
     --no-restore \
     --nologo
+"${script_dir}/test-section.sh" validate
 
 run_test_project() {
     local project="$1"

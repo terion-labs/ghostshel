@@ -8,7 +8,7 @@ restore_mode="${2:-}"
 
 usage() {
     cat >&2 <<'EOF'
-Usage: ./scripts/test-section.sh <section|all> [--no-restore]
+Usage: ./scripts/test-section.sh <section|all|validate> [--no-restore]
 
 Sections: core, agent, app, services, data-browser, terminal-host
 EOF
@@ -45,6 +45,7 @@ services_projects=(
     "tests/GhostShell.Infrastructure.Tests/GhostShell.Infrastructure.Tests.csproj"
     "tests/GhostShell.Monitoring.Tests/GhostShell.Monitoring.Tests.csproj"
     "tests/GhostShell.Previews.Tests/GhostShell.Previews.Tests.csproj"
+    "tests/GhostShell.Updates.Tests/GhostShell.Updates.Tests.csproj"
 )
 data_browser_projects=(
     "tests/GhostShell.AccessibilityAcceptance.Tests/GhostShell.AccessibilityAcceptance.Tests.csproj"
@@ -86,6 +87,10 @@ if [[ -n "${duplicate_projects}" || "${configured_projects}" != "${actual_projec
         <(printf '%s\n' "${actual_projects}") \
         <(printf '%s\n' "${configured_projects}") >&2 || true
     exit 1
+fi
+
+if [[ "${section}" == "validate" ]]; then
+    exit 0
 fi
 
 case "${section}" in
