@@ -259,9 +259,11 @@ GHOSTSHELL_TEST_RESULTS_ROOT="${release_artifacts}/campaign-test-results" \
     ./scripts/check.sh --full
 
 git archive --format=tar "${commit}" | tar -xf - -C "${dependency_source}"
-"${dotnet}" restore "${dependency_source}/GhostShell.slnx" --locked-mode
+NUGET_PACKAGES="${nuget_packages}" "${dotnet}" restore \
+    "${dependency_source}/GhostShell.slnx" \
+    --locked-mode
 mkdir -p "${release_artifacts}/dependency-scan"
-"${dotnet}" package list \
+NUGET_PACKAGES="${nuget_packages}" "${dotnet}" package list \
     --project "${dependency_source}/GhostShell.slnx" \
     --vulnerable \
     --include-transitive \

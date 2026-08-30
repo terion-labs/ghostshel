@@ -326,6 +326,14 @@ public sealed class SecurityCampaignEvidenceTests
         Assert.Contains("APPLE_NOTARY_PRIVATE_KEY_BASE64", rehearsal, StringComparison.Ordinal);
         Assert.Contains("security create-keychain", rehearsal, StringComparison.Ordinal);
         Assert.Contains("security delete-keychain", rehearsal, StringComparison.Ordinal);
+        Assert.Contains(
+            "NUGET_PACKAGES=\"${nuget_packages}\" \"${dotnet}\" restore",
+            rehearsal,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "NUGET_PACKAGES=\"${nuget_packages}\" \"${dotnet}\" package list",
+            rehearsal,
+            StringComparison.Ordinal);
         Assert.Contains("codesign --verify --deep --strict", rehearsal, StringComparison.Ordinal);
         Assert.Contains("spctl --assess --type execute", rehearsal, StringComparison.Ordinal);
         Assert.Contains("assemble-release-evidence", rehearsal, StringComparison.Ordinal);
