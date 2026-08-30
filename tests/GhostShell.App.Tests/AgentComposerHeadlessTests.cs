@@ -231,7 +231,6 @@ public sealed partial class AgentChatViewModelTests
             try
             {
                 window.Show();
-                await Task.Delay(150);
                 window.UpdateLayout();
 
                 var transcript = Assert.IsType<ScrollViewer>(

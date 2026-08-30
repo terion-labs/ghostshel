@@ -382,12 +382,14 @@ public partial class AgentWorkspaceView
         var endOffset = Math.Max(
             0,
             transcript.Extent.Height - transcript.Viewport.Height);
-        var isUpdatingTranscriptLayout = _agentChatScrollPending
-            || _agentChatMaterializationInProgress;
-        if (e.OffsetDelta.Y < 0 && !isUpdatingTranscriptLayout)
+        var isManualUpwardScroll = e.OffsetDelta.Y < 0
+            && e.ExtentDelta.Y == 0
+            && !_agentChatMaterializationInProgress;
+        if (isManualUpwardScroll)
         {
             _followAgentChatEnd = false;
             _agentChatScrollGeneration++;
+            _agentChatScrollPending = false;
         }
         else if (transcript.Offset.Y >= endOffset - AgentTranscriptEndTolerance)
         {
@@ -400,8 +402,7 @@ public partial class AgentWorkspaceView
         }
 
         if (!_agentChatHistoryLoadPending
-            && !isUpdatingTranscriptLayout
-            && e.OffsetDelta.Y < 0
+            && isManualUpwardScroll
             && transcript.Offset.Y <= AgentTranscriptHistoryThreshold)
         {
             LoadOlderAgentChatMessages();
