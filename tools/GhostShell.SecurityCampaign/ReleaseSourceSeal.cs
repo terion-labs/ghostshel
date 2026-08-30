@@ -56,7 +56,6 @@ internal static class ReleaseSourceSeal
         RequireCleanTrackedState(gitRoot);
 
         var archive = ReadTaggedArchive(gitRoot, expectedCommit);
-        RequireNoUntrackedPaths(gitRoot, archive.Files);
         var ignoreRootFinderMetadata = !ContainsPath(archive.Files, RootFinderMetadataPath);
         var exported = ReadDirectoryManifest(exportRoot, [], ignoreRootFinderMetadata);
         RequireSameManifest(archive.Files, exported.Files, "The exported release source differs from the exact tagged archive.");
@@ -480,46 +479,6 @@ internal static class ReleaseSourceSeal
         {
             throw new InvalidDataException("The release checkout contains staged index changes.");
         }
-    }
-
-    private static void RequireNoUntrackedPaths(
-        string repository,
-        IReadOnlyList<ReleaseSourceManifestEntry> taggedFiles)
-    {
-        var ignoreRootFinderMetadata = !ContainsPath(taggedFiles, RootFinderMetadataPath);
-        var ordinary = Git(repository, "ls-files", "--others", "--exclude-standard", "-z");
-        var ignored = Git(repository, "ls-files", "--others", "--ignored", "--exclude-standard", "-z");
-        var unexpected = ordinary.Split('\0', StringSplitOptions.RemoveEmptyEntries)
-            .Concat(ignored.Split('\0', StringSplitOptions.RemoveEmptyEntries))
-            .Distinct(StringComparer.Ordinal)
-            .Where(path => !IsIgnorableRootFinderMetadata(repository, path, ignoreRootFinderMetadata))
-            .Order(StringComparer.Ordinal)
-            .FirstOrDefault();
-        if (unexpected is not null)
-        {
-            throw new InvalidDataException($"The release checkout contains an untracked or ignored path: {unexpected}");
-        }
-    }
-
-    private static bool IsIgnorableRootFinderMetadata(
-        string repository,
-        string relativePath,
-        bool ignoreRootFinderMetadata)
-    {
-        if (!ignoreRootFinderMetadata
-            || !string.Equals(relativePath, RootFinderMetadataPath, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        var path = Path.Combine(repository, RootFinderMetadataPath);
-        if (!File.Exists(path))
-        {
-            return false;
-        }
-
-        var attributes = File.GetAttributes(path);
-        return (attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint)) == 0;
     }
 
     private static string Git(string repository, params string[] arguments)

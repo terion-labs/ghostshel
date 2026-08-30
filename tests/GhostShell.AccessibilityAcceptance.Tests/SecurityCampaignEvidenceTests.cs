@@ -186,14 +186,17 @@ public sealed class SecurityCampaignEvidenceTests
     }
 
     [Fact]
-    public void ExactSourceTreeRejectsUntrackedFirstPartyFile()
+    public void ExactSourceTreeIgnoresRepositoryFilesExcludedFromSealedExport()
     {
         using var fixture = new GitRepositoryFixture();
         File.WriteAllText(Path.Combine(fixture.Path, "unexpected.cs"), "tamper", Encoding.UTF8);
+        var localSecrets = Path.Combine(fixture.Path, ".apple");
+        Directory.CreateDirectory(localSecrets);
+        File.WriteAllText(Path.Combine(localSecrets, "AuthKey.p8"), "secret", Encoding.UTF8);
 
-        var error = Assert.Throws<InvalidDataException>(() => fixture.CreateSeal());
+        var sealedSource = fixture.CreateSeal();
 
-        Assert.Contains("untracked or ignored path", error.Message, StringComparison.Ordinal);
+        Assert.Equal(fixture.Commit, sealedSource.Seal.Commit);
     }
 
     [Fact]
@@ -209,11 +212,11 @@ public sealed class SecurityCampaignEvidenceTests
         Assert.DoesNotContain(sealedSource.Seal.Files, file => file.RelativePath == ".DS_Store");
         Assert.Equal(sealedSource.Seal.ManifestSha256, verified.ObservedManifestSha256);
 
-        var nestedDirectory = Path.Combine(fixture.Path, "nested");
+        var nestedDirectory = Path.Combine(fixture.ExportPath, "nested");
         Directory.CreateDirectory(nestedDirectory);
         File.WriteAllText(Path.Combine(nestedDirectory, ".DS_Store"), "finder", Encoding.UTF8);
         var error = Assert.Throws<InvalidDataException>(() => fixture.CreateSeal());
-        Assert.Contains("nested/.DS_Store", error.Message, StringComparison.Ordinal);
+        Assert.Contains("differs from the exact tagged archive", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -233,18 +236,13 @@ public sealed class SecurityCampaignEvidenceTests
     {
         using var fixture = new GitRepositoryFixture();
         File.WriteAllText(
-            Path.Combine(fixture.Path, ".git", "info", "exclude"),
-            "Directory.Build.targets\n",
-            new UTF8Encoding(false));
-        File.WriteAllText(
-            Path.Combine(fixture.Path, "Directory.Build.targets"),
+            Path.Combine(fixture.ExportPath, "Directory.Build.targets"),
             "<Project><Target Name=\"Tamper\" BeforeTargets=\"CoreCompile\" /></Project>",
             new UTF8Encoding(false));
 
         var error = Assert.Throws<InvalidDataException>(() => fixture.CreateSeal());
 
-        Assert.Contains("untracked or ignored path", error.Message, StringComparison.Ordinal);
-        Assert.Contains("Directory.Build.targets", error.Message, StringComparison.Ordinal);
+        Assert.Contains("differs from the exact tagged archive", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -734,7 +732,7 @@ public sealed class SecurityCampaignEvidenceTests
 
         private const string Tag = "v1.2.3";
 
-        private string Commit { get; }
+        public string Commit { get; }
 
         private string Tree { get; }
 
