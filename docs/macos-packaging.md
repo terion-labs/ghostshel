@@ -169,7 +169,7 @@ support `osx-x64`. Full Intel application packaging fails fast in this pass:
 it requires a separate exact managed-component catalog and a verified x64
 libghostty-vt payload/receipt before the app packager may claim that RID.
 
-For a release candidate, use a Developer ID Application identity. The signing
+For a lower-level release candidate, use a Developer ID Application identity. The signing
 script signs all Native AOT payload Mach-O files, CEF leaf libraries, the
 framework, shared shims, five helper apps, and the outer app in nested-code
 order without `codesign --deep` mutation:
@@ -188,6 +188,33 @@ submit it with `notarytool --wait`, staple the accepted ticket, and validate it
 with both `stapler` and Gatekeeper. The profile must already exist in the
 login keychain; credentials are never accepted on the command line or written
 to package evidence.
+
+The GitHub release lane must use the higher-level assembler, not publish the
+lower-level candidate directly:
+
+```sh
+./scripts/package-macos-github-release.sh \
+  --version 0.1.0 \
+  --build-version 1 \
+  --output-dir artifacts/macos-arm64-direct \
+  --sign-identity "Developer ID Application: Example Corp (TEAMID)" \
+  --notary-profile ghostshell-release \
+  --keychain /path/to/release.keychain-db \
+  --release-evidence-dir /outside/source/release-evidence \
+  --source-seal /outside/source/source-seal \
+  --security-campaign-tool /outside/source/GhostShell.SecurityCampaign.dll \
+  --build-artifacts-root /outside/source/build
+```
+
+The base packager signs nested code without notarizing it. Pinned Velopack then
+adds `UpdateMac` and `sq.version`, signs the updater and final outer bundle,
+notarizes and staples that final app, and derives the portable ZIP and full
+update package. The release validator compares every packaged app byte with the
+portable app, verifies the feed's exact package digest and size, and rejects any
+symbolic link except `Contents/MacOS/sq.version` pointing to
+`../Resources/sq.version`. Velopack 1.2 applies macOS update files with mode 755,
+so the cross-artifact proof compares paths and bytes while the extracted
+portable app retains the stricter mode-sensitive release fingerprint.
 
 The tag workflow requires all six release secrets and fails before assembly if
 any are absent:
@@ -213,18 +240,12 @@ when Velopack confirms that the running bundle contains its installation
 metadata and updater. The application contains no release-signing,
 notarization, or GitHub credential.
 
-The current release archive predates the Velopack bundle stage. It therefore
-reports that in-place updates are unavailable. The release lane must assemble
-Velopack's `UpdateMac`, `sq.version`, portable archive, full package, and channel
-feed before the existing signing, notarization, and exact-artifact evidence
-checks. See ADR 0052. It must not publish a Velopack package produced after those
-checks.
-
-Until that release-lane gate lands, update by downloading the ZIP and checksum
-from the project's GitHub Releases page, comparing the archive SHA-256,
-extracting it, quitting GhostSHELL, and replacing the application bundle. macOS
-verifies the Developer ID signature, stapled notarization ticket, and Gatekeeper
-policy independently of the app.
+Archives released before this lane do not contain Velopack metadata and cannot
+update themselves. Install one update-aware ZIP manually; subsequent direct
+releases can be checked, downloaded, and applied from About when the bundle is
+in a user-writable location. The ZIP and checksum remain available for initial
+installation and recovery. macOS independently verifies the Developer ID
+signature, stapled notarization ticket, and Gatekeeper policy.
 
 Keep the previous application bundle until the new version has launched and
 opened the existing profile. Replacing the bundle does not move the profile

@@ -56,7 +56,9 @@ internal static class PackageFingerprint
         EnsurePackageRoot(packagePath: root);
         EnsureExecutable(executable, platform);
         var executableFingerprint = HashRegularFile(executable, MaximumPackageBytes);
-        var (fileCount, manifestSha256) = HashPackage(root);
+        var (fileCount, manifestSha256) = HashPackage(
+            root,
+            allowVelopackMetadataLink: platform == TargetPlatform.MacOS);
         var build = new BuildIdentity(
             buildLabel,
             packageKind,
@@ -390,12 +392,16 @@ internal static class PackageFingerprint
         }
     }
 
-    private static (int FileCount, string Digest) HashPackage(string packageRoot)
+    private static (int FileCount, string Digest) HashPackage(
+        string packageRoot,
+        bool allowVelopackMetadataLink)
     {
-        var entries = EnumeratePackageEntries(packageRoot)
+        var entries = EnumeratePackageEntries(
+                packageRoot,
+                allowVelopackMetadataLink)
             .OrderBy(entry => entry.RelativePath, StringComparer.Ordinal)
             .ToArray();
-        var fileCount = entries.Count(entry => !entry.IsDirectory);
+        var fileCount = entries.Count(entry => entry.Kind != PackageEntryKind.Directory);
         if (fileCount == 0)
         {
             throw new InvalidDataException(
@@ -408,16 +414,35 @@ internal static class PackageFingerprint
         long totalBytes = 0;
         foreach (var entry in entries)
         {
-            packageHash.AppendData(entry.IsDirectory ? [(byte)'D'] : [(byte)'F']);
+            packageHash.AppendData(entry.Kind switch
+            {
+                PackageEntryKind.Directory => [(byte)'D'],
+                PackageEntryKind.RegularFile => [(byte)'F'],
+                PackageEntryKind.SymbolicLink => [(byte)'L'],
+                _ => throw new InvalidOperationException("Unsupported package entry kind."),
+            });
             packageHash.AppendData(Encoding.UTF8.GetBytes(entry.RelativePath));
             packageHash.AppendData([0]);
 
-            if (entry.IsDirectory)
+            if (entry.Kind == PackageEntryKind.Directory)
             {
                 BinaryPrimitives.WriteInt32BigEndian(
                     metadataBuffer,
                     GetRelevantDirectoryMetadata(entry.FullPath));
                 packageHash.AppendData(metadataBuffer);
+                continue;
+            }
+
+            if (entry.Kind == PackageEntryKind.SymbolicLink)
+            {
+                var target = entry.LinkTarget
+                    ?? throw new InvalidOperationException("A symbolic-link entry has no target.");
+                var targetBytes = Encoding.UTF8.GetBytes(target);
+                totalBytes = checked(totalBytes + targetBytes.Length);
+                EnsureLengthWithinFingerprintBoundary(totalBytes, MaximumPackageBytes);
+                BinaryPrimitives.WriteInt64BigEndian(lengthBuffer, targetBytes.Length);
+                packageHash.AppendData(lengthBuffer);
+                packageHash.AppendData(targetBytes);
                 continue;
             }
 
@@ -449,7 +474,9 @@ internal static class PackageFingerprint
         return (fileCount, Convert.ToHexString(packageHash.GetHashAndReset()).ToLowerInvariant());
     }
 
-    private static IReadOnlyList<PackageEntry> EnumeratePackageEntries(string packageRoot)
+    private static IReadOnlyList<PackageEntry> EnumeratePackageEntries(
+        string packageRoot,
+        bool allowVelopackMetadataLink)
     {
         var root = new DirectoryInfo(Path.GetFullPath(packageRoot));
         if (root.Attributes.HasFlag(FileAttributes.ReparsePoint))
@@ -460,7 +487,7 @@ internal static class PackageFingerprint
 
         var entries = new List<PackageEntry>
         {
-            new(root.FullName, ".", IsDirectory: true),
+            new(root.FullName, ".", PackageEntryKind.Directory, LinkTarget: null),
         };
         var pending = new Stack<(DirectoryInfo Directory, int Depth)>();
         pending.Push((root, 0));
@@ -486,13 +513,22 @@ internal static class PackageFingerprint
                         $"The package exceeds the {MaximumPackageEntries}-entry traversal limit.");
                 }
 
+                var relativePath = NormalizeRelativePath(root.FullName, entry.FullName);
                 if (entry.Attributes.HasFlag(FileAttributes.ReparsePoint))
                 {
-                    // Reject before recursion. A recursive EnumerationOptions walk can
-                    // otherwise leave the package root through a directory link before
-                    // the link itself is inspected.
-                    throw new InvalidDataException(
-                        "The acceptance package contains a symbolic link or reparse point.");
+                    entries.Add(InspectSymbolicLink(
+                        root.FullName,
+                        entry,
+                        relativePath,
+                        allowVelopackMetadataLink));
+                    fileCount++;
+                    if (fileCount > MaximumPackageFiles)
+                    {
+                        throw new InvalidDataException(
+                            $"The package exceeds the {MaximumPackageFiles}-file fingerprint limit.");
+                    }
+
+                    continue;
                 }
 
                 if (entry is DirectoryInfo childDirectory)
@@ -505,8 +541,9 @@ internal static class PackageFingerprint
 
                     entries.Add(new PackageEntry(
                         childDirectory.FullName,
-                        NormalizeRelativePath(root.FullName, childDirectory.FullName),
-                        IsDirectory: true));
+                        relativePath,
+                        PackageEntryKind.Directory,
+                        LinkTarget: null));
                     pending.Push((childDirectory, depth + 1));
                     continue;
                 }
@@ -519,8 +556,9 @@ internal static class PackageFingerprint
 
                 entries.Add(new PackageEntry(
                     file.FullName,
-                    NormalizeRelativePath(root.FullName, file.FullName),
-                    IsDirectory: false));
+                    relativePath,
+                    PackageEntryKind.RegularFile,
+                    LinkTarget: null));
                 fileCount++;
                 if (fileCount > MaximumPackageFiles)
                 {
@@ -531,6 +569,47 @@ internal static class PackageFingerprint
         }
 
         return entries;
+    }
+
+    private static PackageEntry InspectSymbolicLink(
+        string packageRoot,
+        FileSystemInfo entry,
+        string relativePath,
+        bool allowVelopackMetadataLink)
+    {
+        const string metadataPath = "Contents/MacOS/sq.version";
+        const string metadataTarget = "../Resources/sq.version";
+        if (!allowVelopackMetadataLink
+            || entry is not FileInfo
+            || !string.Equals(relativePath, metadataPath, StringComparison.Ordinal)
+            || !string.Equals(entry.LinkTarget, metadataTarget, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "The acceptance package contains an unsupported symbolic link or reparse point.");
+        }
+
+        var resolvedTarget = Path.GetFullPath(Path.Combine(
+            Path.GetDirectoryName(entry.FullName)
+                ?? throw new InvalidDataException("The Velopack metadata link has no parent directory."),
+            metadataTarget));
+        var expectedTarget = Path.Combine(
+            packageRoot,
+            "Contents",
+            "Resources",
+            "sq.version");
+        if (!string.Equals(resolvedTarget, expectedTarget, StringComparison.Ordinal)
+            || !File.Exists(resolvedTarget)
+            || File.GetAttributes(resolvedTarget).HasFlag(FileAttributes.ReparsePoint))
+        {
+            throw new InvalidDataException(
+                "The Velopack metadata link must resolve to its regular in-bundle resource.");
+        }
+
+        return new PackageEntry(
+            entry.FullName,
+            relativePath,
+            PackageEntryKind.SymbolicLink,
+            metadataTarget);
     }
 
     private static string NormalizeRelativePath(string root, string path) =>
@@ -691,7 +770,18 @@ internal static class PackageFingerprint
             : "unversioned";
     }
 
-    private sealed record PackageEntry(string FullPath, string RelativePath, bool IsDirectory);
+    private enum PackageEntryKind
+    {
+        RegularFile,
+        Directory,
+        SymbolicLink,
+    }
+
+    private sealed record PackageEntry(
+        string FullPath,
+        string RelativePath,
+        PackageEntryKind Kind,
+        string? LinkTarget);
 
     private sealed record FileFingerprint(long Length, string Digest, int Metadata);
 }

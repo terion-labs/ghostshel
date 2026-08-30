@@ -375,14 +375,25 @@ public sealed partial class RepositoryConventionTests
             ".github",
             "workflows",
             "repository-gate.yml"));
+        var releaseScript = File.ReadAllText(Path.Combine(
+            RepositoryRoot,
+            "scripts",
+            "package-macos-github-release.sh"));
 
         Assert.Contains("Verify macOS legal publication clearance", workflow, StringComparison.Ordinal);
         Assert.Contains("macos-release-legal", workflow, StringComparison.Ordinal);
         Assert.Contains("--require-clearance", workflow, StringComparison.Ordinal);
 
         Assert.Contains("archive=\"GhostShell-macOS-arm64.zip\"", workflow, StringComparison.Ordinal);
-        Assert.Contains("artifacts/GhostShell-macOS-arm64.zip.sha256", workflow, StringComparison.Ordinal);
+        Assert.Contains("distribution/GhostShell-macOS-arm64.zip.sha256", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("GhostShell-macOS-arm64-${RELEASE_VERSION}.zip", workflow, StringComparison.Ordinal);
+        Assert.Contains("package-macos-github-release.sh", workflow, StringComparison.Ordinal);
+        Assert.Contains("releases.osx-arm64-stable.json", workflow, StringComparison.Ordinal);
+        Assert.Contains("app.ghostshell-${RELEASE_VERSION}-osx-arm64-stable-full.nupkg", workflow, StringComparison.Ordinal);
+        Assert.Contains("--signDisableDeep true", releaseScript, StringComparison.Ordinal);
+        Assert.Contains("--noInst true", releaseScript, StringComparison.Ordinal);
+        Assert.Contains("velopack-macos-validate", releaseScript, StringComparison.Ordinal);
+        Assert.Contains("record-macos-signing-evidence.sh", releaseScript, StringComparison.Ordinal);
         Assert.Contains("name: ghostshell-macos-arm64", workflow, StringComparison.Ordinal);
         Assert.Contains("permissions:\n      contents: write", workflow, StringComparison.Ordinal);
         Assert.Contains("if: startsWith(github.ref, 'refs/tags/v')", workflow, StringComparison.Ordinal);

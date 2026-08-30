@@ -91,7 +91,9 @@ Usage:
 Creates a speed-optimized Native AOT macOS arm64 release candidate. Without
 --sign-identity the candidate receives a complete ad-hoc seal for local use.
 Browser distribution requires a Developer ID identity and notarization.
---notary-profile requires Developer ID signing. The destination
+--notary-profile requires Developer ID signing. A sealed release build may use
+--release-evidence-dir before final notarization so a later release packager can
+add its notarization record. The destination
 must not already exist. The script never launches the application. Standalone
 CEF runtime builds retain separate osx-x64 support; the full application does
 not until its managed catalog and libghostty-vt receipt exist for that RID.
@@ -216,18 +218,22 @@ if [[ -n "${notary_profile}" && -z "${release_evidence_dir}" ]]; then
     echo "Notarized packaging requires --release-evidence-dir." >&2
     exit 64
 fi
-if [[ -z "${notary_profile}" && -n "${release_evidence_dir}" ]]; then
-    echo "--release-evidence-dir is valid only with notarization." >&2
+if [[ -n "${source_seal}" && -z "${release_evidence_dir}" ]]; then
+    echo "A sealed release build requires --release-evidence-dir." >&2
     exit 64
 fi
-if [[ -n "${notary_profile}" \
+if [[ -n "${release_evidence_dir}" && -z "${source_seal}" ]]; then
+    echo "--release-evidence-dir requires a sealed release source." >&2
+    exit 64
+fi
+if [[ -n "${release_evidence_dir}" \
     && ( -z "${source_seal}" \
         || -z "${security_campaign_tool}" \
         || -z "${build_artifacts_root}" \
         || -z "${GHOSTSHELL_RELEASE_SOURCE_COMMIT:-}" \
         || -z "${GHOSTSHELL_RELEASE_SOURCE_TREE:-}" \
         || -z "${GHOSTSHELL_RELEASE_SOURCE_TAG:-}" ) ]]; then
-    echo "Notarized packaging requires the sealed source, verifier, external build root, and exact source identity." >&2
+    echo "Release evidence requires the sealed source, verifier, external build root, and exact source identity." >&2
     exit 64
 fi
 if [[ -n "${release_evidence_dir}" ]]; then

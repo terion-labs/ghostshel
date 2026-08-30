@@ -17,6 +17,8 @@ internal static class Program
                     CefRuntimeReceiptCommand.Parse(args[1..])),
                 "cef-runtime-validate" => ValidateCefRuntime(
                     CefRuntimeValidateCommand.Parse(args[1..])),
+                "velopack-macos-validate" => ValidateVelopackMacOsRelease(
+                    VelopackMacOsReleaseCommand.Parse(args[1..])),
                 "native-publish-artifacts" =>
                     PublishNativeArtifacts(
                         NativeArtifactPublishCommand.Parse(args[1..])),
@@ -111,6 +113,17 @@ internal static class Program
         return 0;
     }
 
+    private static int ValidateVelopackMacOsRelease(
+        VelopackMacOsReleaseCommand command)
+    {
+        var inspection = VelopackMacOsRelease.Validate(command);
+        Console.WriteLine(
+            $"Validated {inspection.PackageFileName} against "
+            + $"{inspection.ApplicationFileCount} application files "
+            + $"({inspection.PackageSha256}).");
+        return 0;
+    }
+
     private static int PrintHelpAndReturn()
     {
         PrintHelp();
@@ -154,6 +167,12 @@ internal static class Program
               cef-runtime-validate --runtime-root <staged-directory>
                     --catalog <cef-runtime-components.json>
                     --runtime-identifier <rid>
+
+              velopack-macos-validate --release-directory <directory>
+                    --full-package <app.ghostshell-...-full.nupkg>
+                    --app <extracted/GhostShell.app>
+                    --version <major.minor.patch>
+                    --channel <osx-arm64-track>
 
               native-publish-artifacts --staged-directory <directory>
                     --destination <native/artifacts/runtime-identifier>

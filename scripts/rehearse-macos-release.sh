@@ -361,29 +361,25 @@ cd "${sealed_source}"
 ./scripts/build-libghostty-vt.sh --rid osx-arm64
 ./scripts/build-sql-language-worker.sh --local --rid osx-arm64
 ./scripts/build-cef-runtime.sh --rid osx-arm64 --dotnet "${dotnet}"
-mkdir -p "${release_artifacts}/macos-arm64"
-./scripts/package-macos.sh \
+./scripts/package-macos-github-release.sh \
     --version "${version}" \
     --build-version "${build_version}" \
-    --runtime-identifier osx-arm64 \
     --sign-identity "${signing_identity}" \
     --notary-profile "${notary_profile}" \
+    --keychain "${signing_keychain}" \
     --release-evidence-dir "${release_artifacts}/release-evidence" \
     --source-seal "${source_seal}" \
     --security-campaign-tool "${campaign_dll}" \
     --build-artifacts-root "${build_artifacts}/package" \
-    --output "${release_artifacts}/macos-arm64/GhostShell.app"
+    --output-dir "${release_artifacts}/distribution"
 
-archive="${release_artifacts}/GhostShell-macOS-arm64.zip"
-ditto -c -k --sequesterRsrc --keepParent \
-    "${release_artifacts}/macos-arm64/GhostShell.app" \
-    "${archive}"
-shasum -a 256 "${archive}" > "${archive}.sha256"
+archive="${release_artifacts}/distribution/GhostShell-macOS-arm64.zip"
 verification_directory="${working_directory}/archive"
 mkdir "${verification_directory}"
 ditto -x -k "${archive}" "${verification_directory}"
 extracted_app="${verification_directory}/GhostShell.app"
 codesign --verify --deep --strict --verbose=2 "${extracted_app}"
+xcrun stapler validate "${extracted_app}"
 spctl --assess --type execute --verbose=2 "${extracted_app}"
 info_plist="${extracted_app}/Contents/Info.plist"
 test "$(plutil -extract CFBundleShortVersionString raw "${info_plist}")" = "${version}"
@@ -395,6 +391,9 @@ assets_car="${extracted_app}/Contents/Resources/Assets.car"
 assetutil --info "${assets_car}" > "${verification_directory}/Assets.info.json"
 grep -Fq '"AssetType" : "Icon Image"' "${verification_directory}/Assets.info.json"
 grep -Fq '"Name" : "GhostShell"' "${verification_directory}/Assets.info.json"
+test -x "${extracted_app}/Contents/MacOS/UpdateMac"
+test "$(readlink "${extracted_app}/Contents/MacOS/sq.version")" \
+    = "../Resources/sq.version"
 
 evidence_arguments=(
     --repository "${sealed_source}"

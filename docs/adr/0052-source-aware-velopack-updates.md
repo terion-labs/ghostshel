@@ -40,19 +40,26 @@ trusted manifest also expose no update actions.
 private helpers, CEF subprocess dispatch, or Avalonia setup. This ordering is a
 Velopack process contract, not an update check.
 
-## Release transition
+## Release assembly
 
-The application runtime, source manifest, package inventory, and pinned `vpk`
-tool land before the release lane changes format. Existing ZIP installations do
-not contain Velopack's `UpdateMac` and `sq.version`, so `UpdateManager.IsInstalled`
-is false and the About page explains that the bundle cannot update in place.
+Existing ZIP installations do not contain Velopack's `UpdateMac` and
+`sq.version`, so `UpdateManager.IsInstalled` is false and the About page explains
+that the bundle cannot update in place. A user installs one update-aware release
+through the ZIP before in-app updates become available.
 
-The release lane may publish a Velopack feed only after it moves Velopack bundle
-assembly before GhostSHELL's nested code signing and notarization pass. The final
-portable archive and full update package must then pass the same exact-artifact
-codesign, Gatekeeper, notarization, source-seal, and release-evidence checks as
-the current archive. Publishing packages created after those checks would mutate
-the reviewed app bundle and is prohibited.
+`package-macos-github-release.sh` first assembles and signs every nested Native
+AOT and CEF binary. Pinned `vpk` then copies that app, adds `UpdateMac` and the
+fixed `sq.version` resource/link, signs only its updater and the final outer app,
+and notarizes and staples the result. The portable ZIP, full package, and channel
+feed are derived from that final app. A repository validator hashes every app
+file in the full package against the extracted portable app, checks the feed's
+exact package size and SHA-256, and accepts only Velopack's one fixed in-bundle
+metadata link. Exact release evidence is assembled only after these checks.
+
+The direct lane deliberately passes `--noInst`: the existing ZIP is the
+bootstrap artifact, and an unsigned `.pkg` is not published. Adding a package
+installer requires a provisioned Developer ID Installer identity and a separate
+signed/notarized installer evidence boundary.
 
 ## Consequences
 

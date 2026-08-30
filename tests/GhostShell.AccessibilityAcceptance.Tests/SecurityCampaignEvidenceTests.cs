@@ -287,7 +287,9 @@ public sealed class SecurityCampaignEvidenceTests
             "Seal exact tagged source before any release build",
             StringComparison.Ordinal);
         var nativeBuild = workflow.IndexOf("Build verified native payloads", StringComparison.Ordinal);
-        var packageBuild = workflow.IndexOf("Assemble macOS application", StringComparison.Ordinal);
+        var packageBuild = workflow.IndexOf(
+            "Assemble update-aware macOS release",
+            StringComparison.Ordinal);
 
         Assert.True(sealStep >= 0 && sealStep < nativeBuild && nativeBuild < packageBuild);
         Assert.Contains("chmod -R a-w \"${sealed_source}\"", workflow, StringComparison.Ordinal);
@@ -337,7 +339,7 @@ public sealed class SecurityCampaignEvidenceTests
     {
         var root = RepositoryRoot();
         var signingScript = File.ReadAllText(
-            Path.Combine(root, "scripts", "sign-notarize-macos.sh"),
+            Path.Combine(root, "scripts", "record-macos-signing-evidence.sh"),
             Encoding.UTF8);
         var nativeVerifier = File.ReadAllText(
             Path.Combine(

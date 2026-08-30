@@ -8,6 +8,7 @@ app=""
 identity=""
 notary_profile=""
 evidence=""
+record_signing_evidence="${repository_dir}/scripts/record-macos-signing-evidence.sh"
 
 usage() {
     cat >&2 <<'EOF'
@@ -200,35 +201,7 @@ if [[ -z "${notarization_id}" || "${notarization_status}" != "Accepted" ]]; then
     exit 1
 fi
 /usr/bin/xcrun stapler staple "${app}"
-/usr/bin/xcrun stapler validate "${app}"
-/usr/sbin/spctl --assess --type execute --verbose=2 "${app}"
-
-codesign_details="${notary_directory}/codesign-details.txt"
-/usr/bin/codesign --display --verbose=4 "${app}" 2> "${codesign_details}"
-team_identifier="$(/usr/bin/sed -n 's/^TeamIdentifier=//p' "${codesign_details}")"
-if [[ ! "${team_identifier}" =~ ^[A-Za-z0-9]{1,32}$ ]]; then
-    echo "The signed application has no bounded TeamIdentifier." >&2
-    exit 1
-fi
-certificate_prefix="${notary_directory}/certificate"
-/usr/bin/codesign --display "--extract-certificates=${certificate_prefix}" "${app}"
-if [[ ! -f "${certificate_prefix}0" ]]; then
-    echo "The signing certificate could not be extracted." >&2
-    exit 1
-fi
-certificate_sha256="$(/usr/bin/shasum -a 256 "${certificate_prefix}0" | /usr/bin/awk '{print $1}')"
-
-evidence_staging="${evidence}.staging"
-/usr/bin/plutil -create xml1 "${evidence_staging}"
-/usr/bin/plutil -insert schemaVersion -integer 1 "${evidence_staging}"
-/usr/bin/plutil -insert format -string ghostshell-macos-signing-evidence-v1 "${evidence_staging}"
-/usr/bin/plutil -insert notarizationId -string "${notarization_id}" "${evidence_staging}"
-/usr/bin/plutil -insert notarizationStatus -string "${notarization_status}" "${evidence_staging}"
-/usr/bin/plutil -insert teamIdentifier -string "${team_identifier}" "${evidence_staging}"
-/usr/bin/plutil -insert certificateSha256 -string "${certificate_sha256}" "${evidence_staging}"
-/usr/bin/plutil -insert codeSignatureValid -bool true "${evidence_staging}"
-/usr/bin/plutil -insert stapleValid -bool true "${evidence_staging}"
-/usr/bin/plutil -insert gatekeeperAccepted -bool true "${evidence_staging}"
-/usr/bin/plutil -convert json "${evidence_staging}"
-/bin/mv "${evidence_staging}" "${evidence}"
-evidence_staging=""
+"${record_signing_evidence}" \
+    --app "${app}" \
+    --notary-result "${notary_result}" \
+    --evidence "${evidence}"

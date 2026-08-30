@@ -374,6 +374,54 @@ public sealed class BoundaryProbeTests : IDisposable
     }
 
     [Fact]
+    public void Mac_package_accepts_only_the_fixed_Velopack_metadata_link()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var bundle = CreateMacBundle();
+        WriteInfoPlist(bundle, "app.ghostshell");
+        var resources = Path.Combine(bundle, "Contents", "Resources");
+        Directory.CreateDirectory(resources);
+        File.WriteAllText(Path.Combine(resources, "sq.version"), "metadata");
+        File.CreateSymbolicLink(
+            Path.Combine(bundle, "Contents", "MacOS", "sq.version"),
+            "../Resources/sq.version");
+
+        var inspection = PackageFingerprint.Inspect(
+            bundle,
+            TargetPlatform.MacOS,
+            "rc-1");
+
+        Assert.Equal(4, inspection.Build.PackageFileCount);
+    }
+
+    [Fact]
+    public void Mac_package_rejects_a_Velopack_metadata_link_with_another_target()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var bundle = CreateMacBundle();
+        WriteInfoPlist(bundle, "app.ghostshell");
+        var resources = Path.Combine(bundle, "Contents", "Resources");
+        Directory.CreateDirectory(resources);
+        File.WriteAllText(Path.Combine(resources, "sq.version"), "metadata");
+        File.CreateSymbolicLink(
+            Path.Combine(bundle, "Contents", "MacOS", "sq.version"),
+            "../Resources/other.version");
+
+        Assert.Throws<InvalidDataException>(() => PackageFingerprint.Inspect(
+            bundle,
+            TargetPlatform.MacOS,
+            "rc-1"));
+    }
+
+    [Fact]
     public void Mac_package_accepts_a_binary_property_list()
     {
         if (!OperatingSystem.IsMacOS())

@@ -459,37 +459,33 @@ jobs:
             --key-id "${APPLE_NOTARY_KEY_ID}" \
             --issuer "${APPLE_NOTARY_ISSUER_ID}"
           echo "GHOSTSHELL_SIGNING_IDENTITY=${APPLE_DEVELOPER_ID_APPLICATION}" >> "${GITHUB_ENV}"
-      - name: Assemble macOS application
+      - name: Assemble update-aware macOS release
         env:
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
         run: |
-          mkdir -p "${GHOSTSHELL_RELEASE_ARTIFACTS}/macos-arm64"
           cd "${GHOSTSHELL_RELEASE_SOURCE_ROOT}"
-          ./scripts/package-macos.sh \
+          ./scripts/package-macos-github-release.sh \
             --version "${RELEASE_VERSION}" \
             --build-version "${GITHUB_RUN_NUMBER}" \
-            --runtime-identifier osx-arm64 \
             --sign-identity "${GHOSTSHELL_SIGNING_IDENTITY}" \
             --notary-profile ghostshell-ci \
+            --keychain "${GHOSTSHELL_SIGNING_KEYCHAIN}" \
             --release-evidence-dir "${GHOSTSHELL_RELEASE_ARTIFACTS}/release-evidence" \
             --source-seal "${GHOSTSHELL_RELEASE_SOURCE_SEAL}" \
             --security-campaign-tool "${GHOSTSHELL_SECURITY_CAMPAIGN_TOOL}" \
             --build-artifacts-root "${GHOSTSHELL_BUILD_ARTIFACTS_ROOT}/package" \
-            --output "${GHOSTSHELL_RELEASE_ARTIFACTS}/macos-arm64/GhostShell.app"
-      - name: Archive release candidate
+            --output-dir "${GHOSTSHELL_RELEASE_ARTIFACTS}/distribution"
+      - name: Verify update-aware release candidate
         run: |
           archive="GhostShell-macOS-arm64.zip"
-          cd "${GHOSTSHELL_RELEASE_ARTIFACTS}"
-          ditto -c -k --sequesterRsrc --keepParent \
-            macos-arm64/GhostShell.app \
-            "${archive}"
-          shasum -a 256 "${archive}" > "${archive}.sha256"
+          distribution="${GHOSTSHELL_RELEASE_ARTIFACTS}/distribution"
           verification_directory="${RUNNER_TEMP}/ghostshell-archive"
           test ! -e "${verification_directory}"
           mkdir -p "${verification_directory}"
-          ditto -x -k "${archive}" "${verification_directory}"
+          ditto -x -k "${distribution}/${archive}" "${verification_directory}"
           codesign --verify --deep --strict --verbose=2 \
             "${verification_directory}/GhostShell.app"
+          xcrun stapler validate "${verification_directory}/GhostShell.app"
           spctl --assess --type execute --verbose=2 \
             "${verification_directory}/GhostShell.app"
           test "$(plutil -extract CFBundleShortVersionString raw \
@@ -505,6 +501,9 @@ jobs:
           assetutil --info "${assets_car}" > "${verification_directory}/Assets.info.json"
           grep -Fq '"AssetType" : "Icon Image"' "${verification_directory}/Assets.info.json"
           grep -Fq '"Name" : "GhostShell"' "${verification_directory}/Assets.info.json"
+          test -x "${verification_directory}/GhostShell.app/Contents/MacOS/UpdateMac"
+          test "$(readlink "${verification_directory}/GhostShell.app/Contents/MacOS/sq.version")" \
+            = "../Resources/sq.version"
           echo "GHOSTSHELL_EXTRACTED_APP=${verification_directory}/GhostShell.app" >> "${GITHUB_ENV}"
       - name: Assemble exact release-candidate evidence
         run: |
@@ -518,7 +517,7 @@ jobs:
             --run-attempt "${GITHUB_RUN_ATTEMPT}" \
             --source-seal "${GHOSTSHELL_RELEASE_SOURCE_SEAL}" \
             --build-identity "${GHOSTSHELL_RELEASE_ARTIFACTS}/release-evidence/release-build-identity.json" \
-            --archive "${GHOSTSHELL_RELEASE_ARTIFACTS}/GhostShell-macOS-arm64.zip" \
+            --archive "${GHOSTSHELL_RELEASE_ARTIFACTS}/distribution/GhostShell-macOS-arm64.zip" \
             --package "${GHOSTSHELL_EXTRACTED_APP}" \
             --test-results "${GHOSTSHELL_RELEASE_ARTIFACTS}/campaign-test-results" \
             --dependency-evidence "${GHOSTSHELL_RELEASE_ARTIFACTS}/dependency-security-evidence/evidence.json" \
@@ -536,7 +535,7 @@ jobs:
             --run-attempt "${GITHUB_RUN_ATTEMPT}" \
             --source-seal "${GHOSTSHELL_RELEASE_SOURCE_SEAL}" \
             --build-identity "${GHOSTSHELL_RELEASE_ARTIFACTS}/release-evidence/release-build-identity.json" \
-            --archive "${GHOSTSHELL_RELEASE_ARTIFACTS}/GhostShell-macOS-arm64.zip" \
+            --archive "${GHOSTSHELL_RELEASE_ARTIFACTS}/distribution/GhostShell-macOS-arm64.zip" \
             --package "${GHOSTSHELL_EXTRACTED_APP}" \
             --test-results "${GHOSTSHELL_RELEASE_ARTIFACTS}/campaign-test-results" \
             --dependency-evidence "${GHOSTSHELL_RELEASE_ARTIFACTS}/dependency-security-evidence/evidence.json" \
@@ -547,8 +546,7 @@ jobs:
         with:
           name: ghostshell-macos-arm64
           path: |
-            ${{ runner.temp }}/ghostshell-release-artifacts/GhostShell-macOS-arm64.zip
-            ${{ runner.temp }}/ghostshell-release-artifacts/GhostShell-macOS-arm64.zip.sha256
+            ${{ runner.temp }}/ghostshell-release-artifacts/distribution/*
             ${{ runner.temp }}/ghostshell-release-artifacts/security-campaign/receipt.json
             ${{ runner.temp }}/ghostshell-release-artifacts/security-campaign/receipt.json.sha256
             ${{ runner.temp }}/ghostshell-release-artifacts/security-campaign/receipt.md
@@ -566,8 +564,12 @@ jobs:
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
         run: |
           gh release create "${GITHUB_REF_NAME}" \
-            "${GHOSTSHELL_RELEASE_ARTIFACTS}/GhostShell-macOS-arm64.zip" \
-            "${GHOSTSHELL_RELEASE_ARTIFACTS}/GhostShell-macOS-arm64.zip.sha256" \
+            "${GHOSTSHELL_RELEASE_ARTIFACTS}/distribution/GhostShell-macOS-arm64.zip" \
+            "${GHOSTSHELL_RELEASE_ARTIFACTS}/distribution/GhostShell-macOS-arm64.zip.sha256" \
+            "${GHOSTSHELL_RELEASE_ARTIFACTS}/distribution/app.ghostshell-${RELEASE_VERSION}-osx-arm64-stable-full.nupkg" \
+            "${GHOSTSHELL_RELEASE_ARTIFACTS}/distribution/app.ghostshell-${RELEASE_VERSION}-osx-arm64-stable-full.nupkg.sha256" \
+            "${GHOSTSHELL_RELEASE_ARTIFACTS}/distribution/releases.osx-arm64-stable.json" \
+            "${GHOSTSHELL_RELEASE_ARTIFACTS}/distribution/releases.osx-arm64-stable.json.sha256" \
             "${GHOSTSHELL_RELEASE_ARTIFACTS}/security-campaign/receipt.json" \
             "${GHOSTSHELL_RELEASE_ARTIFACTS}/security-campaign/receipt.json.sha256" \
             "${GHOSTSHELL_RELEASE_ARTIFACTS}/security-campaign/receipt.md" \
@@ -578,7 +580,7 @@ jobs:
             --fail-on-no-commits \
             --generate-notes \
             --latest \
-            --notes "Developer ID signed and notarized Apple Silicon build. The stapled application is verified with codesign and Gatekeeper after archive extraction before publication." \
+            --notes "Developer ID signed and notarized Apple Silicon build. The portable archive and Velopack full package/feed contain the same verified app, including the signed updater metadata required for user-initiated in-app updates." \
             --title "GhostShell ${RELEASE_VERSION} early macOS release" \
             --verify-tag
       - name: Remove temporary signing credentials
