@@ -28,7 +28,7 @@ internal static class NativeMacVerifier
         try
         {
             var prefix = Path.Combine(certificateDirectory, "certificate");
-            Run("/usr/bin/codesign", ["--display", "--extract-certificates", prefix, package]);
+            Run("/usr/bin/codesign", ["--display", $"--extract-certificates={prefix}", package]);
             var certificate = prefix + "0";
             if (!string.Equals(
                     CampaignFiles.Sha256File(certificate, 1024 * 1024),

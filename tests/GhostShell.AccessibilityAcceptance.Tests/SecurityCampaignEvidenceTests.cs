@@ -306,6 +306,13 @@ public sealed class SecurityCampaignEvidenceTests
         var signingScript = File.ReadAllText(
             Path.Combine(root, "scripts", "sign-notarize-macos.sh"),
             Encoding.UTF8);
+        var nativeVerifier = File.ReadAllText(
+            Path.Combine(
+                root,
+                "tools",
+                "GhostShell.SecurityCampaign",
+                "NativeMacVerifier.cs"),
+            Encoding.UTF8);
 
         Assert.Contains(
             "\"--extract-certificates=${certificate_prefix}\" \"${app}\"",
@@ -315,6 +322,50 @@ public sealed class SecurityCampaignEvidenceTests
             "--extract-certificates \"${certificate_prefix}\"",
             signingScript,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "plutil -create xml1 \"${evidence_staging}\"",
+            signingScript,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "plutil -convert json \"${evidence_staging}\"",
+            signingScript,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "plutil -create json \"${evidence_staging}\"",
+            signingScript,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "$\"--extract-certificates={prefix}\"",
+            nativeVerifier,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "\"--extract-certificates\", prefix",
+            nativeVerifier,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MacOsSigningEvidencePlutilSequenceProducesJson()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        using var fixture = new DirectoryFixture();
+        var staging = Path.Combine(fixture.Path, "notarization.json.staging");
+        RunProcess("/usr/bin/plutil", "-create", "xml1", staging);
+        RunProcess(
+            "/usr/bin/plutil",
+            "-insert",
+            "schemaVersion",
+            "-integer",
+            "1",
+            staging);
+        RunProcess("/usr/bin/plutil", "-convert", "json", staging);
+
+        using var document = JsonDocument.Parse(File.ReadAllBytes(staging));
+        Assert.Equal(1, document.RootElement.GetProperty("schemaVersion").GetInt32());
     }
 
     [Fact]
@@ -516,6 +567,29 @@ public sealed class SecurityCampaignEvidenceTests
         process.WaitForExit();
         Assert.True(process.ExitCode == 0, error);
         return output.Trim();
+    }
+
+    private static void RunProcess(string fileName, params string[] arguments)
+    {
+        var start = new ProcessStartInfo(fileName)
+        {
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+        };
+        foreach (var argument in arguments)
+        {
+            start.ArgumentList.Add(argument);
+        }
+
+        using var process = Process.Start(start)
+            ?? throw new InvalidOperationException($"Could not start {fileName}.");
+        var output = process.StandardOutput.ReadToEnd();
+        var error = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+        Assert.True(
+            process.ExitCode == 0,
+            $"{fileName} failed with exit code {process.ExitCode}.{Environment.NewLine}{output}{error}");
     }
 
     private sealed class GitRepositoryFixture : IDisposable
