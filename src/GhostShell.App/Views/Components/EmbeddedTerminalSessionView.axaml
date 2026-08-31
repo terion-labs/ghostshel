@@ -97,7 +97,7 @@
         <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize10}" Text="{Binding ReconnectStatus}" IsVisible="{Binding IsReconnecting}" />
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="{DynamicResource ShellSpaceSm}">
           <Button Classes="SecondaryButton" Click="OnRetryConnectionClick" Content="Retry connection" IsVisible="{Binding CanRetry}" />
-          <Button Classes="TextButton" Click="OnCancelReconnectClick" Content="Cancel reconnect" IsVisible="{Binding CanCancelReconnect}" />
+          <Button Classes="TextButton" Click="OnCancelReconnectClick" Content="{Binding CancelConnectionLabel}" IsVisible="{Binding CanCancelConnection}" />
         </StackPanel>
       </StackPanel>
     </Border>

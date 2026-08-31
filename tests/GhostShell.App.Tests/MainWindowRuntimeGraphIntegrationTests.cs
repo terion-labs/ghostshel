@@ -23,6 +23,101 @@ namespace GhostShell.App.Tests;
 public sealed class MainWindowRuntimeGraphIntegrationTests
 {
     [Fact]
+    public async Task ClosingConnectingPanelCancelsStalledHostStartupBeforeReturning()
+    {
+        var snapshot = CreateCatalogSnapshot();
+        var ssh = new ConnectionProfile(
+            new ConnectionId("stalled-runtime-graph-ssh"),
+            ConnectionProfile.CurrentSchemaVersion,
+            "Unavailable remote",
+            new ConnectionEndpoint.Ssh("host.example", username: "deploy"),
+            new ConnectionAuthentication.SshAgent(),
+            ConnectionStartup.Default,
+            ConnectionKeepAlive.Disabled,
+            SshHostKeyPolicy.Strict);
+        snapshot = snapshot with
+        {
+            Connections = [.. snapshot.Connections, Store(ssh)],
+        };
+        var (client, recorder) = CreateSessionClient();
+        using var viewModel = CreateViewModel(client, snapshot);
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        recorder.AcceptTerminalSessions = true;
+        recorder.DelayNextTerminalEnsure = true;
+
+        Assert.True(await viewModel.AddConnectionPanelAsync(ssh.Id));
+        var terminal = Assert.IsType<TerminalRuntimePanelViewModel>(viewModel.ActivePanel);
+        await recorder.TerminalEnsureEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var closed = await viewModel.ClosePanelAsync(
+                terminal.Id,
+                CloseDecision.Confirm,
+                CancellationToken.None)
+            .AsTask()
+            .WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.IsType<HostResult<CloseScopeResult>.Success>(closed);
+        await recorder.TerminalEnsureCancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(await viewModel.RemovePanelAsync(terminal.Id));
+    }
+
+    [Fact]
+    public async Task ClosingRemotePanelDoesNotWaitForDeadMultiplexerCleanup()
+    {
+        var snapshot = CreateCatalogSnapshot();
+        var ssh = new ConnectionProfile(
+            new ConnectionId("multiplexer-cleanup-runtime-graph-ssh"),
+            ConnectionProfile.CurrentSchemaVersion,
+            "Unavailable remote",
+            new ConnectionEndpoint.Ssh("host.example", username: "deploy"),
+            new ConnectionAuthentication.SshAgent(),
+            ConnectionStartup.Default,
+            ConnectionKeepAlive.Disabled,
+            SshHostKeyPolicy.Strict);
+        snapshot = snapshot with
+        {
+            Connections = [.. snapshot.Connections, Store(ssh)],
+        };
+        var store = new MemoryTerminalMultiplexerStore();
+        var commands = new BlockingConnectionCommandExecutor();
+        var coordinator = new TerminalMultiplexerCoordinator(store, store, commands);
+        var (client, recorder) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            snapshot,
+            connectionRuntime: new MultiplexerConnectionRuntime(),
+            terminalMultiplexerCoordinator: coordinator);
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+        Assert.True(await viewModel.LoadTerminalMultiplexingAsync());
+        recorder.AcceptTerminalSessions = true;
+        Assert.True(await viewModel.SetUseTerminalMultiplexingForSshTerminalsAsync(true));
+        Assert.True(await viewModel.AddConnectionPanelAsync(ssh.Id));
+        var terminal = Assert.IsType<TerminalRuntimePanelViewModel>(viewModel.ActivePanel);
+        await terminal.Initialization;
+        var request = Assert.IsType<EnsureTerminalSessionRequest>(terminal.SessionRequest);
+        terminal.ObserveSessionSnapshot(ActiveSessionSnapshot(request));
+        Assert.True(terminal.IsContinuityActive);
+        await WaitForAsync(() => store.Leases.Count == 1);
+
+        var closed = await viewModel.ClosePanelAsync(
+                terminal.Id,
+                CloseDecision.Confirm,
+                CancellationToken.None)
+            .AsTask()
+            .WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.IsType<HostResult<CloseScopeResult>.Success>(closed);
+        await commands.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(commands.Release.Task.IsCompleted);
+        Assert.Equal(
+            TerminalMultiplexerLeaseState.TerminationPending,
+            Assert.Single(store.Leases).State);
+
+        commands.Release.TrySetResult();
+        await WaitForAsync(() => store.Leases.Count == 0);
+    }
+
+    [Fact]
     public async Task EnablingGlobalMultiplexingAffectsAnAlreadyOpenInheritedWorkspace()
     {
         var snapshot = CreateCatalogSnapshot();
@@ -6077,7 +6172,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         IBrowserProfilePreferences? browserProfilePreferences = null,
         IGitRepositoryClient? gitRepositoryClient = null,
         ISecretVault? secretVault = null,
-        AppearancePreviewCoordinator? appearancePreview = null) =>
+        AppearancePreviewCoordinator? appearancePreview = null,
+        TerminalMultiplexerCoordinator? terminalMultiplexerCoordinator = null) =>
         CreateViewModel(
             sessionClient,
             CreateFixedCatalog(snapshot),
@@ -6098,7 +6194,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             browserProfilePreferences,
             gitRepositoryClient,
             secretVault,
-            appearancePreview);
+            appearancePreview,
+            terminalMultiplexerCoordinator);
 
     private static MainWindowViewModel CreateViewModel(
         ISessionHostClient sessionClient,
@@ -6120,7 +6217,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         IBrowserProfilePreferences? browserProfilePreferences = null,
         IGitRepositoryClient? gitRepositoryClient = null,
         ISecretVault? secretVault = null,
-        AppearancePreviewCoordinator? appearancePreview = null)
+        AppearancePreviewCoordinator? appearancePreview = null,
+        TerminalMultiplexerCoordinator? terminalMultiplexerCoordinator = null)
     {
         var files = new EmptyFileClients();
         agentPolicyCoordinator ??= CreateConfiguredPolicyCoordinator(aiProfiles);
@@ -6145,7 +6243,135 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             agentPolicyCoordinator: agentPolicyCoordinator,
             browserProfilePreferences: browserProfilePreferences,
             gitRepositoryClient: gitRepositoryClient,
-            appearancePreview: appearancePreview);
+            appearancePreview: appearancePreview,
+            terminalMultiplexerCoordinator: terminalMultiplexerCoordinator);
+    }
+
+    private sealed class MemoryTerminalMultiplexerStore :
+        ITerminalMultiplexingPreferenceStore,
+        ITerminalMultiplexerLeaseStore
+    {
+        private readonly object _gate = new();
+        private readonly List<TerminalMultiplexerLease> _leases = [];
+        private TerminalMultiplexingMode _mode = TerminalMultiplexingMode.Disabled;
+
+        public IReadOnlyList<TerminalMultiplexerLease> Leases
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return [.. _leases];
+                }
+            }
+        }
+
+        public ValueTask<ApplicationRunResult<TerminalMultiplexingMode>> ReadAsync(
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_gate)
+            {
+                return ValueTask.FromResult(
+                    ApplicationRunResult<TerminalMultiplexingMode>.Success(_mode));
+            }
+        }
+
+        public ValueTask<ApplicationRunResult<Unit>> WriteAsync(
+            TerminalMultiplexingMode mode,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_gate)
+            {
+                _mode = mode;
+            }
+
+            return Success();
+        }
+
+        public ValueTask<ApplicationRunResult<Unit>> UpsertAsync(
+            TerminalMultiplexerLease lease,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_gate)
+            {
+                _leases.RemoveAll(item =>
+                    item.ConnectionId == lease.ConnectionId
+                    && string.Equals(
+                        item.Session.SessionName,
+                        lease.Session.SessionName,
+                        StringComparison.Ordinal));
+                _leases.Add(lease);
+            }
+
+            return Success();
+        }
+
+        public ValueTask<ApplicationRunResult<Unit>> DeleteAsync(
+            ConnectionId connectionId,
+            string sessionName,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_gate)
+            {
+                _leases.RemoveAll(item =>
+                    item.ConnectionId == connectionId
+                    && string.Equals(
+                        item.Session.SessionName,
+                        sessionName,
+                        StringComparison.Ordinal));
+            }
+
+            return Success();
+        }
+
+        public ValueTask<ApplicationRunResult<IReadOnlyList<TerminalMultiplexerLease>>> ListAsync(
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(
+                ApplicationRunResult<IReadOnlyList<TerminalMultiplexerLease>>.Success(
+                    Leases));
+        }
+
+        private static ValueTask<ApplicationRunResult<Unit>> Success() =>
+            ValueTask.FromResult(ApplicationRunResult<Unit>.Success(Unit.Value));
+    }
+
+    private sealed class BlockingConnectionCommandExecutor : IConnectionCommandExecutor
+    {
+        public TaskCompletionSource Started { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Release { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async ValueTask<ConnectionCommandResult> ExecuteAsync(
+            ConnectionCommand request,
+            CancellationToken cancellationToken)
+        {
+            _ = request;
+            Started.TrySetResult();
+            await Release.Task.WaitAsync(cancellationToken);
+            return new ConnectionCommandResult(
+                ConnectionCommandOutcome.Exited,
+                0,
+                string.Empty);
+        }
+
+        public ValueTask<ConnectionBinaryCommandResult> ExecuteBinaryAsync(
+            ConnectionBinaryCommand request,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public ValueTask<ConnectionStreamingCommandResult<T>> ExecuteStreamingAsync<T>(
+            ConnectionBinaryCommand request,
+            Func<Stream, CancellationToken, ValueTask<T>> consumeOutput,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
     }
 
     private static AgentPolicyCoordinator? CreateConfiguredPolicyCoordinator(
@@ -7176,6 +7402,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
         public bool DelayNextFilePanelEnsure { get; set; }
 
+        public bool DelayNextTerminalEnsure { get; set; }
+
         public bool WorkspaceQueryTokenWasCancellationRequestedOnEntry { get; private set; }
 
         public SessionId? NextRegistrationSessionId { get; set; }
@@ -7214,6 +7442,12 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public TaskCompletionSource AllowFilePanelEnsure { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource TerminalEnsureEntered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource TerminalEnsureCancelled { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public TaskCompletionSource WatchStarted { get; } =
@@ -7651,27 +7885,48 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                     resultingRevision: 1));
         }
 
-        private ValueTask<HostResult<SessionSnapshot>> ResolveTerminalSession(
+        private async ValueTask<HostResult<SessionSnapshot>> ResolveTerminalSession(
             EnsureTerminalSessionRequest request,
             OperationContext context,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            bool delay;
             lock (_gate)
             {
                 _terminalSessionEnsures.Add(new(request, context));
+                delay = DelayNextTerminalEnsure;
+                DelayNextTerminalEnsure = false;
+            }
+
+            if (delay)
+            {
+                TerminalEnsureEntered.TrySetResult();
+                try
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    TerminalEnsureCancelled.TrySetResult();
+                    return HostResult<SessionSnapshot>.Fail(
+                        HostError.Create(
+                            HostErrorCode.Cancelled,
+                            "The test terminal startup was cancelled."),
+                        0);
+                }
             }
 
             if (!AcceptTerminalSessions)
             {
-                return ValueTask.FromResult(HostResult<SessionSnapshot>.Fail(
+                return HostResult<SessionSnapshot>.Fail(
                     HostError.Create(
                         HostErrorCode.CapabilityNotSupported,
                         "The test host does not provide terminal sessions."),
-                    0));
+                    0);
             }
 
-            return LinkHostedSession(
+            return await LinkHostedSession(
                 request.SessionId,
                 request.Owner,
                 PanelKind.Terminal,
@@ -8767,6 +9022,49 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             ConnectionProfile profile,
             IProgress<ConnectionProgress>? progress,
             CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    private sealed class MultiplexerConnectionRuntime : IConnectionRuntime
+    {
+        public ValueTask<ConnectionRuntimeResult<ConnectionOpenPlan>> PlanOpenAsync(
+            ConnectionProfile profile,
+            IProgress<ConnectionProgress>? progress,
+            CancellationToken cancellationToken) =>
+            PlanOpenAsync(profile, null, progress, cancellationToken);
+
+        public ValueTask<ConnectionRuntimeResult<ConnectionOpenPlan>> PlanOpenAsync(
+            ConnectionProfile profile,
+            TerminalMultiplexerSession? multiplexerSession,
+            IProgress<ConnectionProgress>? progress,
+            CancellationToken cancellationToken)
+        {
+            _ = progress;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(
+                ConnectionRuntimeResult<ConnectionOpenPlan>.Succeed(
+                    new ConnectionOpenPlan(
+                        profile.Id,
+                        profile.ConnectionKind,
+                        new TerminalLaunchRequest(
+                            profile.Startup.Directory,
+                            profile.ConnectionKind == ConnectionKind.Ssh
+                                ? "/usr/bin/ssh"
+                                : "/bin/sh",
+                            multiplexerSession: multiplexerSession),
+                        profile.ConnectionKind == ConnectionKind.Ssh
+                            ? ConnectionAuthenticationMode.SshAgent
+                            : ConnectionAuthenticationMode.None,
+                        profile.HostKeyPolicy,
+                        profile.ConnectionKind == ConnectionKind.Ssh
+                            ? ConnectionReconnectMode.BoundedBackoff
+                            : ConnectionReconnectMode.NotApplicable)));
+        }
+
+        public ValueTask<ConnectionRuntimeResult<ConnectionTestReport>> TestAsync(
+            ConnectionProfile profile,
+            IProgress<ConnectionProgress>? progress,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
     }
 
     private sealed class EmptyFileClients : IFilePanelClient, IFileTransferQueueClient

@@ -265,8 +265,8 @@
                 <Button
                     Classes="TextButton"
                     Click="OnCancelReconnectClick"
-                    Content="Cancel reconnect"
-                    IsVisible="{Binding CanCancelReconnect}" />
+                    Content="{Binding CancelConnectionLabel}"
+                    IsVisible="{Binding CanCancelConnection}" />
               </StackPanel>
             </StackPanel>
           </controls:StateOverlay>

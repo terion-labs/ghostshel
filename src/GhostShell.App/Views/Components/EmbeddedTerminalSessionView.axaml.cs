@@ -18,7 +18,7 @@ public sealed partial class EmbeddedTerminalSessionView : UserControl
     {
         _ = sender;
         _ = e;
-        ViewModel?.CancelReconnect();
+        ViewModel?.CancelConnection();
     }
 
     private async void OnRetryConnectionClick(object? sender, RoutedEventArgs e)

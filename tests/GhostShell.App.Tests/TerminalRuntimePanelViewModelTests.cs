@@ -420,12 +420,36 @@ public sealed class TerminalRuntimePanelViewModelTests
             });
         await delayStarted.Task;
 
-        panel.CancelReconnect();
+        panel.CancelConnection();
         await panel.Initialization;
 
         Assert.Equal(1, runtime.PlanCount);
         Assert.Equal(ConnectionReconnectState.Cancelled, panel.ReconnectState);
         Assert.Equal(ConnectionPanelState.Failed, panel.ConnectionState);
+        Assert.True(panel.CanRetry);
+    }
+
+    [Fact]
+    public async Task InitialConnectionCanBeCancelledWhileRuntimePlanningIsStalled()
+    {
+        var runtime = new StalledConnectionRuntime();
+        using var panel = CreatePanel(
+            runtime,
+            SshAgentConnection(),
+            PanelStartupBehavior.None);
+        await runtime.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(panel.CanCancelConnection);
+        Assert.Equal("Cancel connection", panel.CancelConnectionLabel);
+
+        panel.CancelConnection();
+
+        await panel.Initialization.WaitAsync(TimeSpan.FromSeconds(5));
+        await runtime.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(ConnectionReconnectState.Cancelled, panel.ReconnectState);
+        Assert.Equal(ConnectionPanelState.Failed, panel.ConnectionState);
+        Assert.Equal("Connection cancelled", panel.ConnectionStatus);
+        Assert.Null(panel.SessionRequest);
         Assert.True(panel.CanRetry);
     }
 
@@ -1247,6 +1271,42 @@ public sealed class TerminalRuntimePanelViewModelTests
             cancellationToken.ThrowIfCancellationRequested();
             PlanCount++;
             return ValueTask.FromResult(_plans.Dequeue()(profile));
+        }
+
+        public ValueTask<ConnectionRuntimeResult<ConnectionTestReport>> TestAsync(
+            ConnectionProfile profile,
+            IProgress<ConnectionProgress>? progress,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class StalledConnectionRuntime : IConnectionRuntime
+    {
+        public TaskCompletionSource Started { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Cancelled { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async ValueTask<ConnectionRuntimeResult<ConnectionOpenPlan>> PlanOpenAsync(
+            ConnectionProfile profile,
+            IProgress<ConnectionProgress>? progress,
+            CancellationToken cancellationToken)
+        {
+            _ = profile;
+            _ = progress;
+            Started.TrySetResult();
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                Cancelled.TrySetResult();
+                throw;
+            }
+
+            throw new InvalidOperationException("The stalled connection completed unexpectedly.");
         }
 
         public ValueTask<ConnectionRuntimeResult<ConnectionTestReport>> TestAsync(

@@ -2381,6 +2381,7 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(IsConnecting));
                 OnPropertyChanged(nameof(HasConnectionOverlay));
+                OnPropertyChanged(nameof(CanCancelConnection));
                 OnPropertyChanged(nameof(CanRetry));
             }
         }
@@ -2449,7 +2450,8 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
             if (SetProperty(ref _reconnectState, value))
             {
                 OnPropertyChanged(nameof(IsReconnecting));
-                OnPropertyChanged(nameof(CanCancelReconnect));
+                OnPropertyChanged(nameof(CanCancelConnection));
+                OnPropertyChanged(nameof(CancelConnectionLabel));
                 OnPropertyChanged(nameof(ReconnectStatus));
                 OnPropertyChanged(nameof(CanRetry));
             }
@@ -2463,6 +2465,7 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
         {
             if (SetProperty(ref _reconnectAttempt, value))
             {
+                OnPropertyChanged(nameof(CancelConnectionLabel));
                 OnPropertyChanged(nameof(ReconnectStatus));
             }
         }
@@ -2520,8 +2523,14 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
     public bool CanTrustHostKey => HostKeyReview?.Disposition is
         SshHostKeyDisposition.Unknown or SshHostKeyDisposition.Changed;
 
-    public bool CanCancelReconnect => ReconnectState is
-        ConnectionReconnectState.Waiting or ConnectionReconnectState.Attempting;
+    public bool CanCancelConnection =>
+        !_disposed
+        && _attempt is { IsCancellationRequested: false }
+        && IsConnecting;
+
+    public string CancelConnectionLabel => ReconnectAttempt > 0
+        ? "Cancel reconnect"
+        : "Cancel connection";
 
     public string ReconnectStatus => ReconnectState switch
     {
@@ -2564,9 +2573,9 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
         return StartConnectionLoop(waitBeforeFirstAttempt: false);
     }
 
-    public void CancelReconnect()
+    public void CancelConnection()
     {
-        if (!CanCancelReconnect)
+        if (!CanCancelConnection)
         {
             return;
         }
@@ -2577,8 +2586,26 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
         ReconnectState = ConnectionReconnectState.Cancelled;
         NextReconnectDelay = null;
         ConnectionState = ConnectionPanelState.Failed;
-        ConnectionStatus = "Reconnect cancelled";
+        ConnectionStatus = ReconnectAttempt > 0
+            ? "Reconnect cancelled"
+            : "Connection cancelled";
         ConnectionDetail = "The terminal remains disconnected. Retry when you are ready.";
+    }
+
+    internal CancellationToken ConnectionAttemptToken =>
+        _attempt?.Token ?? _lifetime.Token;
+
+    internal bool IsCurrentConnectionAttempt(CancellationToken cancellationToken) =>
+        _attempt is { } attempt && attempt.Token == cancellationToken;
+
+    internal void CancelPendingConnection()
+    {
+        if (_disposed || HasObservedActiveSession)
+        {
+            return;
+        }
+
+        _attempt?.Cancel();
     }
 
     public async Task TrustHostKeyAsync(CancellationToken cancellationToken)
@@ -2774,6 +2801,8 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
         _attempt?.Cancel();
         _attempt?.Dispose();
         _attempt = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        OnPropertyChanged(nameof(CanCancelConnection));
+        OnPropertyChanged(nameof(CancelConnectionLabel));
         SessionRequest = null;
         ConnectionError = null;
         if (!_startupCommandOutcomePinned)

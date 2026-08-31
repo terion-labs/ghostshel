@@ -1218,7 +1218,7 @@ public sealed partial class MainWindow
         _ = e;
         if (sender is Control { DataContext: TerminalRuntimePanelViewModel panel })
         {
-            panel.CancelReconnect();
+            panel.CancelConnection();
         }
     }
 

@@ -4361,6 +4361,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         CancellationToken cancellationToken)
     {
         var multiplexed = OpenTerminalPanels().Where(panel => panel.Id == panelId).ToArray();
+        CancelPendingConnections(multiplexed);
         var result = await RuntimeGraph.CloseAsync(
             CloseScopeRequest.Panel(panelId, decision),
             cancellationToken);
@@ -4368,7 +4369,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         if (result is HostResult<CloseScopeResult>.Success
             { Value: CloseScopeResult.Completed })
         {
-            await TerminateMultiplexersAsync(multiplexed, cancellationToken);
+            QueueMultiplexerTermination(multiplexed);
         }
         return result;
     }
@@ -4384,6 +4385,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             .SelectMany(tab => tab.Panels)
             .OfType<TerminalRuntimePanelViewModel>()
             .ToArray();
+        CancelPendingConnections(multiplexed);
         var result = await RuntimeGraph.CloseAsync(
             CloseScopeRequest.Tab(tabId, decision),
             cancellationToken);
@@ -4391,7 +4393,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         if (result is HostResult<CloseScopeResult>.Success
             { Value: CloseScopeResult.Completed })
         {
-            await TerminateMultiplexersAsync(multiplexed, cancellationToken);
+            QueueMultiplexerTermination(multiplexed);
         }
         return result;
     }
@@ -4414,6 +4416,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             .SelectMany(tab => tab.Panels)
             .OfType<TerminalRuntimePanelViewModel>()
             .ToArray();
+        CancelPendingConnections(multiplexed);
         var result = await RuntimeGraph.CloseAsync(
             CloseScopeRequest.Workspace(workspaceId, decision),
             cancellationToken);
@@ -4421,17 +4424,20 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         if (result is HostResult<CloseScopeResult>.Success
             { Value: CloseScopeResult.Completed })
         {
-            await TerminateMultiplexersAsync(multiplexed, cancellationToken);
+            QueueMultiplexerTermination(multiplexed);
         }
         return result;
     }
 
-    public async Task CloseDetachedMultiplexedTerminalAsync(
+    public Task CloseDetachedMultiplexedTerminalAsync(
         TerminalRuntimePanelViewModel panel,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(panel);
-        await TerminateMultiplexersAsync([panel], cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        panel.CancelPendingConnection();
+        QueueMultiplexerTermination([panel]);
+        return Task.CompletedTask;
     }
 
     private IEnumerable<TerminalRuntimePanelViewModel> OpenTerminalPanels() =>
@@ -4439,6 +4445,53 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             .SelectMany(workspace => workspace.Tabs)
             .SelectMany(tab => tab.Panels)
             .OfType<TerminalRuntimePanelViewModel>();
+
+    private static void CancelPendingConnections(
+        IEnumerable<TerminalRuntimePanelViewModel> panels)
+    {
+        foreach (var panel in panels)
+        {
+            panel.CancelPendingConnection();
+        }
+    }
+
+    private void QueueMultiplexerTermination(
+        IEnumerable<TerminalRuntimePanelViewModel> panels)
+    {
+        if (_terminalMultiplexerCoordinator is null)
+        {
+            return;
+        }
+
+        var pending = panels
+            .Where(panel => panel.MultiplexerSession is { IsEstablished: true })
+            .ToArray();
+        if (pending.Length > 0)
+        {
+            _ = TerminateMultiplexersInBackgroundAsync(pending);
+        }
+    }
+
+    private async Task TerminateMultiplexersInBackgroundAsync(
+        IReadOnlyList<TerminalRuntimePanelViewModel> panels)
+    {
+        try
+        {
+            await TerminateMultiplexersAsync(
+                panels,
+                _runtimeGraphLifetime.Token);
+        }
+        catch (OperationCanceledException) when (
+            _runtimeGraphLifetime.IsCancellationRequested || _shutdownStarted)
+        {
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            SecretSafeDiagnostics.WriteTraceAndStandardError(
+                "connections.multiplexer-cleanup.failed",
+                exception);
+        }
+    }
 
     private async Task TerminateMultiplexersAsync(
         IEnumerable<TerminalRuntimePanelViewModel> panels,
@@ -4510,6 +4563,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         {
             return false;
         }
+
+        CancelPendingConnections(
+            workspace.Tabs
+                .SelectMany(tab => tab.Panels)
+                .OfType<TerminalRuntimePanelViewModel>()
+                .Where(panel => panel.Id == panelId));
 
         using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
@@ -4586,6 +4645,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         {
             return false;
         }
+
+        CancelPendingConnections(
+            workspace.Tabs
+                .Where(tab => tab.Id == tabId)
+                .SelectMany(tab => tab.Panels)
+                .OfType<TerminalRuntimePanelViewModel>());
 
         using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
@@ -10838,12 +10903,36 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                     return;
                 }
 
-                var snapshot = await RuntimeGraph.EnsureTerminalSessionAsync(
-                    request,
-                    owner,
-                    _runtimeGraphLifetime.Token);
+                var attemptToken = terminal.ConnectionAttemptToken;
+                using var startupCancellation =
+                    CancellationTokenSource.CreateLinkedTokenSource(
+                        _runtimeGraphLifetime.Token,
+                        attemptToken);
+                SessionSnapshot? snapshot;
+                try
+                {
+                    snapshot = await RuntimeGraph.EnsureTerminalSessionAsync(
+                        request,
+                        owner,
+                        startupCancellation.Token);
+                }
+                catch (OperationCanceledException) when (attemptToken.IsCancellationRequested)
+                {
+                    if (!terminal.IsCurrentConnectionAttempt(attemptToken))
+                    {
+                        continue;
+                    }
+
+                    return;
+                }
                 if (snapshot is null)
                 {
+                    if (attemptToken.IsCancellationRequested
+                        && !terminal.IsCurrentConnectionAttempt(attemptToken))
+                    {
+                        continue;
+                    }
+
                     return;
                 }
 

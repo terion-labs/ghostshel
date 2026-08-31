@@ -11,6 +11,10 @@ while read -r local_ref local_oid remote_ref remote_oid; do
     fi
 done
 
+# Git exports repository-local variables to hooks. Clear them before the gate
+# starts so tests can create and operate on isolated temporary repositories.
+unset $(git rev-parse --local-env-vars)
+
 if [[ ${#release_tags[@]} -eq 0 ]]; then
     exec "${repository_dir}/scripts/check.sh" --full
 fi

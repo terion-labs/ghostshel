@@ -100,6 +100,10 @@ public sealed class TerminalMultiplexerCoordinator
             return new(false, false, "Only SSH terminals can host managed multiplexer sessions.");
         }
 
+        // The local close is allowed to complete before this network command.
+        // Persist the intent first so an app exit or process failure cannot lose
+        // the cleanup request while the unreachable host is still timing out.
+        await MarkTerminationPendingAsync(connection, session).ConfigureAwait(false);
         var result = await _commands.ExecuteAsync(
                 new ConnectionCommand(
                     connection,
@@ -125,7 +129,6 @@ public sealed class TerminalMultiplexerCoordinator
             return new(true, false, "The remote multiplexer session had already ended.");
         }
 
-        await MarkTerminationPendingAsync(connection, session).ConfigureAwait(false);
         return new(
             false,
             true,
