@@ -178,6 +178,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Release runners start without repository tools in the per-user tool cache.
+# Restore the manifest-pinned Velopack before the expensive application build
+# so a fresh runner and a developer machine exercise the same dependency path.
+(
+    cd "${repository_dir}"
+    "${dotnet}" tool restore
+)
+
 package_arguments=(
     --version "${version}"
     --build-version "${build_version}"

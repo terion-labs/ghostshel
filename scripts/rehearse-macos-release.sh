@@ -180,6 +180,7 @@ done
 
 working_directory="$(mktemp -d "${TMPDIR:-/tmp}/ghostshell-release-rehearsal.XXXXXX")"
 working_directory="$(cd -- "${working_directory}" && pwd -P)"
+dotnet_cli_home="${working_directory}/dotnet-home"
 sealed_source="${working_directory}/sealed-source"
 dependency_source="${working_directory}/dependency-source"
 campaign_tool="${working_directory}/campaign-tool"
@@ -218,7 +219,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "${signing_directory}"
+mkdir -p "${dotnet_cli_home}" "${signing_directory}"
+export DOTNET_CLI_HOME="${dotnet_cli_home}"
 printf '%s' "${APPLE_CERTIFICATE_P12_BASE64}" \
     | /usr/bin/base64 -D > "${signing_directory}/certificate.p12"
 printf '%s' "${APPLE_NOTARY_PRIVATE_KEY_BASE64}" \

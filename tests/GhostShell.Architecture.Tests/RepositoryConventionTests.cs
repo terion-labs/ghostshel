@@ -388,6 +388,8 @@ public sealed partial class RepositoryConventionTests
         Assert.Contains("distribution/GhostShell-macOS-arm64.zip.sha256", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("GhostShell-macOS-arm64-${RELEASE_VERSION}.zip", workflow, StringComparison.Ordinal);
         Assert.Contains("package-macos-github-release.sh", workflow, StringComparison.Ordinal);
+
+        Assert.Contains("\"${dotnet}\" tool restore", releaseScript, StringComparison.Ordinal);
         Assert.Contains("releases.osx-arm64-stable.json", workflow, StringComparison.Ordinal);
         Assert.Contains("app.ghostshell-${RELEASE_VERSION}-osx-arm64-stable-full.nupkg", workflow, StringComparison.Ordinal);
         Assert.Contains("--signDisableDeep true", releaseScript, StringComparison.Ordinal);
