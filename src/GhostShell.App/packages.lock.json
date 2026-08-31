@@ -122,13 +122,13 @@
       },
       "FluentIcons.Avalonia": {
         "type": "Direct",
-        "requested": "[2.1.333, )",
-        "resolved": "2.1.333",
-        "contentHash": "rysgTNvvjI8dlRVvt9bmSxfK06ZmPi1X8WIvo1Od+MgA3lI+QUp7mWvaD42Ni7Leh34iFKCME8dEAJdyKZWtlQ==",
+        "requested": "[2.1.337, )",
+        "resolved": "2.1.337",
+        "contentHash": "4Y0KHel9le+MMX3c+pLm9ycUUIwjClFiSDOWteMdBQP9vrs1aStH0Ut3s63hxEA4aGcZi3ig4slELoUIFZWByQ==",
         "dependencies": {
           "Avalonia": "12.0.0",
-          "FluentIcons.Common": "[2.1.333]",
-          "FluentIcons.Resources.Avalonia": "[2.1.333]"
+          "FluentIcons.Common": "[2.1.337]",
+          "FluentIcons.Resources.Avalonia": "[2.1.337]"
         }
       },
       "Markdig": {
@@ -271,16 +271,16 @@
       },
       "FluentIcons.Common": {
         "type": "Transitive",
-        "resolved": "2.1.333",
-        "contentHash": "ph0Tqd6TIkSOr9Iixw+k6og1Y92UldfGLTxlDfj+FmdKtlG95qDX418TseY6gRcQVS9w+Tt2ye10RVM0kcGHmg=="
+        "resolved": "2.1.337",
+        "contentHash": "LWZtPKtWAP/wdCTTBLksfHQ+wAoYApx5d0+fwzDHOlqRsxJyEGhXC17T0kTsjmEbH7sgsvG80vHFRda9IQadWQ=="
       },
       "FluentIcons.Resources.Avalonia": {
         "type": "Transitive",
-        "resolved": "2.1.333",
-        "contentHash": "RaFZs1cjhW0qzUE6ir5tjLQqIxq5c2l0QhuYb1Dckp3FHleHfGsLrME2/yYVLoF6eA6SCpQ+5ki+XiiNrSgamA==",
+        "resolved": "2.1.337",
+        "contentHash": "cR6Fa3esFmZu1K9IbtS9WLhfnaBEke8icORY0ge47fMpFDcqYQ2kj7Z01zYOXO1s2pIdb14DQZAhOZurs/VTjA==",
         "dependencies": {
           "Avalonia": "12.0.0",
-          "FluentIcons.Common": "[2.1.333]"
+          "FluentIcons.Common": "[2.1.337]"
         }
       },
       "HarfBuzzSharp": {
