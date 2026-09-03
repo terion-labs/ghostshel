@@ -160,6 +160,7 @@ public sealed partial class App : Avalonia.Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            InstallMacOsLiveRegionSafety();
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
             var mainWindowViewModel = _mainWindowViewModel
                 ?? throw new InvalidOperationException(

@@ -139,11 +139,11 @@
     </Style>
   </UserControl.Styles>
   <!--
-    Keep the agent surface free of AutomationProperties.LiveSetting. Avalonia
-    12.0.5's macOS bridge can raise a native live-region notification with a
-    nil announcement while streaming controls are updated or detached, which
-    terminates the process. Stable names, help text, and keyboard focus remain
-    available to assistive technology without that unsafe native callback.
+    Keep direct AutomationProperties.LiveSetting declarations off the agent's
+    high-churn status controls. App.LiveRegionSafety also disables templated
+    live regions on macOS before a window is built because Avalonia 12.0.5 can
+    raise a native notification with a nil announcement while controls update
+    or detach. Stable names, help text, and keyboard focus remain available.
   -->
   <Panel ClipToBounds="False">
   <!-- The floating panel's backdrop: whatever the window has already painted
