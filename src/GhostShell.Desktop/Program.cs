@@ -22,6 +22,15 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        if (WorkspaceSocksProxyCommand.IsInvocation(args))
+        {
+            Environment.ExitCode = WorkspaceSocksProxyCommand
+                .RunAsync(args, CancellationToken.None)
+                .GetAwaiter()
+                .GetResult();
+            return;
+        }
+
         VelopackStartup.Run(args);
 
         if (ConnectionCredentialProcessHost.IsPrivateHelperInvocation(args))

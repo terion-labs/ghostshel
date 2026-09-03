@@ -12,6 +12,17 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
     private static readonly TimeSpan SearchDeadline = TimeSpan.FromSeconds(25);
     private static readonly TimeSpan DomQuietWindow = TimeSpan.FromMilliseconds(500);
     private static readonly SemaphoreSlim SearchGate = new(1, 1);
+    private readonly int? _socksProxyPort;
+
+    public CefAgentWebSearchExecutor(int? socksProxyPort = null)
+    {
+        if (socksProxyPort is < 1 or > 65_535)
+        {
+            throw new ArgumentOutOfRangeException(nameof(socksProxyPort));
+        }
+
+        _socksProxyPort = socksProxyPort;
+    }
 
     public async ValueTask<AgentWebSearchExecutionResult> SearchAsync(
         AgentWebSearchRequest request,
@@ -198,7 +209,7 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
         }
     }
 
-    private static async ValueTask<AgentWebSearchExecutionResult> SearchCoreAsync(
+    private async ValueTask<AgentWebSearchExecutionResult> SearchCoreAsync(
         AgentWebSearchRequest request,
         CancellationToken cancellationToken)
     {
@@ -210,7 +221,9 @@ public sealed class CefAgentWebSearchExecutor : IAgentWebSearchExecutor
                 .InvokeAsync(() =>
                 {
                     var createdNetwork =
-                        CefBrowserNetworkContext.CreateIsolatedAgentWeb();
+                        _socksProxyPort is { } port
+                            ? CefBrowserNetworkContext.CreateIsolatedAgentWeb(port)
+                            : CefBrowserNetworkContext.CreateIsolatedAgentWeb();
                     var createdBrowser = createdNetwork.CreateView();
                     createdBrowser.SetResourceRequestPolicy(
                         (candidate, token) => BrowserDestinationPolicy.LocalSystem

@@ -9,7 +9,8 @@ using StackExchange.Redis;
 namespace GhostShell.Redis;
 
 public sealed class RedisPanelSessionFactory(
-    IDatabaseTunnelFactory? tunnelFactory = null) : IRedisPanelSessionFactory
+    IDatabaseTunnelFactory? tunnelFactory = null,
+    ConnectionProfile? defaultTunnel = null) : IRedisPanelSessionFactory
 {
     public async Task<IRedisPanelSession> OpenAsync(
         string connectionString,
@@ -18,6 +19,7 @@ public sealed class RedisPanelSessionFactory(
     {
         var options = RedisConnectionCatalog.Parse(connectionString);
         IDatabaseTunnelLease? tunnelLease = null;
+        tunnel ??= defaultTunnel;
         if (tunnel is not null)
         {
             if (tunnelFactory is null)

@@ -169,9 +169,29 @@ public sealed partial class WorkspaceView : UserControl
 
     public event EventHandler<RoutedEventArgs>? ToggleAgentPinRequested;
 
+    public event EventHandler<WorkspaceNetworkConnectionOptionViewModel>?
+        WorkspaceNetworkConnectionSelected;
+
+    public event EventHandler<RoutedEventArgs>? WorkspaceNetworkToggleRequested;
+
 
     private void OnActivateTabClick(object? sender, RoutedEventArgs e) =>
         ActivateTabRequested?.Invoke(sender, e);
+
+    private void OnWorkspaceNetworkConnectionClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if (sender is Control
+            {
+                DataContext: WorkspaceNetworkConnectionOptionViewModel connection,
+            })
+        {
+            WorkspaceNetworkConnectionSelected?.Invoke(this, connection);
+        }
+    }
+
+    private void OnWorkspaceNetworkToggleClick(object? sender, RoutedEventArgs e) =>
+        WorkspaceNetworkToggleRequested?.Invoke(sender, e);
 
     private void OnAgentQuestionResponseKeyDown(object? sender, KeyEventArgs e) =>
         AgentQuestionResponseKeyDownRequested?.Invoke(sender, e);

@@ -102,6 +102,44 @@ public sealed class SmbFileProviderTests
     }
 
     [Theory]
+    [InlineData("proxy")]
+    [InlineData("attached")]
+    [InlineData("blocked")]
+    public async Task NonDirectWorkspaceRouteRejectsSmbBeforeCredentialResolution(
+        string route)
+    {
+        var options = RemoteProviderTestProfiles.SmbOptions();
+        using var vault = new ThrowingSecretVault();
+        var connector = new FixedWorkspaceNetworkConnector(route switch
+        {
+            "proxy" => WorkspaceNetworkEgress.ViaProxy(
+                new Uri("socks5://127.0.0.1:45678", UriKind.Absolute)),
+            "attached" => WorkspaceNetworkEgress.Attached,
+            "blocked" => WorkspaceNetworkEgress.Blocked,
+            _ => throw new ArgumentOutOfRangeException(nameof(route)),
+        });
+        var provider = new SmbFileProvider(vault, options, connector);
+        var root = new FileLocation(
+            provider.ProfileId,
+            provider.Authority,
+            FilePath.Root);
+
+        var result = await provider.StatAsync(
+            new FileStatRequest(root),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(
+            FileProviderErrorCode.UnsupportedCapability,
+            result.Error!.Code);
+        Assert.Equal(
+            route == "blocked"
+                ? "The workspace network kill switch is blocking SMB traffic."
+                : "SMB cannot use the active workspace network route because the SMB client only supports direct TCP.",
+            result.Error.Message);
+    }
+
+    [Theory]
     [InlineData("/", "")]
     [InlineData("/folder/file.txt", "folder\\file.txt")]
     [InlineData("/folder/space name.txt", "folder\\space name.txt")]
@@ -264,5 +302,21 @@ public sealed class SmbFileProviderTests
         public void Dispose()
         {
         }
+    }
+
+    private sealed class FixedWorkspaceNetworkConnector(
+        WorkspaceNetworkEgress egress) : IWorkspaceNetworkConnector
+    {
+        public WorkspaceNetworkEgress Egress { get; } = egress;
+
+        public Uri LocalProxyEndpoint { get; } =
+            new("socks5://127.0.0.1:45678", UriKind.Absolute);
+
+        public ValueTask<Stream> ConnectTcpAsync(
+            string host,
+            int port,
+            CancellationToken cancellationToken) =>
+            throw new InvalidOperationException(
+                "SMB must not ask the connector to open an unsupported routed socket.");
     }
 }

@@ -14,7 +14,9 @@ namespace GhostShell.Files;
 /// </summary>
 internal sealed class SmbLibrarySessionFactory(
     ISecretVault secretVault,
-    SmbFileProviderOptions options) : IRemoteHierarchicalFileSessionFactory
+    SmbFileProviderOptions options,
+    IWorkspaceNetworkConnector? networkConnector = null) :
+    IRemoteHierarchicalFileSessionFactory
 {
     private static readonly UTF8Encoding StrictUtf8 = new(
         encoderShouldEmitUTF8Identifier: false,
@@ -24,6 +26,16 @@ internal sealed class SmbLibrarySessionFactory(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (networkConnector?.Egress is { } egress
+            && egress != WorkspaceNetworkEgress.Direct)
+        {
+            throw new RemoteFileSessionException(
+                RemoteFileSessionErrorCode.Unsupported,
+                egress == WorkspaceNetworkEgress.Blocked
+                    ? "The workspace network kill switch is blocking SMB traffic."
+                    : "SMB cannot use the active workspace network route because the SMB client only supports direct TCP.");
+        }
+
         ResolvedSmbCredential credential;
         try
         {

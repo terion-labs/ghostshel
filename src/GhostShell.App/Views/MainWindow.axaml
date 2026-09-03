@@ -159,6 +159,7 @@
           UnbindKeybindingRequested="OnUnbindKeybindingClick"
           UndoDeletedSavedScreenRequested="OnUndoDeletedSavedScreenClick"
           WorkspaceSettingsRequested="OnWorkspaceSettingsClick"
+          NetworkingSettingsRequested="OnNetworkingSettingsClick"
           WorkspaceIsolationChangedRequested="OnWorkspaceIsolationChanged" />
     </DataTemplate>
 
@@ -479,7 +480,9 @@
         ShowSettingsRequested="OnShowSettingsClick"
         SubmitAgentQuestionRequested="OnSubmitAgentQuestionClick"
         ToggleAgentRequested="OnToggleAgentClick"
-        ToggleAgentPinRequested="OnToggleAgentPinClick" />
+        ToggleAgentPinRequested="OnToggleAgentPinClick"
+        WorkspaceNetworkConnectionSelected="OnWorkspaceNetworkConnectionSelected"
+        WorkspaceNetworkToggleRequested="OnWorkspaceNetworkToggleRequested" />
 
     <!-- The host is cheap. Its template is built once, on first navigation. -->
     <ContentControl

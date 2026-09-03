@@ -90,16 +90,112 @@ public abstract record WorkspaceNetworkRoute
 public sealed class WorkspaceRuntimeServices(
     WorkspaceRuntimeBackends backends,
     WorkspaceNetworkRoute networkRoute,
-    IAsyncDisposable? lifetime = null) : IAsyncDisposable
+    IAsyncDisposable? lifetime = null,
+    IWorkspaceNetworkEgressSink? networkEgressSink = null,
+    IWorkspaceNetworkConnector? networkConnector = null) : IAsyncDisposable
 {
+    private readonly object _networkGate = new();
+    private WorkspaceNetworkEgress _networkEgress = WorkspaceNetworkEgress.Direct;
+
     public WorkspaceRuntimeBackends Backends { get; } = backends
         ?? throw new ArgumentNullException(nameof(backends));
 
     public WorkspaceNetworkRoute NetworkRoute { get; } = networkRoute
         ?? throw new ArgumentNullException(nameof(networkRoute));
 
+    public WorkspaceNetworkEgress NetworkEgress
+    {
+        get
+        {
+            lock (_networkGate)
+            {
+                return _networkEgress;
+            }
+        }
+    }
+
+    public Uri? EffectiveProxyUri
+    {
+        get
+        {
+            var egress = NetworkEgress;
+            return egress == WorkspaceNetworkEgress.Blocked
+                ? null
+                : networkConnector?.LocalProxyEndpoint
+                    ?? egress.ProxyEndpoint
+                    ?? NetworkRoute.ProxyUri;
+        }
+    }
+
+    public IWorkspaceNetworkConnector? NetworkConnector => networkConnector;
+
+    public bool IsNetworkBlocked => NetworkEgress == WorkspaceNetworkEgress.Blocked;
+
+    public void ApplyNetworkEgress(WorkspaceNetworkEgress egress)
+    {
+        ArgumentNullException.ThrowIfNull(egress);
+        lock (_networkGate)
+        {
+            _networkEgress = egress;
+        }
+
+        networkEgressSink?.Apply(egress);
+    }
+
     public ValueTask DisposeAsync() =>
         lifetime?.DisposeAsync() ?? ValueTask.CompletedTask;
+}
+
+public interface IWorkspaceNetworkEgressSink
+{
+    void Apply(WorkspaceNetworkEgress egress);
+}
+
+public sealed class WorkspaceNetworkEgressState : IWorkspaceNetworkEgressSink
+{
+    private readonly object _gate = new();
+    private WorkspaceNetworkEgress _current = WorkspaceNetworkEgress.Direct;
+    private Uri? _localProxyEndpoint;
+
+    public WorkspaceNetworkEgress Current
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _current;
+            }
+        }
+    }
+
+    public Uri? LocalProxyEndpoint
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _localProxyEndpoint;
+            }
+        }
+    }
+
+    public void SetLocalProxyEndpoint(Uri endpoint)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        lock (_gate)
+        {
+            _localProxyEndpoint = endpoint;
+        }
+    }
+
+    public void Apply(WorkspaceNetworkEgress egress)
+    {
+        ArgumentNullException.ThrowIfNull(egress);
+        lock (_gate)
+        {
+            _current = egress;
+        }
+    }
 }
 
 public sealed record WorkspaceRuntimeServicesRequest
@@ -108,7 +204,8 @@ public sealed record WorkspaceRuntimeServicesRequest
         WorkspaceInstanceId workspaceId,
         IConnectionRuntime connectionRuntime,
         WorkspaceRuntimeServices hostServices,
-        WorkspaceIsolationBinding? isolationBinding)
+        WorkspaceIsolationBinding? isolationBinding,
+        WorkspaceNetworkEgressState? networkEgressState = null)
     {
         if (string.IsNullOrWhiteSpace(workspaceId.Value))
         {
@@ -123,6 +220,7 @@ public sealed record WorkspaceRuntimeServicesRequest
         HostServices = hostServices
             ?? throw new ArgumentNullException(nameof(hostServices));
         IsolationBinding = isolationBinding;
+        NetworkEgressState = networkEgressState ?? new WorkspaceNetworkEgressState();
     }
 
     public WorkspaceInstanceId WorkspaceId { get; }
@@ -132,6 +230,8 @@ public sealed record WorkspaceRuntimeServicesRequest
     public WorkspaceRuntimeServices HostServices { get; }
 
     public WorkspaceIsolationBinding? IsolationBinding { get; }
+
+    public WorkspaceNetworkEgressState NetworkEgressState { get; }
 }
 
 public interface IWorkspaceRuntimeServicesFactory

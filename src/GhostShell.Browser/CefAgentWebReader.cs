@@ -9,6 +9,17 @@ internal sealed class CefAgentWebReader
     private static readonly TimeSpan DomQuietWindow = TimeSpan.FromMilliseconds(500);
     private static readonly SemaphoreSlim BrowserGate = new(1, 1);
     private readonly WebContentMarkdownConverter _converter = new();
+    private readonly int? _socksProxyPort;
+
+    public CefAgentWebReader(int? socksProxyPort = null)
+    {
+        if (socksProxyPort is < 1 or > 65_535)
+        {
+            throw new ArgumentOutOfRangeException(nameof(socksProxyPort));
+        }
+
+        _socksProxyPort = socksProxyPort;
+    }
 
     public async ValueTask<AgentWebToolExecutionResult> ReadAsync(
         AgentWebReadRequest request,
@@ -140,7 +151,9 @@ internal sealed class CefAgentWebReader
             (network, browser) = await AvaloniaBrowserUiDispatcher.Instance
                 .InvokeAsync(() =>
                 {
-                    var createdNetwork = CefBrowserNetworkContext.CreateIsolatedAgentWeb();
+                    var createdNetwork = _socksProxyPort is { } port
+                        ? CefBrowserNetworkContext.CreateIsolatedAgentWeb(port)
+                        : CefBrowserNetworkContext.CreateIsolatedAgentWeb();
                     var createdBrowser = createdNetwork.CreateView();
                     createdBrowser.SetResourceRequestPolicy(
                         (candidate, token) => BrowserDestinationPolicy.LocalSystem

@@ -33,24 +33,29 @@ public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
 
     private readonly IReadOnlyDictionary<string, IDatabaseDriver> _drivers;
     private readonly IDatabaseTunnelFactory? _tunnelFactory;
+    private readonly ConnectionProfile? _defaultTunnel;
     private readonly ConcurrentDictionary<
         (string ConnectionId, string Host, int Port),
         Task<IDatabaseTunnelLease>> _tunnels = new();
 
-    public DatabasePanelClient(IDatabaseTunnelFactory? tunnelFactory = null)
-        : this(BuiltInDatabaseDrivers.All, tunnelFactory)
+    public DatabasePanelClient(
+        IDatabaseTunnelFactory? tunnelFactory = null,
+        ConnectionProfile? defaultTunnel = null)
+        : this(BuiltInDatabaseDrivers.All, tunnelFactory, defaultTunnel)
     {
     }
 
     public DatabasePanelClient(
         IReadOnlyList<IDatabaseDriver> drivers,
-        IDatabaseTunnelFactory? tunnelFactory = null)
+        IDatabaseTunnelFactory? tunnelFactory = null,
+        ConnectionProfile? defaultTunnel = null)
     {
         ArgumentNullException.ThrowIfNull(drivers);
         _drivers = drivers.ToDictionary(
             driver => driver.Descriptor.Id,
             StringComparer.Ordinal);
         _tunnelFactory = tunnelFactory;
+        _defaultTunnel = defaultTunnel;
         Drivers = [.. drivers.Select(driver => driver.Descriptor)];
     }
 
@@ -1435,6 +1440,9 @@ public sealed class DatabasePanelClient : IDatabasePanelClient, IAsyncDisposable
         Func<string, CancellationToken, Task<TResult>> operation,
         CancellationToken cancellationToken)
     {
+        tunnel ??= driver.GetEndpoint(connectionString) is null
+            ? null
+            : _defaultTunnel;
         if (tunnel is null)
         {
             return await operation(connectionString, cancellationToken).ConfigureAwait(false);

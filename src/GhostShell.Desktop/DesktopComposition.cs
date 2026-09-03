@@ -127,6 +127,7 @@ public static class DesktopComposition
         services.AddSingleton(_ => ConnectionRuntimeOptions.Detect());
         var executableLocator = new PathConnectionExecutableLocator();
         services.AddSingleton<IConnectionExecutableLocator>(executableLocator);
+        var hasWorkspaceIsolationProvider = false;
         if (new WorkspaceIsolationPlatformResolver().ResolveCurrent()
             is WorkspaceIsolationPlatformSupport.Available { Adapter: var isolationAdapter })
         {
@@ -137,8 +138,31 @@ public static class DesktopComposition
             {
                 services.AddSingleton<IWorkspaceIsolationProvider>(_ =>
                     isolationAdapter.CreateProvider(runtimeExecutable));
+                hasWorkspaceIsolationProvider = true;
             }
         }
+
+        services.AddSingleton<INetworkConnectionProvider>(provider =>
+            new ProxyNetworkConnectionProvider(
+                provider.GetRequiredService<ISecretVault>(),
+                provider.GetService<IWorkspaceIsolationProvider>()));
+        if (hasWorkspaceIsolationProvider)
+        {
+            services.AddSingleton<IWorkspaceIsolationEgressGuard,
+                WorkspaceIsolationEgressGuard>();
+            AddIsolatedVpnProvider(services, NetworkConnectionKind.WireGuard);
+            AddIsolatedVpnProvider(services, NetworkConnectionKind.OpenVpn);
+            AddIsolatedVpnProvider(services, NetworkConnectionKind.AnyConnect);
+            AddIsolatedVpnProvider(services, NetworkConnectionKind.Tailscale);
+        }
+
+        services.AddSingleton<IWorkspaceNetworkRuntime>(provider =>
+            new WorkspaceNetworkRuntime(
+                provider.GetServices<INetworkConnectionProvider>(),
+                provider.GetService<IWorkspaceIsolationEgressGuard>()));
+        services.AddSingleton<WorkspaceNetworkRouteRegistry>();
+        services.AddSingleton<IWorkspaceNetworkRouteResolver>(provider =>
+            provider.GetRequiredService<WorkspaceNetworkRouteRegistry>());
 
         services.AddSingleton<IConnectionCommandRunner, ProcessConnectionCommandRunner>();
         services.AddSingleton<IConnectionRuntimeAdapter, LocalConnectionRuntimeAdapter>();
@@ -199,7 +223,10 @@ public static class DesktopComposition
             provider.GetRequiredService<CatalogFileProviderRuntime>());
         services.AddSingleton<IFileTransferQueueClient>(provider =>
             provider.GetRequiredService<CatalogFileProviderRuntime>());
-        services.AddSingleton<IFilePanelSessionFactory, FilePanelSessionFactory>();
+        services.AddSingleton<FilePanelSessionFactory>();
+        services.AddSingleton<WorkspaceFilePanelSessionFactory>();
+        services.AddSingleton<IFilePanelSessionFactory>(provider =>
+            provider.GetRequiredService<WorkspaceFilePanelSessionFactory>());
         services.AddSingleton<BrowserPanelSessionFactory>();
         services.AddSingleton<IBrowserPanelSessionFactory>(provider =>
             provider.GetRequiredService<BrowserPanelSessionFactory>());
@@ -214,9 +241,18 @@ public static class DesktopComposition
         services.AddSingleton<IRedisPanelSessionFactory>(provider =>
             new RedisPanelSessionFactory(
                 provider.GetRequiredService<IDatabaseTunnelFactory>()));
-        services.AddSingleton<IDatabasePanelSessionFactory, DatabasePanelSessionFactory>();
-        services.AddSingleton<IDockerPanelSessionFactory, DockerPanelSessionFactory>();
-        services.AddSingleton<IGitPanelSessionFactory, GitPanelSessionFactory>();
+        services.AddSingleton<DatabasePanelSessionFactory>();
+        services.AddSingleton<WorkspaceDatabasePanelSessionFactory>();
+        services.AddSingleton<IDatabasePanelSessionFactory>(provider =>
+            provider.GetRequiredService<WorkspaceDatabasePanelSessionFactory>());
+        services.AddSingleton<DockerPanelSessionFactory>();
+        services.AddSingleton<WorkspaceDockerPanelSessionFactory>();
+        services.AddSingleton<IDockerPanelSessionFactory>(provider =>
+            provider.GetRequiredService<WorkspaceDockerPanelSessionFactory>());
+        services.AddSingleton<GitPanelSessionFactory>();
+        services.AddSingleton<WorkspaceGitPanelSessionFactory>();
+        services.AddSingleton<IGitPanelSessionFactory>(provider =>
+            provider.GetRequiredService<WorkspaceGitPanelSessionFactory>());
         services.AddSingleton<IDatabaseConnectionCatalog, RedisConnectionCatalog>();
         services.AddSingleton<ISqlLanguageService, CalciteSqlLanguageService>();
         // Keep ImageMagick previews unavailable until native decoding runs in a
@@ -348,6 +384,17 @@ public static class DesktopComposition
             ValidateOnBuild = true,
             ValidateScopes = true,
         });
+    }
+
+    private static void AddIsolatedVpnProvider(
+        IServiceCollection services,
+        NetworkConnectionKind kind)
+    {
+        services.AddSingleton<INetworkConnectionProvider>(provider =>
+            new IsolatedVpnConnectionProvider(
+                kind,
+                provider.GetRequiredService<ISecretVault>(),
+                provider.GetRequiredService<IWorkspaceIsolationProvider>()));
     }
 
     private static HostOperatingSystem CurrentOperatingSystem() =>

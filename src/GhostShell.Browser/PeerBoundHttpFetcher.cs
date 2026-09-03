@@ -24,6 +24,17 @@ internal sealed class PeerBoundHttpFetcher
     {
     }
 
+    internal PeerBoundHttpFetcher(IWorkspaceNetworkConnector connector)
+        : this(
+            ResolveSystemAsync,
+            (address, port, cancellationToken) => connector.ConnectTcpAsync(
+                address.ToString(),
+                port,
+                cancellationToken))
+    {
+        ArgumentNullException.ThrowIfNull(connector);
+    }
+
     internal PeerBoundHttpFetcher(
         Func<string, CancellationToken, ValueTask<IPAddress[]>> resolveHost,
         Func<IPAddress, int, CancellationToken, ValueTask<Stream>> connect)

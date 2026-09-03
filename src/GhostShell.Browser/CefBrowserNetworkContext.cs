@@ -45,6 +45,14 @@ internal sealed class CefBrowserNetworkContext : IDisposable
             "The embedded browser could not create an isolated agent web context.");
     }
 
+    public static CefBrowserNetworkContext CreateIsolatedAgentWeb(int socksProxyPort)
+    {
+        return CreateConfigured(
+            AgentWebPreferences(socksProxyPort),
+            CefBrowserContentPolicy.Ordinary,
+            "The embedded browser could not create an isolated agent web context.");
+    }
+
     public CefBrowserView CreateView() => new(_context, _contentPolicy);
 
     public void Dispose() => _context.Dispose();
@@ -65,6 +73,18 @@ internal sealed class CefBrowserNetworkContext : IDisposable
             ["profile.default_content_setting_values.popups"] = "2",
             ["webrtc.ip_handling_policy"] = "\"disable_non_proxied_udp\"",
         };
+
+    internal static IReadOnlyDictionary<string, string> AgentWebPreferences(
+        int socksProxyPort)
+    {
+        var preferences = new Dictionary<string, string>(
+            RequiredPreferences(socksProxyPort),
+            StringComparer.Ordinal)
+        {
+            ["profile.default_content_setting_values.popups"] = "2",
+        };
+        return preferences;
+    }
 
     private static CefBrowserNetworkContext CreateConfigured(
         IReadOnlyDictionary<string, string> preferences,
