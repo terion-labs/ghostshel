@@ -17,10 +17,18 @@ namespace GhostShell.Infrastructure;
 /// </summary>
 public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolationProvider
 {
+    public static WorkspaceIsolationProviderDescriptor ProviderDescriptor { get; } = new(
+        new WorkspaceIsolationProviderId("apple-container"),
+        "Apple container",
+        WorkspaceIsolationCapability.PersistentRootFileSystem
+        | WorkspaceIsolationCapability.DedicatedKernel
+        | WorkspaceIsolationCapability.DedicatedNetworkNamespace
+        | WorkspaceIsolationCapability.HostBindMounts
+        | WorkspaceIsolationCapability.StructuredProcessExecution);
+
     public const string DefaultContainerExecutablePath = "/usr/local/bin/container";
 
-    public const string DefaultImageReference =
-        "docker.io/library/ubuntu@sha256:95fa486768020359141f1318720f43e7982ef926c792891d984aef9aaf05e7ea";
+    public const string DefaultImageReference = WorkspaceIsolationImages.Default;
 
     internal const string LegacyAlpineImageReference =
         "docker.io/library/alpine@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce";
@@ -33,11 +41,16 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
     private const string KeepAliveExecutable = "/bin/sleep";
     private const string KeepAliveArgument = "infinity";
     private const string SshBootstrapArgumentZero = "ghostshell-ssh";
+    private const string GuestKnownHostsDirectory = "/root/.ssh/ghostshell-known-hosts";
     private const string SshBootstrapScript =
-        "if [ ! -x \"$1\" ]; then export DEBIAN_FRONTEND=noninteractive; "
+        "ssh=$1; known_hosts=$2; known_hosts_data=$3; shift 3; "
+        + "if [ -n \"$known_hosts\" ]; then umask 077; mkdir -p \"${known_hosts%/*}\" || exit $?; "
+        + "if [ -n \"$known_hosts_data\" ]; then printf %s \"$known_hosts_data\" | base64 -d > \"$known_hosts\" || exit $?; "
+        + "elif [ ! -e \"$known_hosts\" ]; then : > \"$known_hosts\" || exit $?; fi; fi; "
+        + "if [ ! -x \"$ssh\" ]; then export DEBIAN_FRONTEND=noninteractive; "
         + "if command -v apt-get >/dev/null 2>&1; then apt-get update && apt-get install -y --no-install-recommends openssh-client && rm -rf /var/lib/apt/lists/*; "
         + "elif command -v apk >/dev/null 2>&1; then apk add --no-cache openssh-client; "
-        + "else echo 'The selected isolate image cannot install OpenSSH.' >&2; exit 127; fi || exit $?; fi; exec \"$@\"";
+        + "else echo 'The selected isolate image cannot install OpenSSH.' >&2; exit 127; fi || exit $?; fi; exec \"$ssh\" \"$@\"";
     private const string OwnershipLabel = "io.ghostshell.workspace";
     private const string SchemaLabel = "io.ghostshell.isolation-schema";
     private const string BaseImageLabel = "io.ghostshell.base-image";
@@ -99,10 +112,12 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
             .ToArray());
     }
 
-    public WorkspaceIsolationProviderKind Kind => WorkspaceIsolationProviderKind.AppleContainer;
+    public WorkspaceIsolationProviderDescriptor Descriptor => ProviderDescriptor;
 
     public WorkspaceIsolationCapability Capabilities =>
-        WorkspaceIsolationPlatformResolver.AppleContainerCapabilities;
+        ProviderDescriptor.Capabilities;
+
+    string IWorkspaceIsolationProvider.DefaultImageReference => _imageReference;
 
     public ValueTask<WorkspaceIsolationResult<WorkspaceIsolationBinding>> PrepareAsync(
         WorkspaceIsolationPrepareRequest request,
@@ -183,6 +198,17 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
                 {
                     return WorkspaceIsolationResult<WorkspaceIsolationBinding>.Fail(
                         WorkspaceIsolationErrorCode.PersistentEnvironmentResetRequired);
+                }
+
+                if (TryReadExpectedContainerConfiguration(
+                        activeInspect.StandardOutput,
+                        resourceName,
+                        out _,
+                        out var activeImage,
+                        out var activeBaseImage,
+                        out _))
+                {
+                    resource.RuntimeImageReference = activeBaseImage ?? activeImage;
                 }
 
                 var activeLiveness = await RunAsync(
@@ -331,11 +357,14 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
                     resourceName,
                     out var configuredMounts,
                     out var configuredImage,
-                    out var configuredBaseImage))
+                    out var configuredBaseImage,
+                    out var forwardsSshAgent))
             {
                 return WorkspaceIsolationResult<WorkspaceIsolationBinding>.Fail(
                     WorkspaceIsolationErrorCode.PersistentEnvironmentResetRequired);
             }
+
+            resource.RuntimeImageReference = configuredBaseImage ?? configuredImage;
 
             if (!ImageConfigurationMatches(
                     request,
@@ -358,8 +387,9 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
                 }
 
                 configuredMounts = request.Mounts;
+                resource.RuntimeImageReference = ImageReferenceFor(request);
             }
-            else if (!MountsEqual(configuredMounts, request.Mounts))
+            else if (!MountsEqual(configuredMounts, request.Mounts) || !forwardsSshAgent)
             {
                 var reconfigured = await ReconfigureContainerAsync(
                         request,
@@ -440,13 +470,108 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
         }
     }
 
+    public async ValueTask<WorkspaceIsolationResult<Unit>> RecreateAsync(
+        WorkspaceIsolationPrepareRequest request,
+        IProgress<WorkspaceIsolationProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var resourceName = ResourceName(request.WorkspaceId);
+        var resource = _resources.GetOrAdd(
+            resourceName,
+            static _ => new ResourceLeaseState());
+        try
+        {
+            await resource.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return WorkspaceIsolationResult<Unit>.Fail(
+                WorkspaceIsolationErrorCode.Cancelled);
+        }
+
+        try
+        {
+            if (resource.ActiveLeases.Count > 0)
+            {
+                return WorkspaceIsolationResult<Unit>.Fail(
+                    WorkspaceIsolationErrorCode.PersistentEnvironmentResetRequired);
+            }
+
+            progress?.Report(new WorkspaceIsolationProgress(
+                "Removing the existing workspace environment…"));
+            var inspect = await RunAsync(
+                    ["inspect", resourceName],
+                    ProbeTimeout,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (inspect.IsSuccess)
+            {
+                if (!IsOwnedContainer(inspect.StandardOutput, resourceName))
+                {
+                    return WorkspaceIsolationResult<Unit>.Fail(
+                        WorkspaceIsolationErrorCode.PrepareFailed);
+                }
+
+                var delete = await RunAsync(
+                        ["delete", "--force", resourceName],
+                        LifecycleTimeout,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (!delete.IsSuccess)
+                {
+                    return WorkspaceIsolationResult<Unit>.Fail(
+                        MapLifecycleFailure(
+                            delete,
+                            WorkspaceIsolationErrorCode.PrepareFailed));
+                }
+            }
+            else
+            {
+                var list = await RunAsync(
+                        ["list", "--all", "--format", "json"],
+                        ProbeTimeout,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (!list.IsSuccess
+                    || !ConfirmsContainerAbsent(list.StandardOutput, resourceName))
+                {
+                    return WorkspaceIsolationResult<Unit>.Fail(
+                        MapLifecycleFailure(
+                            inspect,
+                            WorkspaceIsolationErrorCode.PrepareFailed));
+                }
+            }
+
+            // A stopped workspace is persisted as this private snapshot image.
+            // It may not exist for a never-stopped environment, so deletion is
+            // intentionally best effort after the owned container is gone.
+            _ = await RunAsync(
+                    ["image", "delete", $"{resourceName}-state:latest"],
+                    LifecycleTimeout,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            resource.Mounts = null;
+            resource.ImageReference = null;
+            resource.RuntimeImageReference = null;
+            return cancellationToken.IsCancellationRequested
+                ? WorkspaceIsolationResult<Unit>.Fail(
+                    WorkspaceIsolationErrorCode.Cancelled)
+                : WorkspaceIsolationResult<Unit>.Succeed(Unit.Value);
+        }
+        finally
+        {
+            resource.Gate.Release();
+        }
+    }
+
     public WorkspaceIsolationResult<WorkspaceProcessLaunch> CreateExecLaunch(
         WorkspaceIsolationBinding binding,
         WorkspaceIsolationProcessRequest request)
     {
         ArgumentNullException.ThrowIfNull(binding);
         ArgumentNullException.ThrowIfNull(request);
-        if (binding.Provider != Kind)
+        if (binding.Provider != Descriptor.Id)
         {
             throw new ArgumentException(
                 "The workspace isolation binding belongs to another provider.",
@@ -489,12 +614,22 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
         switch (request.ConnectionKind)
         {
             case ConnectionKind.Local:
-                guestExecutable = _guestShellExecutable;
-                guestArguments = _guestShellArguments;
+                var interactiveShell =
+                    (request.Mode & WorkspaceProcessMode.AllocateTerminal) != 0;
+                guestExecutable = interactiveShell
+                    ? _guestShellExecutable
+                    : request.HostExecutable;
+                guestArguments = interactiveShell
+                    ? _guestShellArguments
+                    : request.Arguments;
                 guestWorkingDirectory ??= DefaultGuestWorkingDirectory;
                 break;
             case ConnectionKind.Ssh when IsSshExecutable(request.HostExecutable):
-                if (!UsesExplicitlyUnverifiedSshPolicy(request.Arguments))
+                if (!TryPrepareSshTrust(
+                        request.Arguments,
+                        out var sshArguments,
+                        out var guestKnownHostsPath,
+                        out var knownHostsData))
                 {
                     return WorkspaceIsolationResult<WorkspaceProcessLaunch>.Fail(
                         WorkspaceIsolationErrorCode.SshHostKeyTrustUnavailable);
@@ -507,7 +642,9 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
                     SshBootstrapScript,
                     SshBootstrapArgumentZero,
                     _guestSshExecutable,
-                }.Concat(request.Arguments).ToArray());
+                    guestKnownHostsPath,
+                    knownHostsData,
+                }.Concat(sshArguments).ToArray());
                 break;
             case ConnectionKind.Ssh:
                 return WorkspaceIsolationResult<WorkspaceProcessLaunch>.Fail(
@@ -562,7 +699,7 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(binding);
-        if (binding.Provider != Kind)
+        if (binding.Provider != Descriptor.Id)
         {
             throw new ArgumentException(
                 "The workspace isolation binding belongs to another provider.",
@@ -688,12 +825,13 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
         resource.ImageReference = request.ImageReference;
         return new WorkspaceIsolationBinding(
             request.WorkspaceId,
-            Kind,
+            Descriptor.Id,
             Capabilities,
             resourceName,
             request.Mounts,
             leaseId,
-            request.ImageReference);
+            request.ImageReference,
+            resource.RuntimeImageReference ?? ImageReferenceFor(request));
     }
 
     internal static string ResourceName(WorkspaceId workspaceId)
@@ -718,10 +856,114 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
     private static bool IsSshExecutable(string executable) =>
         string.Equals(Path.GetFileName(executable), "ssh", StringComparison.Ordinal);
 
-    private static bool UsesExplicitlyUnverifiedSshPolicy(
-        IReadOnlyList<string> arguments) =>
-        HasOpenSshOption(arguments, "StrictHostKeyChecking", "no")
-        && HasOpenSshOption(arguments, "UserKnownHostsFile", "/dev/null");
+    private static bool TryPrepareSshTrust(
+        IReadOnlyList<string> arguments,
+        out IReadOnlyList<string> guestArguments,
+        out string guestKnownHostsPath,
+        out string knownHostsData)
+    {
+        guestArguments = arguments;
+        guestKnownHostsPath = string.Empty;
+        knownHostsData = string.Empty;
+        if (HasOpenSshOption(arguments, "StrictHostKeyChecking", "no")
+            && HasOpenSshOption(arguments, "UserKnownHostsFile", "/dev/null"))
+        {
+            return true;
+        }
+
+        var strict = OpenSshOption(arguments, "StrictHostKeyChecking");
+        var hostKnownHostsPath = OpenSshOption(arguments, "UserKnownHostsFile");
+        if (strict is not ("yes" or "accept-new")
+            || string.IsNullOrWhiteSpace(hostKnownHostsPath)
+            || !Path.IsPathFullyQualified(hostKnownHostsPath))
+        {
+            return false;
+        }
+
+        byte[] contents;
+        try
+        {
+            if (!File.Exists(hostKnownHostsPath))
+            {
+                if (!string.Equals(strict, "accept-new", StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                contents = [];
+            }
+            else
+            {
+                var info = new FileInfo(hostKnownHostsPath);
+                if (info.Length is <= 0 or > 128 * 1024)
+                {
+                    return false;
+                }
+
+                contents = File.ReadAllBytes(hostKnownHostsPath);
+            }
+        }
+        catch (Exception exception) when (exception is IOException
+                                          or UnauthorizedAccessException
+                                          or NotSupportedException)
+        {
+            return false;
+        }
+
+        var identity = Convert.ToHexStringLower(
+            SHA256.HashData(Encoding.UTF8.GetBytes(hostKnownHostsPath)));
+        guestKnownHostsPath = $"{GuestKnownHostsDirectory}/{identity}";
+        knownHostsData = contents.Length == 0 ? string.Empty : Convert.ToBase64String(contents);
+        var rewritten = arguments.ToArray();
+        for (var index = 0; index + 1 < rewritten.Length; index++)
+        {
+            if (!string.Equals(rewritten[index], "-o", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var option = rewritten[index + 1];
+            var separator = option.IndexOf('=');
+            if (separator > 0
+                && string.Equals(
+                    option[..separator],
+                    "UserKnownHostsFile",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                rewritten[index + 1] = $"UserKnownHostsFile={guestKnownHostsPath}";
+                guestArguments = Array.AsReadOnly(rewritten);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string? OpenSshOption(
+        IReadOnlyList<string> arguments,
+        string expectedName)
+    {
+        for (var index = 0; index + 1 < arguments.Count; index++)
+        {
+            if (!string.Equals(arguments[index], "-o", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var option = arguments[index + 1];
+            var separator = option.IndexOf('=');
+            if (separator > 0
+                && string.Equals(
+                    option[..separator],
+                    expectedName,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return option[(separator + 1)..].Trim('"');
+            }
+        }
+
+        return null;
+    }
 
     private static bool HasOpenSshOption(
         IReadOnlyList<string> arguments,
@@ -836,6 +1078,7 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
             WorkspaceCpuCount.ToString(CultureInfo.InvariantCulture),
             "--memory",
             WorkspaceMemoryArgument,
+            "--ssh",
         };
         foreach (var mount in request.Mounts.OrderBy(
                      candidate => candidate.GuestDestination,
@@ -863,7 +1106,7 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
         CancellationToken cancellationToken)
     {
         progress?.Report(new WorkspaceIsolationProgress(
-            "Stopping the workspace isolate before applying host mounts…"));
+            "Stopping the workspace isolate before applying its configuration…"));
         var stop = await RunAsync(
                 ["stop", "--time", "5", resourceName],
                 LifecycleTimeout,
@@ -930,7 +1173,7 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
             }
 
             progress?.Report(new WorkspaceIsolationProgress(
-                "Replacing the workspace isolate with the updated host mounts…"));
+                "Replacing the workspace isolate with the updated configuration…"));
             var delete = await RunAsync(
                     ["delete", resourceName],
                     LifecycleTimeout,
@@ -1203,8 +1446,10 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
             resourceName,
             out var configuredMounts,
             out var configuredImage,
-            out var configuredBaseImage)
+            out var configuredBaseImage,
+            out var forwardsSshAgent)
         && MountsEqual(configuredMounts, request.Mounts)
+        && forwardsSshAgent
         && ImageConfigurationMatches(
             request,
             resourceName,
@@ -1220,6 +1465,7 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
             resourceName,
             out configuredMounts,
             out _,
+            out _,
             out _);
 
     private static bool TryReadExpectedContainerConfiguration(
@@ -1227,11 +1473,13 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
         string resourceName,
         out IReadOnlyList<WorkspaceIsolationMount> configuredMounts,
         out string configuredImage,
-        out string? configuredBaseImage)
+        out string? configuredBaseImage,
+        out bool forwardsSshAgent)
     {
         configuredMounts = [];
         configuredImage = string.Empty;
         configuredBaseImage = null;
+        forwardsSshAgent = false;
         try
         {
             using var document = JsonDocument.Parse(json);
@@ -1260,7 +1508,7 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
                 || !memory.TryGetUInt64(out var memoryBytes)
                 || memoryBytes != WorkspaceMemoryBytes
                 || !configuration.TryGetProperty("ssh", out var ssh)
-                || ssh.ValueKind is not JsonValueKind.False
+                || ssh.ValueKind is not (JsonValueKind.True or JsonValueKind.False)
                 || !configuration.TryGetProperty("useInit", out var useInit)
                 || useInit.ValueKind is not JsonValueKind.True
                 || !configuration.TryGetProperty("mounts", out var mounts)
@@ -1270,6 +1518,7 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
             }
 
             configuredImage = imageReference.GetString()!;
+            forwardsSshAgent = ssh.GetBoolean();
             if (labels.TryGetProperty(BaseImageLabel, out var baseImage)
                 && baseImage.ValueKind == JsonValueKind.String)
             {
@@ -1309,7 +1558,12 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
         {
             // Definitions saved before image selection existed inherit an already-created
             // environment. New environments still use the Ubuntu default.
-            return string.Equals(configuredImage, _imageReference, StringComparison.Ordinal)
+            return string.Equals(configuredBaseImage, _imageReference, StringComparison.Ordinal)
+                || string.Equals(
+                    configuredBaseImage,
+                    LegacyAlpineImageReference,
+                    StringComparison.Ordinal)
+                || string.Equals(configuredImage, _imageReference, StringComparison.Ordinal)
                 || string.Equals(
                     configuredImage,
                     LegacyAlpineImageReference,
@@ -1403,6 +1657,32 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
             }
 
             return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsOwnedContainer(string json, string resourceName)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Array
+                || document.RootElement.GetArrayLength() != 1)
+            {
+                return false;
+            }
+
+            var container = document.RootElement[0];
+            return container.TryGetProperty("configuration", out var configuration)
+                && configuration.ValueKind == JsonValueKind.Object
+                && configuration.TryGetProperty("id", out var id)
+                && id.ValueKind == JsonValueKind.String
+                && string.Equals(id.GetString(), resourceName, StringComparison.Ordinal)
+                && configuration.TryGetProperty("labels", out var labels)
+                && HasLabel(labels, OwnershipLabel, resourceName);
         }
         catch (JsonException)
         {
@@ -1850,6 +2130,8 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
         public IReadOnlyList<WorkspaceIsolationMount>? Mounts { get; set; }
 
         public string? ImageReference { get; set; }
+
+        public string? RuntimeImageReference { get; set; }
     }
 
     private readonly record struct InspectedMount(

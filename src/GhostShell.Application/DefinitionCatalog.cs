@@ -1452,7 +1452,8 @@ public sealed class DefinitionCatalog : IDefinitionCatalog, IDisposable
                     workspace.HasExplicitAccent,
                     workspace.IsIsolated,
                     workspace.IsolationMounts,
-                    workspace.IsolationImageReference),
+                    workspace.IsolationImageReference,
+                    workspace.RunAgentInIsolation),
                 stored.Revision,
                 cancellationToken)
             .ConfigureAwait(false);

@@ -31,10 +31,13 @@ public sealed class ConnectionCommandExecutor(
             return Cancelled();
         }
 
-        var planResult = await connectionRuntime
-            .PlanOpenAsync(request.Connection, progress: null, cancellationToken)
+        var commandPlan = await PlanCommandAsync(
+                request.Connection,
+                request.Executable,
+                request.Arguments,
+                cancellationToken)
             .ConfigureAwait(false);
-        if (planResult is not ConnectionRuntimeResult<ConnectionOpenPlan>.Success success)
+        if (commandPlan is null)
         {
             return new ConnectionCommandResult(
                 ConnectionCommandOutcome.ConnectionFailed,
@@ -42,7 +45,11 @@ public sealed class ConnectionCommandExecutor(
                 string.Empty);
         }
 
-        var start = CreateStartInfo(success.Value.Launch, request, executableLocator);
+        var start = CreateStartInfo(
+            commandPlan.Value.Launch,
+            request,
+            executableLocator,
+            commandPlan.Value.UsesRuntimeExecutable);
         using var process = new Process { StartInfo = start };
         try
         {
@@ -141,10 +148,13 @@ public sealed class ConnectionCommandExecutor(
             return StreamingCancelled<T>();
         }
 
-        var planResult = await connectionRuntime
-            .PlanOpenAsync(request.Connection, progress: null, cancellationToken)
+        var commandPlan = await PlanCommandAsync(
+                request.Connection,
+                request.Executable,
+                request.Arguments,
+                cancellationToken)
             .ConfigureAwait(false);
-        if (planResult is not ConnectionRuntimeResult<ConnectionOpenPlan>.Success success)
+        if (commandPlan is null)
         {
             return new ConnectionStreamingCommandResult<T>(
                 ConnectionCommandOutcome.ConnectionFailed,
@@ -152,7 +162,11 @@ public sealed class ConnectionCommandExecutor(
                 default);
         }
 
-        var start = CreateStartInfo(success.Value.Launch, request, executableLocator);
+        var start = CreateStartInfo(
+            commandPlan.Value.Launch,
+            request,
+            executableLocator,
+            commandPlan.Value.UsesRuntimeExecutable);
         using var process = new Process { StartInfo = start };
         try
         {
@@ -212,11 +226,13 @@ public sealed class ConnectionCommandExecutor(
     private static ProcessStartInfo CreateStartInfo(
         TerminalLaunchRequest launch,
         ConnectionCommand request,
-        IConnectionExecutableLocator executableLocator)
+        IConnectionExecutableLocator executableLocator,
+        bool usesRuntimeExecutable)
     {
         var start = new ProcessStartInfo
         {
-            FileName = request.Connection.ConnectionKind == ConnectionKind.Local
+            FileName = !usesRuntimeExecutable
+                && request.Connection.ConnectionKind == ConnectionKind.Local
                 ? executableLocator.Find(request.Executable) ?? request.Executable
                 : launch.Executable
                     ?? throw new InvalidOperationException("The connection plan has no executable."),
@@ -226,7 +242,9 @@ public sealed class ConnectionCommandExecutor(
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
-        foreach (var argument in CommandArguments(launch, request))
+        foreach (var argument in usesRuntimeExecutable
+                     ? launch.Arguments
+                     : CommandArguments(launch, request))
         {
             start.ArgumentList.Add(argument);
         }
@@ -242,11 +260,13 @@ public sealed class ConnectionCommandExecutor(
     private static ProcessStartInfo CreateStartInfo(
         TerminalLaunchRequest launch,
         ConnectionBinaryCommand request,
-        IConnectionExecutableLocator executableLocator)
+        IConnectionExecutableLocator executableLocator,
+        bool usesRuntimeExecutable)
     {
         var start = new ProcessStartInfo
         {
-            FileName = request.Connection.ConnectionKind == ConnectionKind.Local
+            FileName = !usesRuntimeExecutable
+                && request.Connection.ConnectionKind == ConnectionKind.Local
                 ? executableLocator.Find(request.Executable) ?? request.Executable
                 : launch.Executable
                     ?? throw new InvalidOperationException("The connection plan has no executable."),
@@ -256,7 +276,9 @@ public sealed class ConnectionCommandExecutor(
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
-        foreach (var argument in CommandArguments(launch, request))
+        foreach (var argument in usesRuntimeExecutable
+                     ? launch.Arguments
+                     : CommandArguments(launch, request))
         {
             start.ArgumentList.Add(argument);
         }
@@ -267,6 +289,35 @@ public sealed class ConnectionCommandExecutor(
         }
 
         return start;
+    }
+
+    private async ValueTask<CommandLaunch?> PlanCommandAsync(
+        ConnectionProfile connection,
+        string executable,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken)
+    {
+        if (connectionRuntime is IConnectionCommandRuntime commandRuntime)
+        {
+            var command = await commandRuntime.PlanCommandAsync(
+                    connection,
+                    executable,
+                    arguments,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return command is ConnectionRuntimeResult<TerminalLaunchRequest>.Success success
+                ? new CommandLaunch(success.Value, UsesRuntimeExecutable: true)
+                : null;
+        }
+
+        var plan = await connectionRuntime.PlanOpenAsync(
+                connection,
+                progress: null,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return plan is ConnectionRuntimeResult<ConnectionOpenPlan>.Success successPlan
+            ? new CommandLaunch(successPlan.Value.Launch, UsesRuntimeExecutable: false)
+            : null;
     }
 
     private static IReadOnlyList<string> CommandArguments(
@@ -290,6 +341,10 @@ public sealed class ConnectionCommandExecutor(
                 request.Connection.ConnectionKind,
                 "The connection kind cannot execute structured commands."),
         };
+
+    private readonly record struct CommandLaunch(
+        TerminalLaunchRequest Launch,
+        bool UsesRuntimeExecutable);
 
     private static IReadOnlyList<string> CommandArguments(
         TerminalLaunchRequest launch,

@@ -73,16 +73,19 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
     private CancellationTokenSource? _logFollowCancellation;
     private CancellationTokenSource? _volumeUsageCancellation;
     private Task _volumeUsageLoading = Task.CompletedTask;
+    private readonly string? _connectionDisplayName;
 
     public DockerRuntimePanelViewModel(
         PanelInstanceId id,
         string title,
         IDockerEngineClient client,
-        ConnectionProfile connection)
+        ConnectionProfile connection,
+        string? connectionDisplayName = null)
         : base(id, PanelKind.Docker, title, "Docker")
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
+        _connectionDisplayName = connectionDisplayName;
         if (connection.Endpoint is not (ConnectionEndpoint.Local or ConnectionEndpoint.Ssh))
         {
             throw new ArgumentException(
@@ -152,7 +155,8 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
     public ConnectionProfile Connection => _connection;
 
     public string ConnectionDisplayName =>
-        _connection.Endpoint is ConnectionEndpoint.Local ? "Local" : _connection.Name;
+        _connectionDisplayName
+        ?? (_connection.Endpoint is ConnectionEndpoint.Local ? "Local" : _connection.Name);
 
     public DockerPanelSection Section
     {

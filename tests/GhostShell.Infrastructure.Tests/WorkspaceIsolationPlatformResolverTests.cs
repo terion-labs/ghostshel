@@ -16,22 +16,26 @@ public sealed class WorkspaceIsolationPlatformResolverTests
                 Architecture.Arm64,
                 new Version(26, 0)));
 
-        Assert.Equal(WorkspaceIsolationProviderKind.AppleContainer, support.Provider);
         Assert.Equal(
-            WorkspaceIsolationPlatformResolver.AppleContainerCapabilities,
-            support.Capabilities);
-        Assert.NotEqual(
-            WorkspaceIsolationCapability.None,
-            support.Capabilities & WorkspaceIsolationCapability.PersistentRootFileSystem);
-        Assert.NotEqual(
-            WorkspaceIsolationCapability.None,
-            support.Capabilities & WorkspaceIsolationCapability.DedicatedKernel);
-        Assert.NotEqual(
-            WorkspaceIsolationCapability.None,
-            support.Capabilities & WorkspaceIsolationCapability.DedicatedNetworkNamespace);
+            AppleContainerWorkspaceIsolationProvider.ProviderDescriptor,
+            support.Adapter.Descriptor);
         Assert.Equal(
+            AppleContainerWorkspaceIsolationProvider.ProviderDescriptor.Capabilities,
+            support.Adapter.Descriptor.Capabilities);
+        Assert.NotEqual(
             WorkspaceIsolationCapability.None,
-            support.Capabilities & WorkspaceIsolationCapability.WorkspaceNetworkAttachment);
+            support.Adapter.Descriptor.Capabilities
+            & WorkspaceIsolationCapability.PersistentRootFileSystem);
+        Assert.NotEqual(
+            WorkspaceIsolationCapability.None,
+            support.Adapter.Descriptor.Capabilities
+            & WorkspaceIsolationCapability.DedicatedKernel);
+        Assert.NotEqual(
+            WorkspaceIsolationCapability.None,
+            support.Adapter.Descriptor.Capabilities
+            & WorkspaceIsolationCapability.DedicatedNetworkNamespace);
+        Assert.Equal("container", support.Adapter.RuntimeExecutableName);
+        Assert.Equal("Apple container", support.Adapter.Installation.RuntimeDisplayName);
     }
 
     [Fact]
@@ -84,5 +88,13 @@ public sealed class WorkspaceIsolationPlatformResolverTests
                 WorkspaceIsolationPlatformLimitation.WslDistributionsShareNetworkNamespace,
             ],
             support.Limitations);
+    }
+
+    [Fact]
+    public void Unavailable_support_rejects_a_non_limitation_sentinel()
+    {
+        _ = Assert.Throws<ArgumentException>(() =>
+            new WorkspaceIsolationPlatformSupport.Unavailable(
+                [WorkspaceIsolationPlatformLimitation.None]));
     }
 }

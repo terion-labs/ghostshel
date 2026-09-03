@@ -97,6 +97,14 @@ public static class WorkspaceValidator
                 definition.Id.Value));
         }
 
+        if (definition.RunAgentInIsolation && !definition.IsIsolated)
+        {
+            issues.Add(new(
+                DefinitionValidationCode.InvalidEntry,
+                "The AI agent can use workspace isolation only when the workspace is isolated.",
+                definition.Id.Value));
+        }
+
         ValidateIsolationMounts(definition, issues);
     }
 
@@ -118,7 +126,7 @@ public static class WorkspaceValidator
             if (mount is null
                 || string.IsNullOrWhiteSpace(mount.HostPath)
                 || mount.HostPath.Contains('\0', StringComparison.Ordinal)
-                || !Path.IsPathFullyQualified(mount.HostPath))
+                || !IsPortableAbsoluteHostPath(mount.HostPath))
             {
                 issues.Add(new(
                     DefinitionValidationCode.InvalidEntry,
@@ -150,6 +158,33 @@ public static class WorkspaceValidator
                 $"Isolation mount guest path '{duplicate.Key}' is used more than once.",
                 definition.Id.Value));
         }
+    }
+
+    private static bool IsPortableAbsoluteHostPath(string path)
+    {
+        if (path[0] == '/')
+        {
+            return true;
+        }
+
+        if (path.Length >= 3
+            && char.IsAsciiLetter(path[0])
+            && path[1] == ':'
+            && path[2] is '/' or '\\')
+        {
+            return true;
+        }
+
+        if (!path.StartsWith("\\\\", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var share = path.AsSpan(2);
+        var serverSeparator = share.IndexOfAny('/', '\\');
+        return serverSeparator > 0
+            && serverSeparator < share.Length - 1
+            && share[(serverSeparator + 1)..].IndexOfAny('/', '\\') is not 0;
     }
 
     private static bool TryNormalizeGuestMountPath(string? path, out string normalized)

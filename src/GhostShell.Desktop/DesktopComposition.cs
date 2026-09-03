@@ -128,19 +128,15 @@ public static class DesktopComposition
         var executableLocator = new PathConnectionExecutableLocator();
         services.AddSingleton<IConnectionExecutableLocator>(executableLocator);
         if (new WorkspaceIsolationPlatformResolver().ResolveCurrent()
-            is WorkspaceIsolationPlatformSupport.Available
-            {
-                Provider: WorkspaceIsolationProviderKind.AppleContainer,
-            })
+            is WorkspaceIsolationPlatformSupport.Available { Adapter: var isolationAdapter })
         {
-            services.AddSingleton<IWorkspaceIsolationRuntimeInstaller,
-                AppleContainerRuntimeInstaller>();
-            if (executableLocator.Find("container") is { } containerExecutable)
+            services.AddSingleton<IWorkspaceIsolationRuntimeInstaller>(_ =>
+                new WorkspaceIsolationRuntimeInstaller(isolationAdapter.Installation));
+            if (executableLocator.Find(isolationAdapter.RuntimeExecutableName)
+                is { } runtimeExecutable)
             {
                 services.AddSingleton<IWorkspaceIsolationProvider>(_ =>
-                    new AppleContainerWorkspaceIsolationProvider(
-                        imageReference: AppleContainerWorkspaceIsolationProvider.DefaultImageReference,
-                        containerExecutable: containerExecutable));
+                    isolationAdapter.CreateProvider(runtimeExecutable));
             }
         }
 
@@ -151,6 +147,8 @@ public static class DesktopComposition
         services.AddSingleton<IConnectionRuntimeAdapter, WslConnectionRuntimeAdapter>();
         services.AddSingleton<IConnectionRuntime, ConnectionRuntime>();
         services.AddSingleton<IConnectionCommandExecutor, ConnectionCommandExecutor>();
+        services.AddSingleton<IWorkspaceRuntimeServicesFactory,
+            DesktopWorkspaceRuntimeServicesFactory>();
         services.AddSingleton<IDockerEngineClient, DockerEngineClient>();
         services.AddSingleton<IGitRepositoryClient, GitRepositoryClient>();
         services.AddSingleton<IGitRepositoryMutationCoordinator,
@@ -206,7 +204,10 @@ public static class DesktopComposition
         services.AddSingleton<IBrowserPanelSessionFactory>(provider =>
             provider.GetRequiredService<BrowserPanelSessionFactory>());
         services.AddSingleton<IAgentWebToolExecutor, AgentWebToolExecutor>();
-        services.AddSingleton<ISystemMonitorPanelSessionFactory, SystemMonitorPanelSessionFactory>();
+        services.AddSingleton<SystemMonitorPanelSessionFactory>();
+        services.AddSingleton<WorkspaceSystemMonitorPanelSessionFactory>();
+        services.AddSingleton<ISystemMonitorPanelSessionFactory>(provider =>
+            provider.GetRequiredService<WorkspaceSystemMonitorPanelSessionFactory>());
         services.AddSingleton<IDatabaseTunnelFactory, SshNetDatabaseTunnelFactory>();
         services.AddSingleton<SshNetBrowserTunnelFactory>();
         services.AddSingleton<IDatabasePanelClient, DatabasePanelClient>();

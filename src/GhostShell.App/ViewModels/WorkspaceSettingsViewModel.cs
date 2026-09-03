@@ -21,6 +21,8 @@ public sealed class WorkspaceSettingsViewModel : ObservableObject, IDisposable
     private readonly WorkspaceDefinitionOccupancy? _workspaceDefinitionOccupancy;
     private readonly bool _isIsolationAvailable;
     private readonly string? _isolationRuntimeDisplayName;
+    private readonly string _defaultIsolationImageReference;
+    private readonly Func<WorkspaceId, string?> _activeIsolationImageReference;
     private WorkspaceEditorViewModel? _editor;
     private bool _disposed;
 
@@ -30,13 +32,22 @@ public sealed class WorkspaceSettingsViewModel : ObservableObject, IDisposable
         Func<DefinitionKey, bool>? isWorkspaceOpen = null,
         WorkspaceDefinitionOccupancy? workspaceDefinitionOccupancy = null,
         bool isIsolationAvailable = true,
-        string? isolationRuntimeDisplayName = null)
+        string? isolationRuntimeDisplayName = null,
+        string defaultIsolationImageReference = WorkspaceIsolationImages.Default,
+        Func<WorkspaceId, string?>? activeIsolationImageReference = null)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _aiProviders = aiProviders ?? (() => []);
         _workspaceDefinitionOccupancy = workspaceDefinitionOccupancy;
         _isIsolationAvailable = isIsolationAvailable;
         _isolationRuntimeDisplayName = isolationRuntimeDisplayName;
+        _defaultIsolationImageReference = string.IsNullOrWhiteSpace(
+            defaultIsolationImageReference)
+            ? throw new ArgumentException(
+                "A default isolation image reference is required.",
+                nameof(defaultIsolationImageReference))
+            : defaultIsolationImageReference.Trim();
+        _activeIsolationImageReference = activeIsolationImageReference ?? (_ => null);
         _isWorkspaceOpen = workspaceDefinitionOccupancy is null
             ? isWorkspaceOpen ?? (_ => false)
             : workspaceDefinitionOccupancy.IsOccupied;
@@ -268,7 +279,8 @@ public sealed class WorkspaceSettingsViewModel : ObservableObject, IDisposable
             current.HasExplicitAccent,
             isIsolated,
             current.IsolationMounts,
-            current.IsolationImageReference);
+            current.IsolationImageReference,
+            current.RunAgentInIsolation && isIsolated);
         return await _catalog.SaveWorkspaceAsync(
             updated,
             stored.Revision,
@@ -312,7 +324,8 @@ public sealed class WorkspaceSettingsViewModel : ObservableObject, IDisposable
             current.HasExplicitAccent,
             current.IsIsolated,
             current.IsolationMounts,
-            current.IsolationImageReference);
+            current.IsolationImageReference,
+            current.RunAgentInIsolation);
         return await _catalog.SaveWorkspaceAsync(
             updated,
             stored.Revision,
@@ -344,7 +357,12 @@ public sealed class WorkspaceSettingsViewModel : ObservableObject, IDisposable
             [.. snapshot.FileProviderProfiles.Select(item => item.Value)],
             _aiProviders(),
             isIsolationAvailable: _isIsolationAvailable,
-            isolationRuntimeDisplayName: _isolationRuntimeDisplayName);
+            isolationRuntimeDisplayName: _isolationRuntimeDisplayName,
+            effectiveIsolationImageReference:
+                _activeIsolationImageReference(definition.Id)
+                ?? definition.IsolationImageReference
+                ?? _defaultIsolationImageReference,
+            defaultIsolationImageReference: _defaultIsolationImageReference);
         editor.SetPeers([.. snapshot.Workspaces.Select(item => item.Value)]);
         return editor;
     }

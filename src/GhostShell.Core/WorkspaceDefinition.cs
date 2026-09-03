@@ -47,7 +47,8 @@ public sealed record WorkspaceDefinition : IDurableDefinition
         bool hasExplicitAccent = false,
         bool isIsolated = false,
         IReadOnlyList<WorkspaceIsolationMountDefinition>? isolationMounts = null,
-        string? isolationImageReference = null)
+        string? isolationImageReference = null,
+        bool runAgentInIsolation = false)
     {
         Id = id;
         SchemaVersion = schemaVersion;
@@ -80,6 +81,7 @@ public sealed record WorkspaceDefinition : IDurableDefinition
         IsolationImageReference = string.IsNullOrWhiteSpace(isolationImageReference)
             ? null
             : isolationImageReference.Trim();
+        RunAgentInIsolation = runAgentInIsolation;
     }
 
     public static DefinitionKind Kind => DefinitionKind.Workspace;
@@ -161,6 +163,13 @@ public sealed record WorkspaceDefinition : IDurableDefinition
     public string? IsolationImageReference { get; }
 
     /// <summary>
+    /// Whether this workspace's AI agent and its tools use the workspace
+    /// isolation environment. False keeps the agent on the host even when the
+    /// rest of the workspace is isolated.
+    /// </summary>
+    public bool RunAgentInIsolation { get; }
+
+    /// <summary>
     /// Null inherits the application preference. A concrete value makes the
     /// workspace behavior stable even when the global preference changes.
     /// </summary>
@@ -211,7 +220,8 @@ public sealed record WorkspaceDefinition : IDurableDefinition
             HasExplicitAccent,
             IsIsolated,
             IsolationMounts,
-            IsolationImageReference);
+            IsolationImageReference,
+            RunAgentInIsolation);
     }
 
     public static bool IsValidIcon(string? icon)

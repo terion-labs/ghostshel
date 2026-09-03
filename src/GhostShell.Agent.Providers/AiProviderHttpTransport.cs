@@ -294,7 +294,7 @@ internal sealed class AiProviderHttpTransport : IDisposable
         _client.Dispose();
     }
 
-    private static SocketsHttpHandler CreateHandler() => new()
+    internal static SocketsHttpHandler CreateHandler(IWebProxy? proxy = null) => new()
     {
         ActivityHeadersPropagator = null,
         AllowAutoRedirect = false,
@@ -309,9 +309,9 @@ internal sealed class AiProviderHttpTransport : IDisposable
         PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2),
         PooledConnectionLifetime = TimeSpan.FromMinutes(10),
         PreAuthenticate = false,
-        Proxy = null,
+        Proxy = proxy,
         UseCookies = false,
-        UseProxy = false,
+        UseProxy = proxy is not null,
     };
 
     private async ValueTask<string> ResolveCredentialAsync(

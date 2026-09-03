@@ -72,6 +72,7 @@ internal static class RemoteTerminalIdleClassifier
                 || prefix.Contains('@', StringComparison.Ordinal)
                 || prefix.EndsWith(']')
                 || prefix.EndsWith(':')
+                || HasHostPathPrefix(prefix)
                 || (prefix.EndsWith(' ')
                     && (trimmedPrefix.StartsWith('/')
                         || trimmedPrefix.StartsWith('~'))),
@@ -81,5 +82,17 @@ internal static class RemoteTerminalIdleClassifier
                 || prefix.EndsWith(']'),
             _ => false,
         };
+    }
+
+    private static bool HasHostPathPrefix(string prefix)
+    {
+        var separator = prefix.LastIndexOf(':');
+        if (separator <= 0 || separator == prefix.Length - 1)
+        {
+            return false;
+        }
+
+        var path = prefix.AsSpan(separator + 1);
+        return path[0] is '~' or '/';
     }
 }

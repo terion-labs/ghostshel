@@ -158,7 +158,7 @@
               ControlWidth="470">
             <controls:SettingRow
                 Label="Isolate workspace"
-                Description="Use one persistent Linux environment as this workspace's execution and network boundary. Local terminals run inside it. A connection without an isolate backend is blocked instead of using the host. Installed packages and guest files remain between sessions, and only the host folders below are visible inside.">
+                Description="Use one persistent Linux environment as this workspace's execution and network boundary. All workspace panels, connections, and local terminals use it. Installed packages and guest files remain between sessions, and only the host folders below are visible inside.">
               <ToggleSwitch
                   HorizontalAlignment="Right"
                   IsChecked="{Binding IsIsolated, Mode=TwoWay}"
@@ -179,13 +179,24 @@
             </controls:SettingRow>
             <controls:SettingRow
                 Label="Runtime image"
-                Description="New isolates use GhostSHELL's pinned minimal Ubuntu 24.04 image. Enter another Linux OCI image reference for this workspace. Changing the image rebuilds the isolate and removes its installed packages and guest-only files."
+                Description="{Binding IsolationImageDescription}"
                 IsVisible="{Binding IsIsolated}">
               <TextBox
                   Width="470"
                   Text="{Binding IsolationImageReference, Mode=TwoWay}"
-                  PlaceholderText="Ubuntu 24.04 minimal (default)"
                   AutomationProperties.Name="Workspace isolation OCI image" />
+            </controls:SettingRow>
+            <controls:SettingRow
+                Label="Recreate environment"
+                Description="Remove this workspace's current environment and start a new one from the image above. Host-mounted files are not removed."
+                IsVisible="{Binding IsIsolated}">
+              <Button
+                  HorizontalAlignment="Right"
+                  Classes="SecondaryButton"
+                  Click="OnRecreateWorkspaceIsolationClick"
+                  Content="Recreate environment"
+                  IsEnabled="{Binding CanRecreateIsolationEnvironment}"
+                  AutomationProperties.Name="Recreate workspace environment" />
             </controls:SettingRow>
             <controls:SettingRow
                 Label="Host mounts"
@@ -248,7 +259,7 @@
                 <TextBlock
                     Classes="Muted"
                     FontSize="{DynamicResource ShellFontSize9}"
-                    Text="Changing mounts after first use may require resetting the persistent isolate, which removes installed packages and guest-only files."
+                    Text="Saving mount changes restarts the workspace and applies the new mount list. Installed packages and guest-only files remain available."
                     TextWrapping="Wrap" />
                 <Button
                     HorizontalAlignment="Left"
@@ -561,6 +572,15 @@
               Heading="AI configuration"
               Description="Use app defaults or choose a provider, model, and tool permissions for this workspace.">
             <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
+              <controls:SettingRow
+                  Label="Run AI agent in workspace environment"
+                  Description="Off uses the host network for the AI provider. On routes the AI provider connection through this workspace's environment; providers available only on the host cannot be selected."
+                  IsVisible="{Binding IsIsolated}">
+                <ToggleSwitch
+                    HorizontalAlignment="Right"
+                    IsChecked="{Binding RunAgentInIsolation, Mode=TwoWay}"
+                    AutomationProperties.Name="Run AI agent in workspace environment" />
+              </controls:SettingRow>
               <controls:ToggleField
                   Label="Override AI configuration for this workspace"
                   IsChecked="{CompiledBinding AgentPolicy.IsEnabled, Mode=TwoWay}"

@@ -11,6 +11,8 @@ public sealed class RemoteTerminalIdleClassifierTests
     [InlineData("/ # ", 3)]
     [InlineData("/app # ", 6)]
     [InlineData("~/workspace $ ", 13)]
+    [InlineData("ghostshell-5cce9f181cf6e094c296cea0:~# ", 39)]
+    [InlineData("container-name:/workspace# ", 26)]
     public void Common_remote_shell_prompts_are_idle(string line, int cursorColumn)
     {
         var state = State(cursorColumn);
@@ -22,6 +24,7 @@ public sealed class RemoteTerminalIdleClassifierTests
     [InlineData("", 0)]
     [InlineData("root@ubuntu:~# sleep 100\n", 0)]
     [InlineData("mysql> ", 7)]
+    [InlineData("service:healthy# ", 16)]
     [InlineData("building package 42%", 20)]
     public void Running_or_non_shell_interactions_remain_confirmation_worthy(
         string screen,

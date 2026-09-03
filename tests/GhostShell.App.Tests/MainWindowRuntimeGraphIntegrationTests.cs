@@ -599,10 +599,20 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             WorkspaceId,
             mounts: [mount]);
         var provider = new RecordingWorkspaceIsolationProvider();
+        var files = new EmptyFileClients(
+            [
+                FileProfile(
+                    BuiltInFileProviders.HomeId,
+                    "Local",
+                    FileProviderFamily.Posix,
+                    "local"),
+            ]);
         var (client, _) = CreateSessionClient();
         using var viewModel = CreateViewModel(
             client,
             snapshot,
+            filePanelClient: files,
+            fileTransferQueueClient: files,
             workspaceIsolationProvider: provider);
 
         Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
@@ -619,9 +629,22 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         var terminal = Assert.Single(runtime.Tabs
             .SelectMany(tab => tab.Panels)
             .OfType<TerminalRuntimePanelViewModel>());
+        Assert.Equal("Workspace", terminal.ConnectionDisplayName);
+        Assert.Contains(
+            viewModel.PanelConnectionOptions,
+            option => option.Name == "Workspace environment");
+        Assert.Contains(
+            viewModel.BrowserConnectionOptions,
+            option => option.Name == "Workspace environment");
+        Assert.Contains(
+            viewModel.FileConnectionOptions,
+            option => option.Name == "Workspace environment");
         var session = Assert.IsType<EnsureTerminalSessionRequest>(terminal.SessionRequest);
         Assert.Equal("isolation-runtime", session.Launch.Executable);
         Assert.Equal(runtime.IsolationBinding!.ResourceName, session.Launch.Arguments[1]);
+        Assert.Equal(
+            TerminalShellActivityFallback.PromptShape,
+            session.Launch.ShellActivityFallback);
     }
 
     [Fact]
@@ -711,6 +734,143 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         Assert.Equal(
             provider.StopBindings[0].LeaseId,
             provider.StopBindings[1].LeaseId);
+    }
+
+    [Fact]
+    public async Task FailedIsolationStopDoesNotDisposePanelServicesTwiceOnRetry()
+    {
+        var snapshot = WithWorkspaceIsolation(CreateCatalogSnapshot(), SecondWorkspaceId);
+        var provider = new RecordingWorkspaceIsolationProvider
+        {
+            StopFailuresRemaining = 1,
+        };
+        var (client, _) = CreateSessionClient();
+        var services = new RecordingWorkspaceRuntimeServicesFactory();
+        using var viewModel = CreateViewModel(
+            client,
+            snapshot,
+            workspaceIsolationProvider: provider,
+            workspaceRuntimeServicesFactory: services);
+        Assert.True(await viewModel.OpenWorkspaceAsync(SecondWorkspaceId));
+        var runtime = Assert.IsType<RuntimeWorkspaceViewModel>(viewModel.RuntimeWorkspace);
+
+        _ = await viewModel.CloseWorkspaceAsync(
+            runtime.Id,
+            CloseDecision.Confirm,
+            CancellationToken.None);
+        await viewModel.QuiesceForShutdownAsync(CancellationToken.None);
+
+        Assert.Equal(1, Assert.Single(services.Created).DisposeCount);
+        Assert.Equal(2, provider.StopBindings.Count);
+        Assert.Equal(
+            provider.StopBindings[0].LeaseId,
+            provider.StopBindings[1].LeaseId);
+    }
+
+    [Fact]
+    public async Task PlainWorkspaceAlsoAcquiresProviderNeutralRuntimeServices()
+    {
+        var (client, _) = CreateSessionClient();
+        var services = new RecordingWorkspaceRuntimeServicesFactory();
+        using var viewModel = CreateViewModel(
+            client,
+            CreateCatalogSnapshot(),
+            workspaceRuntimeServicesFactory: services);
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+
+        var request = Assert.Single(services.Requests);
+        Assert.Null(request.IsolationBinding);
+        Assert.IsNotAssignableFrom<IWorkspaceIsolationTerminalRuntime>(
+            request.ConnectionRuntime);
+        Assert.Null(request.HostServices.NetworkRoute.ProxyUri);
+    }
+
+    [Fact]
+    public async Task PanelServiceDisposalFailureDoesNotPreventProviderStop()
+    {
+        var snapshot = WithWorkspaceIsolation(CreateCatalogSnapshot(), SecondWorkspaceId);
+        var provider = new RecordingWorkspaceIsolationProvider();
+        var (client, _) = CreateSessionClient();
+        var services = new RecordingWorkspaceRuntimeServicesFactory();
+        using var viewModel = CreateViewModel(
+            client,
+            snapshot,
+            workspaceIsolationProvider: provider,
+            workspaceRuntimeServicesFactory: services);
+        Assert.True(await viewModel.OpenWorkspaceAsync(SecondWorkspaceId));
+        var runtime = Assert.IsType<RuntimeWorkspaceViewModel>(viewModel.RuntimeWorkspace);
+        var panelServices = Assert.Single(services.Created);
+        panelServices.DisposeFailuresRemaining = 1;
+
+        _ = await viewModel.CloseWorkspaceAsync(
+            runtime.Id,
+            CloseDecision.Confirm,
+            CancellationToken.None);
+        await WaitForAsync(() => provider.StopBindings.Count == 1);
+
+        Assert.Equal(1, panelServices.DisposeCount);
+        Assert.Single(provider.StopBindings);
+
+        await viewModel.QuiesceForShutdownAsync(CancellationToken.None);
+
+        Assert.Equal(2, panelServices.DisposeCount);
+        Assert.Single(provider.StopBindings);
+    }
+
+    [Fact]
+    public async Task FailedOpenDisposesRegisteredIsolationPanelServices()
+    {
+        var isolated = WithWorkspaceIsolation(CreateCatalogSnapshot(), SecondWorkspaceId);
+        var catalog = CreateFixedCatalog(isolated);
+        var catalogProxy = (FixedCatalogProxy)(object)catalog;
+        var provider = new RecordingWorkspaceIsolationProvider();
+        var (client, recorder) = CreateSessionClient();
+        recorder.DelayNextRegistration = true;
+        var services = new RecordingWorkspaceRuntimeServicesFactory();
+        using var viewModel = CreateViewModel(
+            client,
+            catalog,
+            workspaceIsolationProvider: provider,
+            workspaceRuntimeServicesFactory: services);
+
+        var opening = viewModel.OpenWorkspaceAsync(SecondWorkspaceId);
+        await recorder.DelayedRegistrationEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        catalogProxy.Snapshot = CreateCatalogSnapshot();
+        recorder.AllowDelayedRegistration.TrySetResult();
+
+        Assert.False(await opening.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(1, Assert.Single(services.Created).DisposeCount);
+        Assert.Single(provider.StopBindings);
+    }
+
+    [Fact]
+    public async Task RecreateProviderFaultIsContainedAndRestoresTheOpenWorkspace()
+    {
+        var snapshot = WithWorkspaceIsolation(CreateCatalogSnapshot(), WorkspaceId);
+        var provider = new RecordingWorkspaceIsolationProvider
+        {
+            RecreateException = new IOException("The isolation runtime exited."),
+        };
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            snapshot,
+            workspaceIsolationProvider: provider);
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+
+        var recreated = await viewModel.RecreateWorkspaceIsolationAsync(
+            WorkspaceId,
+            CancellationToken.None);
+
+        Assert.False(recreated);
+        Assert.NotNull(viewModel.RuntimeWorkspace);
+        Assert.Contains(
+            "could not be recreated",
+            viewModel.OperationError,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(2, provider.PrepareRequests.Count);
+        Assert.Single(provider.StopBindings);
     }
 
     [Fact]
@@ -1384,7 +1544,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     }
 
     [Fact]
-    public async Task Isolated_workspace_blocks_backends_that_would_execute_on_the_host()
+    public async Task Isolated_workspace_keeps_agent_on_host_and_blocks_uncomposed_panel_backends()
     {
         var snapshot = WithWorkspaceIsolation(CreateCatalogSnapshot(), WorkspaceId);
         var browserFactory = new RecordingBrowserRendererViewFactory();
@@ -1413,12 +1573,64 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             .ToArray();
         Assert.Equal(4, blockedPanels.Length);
         Assert.All(blockedPanels, panel => Assert.Contains(
-            "blocked host execution",
+            "No process was started on the host",
             panel.CapabilityMessage,
             StringComparison.Ordinal));
         Assert.Equal(0, browserFactory.CreateCount);
-        Assert.Null(viewModel.AgentChat);
-        Assert.Empty(agentFactory.CreatedRuntimes);
+        Assert.NotNull(viewModel.AgentChat);
+        Assert.Single(agentFactory.CreatedRuntimes);
+    }
+
+    [Fact]
+    public async Task Isolated_workspace_keeps_hosted_panels_on_the_registered_session_graph()
+    {
+        var snapshot = WithWorkspaceIsolation(CreateCatalogSnapshot(), WorkspaceId);
+        var browserFactory = new RecordingBrowserRendererViewFactory();
+        var (hostClient, hostRecorder) = CreateSessionClient();
+        hostRecorder.AcceptBrowserSessions = true;
+        hostRecorder.AcceptTerminalSessions = true;
+        hostRecorder.AcceptStatisticsSessions = true;
+        hostRecorder.AcceptProcessMonitorSessions = true;
+        var runtimeServices = new RecordingWorkspaceRuntimeServicesFactory();
+        var files = new EmptyFileClients(
+        [
+            FileProfile(
+                BuiltInFileProviders.HomeId,
+                "Workspace files",
+                FileProviderFamily.Posix,
+                "workspace"),
+        ]);
+        using var viewModel = CreateViewModel(
+            hostClient,
+            snapshot,
+            browserRendererFactory: browserFactory,
+            filePanelClient: files,
+            fileTransferQueueClient: files,
+            workspaceIsolationProvider: new RecordingWorkspaceIsolationProvider(),
+            workspaceRuntimeServicesFactory: runtimeServices);
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+
+        var runtime = Assert.IsType<RuntimeWorkspaceViewModel>(
+            viewModel.RuntimeWorkspace);
+        var browser = Assert.Single(runtime.Tabs
+            .SelectMany(tab => tab.Panels)
+            .OfType<BrowserRuntimePanelViewModel>());
+        var terminal = Assert.Single(runtime.Tabs
+            .SelectMany(tab => tab.Panels)
+            .OfType<TerminalRuntimePanelViewModel>());
+        var statistics = Assert.Single(runtime.Tabs
+            .SelectMany(tab => tab.Panels)
+            .OfType<StatisticsRuntimePanelViewModel>());
+        var processes = Assert.Single(runtime.Tabs
+            .SelectMany(tab => tab.Panels)
+            .OfType<ProcessMonitorRuntimePanelViewModel>());
+        Assert.Same(hostClient, browser.SessionClient);
+        Assert.Same(hostClient, terminal.SessionClient);
+        await WaitForAsync(() => hostRecorder.BrowserAttachmentCount == 1);
+        await WaitForAsync(() => statistics.HasHostedSession);
+        await WaitForAsync(() => processes.HasHostedSession);
+        Assert.True(browser.HasInteractiveAttachment);
     }
 
     [Fact]
@@ -7412,7 +7624,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         IWorkspaceIsolationProvider? workspaceIsolationProvider = null,
         IConnectionSecurityRuntime? connectionSecurityRuntime = null,
         WorkspaceDefinitionOccupancy? workspaceDefinitionOccupancy = null,
-        TerminalMultiplexerCoordinator? terminalMultiplexerCoordinator = null) =>
+        TerminalMultiplexerCoordinator? terminalMultiplexerCoordinator = null,
+        IWorkspaceRuntimeServicesFactory? workspaceRuntimeServicesFactory = null) =>
         CreateViewModel(
             sessionClient,
             CreateFixedCatalog(snapshot),
@@ -7437,7 +7650,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             workspaceIsolationProvider,
             connectionSecurityRuntime,
             workspaceDefinitionOccupancy,
-            terminalMultiplexerCoordinator);
+            terminalMultiplexerCoordinator,
+            workspaceRuntimeServicesFactory);
 
     private static MainWindowViewModel CreateViewModel(
         ISessionHostClient sessionClient,
@@ -7463,7 +7677,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
         IWorkspaceIsolationProvider? workspaceIsolationProvider = null,
         IConnectionSecurityRuntime? connectionSecurityRuntime = null,
         WorkspaceDefinitionOccupancy? workspaceDefinitionOccupancy = null,
-        TerminalMultiplexerCoordinator? terminalMultiplexerCoordinator = null)
+        TerminalMultiplexerCoordinator? terminalMultiplexerCoordinator = null,
+        IWorkspaceRuntimeServicesFactory? workspaceRuntimeServicesFactory = null)
     {
         var files = new EmptyFileClients();
         agentPolicyCoordinator ??= CreateConfiguredPolicyCoordinator(aiProfiles);
@@ -7492,7 +7707,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             workspaceIsolationProvider: workspaceIsolationProvider,
             connectionSecurityRuntime: connectionSecurityRuntime,
             workspaceDefinitionOccupancy: workspaceDefinitionOccupancy,
-            terminalMultiplexerCoordinator: terminalMultiplexerCoordinator);
+            terminalMultiplexerCoordinator: terminalMultiplexerCoordinator,
+            workspaceRuntimeServicesFactory: workspaceRuntimeServicesFactory);
     }
 
     private sealed class MemoryTerminalMultiplexerStore :
@@ -7928,7 +8144,8 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
                     workspace.HasExplicitAccent,
                     isIsolated,
                     mounts,
-                    workspace.IsolationImageReference),
+                    workspace.IsolationImageReference,
+                    workspace.RunAgentInIsolation),
                 stored.Revision,
                 stored.CreatedAt,
                 stored.UpdatedAt);
@@ -10475,6 +10692,52 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
             throw new NotSupportedException();
     }
 
+    private sealed class RecordingWorkspaceRuntimeServicesFactory
+        : IWorkspaceRuntimeServicesFactory
+    {
+        public List<RecordingWorkspaceRuntimeLifetime> Created { get; } = [];
+
+        public List<WorkspaceRuntimeServicesRequest> Requests { get; } = [];
+
+        public WorkspaceRuntimeServices Create(WorkspaceRuntimeServicesRequest request)
+        {
+            Requests.Add(request);
+            if (request.IsolationBinding is null)
+            {
+                return request.HostServices;
+            }
+
+            var lifetime = new RecordingWorkspaceRuntimeLifetime();
+            Created.Add(lifetime);
+            var host = request.HostServices.Backends;
+            return new WorkspaceRuntimeServices(
+                host,
+                WorkspaceNetworkRoute.ViaProxy(new Uri(
+                    "socks5://127.0.0.1:1",
+                    UriKind.Absolute)),
+                lifetime);
+        }
+    }
+
+    private sealed class RecordingWorkspaceRuntimeLifetime : IAsyncDisposable
+    {
+        public int DisposeCount { get; private set; }
+
+        public int DisposeFailuresRemaining { get; set; }
+
+        public ValueTask DisposeAsync()
+        {
+            DisposeCount++;
+            if (DisposeFailuresRemaining > 0)
+            {
+                DisposeFailuresRemaining--;
+                throw new IOException("The panel service cleanup failed.");
+            }
+
+            return ValueTask.CompletedTask;
+        }
+    }
+
     private sealed class RecordingWorkspaceIsolationProvider : IWorkspaceIsolationProvider
     {
         public List<WorkspaceIsolationPrepareRequest> PrepareRequests { get; } = [];
@@ -10501,8 +10764,13 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
         public WorkspaceIsolationProgress? PrepareProgress { get; init; }
 
-        public WorkspaceIsolationProviderKind Kind =>
-            WorkspaceIsolationProviderKind.AppleContainer;
+        public Exception? RecreateException { get; init; }
+
+        public WorkspaceIsolationProviderDescriptor Descriptor { get; } = new(
+            new WorkspaceIsolationProviderId("test-isolation"),
+            "Test isolation",
+            WorkspaceIsolationCapability.PersistentRootFileSystem
+            | WorkspaceIsolationCapability.StructuredProcessExecution);
 
         public WorkspaceIsolationCapability Capabilities =>
             WorkspaceIsolationCapability.PersistentRootFileSystem
@@ -10536,7 +10804,7 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
             var binding = new WorkspaceIsolationBinding(
                 request.WorkspaceId,
-                Kind,
+                Descriptor.Id,
                 Capabilities,
                 $"isolated-{request.WorkspaceId.Value}",
                 request.Mounts,
@@ -10586,6 +10854,22 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
 
             return WorkspaceIsolationResult<WorkspaceIsolationBinding>.Succeed(binding);
         }
+
+        public ValueTask<WorkspaceIsolationResult<Unit>> RecreateAsync(
+            WorkspaceIsolationPrepareRequest request,
+            IProgress<WorkspaceIsolationProgress>? progress,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (RecreateException is not null)
+            {
+                throw RecreateException;
+            }
+
+            return ValueTask.FromResult(
+                WorkspaceIsolationResult<Unit>.Succeed(Unit.Value));
+        }
+
     }
 
     private sealed class ThrowingConnectionSecurityRuntime : IConnectionSecurityRuntime

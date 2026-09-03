@@ -66,6 +66,7 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
     private bool _disposed;
     private long _hostRevision;
     private Task? _polling;
+    private readonly string? _connectionDisplayName;
 
     public StatisticsRuntimePanelViewModel(
         PanelInstanceId id,
@@ -74,7 +75,8 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
         ClientId clientId,
         SessionOwner owner,
         IUiThreadDispatcher dispatcher,
-        Func<TimeSpan, CancellationToken, Task>? delay = null)
+        Func<TimeSpan, CancellationToken, Task>? delay = null,
+        string? connectionDisplayName = null)
         : this(
             id,
             title,
@@ -83,7 +85,8 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
             owner,
             BuiltInConnections.Local,
             dispatcher,
-            delay)
+            delay,
+            connectionDisplayName)
     {
     }
 
@@ -95,7 +98,8 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
         SessionOwner owner,
         ConnectionProfile connection,
         IUiThreadDispatcher dispatcher,
-        Func<TimeSpan, CancellationToken, Task>? delay = null)
+        Func<TimeSpan, CancellationToken, Task>? delay = null,
+        string? connectionDisplayName = null)
         : base(id, PanelKind.Statistics, title, "Statistics")
     {
         _sessionClient = sessionClient ?? throw new ArgumentNullException(nameof(sessionClient));
@@ -104,6 +108,7 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
         _owner = owner;
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         _delay = delay ?? Task.Delay;
+        _connectionDisplayName = connectionDisplayName;
         SessionId = SessionId.New();
         _refreshCommand = new AsyncActionCommand(
             RetryAsync,
@@ -117,7 +122,8 @@ public sealed class StatisticsRuntimePanelViewModel : RuntimePanelViewModel
     public ConnectionId ConnectionId => _connection.Id;
 
     public string ConnectionDisplayName =>
-        _connection.Endpoint is ConnectionEndpoint.Local ? "Local" : _connection.Name;
+        _connectionDisplayName
+        ?? (_connection.Endpoint is ConnectionEndpoint.Local ? "Local" : _connection.Name);
 
     public Task Initialization { get; private set; } = Task.CompletedTask;
 
@@ -619,6 +625,7 @@ public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
     private bool _disposed;
     private long _hostRevision;
     private Task? _polling;
+    private readonly string? _connectionDisplayName;
 
     public ProcessMonitorRuntimePanelViewModel(
         PanelInstanceId id,
@@ -627,7 +634,8 @@ public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
         ClientId clientId,
         SessionOwner owner,
         IUiThreadDispatcher dispatcher,
-        Func<TimeSpan, CancellationToken, Task>? delay = null)
+        Func<TimeSpan, CancellationToken, Task>? delay = null,
+        string? connectionDisplayName = null)
         : this(
             id,
             title,
@@ -636,7 +644,8 @@ public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
             owner,
             BuiltInConnections.Local,
             dispatcher,
-            delay)
+            delay,
+            connectionDisplayName)
     {
     }
 
@@ -648,7 +657,8 @@ public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
         SessionOwner owner,
         ConnectionProfile connection,
         IUiThreadDispatcher dispatcher,
-        Func<TimeSpan, CancellationToken, Task>? delay = null)
+        Func<TimeSpan, CancellationToken, Task>? delay = null,
+        string? connectionDisplayName = null)
         : base(id, PanelKind.ProcessMonitor, title, "Process monitor")
     {
         _sessionClient = sessionClient ?? throw new ArgumentNullException(nameof(sessionClient));
@@ -657,6 +667,7 @@ public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
         _owner = owner;
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         _delay = delay ?? Task.Delay;
+        _connectionDisplayName = connectionDisplayName;
         SessionId = SessionId.New();
         _refreshCommand = new AsyncActionCommand(
             RetryAsync,
@@ -672,7 +683,8 @@ public sealed class ProcessMonitorRuntimePanelViewModel : RuntimePanelViewModel
     public ConnectionId ConnectionId => _connection.Id;
 
     public string ConnectionDisplayName =>
-        _connection.Endpoint is ConnectionEndpoint.Local ? "Local" : _connection.Name;
+        _connectionDisplayName
+        ?? (_connection.Endpoint is ConnectionEndpoint.Local ? "Local" : _connection.Name);
 
     public Task Initialization { get; private set; } = Task.CompletedTask;
 

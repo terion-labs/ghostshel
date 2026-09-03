@@ -13,6 +13,7 @@ internal interface IWorkspaceIsolationTerminalRuntime
 
 internal sealed class WorkspaceIsolatedConnectionRuntime :
     IConnectionRuntime,
+    IConnectionCommandRuntime,
     IWorkspaceIsolationTerminalRuntime
 {
     private readonly IConnectionRuntime _inner;
@@ -76,23 +77,11 @@ internal sealed class WorkspaceIsolatedConnectionRuntime :
 
         if (profile.Authentication is ConnectionAuthentication.Password
                 or ConnectionAuthentication.PrivateKey
-                or ConnectionAuthentication.SshAgent
             || profile.Startup.Environment.Any(variable =>
                 variable.Value is ConnectionEnvironmentValue.Secret))
         {
             return Fail(WorkspaceIsolationError.Create(
                 WorkspaceIsolationErrorCode.HostCredentialBrokerUnavailable));
-        }
-
-        // A host-side key scan would escape the workspace's future network boundary,
-        // while guest OpenSSH accept-new would create a second, unreviewed trust store.
-        // Until inspection and approval run inside the isolate, only the user's explicit
-        // verification-disabled policy can cross this boundary.
-        if (profile.ConnectionKind == ConnectionKind.Ssh
-            && profile.HostKeyPolicy != SshHostKeyPolicy.InsecureIgnore)
-        {
-            return Fail(WorkspaceIsolationError.Create(
-                WorkspaceIsolationErrorCode.SshHostKeyTrustUnavailable));
         }
 
         return null;
@@ -114,6 +103,146 @@ internal sealed class WorkspaceIsolatedConnectionRuntime :
                 Retryable: false,
                 ConnectionRecoveryAction.None)));
     }
+
+    public async ValueTask<ConnectionRuntimeResult<TerminalLaunchRequest>> PlanCommandAsync(
+        ConnectionProfile connection,
+        string executable,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken) =>
+        await PlanCommandAsync(
+            connection,
+            executable,
+            arguments,
+            WorkspaceProcessMode.None,
+            cancellationToken).ConfigureAwait(false);
+
+    public async ValueTask<ConnectionRuntimeResult<TerminalLaunchRequest>> PlanDuplexCommandAsync(
+        ConnectionProfile connection,
+        string executable,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken) =>
+        await PlanCommandAsync(
+            connection,
+            executable,
+            arguments,
+            WorkspaceProcessMode.Interactive,
+            cancellationToken).ConfigureAwait(false);
+
+    private async ValueTask<ConnectionRuntimeResult<TerminalLaunchRequest>> PlanCommandAsync(
+        ConnectionProfile connection,
+        string executable,
+        IReadOnlyList<string> arguments,
+        WorkspaceProcessMode mode,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentException.ThrowIfNullOrWhiteSpace(executable);
+        ArgumentNullException.ThrowIfNull(arguments);
+        if (RejectBeforeHostPlanning(connection) is { } rejected)
+        {
+            return ConnectionRuntimeResult<TerminalLaunchRequest>.Fail(
+                ((ConnectionRuntimeResult<ConnectionOpenPlan>.Failure)rejected).Error);
+        }
+
+        var planned = await _inner.PlanOpenAsync(
+                connection,
+                progress: null,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (planned is ConnectionRuntimeResult<ConnectionOpenPlan>.Failure failure)
+        {
+            return ConnectionRuntimeResult<TerminalLaunchRequest>.Fail(failure.Error);
+        }
+
+        var plan = ((ConnectionRuntimeResult<ConnectionOpenPlan>.Success)planned).Value;
+        var commandArguments = CommandArguments(plan, executable, arguments);
+        var isolated = _provider.CreateExecLaunch(
+            _binding,
+            new WorkspaceIsolationProcessRequest(
+                plan.Kind,
+                plan.Kind == ConnectionKind.Local
+                    ? executable
+                    : plan.Launch.Executable
+                        ?? throw new InvalidOperationException(
+                            "The connection plan has no executable."),
+                commandArguments,
+                plan.Launch.Environment,
+                plan.Kind == ConnectionKind.Local && connection.Startup.Directory is null
+                    ? null
+                    : plan.Launch.WorkingDirectory,
+                mode,
+                usesHostCredentialBroker: plan.IsSecretBrokerPrepared));
+        return isolated switch
+        {
+            WorkspaceIsolationResult<WorkspaceProcessLaunch>.Success success =>
+                ConnectionRuntimeResult<TerminalLaunchRequest>.Succeed(
+                    new TerminalLaunchRequest(
+                        success.Value.HostWorkingDirectory,
+                        success.Value.Executable,
+                        success.Value.Arguments,
+                        success.Value.Environment,
+                        connectionId: connection.Id)),
+            WorkspaceIsolationResult<WorkspaceProcessLaunch>.Failure isolationFailure =>
+                ConnectionRuntimeResult<TerminalLaunchRequest>.Fail(
+                    new ConnectionRuntimeError(
+                        MapErrorCode(isolationFailure.Error.Code),
+                        isolationFailure.Error.StableCode,
+                        isolationFailure.Error.Message,
+                        isolationFailure.Error.Retryable,
+                        MapRecoveryAction(isolationFailure.Error.RecoveryAction))),
+            _ => throw new InvalidOperationException(
+                "The workspace isolation provider returned an unknown result."),
+        };
+    }
+
+    private static IReadOnlyList<string> CommandArguments(
+        ConnectionOpenPlan plan,
+        string executable,
+        IReadOnlyList<string> arguments)
+    {
+        if (plan.Kind == ConnectionKind.Local)
+        {
+            return arguments;
+        }
+
+        if (plan.Kind != ConnectionKind.Ssh)
+        {
+            throw new InvalidOperationException(
+                $"The {plan.Kind} connection cannot run inside this workspace isolate.");
+        }
+
+        // This is the App-layer counterpart to ConnectionCommandExecutor's SSH command
+        // encoding; App cannot depend on its Infrastructure implementation.
+        var boundary = -1;
+        for (var index = 0; index < plan.Launch.Arguments.Count; index++)
+        {
+            if (string.Equals(plan.Launch.Arguments[index], "--", StringComparison.Ordinal))
+            {
+                boundary = index;
+                break;
+            }
+        }
+
+        if (boundary < 0 || boundary + 1 >= plan.Launch.Arguments.Count)
+        {
+            throw new InvalidOperationException("The SSH connection plan is malformed.");
+        }
+
+        var sshArguments = plan.Launch.Arguments
+            .Take(boundary)
+            .Where(argument => !string.Equals(argument, "-tt", StringComparison.Ordinal))
+            .ToList();
+        sshArguments.Add(plan.Launch.Arguments[boundary]);
+        sshArguments.Add(plan.Launch.Arguments[boundary + 1]);
+        var remoteCommand = new[] { executable }
+            .Concat(arguments)
+            .Select(QuotePosixShellWord);
+        sshArguments.Add(string.Join(' ', remoteCommand));
+        return Array.AsReadOnly(sshArguments.ToArray());
+    }
+
+    private static string QuotePosixShellWord(string value) =>
+        $"'{value.Replace("'", "'\"'\"'", StringComparison.Ordinal)}'";
 
     private ConnectionRuntimeResult<ConnectionOpenPlan> Rewrite(
         ConnectionProfile profile,
@@ -149,6 +278,12 @@ internal sealed class WorkspaceIsolatedConnectionRuntime :
         }
 
         var process = ((WorkspaceIsolationResult<WorkspaceProcessLaunch>.Success)isolated).Value;
+        // The host PTY observes the long-lived `container exec` wrapper, not the guest
+        // shell's foreground process. Use the conservative visible-prompt classifier for
+        // local guest shells when native semantic shell state is therefore unavailable.
+        var shellActivityFallback = plan.Kind == ConnectionKind.Local
+            ? TerminalShellActivityFallback.PromptShape
+            : plan.Launch.ShellActivityFallback;
         var launch = new TerminalLaunchRequest(
             process.HostWorkingDirectory,
             process.Executable,
@@ -159,7 +294,7 @@ internal sealed class WorkspaceIsolatedConnectionRuntime :
             plan.Launch.ConnectionId,
             plan.Launch.ConnectionMetadata,
             plan.Launch.InitialCommand,
-            plan.Launch.ShellActivityFallback,
+            shellActivityFallback,
             plan.Launch.MultiplexerSession);
         return ConnectionRuntimeResult<ConnectionOpenPlan>.Succeed(
             new ConnectionOpenPlan(

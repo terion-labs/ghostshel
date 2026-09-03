@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Net;
 using GhostShell.Agent;
 using GhostShell.Application;
 using GhostShell.Core;
@@ -27,6 +28,8 @@ public sealed class CatalogAiProviderRuntime :
     private readonly object _gate = new();
     private readonly IDefinitionCatalog _catalog;
     private readonly AiProviderFactory _factory;
+    private readonly Func<Uri, AiProviderFactory>? _routedFactoryFactory;
+    private readonly Dictionary<string, AiProviderFactory> _routedFactories = [];
     private readonly Dictionary<AiProviderProfileId, IReadOnlyList<AiProviderModelDescriptor>>
         _discoveredModels = [];
     private IReadOnlyList<AiProviderProfileDescriptor> _profiles = [];
@@ -46,6 +49,11 @@ public sealed class CatalogAiProviderRuntime :
             new AiProviderFactory(
                 secretVault ?? throw new ArgumentNullException(nameof(secretVault)),
                 limits,
+                oauthOptions),
+            proxy => new AiProviderFactory(
+                secretVault,
+                AiProviderHttpTransport.CreateHandler(new WebProxy(proxy)),
+                limits,
                 oauthOptions))
     {
     }
@@ -53,9 +61,18 @@ public sealed class CatalogAiProviderRuntime :
     internal CatalogAiProviderRuntime(
         IDefinitionCatalog catalog,
         AiProviderFactory factory)
+        : this(catalog, factory, routedFactoryFactory: null)
+    {
+    }
+
+    private CatalogAiProviderRuntime(
+        IDefinitionCatalog catalog,
+        AiProviderFactory factory,
+        Func<Uri, AiProviderFactory>? routedFactoryFactory)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _factory = factory ?? throw new ArgumentNullException(nameof(factory));
+        _routedFactoryFactory = routedFactoryFactory;
         _catalog.Changed += OnCatalogChanged;
         Refresh(_catalog.Snapshot);
     }
@@ -299,6 +316,54 @@ public sealed class CatalogAiProviderRuntime :
         return _factory.Create(profile, model, serviceTier);
     }
 
+    internal IAgentProvider CreateProvider(
+        CatalogAiProviderBinding binding,
+        AiProviderProfile profile,
+        string? model,
+        AgentServiceTier serviceTier,
+        Uri networkProxy)
+    {
+        ArgumentNullException.ThrowIfNull(networkProxy);
+        if (!networkProxy.IsAbsoluteUri
+            || !string.Equals(networkProxy.Scheme, "socks5", StringComparison.OrdinalIgnoreCase)
+            || !networkProxy.IsLoopback
+            || networkProxy.Port is < 1 or > 65535)
+        {
+            throw new ArgumentException(
+                "The workspace network proxy must be a loopback SOCKS5 endpoint.",
+                nameof(networkProxy));
+        }
+
+        ArgumentNullException.ThrowIfNull(binding);
+        ArgumentNullException.ThrowIfNull(profile);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (binding.ProfileId != profile.Id || !IsCurrent(binding))
+        {
+            throw new InvalidOperationException(
+                "The pinned AI-provider profile changed and must be rebound.");
+        }
+
+        AiProviderFactory routedFactory;
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_routedFactoryFactory is null)
+            {
+                throw new InvalidOperationException(
+                    "Routed AI-provider connections are unavailable in this composition.");
+            }
+
+            var key = networkProxy.AbsoluteUri;
+            if (!_routedFactories.TryGetValue(key, out routedFactory!))
+            {
+                routedFactory = _routedFactoryFactory(networkProxy);
+                _routedFactories.Add(key, routedFactory);
+            }
+        }
+
+        return routedFactory.Create(profile, model, serviceTier);
+    }
+
     public async ValueTask<AgentChatSendResult> SendAsync(
         AiProviderProfileId providerId,
         string prompt,
@@ -533,6 +598,7 @@ public sealed class CatalogAiProviderRuntime :
     public void Dispose()
     {
         CancellationTokenSource? chatCancellation;
+        AiProviderFactory[] routedFactories;
         lock (_gate)
         {
             if (_disposed)
@@ -544,6 +610,8 @@ public sealed class CatalogAiProviderRuntime :
             _catalog.Changed -= OnCatalogChanged;
             chatCancellation = _chatTurnCancellation;
             _chatTurnCancellation = null;
+            routedFactories = [.. _routedFactories.Values];
+            _routedFactories.Clear();
         }
 
         _chatSession.Cancel();
@@ -551,6 +619,10 @@ public sealed class CatalogAiProviderRuntime :
         // The active SendAsync invocation owns this source and may still need its token while
         // unwinding. It disposes the source after observing the cancellation.
         _factory.Dispose();
+        foreach (var routedFactory in routedFactories)
+        {
+            routedFactory.Dispose();
+        }
     }
 
     private void OnCatalogChanged(object? sender, EventArgs e)

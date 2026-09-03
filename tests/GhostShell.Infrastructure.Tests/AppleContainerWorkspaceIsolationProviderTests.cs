@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using GhostShell.Application;
 using GhostShell.Core;
@@ -37,7 +38,9 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
         var expectedName = AppleContainerWorkspaceIsolationProvider.ResourceName(WorkspaceId);
         Assert.Equal(expectedName, binding.ResourceName);
         Assert.Equal(HomeMounts, binding.Mounts);
-        Assert.Equal(WorkspaceIsolationProviderKind.AppleContainer, binding.Provider);
+        Assert.Equal(
+            AppleContainerWorkspaceIsolationProvider.ProviderDescriptor.Id,
+            binding.Provider);
         Assert.Equal(
             ["system", "version", "--format", "json"],
             runner.Commands[0].Arguments);
@@ -195,7 +198,7 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
         var create = runner.Commands[4].Arguments;
         Assert.Equal("create", create[0]);
         Assert.Equal(TimeSpan.FromMinutes(5), runner.Commands[4].Timeout);
-        Assert.DoesNotContain("--ssh", create, StringComparer.Ordinal);
+        Assert.Contains("--ssh", create, StringComparer.Ordinal);
         Assert.Contains("--init", create, StringComparer.Ordinal);
         Assert.Contains(
             $"type=bind,source={HostHome},target={GuestHome}",
@@ -248,6 +251,41 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
             argument => string.Equals(argument, "apk", StringComparison.Ordinal)
                         || string.Equals(argument, "openssh-client", StringComparison.Ordinal));
         Assert.Equal(7, runner.Commands.Count);
+    }
+
+    [Fact]
+    public async Task Prepare_matches_an_unpinned_default_by_its_saved_base_image()
+    {
+        const string resolvedImage =
+            "docker.io/library/ubuntu@sha256:runtime-resolution";
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(
+                0,
+                InspectJson(
+                    imageReference: resolvedImage,
+                    baseImageReference:
+                        AppleContainerWorkspaceIsolationProvider.DefaultImageReference)),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0));
+        var provider = Provider(runner);
+
+        var binding = Success(await provider.PrepareAsync(
+            Request(),
+            CancellationToken.None));
+
+        Assert.Equal(
+            AppleContainerWorkspaceIsolationProvider.DefaultImageReference,
+            binding.RuntimeImageReference);
+        Assert.DoesNotContain(
+            runner.Commands,
+            command => command.Arguments.Contains("pull", StringComparer.Ordinal));
+        Assert.DoesNotContain(
+            runner.Commands,
+            command => command.Arguments.Contains("stop", StringComparer.Ordinal));
     }
 
     [Fact]
@@ -628,6 +666,37 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
     }
 
     [Fact]
+    public async Task Prepare_preserves_the_root_filesystem_while_adding_ssh_agent_forwarding()
+    {
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(
+                0,
+                InspectJson(forwardsSshAgent: false)),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(
+                0,
+                InspectJson(imageReference: SnapshotImageReference())),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0));
+        var provider = Provider(runner);
+
+        _ = Success(await provider.PrepareAsync(Request(), CancellationToken.None));
+
+        Assert.Equal("export", runner.Commands[4].Arguments[0]);
+        Assert.Equal("build", runner.Commands[5].Arguments[0]);
+        Assert.Equal("create", runner.Commands[7].Arguments[0]);
+        Assert.Contains("--ssh", runner.Commands[7].Arguments, StringComparer.Ordinal);
+    }
+
+    [Fact]
     public async Task Prepare_rejects_an_existing_container_with_an_unexpected_ssh_socket_mount()
     {
         var runner = new RecordingRunner(
@@ -804,6 +873,90 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
     }
 
     [Fact]
+    public async Task Recreate_removes_the_owned_container_and_private_snapshot()
+    {
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, InspectJson()),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0));
+        var provider = Provider(runner);
+
+        _ = Success(await provider.RecreateAsync(
+            Request(),
+            progress: null,
+            CancellationToken.None));
+
+        var resourceName = AppleContainerWorkspaceIsolationProvider.ResourceName(WorkspaceId);
+        Assert.Equal(["inspect", resourceName], runner.Commands[0].Arguments);
+        Assert.Equal(["delete", "--force", resourceName], runner.Commands[1].Arguments);
+        Assert.Equal(
+            ["image", "delete", $"{resourceName}-state:latest"],
+            runner.Commands[2].Arguments);
+    }
+
+    [Fact]
+    public async Task Recreate_refuses_to_delete_a_container_without_our_ownership_label()
+    {
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(
+                0,
+                InspectJson(workspaceLabel: "another-owner")));
+        var provider = Provider(runner);
+
+        var error = Failure(await provider.RecreateAsync(
+            Request(),
+            progress: null,
+            CancellationToken.None));
+
+        Assert.Equal(WorkspaceIsolationErrorCode.PrepareFailed, error.Code);
+        Assert.Single(runner.Commands);
+        Assert.Equal("inspect", runner.Commands[0].Arguments[0]);
+    }
+
+    [Fact]
+    public async Task Recreate_does_not_treat_an_unconfirmed_inspect_failure_as_absence()
+    {
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(1));
+        var provider = Provider(runner);
+
+        var error = Failure(await provider.RecreateAsync(
+            Request(),
+            progress: null,
+            CancellationToken.None));
+
+        Assert.Equal(WorkspaceIsolationErrorCode.PrepareFailed, error.Code);
+        Assert.Equal(2, runner.Commands.Count);
+        Assert.Equal("inspect", runner.Commands[0].Arguments[0]);
+        Assert.Equal("list", runner.Commands[1].Arguments[0]);
+    }
+
+    [Fact]
+    public async Task Recreate_removes_the_private_snapshot_after_confirming_container_absence()
+    {
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(0, "[]"),
+            AppleContainerCommandResult.Exited(0));
+        var provider = Provider(runner);
+
+        _ = Success(await provider.RecreateAsync(
+            Request(),
+            progress: null,
+            CancellationToken.None));
+
+        var resourceName = AppleContainerWorkspaceIsolationProvider.ResourceName(WorkspaceId);
+        Assert.Equal(["inspect", resourceName], runner.Commands[0].Arguments);
+        Assert.Equal(
+            ["list", "--all", "--format", "json"],
+            runner.Commands[1].Arguments);
+        Assert.Equal(
+            ["image", "delete", $"{resourceName}-state:latest"],
+            runner.Commands[2].Arguments);
+    }
+
+    [Fact]
     public void Local_launch_maps_the_host_shell_and_keeps_each_environment_value_structured()
     {
         var provider = Provider(new RecordingRunner());
@@ -839,6 +992,50 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
                 binding.ResourceName,
                 "/bin/sh",
                 "-l",
+            ],
+            launch.Arguments);
+    }
+
+    [Fact]
+    public void Structured_local_command_keeps_argv_inside_container_exec()
+    {
+        var provider = Provider(new RecordingRunner());
+        var binding = Binding();
+        var request = new WorkspaceIsolationProcessRequest(
+            ConnectionKind.Local,
+            "git",
+            ["status", "--short"]);
+
+        var launch = Success(provider.CreateExecLaunch(binding, request));
+
+        Assert.Equal(
+            ["exec", "--workdir", "/root", binding.ResourceName, "git", "status", "--short"],
+            launch.Arguments);
+    }
+
+    [Fact]
+    public void Interactive_local_command_keeps_argv_and_standard_input_open()
+    {
+        var provider = Provider(new RecordingRunner());
+        var binding = Binding();
+        var request = new WorkspaceIsolationProcessRequest(
+            ConnectionKind.Local,
+            "/bin/sh",
+            ["-c", "read value; printf 'relay:%s' \"$value\""],
+            mode: WorkspaceProcessMode.Interactive);
+
+        var launch = Success(provider.CreateExecLaunch(binding, request));
+
+        Assert.Equal(
+            [
+                "exec",
+                "--interactive",
+                "--workdir",
+                "/root",
+                binding.ResourceName,
+                "/bin/sh",
+                "-c",
+                "read value; printf 'relay:%s' \"$value\"",
             ],
             launch.Arguments);
     }
@@ -914,55 +1111,60 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
 
         var launch = Success(provider.CreateExecLaunch(Binding(), request));
 
-        Assert.Equal(
-            [
-                "exec",
-                "--interactive",
-                "--tty",
-                Binding().ResourceName,
-                "/bin/sh",
-                "-c",
-                "if [ ! -x \"$1\" ]; then export DEBIAN_FRONTEND=noninteractive; if command -v apt-get >/dev/null 2>&1; then apt-get update && apt-get install -y --no-install-recommends openssh-client && rm -rf /var/lib/apt/lists/*; elif command -v apk >/dev/null 2>&1; then apk add --no-cache openssh-client; else echo 'The selected isolate image cannot install OpenSSH.' >&2; exit 127; fi || exit $?; fi; exec \"$@\"",
-                "ghostshell-ssh",
-                "/usr/bin/ssh",
-                "-p",
-                "2222",
-                "-o",
-                "StrictHostKeyChecking=no",
-                "-o",
-                "UserKnownHostsFile=/dev/null",
-                "dev@example.test",
-            ],
-            launch.Arguments);
+        Assert.Equal("exec", launch.Arguments[0]);
+        Assert.Contains("--interactive", launch.Arguments, StringComparer.Ordinal);
+        Assert.Contains("--tty", launch.Arguments, StringComparer.Ordinal);
+        Assert.Contains("/bin/sh", launch.Arguments, StringComparer.Ordinal);
+        Assert.Contains("/usr/bin/ssh", launch.Arguments, StringComparer.Ordinal);
+        Assert.Contains("StrictHostKeyChecking=no", launch.Arguments, StringComparer.Ordinal);
+        Assert.Contains("UserKnownHostsFile=/dev/null", launch.Arguments, StringComparer.Ordinal);
+        Assert.Contains("dev@example.test", launch.Arguments, StringComparer.Ordinal);
     }
 
     [Theory]
     [InlineData("yes")]
     [InlineData("accept-new")]
-    public void Verified_ssh_launch_fails_closed_until_guest_trust_is_implemented(
+    public void Verified_ssh_launch_copies_the_approved_host_key_into_the_guest(
         string strictHostKeyChecking)
     {
-        const string hostKnownHosts =
-            "/Users/alice/Library/Application Support/GhostSHELL/known_hosts";
-        var provider = Provider(new RecordingRunner());
-        var request = new WorkspaceIsolationProcessRequest(
-            ConnectionKind.Ssh,
-            "/usr/bin/ssh",
-            [
-                "-o",
-                $"StrictHostKeyChecking={strictHostKeyChecking}",
-                "-o",
-                $"UserKnownHostsFile=\"{hostKnownHosts}\"",
-                "--",
-                "host.example",
-            ]);
+        var hostKnownHosts = Path.GetTempFileName();
+        try
+        {
+            const string approvedKey = "ghostshell-test ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest\n";
+            File.WriteAllText(hostKnownHosts, approvedKey);
+            var provider = Provider(new RecordingRunner());
+            var request = new WorkspaceIsolationProcessRequest(
+                ConnectionKind.Ssh,
+                "/usr/bin/ssh",
+                [
+                    "-o",
+                    $"StrictHostKeyChecking={strictHostKeyChecking}",
+                    "-o",
+                    $"UserKnownHostsFile=\"{hostKnownHosts}\"",
+                    "--",
+                    "host.example",
+                ]);
 
-        var failure = Failure(provider.CreateExecLaunch(Binding(), request));
+            var launch = Success(provider.CreateExecLaunch(Binding(), request));
 
-        Assert.Equal(WorkspaceIsolationErrorCode.SshHostKeyTrustUnavailable, failure.Code);
-        Assert.Equal(
-            WorkspaceIsolationRecoveryAction.DisableIsolation,
-            failure.RecoveryAction);
+            var guestKnownHosts = Assert.Single(
+                launch.Arguments,
+                argument => argument.StartsWith(
+                    "UserKnownHostsFile=/root/.ssh/ghostshell-known-hosts/",
+                    StringComparison.Ordinal));
+            Assert.Contains(
+                guestKnownHosts["UserKnownHostsFile=".Length..],
+                launch.Arguments,
+                StringComparer.Ordinal);
+            Assert.Contains(
+                Convert.ToBase64String(Encoding.UTF8.GetBytes(approvedKey)),
+                launch.Arguments,
+                StringComparer.Ordinal);
+        }
+        finally
+        {
+            File.Delete(hostKnownHosts);
+        }
     }
 
     [Fact]
@@ -1155,8 +1357,8 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
         IReadOnlyList<WorkspaceIsolationMount>? mounts = null) =>
         new(
             WorkspaceId,
-            WorkspaceIsolationProviderKind.AppleContainer,
-            WorkspaceIsolationPlatformResolver.AppleContainerCapabilities,
+            AppleContainerWorkspaceIsolationProvider.ProviderDescriptor.Id,
+            AppleContainerWorkspaceIsolationProvider.ProviderDescriptor.Capabilities,
             AppleContainerWorkspaceIsolationProvider.ResourceName(WorkspaceId),
             mounts ?? HomeMounts,
             Guid.Parse("12d2ce38-5abf-456a-b43b-0afb72fc087f"));
@@ -1173,7 +1375,9 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
         bool includeUnexpectedSshSocketMount = false,
         bool stringStatus = false,
         string? imageReference = null,
-        string? baseImageReference = null)
+        string? baseImageReference = null,
+        bool forwardsSshAgent = true,
+        string? workspaceLabel = null)
     {
         var name = AppleContainerWorkspaceIsolationProvider.ResourceName(WorkspaceId);
         var inspectedMounts = (mounts ?? HomeMounts)
@@ -1196,7 +1400,7 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
 
         var labels = new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["io.ghostshell.workspace"] = name,
+            ["io.ghostshell.workspace"] = workspaceLabel ?? name,
             ["io.ghostshell.isolation-schema"] = "1",
         };
         if (baseImageReference is not null)
@@ -1222,7 +1426,7 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
                         cpus = 1,
                         memoryInBytes = 1024UL * 1024UL * 1024UL,
                     },
-                    ssh = false,
+                    ssh = forwardsSshAgent,
                     useInit = true,
                     mounts = inspectedMounts,
                 },

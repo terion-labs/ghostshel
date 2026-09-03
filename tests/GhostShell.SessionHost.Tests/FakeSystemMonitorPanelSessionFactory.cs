@@ -26,6 +26,10 @@ internal sealed class FakeSystemMonitorPanelSessionFactory
 
     public int ProcessMonitorCreateCount { get; private set; }
 
+    public List<WorkspaceInstanceId> StatisticsWorkspaceIds { get; } = [];
+
+    public List<WorkspaceInstanceId> ProcessMonitorWorkspaceIds { get; } = [];
+
     public Func<FakeMonitorPanelSession, CancellationToken, ValueTask>? AfterCreateAsync
     {
         get;
@@ -43,12 +47,14 @@ internal sealed class FakeSystemMonitorPanelSessionFactory
     public FakeProcessMonitorPanelSession Processes(SessionId id) => _processes[id];
 
     public async ValueTask<IStatisticsPanelSession> CreateStatisticsAsync(
+        WorkspaceInstanceId workspaceId,
         SessionId sessionId,
         ConnectionProfile connection,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         StatisticsCreateCount++;
+        StatisticsWorkspaceIds.Add(workspaceId);
         var session = new FakeStatisticsPanelSession(
             sessionId,
             StatisticsCapabilities)
@@ -65,12 +71,14 @@ internal sealed class FakeSystemMonitorPanelSessionFactory
     }
 
     public async ValueTask<IProcessMonitorPanelSession> CreateProcessMonitorAsync(
+        WorkspaceInstanceId workspaceId,
         SessionId sessionId,
         ConnectionProfile connection,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ProcessMonitorCreateCount++;
+        ProcessMonitorWorkspaceIds.Add(workspaceId);
         var session = new FakeProcessMonitorPanelSession(
             sessionId,
             ProcessMonitorCapabilities)

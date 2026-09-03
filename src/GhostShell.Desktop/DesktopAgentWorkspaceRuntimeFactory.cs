@@ -1,3 +1,4 @@
+using GhostShell.Agent.Providers;
 using GhostShell.Agent.Runtime;
 using GhostShell.Application;
 using GhostShell.Core;
@@ -11,7 +12,14 @@ internal sealed class DesktopAgentWorkspaceRuntimeFactory(
     public IGovernedAgentRuntime Create(
         WorkspaceInstanceId workspaceId,
         AgentConversationScopeId conversationScopeId,
-        AgentPolicy policy)
+        AgentPolicy policy) =>
+        Create(workspaceId, conversationScopeId, policy, networkProxy: null);
+
+    public IGovernedAgentRuntime Create(
+        WorkspaceInstanceId workspaceId,
+        AgentConversationScopeId conversationScopeId,
+        AgentPolicy policy,
+        Uri? networkProxy)
     {
         if (string.IsNullOrWhiteSpace(workspaceId.Value))
         {
@@ -28,10 +36,19 @@ internal sealed class DesktopAgentWorkspaceRuntimeFactory(
                 nameof(policy));
         }
 
+        var explicitArguments = networkProxy is null
+            ? new object[] { workspaceId, conversationScopeId, policy }
+            :
+            [
+                workspaceId,
+                conversationScopeId,
+                policy,
+                new CatalogAgentProviderResolver(
+                    services.GetRequiredService<CatalogAiProviderRuntime>(),
+                    networkProxy),
+            ];
         return ActivatorUtilities.CreateInstance<GovernedAgentRuntime>(
             services,
-            workspaceId,
-            conversationScopeId,
-            policy);
+            explicitArguments);
     }
 }

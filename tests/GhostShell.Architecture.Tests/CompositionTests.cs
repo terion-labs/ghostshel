@@ -52,16 +52,13 @@ public sealed class CompositionTests
         var provider = services.GetService<IWorkspaceIsolationProvider>();
         var installer = services.GetService<IWorkspaceIsolationRuntimeInstaller>();
 
-        if (support is WorkspaceIsolationPlatformSupport.Available)
+        if (support is WorkspaceIsolationPlatformSupport.Available { Adapter: var adapter })
         {
-            Assert.IsType<AppleContainerRuntimeInstaller>(installer);
+            Assert.IsType<WorkspaceIsolationRuntimeInstaller>(installer);
             if (containerExecutable is not null)
             {
-                var appleProvider = Assert.IsType<AppleContainerWorkspaceIsolationProvider>(provider);
-                Assert.Equal(WorkspaceIsolationProviderKind.AppleContainer, appleProvider.Kind);
-                Assert.Equal(
-                    WorkspaceIsolationPlatformResolver.AppleContainerCapabilities,
-                    appleProvider.Capabilities);
+                var isolationProvider = Assert.IsAssignableFrom<IWorkspaceIsolationProvider>(provider);
+                Assert.Equal(adapter.Descriptor, isolationProvider.Descriptor);
             }
             else
             {

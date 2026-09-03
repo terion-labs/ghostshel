@@ -1946,7 +1946,7 @@ public sealed class SavedScreenRuntimeIdentityTests
             "Isolated recovery workspace");
         var binding = new WorkspaceIsolationBinding(
             workspaceId,
-            WorkspaceIsolationProviderKind.AppleContainer,
+            new WorkspaceIsolationProviderId("test-isolation"),
             WorkspaceIsolationCapability.StructuredProcessExecution,
             "isolated-recovery-resource",
             [new WorkspaceIsolationMount(

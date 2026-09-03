@@ -9,11 +9,13 @@ public interface ISystemMonitorPanelSessionFactory
     CapabilitySet ProcessMonitorCapabilities { get; }
 
     ValueTask<IStatisticsPanelSession> CreateStatisticsAsync(
+        WorkspaceInstanceId workspaceId,
         SessionId sessionId,
         ConnectionProfile connection,
         CancellationToken cancellationToken);
 
     ValueTask<IProcessMonitorPanelSession> CreateProcessMonitorAsync(
+        WorkspaceInstanceId workspaceId,
         SessionId sessionId,
         ConnectionProfile connection,
         CancellationToken cancellationToken);

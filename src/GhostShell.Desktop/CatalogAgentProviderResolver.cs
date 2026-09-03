@@ -7,11 +7,13 @@ using GhostShell.Core;
 namespace GhostShell.Desktop;
 
 internal sealed class CatalogAgentProviderResolver(
-    CatalogAiProviderRuntime providers)
+    CatalogAiProviderRuntime providers,
+    Uri? networkProxy = null)
     : IAgentProviderResolver
 {
     private readonly CatalogAiProviderRuntime _providers =
         providers ?? throw new ArgumentNullException(nameof(providers));
+    private readonly Uri? _networkProxy = networkProxy;
 
     public IAgentProviderBinding PinProvider(AiProviderProfileId profileId)
     {
@@ -23,12 +25,13 @@ internal sealed class CatalogAgentProviderResolver(
                 "The requested enabled AI-provider profile is unavailable.");
         }
 
-        return new Binding(_providers.PinProvider(profileId), profile);
+        return new Binding(_providers.PinProvider(profileId), profile, _networkProxy);
     }
 
     private sealed class Binding(
         CatalogAiProviderBinding value,
-        AiProviderProfileDescriptor profile)
+        AiProviderProfileDescriptor profile,
+        Uri? networkProxy)
         : IAgentProviderBinding
     {
         private readonly CatalogAiProviderBinding _value =
@@ -51,12 +54,15 @@ internal sealed class CatalogAgentProviderResolver(
                 StringComparison.Ordinal))
             ?.ContextWindowTokens;
 
-        public IAgentProvider CreateProvider(string model) =>
-            _value.CreateProvider(model);
+        public IAgentProvider CreateProvider(string model) => networkProxy is null
+            ? _value.CreateProvider(model)
+            : _value.CreateProvider(model, networkProxy);
 
         public IAgentProvider CreateProvider(
             string model,
             AgentServiceTier serviceTier) =>
-            _value.CreateProvider(model, serviceTier);
+            networkProxy is null
+                ? _value.CreateProvider(model, serviceTier)
+                : _value.CreateProvider(model, serviceTier, networkProxy);
     }
 }

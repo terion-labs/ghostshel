@@ -317,7 +317,12 @@ public sealed class QuickTerminalViewModel : ObservableObject, IDisposable, IAge
     public string ProfileName { get; }
 
     public IEnumerable<PanelConnectionOptionViewModel> ConnectionOptions =>
-        _mainWindow.PanelConnectionOptions;
+        _mainWindow.Connections.Select(connection => new PanelConnectionOptionViewModel(
+            new PanelConnectionOptionViewModel.Target.Connection(connection.Id),
+            connection.Name,
+            connection.Kind,
+            connection.Detail,
+            connection.CanOpen));
 
     IEnumerable<PanelConnectionOptionViewModel> IPanelConnectionOptionsHost.PanelConnectionOptions =>
         ConnectionOptions;

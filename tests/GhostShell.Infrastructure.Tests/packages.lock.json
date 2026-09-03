@@ -111,6 +111,28 @@
         "resolved": "3.0.2",
         "contentHash": "tnbRf0muOOSJK1RLCfyYK13jynFScgL4xMj7yC3oy8lrrGKXTKmOoWjfdV+cFfBRdppm4qST31hvp8ihgIgvMQ=="
       },
+      "Vanara.Core": {
+        "type": "Transitive",
+        "resolved": "4.2.1",
+        "contentHash": "S6Hk/up/27HfKK2PaXx0oWE8szV0dktT0u2n5xL7iNFbS/zC7K7ZA7i1h6I8LpHwQNbvPddWewb/mSEmZl00/Q=="
+      },
+      "Vanara.PInvoke.Kernel32": {
+        "type": "Transitive",
+        "resolved": "4.2.1",
+        "contentHash": "RDHekPrUI+u8+3Iy6/X7wV+TDTSf+OwWLhmWhQBUgk2QfK6a0jjWzJvxowC6NQXCHk18s7z3cFaoQXlnbMymqg==",
+        "dependencies": {
+          "Vanara.Core": "4.2.1",
+          "Vanara.PInvoke.Shared": "4.2.1"
+        }
+      },
+      "Vanara.PInvoke.Shared": {
+        "type": "Transitive",
+        "resolved": "4.2.1",
+        "contentHash": "EVLvS02V6mL3xWo4cMv0OCo5H3uVR0eWxb0TtfcoI/SVaCKYWi1F000nax+uuEBJGmS90cfpYDvsgPn408b2ag==",
+        "dependencies": {
+          "Vanara.Core": "4.2.1"
+        }
+      },
       "xunit.abstractions": {
         "type": "Transitive",
         "resolved": "2.0.3",
@@ -166,6 +188,14 @@
           "System.Security.Cryptography.ProtectedData": "[10.0.10, )"
         }
       },
+      "ghostshell.terminal": {
+        "type": "Project",
+        "dependencies": {
+          "GhostShell.Application": "[1.0.0, )",
+          "GhostShell.Core": "[1.0.0, )",
+          "Porta.Pty": "[1.0.7, )"
+        }
+      },
       "Microsoft.Data.Sqlite.Core": {
         "type": "CentralTransitive",
         "requested": "[10.0.10, )",
@@ -182,6 +212,15 @@
         "contentHash": "dL0QGToTxggRLMYY4ZYX5AMwBb+byQBd/5dMiZE07Nv73o6I5Are3C7eQTh7K2+A4ct0PVISSr7TZANbiNb2yQ==",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2"
+        }
+      },
+      "Porta.Pty": {
+        "type": "CentralTransitive",
+        "requested": "[1.0.7, )",
+        "resolved": "1.0.7",
+        "contentHash": "ARvF8LQTu9qPK7O+i9Mb0bZPuYTt7tdBhhFdCq3FmghIEasJYN3hHToKX6uWaSI6SEOpe2kmhinV74RzdN6gJg==",
+        "dependencies": {
+          "Vanara.PInvoke.Kernel32": "4.2.1"
         }
       },
       "SQLite3MC.PCLRaw.bundle": {

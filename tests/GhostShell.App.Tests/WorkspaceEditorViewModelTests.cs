@@ -619,6 +619,46 @@ public sealed class WorkspaceEditorViewModelTests
     }
 
     [Fact]
+    public void Isolation_image_input_shows_the_running_image_without_creating_an_override()
+    {
+        const string alpine = "docker.io/library/alpine@sha256:actual";
+        using var editor = new WorkspaceEditorViewModel(
+            Workspace([], isIsolated: true),
+            4,
+            [],
+            [],
+            [],
+            fileProviders: [],
+            effectiveIsolationImageReference: alpine,
+            defaultIsolationImageReference: "docker.io/library/ubuntu@sha256:default");
+
+        Assert.Equal("alpine", editor.IsolationImageReference);
+        Assert.Equal("ubuntu", editor.DefaultIsolationImageReference);
+        Assert.False(editor.IsDirty);
+
+        editor.Description = "Changed without changing the environment image";
+
+        Assert.Null(editor.CreateSaveRequest().Definition.IsolationImageReference);
+    }
+
+    [Fact]
+    public void AI_agent_uses_the_host_until_workspace_isolation_is_selected()
+    {
+        using var editor = new WorkspaceEditorViewModel(
+            Workspace([], isIsolated: true),
+            4,
+            [],
+            [],
+            []);
+
+        Assert.False(editor.RunAgentInIsolation);
+
+        editor.RunAgentInIsolation = true;
+
+        Assert.True(editor.CreateSaveRequest().Definition.RunAgentInIsolation);
+    }
+
+    [Fact]
     public void First_host_mount_is_explicit_read_only_and_has_no_host_source()
     {
         using var editor = new WorkspaceEditorViewModel(

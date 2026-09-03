@@ -28,6 +28,7 @@ public sealed class GitRepositoryPickerViewModel : ObservableObject
 {
     private readonly IGitRepositoryClient _client;
     private readonly ConnectionProfile _connection;
+    private readonly string? _connectionDisplayName;
     private readonly string? _initialPath;
     private string _currentPath = "";
     private string _pathInput = "";
@@ -39,15 +40,18 @@ public sealed class GitRepositoryPickerViewModel : ObservableObject
     public GitRepositoryPickerViewModel(
         IGitRepositoryClient client,
         ConnectionProfile connection,
-        string? initialPath = null)
+        string? initialPath = null,
+        string? connectionDisplayName = null)
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
+        _connectionDisplayName = connectionDisplayName;
         _initialPath = initialPath;
     }
 
     public string ConnectionDisplayName =>
-        _connection.Endpoint is ConnectionEndpoint.Local ? "Local" : _connection.Name;
+        _connectionDisplayName
+        ?? (_connection.Endpoint is ConnectionEndpoint.Local ? "Local" : _connection.Name);
 
     public string CurrentPath
     {

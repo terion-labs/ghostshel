@@ -3,14 +3,101 @@ using GhostShell.Application;
 
 namespace GhostShell.Infrastructure;
 
+public enum WorkspaceIsolationPlatformLimitation
+{
+    None = 0,
+    UnsupportedPlatform = 1,
+    AppleSiliconRequired = 2,
+    MacOs26Required = 3,
+    LinuxBackendNotPackaged = 4,
+    LinuxKvmRequired = 5,
+    LinuxHostSharingRuntimeRequired = 6,
+    WslDistributionsShareVirtualMachine = 7,
+    WslDistributionsShareNetworkNamespace = 8,
+}
+
+public sealed record WorkspaceIsolationRuntimeInstallation(
+    string RuntimeDisplayName,
+    Uri Address,
+    string OpenFailureMessage);
+
+public sealed class WorkspaceIsolationPlatformAdapter
+{
+    private readonly Func<string, IWorkspaceIsolationProvider> _createProvider;
+
+    internal WorkspaceIsolationPlatformAdapter(
+        WorkspaceIsolationProviderDescriptor descriptor,
+        string runtimeExecutableName,
+        WorkspaceIsolationRuntimeInstallation installation,
+        Func<string, IWorkspaceIsolationProvider> createProvider)
+    {
+        Descriptor = descriptor ?? throw new ArgumentNullException(nameof(descriptor));
+        ArgumentException.ThrowIfNullOrWhiteSpace(runtimeExecutableName);
+        RuntimeExecutableName = runtimeExecutableName;
+        Installation = installation
+            ?? throw new ArgumentNullException(nameof(installation));
+        _createProvider = createProvider
+            ?? throw new ArgumentNullException(nameof(createProvider));
+    }
+
+    public WorkspaceIsolationProviderDescriptor Descriptor { get; }
+
+    public string RuntimeExecutableName { get; }
+
+    public WorkspaceIsolationRuntimeInstallation Installation { get; }
+
+    public IWorkspaceIsolationProvider CreateProvider(string runtimeExecutablePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(runtimeExecutablePath);
+        return _createProvider(runtimeExecutablePath);
+    }
+}
+
+public abstract record WorkspaceIsolationPlatformSupport
+{
+    private WorkspaceIsolationPlatformSupport()
+    {
+    }
+
+    public sealed record Available(
+        WorkspaceIsolationPlatformAdapter Adapter) : WorkspaceIsolationPlatformSupport;
+
+    public sealed record Unavailable : WorkspaceIsolationPlatformSupport
+    {
+        public Unavailable(IReadOnlyList<WorkspaceIsolationPlatformLimitation> limitations)
+        {
+            ArgumentNullException.ThrowIfNull(limitations);
+            if (limitations.Count == 0
+                || limitations.Any(limitation =>
+                    limitation == WorkspaceIsolationPlatformLimitation.None
+                    || !Enum.IsDefined(limitation)))
+            {
+                throw new ArgumentException(
+                    "Unavailable workspace isolation requires recognized platform limitations.",
+                    nameof(limitations));
+            }
+
+            Limitations = Array.AsReadOnly(limitations.Distinct().ToArray());
+        }
+
+        public IReadOnlyList<WorkspaceIsolationPlatformLimitation> Limitations { get; }
+    }
+}
+
 public sealed class WorkspaceIsolationPlatformResolver
 {
-    public const WorkspaceIsolationCapability AppleContainerCapabilities =
-        WorkspaceIsolationCapability.PersistentRootFileSystem
-        | WorkspaceIsolationCapability.DedicatedKernel
-        | WorkspaceIsolationCapability.DedicatedNetworkNamespace
-        | WorkspaceIsolationCapability.HostBindMounts
-        | WorkspaceIsolationCapability.StructuredProcessExecution;
+    private static readonly WorkspaceIsolationPlatformAdapter AppleContainer = new(
+        AppleContainerWorkspaceIsolationProvider.ProviderDescriptor,
+        "container",
+        new WorkspaceIsolationRuntimeInstallation(
+            "Apple container",
+            new Uri(
+                "https://github.com/apple/container/releases/latest",
+                UriKind.Absolute),
+            "GhostSHELL could not open Apple's container installer page."),
+        executable => new AppleContainerWorkspaceIsolationProvider(
+            imageReference: AppleContainerWorkspaceIsolationProvider.DefaultImageReference,
+            containerExecutable: executable));
 
     public WorkspaceIsolationPlatformSupport ResolveCurrent() =>
         Resolve(
@@ -62,9 +149,7 @@ public sealed class WorkspaceIsolationPlatformResolver
         }
 
         return limitations.Count == 0
-            ? new WorkspaceIsolationPlatformSupport.Available(
-                WorkspaceIsolationProviderKind.AppleContainer,
-                AppleContainerCapabilities)
+            ? new WorkspaceIsolationPlatformSupport.Available(AppleContainer)
             : new WorkspaceIsolationPlatformSupport.Unavailable(limitations);
     }
 }

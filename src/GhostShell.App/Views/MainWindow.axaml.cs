@@ -653,6 +653,15 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = e;
+        if (ViewModel.RuntimeWorkspace is { } runtime
+            && ViewModel.TryGetWorkspaceDefinitionId(runtime.Id, out var workspaceId))
+        {
+            EnsureDefinitionEditorOverlay();
+            ViewModel.BeginEditWorkspace(workspaceId);
+            FocusNavigator.FocusDefinitionEditor();
+            return;
+        }
+
         NavigateToSettings(SettingsPage.Agent);
     }
 
@@ -1494,6 +1503,34 @@ public sealed partial class MainWindow : Window
         {
             FocusCurrentRoute();
         }
+    }
+
+    private async void OnRecreateWorkspaceIsolationRequested(
+        object? sender,
+        WorkspaceId workspaceId)
+    {
+        _ = sender;
+        if (ViewModel.WorkspaceEditor is not { } editor)
+        {
+            return;
+        }
+
+        if (editor.IsDirty)
+        {
+            ViewModel.SetError("Save the workspace changes before recreating its environment.");
+            return;
+        }
+
+        if (!await Confirmations.RecreateWorkspaceIsolation(editor.Name)
+                .ShowDialog<bool>(this))
+        {
+            return;
+        }
+
+        ViewModel.DismissWorkspaceEditor();
+        _ = await ViewModel.RecreateWorkspaceIsolationAsync(
+            workspaceId,
+            _lifetime.Token);
     }
 
     private async ValueTask<DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>>

@@ -3,10 +3,61 @@ using GhostShell.Core;
 
 namespace GhostShell.Application;
 
-public enum WorkspaceIsolationProviderKind
+public static class WorkspaceIsolationImages
 {
-    None = 0,
-    AppleContainer = 1,
+    public const string Default = "ubuntu:24.04";
+
+    public static string ForDisplay(string imageReference)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(imageReference);
+        var normalized = imageReference.Trim();
+        const string dockerHubPrefix = "docker.io/";
+        if (!normalized.StartsWith(dockerHubPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return normalized;
+        }
+
+        normalized = normalized[dockerHubPrefix.Length..];
+        const string officialImagesPrefix = "library/";
+        if (normalized.StartsWith(officialImagesPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = normalized[officialImagesPrefix.Length..];
+        }
+
+        var digestSeparator = normalized.IndexOf('@', StringComparison.Ordinal);
+        if (digestSeparator >= 0)
+        {
+            normalized = normalized[..digestSeparator];
+        }
+
+        const string latestTag = ":latest";
+        return normalized.EndsWith(latestTag, StringComparison.OrdinalIgnoreCase)
+            ? normalized[..^latestTag.Length]
+            : normalized;
+    }
+}
+
+public readonly record struct WorkspaceIsolationProviderId
+{
+    public WorkspaceIsolationProviderId(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        if (value.Length > 64
+            || !char.IsAsciiLetter(value[0])
+            || value.Any(character =>
+                !char.IsAsciiLetterOrDigit(character) && character is not ('.' or '-')))
+        {
+            throw new ArgumentException(
+                "A workspace isolation provider ID must be a short semantic identifier.",
+                nameof(value));
+        }
+
+        Value = value;
+    }
+
+    public string Value { get; }
+
+    public override string ToString() => Value;
 }
 
 [Flags]
@@ -18,79 +69,44 @@ public enum WorkspaceIsolationCapability : uint
     DedicatedNetworkNamespace = 1 << 2,
     HostBindMounts = 1 << 3,
     StructuredProcessExecution = 1 << 4,
-    WorkspaceNetworkAttachment = 1 << 5,
 }
 
-public enum WorkspaceIsolationPlatformLimitation
+public sealed record WorkspaceIsolationProviderDescriptor
 {
-    None = 0,
-    UnsupportedPlatform = 1,
-    AppleSiliconRequired = 2,
-    MacOs26Required = 3,
-    LinuxBackendNotPackaged = 4,
-    LinuxKvmRequired = 5,
-    LinuxHostSharingRuntimeRequired = 6,
-    WslDistributionsShareVirtualMachine = 7,
-    WslDistributionsShareNetworkNamespace = 8,
-}
-
-public abstract record WorkspaceIsolationPlatformSupport
-{
-    private WorkspaceIsolationPlatformSupport()
+    public WorkspaceIsolationProviderDescriptor(
+        WorkspaceIsolationProviderId id,
+        string displayName,
+        WorkspaceIsolationCapability capabilities)
     {
-    }
-
-    public sealed record Available : WorkspaceIsolationPlatformSupport
-    {
-        public Available(
-            WorkspaceIsolationProviderKind provider,
-            WorkspaceIsolationCapability capabilities)
+        if (string.IsNullOrWhiteSpace(id.Value))
         {
-            if (provider == WorkspaceIsolationProviderKind.None || !Enum.IsDefined(provider))
-            {
-                throw new ArgumentOutOfRangeException(nameof(provider), provider, null);
-            }
-
-            const WorkspaceIsolationCapability allCapabilities =
-                WorkspaceIsolationCapability.PersistentRootFileSystem
-                | WorkspaceIsolationCapability.DedicatedKernel
-                | WorkspaceIsolationCapability.DedicatedNetworkNamespace
-                | WorkspaceIsolationCapability.HostBindMounts
-                | WorkspaceIsolationCapability.StructuredProcessExecution
-                | WorkspaceIsolationCapability.WorkspaceNetworkAttachment;
-            if ((capabilities & ~allCapabilities) != 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(capabilities), capabilities, null);
-            }
-
-            Provider = provider;
-            Capabilities = capabilities;
+            throw new ArgumentException(
+                "A workspace isolation provider descriptor requires an ID.",
+                nameof(id));
         }
 
-        public WorkspaceIsolationProviderKind Provider { get; }
-
-        public WorkspaceIsolationCapability Capabilities { get; }
-    }
-
-    public sealed record Unavailable : WorkspaceIsolationPlatformSupport
-    {
-        public Unavailable(IReadOnlyList<WorkspaceIsolationPlatformLimitation> limitations)
+        ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
+        const WorkspaceIsolationCapability allCapabilities =
+            WorkspaceIsolationCapability.PersistentRootFileSystem
+            | WorkspaceIsolationCapability.DedicatedKernel
+            | WorkspaceIsolationCapability.DedicatedNetworkNamespace
+            | WorkspaceIsolationCapability.HostBindMounts
+            | WorkspaceIsolationCapability.StructuredProcessExecution;
+        if ((capabilities & ~allCapabilities) != 0)
         {
-            ArgumentNullException.ThrowIfNull(limitations);
-            if (limitations.Count == 0
-                || limitations.Any(limitation => limitation == WorkspaceIsolationPlatformLimitation.None
-                                                  || !Enum.IsDefined(limitation)))
-            {
-                throw new ArgumentException(
-                    "Unavailable workspace isolation requires recognized platform limitations.",
-                    nameof(limitations));
-            }
-
-            Limitations = Array.AsReadOnly(limitations.Distinct().ToArray());
+            throw new ArgumentOutOfRangeException(nameof(capabilities), capabilities, null);
         }
 
-        public IReadOnlyList<WorkspaceIsolationPlatformLimitation> Limitations { get; }
+        Id = id;
+        DisplayName = displayName.Trim();
+        Capabilities = capabilities;
     }
+
+    public WorkspaceIsolationProviderId Id { get; }
+
+    public string DisplayName { get; }
+
+    public WorkspaceIsolationCapability Capabilities { get; }
 }
 
 public sealed record WorkspaceIsolationMount
@@ -288,21 +304,24 @@ public sealed record WorkspaceIsolationBinding
 {
     public WorkspaceIsolationBinding(
         WorkspaceId workspaceId,
-        WorkspaceIsolationProviderKind provider,
+        WorkspaceIsolationProviderId provider,
         WorkspaceIsolationCapability capabilities,
         string resourceName,
         IReadOnlyList<WorkspaceIsolationMount> mounts,
         Guid leaseId,
-        string? imageReference = null)
+        string? imageReference = null,
+        string? runtimeImageReference = null)
     {
         if (string.IsNullOrWhiteSpace(workspaceId.Value))
         {
             throw new ArgumentException("A workspace identifier is required.", nameof(workspaceId));
         }
 
-        if (provider == WorkspaceIsolationProviderKind.None || !Enum.IsDefined(provider))
+        if (string.IsNullOrWhiteSpace(provider.Value))
         {
-            throw new ArgumentOutOfRangeException(nameof(provider), provider, null);
+            throw new ArgumentException(
+                "A workspace isolation provider ID is required.",
+                nameof(provider));
         }
 
         ArgumentException.ThrowIfNullOrWhiteSpace(resourceName);
@@ -322,12 +341,15 @@ public sealed record WorkspaceIsolationBinding
             imageReference);
         Mounts = request.Mounts;
         ImageReference = request.ImageReference;
+        RuntimeImageReference = string.IsNullOrWhiteSpace(runtimeImageReference)
+            ? request.ImageReference
+            : runtimeImageReference.Trim();
         LeaseId = leaseId;
     }
 
     public WorkspaceId WorkspaceId { get; }
 
-    public WorkspaceIsolationProviderKind Provider { get; }
+    public WorkspaceIsolationProviderId Provider { get; }
 
     public WorkspaceIsolationCapability Capabilities { get; }
 
@@ -336,6 +358,9 @@ public sealed record WorkspaceIsolationBinding
     public IReadOnlyList<WorkspaceIsolationMount> Mounts { get; }
 
     public string? ImageReference { get; }
+
+    /// <summary>The concrete OCI image used by the running environment.</summary>
+    public string? RuntimeImageReference { get; }
 
     /// <summary>
     /// Identifies one acquire of a shared persistent isolate. Releasing the same lease more
@@ -659,9 +684,11 @@ public abstract record WorkspaceIsolationResult<T>
 
 public interface IWorkspaceIsolationProvider
 {
-    WorkspaceIsolationProviderKind Kind { get; }
+    WorkspaceIsolationProviderDescriptor Descriptor { get; }
 
-    WorkspaceIsolationCapability Capabilities { get; }
+    WorkspaceIsolationCapability Capabilities => Descriptor.Capabilities;
+
+    string DefaultImageReference => WorkspaceIsolationImages.Default;
 
     ValueTask<WorkspaceIsolationResult<WorkspaceIsolationBinding>> PrepareAsync(
         WorkspaceIsolationPrepareRequest request,
@@ -680,4 +707,11 @@ public interface IWorkspaceIsolationProvider
     ValueTask<WorkspaceIsolationResult<WorkspaceIsolationBinding>> StopAsync(
         WorkspaceIsolationBinding binding,
         CancellationToken cancellationToken);
+
+    ValueTask<WorkspaceIsolationResult<Unit>> RecreateAsync(
+        WorkspaceIsolationPrepareRequest request,
+        IProgress<WorkspaceIsolationProgress>? progress,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(WorkspaceIsolationResult<Unit>.Fail(
+            WorkspaceIsolationErrorCode.PrepareFailed));
 }

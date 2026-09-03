@@ -94,6 +94,7 @@ public sealed class GitRuntimePanelViewModel : RuntimePanelViewModel
     private string? _issueMessage;
     private string? _untrustedRepositoryPath;
     private bool _disposed;
+    private readonly string? _connectionDisplayName;
     private CancellationTokenSource? _diffCancellation;
     private CancellationTokenSource? _detailCancellation;
     private IReadOnlyList<GitTreeNodeViewModel> _commitTreeRoots = [];
@@ -125,12 +126,14 @@ public sealed class GitRuntimePanelViewModel : RuntimePanelViewModel
         ConnectionProfile connection,
         string? initialRepositoryPath = null,
         IGitPanelPreferences? panelPreferences = null,
-        IGitRepositoryMutationCoordinator? mutationCoordinator = null)
+        IGitRepositoryMutationCoordinator? mutationCoordinator = null,
+        string? connectionDisplayName = null)
         : base(id, PanelKind.Git, title, "Git")
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _mutationCoordinator = mutationCoordinator;
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
+        _connectionDisplayName = connectionDisplayName;
         _panelPreferences = panelPreferences;
         if (connection.Endpoint is not (ConnectionEndpoint.Local or ConnectionEndpoint.Ssh))
         {
@@ -221,14 +224,15 @@ public sealed class GitRuntimePanelViewModel : RuntimePanelViewModel
     public ConnectionProfile Connection => _connection;
 
     public string ConnectionDisplayName =>
-        _connection.Endpoint is ConnectionEndpoint.Local ? "Local" : _connection.Name;
+        _connectionDisplayName
+        ?? (_connection.Endpoint is ConnectionEndpoint.Local ? "Local" : _connection.Name);
 
     /// <summary>
     /// A picker over this panel's own connection, so browsing works wherever
     /// the repository lives — locally or over SSH.
     /// </summary>
     public GitRepositoryPickerViewModel CreateRepositoryPicker() =>
-        new(_client, _connection, RepositoryPathInput);
+        new(_client, _connection, RepositoryPathInput, ConnectionDisplayName);
 
     public ICommand OpenRepositoryCommand => _openRepositoryCommand;
 

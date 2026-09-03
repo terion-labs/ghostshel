@@ -28,7 +28,9 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
     private string _icon;
     private bool _autoSave;
     private bool _isIsolated;
+    private bool _runAgentInIsolation;
     private string _isolationImageReference;
+    private readonly string _initialIsolationImageReference;
     private WorkspaceTerminalMultiplexingOption _selectedTerminalMultiplexing;
     private WorkspaceBrowserProfileOption _selectedBrowserProfile;
     private string _iconSearch = string.Empty;
@@ -84,7 +86,9 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         IReadOnlyList<FileProviderProfile> fileProviders,
         IReadOnlyList<AiProviderProfileDescriptor>? aiProviders = null,
         bool isIsolationAvailable = true,
-        string? isolationRuntimeDisplayName = null)
+        string? isolationRuntimeDisplayName = null,
+        string? effectiveIsolationImageReference = null,
+        string defaultIsolationImageReference = WorkspaceIsolationImages.Default)
     {
         _original = workspace ?? throw new ArgumentNullException(nameof(workspace));
         _isIsolationAvailable = isIsolationAvailable;
@@ -103,11 +107,21 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         _icon = workspace.Icon;
         _autoSave = workspace.AutoSave;
         _isIsolated = workspace.IsIsolated;
-        _isolationImageReference = workspace.IsolationImageReference ?? string.Empty;
+        _runAgentInIsolation = workspace.RunAgentInIsolation;
+        DefaultIsolationImageReference = string.IsNullOrWhiteSpace(defaultIsolationImageReference)
+            ? throw new ArgumentException(
+                "A default isolation image reference is required.",
+                nameof(defaultIsolationImageReference))
+            : WorkspaceIsolationImages.ForDisplay(defaultIsolationImageReference);
+        var selectedImageReference = string.IsNullOrWhiteSpace(effectiveIsolationImageReference)
+            ? workspace.IsolationImageReference ?? DefaultIsolationImageReference
+            : effectiveIsolationImageReference.Trim();
+        _isolationImageReference = WorkspaceIsolationImages.ForDisplay(selectedImageReference);
+        _initialIsolationImageReference = _isolationImageReference;
         _aiProviders = aiProviders;
         AgentPolicy = new SavedScreenAgentPolicyEditorViewModel(
             workspace.AgentPolicyOverride,
-            aiProviders);
+            AgentProvidersFor(workspace.RunAgentInIsolation));
         AgentPolicy.Changed += OnAgentPolicyChanged;
         TerminalMultiplexingOptions =
         [
@@ -180,6 +194,11 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
     public IReadOnlyList<WorkspaceBrowserProfileOption> BrowserProfileOptions { get; }
 
     public SavedScreenAgentPolicyEditorViewModel AgentPolicy { get; private set; }
+
+    public string DefaultIsolationImageReference { get; }
+
+    public string IsolationImageDescription =>
+        $"OCI image used to create this workspace environment. Default on this host: {DefaultIsolationImageReference}. Changing it recreates the environment and removes installed packages and guest-only files.";
 
     public WorkspaceTerminalMultiplexingOption SelectedTerminalMultiplexing
     {
@@ -362,6 +381,9 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
     public bool CanAddIsolationMount =>
         _isolationMounts.Count < WorkspaceDefinition.MaximumIsolationMountCount;
 
+    public bool CanRecreateIsolationEnvironment =>
+        IsIsolated && !IsNew && IsIsolationAvailable && !IsDirty;
+
     public bool IsIsolationAvailable => _isIsolationAvailable;
 
     public bool CanToggleIsolation =>
@@ -525,17 +547,39 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
 
             if (SetProperty(ref _isIsolated, value))
             {
+                if (!value && _runAgentInIsolation)
+                {
+                    var policy = AgentPolicy.Build();
+                    _runAgentInIsolation = false;
+                    OnPropertyChanged(nameof(RunAgentInIsolation));
+                    ReplaceAgentPolicy(policy);
+                }
+
                 OnPropertyChanged(nameof(CanToggleIsolation));
                 OnPropertyChanged(nameof(IsIsolationUnavailable));
                 OnPropertyChanged(nameof(CanInstallIsolationRuntime));
+                OnPropertyChanged(nameof(CanRecreateIsolationEnvironment));
+                Changed();
+            }
+        }
+    }
+
+    public bool RunAgentInIsolation
+    {
+        get => _runAgentInIsolation;
+        set
+        {
+            var normalized = value && IsIsolated;
+            if (SetProperty(ref _runAgentInIsolation, normalized))
+            {
+                ReplaceAgentPolicy(AgentPolicy.Build());
                 Changed();
             }
         }
     }
 
     /// <summary>
-    /// Empty selects the platform's pinned Ubuntu default. A concrete OCI reference
-    /// makes image choice durable for this workspace.
+    /// The concrete OCI image used by this workspace environment.
     /// </summary>
     public string IsolationImageReference
     {
@@ -767,7 +811,8 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         var iconChanged = !StringComparer.Ordinal.Equals(_icon, _original.Icon);
         var autoSaveChanged = _autoSave != _original.AutoSave;
         var isolationChanged = _isIsolated != _original.IsIsolated;
-        var isolationImage = _original.IsolationImageReference ?? string.Empty;
+        var agentIsolationChanged = _runAgentInIsolation != _original.RunAgentInIsolation;
+        var isolationImage = _initialIsolationImageReference;
         var isolationImageChanged = !StringComparer.Ordinal.Equals(
             _isolationImageReference,
             isolationImage);
@@ -784,6 +829,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         _icon = _original.Icon;
         _autoSave = _original.AutoSave;
         _isIsolated = _original.IsIsolated;
+        _runAgentInIsolation = _original.RunAgentInIsolation;
         _isolationImageReference = isolationImage;
         _selectedTerminalMultiplexing = multiplexing;
         _selectedBrowserProfile = browserProfile;
@@ -835,6 +881,11 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(CanInstallIsolationRuntime));
         }
 
+        if (agentIsolationChanged)
+        {
+            OnPropertyChanged(nameof(RunAgentInIsolation));
+        }
+
         if (isolationImageChanged)
         {
             OnPropertyChanged(nameof(IsolationImageReference));
@@ -855,7 +906,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         AgentPolicy.Dispose();
         AgentPolicy = new SavedScreenAgentPolicyEditorViewModel(
             _original.AgentPolicyOverride,
-            _aiProviders);
+            AgentProvidersFor(_original.RunAgentInIsolation));
         AgentPolicy.Changed += OnAgentPolicyChanged;
         OnPropertyChanged(nameof(AgentPolicy));
 
@@ -953,7 +1004,13 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         !string.IsNullOrWhiteSpace(Accent),
         IsIsolated,
         [.. _isolationMounts.Select(mount => mount.Build())],
-        IsolationImageReference);
+        string.Equals(
+            IsolationImageReference,
+            _initialIsolationImageReference,
+            StringComparison.Ordinal)
+            ? _original.IsolationImageReference
+            : IsolationImageReference,
+        RunAgentInIsolation);
 
     private IReadOnlyList<DefinitionValidationIssue> Validate()
     {
@@ -1040,6 +1097,28 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         Changed();
     }
 
+    private IReadOnlyList<AiProviderProfileDescriptor>? AgentProvidersFor(
+        bool isolatedAgent)
+    {
+        if (!isolatedAgent || _aiProviders is null)
+        {
+            return _aiProviders;
+        }
+
+        return [.. _aiProviders.Where(provider => !provider.Endpoint.IsLoopback)];
+    }
+
+    private void ReplaceAgentPolicy(AgentPolicy? policy)
+    {
+        AgentPolicy.Changed -= OnAgentPolicyChanged;
+        AgentPolicy.Dispose();
+        AgentPolicy = new SavedScreenAgentPolicyEditorViewModel(
+            policy,
+            AgentProvidersFor(RunAgentInIsolation));
+        AgentPolicy.Changed += OnAgentPolicyChanged;
+        OnPropertyChanged(nameof(AgentPolicy));
+    }
+
     private void Changed(bool entriesChanged = false)
     {
         SetDirty(true);
@@ -1056,6 +1135,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         _isDirty = value;
         OnPropertyChanged(nameof(IsDirty));
         OnPropertyChanged(nameof(DirtyStatus));
+        OnPropertyChanged(nameof(CanRecreateIsolationEnvironment));
     }
 
     private void PublishState(bool entriesChanged = false)

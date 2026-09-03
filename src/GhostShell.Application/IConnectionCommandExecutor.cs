@@ -33,6 +33,31 @@ public interface IConnectionCommandExecutor
         CancellationToken cancellationToken);
 }
 
+/// <summary>
+/// Plans a structured, non-interactive command through a connection runtime.
+/// Isolation runtimes implement this so command-backed panels cannot bypass
+/// their execution boundary merely because the durable connection is local.
+/// </summary>
+public interface IConnectionCommandRuntime
+{
+    ValueTask<ConnectionRuntimeResult<TerminalLaunchRequest>> PlanCommandAsync(
+        ConnectionProfile connection,
+        string executable,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Plans a long-lived command whose standard input and output carry a duplex byte stream.
+    /// Workspace providers must preserve stdin for the lifetime of the process without
+    /// allocating a terminal.
+    /// </summary>
+    ValueTask<ConnectionRuntimeResult<TerminalLaunchRequest>> PlanDuplexCommandAsync(
+        ConnectionProfile connection,
+        string executable,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken);
+}
+
 public sealed record ConnectionCommand
 {
     public ConnectionCommand(

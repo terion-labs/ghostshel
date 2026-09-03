@@ -64,6 +64,8 @@ public sealed partial class WorkspaceEditorView : UserControl
     /// </summary>
     public event EventHandler<RoutedEventArgs>? InstallWorkspaceIsolationRuntimeRequested;
 
+    public event EventHandler<WorkspaceId>? RecreateWorkspaceIsolationRequested;
+
     public WorkspaceEditorViewModel? Editor => DataContext as WorkspaceEditorViewModel;
 
     public bool FocusInitialControl() =>
@@ -78,6 +80,16 @@ public sealed partial class WorkspaceEditorView : UserControl
 
     private void OnInstallWorkspaceIsolationRuntimeClick(object? sender, RoutedEventArgs e) =>
         InstallWorkspaceIsolationRuntimeRequested?.Invoke(sender, e);
+
+    private void OnRecreateWorkspaceIsolationClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (Editor is { } editor)
+        {
+            RecreateWorkspaceIsolationRequested?.Invoke(this, editor.Id);
+        }
+    }
 
     private void ObserveEditor()
     {

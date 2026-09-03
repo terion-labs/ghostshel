@@ -5,6 +5,20 @@ namespace GhostShell.Application.Tests;
 public sealed class WorkspaceIsolationContractsTests
 {
     private static readonly WorkspaceId WorkspaceId = new("workspace-contract-test");
+    private static readonly WorkspaceIsolationProviderId ProviderId = new("test-provider");
+
+    [Theory]
+    [InlineData("ubuntu:24.04", "ubuntu:24.04")]
+    [InlineData("docker.io/library/ubuntu:24.04", "ubuntu:24.04")]
+    [InlineData("docker.io/library/alpine@sha256:actual", "alpine")]
+    [InlineData("docker.io/acme/tool:2", "acme/tool:2")]
+    [InlineData("ghcr.io/acme/tool@sha256:actual", "ghcr.io/acme/tool@sha256:actual")]
+    public void Docker_Hub_image_references_use_Dockerfile_style_display_names(
+        string imageReference,
+        string expected)
+    {
+        Assert.Equal(expected, WorkspaceIsolationImages.ForDisplay(imageReference));
+    }
 
     [Fact]
     public void Prepare_request_allows_a_guest_only_workspace_and_snapshots_mounts()
@@ -76,25 +90,19 @@ public sealed class WorkspaceIsolationContractsTests
     }
 
     [Fact]
-    public void Binding_rejects_provider_sentinel_and_empty_lease()
+    public void Binding_rejects_empty_provider_and_lease()
     {
         var mount = new WorkspaceIsolationMount(
             HostPath("source"),
             "/workspace",
             isReadOnly: false);
 
-        _ = Assert.Throws<ArgumentOutOfRangeException>(() =>
-            new WorkspaceIsolationBinding(
-                WorkspaceId,
-                WorkspaceIsolationProviderKind.None,
-                WorkspaceIsolationCapability.None,
-                "resource",
-                [mount],
-                Guid.NewGuid()));
+        _ = Assert.Throws<ArgumentException>(() =>
+            new WorkspaceIsolationProviderId(string.Empty));
         _ = Assert.Throws<ArgumentException>(() =>
             new WorkspaceIsolationBinding(
                 WorkspaceId,
-                WorkspaceIsolationProviderKind.AppleContainer,
+                ProviderId,
                 WorkspaceIsolationCapability.None,
                 "resource",
                 [mount],
@@ -102,15 +110,22 @@ public sealed class WorkspaceIsolationContractsTests
     }
 
     [Fact]
-    public void Platform_support_rejects_sentinel_values()
+    public void Binding_distinguishes_saved_override_from_running_image()
     {
-        _ = Assert.Throws<ArgumentOutOfRangeException>(() =>
-            new WorkspaceIsolationPlatformSupport.Available(
-                WorkspaceIsolationProviderKind.None,
-                WorkspaceIsolationCapability.None));
-        _ = Assert.Throws<ArgumentException>(() =>
-            new WorkspaceIsolationPlatformSupport.Unavailable(
-                [WorkspaceIsolationPlatformLimitation.None]));
+        var binding = new WorkspaceIsolationBinding(
+            WorkspaceId,
+            ProviderId,
+            WorkspaceIsolationCapability.PersistentRootFileSystem,
+            "resource",
+            [],
+            Guid.NewGuid(),
+            imageReference: null,
+            runtimeImageReference: "docker.io/library/alpine@sha256:actual");
+
+        Assert.Null(binding.ImageReference);
+        Assert.Equal(
+            "docker.io/library/alpine@sha256:actual",
+            binding.RuntimeImageReference);
     }
 
     [Fact]

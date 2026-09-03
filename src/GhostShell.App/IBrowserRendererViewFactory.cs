@@ -36,6 +36,14 @@ public interface IBrowserRendererViewFactory
         BrowserProfileBinding profile,
         CancellationToken cancellationToken) =>
         CreateAsync(connection, profile.Selection.Partition, cancellationToken);
+
+    ValueTask<BrowserRendererView> CreateThroughSocksProxyAsync(
+        int socksProxyPort,
+        string routeIdentity,
+        BrowserProfileBinding profile,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromException<BrowserRendererView>(new NotSupportedException(
+            "This browser renderer cannot use an explicit SOCKS proxy."));
 }
 
 /// <summary>

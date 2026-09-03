@@ -2,12 +2,14 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using GhostShell.Application;
 using GhostShell.Core;
+using GhostShell.Terminal;
 
 namespace GhostShell.Infrastructure.Tests;
 
 public sealed class AppleContainerWorkspaceIsolationNativeIntegrationTests
 {
     private const string EnableVariable = "GHOSTSHELL_RUN_APPLE_CONTAINER_NATIVE";
+    private const string TerminalRuntimePathVariable = "GHOSTSHELL_GHOSTTY_VT_PATH";
 
     [NativeAppleContainerFact]
     public async Task Native_provider_reconfigures_mounts_without_losing_the_persistent_root()
@@ -36,12 +38,28 @@ public sealed class AppleContainerWorkspaceIsolationNativeIntegrationTests
         {
             var first = Success(await provider.PrepareAsync(request, progress, timeout.Token));
             Assert.Equal(resourceName, first.ResourceName);
+            Assert.Equal(
+                AppleContainerWorkspaceIsolationProvider.DefaultImageReference,
+                first.RuntimeImageReference);
             Assert.Contains(
                 progress.Values,
                 item => item.Status == "Downloading the workspace image…");
             Assert.Contains(
                 progress.Values,
                 item => item.Status == "Creating the persistent workspace isolate…");
+            await VerifyIdlePromptAsync(provider, first, timeout.Token);
+            var commandOutput = await RunCommandAsync(
+                provider,
+                first,
+                "/bin/sh",
+                ["-c", "printf '%s' workspace-command-ok"],
+                timeout.Token);
+            Assert.Equal("workspace-command-ok", commandOutput);
+            var interactiveOutput = await RunInteractiveCommandAsync(
+                provider,
+                first,
+                timeout.Token);
+            Assert.Equal("relay:workspace-browser", interactiveOutput);
             await RunShellAsync(
                 provider,
                 first,
@@ -101,6 +119,22 @@ public sealed class AppleContainerWorkspaceIsolationNativeIntegrationTests
                 + "test \"$(cat /workspace/replacement-marker)\" = replacement\nexit\n",
                 timeout.Token);
             _ = Success(await provider.StopAsync(fourth, timeout.Token));
+
+            var recreateProgress = new RecordingProgress<WorkspaceIsolationProgress>();
+            _ = Success(await provider.RecreateAsync(
+                request,
+                recreateProgress,
+                timeout.Token));
+            Assert.Contains(
+                recreateProgress.Values,
+                item => item.Status == "Removing the existing workspace environment…");
+            var recreated = Success(await provider.PrepareAsync(request, timeout.Token));
+            await RunShellAsync(
+                provider,
+                recreated,
+                "test ! -e /root/.ghostshell-native-smoke\nexit\n",
+                timeout.Token);
+            _ = Success(await provider.StopAsync(recreated, timeout.Token));
         }
         finally
         {
@@ -119,6 +153,97 @@ public sealed class AppleContainerWorkspaceIsolationNativeIntegrationTests
         }
     }
 
+    private static async Task VerifyIdlePromptAsync(
+        AppleContainerWorkspaceIsolationProvider provider,
+        WorkspaceIsolationBinding binding,
+        CancellationToken cancellationToken)
+    {
+        var process = Success(provider.CreateExecLaunch(
+            binding,
+            new WorkspaceIsolationProcessRequest(
+                ConnectionKind.Local,
+                "/bin/sh",
+                mode: WorkspaceProcessMode.Interactive
+                    | WorkspaceProcessMode.AllocateTerminal)));
+        var launch = new TerminalLaunchRequest(
+            process.HostWorkingDirectory,
+            process.Executable,
+            process.Arguments,
+            process.Environment,
+            shellActivityFallback: TerminalShellActivityFallback.PromptShape);
+        var configuredRuntime = Environment.GetEnvironmentVariable(
+            TerminalRuntimePathVariable);
+        if (string.IsNullOrWhiteSpace(configuredRuntime))
+        {
+            Environment.SetEnvironmentVariable(
+                TerminalRuntimePathVariable,
+                StagedTerminalRuntimePath());
+        }
+
+        try
+        {
+            var factory = new GhosttyVtTerminalSessionFactory();
+            await using var session = await factory.CreateAsync(
+                SessionId.New(),
+                launch,
+                cancellationToken);
+            try
+            {
+                using var promptTimeout = CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken);
+                promptTimeout.CancelAfter(TimeSpan.FromSeconds(15));
+                TerminalScreenSnapshot screen;
+                do
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(50), promptTimeout.Token);
+                    screen = await session.ReadScreenAsync(promptTimeout.Token);
+                }
+                while (!screen.PlainText.Contains('#', StringComparison.Ordinal));
+
+                var snapshot = await session.SnapshotAsync(promptTimeout.Token);
+                Assert.False(
+                    snapshot.HasActiveWork,
+                    $"The real Apple container shell prompt was classified as active: {screen.PlainText}");
+            }
+            finally
+            {
+                _ = await session.CloseAsync(PanelCloseMode.Force, CancellationToken.None);
+            }
+        }
+        finally
+        {
+            if (string.IsNullOrWhiteSpace(configuredRuntime))
+            {
+                Environment.SetEnvironmentVariable(TerminalRuntimePathVariable, null);
+            }
+        }
+    }
+
+    private static string StagedTerminalRuntimePath()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory);
+             directory is not null;
+             directory = directory.Parent)
+        {
+            if (!File.Exists(Path.Combine(directory.FullName, "GhostShell.slnx")))
+            {
+                continue;
+            }
+
+            var runtime = Path.Combine(
+                directory.FullName,
+                "native",
+                "artifacts",
+                "osx-arm64",
+                "libghostty-vt.dylib");
+            Assert.True(File.Exists(runtime), $"The staged terminal runtime is missing: {runtime}");
+            return runtime;
+        }
+
+        throw new DirectoryNotFoundException(
+            $"Could not locate the GhostSHELL repository above {AppContext.BaseDirectory}.");
+    }
+
     private static async Task RunShellAsync(
         AppleContainerWorkspaceIsolationProvider provider,
         WorkspaceIsolationBinding binding,
@@ -127,7 +252,10 @@ public sealed class AppleContainerWorkspaceIsolationNativeIntegrationTests
     {
         var launch = Success(provider.CreateExecLaunch(
             binding,
-            new WorkspaceIsolationProcessRequest(ConnectionKind.Local, "/bin/sh")));
+            new WorkspaceIsolationProcessRequest(
+                ConnectionKind.Local,
+                "/bin/sh",
+                mode: WorkspaceProcessMode.Interactive)));
         var result = await RunProcessAsync(
             launch.Executable,
             launch.Arguments,
@@ -137,6 +265,53 @@ public sealed class AppleContainerWorkspaceIsolationNativeIntegrationTests
         Assert.True(
             result.ExitCode == 0,
             $"Apple container shell exited with {result.ExitCode}: {result.StandardError}");
+    }
+
+    private static async Task<string> RunCommandAsync(
+        AppleContainerWorkspaceIsolationProvider provider,
+        WorkspaceIsolationBinding binding,
+        string executable,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken)
+    {
+        var launch = Success(provider.CreateExecLaunch(
+            binding,
+            new WorkspaceIsolationProcessRequest(
+                ConnectionKind.Local,
+                executable,
+                arguments)));
+        var result = await RunProcessAsync(
+            launch.Executable,
+            launch.Arguments,
+            standardInput: null,
+            cancellationToken);
+        Assert.True(
+            result.ExitCode == 0,
+            $"Apple container command exited with {result.ExitCode}: {result.StandardError}");
+        return result.StandardOutput;
+    }
+
+    private static async Task<string> RunInteractiveCommandAsync(
+        AppleContainerWorkspaceIsolationProvider provider,
+        WorkspaceIsolationBinding binding,
+        CancellationToken cancellationToken)
+    {
+        var launch = Success(provider.CreateExecLaunch(
+            binding,
+            new WorkspaceIsolationProcessRequest(
+                ConnectionKind.Local,
+                "/bin/sh",
+                ["-c", "read value; printf 'relay:%s' \"$value\""],
+                mode: WorkspaceProcessMode.Interactive)));
+        var result = await RunProcessAsync(
+            launch.Executable,
+            launch.Arguments,
+            "workspace-browser\n",
+            cancellationToken);
+        Assert.True(
+            result.ExitCode == 0,
+            $"Apple container relay exited with {result.ExitCode}: {result.StandardError}");
+        return result.StandardOutput;
     }
 
     private static async Task<ProcessResult> RunProcessAsync(

@@ -6,6 +6,11 @@ namespace GhostShell.App.Tests;
 
 public sealed class WorkspaceIsolatedConnectionRuntimeTests
 {
+    private static readonly WorkspaceIsolationProviderDescriptor TestProvider = new(
+        new WorkspaceIsolationProviderId("test-isolation"),
+        "Test isolation",
+        WorkspaceIsolationCapability.StructuredProcessExecution);
+
     [Fact]
     public void TransferScopeUsesProviderAndPersistentResourceIdentity()
     {
@@ -13,15 +18,15 @@ public sealed class WorkspaceIsolatedConnectionRuntimeTests
         var hostB = RuntimeWorkspace("host-b", isolationBinding: null);
         var binding = Binding(
             new WorkspaceId("shared-workspace"),
-            WorkspaceIsolationProviderKind.AppleContainer,
+            TestProvider.Id,
             "shared-resource");
         var sameResourceOtherLease = Binding(
             new WorkspaceId("shared-workspace"),
-            WorkspaceIsolationProviderKind.AppleContainer,
+            TestProvider.Id,
             "shared-resource");
         var differentResource = Binding(
             new WorkspaceId("different-workspace"),
-            WorkspaceIsolationProviderKind.AppleContainer,
+            TestProvider.Id,
             "different-resource");
         var isolatedA = RuntimeWorkspace("isolated-a", binding);
         var isolatedSame = RuntimeWorkspace("isolated-same", sameResourceOtherLease);
@@ -138,8 +143,140 @@ public sealed class WorkspaceIsolatedConnectionRuntimeTests
             progress: null,
             CancellationToken.None);
 
-        Assert.IsType<ConnectionRuntimeResult<ConnectionOpenPlan>.Success>(result);
+        var rewritten = Assert.IsType<ConnectionRuntimeResult<ConnectionOpenPlan>.Success>(
+            result).Value;
         Assert.Null(provider.Request!.HostWorkingDirectory);
+        Assert.Equal(
+            TerminalShellActivityFallback.PromptShape,
+            rewritten.Launch.ShellActivityFallback);
+    }
+
+    [Fact]
+    public async Task StructuredLocalCommandIsPlannedInsideTheWorkspaceEnvironment()
+    {
+        var profile = LocalConnection();
+        var plan = new ConnectionOpenPlan(
+            profile.Id,
+            ConnectionKind.Local,
+            new TerminalLaunchRequest("/host/home", "/bin/zsh", ["-l"]),
+            ConnectionAuthenticationMode.None,
+            SshHostKeyPolicy.NotApplicable,
+            ConnectionReconnectMode.NotApplicable);
+        var provider = new RecordingIsolationProvider(
+            WorkspaceIsolationResult<WorkspaceProcessLaunch>.Succeed(
+                new WorkspaceProcessLaunch(
+                    "container",
+                    ["exec", "workspace", "git", "status"],
+                    new Dictionary<string, string>(StringComparer.Ordinal),
+                    hostWorkingDirectory: null)));
+        var runtime = new WorkspaceIsolatedConnectionRuntime(
+            new FixedConnectionRuntime(plan),
+            provider,
+            Binding(profile.Id));
+
+        var result = await runtime.PlanCommandAsync(
+            profile,
+            "git",
+            ["status"],
+            CancellationToken.None);
+
+        var request = Assert.IsType<WorkspaceIsolationProcessRequest>(provider.Request);
+        Assert.Equal("git", request.HostExecutable);
+        Assert.Equal(["status"], request.Arguments);
+        Assert.Equal(WorkspaceProcessMode.None, request.Mode);
+        var launch = Assert.IsType<ConnectionRuntimeResult<TerminalLaunchRequest>.Success>(
+            result).Value;
+        Assert.Equal("container", launch.Executable);
+        Assert.Equal(["exec", "workspace", "git", "status"], launch.Arguments);
+    }
+
+    [Fact]
+    public async Task DuplexLocalCommandPreservesStdinWithoutAllocatingATerminal()
+    {
+        var profile = LocalConnection();
+        var plan = new ConnectionOpenPlan(
+            profile.Id,
+            ConnectionKind.Local,
+            new TerminalLaunchRequest("/host/home", "/bin/zsh", ["-l"]),
+            ConnectionAuthenticationMode.None,
+            SshHostKeyPolicy.NotApplicable,
+            ConnectionReconnectMode.NotApplicable);
+        var provider = new RecordingIsolationProvider(
+            WorkspaceIsolationResult<WorkspaceProcessLaunch>.Succeed(
+                new WorkspaceProcessLaunch(
+                    "container",
+                    ["exec", "--interactive", "workspace", "nc", "example.com", "443"],
+                    new Dictionary<string, string>(StringComparer.Ordinal),
+                    hostWorkingDirectory: null)));
+        var runtime = new WorkspaceIsolatedConnectionRuntime(
+            new FixedConnectionRuntime(plan),
+            provider,
+            Binding(profile.Id));
+
+        var result = await runtime.PlanDuplexCommandAsync(
+            profile,
+            "nc",
+            ["example.com", "443"],
+            CancellationToken.None);
+
+        var request = Assert.IsType<WorkspaceIsolationProcessRequest>(provider.Request);
+        Assert.Equal(WorkspaceProcessMode.Interactive, request.Mode);
+        Assert.IsType<ConnectionRuntimeResult<TerminalLaunchRequest>.Success>(result);
+    }
+
+    [Fact]
+    public async Task DuplexSshCommandDoesNotAllocateARemoteTerminalForBinaryTraffic()
+    {
+        var profile = new ConnectionProfile(
+            new ConnectionId("workspace-isolation-ssh-command"),
+            ConnectionProfile.CurrentSchemaVersion,
+            "SSH",
+            new ConnectionEndpoint.Ssh("host.example", username: "deploy"),
+            new ConnectionAuthentication.None(),
+            ConnectionStartup.Default,
+            ConnectionKeepAlive.Disabled,
+            SshHostKeyPolicy.Strict);
+        var plan = new ConnectionOpenPlan(
+            profile.Id,
+            ConnectionKind.Ssh,
+            new TerminalLaunchRequest(
+                null,
+                "/usr/bin/ssh",
+                ["-p", "22", "-tt", "--", "host.example", "old terminal command"]),
+            ConnectionAuthenticationMode.None,
+            SshHostKeyPolicy.Strict,
+            ConnectionReconnectMode.Manual);
+        var provider = new RecordingIsolationProvider(
+            WorkspaceIsolationResult<WorkspaceProcessLaunch>.Succeed(
+                new WorkspaceProcessLaunch(
+                    "container",
+                    ["exec"],
+                    new Dictionary<string, string>(StringComparer.Ordinal),
+                    hostWorkingDirectory: null)));
+        var runtime = new WorkspaceIsolatedConnectionRuntime(
+            new FixedConnectionRuntime(plan),
+            provider,
+            Binding(profile.Id));
+
+        var result = await runtime.PlanDuplexCommandAsync(
+            profile,
+            "/bin/sh",
+            ["-c", "printf '%s' \"$1\"", "ghostshell-command", "O'Brien"],
+            CancellationToken.None);
+
+        var request = Assert.IsType<WorkspaceIsolationProcessRequest>(provider.Request);
+        Assert.Equal("/usr/bin/ssh", request.HostExecutable);
+        Assert.Equal(
+            [
+                "-p",
+                "22",
+                "--",
+                "host.example",
+                "'/bin/sh' '-c' 'printf '\"'\"'%s'\"'\"' \"$1\"' 'ghostshell-command' 'O'\"'\"'Brien'",
+            ],
+            request.Arguments);
+        Assert.Equal(WorkspaceProcessMode.Interactive, request.Mode);
+        Assert.IsType<ConnectionRuntimeResult<TerminalLaunchRequest>.Success>(result);
     }
 
     [Fact]
@@ -253,7 +390,7 @@ public sealed class WorkspaceIsolatedConnectionRuntimeTests
     }
 
     [Fact]
-    public async Task SshAgentAuthenticationIsRejectedUntilTheIsolateHasAnExplicitBridge()
+    public async Task SshAgentAuthenticationUsesTheIsolationProvidersForwardedAgent()
     {
         var profile = new ConnectionProfile(
             new ConnectionId("workspace-isolation-agent"),
@@ -267,13 +404,20 @@ public sealed class WorkspaceIsolatedConnectionRuntimeTests
         var inner = new FixedConnectionRuntime(new ConnectionOpenPlan(
             profile.Id,
             ConnectionKind.Ssh,
-            new TerminalLaunchRequest(null, "/usr/bin/ssh", ["host.example"]),
+            new TerminalLaunchRequest(
+                null,
+                "/usr/bin/ssh",
+                ["-tt", "--", "host.example"]),
             ConnectionAuthenticationMode.SshAgent,
             SshHostKeyPolicy.Strict,
             ConnectionReconnectMode.Manual));
         var provider = new RecordingIsolationProvider(
-            WorkspaceIsolationResult<WorkspaceProcessLaunch>.Fail(
-                WorkspaceIsolationErrorCode.HostCredentialBrokerUnavailable));
+            WorkspaceIsolationResult<WorkspaceProcessLaunch>.Succeed(
+                new WorkspaceProcessLaunch(
+                    "container",
+                    ["exec"],
+                    new Dictionary<string, string>(StringComparer.Ordinal),
+                    hostWorkingDirectory: null)));
         var runtime = new WorkspaceIsolatedConnectionRuntime(
             inner,
             provider,
@@ -284,17 +428,16 @@ public sealed class WorkspaceIsolatedConnectionRuntimeTests
             progress: null,
             CancellationToken.None);
 
-        var error = Assert.IsType<ConnectionRuntimeResult<ConnectionOpenPlan>.Failure>(
-            result).Error;
-        Assert.Equal("workspace_isolation_credential_broker_unavailable", error.StableCode);
-        Assert.Equal(0, inner.PlanCount);
-        Assert.Null(provider.Request);
+        Assert.IsType<ConnectionRuntimeResult<ConnectionOpenPlan>.Success>(result);
+        Assert.Equal(1, inner.PlanCount);
+        Assert.False(provider.Request!.UsesHostCredentialBroker);
+        Assert.Contains("-tt", provider.Request.Arguments, StringComparer.Ordinal);
     }
 
     [Theory]
     [InlineData(SshHostKeyPolicy.Strict)]
     [InlineData(SshHostKeyPolicy.AcceptNew)]
-    public async Task VerifiedSshIsRejectedBeforeHostPlanning(
+    public async Task VerifiedSshTrustIsDelegatedToTheIsolationProvider(
         SshHostKeyPolicy hostKeyPolicy)
     {
         var profile = new ConnectionProfile(
@@ -330,12 +473,9 @@ public sealed class WorkspaceIsolatedConnectionRuntimeTests
             progress: null,
             CancellationToken.None);
 
-        var error = Assert.IsType<ConnectionRuntimeResult<ConnectionOpenPlan>.Failure>(
-            result).Error;
-        Assert.Equal("workspace_isolation_ssh_trust_unavailable", error.StableCode);
-        Assert.Equal(ConnectionRuntimeErrorCode.UnsupportedPlatform, error.Code);
-        Assert.Equal(0, inner.PlanCount);
-        Assert.Null(provider.Request);
+        Assert.IsType<ConnectionRuntimeResult<ConnectionOpenPlan>.Success>(result);
+        Assert.Equal(1, inner.PlanCount);
+        Assert.NotNull(provider.Request);
     }
 
     private static ConnectionProfile LocalConnection(string? startupDirectory = null) => new(
@@ -351,12 +491,12 @@ public sealed class WorkspaceIsolatedConnectionRuntimeTests
     private static WorkspaceIsolationBinding Binding(ConnectionId connectionId) =>
         Binding(
             new WorkspaceId($"workspace-for-{connectionId.Value}"),
-            WorkspaceIsolationProviderKind.AppleContainer,
+            TestProvider.Id,
             "ghostshell-test-workspace");
 
     private static WorkspaceIsolationBinding Binding(
         WorkspaceId workspaceId,
-        WorkspaceIsolationProviderKind provider,
+        WorkspaceIsolationProviderId provider,
         string resourceName) => new(
         workspaceId,
         provider,
@@ -403,8 +543,7 @@ public sealed class WorkspaceIsolatedConnectionRuntimeTests
     {
         public WorkspaceIsolationProcessRequest? Request { get; private set; }
 
-        public WorkspaceIsolationProviderKind Kind =>
-            WorkspaceIsolationProviderKind.AppleContainer;
+        public WorkspaceIsolationProviderDescriptor Descriptor => TestProvider;
 
         public WorkspaceIsolationCapability Capabilities =>
             WorkspaceIsolationCapability.StructuredProcessExecution;

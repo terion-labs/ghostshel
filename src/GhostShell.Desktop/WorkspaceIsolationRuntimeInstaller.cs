@@ -1,28 +1,26 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using GhostShell.Application;
+using GhostShell.Infrastructure;
 
 namespace GhostShell.Desktop;
 
-internal sealed class AppleContainerRuntimeInstaller(
+internal sealed class WorkspaceIsolationRuntimeInstaller(
+    WorkspaceIsolationRuntimeInstallation installation,
     Func<Uri, bool>? launch = null) : IWorkspaceIsolationRuntimeInstaller
 {
-    internal static readonly Uri OfficialReleasePage = new(
-        "https://github.com/apple/container/releases/latest",
-        UriKind.Absolute);
-
     private readonly Func<Uri, bool> _launch = launch ?? Launch;
 
-    public string RuntimeDisplayName => "Apple container";
+    public string RuntimeDisplayName => installation.RuntimeDisplayName;
 
     public WorkspaceIsolationRuntimeInstallResult BeginInstallation()
     {
         try
         {
-            return _launch(OfficialReleasePage)
+            return _launch(installation.Address)
                 ? WorkspaceIsolationRuntimeInstallResult.Success()
                 : WorkspaceIsolationRuntimeInstallResult.Failure(
-                    "GhostSHELL could not open Apple's container installer page.");
+                    installation.OpenFailureMessage);
         }
         catch (Exception exception) when (exception is
             InvalidOperationException
@@ -30,7 +28,7 @@ internal sealed class AppleContainerRuntimeInstaller(
             or NotSupportedException)
         {
             return WorkspaceIsolationRuntimeInstallResult.Failure(
-                "GhostSHELL could not open Apple's container installer page.");
+                installation.OpenFailureMessage);
         }
     }
 

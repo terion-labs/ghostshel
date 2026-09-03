@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\GhostShell.Infrastructure\GhostShell.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\GhostShell.Terminal\GhostShell.Terminal.csproj" />
     <ProjectReference
       Include="..\..\tools\GhostShell.SqlLanguageTestWorker\GhostShell.SqlLanguageTestWorker.csproj"
       OutputItemType="_SqlLanguageTestWorkerTargetPath"

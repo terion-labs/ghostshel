@@ -20,6 +20,7 @@ public sealed partial class InMemorySessionHostClient
             PanelKind.Statistics,
             ApplicationOperations.StatisticsOpen,
             cancellationToken => CreateStatisticsEngineAsync(
+                request.Owner.WorkspaceId,
                 request.SessionId,
                 request.Connection,
                 cancellationToken),
@@ -42,6 +43,7 @@ public sealed partial class InMemorySessionHostClient
             PanelKind.ProcessMonitor,
             ApplicationOperations.ProcessesOpen,
             cancellationToken => CreateProcessMonitorEngineAsync(
+                request.Owner.WorkspaceId,
                 request.SessionId,
                 request.Connection,
                 cancellationToken),
@@ -396,19 +398,21 @@ public sealed partial class InMemorySessionHostClient
     }
 
     private async ValueTask<IPanelSession> CreateStatisticsEngineAsync(
+        WorkspaceInstanceId workspaceId,
         SessionId sessionId,
         ConnectionProfile connection,
         CancellationToken cancellationToken) =>
         await _systemMonitorFactory!
-            .CreateStatisticsAsync(sessionId, connection, cancellationToken)
+            .CreateStatisticsAsync(workspaceId, sessionId, connection, cancellationToken)
             .ConfigureAwait(false);
 
     private async ValueTask<IPanelSession> CreateProcessMonitorEngineAsync(
+        WorkspaceInstanceId workspaceId,
         SessionId sessionId,
         ConnectionProfile connection,
         CancellationToken cancellationToken) =>
         await _systemMonitorFactory!
-            .CreateProcessMonitorAsync(sessionId, connection, cancellationToken)
+            .CreateProcessMonitorAsync(workspaceId, sessionId, connection, cancellationToken)
             .ConfigureAwait(false);
 
     private static HostResult<T> MonitoringEngineFailure<T>(long revision) =>

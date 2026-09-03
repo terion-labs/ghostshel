@@ -82,6 +82,19 @@ internal static class Confirmations
             CancelAutomationName = "Cancel workspace restart",
         });
 
+    public static ConfirmationDialog RecreateWorkspaceIsolation(string workspaceName) =>
+        new(new ConfirmationDialogOptions
+        {
+            Title = "Recreate environment",
+            Heading = $"Recreate “{workspaceName}” environment?",
+            Detail = "The workspace will close and start again in a new environment.",
+            Notice = "Installed packages and guest-only files will be permanently removed. Host-mounted files are not removed.",
+            NoticeTone = SurfaceTone.Warning,
+            ConfirmLabel = "Recreate environment",
+            ConfirmAutomationName = "Confirm recreate workspace environment",
+            CancelAutomationName = "Cancel recreate workspace environment",
+        });
+
     public static ConfirmationDialog GitDiscardChange(int count, string firstPath)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);

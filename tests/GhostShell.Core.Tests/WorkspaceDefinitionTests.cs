@@ -45,6 +45,40 @@ public sealed class WorkspaceDefinitionTests
     }
 
     [Theory]
+    [InlineData("/Users/alice/project")]
+    [InlineData("C:\\Users\\alice\\project")]
+    [InlineData("C:/Users/alice/project")]
+    [InlineData("\\\\server\\share\\project")]
+    public void Validator_accepts_portable_absolute_isolation_mount_host_paths(string hostPath)
+    {
+        var workspace = CreateIsolatedWorkspace(
+            [new(hostPath, "/workspace", IsReadOnly: true)]);
+
+        var result = WorkspaceValidator.Validate(workspace);
+
+        Assert.DoesNotContain(
+            result.Issues,
+            issue => issue.Message.Contains("absolute host path", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("C:relative")]
+    [InlineData("\\root-relative")]
+    [InlineData("\\\\server")]
+    [InlineData("\\\\server\\")]
+    public void Validator_rejects_non_absolute_cross_platform_host_paths(string hostPath)
+    {
+        var workspace = CreateIsolatedWorkspace(
+            [new(hostPath, "/workspace", IsReadOnly: true)]);
+
+        var result = WorkspaceValidator.Validate(workspace);
+
+        Assert.Contains(
+            result.Issues,
+            issue => issue.Message.Contains("absolute host path", StringComparison.Ordinal));
+    }
+
+    [Theory]
     [InlineData("workspace")]
     [InlineData("/")]
     [InlineData("/workspace/../secrets")]

@@ -13,6 +13,15 @@ public interface IAgentWorkspaceRuntimeFactory
         WorkspaceInstanceId workspaceId,
         AgentConversationScopeId conversationScopeId,
         AgentPolicy policy);
+
+    IGovernedAgentRuntime Create(
+        WorkspaceInstanceId workspaceId,
+        AgentConversationScopeId conversationScopeId,
+        AgentPolicy policy,
+        Uri? networkProxy) => networkProxy is null
+            ? Create(workspaceId, conversationScopeId, policy)
+            : throw new NotSupportedException(
+                "This agent runtime factory cannot route a provider connection.");
 }
 
 /// <summary>

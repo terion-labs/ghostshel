@@ -10,6 +10,7 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
     private readonly IBrowserRendererViewFactory _rendererViewFactory;
     private readonly ConnectionProfile _connection;
     private readonly BrowserProfileBinding _profile;
+    private readonly string? _connectionDisplayName;
     private BrowserRendererView? _rendererView;
     private BrowserAddress _currentAddress;
     private Task _initialization = Task.CompletedTask;
@@ -25,7 +26,8 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
         ISessionHostClient sessionClient,
         ClientId clientId,
         ConnectionProfile connection,
-        IBrowserRendererViewFactory rendererViewFactory)
+        IBrowserRendererViewFactory rendererViewFactory,
+        string? connectionDisplayName = null)
         : this(
             id,
             title,
@@ -35,7 +37,8 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
             clientId,
             connection,
             BrowserProfileBinding.Legacy(BrowserProfileKey.Global),
-            rendererViewFactory)
+            rendererViewFactory,
+            connectionDisplayName)
     {
     }
 
@@ -48,7 +51,8 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
         ClientId clientId,
         ConnectionProfile connection,
         BrowserProfileKey profile,
-        IBrowserRendererViewFactory rendererViewFactory)
+        IBrowserRendererViewFactory rendererViewFactory,
+        string? connectionDisplayName = null)
         : this(
             id,
             title,
@@ -58,7 +62,8 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
             clientId,
             connection,
             BrowserProfileBinding.Legacy(profile),
-            rendererViewFactory)
+            rendererViewFactory,
+            connectionDisplayName)
     {
     }
 
@@ -71,7 +76,8 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
         ClientId clientId,
         ConnectionProfile connection,
         BrowserProfileBinding profile,
-        IBrowserRendererViewFactory rendererViewFactory)
+        IBrowserRendererViewFactory rendererViewFactory,
+        string? connectionDisplayName = null)
         : base(id, PanelKind.Browser, title, "Browser")
     {
         ArgumentNullException.ThrowIfNull(owner);
@@ -81,6 +87,7 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
         ClientId = clientId;
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
         _profile = profile ?? throw new ArgumentNullException(nameof(profile));
+        _connectionDisplayName = connectionDisplayName;
         if (connection.Endpoint is not (ConnectionEndpoint.Local or ConnectionEndpoint.Ssh))
         {
             throw new ArgumentException(
@@ -112,9 +119,9 @@ public sealed class BrowserRuntimePanelViewModel : RuntimePanelViewModel
 
     public string BrowserProfileDisplayName => _profile.Definition.Name;
 
-    public string ConnectionDisplayName => _connection.Endpoint is ConnectionEndpoint.Local
+    public string ConnectionDisplayName => _connectionDisplayName ?? (_connection.Endpoint is ConnectionEndpoint.Local
         ? "Local"
-        : _connection.Name;
+        : _connection.Name);
 
     public BrowserRendererView? RendererView
     {

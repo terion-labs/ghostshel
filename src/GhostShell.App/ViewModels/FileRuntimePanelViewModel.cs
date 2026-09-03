@@ -64,6 +64,7 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel, IPanelNot
     private readonly string? _initialProfileId;
     private readonly FilePanelLocation? _initialLocation;
     private readonly string? _initialLocationText;
+    private readonly FileProviderProfileId? _recoveryProfileId;
     private readonly object _initializationGate = new();
     private readonly object _initialSelectionGate = new();
     private readonly AsyncActionCommand _retryCommand;
@@ -187,10 +188,12 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel, IPanelNot
         FilePreviewCatalog? previewers = null,
         IInMemoryDatabaseRegistry? databaseRegistry = null,
         IFilePreviewPreferences? previewPreferences = null,
-        FileTransferClipboard? clipboard = null)
+        FileTransferClipboard? clipboard = null,
+        FileProviderProfileId? recoveryProfileId = null)
         : base(id, PanelKind.FileViewer, title, "Files")
     {
         _clipboard = clipboard;
+        _recoveryProfileId = recoveryProfileId;
         _clipboard?.Changed += OnTransferClipboardChanged;
 
         _client = client ?? throw new ArgumentNullException(nameof(client));
@@ -291,6 +294,20 @@ public sealed class FileRuntimePanelViewModel : RuntimePanelViewModel, IPanelNot
     public event EventHandler<PanelNotificationEvent>? NotificationReceived;
 
     public ConnectionId ConnectionId => _connection.Id;
+
+    public FileProviderProfileId? RecoveryProfileId
+    {
+        get
+        {
+            if (_recoveryProfileId is { } recoveryProfileId)
+            {
+                return recoveryProfileId;
+            }
+
+            var profileId = SelectedProfile?.Id ?? CurrentLocation?.ProviderProfileId;
+            return profileId is null ? null : new FileProviderProfileId(profileId);
+        }
+    }
 
     public string ConnectionDisplayName =>
         SelectedProfile is null

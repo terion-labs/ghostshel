@@ -67,6 +67,14 @@ public sealed class SystemMonitorPanelSessionFactory : ISystemMonitorPanelSessio
         SessionCapabilities.ProcessesList,
     ]);
 
+    ValueTask<IStatisticsPanelSession>
+        ISystemMonitorPanelSessionFactory.CreateStatisticsAsync(
+            WorkspaceInstanceId workspaceId,
+            SessionId sessionId,
+            ConnectionProfile connection,
+            CancellationToken cancellationToken) =>
+        CreateStatisticsAsync(sessionId, connection, cancellationToken);
+
     public ValueTask<IStatisticsPanelSession> CreateStatisticsAsync(
         SessionId sessionId,
         ConnectionProfile connection,
@@ -85,6 +93,14 @@ public sealed class SystemMonitorPanelSessionFactory : ISystemMonitorPanelSessio
         SessionId sessionId,
         CancellationToken cancellationToken) =>
         CreateStatisticsAsync(sessionId, BuiltInConnections.Local, cancellationToken);
+
+    ValueTask<IProcessMonitorPanelSession>
+        ISystemMonitorPanelSessionFactory.CreateProcessMonitorAsync(
+            WorkspaceInstanceId workspaceId,
+            SessionId sessionId,
+            ConnectionProfile connection,
+            CancellationToken cancellationToken) =>
+        CreateProcessMonitorAsync(sessionId, connection, cancellationToken);
 
     public ValueTask<IProcessMonitorPanelSession> CreateProcessMonitorAsync(
         SessionId sessionId,

@@ -15,6 +15,25 @@ public sealed class SystemMonitorOperationTests
     private static readonly SessionId StatisticsSessionId = new("statistics-session");
     private static readonly SessionId ProcessSessionId = new("process-session");
 
+    [Fact]
+    public async Task MonitorFactoriesReceiveTheOwningWorkspaceIdentity()
+    {
+        var factory = new FakeSystemMonitorPanelSessionFactory();
+        await using var host = CreateHost(factory);
+
+        _ = (await host.EnsureStatisticsSessionAsync(
+            StatisticsRequest(),
+            Context(),
+            CancellationToken.None)).Value();
+        _ = (await host.EnsureProcessMonitorSessionAsync(
+            ProcessRequest(),
+            Context(),
+            CancellationToken.None)).Value();
+
+        Assert.Equal([WorkspaceId], factory.StatisticsWorkspaceIds);
+        Assert.Equal([WorkspaceId], factory.ProcessMonitorWorkspaceIds);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

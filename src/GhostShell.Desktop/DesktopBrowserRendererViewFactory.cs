@@ -98,6 +98,22 @@ internal sealed class DesktopBrowserRendererViewFactory(
         }
     }
 
+    public ValueTask<BrowserRendererView> CreateThroughSocksProxyAsync(
+        int socksProxyPort,
+        string routeIdentity,
+        BrowserProfileBinding profile,
+        CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(socksProxyPort, 1);
+        ArgumentException.ThrowIfNullOrWhiteSpace(routeIdentity);
+        cancellationToken.ThrowIfCancellationRequested();
+        var lease = profileStore.AcquireRouted(
+            profile,
+            routeIdentity,
+            socksProxyPort);
+        return ValueTask.FromResult(CreateView(lease));
+    }
+
     public void Dispose()
     {
         RemoteRoute[] routes;

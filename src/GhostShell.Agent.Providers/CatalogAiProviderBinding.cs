@@ -43,4 +43,18 @@ public sealed class CatalogAiProviderBinding
         string? model,
         AgentServiceTier serviceTier) =>
         _owner.CreateProvider(this, _profile, model, serviceTier);
+
+    public IAgentProvider CreateProvider(string? model, Uri networkProxy) =>
+        _owner.CreateProvider(
+            this,
+            _profile,
+            model,
+            AgentServiceTier.Automatic,
+            networkProxy);
+
+    public IAgentProvider CreateProvider(
+        string? model,
+        AgentServiceTier serviceTier,
+        Uri networkProxy) =>
+        _owner.CreateProvider(this, _profile, model, serviceTier, networkProxy);
 }

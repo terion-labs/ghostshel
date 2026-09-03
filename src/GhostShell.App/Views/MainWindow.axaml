@@ -211,6 +211,7 @@
             DataContext="{Binding WorkspaceEditor}"
             PickAccentRequested="OnWorkspaceAccentPickRequested"
             InstallWorkspaceIsolationRuntimeRequested="OnInstallWorkspaceIsolationRuntimeClick"
+            RecreateWorkspaceIsolationRequested="OnRecreateWorkspaceIsolationRequested"
             SaveRequested="OnWorkspaceEditorSaveRequested"
             CancelRequested="OnWorkspaceEditorCancelRequested"
             WorkspaceSelectionRequested="OnWorkspaceSelectionRequested"

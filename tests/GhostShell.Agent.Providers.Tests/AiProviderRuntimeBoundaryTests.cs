@@ -974,6 +974,32 @@ public sealed class AiProviderRuntimeBoundaryTests
     }
 
     [Fact]
+    public void Pinned_provider_binding_accepts_only_a_loopback_socks_route()
+    {
+        var profile = ApiKeyProfile(
+            AiProviderKind.OpenAi,
+            "provider-routed",
+            new SecretRef("provider-routed-key"));
+        using var vault = new InMemorySecretVault();
+        using var runtime = new CatalogAiProviderRuntime(
+            new FixedDefinitionCatalog(Snapshot(profile)),
+            vault);
+        var binding = runtime.PinProvider(profile.Id);
+
+        var provider = binding.CreateProvider(
+            profile.DefaultModel,
+            new Uri("socks5://127.0.0.1:43210"));
+
+        Assert.NotNull(provider);
+        Assert.Throws<ArgumentException>(() => binding.CreateProvider(
+            profile.DefaultModel,
+            new Uri("http://127.0.0.1:43210")));
+        Assert.Throws<ArgumentException>(() => binding.CreateProvider(
+            profile.DefaultModel,
+            new Uri("socks5://example.com:43210")));
+    }
+
+    [Fact]
     public async Task Pinned_provider_binding_forwards_the_exact_requested_model()
     {
         const string selectedModel = "policy-selected-model";

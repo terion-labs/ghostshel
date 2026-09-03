@@ -783,6 +783,29 @@ public sealed class GhosttyVtTerminalSessionTests
     }
 
     [Fact]
+    public async Task WorkspaceIsolatePromptClosesWithoutFalseWorkingWarning()
+    {
+        var harness = await CreateAsync(new TerminalLaunchRequest(
+            Environment.CurrentDirectory,
+            shellActivityFallback: TerminalShellActivityFallback.PromptShape));
+        await using var session = harness.Session;
+        await harness.Pty.WriteOutputAsync(
+            "ghostshell-5cce9f181cf6e094c296cea0:~# ");
+        _ = await WaitForScreenAsync(
+            session,
+            current => current.PlainText.Contains(
+                "ghostshell-5cce9f181cf6e094c296cea0:~#",
+                StringComparison.Ordinal));
+
+        var snapshot = await session.SnapshotAsync(default);
+
+        Assert.False(snapshot.HasActiveWork);
+        Assert.Equal(
+            PanelCloseOutcome.GracefullyClosed,
+            await session.CloseAsync(PanelCloseMode.Graceful, default));
+    }
+
+    [Fact]
     public async Task OrdinaryRunningCommandThatPrintsPromptShapeStillRequiresConfirmation()
     {
         var harness = await CreateAsync();

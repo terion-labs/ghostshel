@@ -8,21 +8,14 @@ public sealed partial class MainWindowViewModel
     private readonly IWorkspaceIsolationProvider? _workspaceIsolationProvider;
     private readonly IWorkspaceIsolationRuntimeInstaller?
         _workspaceIsolationRuntimeInstaller;
-    private readonly object _workspaceIsolationGate = new();
-    private readonly Dictionary<WorkspaceInstanceId, WorkspaceIsolationLease>
-        _workspaceIsolationLeases = [];
-    private readonly Dictionary<Guid, WorkspaceIsolationBinding>
-        _pendingWorkspaceIsolationBindings = [];
-    private readonly Dictionary<WorkspaceInstanceId, Task<WorkspaceIsolationError?>>
-        _workspaceIsolationCleanupTasks = [];
-    private readonly Dictionary<Guid, Task> _workspaceIsolationPreparationTasks = [];
-    private readonly Dictionary<Guid, Task> _workspaceActivationTasks = [];
-    private readonly HashSet<WorkspaceInstanceId> _pendingWorkspaceGraphRollbacks = [];
+    private readonly IWorkspaceRuntimeServicesFactory?
+        _workspaceRuntimeServicesFactory;
+    private readonly WorkspaceRuntimeServices _hostWorkspaceRuntimeServices;
+    private readonly WorkspaceRuntimeLeaseCoordinator _workspaceRuntimeLeases;
     private Guid? _workspaceIsolationStartupId;
     private WorkspaceId? _workspaceIsolationStartingWorkspaceId;
     private string? _workspaceIsolationStartingWorkspaceName;
     private string? _workspaceIsolationStartingStatus;
-    private bool _windowClosePending;
 
     public bool IsWorkspaceIsolationStarting =>
         _workspaceIsolationStartupId is not null;
@@ -38,13 +31,48 @@ public sealed partial class MainWindowViewModel
 
     private string WorkspaceIsolationRuntimeDisplayName =>
         _workspaceIsolationRuntimeInstaller?.RuntimeDisplayName
-        ?? (_workspaceIsolationProvider?.Kind == WorkspaceIsolationProviderKind.AppleContainer
-            ? "Apple container"
-            : "workspace isolation runtime");
+        ?? _workspaceIsolationProvider?.Descriptor.DisplayName
+        ?? "workspace isolation runtime";
 
     public bool CanInstallWorkspaceIsolationRuntime =>
         _workspaceIsolationProvider is null
         && _workspaceIsolationRuntimeInstaller is not null;
+
+    private string? ActiveIsolationImageReference(WorkspaceId workspaceId)
+    {
+        foreach (var runtime in _openWorkspaces.Append(RuntimeWorkspace).OfType<RuntimeWorkspaceViewModel>())
+        {
+            if (_runtimeSources.TryGetValue(runtime.Id, out var source)
+                && source.SourceDefinition.Kind == WorkspaceDefinition.Kind
+                && string.Equals(
+                    source.SourceDefinition.Value,
+                    workspaceId.Value,
+                    StringComparison.Ordinal))
+            {
+                return runtime.IsolationBinding?.RuntimeImageReference;
+            }
+        }
+
+        return _workspaceRuntimeLeases.KnownIsolationImage(workspaceId);
+    }
+
+    private (bool Required, Uri? Proxy) AgentNetworkProxyFor(
+        WorkspaceInstanceId workspaceId)
+    {
+        if (!_runtimeSources.TryGetValue(workspaceId, out var source)
+            || source.SourceDefinition.Kind != WorkspaceDefinition.Kind
+            || _catalog.Snapshot.Workspaces.FirstOrDefault(
+                item => item.Value.Key == source.SourceDefinition) is not { } stored
+            || !stored.Value.RunAgentInIsolation)
+        {
+            return (false, null);
+        }
+
+        return (
+            true,
+            _workspaceRuntimeLeases.RuntimeServicesFor(workspaceId)
+                ?.NetworkRoute.ProxyUri);
+    }
 
     public WorkspaceIsolationRuntimeInstallResult InstallWorkspaceIsolationRuntime()
     {
@@ -141,18 +169,13 @@ public sealed partial class MainWindowViewModel
             return ValueTask.FromResult(WorkspaceIsolationPreparation.Failed);
         }
 
-        var preparationId = Guid.NewGuid();
-        var completion = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        lock (_workspaceIsolationGate)
+        if (!_workspaceRuntimeLeases.TryBeginPreparation(
+                _shutdownStarted || _runtimeGraphLifetime.IsCancellationRequested,
+                out var preparationId,
+                out var completion))
         {
-            if (_shutdownStarted || _runtimeGraphLifetime.IsCancellationRequested)
-            {
-                SetError("This window is closing, so the workspace cannot be opened.");
-                return ValueTask.FromResult(WorkspaceIsolationPreparation.Failed);
-            }
-
-            _workspaceIsolationPreparationTasks.Add(preparationId, completion.Task);
+            SetError("This window is closing, so the workspace cannot be opened.");
+            return ValueTask.FromResult(WorkspaceIsolationPreparation.Failed);
         }
 
         return PrepareTrackedWorkspaceIsolationAsync(
@@ -177,13 +200,22 @@ public sealed partial class MainWindowViewModel
         {
             return WorkspaceIsolationPreparation.Failed;
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            SetError("Workspace isolation startup was cancelled.");
+            return WorkspaceIsolationPreparation.Failed;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            SecretSafeDiagnostics.WriteTraceAndStandardError(
+                "workspace-isolation.prepare.failed",
+                exception);
+            SetError("The workspace isolation runtime could not prepare the workspace.");
+            return WorkspaceIsolationPreparation.Failed;
+        }
         finally
         {
-            lock (_workspaceIsolationGate)
-            {
-                _workspaceIsolationPreparationTasks.Remove(preparationId);
-                completion.TrySetResult();
-            }
+            _workspaceRuntimeLeases.CompletePreparation(preparationId, completion);
         }
     }
 
@@ -206,12 +238,7 @@ public sealed partial class MainWindowViewModel
         {
             if (failure.CleanupValue is { } cleanupBinding)
             {
-                lock (_workspaceIsolationGate)
-                {
-                    _pendingWorkspaceIsolationBindings.TryAdd(
-                        cleanupBinding.LeaseId,
-                        cleanupBinding);
-                }
+                _workspaceRuntimeLeases.TryOwnPreparedBinding(cleanupBinding);
 
                 if (await ReleasePreparedWorkspaceIsolationAsync(
                         cleanupBinding,
@@ -229,12 +256,9 @@ public sealed partial class MainWindowViewModel
 
         var binding = ((WorkspaceIsolationResult<WorkspaceIsolationBinding>.Success)result).Value;
         if (binding.WorkspaceId != workspace.Id
-            || binding.Provider != provider.Kind)
+            || binding.Provider != provider.Descriptor.Id)
         {
-            lock (_workspaceIsolationGate)
-            {
-                _pendingWorkspaceIsolationBindings.TryAdd(binding.LeaseId, binding);
-            }
+            _workspaceRuntimeLeases.TryOwnPreparedBinding(binding);
 
             var cleanupError = await ReleasePreparedWorkspaceIsolationAsync(
                 binding,
@@ -250,10 +274,7 @@ public sealed partial class MainWindowViewModel
             return WorkspaceIsolationPreparation.Failed;
         }
 
-        lock (_workspaceIsolationGate)
-        {
-            _pendingWorkspaceIsolationBindings.Add(binding.LeaseId, binding);
-        }
+        _workspaceRuntimeLeases.OwnPreparedBinding(binding);
 
         return new WorkspaceIsolationPreparation(true, binding);
     }
@@ -327,36 +348,12 @@ public sealed partial class MainWindowViewModel
 
     private void RegisterWorkspaceConnectionRuntime(RuntimeWorkspaceViewModel workspace)
     {
-        if (workspace.IsolationBinding is not { } binding)
+        if (_shutdownStarted || _runtimeGraphLifetime.IsCancellationRequested)
         {
-            return;
+            throw new OperationCanceledException(_runtimeGraphLifetime.Token);
         }
 
-        var provider = _workspaceIsolationProvider
-            ?? throw new InvalidOperationException(
-                "An isolated runtime workspace requires an isolation provider.");
-        var lease = new WorkspaceIsolationLease(
-            binding,
-            new WorkspaceIsolatedConnectionRuntime(
-                _connectionRuntime,
-                provider,
-                binding));
-        lock (_workspaceIsolationGate)
-        {
-            if (!_pendingWorkspaceIsolationBindings.ContainsKey(binding.LeaseId))
-            {
-                if (_shutdownStarted || _runtimeGraphLifetime.IsCancellationRequested)
-                {
-                    throw new OperationCanceledException(_runtimeGraphLifetime.Token);
-                }
-
-                throw new InvalidOperationException(
-                    "The workspace isolation binding is not owned by this window.");
-            }
-
-            _workspaceIsolationLeases.Add(workspace.Id, lease);
-            _pendingWorkspaceIsolationBindings.Remove(binding.LeaseId);
-        }
+        _workspaceRuntimeLeases.Register(workspace.Id, workspace.IsolationBinding);
     }
 
     private IConnectionRuntime ConnectionRuntimeFor(WorkspaceInstanceId workspaceId)
@@ -368,15 +365,12 @@ public sealed partial class MainWindowViewModel
             return WorkspaceIsolationUnavailableConnectionRuntime.ScopeChanged;
         }
 
-        lock (_workspaceIsolationGate)
+        if (_workspaceRuntimeLeases.ConnectionRuntimeFor(workspaceId) is { } runtime)
         {
-            if (_workspaceIsolationLeases.TryGetValue(workspaceId, out var lease))
-            {
-                return lease.ConnectionRuntime;
-            }
+            return runtime;
         }
 
-        return workspace?.IsolationBinding is null
+        return workspace is null || workspace.IsolationBinding is null
             ? _connectionRuntime
             : WorkspaceIsolationUnavailableConnectionRuntime.BindingMissing;
     }
@@ -468,42 +462,16 @@ public sealed partial class MainWindowViewModel
         RuntimeWorkspaceViewModel workspace)
     {
         ArgumentNullException.ThrowIfNull(workspace);
-        if (workspace.IsolationBinding is null)
-        {
-            return Task.FromResult<WorkspaceIsolationError?>(null);
-        }
-
-        lock (_workspaceIsolationGate)
-        {
-            if (_workspaceIsolationCleanupTasks.TryGetValue(workspace.Id, out var existing))
-            {
-                return existing;
-            }
-
-            var cleanup = ReleaseClosedWorkspaceIsolationAsync(workspace.Id);
-            _workspaceIsolationCleanupTasks.Add(workspace.Id, cleanup);
-            return cleanup;
-        }
+        var schedule = _workspaceRuntimeLeases.ScheduleRelease(workspace.Id);
+        return schedule.IsNew
+            ? ReportWorkspaceRuntimeCleanupAsync(schedule.Completion)
+            : schedule.Completion;
     }
 
-    private async Task<WorkspaceIsolationError?> ReleaseClosedWorkspaceIsolationAsync(
-        WorkspaceInstanceId workspaceId)
+    private async Task<WorkspaceIsolationError?> ReportWorkspaceRuntimeCleanupAsync(
+        Task<WorkspaceIsolationError?> cleanup)
     {
-        WorkspaceIsolationError? error;
-        try
-        {
-            error = await ReleaseWorkspaceIsolationAsync(
-                    workspaceId,
-                    CancellationToken.None)
-                .ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            SecretSafeDiagnostics.WriteTraceAndStandardError(
-                "workspace-isolation.stop.failed",
-                exception);
-            error = WorkspaceIsolationError.Create(WorkspaceIsolationErrorCode.StopFailed);
-        }
+        var error = await cleanup.ConfigureAwait(false);
 
         if (error is not null && !_shutdownStarted)
         {
@@ -517,122 +485,46 @@ public sealed partial class MainWindowViewModel
     }
 
     private async Task AwaitWorkspaceIsolationCleanupAsync()
-    {
-        Task<WorkspaceIsolationError?>[] cleanupTasks;
-        lock (_workspaceIsolationGate)
-        {
-            cleanupTasks = [.. _workspaceIsolationCleanupTasks.Values];
-        }
-
-        if (cleanupTasks.Length > 0)
-        {
-            await Task.WhenAll(cleanupTasks).ConfigureAwait(false);
-        }
-    }
+        => await _workspaceRuntimeLeases.AwaitScheduledCleanupAsync()
+            .ConfigureAwait(false);
 
     private async Task AwaitWorkspaceIsolationPreparationsAsync()
-    {
-        Task[] preparationTasks;
-        lock (_workspaceIsolationGate)
-        {
-            preparationTasks = [.. _workspaceIsolationPreparationTasks.Values];
-        }
-
-        if (preparationTasks.Length > 0)
-        {
-            await Task.WhenAll(preparationTasks).ConfigureAwait(false);
-        }
-    }
+        => await _workspaceRuntimeLeases.AwaitPreparationsAsync().ConfigureAwait(false);
 
     private bool TryBeginWorkspaceActivation(
         out Guid activationId,
         out TaskCompletionSource completion)
     {
-        activationId = Guid.NewGuid();
-        completion = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        lock (_workspaceIsolationGate)
-        {
-            if (_shutdownStarted
-                || _windowClosePending
-                || _runtimeGraphLifetime.IsCancellationRequested)
-            {
-                return false;
-            }
-
-            _workspaceActivationTasks.Add(activationId, completion.Task);
-            return true;
-        }
+        return _workspaceRuntimeLeases.TryBeginActivation(
+            _shutdownStarted || _runtimeGraphLifetime.IsCancellationRequested,
+            out activationId,
+            out completion);
     }
 
     private void CompleteWorkspaceActivation(
         Guid activationId,
         TaskCompletionSource completion)
     {
-        lock (_workspaceIsolationGate)
-        {
-            _workspaceActivationTasks.Remove(activationId);
-            completion.TrySetResult();
-        }
+        _workspaceRuntimeLeases.CompleteActivation(activationId, completion);
     }
 
     private async Task AwaitWorkspaceActivationsAsync()
-    {
-        Task[] activationTasks;
-        lock (_workspaceIsolationGate)
-        {
-            activationTasks = [.. _workspaceActivationTasks.Values];
-        }
-
-        if (activationTasks.Length > 0)
-        {
-            await Task.WhenAll(activationTasks).ConfigureAwait(false);
-        }
-    }
+        => await _workspaceRuntimeLeases.AwaitActivationsAsync().ConfigureAwait(false);
 
     private Task[] BeginWindowCloseActivationDrain()
-    {
-        lock (_workspaceIsolationGate)
-        {
-            _windowClosePending = true;
-            return [.. _workspaceActivationTasks.Values];
-        }
-    }
+        => _workspaceRuntimeLeases.BeginWindowCloseActivationDrain();
 
     internal void ResumeAfterWindowCloseAttempt()
-    {
-        lock (_workspaceIsolationGate)
-        {
-            if (!_shutdownStarted)
-            {
-                _windowClosePending = false;
-            }
-        }
-    }
+        => _workspaceRuntimeLeases.ResumeAfterWindowCloseAttempt(_shutdownStarted);
 
     private void MarkWorkspaceGraphRegistrationAttempt(WorkspaceInstanceId workspaceId)
-    {
-        lock (_workspaceIsolationGate)
-        {
-            _pendingWorkspaceGraphRollbacks.Add(workspaceId);
-        }
-    }
+        => _workspaceRuntimeLeases.MarkGraphRegistrationAttempt(workspaceId);
 
     private void RetainWorkspaceGraph(WorkspaceInstanceId workspaceId)
-    {
-        lock (_workspaceIsolationGate)
-        {
-            _pendingWorkspaceGraphRollbacks.Remove(workspaceId);
-        }
-    }
+        => _workspaceRuntimeLeases.RetainGraph(workspaceId);
 
     private bool RequiresWorkspaceGraphRollback(WorkspaceInstanceId workspaceId)
-    {
-        lock (_workspaceIsolationGate)
-        {
-            return _pendingWorkspaceGraphRollbacks.Contains(workspaceId);
-        }
-    }
+        => _workspaceRuntimeLeases.RequiresGraphRollback(workspaceId);
 
     private async Task<bool> TryRollbackWorkspaceGraphAsync(
         WorkspaceInstanceId workspaceId)
@@ -673,23 +565,14 @@ public sealed partial class MainWindowViewModel
             return false;
         }
 
-        lock (_workspaceIsolationGate)
-        {
-            _pendingWorkspaceGraphRollbacks.Remove(workspaceId);
-        }
+        _workspaceRuntimeLeases.RetainGraph(workspaceId);
 
         return true;
     }
 
     private async Task RetryWorkspaceGraphRollbacksAsync()
     {
-        WorkspaceInstanceId[] workspaceIds;
-        lock (_workspaceIsolationGate)
-        {
-            workspaceIds = [.. _pendingWorkspaceGraphRollbacks];
-        }
-
-        foreach (var workspaceId in workspaceIds)
+        foreach (var workspaceId in _workspaceRuntimeLeases.PendingGraphRollbacks())
         {
             _ = await TryRollbackWorkspaceGraphAsync(workspaceId).ConfigureAwait(false);
         }
@@ -698,133 +581,15 @@ public sealed partial class MainWindowViewModel
     private async ValueTask<WorkspaceIsolationError?> ReleaseWorkspaceIsolationAsync(
         WorkspaceInstanceId workspaceId,
         CancellationToken cancellationToken)
-    {
-        WorkspaceIsolationLease? lease;
-        lock (_workspaceIsolationGate)
-        {
-            _workspaceIsolationLeases.Remove(workspaceId, out lease);
-        }
-
-        if (lease is null)
-        {
-            return null;
-        }
-
-        var error = await StopWorkspaceIsolationAsync(lease.Binding, cancellationToken);
-        if (error is not null)
-        {
-            lock (_workspaceIsolationGate)
-            {
-                _workspaceIsolationLeases.TryAdd(workspaceId, lease);
-            }
-        }
-
-        return error;
-    }
+        => await _workspaceRuntimeLeases.ReleaseAsync(workspaceId, cancellationToken);
 
     private async ValueTask<WorkspaceIsolationError?> ReleasePreparedWorkspaceIsolationAsync(
         WorkspaceIsolationBinding binding,
         CancellationToken cancellationToken)
-    {
-        var wasPending = false;
-        WorkspaceInstanceId? workspaceId = null;
-        WorkspaceIsolationLease? lease = null;
-        lock (_workspaceIsolationGate)
-        {
-            wasPending = _pendingWorkspaceIsolationBindings.Remove(binding.LeaseId);
-            var owned = _workspaceIsolationLeases.FirstOrDefault(
-                item => item.Value.Binding.LeaseId == binding.LeaseId);
-            if (owned.Value is not null)
-            {
-                workspaceId = owned.Key;
-                lease = owned.Value;
-                _workspaceIsolationLeases.Remove(owned.Key);
-            }
-        }
-
-        if (!wasPending && lease is null)
-        {
-            return null;
-        }
-
-        var error = await StopWorkspaceIsolationAsync(binding, cancellationToken);
-        if (error is not null)
-        {
-            lock (_workspaceIsolationGate)
-            {
-                if (workspaceId is { } runtimeId && lease is not null)
-                {
-                    _workspaceIsolationLeases.TryAdd(runtimeId, lease);
-                }
-                else if (wasPending)
-                {
-                    _pendingWorkspaceIsolationBindings.TryAdd(binding.LeaseId, binding);
-                }
-            }
-        }
-
-        return error;
-    }
-
-    private async ValueTask<WorkspaceIsolationError?> StopWorkspaceIsolationAsync(
-        WorkspaceIsolationBinding binding,
-        CancellationToken cancellationToken)
-    {
-        var provider = _workspaceIsolationProvider
-            ?? throw new InvalidOperationException(
-                "An isolated runtime workspace requires an isolation provider.");
-        try
-        {
-            var result = await provider.StopAsync(binding, cancellationToken);
-            return result is WorkspaceIsolationResult<WorkspaceIsolationBinding>.Failure failure
-                ? failure.Error
-                : null;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            return WorkspaceIsolationError.Create(WorkspaceIsolationErrorCode.Cancelled);
-        }
-        catch (Exception exception)
-        {
-            SecretSafeDiagnostics.WriteTraceAndStandardError(
-                "workspace-isolation.stop.failed",
-                exception);
-            return WorkspaceIsolationError.Create(WorkspaceIsolationErrorCode.StopFailed);
-        }
-    }
+        => await _workspaceRuntimeLeases.ReleasePreparedAsync(binding, cancellationToken);
 
     private async Task<IReadOnlyList<WorkspaceIsolationError>> ReleaseAllWorkspaceIsolationAsync()
-    {
-        WorkspaceInstanceId[] workspaceIds;
-        WorkspaceIsolationBinding[] pending;
-        lock (_workspaceIsolationGate)
-        {
-            workspaceIds = [.. _workspaceIsolationLeases.Keys.Where(
-                workspaceId => !_pendingWorkspaceGraphRollbacks.Contains(workspaceId))];
-            pending = [.. _pendingWorkspaceIsolationBindings.Values];
-        }
-
-        var errors = new List<WorkspaceIsolationError>();
-        foreach (var workspaceId in workspaceIds)
-        {
-            if (await ReleaseWorkspaceIsolationAsync(workspaceId, CancellationToken.None)
-                is { } error)
-            {
-                errors.Add(error);
-            }
-        }
-
-        foreach (var binding in pending)
-        {
-            if (await ReleasePreparedWorkspaceIsolationAsync(binding, CancellationToken.None)
-                is { } error)
-            {
-                errors.Add(error);
-            }
-        }
-
-        return errors;
-    }
+        => await _workspaceRuntimeLeases.ReleaseAllAsync();
 
     internal static bool SharesExecutionScope(
         RuntimeWorkspaceViewModel source,
@@ -844,10 +609,6 @@ public sealed partial class MainWindowViewModel
             _ => false,
         };
     }
-
-    private sealed record WorkspaceIsolationLease(
-        WorkspaceIsolationBinding Binding,
-        IConnectionRuntime ConnectionRuntime);
 
     private readonly record struct WorkspaceIsolationPreparation(
         bool Succeeded,

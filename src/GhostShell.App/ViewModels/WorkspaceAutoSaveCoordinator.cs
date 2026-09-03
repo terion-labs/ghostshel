@@ -170,10 +170,25 @@ public sealed class WorkspaceAutoSaveCoordinator : IDisposable
         if (error.Code != DefinitionStoreErrorCode.RevisionConflict)
         {
             SecretSafeDiagnosticProjection.WriteStandardError(
-                "workspace.autosave.failed",
+                $"workspace.autosave.failed.{StoreErrorCode(error.Code)}",
                 SecretSafeDiagnosticKind.Unexpected);
         }
     }
+
+    private static string StoreErrorCode(DefinitionStoreErrorCode code) => code switch
+    {
+        DefinitionStoreErrorCode.NotFound => "not-found",
+        DefinitionStoreErrorCode.RevisionConflict => "revision-conflict",
+        DefinitionStoreErrorCode.InvalidDefinition => "invalid-definition",
+        DefinitionStoreErrorCode.UnsupportedKind => "unsupported-kind",
+        DefinitionStoreErrorCode.UnsupportedSchema => "unsupported-schema",
+        DefinitionStoreErrorCode.DependencyConflict => "dependency-conflict",
+        DefinitionStoreErrorCode.UnsafePayload => "unsafe-payload",
+        DefinitionStoreErrorCode.StorageUnavailable => "storage-unavailable",
+        DefinitionStoreErrorCode.StorageFailure => "storage-failure",
+        DefinitionStoreErrorCode.Cancelled => "cancelled",
+        _ => "unknown",
+    };
 
     /// <summary>
     /// Captures the live tabs as workspace-only tab entries plus one auto-saved
@@ -314,7 +329,8 @@ public sealed class WorkspaceAutoSaveCoordinator : IDisposable
             storedDefinition.HasExplicitAccent,
             storedDefinition.IsIsolated,
             storedDefinition.IsolationMounts,
-            storedDefinition.IsolationImageReference);
+            storedDefinition.IsolationImageReference,
+            storedDefinition.RunAgentInIsolation);
         var unchanged = DefinitionPayloadEquals(definition, storedDefinition)
             && layouts.All(item =>
                 storedLayouts.TryGetValue(item.Definition.Id.Value, out var existing)
@@ -426,9 +442,8 @@ public sealed class WorkspaceAutoSaveCoordinator : IDisposable
         FileProviderProfileId? fileProvider = kind != ScreenPanelKind.FileViewer
             ? null
             : panel is FileRuntimePanelViewModel fileViewer
-                && (fileViewer.SelectedProfile?.Id ?? fileViewer.CurrentLocation?.ProviderProfileId)
-                    is { } profileId
-                ? new FileProviderProfileId(profileId)
+                && fileViewer.RecoveryProfileId is { } profileId
+                ? profileId
                 : stored?.FileProviderProfileId;
         // Startup commands cannot be read back from a live panel, so a matched
         // stored panel keeps the commands the user configured for this tab.

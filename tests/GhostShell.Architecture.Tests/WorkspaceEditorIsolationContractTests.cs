@@ -42,7 +42,7 @@ public sealed class WorkspaceEditorIsolationContractTests
             AttributeValue(isolationToggleRow, "Description"),
             StringComparison.Ordinal);
         Assert.Contains(
-            "blocked instead of using the host",
+            "All workspace panels, connections, and local terminals use it",
             AttributeValue(isolationToggleRow, "Description"),
             StringComparison.Ordinal);
         var runtimeRequirement = Assert.Single(
@@ -65,17 +65,24 @@ public sealed class WorkspaceEditorIsolationContractTests
                 "Runtime image",
                 StringComparison.Ordinal));
         Assert.Equal("{Binding IsIsolated}", AttributeValue(imageRow, "IsVisible"));
-        Assert.Contains(
-            "minimal Ubuntu 24.04 image",
-            AttributeValue(imageRow, "Description"),
-            StringComparison.Ordinal);
+        Assert.Equal(
+            "{Binding IsolationImageDescription}",
+            AttributeValue(imageRow, "Description"));
         var image = FindAccessibleElement(imageRow, "Workspace isolation OCI image");
         Assert.Equal(
             "{Binding IsolationImageReference, Mode=TwoWay}",
             AttributeValue(image, "Text"));
+        Assert.Null(AttributeValue(image, "PlaceholderText"));
+
+        var recreate = FindAccessibleElement(
+            isolationGroup,
+            "Recreate workspace environment");
         Assert.Equal(
-            "Ubuntu 24.04 minimal (default)",
-            AttributeValue(image, "PlaceholderText"));
+            "OnRecreateWorkspaceIsolationClick",
+            AttributeValue(recreate, "Click"));
+        Assert.Equal(
+            "{Binding CanRecreateIsolationEnvironment}",
+            AttributeValue(recreate, "IsEnabled"));
 
         var install = FindAccessibleElement(
             runtimeRequirement,

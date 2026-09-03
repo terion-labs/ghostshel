@@ -163,6 +163,27 @@ public sealed class DurableDefinitionSerializationTests
         Assert.Null(restored.IsolationImageReference);
     }
 
+    [Fact]
+    public void Workspace_payload_without_agent_isolation_keeps_the_agent_on_the_host()
+    {
+        var workspace = new WorkspaceDefinition(
+            new WorkspaceId("legacy-agent-isolation"),
+            WorkspaceDefinition.CurrentSchemaVersion,
+            "Legacy agent isolation",
+            null,
+            null,
+            [],
+            isIsolated: true,
+            runAgentInIsolation: true);
+        var payload = JsonNode.Parse(JsonSerializer.Serialize(workspace))!.AsObject();
+        Assert.True(payload.Remove(nameof(WorkspaceDefinition.RunAgentInIsolation)));
+
+        var restored = JsonSerializer.Deserialize<WorkspaceDefinition>(payload.ToJsonString());
+
+        Assert.NotNull(restored);
+        Assert.False(restored.RunAgentInIsolation);
+    }
+
     [Theory]
     [InlineData(StartupCommandDeliveryFailurePolicy.RetryWhileLive)]
     [InlineData(StartupCommandDeliveryFailurePolicy.StopAfterFirstDeliveryFailure)]

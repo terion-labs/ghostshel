@@ -1974,6 +1974,7 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
     private bool _isContinuityActive;
     private readonly TerminalMultiplexerCoordinator? _multiplexerCoordinator;
     private TerminalMultiplexerSession? _multiplexerSession;
+    private readonly string? _connectionDisplayName;
     private bool _disposed;
 
     public TerminalRuntimePanelViewModel(
@@ -1993,7 +1994,8 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
         TerminalKeymapSnapshot? keymap = null,
         PanelSessionRole sessionRole = PanelSessionRole.Primary,
         TerminalMultiplexerCoordinator? multiplexerCoordinator = null,
-        TerminalMultiplexerSession? multiplexerSession = null)
+        TerminalMultiplexerSession? multiplexerSession = null,
+        string? connectionDisplayName = null)
         : base(
             id,
             PanelKind.Terminal,
@@ -2010,6 +2012,7 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
         _keymap = keymap;
         _multiplexerCoordinator = multiplexerCoordinator;
         _multiplexerSession = multiplexerSession;
+        _connectionDisplayName = connectionDisplayName;
         SessionRole = sessionRole;
         _reconnectPolicy = reconnectPolicy ?? ConnectionReconnectPolicy.InteractiveDefault;
         _reconnectDelay = reconnectDelay ?? ((delay, token) => Task.Delay(delay, token));
@@ -2265,9 +2268,9 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
     }
 
     public string ConnectionDisplayName =>
-        _connection.Endpoint is ConnectionEndpoint.Local
+        _connectionDisplayName ?? (_connection.Endpoint is ConnectionEndpoint.Local
             ? "Local"
-            : _connection.Name;
+            : _connection.Name);
 
     /// <summary>
     /// A logical location may be replayed after a crash. Startup commands are intentionally not
