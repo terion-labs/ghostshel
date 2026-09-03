@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite.Core" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="SSH.NET" />
     <PackageReference Include="SQLite3MC.PCLRaw.bundle" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" />
