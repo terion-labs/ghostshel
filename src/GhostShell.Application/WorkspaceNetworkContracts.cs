@@ -215,7 +215,8 @@ public sealed record NetworkConnectionStartRequest
     public NetworkConnectionStartRequest(
         WorkspaceInstanceId workspaceId,
         NetworkConnectionProfile connection,
-        WorkspaceNetworkPlacement placement)
+        WorkspaceNetworkPlacement placement,
+        bool killSwitchEnabled)
     {
         if (string.IsNullOrWhiteSpace(workspaceId.Value))
         {
@@ -225,6 +226,7 @@ public sealed record NetworkConnectionStartRequest
         WorkspaceId = workspaceId;
         Connection = connection ?? throw new ArgumentNullException(nameof(connection));
         Placement = placement ?? throw new ArgumentNullException(nameof(placement));
+        KillSwitchEnabled = killSwitchEnabled;
     }
 
     public WorkspaceInstanceId WorkspaceId { get; }
@@ -232,6 +234,8 @@ public sealed record NetworkConnectionStartRequest
     public NetworkConnectionProfile Connection { get; }
 
     public WorkspaceNetworkPlacement Placement { get; }
+
+    public bool KillSwitchEnabled { get; }
 }
 
 public interface INetworkConnectionSession : IAsyncDisposable

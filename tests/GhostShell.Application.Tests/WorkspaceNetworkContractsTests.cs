@@ -62,10 +62,12 @@ public sealed class WorkspaceNetworkContractsTests
         var request = new NetworkConnectionStartRequest(
             new WorkspaceInstanceId("running-workspace"),
             profile,
-            WorkspaceNetworkPlacement.Host);
+            WorkspaceNetworkPlacement.Host,
+            killSwitchEnabled: true);
 
         Assert.Same(profile, request.Connection);
         Assert.IsType<WorkspaceNetworkPlacement.HostPlacement>(request.Placement);
+        Assert.True(request.KillSwitchEnabled);
     }
 
     private static NetworkConnectionProfile Profile() => new(

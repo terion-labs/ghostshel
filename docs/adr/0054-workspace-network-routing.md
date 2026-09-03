@@ -41,13 +41,13 @@ the user disables the policy.
 
 Each provider starts in one of two placements:
 
-- An isolated workspace attaches the route inside its persistent Linux environment. Host-side
+- An isolated workspace can attach a VPN inside its persistent Linux environment. Host-side
   consumers such as CEF reach that environment through a loopback-only proxy owned by the
-  workspace runtime.
-- A non-isolated workspace keeps networking app-scoped. Proxy settings are injected into
-  processes owned by GhostSHELL and applied to in-process clients. VPN providers expose their
-  userspace network through a loopback-only proxy. They do not create a host TUN device or
-  change the host routing table.
+  workspace runtime. Proxy profiles are rejected for isolated workspaces until the guest can
+  enforce them for every process.
+- A non-isolated workspace can use a proxy without changing host routes. GhostSHELL injects
+  proxy settings into processes it owns and applies the proxy to in-process clients. VPN profiles
+  are rejected outside isolation until their userspace transports are implemented.
 
 `IWorkspaceNetworkRuntime` owns one running workspace route. It resolves the selected provider,
 starts and stops its session, applies kill-switch fallback, and publishes a
@@ -60,14 +60,19 @@ states remain visible in the control.
 
 ## Provider mapping
 
-- WireGuard uses a userspace WireGuard implementation and userspace IP stack outside isolation.
-  Inside isolation it may attach the tunnel to that environment's network namespace.
-- OpenVPN uses OpenVPN 3 Core. Outside isolation its packet backend connects to the userspace
-  IP stack rather than an operating-system TUN device.
-- AnyConnect uses `libopenconnect`. Outside isolation its packet backend connects to the same
-  userspace IP stack.
-- Tailscale uses userspace networking outside isolation and a persistent state directory per
-  workspace. Full Internet routing requires an exit node.
+- WireGuard uses `wireguard-tools` inside the workspace environment.
+- OpenVPN uses the `openvpn` client inside the workspace environment.
+- AnyConnect uses `openconnect` inside the workspace environment.
+- Tailscale uses `tailscaled` inside the workspace environment and requires an exit node for
+  full Internet routing.
+
+Host-side userspace implementations remain future work. They must not create a host TUN device
+or change the host routing table.
+
+The packaged `ubuntu:24.04` workspace image includes `nftables`, `wireguard-tools`, `openvpn`,
+and `openconnect`. Tailscale is not installed by an unaudited download script; a workspace that
+selects Tailscale receives a concrete missing-runtime error until `tailscale` and `tailscaled`
+are installed in its image.
 
 ## Consequences
 
@@ -78,3 +83,12 @@ workspace route, not adding provider-specific settings.
 Application and workspace settings must reject references to missing network profiles. Deleting
 a profile must also reject or repair policies that still reference it. Runtime state is never
 written into durable definitions.
+
+The loopback SOCKS adapters currently rely on the operating system's same-host loopback boundary
+and do not authenticate clients. A future authenticated broker is required before treating other
+processes running as the same host user as untrusted clients; the listener must remain loopback-only
+until that broker exists.
+
+The current SMB client library opens TCP/445 itself and has no stream or proxy injection point.
+SMB therefore fails before credential access whenever a workspace route is not direct. Routed SMB
+requires a connector-capable SMB transport; it must never fall back to an untracked direct socket.
