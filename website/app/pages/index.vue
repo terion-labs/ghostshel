@@ -65,6 +65,10 @@ const faqs = [
     q: 'What platforms are supported?',
     a: 'macOS, Windows, and Linux from one codebase. The current early release ships a signed, notarized macOS Apple-silicon build; on other platforms you build from source.',
   },
+  {
+    q: 'What does workspace isolation actually isolate?',
+    a: 'Each isolated workspace is a persistent Linux container with its own kernel, root filesystem, and network namespace. On macOS it runs on Apple Containerization, where every container is its own lightweight VM. Local terminals, the file panel, and browser traffic run inside it, and you can run the agent there too. The host stays invisible except for the folders you explicitly mount. It needs Apple silicon, macOS 26, and Apple\'s container runtime, which the app offers to install for you.',
+  },
 ]
 
 const open = ref<number | null>(0)
@@ -125,12 +129,12 @@ const open = ref<number | null>(0)
         </div>
       </section>
 
-      <!-- The three things -->
+      <!-- The four things -->
       <section id="different" class="section">
         <div class="wrap">
           <p class="eyebrow">Why it exists</p>
-          <h2 data-reveal class="section-title">Three things you won't find in your current terminal</h2>
-          <div class="grid trio">
+          <h2 data-reveal class="section-title">Four things you won't find in your current terminal</h2>
+          <div class="grid quad">
             <div class="card" data-reveal>
               <h3>Browse a remote's localhost</h3>
               <p>
@@ -159,6 +163,16 @@ const open = ref<number | null>(0)
                 has a host dropdown. Flip it from Local to a connection and the
                 same panel works against the remote machine, over SSH, without
                 a remote agent. One app instead of seven.
+              </p>
+            </div>
+            <div class="card" data-reveal>
+              <h3>A workspace in its own VM</h3>
+              <p>
+                Flip a switch and the whole workspace runs in a persistent,
+                lightweight Linux VM: own kernel, own filesystem, own
+                network. Install anything, break anything, the host never
+                notices. Close it, and the packages are still there
+                tomorrow. macOS today; Linux and Windows planned.
               </p>
             </div>
           </div>
@@ -310,6 +324,63 @@ const open = ref<number | null>(0)
               alt="Workspace settings listing separate workspaces with their own connections"
               width="2880"
               height="1800"
+              loading="lazy"
+            />
+          </div>
+        </div>
+      </section>
+
+      <!-- Workspace isolation -->
+      <section id="isolation" class="section">
+        <div class="wrap split split--flip">
+          <div class="split__text" data-reveal>
+            <p class="eyebrow">Workspace isolation</p>
+            <h2 data-reveal class="section-title">The whole workspace in its own VM</h2>
+            <p data-reveal style="--rd: 1" class="section-lede">
+              Flip one switch and a workspace runs inside its own persistent
+              Linux environment: a lightweight VM with its own kernel,
+              filesystem, and network namespace. Its terminals, file panel,
+              and browser traffic live in there, and the agent can too.
+              Install whatever the project needs. The host stays clean.
+            </p>
+            <ul class="checks">
+              <li>
+                Persistent by design. Closing the workspace stops the VM,
+                not its disk. Run <code>apt install</code> once and it is
+                still there next week.
+              </li>
+              <li>
+                The host stays private. Nothing is shared unless you mount
+                it: pick host folders per workspace, read-only or
+                read-write, or mount nothing at all.
+              </li>
+              <li>
+                Conflicting stacks stop conflicting. One project on Node 18
+                and Postgres 14, another on Node 22 and Postgres 17, side
+                by side, no version managers.
+              </li>
+              <li>
+                Bring your own image. Ubuntu 24.04 by default, or any
+                bootable OCI image with an init.
+              </li>
+              <li>
+                The browser follows the workspace: browser panels route
+                through the isolate's network, so they reach exactly what
+                the workspace can reach.
+              </li>
+              <li>
+                macOS on Apple silicon today, on Apple's container runtime
+                (every container is its own lightweight VM). Linux and
+                Windows backends are planned.
+              </li>
+            </ul>
+          </div>
+          <div class="shot split__shot" data-reveal style="--rd: 1">
+            <img
+              :src="`${base}shots/workspace-isolation.webp`"
+              alt="Workspace settings with the Isolate workspace switch and host mount options"
+              width="1280"
+              height="1110"
               loading="lazy"
             />
           </div>
@@ -549,6 +620,16 @@ const open = ref<number | null>(0)
 
 .hero__shot {
   margin-top: 64px;
+}
+
+/* quad */
+.quad {
+  grid-template-columns: repeat(2, 1fr);
+  margin-top: 44px;
+}
+
+@media (max-width: 720px) {
+  .quad { grid-template-columns: 1fr; }
 }
 
 /* trio */

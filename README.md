@@ -19,6 +19,7 @@ Terminal, browser, file, database, Docker, process, statistics, workspace-graph,
 Early alpha, but the core loop is real:
 
 - Workspaces hold their own tabs, connections, and saved multi-panel layouts, and everything survives a restart. Recent-session history stores metadata only, never terminal contents.
+- Optional workspace isolation: flip a switch and the whole workspace runs in its own persistent Linux VM (Apple Containerization on macOS), with explicit host mounts and its own network namespace. Installed packages survive across sessions; the host stays clean. See [ADR 0053](./docs/adr/0053-persistent-workspace-execution-isolation.md).
 - Panels for the daily set: terminal, embedded Chromium browser, files, databases, Redis, Docker, Git, process monitor, and live system statistics.
 - The docked agent streams its reasoning and token usage, takes images where the provider supports them, searches the web, and accepts steering and queued follow-ups mid-run. You approve each action, and you can cancel at any point.
 - The agent types into the same terminal you do. The moment you touch the keyboard, it stops.
@@ -74,6 +75,54 @@ Day-to-day verification is local: the pre-commit and pre-push hooks run the gate
 Only after that local receipt exists does GitHub Actions run for the tag, entirely on Apple-silicon macOS runners. It builds the verified native runtime first, runs the managed suite as six parallel sections (core, agent, app, services, data-browser, terminal-host) next to a complete Release build and a format-and-boundaries job, then repeats Velopack assembly, signing, notarization, stapling, Gatekeeper validation, and exact evidence assembly before publication. The release contains the stable `GhostShell-macOS-arm64.zip` bootstrap archive and checksum plus the `osx-arm64-stable` full package, feed, and checksums used by in-app updates. The [archive](https://github.com/terion-labs/ghostshell/releases/latest/download/GhostShell-macOS-arm64.zip) and [checksum](https://github.com/terion-labs/ghostshell/releases/latest/download/GhostShell-macOS-arm64.zip.sha256) retain permanent URLs. The release fails closed if legal clearance, exact package/feed validation, or release credentials are absent. A separate path-filtered workflow runs the database-viewer integration suite on pull requests that touch it.
 
 Updates are user initiated. GhostSHELL never contacts GitHub in the background. A direct GitHub installation can check from About, download the exact Velopack package, and restart into it after a graceful shutdown. Store and package-manager installations defer to their platform channel, development builds do not update, and direct bundles under `/Applications` remain download/apply-disabled until the privileged replacement boundary is separately closed. The GitHub Releases ZIP remains the initial-install and manual-recovery path.
+
+### Run the local macOS release control build
+
+Run [`scripts/rehearse-macos-release.sh`](./scripts/rehearse-macos-release.sh) before pushing any release tag. This is the control build. It runs `./scripts/check.sh --full`, builds all native payloads from the tagged source, creates the signed Velopack release, notarizes and staples it, checks it with Gatekeeper, and validates the release evidence. [`scripts/package-macos-github-release.sh`](./scripts/package-macos-github-release.sh) alone is not a substitute because its credential-free mode produces an ad-hoc local package.
+
+The rehearsal requires an Apple Silicon Mac, full Xcode 26 or newer, GraalVM Native Image 25.0.4, and LLVM `ld64.lld` 22.x. Keep the local credentials in the ignored `.apple/` directory and their shell assignments in the ignored `.env` file. Both paths are already covered by `.gitignore`; never force-add them.
+
+Use one assignment per variable. `.env` is a Bash fragment sourced from the repository root, so derive the transport encodings from the credential files instead of pasting a second copy of either key:
+
+```bash
+APPLE_CERTIFICATE_P12_BASE64="$(/usr/bin/base64 -i .apple/developer-id-application.p12 | tr -d '\n')"
+APPLE_CERTIFICATE_PASSWORD='replace-with-the-p12-export-password'
+APPLE_DEVELOPER_ID_APPLICATION='Developer ID Application: Example Name (TEAMID)'
+APPLE_NOTARY_ISSUER_ID='replace-with-app-store-connect-issuer-id'
+APPLE_NOTARY_KEY_ID='replace-with-app-store-connect-key-id'
+APPLE_NOTARY_PRIVATE_KEY_BASE64="$(/usr/bin/base64 -i .apple/AuthKey_KEYID.p8 | tr -d '\n')"
+
+GRAALVM_HOME='/absolute/path/to/graalvm-25.0.4'
+GHOSTSHELL_XCODE_APP='/Applications/Xcode.app'
+GHOSTSHELL_NATIVE_AOT_LINKER='/opt/homebrew/opt/lld@22/bin/ld64.lld'
+```
+
+The two Apple keys are not interchangeable. `APPLE_CERTIFICATE_P12_BASE64` must decode to a password-protected PKCS#12 file containing the Developer ID Application certificate and its matching private key. A `.cer` file and its CSR contain no signing private key and are not enough. `APPLE_NOTARY_PRIVATE_KEY_BASE64` must decode to the App Store Connect API `.p8` key used by `notarytool`. Base64 only transports these files; it does not encrypt them.
+
+Do not regenerate, unpack, print, or repack an existing signing identity just to run the build. Do not enable shell tracing with `set -x` while loading `.env`. If the current `.p12` imports with its existing password, keep it. The rehearsal imports it into a temporary keychain, confirms that `APPLE_DEVELOPER_ID_APPLICATION` is present, and removes the keychain on exit.
+
+Commit the exact release source, create an annotated tag at `HEAD`, load the environment without echoing it, and run the rehearsal:
+
+```bash
+release_tag='v<major>.<minor>.<patch>' # Replace this with the next unused version.
+
+git status --short # This must print nothing.
+git tag -a "$release_tag" -m "GhostShell ${release_tag#v}"
+
+set -a
+source ./.env
+set +a
+
+./scripts/rehearse-macos-release.sh --tag "$release_tag"
+```
+
+The script rejects a dirty tracked tree, a tag that does not resolve to `HEAD`, the wrong toolchain versions, missing credentials, an unusable signing identity, and failed notarization. A pass writes a receipt under `.git/ghostshell-release-rehearsals/` bound to the tag, commit, and tree. Any source change requires a new commit, a new tag or corrected unpublished tag, and another rehearsal. Never move a tag that has already been pushed.
+
+After the rehearsal passes, push the commit and that exact tag. The pre-push hook reuses only a receipt that still matches all three identities; GitHub Actions then rebuilds and publishes from the tag.
+
+```bash
+git push --atomic origin main "$release_tag"
+```
 
 ## Updating dependencies
 

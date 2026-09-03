@@ -13,6 +13,7 @@ const base = useRuntimeConfig().app.baseURL
         <a href="#agent">Agent</a>
         <a href="#panels">Panels</a>
         <a href="#workspaces">Workspaces</a>
+        <a href="#isolation">Isolation</a>
         <a href="#security">Security</a>
         <a href="#faq">FAQ</a>
       </nav>
