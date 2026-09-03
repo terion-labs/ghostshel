@@ -19,6 +19,7 @@ Terminal, browser, file, database, Docker, process, statistics, workspace-graph,
 Early alpha, but the core loop is real:
 
 - Workspaces hold their own tabs, connections, and saved multi-panel layouts, and everything survives a restart. Recent-session history stores metadata only, never terminal contents.
+- Optional workspace isolation: flip a switch and the whole workspace runs in its own persistent Linux VM (Apple Containerization on macOS), with explicit host mounts and its own network namespace. Installed packages survive across sessions; the host stays clean. See [ADR 0053](./docs/adr/0053-persistent-workspace-execution-isolation.md).
 - Panels for the daily set: terminal, embedded Chromium browser, files, databases, Redis, Docker, Git, process monitor, and live system statistics.
 - The docked agent streams its reasoning and token usage, takes images where the provider supports them, searches the web, and accepts steering and queued follow-ups mid-run. You approve each action, and you can cancel at any point.
 - The agent types into the same terminal you do. The moment you touch the keyboard, it stops.
