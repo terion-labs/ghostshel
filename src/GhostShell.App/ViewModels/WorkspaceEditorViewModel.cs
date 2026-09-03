@@ -1010,7 +1010,8 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
             StringComparison.Ordinal)
             ? _original.IsolationImageReference
             : IsolationImageReference,
-        RunAgentInIsolation);
+        RunAgentInIsolation,
+        _original.NetworkOverride);
 
     private IReadOnlyList<DefinitionValidationIssue> Validate()
     {
