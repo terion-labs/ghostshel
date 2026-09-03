@@ -43,7 +43,8 @@ public sealed class AppleContainerWorkspaceIsolationNativeIntegrationTests
                 first.RuntimeImageReference);
             Assert.Contains(
                 progress.Values,
-                item => item.Status == "Downloading the workspace image…");
+                item => item.Status ==
+                    $"Checking the prepared {AppleContainerWorkspaceIsolationProvider.DefaultImageReference} workspace image…");
             Assert.Contains(
                 progress.Values,
                 item => item.Status == "Creating the persistent workspace isolate…");
@@ -64,9 +65,16 @@ public sealed class AppleContainerWorkspaceIsolationNativeIntegrationTests
                 provider,
                 first,
                 "test \"$(. /etc/os-release && printf '%s' \"$ID\")\" = ubuntu\n"
-                + $"printf '%s' '{marker}' > /root/.ghostshell-native-smoke\n"
-                + "printf '#!/bin/sh\\nexit 0\\n' > /usr/local/bin/ghostshell-native-smoke\n"
-                + "chmod +x /usr/local/bin/ghostshell-native-smoke\nexit\n",
+                + "test \"$(cat /proc/1/comm)\" = systemd\n"
+                + "test \"$(systemctl is-system-running)\" = running\n"
+                + "test \"$(id -un)\" = ghostshell\n"
+                + "id -Gn | tr ' ' '\\n' | grep -Fx docker\n"
+                + "sudo -n true\n"
+                + "sudo install -o root -g docker -m 660 /dev/null /tmp/ghostshell-docker-access\n"
+                + "printf docker-access-ok > /tmp/ghostshell-docker-access\n"
+                + $"printf '%s' '{marker}' > \"$HOME/.ghostshell-native-smoke\"\n"
+                + "printf '#!/bin/sh\\nexit 0\\n' | sudo tee /usr/local/bin/ghostshell-native-smoke >/dev/null\n"
+                + "sudo chmod +x /usr/local/bin/ghostshell-native-smoke\nexit\n",
                 timeout.Token);
             _ = Success(await provider.StopAsync(first, timeout.Token));
 
@@ -75,17 +83,25 @@ public sealed class AppleContainerWorkspaceIsolationNativeIntegrationTests
             await RunShellAsync(
                 provider,
                 second,
-                $"test \"$(cat /root/.ghostshell-native-smoke)\" = '{marker}'\nexit\n",
+                $"test \"$(cat \"$HOME/.ghostshell-native-smoke\")\" = '{marker}'\nexit\n",
                 timeout.Token);
             _ = Success(await provider.StopAsync(second, timeout.Token));
 
             var reconfigureProgress = new RecordingProgress<WorkspaceIsolationProgress>();
-            var third = Success(await provider.PrepareAsync(
+            var thirdResult = await provider.PrepareAsync(
                 new WorkspaceIsolationPrepareRequest(
                     workspaceId,
                     [new WorkspaceIsolationMount(hostMount.FullName, "/workspace", true)]),
                 reconfigureProgress,
-                timeout.Token));
+                timeout.Token);
+            if (thirdResult is WorkspaceIsolationResult<WorkspaceIsolationBinding>.Failure)
+            {
+                Assert.Fail(
+                    "Reconfiguration failed after: "
+                    + string.Join(" | ", reconfigureProgress.Values.Select(item => item.Status)));
+            }
+
+            var third = Success(thirdResult);
             Assert.Contains(
                 reconfigureProgress.Values,
                 item => item.Status == "Saving installed packages and guest files…");
@@ -95,7 +111,7 @@ public sealed class AppleContainerWorkspaceIsolationNativeIntegrationTests
             await RunShellAsync(
                 provider,
                 third,
-                $"test \"$(cat /root/.ghostshell-native-smoke)\" = '{marker}'\n"
+                $"test \"$(cat \"$HOME/.ghostshell-native-smoke\")\" = '{marker}'\n"
                 + "ghostshell-native-smoke\n"
                 + "test \"$(cat /workspace/host-marker)\" = mounted\nexit\n",
                 timeout.Token);
@@ -132,7 +148,7 @@ public sealed class AppleContainerWorkspaceIsolationNativeIntegrationTests
             await RunShellAsync(
                 provider,
                 recreated,
-                "test ! -e /root/.ghostshell-native-smoke\nexit\n",
+                "test ! -e \"$HOME/.ghostshell-native-smoke\"\nexit\n",
                 timeout.Token);
             _ = Success(await provider.StopAsync(recreated, timeout.Token));
         }
@@ -198,7 +214,7 @@ public sealed class AppleContainerWorkspaceIsolationNativeIntegrationTests
                     await Task.Delay(TimeSpan.FromMilliseconds(50), promptTimeout.Token);
                     screen = await session.ReadScreenAsync(promptTimeout.Token);
                 }
-                while (!screen.PlainText.Contains('#', StringComparison.Ordinal));
+                while (!screen.PlainText.Contains('$', StringComparison.Ordinal));
 
                 var snapshot = await session.SnapshotAsync(promptTimeout.Token);
                 Assert.False(
@@ -352,8 +368,16 @@ public sealed class AppleContainerWorkspaceIsolationNativeIntegrationTests
             await stderr);
     }
 
-    private static T Success<T>(WorkspaceIsolationResult<T> result) =>
-        Assert.IsType<WorkspaceIsolationResult<T>.Success>(result).Value;
+    private static T Success<T>(WorkspaceIsolationResult<T> result)
+    {
+        if (result is WorkspaceIsolationResult<T>.Failure failure)
+        {
+            Assert.Fail(
+                $"Workspace isolation failed: {failure.Error.StableCode}: {failure.Error.Message}");
+        }
+
+        return Assert.IsType<WorkspaceIsolationResult<T>.Success>(result).Value;
+    }
 
     private sealed record ProcessResult(
         int ExitCode,

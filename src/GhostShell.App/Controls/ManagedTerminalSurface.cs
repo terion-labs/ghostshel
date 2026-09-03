@@ -48,11 +48,6 @@ public sealed class ManagedTerminalSurface : Control
         AvaloniaProperty.Register<ManagedTerminalSurface, TerminalKeymapSnapshot?>(
             nameof(Keymap));
 
-    public static readonly DirectProperty<ManagedTerminalSurface, bool> IsPasteConfirmationVisibleProperty =
-        AvaloniaProperty.RegisterDirect<ManagedTerminalSurface, bool>(
-            nameof(IsPasteConfirmationVisible),
-            control => control.IsPasteConfirmationVisible);
-
     public static readonly DirectProperty<ManagedTerminalSurface, bool> IsLinkConfirmationVisibleProperty =
         AvaloniaProperty.RegisterDirect<ManagedTerminalSurface, bool>(
             nameof(IsLinkConfirmationVisible),
@@ -88,12 +83,8 @@ public sealed class ManagedTerminalSurface : Control
     private IManagedTerminalInputSink? _inputSink;
     private IManagedTerminalClipboard _clipboard;
     private IManagedTerminalLinkOpener _linkOpener;
-    private string? _pendingPaste;
     private Uri? _pendingLink;
-    private bool _isPasteConfirmationVisible;
     private bool _isLinkConfirmationVisible;
-    private bool _isPasteConfirmationInFlight;
-    private long _pasteGeneration;
     private bool _isInputReady = true;
     private bool _cursorVisible = true;
     private bool _blinkVisible = true;
@@ -178,15 +169,6 @@ public sealed class ManagedTerminalSurface : Control
         set => SetValue(KeymapProperty, value);
     }
 
-    public bool IsPasteConfirmationVisible
-    {
-        get => _isPasteConfirmationVisible;
-        private set => SetAndRaise(
-            IsPasteConfirmationVisibleProperty,
-            ref _isPasteConfirmationVisible,
-            value);
-    }
-
     public bool IsLinkConfirmationVisible
     {
         get => _isLinkConfirmationVisible;
@@ -252,8 +234,7 @@ public sealed class ManagedTerminalSurface : Control
 
     internal bool IsInputReady => _isInputReady;
 
-    private bool IsInteractionModalVisible =>
-        IsPasteConfirmationVisible || IsLinkConfirmationVisible;
+    private bool IsInteractionModalVisible => IsLinkConfirmationVisible;
 
     internal TerminalCellMetrics Metrics =>
         TerminalCellMetrics.Measure(Bounds.Size, Profile);
@@ -336,93 +317,16 @@ public sealed class ManagedTerminalSurface : Control
         InvalidateVisual();
     }
 
-    public async ValueTask<TerminalPasteResult> PasteTextAsync(
+    public ValueTask<TerminalPasteResult> PasteTextAsync(
         string text,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(text);
-        if (_isPasteConfirmationInFlight)
-        {
-            throw new InvalidOperationException("A terminal paste is already in progress.");
-        }
-
-        CancelPendingPaste();
-        var sink = RequireInputSink();
-        var result = await sink
-            .PasteAsync(new TerminalPasteInput(text), cancellationToken)
-            .ConfigureAwait(true);
-        if (result.RequiresConfirmation)
-        {
-            _pendingPaste = text;
-            IsPasteConfirmationVisible = true;
-            InvalidateVisual();
-        }
-
-        return result;
-    }
-
-    public async ValueTask<TerminalPasteResult?> ConfirmPendingPasteAsync(
-        CancellationToken cancellationToken = default)
-    {
-        if (_pendingPaste is not { } text || _isPasteConfirmationInFlight)
-        {
-            return null;
-        }
-
-        _isPasteConfirmationInFlight = true;
-        var generation = _pasteGeneration;
-        InvalidateVisual();
-        try
-        {
-            var result = await RequireInputSink()
-                .PasteAsync(
-                    new TerminalPasteInput(text, ConfirmedUnsafe: true),
-                    cancellationToken)
-                .ConfigureAwait(true);
-            if (generation != _pasteGeneration)
-            {
-                return result;
-            }
-
-            if (result.Sent)
-            {
-                _pendingPaste = null;
-                IsPasteConfirmationVisible = false;
-            }
-            else
-            {
-                IsPasteConfirmationVisible = true;
-            }
-
-            return result;
-        }
-        finally
-        {
-            if (generation == _pasteGeneration)
-            {
-                _isPasteConfirmationInFlight = false;
-                InvalidateVisual();
-            }
-        }
-    }
-
-    public bool CancelPendingPaste()
-    {
-        if (!IsPasteConfirmationVisible)
-        {
-            return false;
-        }
-
-        if (_isPasteConfirmationInFlight)
-        {
-            return true;
-        }
-
-        _pasteGeneration++;
-        _pendingPaste = null;
-        IsPasteConfirmationVisible = false;
-        InvalidateVisual();
-        return true;
+        // A paste command from this app-owned surface is the user's approval.
+        // Other session-host callers still need to opt in through ConfirmedUnsafe.
+        return RequireInputSink().PasteAsync(
+            new TerminalPasteInput(text, ConfirmedUnsafe: true),
+            cancellationToken);
     }
 
     internal async ValueTask<bool> ScrollViewportAsync(
@@ -552,7 +456,6 @@ public sealed class ManagedTerminalSurface : Control
         CancellationToken cancellationToken = default)
     {
         if (!_isInputReady
-            || IsPasteConfirmationVisible
             || Profile?.LinkPolicy == TerminalLinkPolicy.Disabled
             || !TryGetHyperlinkAt(point, out var uri))
         {
@@ -598,8 +501,7 @@ public sealed class ManagedTerminalSurface : Control
         return true;
     }
 
-    internal bool CancelPendingInteraction() =>
-        CancelPendingPaste() || CancelPendingLink();
+    internal bool CancelPendingInteraction() => CancelPendingLink();
 
     internal bool CancelPendingLink()
     {
@@ -649,11 +551,7 @@ public sealed class ManagedTerminalSurface : Control
 
         DrawPreedit(context, palette);
 
-        if (IsPasteConfirmationVisible)
-        {
-            DrawPasteConfirmation(context);
-        }
-        else if (IsLinkConfirmationVisible)
+        if (IsLinkConfirmationVisible)
         {
             DrawLinkConfirmation(context);
         }
@@ -929,21 +827,6 @@ public sealed class ManagedTerminalSurface : Control
         if (!_isInputReady)
         {
             e.Handled = true;
-            return;
-        }
-
-        if (IsPasteConfirmationVisible)
-        {
-            e.Handled = true;
-            if (!_isPasteConfirmationInFlight && e.Key is Key.Return or Key.Enter)
-            {
-                ObserveInputAsync(ConfirmPendingPasteAsync().AsValueTask());
-            }
-            else if (!_isPasteConfirmationInFlight && e.Key == Key.Escape)
-            {
-                CancelPendingPaste();
-            }
-
             return;
         }
 
@@ -2362,45 +2245,6 @@ public sealed class ManagedTerminalSurface : Control
         _kittyBitmaps.Clear();
     }
 
-    private void DrawPasteConfirmation(DrawingContext context)
-    {
-        var text = _pendingPaste ?? string.Empty;
-        var lineCount = text.Count(character => character == '\n') + 1;
-        var message = $"Paste {lineCount:N0} lines ({text.Length:N0} characters)?";
-        var hint = _isPasteConfirmationInFlight
-            ? "Pasting safely…"
-            : "Enter to paste  ·  Esc to cancel";
-        var box = new Rect(
-            12,
-            Math.Max(12, Bounds.Height - 76),
-            Math.Max(220, Bounds.Width - 24),
-            62);
-        context.DrawRectangle(
-            ConfirmationBackground,
-            new Pen(ConfirmationBorder, 1),
-            box,
-            8,
-            8);
-        context.DrawText(
-            new FormattedText(
-                message,
-                CultureInfo.CurrentUICulture,
-                FlowDirection.LeftToRight,
-                new Typeface("Inter, SF Pro Text, Segoe UI, sans-serif", FontStyle.Normal, FontWeight.SemiBold),
-                11,
-                ConfirmationText),
-            new Point(box.X + 14, box.Y + 10));
-        context.DrawText(
-            new FormattedText(
-                hint,
-                CultureInfo.CurrentUICulture,
-                FlowDirection.LeftToRight,
-                TerminalTypefaceResolver.Resolve(Profile?.FontFamily),
-                9,
-                ConfirmationAccent),
-            new Point(box.X + 14, box.Y + 35));
-    }
-
     private void DrawLinkConfirmation(DrawingContext context)
     {
         var display = _pendingLink?.AbsoluteUri ?? string.Empty;
@@ -2611,7 +2455,6 @@ public sealed class ManagedTerminalSurface : Control
         {
             _keySequenceTimer.Stop();
             _keymapResolver.Reset();
-            ResetPendingPaste();
             ResetPendingLink();
             ResetFind();
             ResetLocalSelectionGesture();
@@ -2692,15 +2535,6 @@ public sealed class ManagedTerminalSurface : Control
             y,
             1,
             Math.Max(1, Math.Min(cell.Height, surfaceHeight - y)));
-    }
-
-    private void ResetPendingPaste()
-    {
-        _pasteGeneration++;
-        _pendingPaste = null;
-        _isPasteConfirmationInFlight = false;
-        IsPasteConfirmationVisible = false;
-        InvalidateVisual();
     }
 
     private void ResetPendingLink()

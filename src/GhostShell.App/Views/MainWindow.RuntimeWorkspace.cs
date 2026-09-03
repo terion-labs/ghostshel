@@ -763,6 +763,29 @@ public sealed partial class MainWindow
         }
     }
 
+    private void OnDockerInstallGuideRequested(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = "https://docs.docker.com/engine/install/",
+                UseShellExecute = true,
+            });
+            if (process is null)
+            {
+                ViewModel.SetError("The Docker installation guide could not be opened.");
+            }
+        }
+        catch (Exception exception) when (exception is InvalidOperationException
+            or System.ComponentModel.Win32Exception)
+        {
+            ViewModel.SetError("The Docker installation guide could not be opened.");
+        }
+    }
+
     private async void OnPlaceholderConnectionLaunchRequested(
         object? sender,
         SavedConnectionLaunchViewModel launch)

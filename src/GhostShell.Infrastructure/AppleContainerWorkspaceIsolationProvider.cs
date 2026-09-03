@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -15,7 +16,7 @@ namespace GhostShell.Infrastructure;
 /// provider should ship an app-owned Swift helper built on Apple Containerization so the
 /// application, rather than a separately installed CLI, owns lifecycle and networking.
 /// </summary>
-public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolationProvider
+public sealed partial class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolationProvider
 {
     public static WorkspaceIsolationProviderDescriptor ProviderDescriptor { get; } = new(
         new WorkspaceIsolationProviderId("apple-container"),
@@ -30,35 +31,91 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
 
     public const string DefaultImageReference = WorkspaceIsolationImages.Default;
 
+    internal const string DefaultImageBaseReference = WorkspaceIsolationImages.Default;
+
+    internal const string DefaultRuntimeImageReference =
+        "local/ghostshell-workspace-ubuntu:24.04";
+
     internal const string LegacyAlpineImageReference =
         "docker.io/library/alpine@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce";
 
     private const int MaximumCapturedCharacters = 64 * 1024;
+    private const int MaximumDiagnosticCharacters = 512;
     private const int WorkspaceCpuCount = 1;
     private const ulong WorkspaceMemoryBytes = 1024UL * 1024UL * 1024UL;
     private const string WorkspaceMemoryArgument = "1G";
-    private const string DefaultGuestWorkingDirectory = "/root";
-    private const string KeepAliveExecutable = "/bin/sleep";
-    private const string KeepAliveArgument = "infinity";
+    private const string WorkspaceUserName = "ghostshell";
+    private const string DefaultGuestWorkingDirectory = "/home/ghostshell";
+    private const string DefaultImageContainerfileResourceName =
+        "GhostShell.Infrastructure.WorkspaceImages.Ubuntu2404.Containerfile";
+    private const string InteractiveShellBootstrapScript =
+        "if command -v bash >/dev/null 2>&1; then exec bash -l; "
+        + "elif command -v zsh >/dev/null 2>&1; then exec zsh -l; "
+        + "elif command -v fish >/dev/null 2>&1; then exec fish -l; "
+        + "elif command -v nu >/dev/null 2>&1; then exec nu -l; "
+        + "elif command -v elvish >/dev/null 2>&1; then exec elvish; "
+        + "else exec /bin/sh -l; fi";
     private const string SshBootstrapArgumentZero = "ghostshell-ssh";
-    private const string GuestKnownHostsDirectory = "/root/.ssh/ghostshell-known-hosts";
+    private const string GuestKnownHostsDirectory =
+        "/home/ghostshell/.ssh/ghostshell-known-hosts";
+    private const string GuestSnapshotArchivePath =
+        "/tmp/ghostshell-workspace-rootfs.tar";
+    private const string GuestSnapshotScript =
+        "set -u; archive=$1; "
+        + "rm -f -- \"$archive\" || exit $?; sync || exit $?; status=0; "
+        + "tar --numeric-owner --xattrs --acls --one-file-system "
+        + "--warning=no-file-changed --exclude=./tmp/ghostshell-workspace-rootfs.tar "
+        + "--exclude=./var/host-services/ssh-auth.sock "
+        + "-cpf \"$archive\" -C / . || status=$?; "
+        + "if [ \"$status\" -le 1 ] && [ -s \"$archive\" ]; then exit 0; fi; exit \"$status\"";
     private const string SshBootstrapScript =
         "ssh=$1; known_hosts=$2; known_hosts_data=$3; shift 3; "
         + "if [ -n \"$known_hosts\" ]; then umask 077; mkdir -p \"${known_hosts%/*}\" || exit $?; "
         + "if [ -n \"$known_hosts_data\" ]; then printf %s \"$known_hosts_data\" | base64 -d > \"$known_hosts\" || exit $?; "
         + "elif [ ! -e \"$known_hosts\" ]; then : > \"$known_hosts\" || exit $?; fi; fi; "
         + "if [ ! -x \"$ssh\" ]; then export DEBIAN_FRONTEND=noninteractive; "
-        + "if command -v apt-get >/dev/null 2>&1; then apt-get update && apt-get install -y --no-install-recommends openssh-client && rm -rf /var/lib/apt/lists/*; "
-        + "elif command -v apk >/dev/null 2>&1; then apk add --no-cache openssh-client; "
+        + "if command -v apt-get >/dev/null 2>&1; then sudo -n apt-get update && sudo -n apt-get install -y --no-install-recommends openssh-client && sudo -n rm -rf /var/lib/apt/lists/*; "
+        + "elif command -v apk >/dev/null 2>&1; then sudo -n apk add --no-cache openssh-client; "
         + "else echo 'The selected isolate image cannot install OpenSSH.' >&2; exit 127; fi || exit $?; fi; exec \"$ssh\" \"$@\"";
+    private const string GuestProvisioningScript =
+        "set -eu; user_name=$1; uid=$2; gid=$3; user_home=$4; "
+        + "pid_one=$(cat /proc/1/comm); test \"$pid_one\" != .cz-init; test \"$pid_one\" != sleep; "
+        + "test -x /sbin/init; "
+        + "if command -v bash >/dev/null 2>&1; then user_shell=$(command -v bash); "
+        + "elif command -v zsh >/dev/null 2>&1; then user_shell=$(command -v zsh); "
+        + "elif command -v fish >/dev/null 2>&1; then user_shell=$(command -v fish); "
+        + "elif command -v nu >/dev/null 2>&1; then user_shell=$(command -v nu); "
+        + "elif command -v elvish >/dev/null 2>&1; then user_shell=$(command -v elvish); "
+        + "else user_shell=/bin/sh; fi; "
+        + "account=$(awk -F: -v wanted=\"$uid\" '$3 == wanted { print $1; exit }' /etc/passwd); "
+        + "if [ -z \"$account\" ]; then "
+        + "if grep -q \"^${user_name}:\" /etc/passwd; then exit 65; fi; account=$user_name; "
+        + "if ! awk -F: -v wanted=\"$gid\" '$3 == wanted { found=1 } END { exit !found }' /etc/group; then printf '%s:x:%s:\\n' \"$account\" \"$gid\" >> /etc/group; fi; "
+        + "printf '%s:x:%s:%s::%s:%s\\n' \"$account\" \"$uid\" \"$gid\" \"$user_home\" \"$user_shell\" >> /etc/passwd; "
+        + "if [ -e /etc/shadow ]; then printf '%s:!:19000:0:99999:7:::\\n' \"$account\" >> /etc/shadow; fi; fi; "
+        + "mkdir -p \"$user_home\"; "
+        + "if [ ! -e \"$user_home/.ghostshell-initialized\" ]; then "
+        + "if [ -d /etc/skel ]; then cp -a /etc/skel/. \"$user_home/\"; fi; touch \"$user_home/.ghostshell-initialized\"; fi; "
+        + "chown -R \"$uid:$gid\" \"$user_home\"; "
+        + "if ! awk -F: '$1 == \"docker\" { found=1 } END { exit !found }' /etc/group; then "
+        + "if command -v groupadd >/dev/null 2>&1; then groupadd --system docker; fi; fi; "
+        + "if awk -F: '$1 == \"docker\" { found=1 } END { exit !found }' /etc/group; then "
+        + "if command -v usermod >/dev/null 2>&1; then usermod -aG docker \"$account\"; "
+        + "elif command -v gpasswd >/dev/null 2>&1; then gpasswd -a \"$account\" docker >/dev/null; fi; fi; "
+        + "if command -v sudo >/dev/null 2>&1; then mkdir -p /etc/sudoers.d; "
+        + "printf '%s ALL=(ALL) NOPASSWD:ALL\\n' \"$account\" > /etc/sudoers.d/ghostshell-workspace; "
+        + "chmod 440 /etc/sudoers.d/ghostshell-workspace; fi";
     private const string OwnershipLabel = "io.ghostshell.workspace";
     private const string SchemaLabel = "io.ghostshell.isolation-schema";
     private const string BaseImageLabel = "io.ghostshell.base-image";
-    private const string SchemaVersion = "1";
+    private const string SchemaVersion = "2";
     private const string SnapshotContainerfile = """
         FROM scratch
         ADD rootfs.tar /
         ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        ENV container=apple-container
+        STOPSIGNAL SIGRTMIN+3
+        CMD ["/sbin/init"]
         """;
     // Apple Container 1.0.0's tagged command reference includes every CLI surface used here:
     // create/mount, start/stop, inspect, and structured exec environment/workdir flags.
@@ -75,6 +132,9 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
     private readonly string _guestShellExecutable;
     private readonly IReadOnlyList<string> _guestShellArguments;
     private readonly string _guestSshExecutable;
+    private readonly uint _guestUserId;
+    private readonly uint _guestGroupId;
+    private readonly bool _buildDefaultImage;
     private readonly ConcurrentDictionary<string, ResourceLeaseState> _resources =
         new(StringComparer.Ordinal);
 
@@ -87,9 +147,12 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
             RunCommandAsync,
             imageReference,
             guestShellExecutable,
-            ["-l"],
+            ["-c", InteractiveShellBootstrapScript],
             guestSshExecutable,
-            containerExecutable)
+            containerExecutable,
+            CurrentUserId(),
+            CurrentGroupId(),
+            buildDefaultImage: true)
     {
     }
 
@@ -99,13 +162,19 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
         string guestShellExecutable,
         IReadOnlyList<string> guestShellArguments,
         string guestSshExecutable,
-        string containerExecutable)
+        string containerExecutable,
+        uint guestUserId = 1000,
+        uint guestGroupId = 1000,
+        bool buildDefaultImage = false)
     {
         _commandRunner = commandRunner ?? throw new ArgumentNullException(nameof(commandRunner));
         _imageReference = ValidateText(imageReference, nameof(imageReference));
         _guestShellExecutable = ValidateText(guestShellExecutable, nameof(guestShellExecutable));
         _guestSshExecutable = ValidateText(guestSshExecutable, nameof(guestSshExecutable));
         _containerExecutable = ValidateText(containerExecutable, nameof(containerExecutable));
+        _guestUserId = guestUserId;
+        _guestGroupId = guestGroupId;
+        _buildDefaultImage = buildDefaultImage;
         ArgumentNullException.ThrowIfNull(guestShellArguments);
         _guestShellArguments = Array.AsReadOnly(guestShellArguments
             .Select(argument => ValidateArgument(argument, nameof(guestShellArguments)))
@@ -302,20 +371,14 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
                 .ConfigureAwait(false);
             if (!inspect.IsSuccess)
             {
-                progress?.Report(new WorkspaceIsolationProgress(
-                    "Downloading the workspace image…"));
-                var imageProgress = progress is null
-                    ? null
-                    : new AppleContainerImageProgress(progress);
-                var pull = await RunAsync(
-                    ["image", "pull", "--progress", "plain", ImageReferenceFor(request)],
-                    timeout: null,
-                    cancellationToken,
-                    imageProgress)
+                var image = await PrepareWorkspaceImageAsync(
+                        request,
+                        progress,
+                        cancellationToken)
                     .ConfigureAwait(false);
-                if (TryMapCommandFailure(pull, out var pullFailure))
+                if (TryMapCommandFailure(image, out var imageFailure))
                 {
-                    return WorkspaceIsolationResult<WorkspaceIsolationBinding>.Fail(pullFailure);
+                    return WorkspaceIsolationResult<WorkspaceIsolationBinding>.Fail(imageFailure);
                 }
 
                 progress?.Report(new WorkspaceIsolationProgress(
@@ -669,13 +732,30 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
             arguments.Add("--tty");
         }
 
+        // Apple Container resolves supplementary groups only through --user. Supplying
+        // --uid and --gid directly drops groups such as docker from the guest process.
+        arguments.Add("--user");
+        arguments.Add(_guestUserId.ToString(CultureInfo.InvariantCulture));
+
         foreach (var (name, value) in request.Environment.OrderBy(
                      pair => pair.Key,
                      StringComparer.Ordinal))
         {
+            if (IsGuestIdentityEnvironment(name))
+            {
+                continue;
+            }
+
             arguments.Add("--env");
             arguments.Add($"{name}={value}");
         }
+
+        arguments.Add("--env");
+        arguments.Add($"HOME={DefaultGuestWorkingDirectory}");
+        arguments.Add("--env");
+        arguments.Add($"USER={WorkspaceUserName}");
+        arguments.Add("--env");
+        arguments.Add($"LOGNAME={WorkspaceUserName}");
 
         if (guestWorkingDirectory is not null)
         {
@@ -855,6 +935,9 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
 
     private static bool IsSshExecutable(string executable) =>
         string.Equals(Path.GetFileName(executable), "ssh", StringComparison.Ordinal);
+
+    private static bool IsGuestIdentityEnvironment(string name) =>
+        name is "HOME" or "USER" or "LOGNAME" or "SHELL";
 
     private static bool TryPrepareSshTrust(
         IReadOnlyList<string> arguments,
@@ -1078,6 +1161,14 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
             WorkspaceCpuCount.ToString(CultureInfo.InvariantCulture),
             "--memory",
             WorkspaceMemoryArgument,
+            "--cap-add",
+            "ALL",
+            "--masked-path",
+            "NONE",
+            "--read-only-path",
+            "NONE",
+            "--env",
+            "container=apple-container",
             "--ssh",
         };
         foreach (var mount in request.Mounts.OrderBy(
@@ -1088,12 +1179,9 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
             arguments.Add(MountArgument(mount));
         }
 
-        arguments.Add("--workdir");
-        arguments.Add(DefaultGuestWorkingDirectory);
-        arguments.Add("--init");
-        arguments.Add(imageReference ?? ImageReferenceFor(request));
-        arguments.Add(KeepAliveExecutable);
-        arguments.Add(KeepAliveArgument);
+        arguments.Add("--entrypoint");
+        arguments.Add("/sbin/init");
+        arguments.Add(imageReference ?? RuntimeImageReferenceFor(request));
         return arguments;
     }
 
@@ -1106,23 +1194,27 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
         CancellationToken cancellationToken)
     {
         progress?.Report(new WorkspaceIsolationProgress(
-            "Stopping the workspace isolate before applying its configuration…"));
-        var stop = await RunAsync(
-                ["stop", "--time", "5", resourceName],
-                LifecycleTimeout,
+            "Starting the workspace isolate to save its files…"));
+        var live = await RunAsync(
+                ["exec", resourceName, "/bin/true"],
+                ProbeTimeout,
                 cancellationToken)
             .ConfigureAwait(false);
-        if (!stop.IsSuccess)
+        if (!live.IsSuccess)
         {
-            var stoppedInspect = await RunAsync(
-                    ["inspect", resourceName],
+            var start = await RunAsync(
+                    ["start", resourceName],
+                    LifecycleTimeout,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            live = await RunAsync(
+                    ["exec", resourceName, "/bin/true"],
                     ProbeTimeout,
                     cancellationToken)
                 .ConfigureAwait(false);
-            if (!stoppedInspect.IsSuccess
-                || !IsStoppedContainer(stoppedInspect.StandardOutput, resourceName))
+            if (!live.IsSuccess)
             {
-                return stop;
+                return start.IsSuccess ? live : start;
             }
         }
 
@@ -1135,14 +1227,66 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
 
             progress?.Report(new WorkspaceIsolationProgress(
                 "Saving installed packages and guest files…"));
-            var export = await RunAsync(
-                    ["export", "--output", archivePath, resourceName],
+            var archive = await RunAsync(
+                    [
+                        "exec",
+                        resourceName,
+                        "/bin/sh",
+                        "-c",
+                        GuestSnapshotScript,
+                        "ghostshell-snapshot",
+                        GuestSnapshotArchivePath,
+                    ],
                     timeout: null,
                     cancellationToken)
                 .ConfigureAwait(false);
-            if (!export.IsSuccess)
+            if (!archive.IsSuccess)
             {
-                return export;
+                progress?.Report(new WorkspaceIsolationProgress(
+                    "Could not save workspace files: "
+                    + BoundedDiagnostic(archive.StandardError)));
+                return archive;
+            }
+
+            progress?.Report(new WorkspaceIsolationProgress(
+                "Copying the saved workspace files…"));
+            var copy = await RunAsync(
+                    ["copy", $"{resourceName}:{GuestSnapshotArchivePath}", archivePath],
+                    timeout: null,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            _ = await RunAsync(
+                    ["exec", resourceName, "/bin/rm", "--", GuestSnapshotArchivePath],
+                    ProbeTimeout,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            if (!copy.IsSuccess)
+            {
+                progress?.Report(new WorkspaceIsolationProgress(
+                    "Could not copy saved workspace files: "
+                    + BoundedDiagnostic(copy.StandardError)));
+                return copy;
+            }
+
+            progress?.Report(new WorkspaceIsolationProgress(
+                "Stopping the workspace isolate before applying its configuration…"));
+            var stop = await RunAsync(
+                    ["stop", "--time", "5", resourceName],
+                    LifecycleTimeout,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!stop.IsSuccess)
+            {
+                var stoppedInspect = await RunAsync(
+                        ["inspect", resourceName],
+                        ProbeTimeout,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (!stoppedInspect.IsSuccess
+                    || !IsStoppedContainer(stoppedInspect.StandardOutput, resourceName))
+                {
+                    return stop;
+                }
             }
 
             await File.WriteAllTextAsync(
@@ -1245,6 +1389,121 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
     private string ImageReferenceFor(WorkspaceIsolationPrepareRequest request) =>
         request.ImageReference ?? _imageReference;
 
+    private string RuntimeImageReferenceFor(WorkspaceIsolationPrepareRequest request)
+    {
+        var configuredImage = ImageReferenceFor(request);
+        return _buildDefaultImage
+               && string.Equals(
+                   configuredImage,
+                   DefaultImageReference,
+                   StringComparison.Ordinal)
+            ? DefaultRuntimeImageReference
+            : configuredImage;
+    }
+
+    private async ValueTask<AppleContainerCommandResult> PrepareWorkspaceImageAsync(
+        WorkspaceIsolationPrepareRequest request,
+        IProgress<WorkspaceIsolationProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        var imageReference = ImageReferenceFor(request);
+        if (!_buildDefaultImage
+            || !string.Equals(imageReference, DefaultImageReference, StringComparison.Ordinal))
+        {
+            progress?.Report(new WorkspaceIsolationProgress(
+                "Downloading the selected workspace image…"));
+            var imageProgress = progress is null
+                ? null
+                : new AppleContainerImageProgress(progress);
+            return await RunAsync(
+                    ["image", "pull", "--progress", "plain", imageReference],
+                    timeout: null,
+                    cancellationToken,
+                    imageProgress)
+                .ConfigureAwait(false);
+        }
+
+        progress?.Report(new WorkspaceIsolationProgress(
+            $"Checking the prepared {DefaultImageReference} workspace image…"));
+        var inspect = await RunAsync(
+                ["image", "inspect", DefaultRuntimeImageReference],
+                ProbeTimeout,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (inspect.IsSuccess || inspect.Outcome != AppleContainerCommandOutcome.Exited)
+        {
+            return inspect;
+        }
+
+        progress?.Report(new WorkspaceIsolationProgress(
+            $"Preparing a bootable workspace image from {DefaultImageBaseReference}…"));
+        DirectoryInfo? buildDirectory = null;
+        try
+        {
+            buildDirectory = Directory.CreateTempSubdirectory(
+                "ghostshell-ubuntu-workspace-image-");
+            var containerfilePath = Path.Combine(buildDirectory.FullName, "Containerfile");
+            await using var source = typeof(AppleContainerWorkspaceIsolationProvider)
+                .Assembly
+                .GetManifestResourceStream(DefaultImageContainerfileResourceName);
+            if (source is null)
+            {
+                return AppleContainerCommandResult.ExecutionFailed;
+            }
+
+            await using (var destination = new FileStream(
+                             containerfilePath,
+                             FileMode.CreateNew,
+                             FileAccess.Write,
+                             FileShare.None,
+                             bufferSize: 81920,
+                             useAsync: true))
+            {
+                await source.CopyToAsync(destination, cancellationToken).ConfigureAwait(false);
+            }
+
+            return await RunAsync(
+                    [
+                        "build",
+                        "--pull",
+                        "--progress",
+                        "plain",
+                        "--tag",
+                        DefaultRuntimeImageReference,
+                        buildDirectory.FullName,
+                    ],
+                    timeout: null,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return AppleContainerCommandResult.Cancelled;
+        }
+        catch (Exception exception) when (exception is IOException
+                                          or UnauthorizedAccessException
+                                          or NotSupportedException)
+        {
+            return AppleContainerCommandResult.ExecutionFailed;
+        }
+        finally
+        {
+            if (buildDirectory is not null)
+            {
+                try
+                {
+                    buildDirectory.Delete(recursive: true);
+                }
+                catch (Exception exception) when (exception is IOException
+                                                  or UnauthorizedAccessException)
+                {
+                    // The image build result owns the operation outcome. Temporary-file
+                    // cleanup cannot make a completed build appear to have failed.
+                }
+            }
+        }
+    }
+
     private static string InferBaseImage(string imageReference, string resourceName) =>
         string.Equals(
             imageReference,
@@ -1280,21 +1539,14 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
             }
         }
 
-        var imageReference = ImageReferenceFor(request);
-        progress?.Report(new WorkspaceIsolationProgress(
-            "Downloading the selected workspace image…"));
-        var imageProgress = progress is null
-            ? null
-            : new AppleContainerImageProgress(progress);
-        var pull = await RunAsync(
-                ["image", "pull", "--progress", "plain", imageReference],
-                timeout: null,
-                cancellationToken,
-                imageProgress)
+        var image = await PrepareWorkspaceImageAsync(
+                request,
+                progress,
+                cancellationToken)
             .ConfigureAwait(false);
-        if (!pull.IsSuccess)
+        if (!image.IsSuccess)
         {
-            return pull;
+            return image;
         }
 
         progress?.Report(new WorkspaceIsolationProgress(
@@ -1351,28 +1603,46 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
         string resourceName,
         CancellationToken cancellationToken)
     {
-        var shell = await RunAsync(
-                ["exec", resourceName, _guestShellExecutable, "-c", "exit 0"],
-                ProbeTimeout,
-                cancellationToken)
-            .ConfigureAwait(false);
-        if (!shell.IsSuccess)
-        {
-            return false;
-        }
-
-        var persistentRoot = await RunAsync(
+        var provision = await RunAsync(
                 [
                     "exec",
                     resourceName,
                     _guestShellExecutable,
                     "-c",
-                    "test -d /root && test -w /root",
+                    GuestProvisioningScript,
+                    "ghostshell-provision",
+                    WorkspaceUserName,
+                    _guestUserId.ToString(CultureInfo.InvariantCulture),
+                    _guestGroupId.ToString(CultureInfo.InvariantCulture),
+                    DefaultGuestWorkingDirectory,
                 ],
                 ProbeTimeout,
                 cancellationToken)
             .ConfigureAwait(false);
-        return persistentRoot.IsSuccess;
+        if (!provision.IsSuccess)
+        {
+            return false;
+        }
+
+        var validate = await RunAsync(
+                [
+                    "exec",
+                    "--user",
+                    _guestUserId.ToString(CultureInfo.InvariantCulture),
+                    "--env",
+                    $"HOME={DefaultGuestWorkingDirectory}",
+                    "--workdir",
+                    DefaultGuestWorkingDirectory,
+                    resourceName,
+                    _guestShellExecutable,
+                    "-c",
+                    "test -d \"$HOME\" && test -w \"$HOME\" && "
+                    + "{ ! command -v sudo >/dev/null 2>&1 || sudo -n true; }",
+                ],
+                ProbeTimeout,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return validate.IsSuccess;
     }
 
     private static bool TryMapCommandFailure(
@@ -1399,6 +1669,9 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
                 WorkspaceIsolationErrorCode.RuntimeMissing,
             AppleContainerCommandOutcome.Cancelled => WorkspaceIsolationErrorCode.Cancelled,
             AppleContainerCommandOutcome.TimedOut => WorkspaceIsolationErrorCode.Timeout,
+            _ when result.StandardError.Contains(
+                "failed to find target executable /sbin/init",
+                StringComparison.Ordinal) => WorkspaceIsolationErrorCode.ImageNotBootable,
             _ => fallback,
         };
 
@@ -1510,7 +1783,14 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
                 || !configuration.TryGetProperty("ssh", out var ssh)
                 || ssh.ValueKind is not (JsonValueKind.True or JsonValueKind.False)
                 || !configuration.TryGetProperty("useInit", out var useInit)
-                || useInit.ValueKind is not JsonValueKind.True
+                || useInit.ValueKind is not JsonValueKind.False
+                || !configuration.TryGetProperty("initProcess", out var initProcess)
+                || !initProcess.TryGetProperty("executable", out var initExecutable)
+                || initExecutable.ValueKind != JsonValueKind.String
+                || !string.Equals(
+                    initExecutable.GetString(),
+                    "/sbin/init",
+                    StringComparison.Ordinal)
                 || !configuration.TryGetProperty("mounts", out var mounts)
                 || mounts.ValueKind != JsonValueKind.Array)
             {
@@ -1756,6 +2036,19 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
         return value;
     }
 
+    private static string BoundedDiagnostic(string value)
+    {
+        var diagnostic = value.Trim();
+        if (diagnostic.Length == 0)
+        {
+            return "the runtime did not provide an error message";
+        }
+
+        return diagnostic.Length <= MaximumDiagnosticCharacters
+            ? diagnostic
+            : diagnostic[..MaximumDiagnosticCharacters];
+    }
+
     private static string ValidateArgument(string? value, string parameterName)
     {
         if (value is null || value.Contains('\0', StringComparison.Ordinal))
@@ -1767,6 +2060,20 @@ public sealed class AppleContainerWorkspaceIsolationProvider : IWorkspaceIsolati
 
         return value;
     }
+
+    private static uint CurrentUserId() => OperatingSystem.IsMacOS()
+        ? GetEffectiveUserId()
+        : 1000;
+
+    private static uint CurrentGroupId() => OperatingSystem.IsMacOS()
+        ? GetEffectiveGroupId()
+        : 1000;
+
+    [LibraryImport("libc", EntryPoint = "geteuid")]
+    private static partial uint GetEffectiveUserId();
+
+    [LibraryImport("libc", EntryPoint = "getegid")]
+    private static partial uint GetEffectiveGroupId();
 
     private static async ValueTask<AppleContainerCommandResult> RunCommandAsync(
         AppleContainerCommand command,

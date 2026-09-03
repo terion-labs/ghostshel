@@ -54,18 +54,8 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
         Assert.Equal(TimeSpan.FromMinutes(2), runner.Commands[3].Timeout);
         Assert.Equal(["exec", expectedName, "/bin/true"], runner.Commands[4].Arguments);
         Assert.Equal(TimeSpan.FromSeconds(10), runner.Commands[4].Timeout);
-        Assert.Equal(
-            ["exec", expectedName, "/bin/sh", "-c", "exit 0"],
-            runner.Commands[5].Arguments);
-        Assert.Equal(
-            [
-                "exec",
-                expectedName,
-                "/bin/sh",
-                "-c",
-                "test -d /root && test -w /root",
-            ],
-            runner.Commands[6].Arguments);
+        AssertGuestProvisioningCommand(runner.Commands[5], expectedName);
+        AssertGuestValidationCommand(runner.Commands[6], expectedName);
         Assert.DoesNotContain(
             runner.Commands.SelectMany(command => command.Arguments),
             argument => string.Equals(argument, "delete", StringComparison.Ordinal)
@@ -188,7 +178,7 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
         Assert.Null(runner.Commands[3].Timeout);
         Assert.Contains(
             progress.Values,
-            item => item.Status == "Downloading the workspace image…");
+            item => item.Status == "Downloading the selected workspace image…");
         Assert.Contains(
             progress.Values,
             item => item.Status == "Downloading the workspace image… 62%");
@@ -199,7 +189,19 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
         Assert.Equal("create", create[0]);
         Assert.Equal(TimeSpan.FromMinutes(5), runner.Commands[4].Timeout);
         Assert.Contains("--ssh", create, StringComparer.Ordinal);
-        Assert.Contains("--init", create, StringComparer.Ordinal);
+        Assert.DoesNotContain("--init", create, StringComparer.Ordinal);
+        Assert.Contains(
+            create.Zip(create.Skip(1)),
+            pair => pair.First == "--entrypoint" && pair.Second == "/sbin/init");
+        Assert.Contains(
+            create.Zip(create.Skip(1)),
+            pair => pair.First == "--cap-add" && pair.Second == "ALL");
+        Assert.Contains(
+            create.Zip(create.Skip(1)),
+            pair => pair.First == "--masked-path" && pair.Second == "NONE");
+        Assert.Contains(
+            create.Zip(create.Skip(1)),
+            pair => pair.First == "--read-only-path" && pair.Second == "NONE");
         Assert.Contains(
             $"type=bind,source={HostHome},target={GuestHome}",
             create,
@@ -212,8 +214,8 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
             AppleContainerWorkspaceIsolationProvider.DefaultImageReference,
             create,
             StringComparer.Ordinal);
-        Assert.Contains("/bin/sleep", create, StringComparer.Ordinal);
-        Assert.Contains("infinity", create, StringComparer.Ordinal);
+        Assert.DoesNotContain("/bin/sleep", create, StringComparer.Ordinal);
+        Assert.DoesNotContain("infinity", create, StringComparer.Ordinal);
         Assert.DoesNotContain("--rm", create, StringComparer.Ordinal);
         Assert.Equal(binding.ResourceName, create[2]);
         Assert.Equal(3, create.Count(argument => argument == "--label"));
@@ -227,6 +229,69 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
         Assert.Contains(
             create.Zip(create.Skip(1)),
             pair => pair.First == "--memory" && pair.Second == "1G");
+    }
+
+    [Fact]
+    public async Task Prepare_builds_the_default_bootable_image_when_it_is_not_cached()
+    {
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(
+                0,
+                InspectJson(
+                    imageReference:
+                        AppleContainerWorkspaceIsolationProvider.DefaultRuntimeImageReference,
+                    baseImageReference:
+                        AppleContainerWorkspaceIsolationProvider.DefaultImageReference)),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0));
+        var provider = new AppleContainerWorkspaceIsolationProvider(
+            runner.RunAsync,
+            AppleContainerWorkspaceIsolationProvider.DefaultImageReference,
+            "/bin/sh",
+            ["-l"],
+            "/usr/bin/ssh",
+            "container-test",
+            buildDefaultImage: true);
+        var progress = new RecordingProgress<WorkspaceIsolationProgress>();
+
+        _ = Success(await provider.PrepareAsync(
+            Request(),
+            progress,
+            CancellationToken.None));
+
+        Assert.Equal(
+            [
+                "image",
+                "inspect",
+                AppleContainerWorkspaceIsolationProvider.DefaultRuntimeImageReference,
+            ],
+            runner.Commands[3].Arguments);
+        Assert.Equal("build", runner.Commands[4].Arguments[0]);
+        Assert.Contains("--pull", runner.Commands[4].Arguments, StringComparer.Ordinal);
+        Assert.Contains("--progress", runner.Commands[4].Arguments, StringComparer.Ordinal);
+        Assert.Contains("plain", runner.Commands[4].Arguments, StringComparer.Ordinal);
+        Assert.Contains("--tag", runner.Commands[4].Arguments, StringComparer.Ordinal);
+        Assert.Contains(
+            AppleContainerWorkspaceIsolationProvider.DefaultRuntimeImageReference,
+            runner.Commands[4].Arguments,
+            StringComparer.Ordinal);
+        Assert.Null(runner.Commands[4].Timeout);
+        Assert.Contains(
+            progress.Values,
+            item => item.Status ==
+                $"Checking the prepared {AppleContainerWorkspaceIsolationProvider.DefaultImageReference} workspace image…");
+        Assert.Contains(
+            progress.Values,
+            item => item.Status ==
+                "Preparing a bootable workspace image from ubuntu:24.04…");
     }
 
     [Fact]
@@ -390,6 +455,27 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
     }
 
     [Fact]
+    public async Task Prepare_explains_when_the_selected_image_has_no_init_system()
+    {
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0, InspectJson()),
+            AppleContainerCommandResult.Exited(
+                1,
+                standardError: "failed to find target executable /sbin/init"),
+            AppleContainerCommandResult.Exited(1));
+        var provider = Provider(runner);
+
+        var failure = Failure(await provider.PrepareAsync(
+            Request(),
+            CancellationToken.None));
+
+        Assert.Equal(WorkspaceIsolationErrorCode.ImageNotBootable, failure.Code);
+        Assert.Contains("/sbin/init", failure.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Prepare_rejects_a_missing_host_mount_before_invoking_the_runtime()
     {
         var runner = new RecordingRunner();
@@ -464,7 +550,7 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
         Assert.DoesNotContain("--mount", runner.Commands[4].Arguments, StringComparer.Ordinal);
         Assert.Contains(
             launch.Arguments.Zip(launch.Arguments.Skip(1)),
-            pair => pair.First == "--workdir" && pair.Second == "/root");
+            pair => pair.First == "--workdir" && pair.Second == "/home/ghostshell");
     }
 
     [Theory]
@@ -624,6 +710,11 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
             AppleContainerCommandResult.Exited(0, CurrentVersionJson),
             AppleContainerCommandResult.Exited(0),
             AppleContainerCommandResult.Exited(0, InspectJson(otherMounts)),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
             AppleContainerCommandResult.Exited(0),
             AppleContainerCommandResult.Exited(0),
             AppleContainerCommandResult.Exited(0),
@@ -640,22 +731,35 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
         var provider = Provider(runner);
         var progress = new RecordingProgress<WorkspaceIsolationProgress>();
 
-        var binding = Success(await provider.PrepareAsync(
+        var prepare = await provider.PrepareAsync(
             Request(),
             progress,
-            CancellationToken.None));
+            CancellationToken.None);
+        if (prepare is WorkspaceIsolationResult<WorkspaceIsolationBinding>.Failure failure)
+        {
+            Assert.Fail(
+                $"{failure.Error.StableCode}; commands: "
+                + string.Join(" | ", runner.Commands.Select(command => command.Arguments[0])));
+        }
+
+        var binding = Success(prepare);
 
         Assert.Equal(HomeMounts, binding.Mounts);
-        Assert.Equal("stop", runner.Commands[3].Arguments[0]);
-        Assert.Equal("export", runner.Commands[4].Arguments[0]);
-        Assert.Null(runner.Commands[4].Timeout);
-        Assert.Equal("build", runner.Commands[5].Arguments[0]);
-        Assert.Null(runner.Commands[5].Timeout);
-        Assert.Equal("delete", runner.Commands[6].Arguments[0]);
-        Assert.Equal("create", runner.Commands[7].Arguments[0]);
+        Assert.Equal(["exec", binding.ResourceName, "/bin/true"], runner.Commands[3].Arguments);
+        Assert.Equal(["start", binding.ResourceName], runner.Commands[4].Arguments);
+        Assert.Contains("tar --numeric-owner", runner.Commands[6].Arguments[4], StringComparison.Ordinal);
+        Assert.Null(runner.Commands[6].Timeout);
+        Assert.Equal("copy", runner.Commands[7].Arguments[0]);
+        Assert.Null(runner.Commands[7].Timeout);
+        Assert.Equal("/bin/rm", runner.Commands[8].Arguments[2]);
+        Assert.Equal("stop", runner.Commands[9].Arguments[0]);
+        Assert.Equal("build", runner.Commands[10].Arguments[0]);
+        Assert.Null(runner.Commands[10].Timeout);
+        Assert.Equal("delete", runner.Commands[11].Arguments[0]);
+        Assert.Equal("create", runner.Commands[12].Arguments[0]);
         Assert.Contains(
             SnapshotImageReference(),
-            runner.Commands[7].Arguments,
+            runner.Commands[12].Arguments,
             StringComparer.Ordinal);
         Assert.Contains(
             progress.Values,
@@ -674,6 +778,11 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
             AppleContainerCommandResult.Exited(
                 0,
                 InspectJson(forwardsSshAgent: false)),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
             AppleContainerCommandResult.Exited(0),
             AppleContainerCommandResult.Exited(0),
             AppleContainerCommandResult.Exited(0),
@@ -690,10 +799,11 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
 
         _ = Success(await provider.PrepareAsync(Request(), CancellationToken.None));
 
-        Assert.Equal("export", runner.Commands[4].Arguments[0]);
-        Assert.Equal("build", runner.Commands[5].Arguments[0]);
-        Assert.Equal("create", runner.Commands[7].Arguments[0]);
-        Assert.Contains("--ssh", runner.Commands[7].Arguments, StringComparer.Ordinal);
+        Assert.Contains("tar --numeric-owner", runner.Commands[6].Arguments[4], StringComparison.Ordinal);
+        Assert.Equal("copy", runner.Commands[7].Arguments[0]);
+        Assert.Equal("build", runner.Commands[10].Arguments[0]);
+        Assert.Equal("create", runner.Commands[12].Arguments[0]);
+        Assert.Contains("--ssh", runner.Commands[12].Arguments, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -789,9 +899,7 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
         Assert.Equal(WorkspaceIsolationErrorCode.PrepareFailed, first.Error.Code);
         Assert.Equal(WorkspaceIsolationErrorCode.PrepareFailed, second.Error.Code);
         Assert.Null(second.CleanupValue);
-        Assert.Equal(
-            ["exec", cleanup.ResourceName, "/bin/sh", "-c", "exit 0"],
-            runner.Commands[8].Arguments);
+        AssertGuestProvisioningCommand(runner.Commands[8], cleanup.ResourceName);
 
         _ = Success(await provider.StopAsync(cleanup, CancellationToken.None));
         Assert.Equal(
@@ -983,10 +1091,18 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
                 "exec",
                 "--interactive",
                 "--tty",
+                "--user",
+                "1000",
                 "--env",
                 "ALPHA=value with spaces",
                 "--env",
                 "DANGEROUS=hello; touch /tmp/not-executed",
+                "--env",
+                "HOME=/home/ghostshell",
+                "--env",
+                "USER=ghostshell",
+                "--env",
+                "LOGNAME=ghostshell",
                 "--workdir",
                 "/home/alice/projects/ghost shell",
                 binding.ResourceName,
@@ -994,6 +1110,37 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
                 "-l",
             ],
             launch.Arguments);
+    }
+
+    [Theory]
+    [InlineData("bash", "exec bash -l")]
+    [InlineData("zsh", "exec zsh -l")]
+    [InlineData("fish", "exec fish -l")]
+    [InlineData("nu", "exec nu -l")]
+    [InlineData("elvish", "exec elvish")]
+    public void Interactive_local_terminal_checks_each_supported_guest_shell(
+        string shell,
+        string invocation)
+    {
+        var provider = new AppleContainerWorkspaceIsolationProvider(
+            containerExecutable: "container-test");
+
+        var launch = Success(provider.CreateExecLaunch(
+            Binding(),
+            new WorkspaceIsolationProcessRequest(
+                ConnectionKind.Local,
+                "/bin/sh",
+                mode: WorkspaceProcessMode.Interactive
+                    | WorkspaceProcessMode.AllocateTerminal)));
+
+        Assert.Equal("/bin/sh", launch.Arguments[^3]);
+        Assert.Equal("-c", launch.Arguments[^2]);
+        Assert.Contains(
+            $"command -v {shell}",
+            launch.Arguments[^1],
+            StringComparison.Ordinal);
+        Assert.Contains(invocation, launch.Arguments[^1], StringComparison.Ordinal);
+        Assert.Contains("exec /bin/sh -l", launch.Arguments[^1], StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1009,7 +1156,23 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
         var launch = Success(provider.CreateExecLaunch(binding, request));
 
         Assert.Equal(
-            ["exec", "--workdir", "/root", binding.ResourceName, "git", "status", "--short"],
+            [
+                "exec",
+                "--user",
+                "1000",
+                "--env",
+                "HOME=/home/ghostshell",
+                "--env",
+                "USER=ghostshell",
+                "--env",
+                "LOGNAME=ghostshell",
+                "--workdir",
+                "/home/ghostshell",
+                binding.ResourceName,
+                "git",
+                "status",
+                "--short",
+            ],
             launch.Arguments);
     }
 
@@ -1030,8 +1193,16 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
             [
                 "exec",
                 "--interactive",
+                "--user",
+                "1000",
+                "--env",
+                "HOME=/home/ghostshell",
+                "--env",
+                "USER=ghostshell",
+                "--env",
+                "LOGNAME=ghostshell",
                 "--workdir",
-                "/root",
+                "/home/ghostshell",
                 binding.ResourceName,
                 "/bin/sh",
                 "-c",
@@ -1150,7 +1321,7 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
             var guestKnownHosts = Assert.Single(
                 launch.Arguments,
                 argument => argument.StartsWith(
-                    "UserKnownHostsFile=/root/.ssh/ghostshell-known-hosts/",
+                    "UserKnownHostsFile=/home/ghostshell/.ssh/ghostshell-known-hosts/",
                     StringComparison.Ordinal));
             Assert.Contains(
                 guestKnownHosts["UserKnownHostsFile=".Length..],
@@ -1326,12 +1497,8 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
         Assert.Equal(
             ["exec", first.ResourceName, "/bin/true"],
             runner.Commands[8].Arguments);
-        Assert.Equal(
-            ["exec", first.ResourceName, "/bin/sh", "-c", "exit 0"],
-            runner.Commands[9].Arguments);
-        Assert.Equal(
-            ["exec", first.ResourceName, "/bin/sh", "-c", "test -d /root && test -w /root"],
-            runner.Commands[10].Arguments);
+        AssertGuestProvisioningCommand(runner.Commands[9], first.ResourceName);
+        AssertGuestValidationCommand(runner.Commands[10], first.ResourceName);
 
         _ = Success(await provider.StopAsync(first, CancellationToken.None));
         _ = Success(await provider.StopAsync(first, CancellationToken.None));
@@ -1401,7 +1568,7 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
         var labels = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["io.ghostshell.workspace"] = workspaceLabel ?? name,
-            ["io.ghostshell.isolation-schema"] = "1",
+            ["io.ghostshell.isolation-schema"] = "2",
         };
         if (baseImageReference is not null)
         {
@@ -1427,7 +1594,11 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
                         memoryInBytes = 1024UL * 1024UL * 1024UL,
                     },
                     ssh = forwardsSshAgent,
-                    useInit = true,
+                    useInit = false,
+                    initProcess = new
+                    {
+                        executable = "/sbin/init",
+                    },
                     mounts = inspectedMounts,
                 },
                 status = stringStatus ? (object)state : new { state },
@@ -1441,8 +1612,51 @@ public sealed class AppleContainerWorkspaceIsolationProviderTests
     private static string SnapshotImageReference() =>
         $"{AppleContainerWorkspaceIsolationProvider.ResourceName(WorkspaceId)}-state:latest";
 
-    private static T Success<T>(WorkspaceIsolationResult<T> result) =>
-        Assert.IsType<WorkspaceIsolationResult<T>.Success>(result).Value;
+    private static void AssertGuestProvisioningCommand(
+        AppleContainerCommand command,
+        string resourceName)
+    {
+        Assert.Equal(
+            ["exec", resourceName, "/bin/sh", "-c"],
+            command.Arguments.Take(4),
+            StringComparer.Ordinal);
+        Assert.Contains("cat /proc/1/comm", command.Arguments[4], StringComparison.Ordinal);
+        Assert.Equal("ghostshell-provision", command.Arguments[5]);
+        Assert.Equal("ghostshell", command.Arguments[6]);
+        Assert.Equal("1000", command.Arguments[7]);
+        Assert.Equal("1000", command.Arguments[8]);
+        Assert.Equal("/home/ghostshell", command.Arguments[9]);
+        Assert.Contains("groupadd --system docker", command.Arguments[4], StringComparison.Ordinal);
+        Assert.Contains("usermod -aG docker", command.Arguments[4], StringComparison.Ordinal);
+    }
+
+    private static void AssertGuestValidationCommand(
+        AppleContainerCommand command,
+        string resourceName)
+    {
+        Assert.Equal("exec", command.Arguments[0]);
+        Assert.Contains(
+            command.Arguments.Zip(command.Arguments.Skip(1)),
+            pair => pair.First == "--user" && pair.Second == "1000");
+        Assert.DoesNotContain("--gid", command.Arguments, StringComparer.Ordinal);
+        Assert.Contains("HOME=/home/ghostshell", command.Arguments, StringComparer.Ordinal);
+        Assert.Contains("/home/ghostshell", command.Arguments, StringComparer.Ordinal);
+        Assert.Contains(resourceName, command.Arguments, StringComparer.Ordinal);
+        Assert.Contains(
+            command.Arguments,
+            argument => argument.Contains("sudo -n true", StringComparison.Ordinal));
+    }
+
+    private static T Success<T>(WorkspaceIsolationResult<T> result)
+    {
+        if (result is WorkspaceIsolationResult<T>.Failure failure)
+        {
+            Assert.Fail(
+                $"Workspace isolation failed: {failure.Error.StableCode}: {failure.Error.Message}");
+        }
+
+        return Assert.IsType<WorkspaceIsolationResult<T>.Success>(result).Value;
+    }
 
     private static WorkspaceIsolationError Failure<T>(WorkspaceIsolationResult<T> result) =>
         Assert.IsType<WorkspaceIsolationResult<T>.Failure>(result).Error;

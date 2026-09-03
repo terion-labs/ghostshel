@@ -6,6 +6,7 @@ using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Dock.Avalonia.Controls;
 using Dock.Controls.ProportionalStackPanel;
+using Dock.Model.Controls;
 using Dock.Model.Core;
 using Dock.Model.Inpc.Controls;
 using GhostShell.App.Controls;
@@ -270,6 +271,99 @@ public sealed class RuntimeDockControlHeadlessTests
                 Assert.DoesNotContain(
                     canvas.GetVisualDescendants().OfType<RuntimePanelContentControl>(),
                     host => ReferenceEquals(host.Content, right));
+            }
+            finally
+            {
+                window.Close();
+            }
+
+            return Task.CompletedTask;
+        });
+
+    [Fact]
+    public Task Closing_a_nested_right_column_then_adding_right_leaves_no_gap() =>
+        RunHeadlessAsync(() =>
+        {
+            var tab = NewTab();
+            var upperLeft = Assert.IsType<UnavailableRuntimePanelViewModel>(tab.ActivePanel);
+            var lowerLeft = Panel("nested-gap-lower-left", "Lower left");
+            Assert.True(tab.SplitActivePanel(lowerLeft, PanelSplitOrientation.TopBottom));
+
+            var rightPlaceholder = tab.AddPlaceholder(PanelSide.Right);
+            tab.ReplaceTarget = rightPlaceholder.Id;
+            var upperRight = Panel("nested-gap-upper-right", "Upper right");
+            tab.AddPanel(upperRight);
+            var lowerRight = Panel("nested-gap-lower-right", "Lower right");
+            Assert.True(tab.SplitActivePanel(lowerRight, PanelSplitOrientation.TopBottom));
+            // Dock restores saved proportional containers as non-collapsible.
+            foreach (var dock in EnumerateDockables(tab.DockLayout).OfType<IProportionalDock>())
+            {
+                dock.IsCollapsable = false;
+            }
+
+            var canvas = new RuntimeDockControl
+            {
+                Theme = Assert.IsType<ControlTheme>(
+                    new WorkspaceView().Resources["RuntimeDockControlTheme"]),
+                RuntimeTab = tab,
+                InitializeFactory = true,
+                InitializeLayout = false,
+            };
+            var window = new Window
+            {
+                Width = 1_200,
+                Height = 700,
+                Content = canvas,
+            };
+            foreach (var template in new MainWindow().DataTemplates)
+            {
+                window.DataTemplates.Add(template);
+            }
+
+            window.Show();
+            try
+            {
+                canvas.ApplyTemplate();
+                window.UpdateLayout();
+
+                Assert.True(tab.RemovePanel(lowerRight.Id));
+                Assert.True(tab.RemovePanel(upperRight.Id));
+                var replacementPlaceholder = tab.AddPlaceholder(PanelSide.Right);
+                tab.ReplaceTarget = replacementPlaceholder.Id;
+                var replacementRight = Panel("nested-gap-replacement-right", "Replacement right");
+                tab.AddPanel(replacementRight);
+                window.UpdateLayout();
+
+                var leftHost = PanelHost(canvas, upperLeft);
+                var lowerLeftHost = PanelHost(canvas, lowerLeft);
+                var rightHost = PanelHost(canvas, replacementRight);
+                var leftOrigin = Assert.NotNull(
+                    Avalonia.VisualExtensions.TranslatePoint(leftHost, default, canvas));
+                var lowerLeftOrigin = Assert.NotNull(
+                    Avalonia.VisualExtensions.TranslatePoint(lowerLeftHost, default, canvas));
+                var rightOrigin = Assert.NotNull(
+                    Avalonia.VisualExtensions.TranslatePoint(rightHost, default, canvas));
+                var gap = rightOrigin.X - (leftOrigin.X + leftHost.Bounds.Width);
+                Assert.Equal(
+                    3,
+                    canvas.GetVisualDescendants()
+                        .OfType<RuntimePanelContentControl>()
+                        .Count());
+                Assert.DoesNotContain(
+                    canvas.GetVisualDescendants().OfType<RuntimePanelContentControl>(),
+                    host => ReferenceEquals(host.Content, upperRight)
+                        || ReferenceEquals(host.Content, lowerRight));
+                Assert.InRange(Math.Abs(leftOrigin.X - lowerLeftOrigin.X), 0, 1);
+                Assert.InRange(
+                    Math.Abs(leftHost.Bounds.Width - lowerLeftHost.Bounds.Width),
+                    0,
+                    1);
+                Assert.InRange(gap, 0, 12);
+                Assert.True(leftHost.Bounds.Width > canvas.Bounds.Width * 0.35);
+                Assert.True(rightHost.Bounds.Width > canvas.Bounds.Width * 0.35);
+                Assert.True(
+                    leftHost.Bounds.Width + rightHost.Bounds.Width
+                    >= canvas.Bounds.Width - 32);
             }
             finally
             {

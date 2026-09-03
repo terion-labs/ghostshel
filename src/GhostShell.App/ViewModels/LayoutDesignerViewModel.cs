@@ -44,6 +44,7 @@ public sealed class LayoutDesignerViewModel : ObservableObject
     private DefinitionValidationIssue? _lastOperationIssue;
     private bool _matchesOriginal = true;
     private bool _isProjectionValid = true;
+    private bool _isMutatingTopology;
 
     public LayoutDesignerViewModel(
         LayoutDefinition definition,
@@ -269,16 +270,26 @@ public sealed class LayoutDesignerViewModel : ObservableObject
                 slotId);
         }
 
-        // Removing the leaf rather than the lone document keeps Dock from
-        // leaving an empty "No documents" hole where the panel was.
-        if (document.Owner is IDock { VisibleDockables.Count: 1 } leaf
-            && leaf.Owner is IDock)
+        _isMutatingTopology = true;
+        try
         {
-            _factory.RemoveDockable(leaf, collapse: true);
+            // Removing the leaf rather than the lone document keeps Dock from
+            // leaving an empty "No documents" hole where the panel was.
+            if (document.Owner is IDock { VisibleDockables.Count: 1 } leaf
+                && leaf.Owner is IDock)
+            {
+                _factory.RemoveDockable(leaf, collapse: true);
+            }
+            else
+            {
+                _factory.RemoveDockable(document, collapse: true);
+            }
+
+            DockLayoutTopology.Normalize(_factory, _layout);
         }
-        else
+        finally
         {
-            _factory.RemoveDockable(document, collapse: true);
+            _isMutatingTopology = false;
         }
 
         ForgetSlot(slotId);
@@ -343,6 +354,7 @@ public sealed class LayoutDesignerViewModel : ObservableObject
     {
         _layout = layout;
         _factory.InitModel(layout);
+        DockLayoutTopology.Normalize(_factory, layout);
         if (_workspaceManager is not null)
         {
             _workspaceManager.WorkspaceDirtyChanged -= OnWorkspaceDirtyChanged;
@@ -688,7 +700,10 @@ public sealed class LayoutDesignerViewModel : ObservableObject
     {
         _ = sender;
         _ = eventArgs;
-        RefreshFromLayout();
+        if (!_isMutatingTopology)
+        {
+            RefreshFromLayout();
+        }
     }
 
     private void OnWorkspaceDirtyChanged(
@@ -701,8 +716,11 @@ public sealed class LayoutDesignerViewModel : ObservableObject
             return;
         }
 
-        RefreshFromLayout();
         _workspaceManager?.MarkClean();
+        if (!_isMutatingTopology)
+        {
+            RefreshFromLayout();
+        }
     }
 
     private void PublishState()

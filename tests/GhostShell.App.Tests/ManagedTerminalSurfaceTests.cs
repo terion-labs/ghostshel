@@ -596,7 +596,7 @@ public sealed class ManagedTerminalSurfaceTests
     }
 
     [Fact]
-    public async Task Unsafe_paste_stays_pending_until_explicit_confirmation()
+    public async Task Multiline_paste_is_sent_immediately()
     {
         var sink = new RecordingInputSink
         {
@@ -608,59 +608,13 @@ public sealed class ManagedTerminalSurfaceTests
             Profile = Profile(),
         };
 
-        var first = await surface.PasteTextAsync("first\nsecond");
+        var result = await surface.PasteTextAsync("first\nsecond");
 
-        Assert.True(first.RequiresConfirmation);
-        Assert.True(surface.IsPasteConfirmationVisible);
-        Assert.False(Assert.Single(sink.Pastes).ConfirmedUnsafe);
-
-        var confirmed = await surface.ConfirmPendingPasteAsync();
-
-        Assert.NotNull(confirmed);
-        Assert.True(confirmed.Sent);
-        Assert.False(surface.IsPasteConfirmationVisible);
-        Assert.True(sink.Pastes[1].ConfirmedUnsafe);
-    }
-
-    [Fact]
-    public async Task Paste_confirmation_remains_modal_and_retryable_while_send_is_in_flight()
-    {
-        // This is an Avalonia-thread-affine control. Completing inline keeps the captured UI
-        // continuation on the owning test thread while still exercising the in-flight state.
-        var completion = new TaskCompletionSource<TerminalPasteResult>();
-        var sink = new RecordingInputSink
-        {
-            RequirePasteConfirmation = true,
-            ConfirmedPasteCompletion = completion,
-        };
-        var surface = new ManagedTerminalSurface
-        {
-            InputSink = sink,
-            Profile = Profile(),
-        };
-        surface.UpdateSnapshot(Snapshot(mouseTracking: true, columns: 80, rows: 24));
-        _ = await surface.PasteTextAsync("first\nsecond");
-
-        var confirmation = surface.ConfirmPendingPasteAsync().AsTask();
-
-        Assert.True(surface.IsPasteConfirmationVisible);
-        Assert.Null(await surface.ConfirmPendingPasteAsync());
-        Assert.True(surface.CancelPendingPaste());
-        Assert.True(surface.IsPasteConfirmationVisible);
-        Assert.False(await surface.SubmitKeyAsync(Key.Enter, AvaloniaKeyModifiers.None));
-        Assert.False(await surface.SubmitMouseAsync(
-            TerminalMouseButton.Left,
-            TerminalMouseEventKind.Down,
-            new Point(12, 10),
-            AvaloniaKeyModifiers.None));
-        Assert.Empty(sink.Keys);
-        Assert.Empty(sink.Mouse);
-
-        completion.SetException(new IOException("paste failed"));
-        _ = await Assert.ThrowsAsync<IOException>(() => confirmation);
-        Assert.True(surface.IsPasteConfirmationVisible);
-        Assert.True(surface.CancelPendingPaste());
-        Assert.False(surface.IsPasteConfirmationVisible);
+        Assert.True(result.Sent);
+        Assert.False(result.RequiresConfirmation);
+        var paste = Assert.Single(sink.Pastes);
+        Assert.Equal("first\nsecond", paste.Text);
+        Assert.True(paste.ConfirmedUnsafe);
     }
 
     [Fact]
@@ -1112,14 +1066,8 @@ public sealed class ManagedTerminalSurfaceTests
     {
         var host = new TerminalPresentationHost();
         var managed = Assert.IsType<ManagedTerminalSessionHost>(host.Presentation);
-        var sink = new RecordingInputSink
-        {
-            RequirePasteConfirmation = true,
-        };
+        var sink = new RecordingInputSink();
         managed.Surface.InputSink = sink;
-        _ = await managed.Surface.PasteTextAsync("first\nsecond");
-        Assert.True(host.TryCancelPendingPaste());
-        Assert.False(managed.Surface.IsPasteConfirmationVisible);
 
         managed.Surface.Profile = Profile(linkPolicy: TerminalLinkPolicy.ConfirmBeforeOpen);
         managed.Surface.SetInputReady(true);
@@ -1241,8 +1189,6 @@ public sealed class ManagedTerminalSurfaceTests
 
         public bool RequirePasteConfirmation { get; init; }
 
-        public TaskCompletionSource<TerminalPasteResult>? ConfirmedPasteCompletion { get; init; }
-
         public TerminalSelectionText SelectionText { get; set; } =
             new(string.Empty, false, false);
 
@@ -1339,11 +1285,6 @@ public sealed class ManagedTerminalSurfaceTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             Pastes.Add(pasteInput);
-            if (pasteInput.ConfirmedUnsafe && ConfirmedPasteCompletion is not null)
-            {
-                return new ValueTask<TerminalPasteResult>(ConfirmedPasteCompletion.Task);
-            }
-
             return ValueTask.FromResult(
                 RequirePasteConfirmation && !pasteInput.ConfirmedUnsafe
                     ? TerminalPasteResult.ConfirmationRequired(bracketed: true)

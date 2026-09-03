@@ -198,7 +198,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
     public string DefaultIsolationImageReference { get; }
 
     public string IsolationImageDescription =>
-        $"OCI image used to create this workspace environment. Default on this host: {DefaultIsolationImageReference}. Changing it recreates the environment and removes installed packages and guest-only files.";
+        $"Bootable OCI image used by this workspace environment. It must provide /sbin/init. Default on this host: {DefaultIsolationImageReference}. Changing it recreates the environment and removes installed packages and guest-only files.";
 
     public WorkspaceTerminalMultiplexingOption SelectedTerminalMultiplexing
     {

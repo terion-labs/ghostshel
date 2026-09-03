@@ -343,6 +343,7 @@
       <panelViews:DockerRuntimePanelView
           CloseRequested="OnCloseRuntimePanelClick"
           ConnectionSelected="OnPanelConnectionSelected"
+          DockerInstallGuideRequested="OnDockerInstallGuideRequested"
           InlineShellRequested="OnDockerInlineShellRequested"
           InlineShellTrustHostKeyRequested="OnDockerInlineShellTrustHostKeyRequested"
           NewConnectionRequested="OnPanelNewConnectionRequested"

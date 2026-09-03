@@ -110,6 +110,108 @@ public sealed class RuntimeDockLayoutPersistenceTests
     }
 
     [Fact]
+    public void Closing_a_nested_right_column_then_adding_right_leaves_no_empty_dock()
+    {
+        var tab = NewTab("nested-column-close-reflow");
+        var upperLeft = Panel("nested-column-upper-left");
+        tab.AddPanel(upperLeft);
+        var lowerLeft = tab.SplitWithPlaceholder(
+            upperLeft.Id,
+            PanelSplitOrientation.TopBottom);
+        Assert.NotNull(lowerLeft);
+
+        var upperRight = tab.AddPlaceholder(PanelSide.Right);
+        var lowerRight = tab.SplitWithPlaceholder(
+            upperRight.Id,
+            PanelSplitOrientation.TopBottom);
+        Assert.NotNull(lowerRight);
+        // Dock restores saved proportional containers as non-collapsible.
+        foreach (var dock in Enumerate(tab.DockLayout).OfType<IProportionalDock>())
+        {
+            dock.IsCollapsable = false;
+        }
+
+        var publishedEmptyBranch = false;
+        var publishedRevisionCount = 0;
+        tab.PropertyChanged += (_, eventArgs) =>
+        {
+            if (string.Equals(
+                    eventArgs.PropertyName,
+                    nameof(RuntimeTabViewModel.DockLayoutRevision),
+                    StringComparison.Ordinal))
+            {
+                publishedRevisionCount++;
+                publishedEmptyBranch |= Enumerate(tab.DockLayout)
+                    .OfType<IProportionalDock>()
+                    .Any(dock => !(dock.VisibleDockables ?? [])
+                        .Any(dockable => dockable is not IProportionalDockSplitter));
+            }
+        };
+
+        Assert.True(tab.RemovePanel(lowerRight!.Id));
+        Assert.True(tab.RemovePanel(upperRight.Id));
+        var replacementRight = tab.AddPlaceholder(PanelSide.Right);
+
+        Assert.False(publishedEmptyBranch);
+        Assert.True(publishedRevisionCount >= 3);
+        Assert.DoesNotContain(
+            Enumerate(tab.DockLayout).OfType<IProportionalDock>(),
+            dock => !(dock.VisibleDockables ?? [])
+                .Any(dockable => dockable is not IProportionalDockSplitter));
+        Assert.Equal(
+            [upperLeft.Id, lowerLeft!.Id, replacementRight.Id],
+            Enumerate(tab.DockLayout)
+                .OfType<IDocument>()
+                .Select(document => new PanelInstanceId(document.Id!)));
+        AssertSelectionsBelongToLayout(tab.DockLayout);
+    }
+
+    [Fact]
+    public void Restoring_a_layout_prunes_an_empty_noncollapsible_panel_branch()
+    {
+        var source = NewTab("empty-branch-recovery-source");
+        var upperLeft = Panel("empty-branch-upper-left");
+        source.AddPanel(upperLeft);
+        var lowerLeft = source.SplitWithPlaceholder(
+            upperLeft.Id,
+            PanelSplitOrientation.TopBottom);
+        Assert.NotNull(lowerLeft);
+        var upperRight = source.AddPlaceholder(PanelSide.Right);
+        var lowerRight = source.SplitWithPlaceholder(
+            upperRight.Id,
+            PanelSplitOrientation.TopBottom);
+        Assert.NotNull(lowerRight);
+
+        // Model the stale shape written by builds without topology repair.
+        foreach (var dock in Enumerate(source.DockLayout).OfType<IProportionalDock>())
+        {
+            dock.IsCollapsable = false;
+        }
+
+        RemoveLeafWithoutNormalizing(source, lowerRight!.Id);
+        RemoveLeafWithoutNormalizing(source, upperRight.Id);
+        Assert.Contains(
+            Enumerate(source.DockLayout).OfType<IProportionalDock>(),
+            dock => !(dock.VisibleDockables ?? [])
+                .Any(dockable => dockable is not IProportionalDockSplitter));
+
+        var restored = NewTab(
+            "empty-branch-recovery-target",
+            source.SerializeDockLayout());
+
+        Assert.DoesNotContain(
+            Enumerate(restored.DockLayout).OfType<IProportionalDock>(),
+            dock => !(dock.VisibleDockables ?? [])
+                .Any(dockable => dockable is not IProportionalDockSplitter));
+        Assert.Equal(
+            [upperLeft.Id, lowerLeft!.Id],
+            Enumerate(restored.DockLayout)
+                .OfType<IDocument>()
+                .Select(document => new PanelInstanceId(document.Id!)));
+        AssertSelectionsBelongToLayout(restored.DockLayout);
+    }
+
+    [Fact]
     public void Adding_to_the_workspace_edge_wraps_an_existing_recursive_split()
     {
         var tab = NewTab("nested-edge-add");
@@ -593,6 +695,45 @@ public sealed class RuntimeDockLayoutPersistenceTests
             id,
             "LOCAL",
             "unavailable");
+
+    private static void RemoveLeafWithoutNormalizing(
+        RuntimeTabViewModel tab,
+        PanelInstanceId panelId)
+    {
+        var document = Assert.Single(
+            Enumerate(tab.DockLayout).OfType<IDocument>(),
+            candidate => string.Equals(candidate.Id, panelId.Value, StringComparison.Ordinal));
+        var leaf = Assert.IsAssignableFrom<IDock>(document.Owner);
+        tab.DockFactory.RemoveDockable(leaf, collapse: true);
+    }
+
+    private static void AssertSelectionsBelongToLayout(IRootDock root)
+    {
+        var dockables = Enumerate(root).ToArray();
+        foreach (var dock in dockables.OfType<IDock>())
+        {
+            var children = (dock.VisibleDockables ?? [])
+                .Where(dockable => dockable is not IProportionalDockSplitter)
+                .ToArray();
+            if (children.Length == 0)
+            {
+                Assert.Null(dock.ActiveDockable);
+                Assert.Null(dock.DefaultDockable);
+                continue;
+            }
+
+            Assert.Contains(children, child => ReferenceEquals(child, dock.ActiveDockable));
+            if (dock.DefaultDockable is { } defaultDockable)
+            {
+                Assert.Contains(children, child => ReferenceEquals(child, defaultDockable));
+            }
+        }
+
+        if (root.FocusedDockable is { } focused)
+        {
+            Assert.Contains(dockables, dockable => ReferenceEquals(dockable, focused));
+        }
+    }
 
     private static void SetPaneProportions(
         ProportionalDock dock,

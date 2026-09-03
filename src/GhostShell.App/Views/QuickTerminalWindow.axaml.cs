@@ -331,8 +331,6 @@ public sealed partial class QuickTerminalWindow : Window
             () => QuickTerminalHost.RequestInputFocus(),
             DispatcherPriority.Loaded);
 
-    public bool TryCancelPendingPaste() => QuickTerminalHost.TryCancelPendingPaste();
-
     public bool TryCancelPendingInteraction() =>
         QuickTerminalHost.TryCancelPendingInteraction();
 

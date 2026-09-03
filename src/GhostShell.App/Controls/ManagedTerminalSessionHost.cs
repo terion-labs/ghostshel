@@ -300,8 +300,6 @@ public sealed class ManagedTerminalSessionHost : ContentControl, IManagedTermina
         CancellationToken cancellationToken = default) =>
         _surface.PasteTextAsync(text, cancellationToken);
 
-    public bool TryCancelPendingPaste() => _surface.CancelPendingPaste();
-
     public bool TryCancelPendingInteraction() => _surface.CancelPendingInteraction();
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)

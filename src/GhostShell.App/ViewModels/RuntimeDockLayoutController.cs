@@ -26,6 +26,7 @@ internal sealed class RuntimeDockLayoutController
     private readonly Dictionary<string, RuntimePanelViewModel> _contexts =
         new(StringComparer.Ordinal);
     private bool _isInitializedForPresentation;
+    private bool _isMutatingTopology;
     private int _revision;
 
     public RuntimeDockLayoutController(LayoutDefinition? definition)
@@ -44,6 +45,7 @@ internal sealed class RuntimeDockLayoutController
         // dialog are still transitioning. Native windows belong to the mounted
         // workspace, not to construction of its view model.
         Factory.InitModel(Layout);
+        DockLayoutTopology.Normalize(Factory, Layout);
         _workspaceManager = new DockWorkspaceManager(_serializer);
         _workspaceManager.WorkspaceDirtyChanged += OnWorkspaceDirtyChanged;
         _workspaceManager.TrackLayout(Layout);
@@ -197,10 +199,10 @@ internal sealed class RuntimeDockLayoutController
     /// </summary>
     public IDocument? Detach(PanelInstanceId panelId)
     {
-        var document = Factory.Detach(panelId.Value);
+        IDocument? document = null;
+        MutateTopology(() => document = Factory.Detach(panelId.Value));
         if (document is not null)
         {
-            ExpandSingleChildDocks();
             Changed();
         }
 
@@ -299,41 +301,38 @@ internal sealed class RuntimeDockLayoutController
 
     private void RemoveDocument(IDocument document)
     {
-        // Documents deliberately advertise CanClose=false so Dock chrome cannot
-        // bypass GhostShell's busy-session confirmation. Once that confirmation
-        // has completed, the controller owns the authoritative removal and must
-        // not route through Dock's guarded CloseDockable path.
-        var leaf = document.Owner as IDock;
-        if (leaf is not null
-            && leaf.VisibleDockables?.Count == 1
-            && leaf.Owner is IDock)
+        MutateTopology(() =>
         {
-            Factory.RemoveDockable(leaf, collapse: true);
-        }
-        else
-        {
-            Factory.RemoveDockable(document, collapse: true);
-        }
-
-        ExpandSingleChildDocks();
+            // Documents deliberately advertise CanClose=false so Dock chrome cannot
+            // bypass GhostShell's busy-session confirmation. Once that confirmation
+            // has completed, the controller owns the authoritative removal and must
+            // not route through Dock's guarded CloseDockable path.
+            var leaf = document.Owner as IDock;
+            if (leaf is not null
+                && leaf.VisibleDockables?.Count == 1
+                && leaf.Owner is IDock)
+            {
+                Factory.RemoveDockable(leaf, collapse: true);
+            }
+            else
+            {
+                Factory.RemoveDockable(document, collapse: true);
+            }
+        });
     }
 
-    private void ExpandSingleChildDocks()
+    private void MutateTopology(Action mutation)
     {
-        foreach (var dock in EnumerateDockables(Layout).OfType<IProportionalDock>())
+        var wasMutating = _isMutatingTopology;
+        _isMutatingTopology = true;
+        try
         {
-            var children = (dock.VisibleDockables ?? [])
-                .Where(dockable => dockable is not IProportionalDockSplitter)
-                .ToArray();
-            if (children.Length != 1)
-            {
-                continue;
-            }
-
-            // ProportionalStackPanel normally repairs this during measure. A
-            // close must leave a complete model even when no measure follows.
-            children[0].Proportion = 1d;
-            children[0].CollapsedProportion = 1d;
+            mutation();
+            DockLayoutTopology.Normalize(Factory, Layout);
+        }
+        finally
+        {
+            _isMutatingTopology = wasMutating;
         }
     }
 
@@ -765,7 +764,11 @@ internal sealed class RuntimeDockLayoutController
             return;
         }
 
-        Changed();
+        if (!_isMutatingTopology)
+        {
+            Changed();
+        }
+
         _workspaceManager.MarkClean();
     }
 
@@ -773,7 +776,10 @@ internal sealed class RuntimeDockLayoutController
     {
         _ = sender;
         _ = eventArgs;
-        Changed();
+        if (!_isMutatingTopology)
+        {
+            Changed();
+        }
     }
 
     private void Changed()
@@ -874,7 +880,6 @@ internal sealed class RuntimeDockFactory : Factory
         }
 
         RemoveDockable(document, collapse: true);
-        NotifyLayoutMutated();
         return document;
     }
 

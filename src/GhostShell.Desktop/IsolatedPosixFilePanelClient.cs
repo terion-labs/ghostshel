@@ -35,7 +35,7 @@ internal sealed class IsolatedPosixFilePanelClient : IFilePanelClient
                     | FilePanelCapability.StreamingWrite,
                 MaximumPageSize,
                 MaximumPreviewBytes,
-                StartLocation: Location("/root")),
+                StartLocation: Location("/home/ghostshell")),
         ];
     }
 

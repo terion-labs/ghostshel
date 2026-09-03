@@ -61,6 +61,7 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
         "This shell stays in the Docker panel. Use New tab when you want it beside other work.";
     private string? _issueTitle;
     private string? _issueMessage;
+    private bool _showsDockerInstallHelp;
     private bool _isRefreshing;
     private bool _isLoadingDetail;
     private bool _isResolvingShell;
@@ -422,6 +423,12 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
     {
         get => _issueMessage;
         private set => SetProperty(ref _issueMessage, value);
+    }
+
+    public bool ShowsDockerInstallHelp
+    {
+        get => _showsDockerInstallHelp;
+        private set => SetProperty(ref _showsDockerInstallHelp, value);
     }
 
     public bool IsRefreshing
@@ -801,6 +808,7 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
         IsRefreshing = true;
         IssueTitle = null;
         IssueMessage = null;
+        ShowsDockerInstallHelp = false;
         CancelVolumeUsageLoad();
         _volumeUsageLoaded = false;
         try
@@ -1675,6 +1683,7 @@ public sealed class DockerRuntimePanelViewModel : RuntimePanelViewModel
     {
         IssueTitle = title;
         IssueMessage = error.Message;
+        ShowsDockerInstallHelp = error.Code == DockerErrorCode.RuntimeUnavailable;
         StatusText = error.Retryable ? "Retry available" : "Unavailable";
     }
 

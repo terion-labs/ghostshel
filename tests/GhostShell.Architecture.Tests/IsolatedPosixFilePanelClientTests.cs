@@ -15,8 +15,14 @@ public sealed class IsolatedPosixFilePanelClientTests
             Listing = $"{Convert.ToBase64String(fileName)}\tf\t0\t0\n",
         };
         var client = new IsolatedPosixFilePanelClient(executor);
-        Assert.Equal("Workspace", client.Profiles.Single().Name);
-        var root = client.Profiles.Single().StartLocation!;
+        var profile = Assert.Single(client.Profiles);
+        Assert.Equal("Workspace", profile.Name);
+        var root = profile.StartLocation!;
+        var startPath = Assert.IsType<FilePanelAddress.Hierarchical>(root.Address).Path;
+        Assert.Equal(
+            ["home", "ghostshell"],
+            startPath.Segments.Select(segment => segment.Value),
+            StringComparer.Ordinal);
 
         var listed = await client.ListAsync(
             new FilePanelListRequest(root, 100, null, ShowHidden: true),
@@ -30,7 +36,9 @@ public sealed class IsolatedPosixFilePanelClientTests
         Assert.True(preview.IsSuccess);
         var encodedPath = Assert.IsType<ConnectionBinaryCommand>(executor.LastBinaryCommand)
             .Arguments[3];
-        Assert.Equal([.. Encoding.UTF8.GetBytes("/root/"), .. fileName], Convert.FromBase64String(encodedPath));
+        Assert.Equal(
+            [.. Encoding.UTF8.GetBytes("/home/ghostshell/"), .. fileName],
+            Convert.FromBase64String(encodedPath));
     }
 
     [Fact]
@@ -61,7 +69,9 @@ public sealed class IsolatedPosixFilePanelClientTests
         Assert.True(preview.IsSuccess);
         var encodedPath = Assert.IsType<ConnectionBinaryCommand>(executor.LastBinaryCommand)
             .Arguments[3];
-        Assert.Equal([.. Encoding.UTF8.GetBytes("/root/"), .. fileName], Convert.FromBase64String(encodedPath));
+        Assert.Equal(
+            [.. Encoding.UTF8.GetBytes("/home/ghostshell/"), .. fileName],
+            Convert.FromBase64String(encodedPath));
     }
 
     [Fact]

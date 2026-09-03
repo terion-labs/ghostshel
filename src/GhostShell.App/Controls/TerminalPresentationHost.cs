@@ -254,9 +254,6 @@ public sealed class TerminalPresentationHost : ContentControl
     public ValueTask<string> ReadScreenAsync(CancellationToken cancellationToken = default) =>
         _presentation.ReadScreenAsync(cancellationToken);
 
-    public bool TryCancelPendingPaste() =>
-        _presentation.TryCancelPendingPaste();
-
     public bool TryCancelPendingInteraction() =>
         _presentation.TryCancelPendingInteraction();
 

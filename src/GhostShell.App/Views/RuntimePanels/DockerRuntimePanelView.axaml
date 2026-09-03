@@ -719,7 +719,16 @@
               ActionLabel="Retry"
               ActionCommand="{Binding RefreshCommand}"
               IsVisible="{Binding HasIssue}"
-              AutomationProperties.LiveSetting="Assertive" />
+              AutomationProperties.LiveSetting="Assertive">
+            <Button
+                Name="DockerInstallGuideButton"
+                HorizontalAlignment="Left"
+                Classes="SecondaryButton"
+                Click="OnDockerInstallGuideClick"
+                Content="Install Docker"
+                IsVisible="{Binding ShowsDockerInstallHelp}"
+                AutomationProperties.Name="Open the Docker installation guide" />
+          </controls:StateOverlay>
         </Grid>
       </Grid>
       </Border>

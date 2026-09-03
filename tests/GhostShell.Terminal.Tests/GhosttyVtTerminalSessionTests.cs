@@ -806,6 +806,36 @@ public sealed class GhosttyVtTerminalSessionTests
     }
 
     [Fact]
+    public async Task SoftWrappedWorkspaceIsolatePromptClosesWithoutFalseWorkingWarning()
+    {
+        var harness = await CreateAsync(new TerminalLaunchRequest(
+            Environment.CurrentDirectory,
+            shellActivityFallback: TerminalShellActivityFallback.PromptShape));
+        await using var session = harness.Session;
+        await session.AttachRendererAsync(
+            new NativeRendererHost(
+                "GhostShell.Managed",
+                Handle: 0,
+                new ViewportDescriptor(256, 96, 1, Columns: 32, Rows: 6)),
+            default);
+        const string prompt = "root@Ubuntu-2404-noble-amd64-base ~ # ";
+        await harness.Pty.WriteOutputAsync(prompt);
+        var screen = await WaitForScreenAsync(
+            session,
+            current => current.PlainText.Contains(prompt.TrimEnd(), StringComparison.Ordinal));
+        Assert.True(screen.StructuredRows[0].IsWrapped);
+        Assert.True(screen.CursorRow > 0);
+
+        var snapshot = await session.SnapshotAsync(default);
+
+        Assert.False(snapshot.HasActiveWork);
+        Assert.Equal("waiting at a prompt", snapshot.StatusDetail);
+        Assert.Equal(
+            PanelCloseOutcome.GracefullyClosed,
+            await session.CloseAsync(PanelCloseMode.Graceful, default));
+    }
+
+    [Fact]
     public async Task OrdinaryRunningCommandThatPrintsPromptShapeStillRequiresConfirmation()
     {
         var harness = await CreateAsync();

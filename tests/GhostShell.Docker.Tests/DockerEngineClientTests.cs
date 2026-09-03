@@ -211,6 +211,33 @@ public sealed class DockerEngineClientTests
         Assert.Contains("permission denied", error.Message, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("Error: failed to find target executable docker in container ghostshell-workspace")]
+    [InlineData("Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?")]
+    public async Task UnavailableRuntimeErrorsExplainHowToRecover(string standardError)
+    {
+        var executor = SuccessfulExecutor();
+        executor.Responses["version"] = new ConnectionCommandResult(
+            ConnectionCommandOutcome.Exited,
+            1,
+            string.Empty,
+            standardError);
+        var client = new DockerEngineClient(executor, TimeProvider.System);
+
+        var result = await client.ReadSnapshotAsync(
+            BuiltInConnections.Local,
+            CancellationToken.None);
+
+        var error = Assert.IsType<DockerResult<DockerEngineSnapshot>.Failure>(result).Error;
+        Assert.Equal(DockerErrorCode.RuntimeUnavailable, error.Code);
+        Assert.Equal(
+            "Docker is not installed in this environment, or its daemon is not running. "
+            + "Install or start Docker, then retry.",
+            error.Message);
+        Assert.True(error.Retryable);
+        Assert.DoesNotContain("target executable", error.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task StructurallyInvalidJsonReturnsAnInvalidResponse()
     {

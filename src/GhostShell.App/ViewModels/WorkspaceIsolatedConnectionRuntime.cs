@@ -330,7 +330,8 @@ internal sealed class WorkspaceIsolatedConnectionRuntime :
                 ConnectionRuntimeErrorCode.InvalidProfile,
             WorkspaceIsolationErrorCode.UnsupportedConnectionKind
                 or WorkspaceIsolationErrorCode.ExecutableMappingUnavailable
-                or WorkspaceIsolationErrorCode.SshHostKeyTrustUnavailable =>
+                or WorkspaceIsolationErrorCode.SshHostKeyTrustUnavailable
+                or WorkspaceIsolationErrorCode.ImageNotBootable =>
                 ConnectionRuntimeErrorCode.UnsupportedPlatform,
             WorkspaceIsolationErrorCode.HostCredentialBrokerUnavailable =>
                 ConnectionRuntimeErrorCode.AuthenticationRequired,

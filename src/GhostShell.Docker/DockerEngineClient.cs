@@ -16,6 +16,9 @@ public sealed class DockerEngineClient(
     IConnectionCommandExecutor executor,
     TimeProvider timeProvider) : IDockerEngineClient
 {
+    private const string RuntimeUnavailableMessage =
+        "Docker is not installed in this environment, or its daemon is not running. "
+        + "Install or start Docker, then retry.";
     private const int ListOutputLimit = 16 * 1024 * 1024;
     private const int InspectOutputLimit = 2 * 1024 * 1024;
     private const int LogOutputLimit = 16 * 1024 * 1024;
@@ -1008,8 +1011,8 @@ public sealed class DockerEngineClient(
         {
             ConnectionCommandOutcome.StartFailed => new DockerError(
                 DockerErrorCode.RuntimeUnavailable,
-                "Docker is not installed or cannot be started on this target.",
-                false),
+                RuntimeUnavailableMessage,
+                true),
             ConnectionCommandOutcome.ConnectionFailed => new DockerError(
                 DockerErrorCode.ConnectionFailed,
                 "Ghostshell could not connect to this target.",
@@ -1021,6 +1024,10 @@ public sealed class DockerEngineClient(
             ConnectionCommandOutcome.Cancelled => new DockerError(
                 DockerErrorCode.Cancelled,
                 "The Docker operation was cancelled.",
+                true),
+            _ when IsRuntimeUnavailableFailure(result.StandardError) => new DockerError(
+                DockerErrorCode.RuntimeUnavailable,
+                RuntimeUnavailableMessage,
                 true),
             _ => new DockerError(
                 DockerErrorCode.CommandFailed,
@@ -1033,8 +1040,8 @@ public sealed class DockerEngineClient(
         {
             ConnectionCommandOutcome.StartFailed => new DockerError(
                 DockerErrorCode.RuntimeUnavailable,
-                "Docker is not installed or cannot be started on this target.",
-                false),
+                RuntimeUnavailableMessage,
+                true),
             ConnectionCommandOutcome.ConnectionFailed => new DockerError(
                 DockerErrorCode.ConnectionFailed,
                 "Ghostshell could not connect to this target.",
@@ -1046,6 +1053,10 @@ public sealed class DockerEngineClient(
             ConnectionCommandOutcome.Cancelled => new DockerError(
                 DockerErrorCode.Cancelled,
                 "The Docker operation was cancelled.",
+                true),
+            _ when IsRuntimeUnavailableFailure(result.StandardError) => new DockerError(
+                DockerErrorCode.RuntimeUnavailable,
+                RuntimeUnavailableMessage,
                 true),
             _ => new DockerError(
                 DockerErrorCode.CommandFailed,
@@ -1058,8 +1069,8 @@ public sealed class DockerEngineClient(
         {
             ConnectionCommandOutcome.StartFailed => new DockerError(
                 DockerErrorCode.RuntimeUnavailable,
-                "Docker is not installed or cannot be started on this target.",
-                false),
+                RuntimeUnavailableMessage,
+                true),
             ConnectionCommandOutcome.ConnectionFailed => new DockerError(
                 DockerErrorCode.ConnectionFailed,
                 "Ghostshell could not connect to this target.",
@@ -1071,6 +1082,10 @@ public sealed class DockerEngineClient(
             ConnectionCommandOutcome.Cancelled => new DockerError(
                 DockerErrorCode.Cancelled,
                 "The Docker operation was cancelled.",
+                true),
+            _ when IsRuntimeUnavailableFailure(result.StandardError) => new DockerError(
+                DockerErrorCode.RuntimeUnavailable,
+                RuntimeUnavailableMessage,
                 true),
             _ => new DockerError(
                 DockerErrorCode.CommandFailed,
@@ -1445,6 +1460,23 @@ public sealed class DockerEngineClient(
             ? message
             : $"{message[..maximumLength]}…";
     }
+
+    private static bool IsRuntimeUnavailableFailure(string standardError) =>
+        standardError.Contains(
+            "failed to find target executable docker",
+            StringComparison.OrdinalIgnoreCase)
+        || standardError.Contains(
+            "docker: command not found",
+            StringComparison.OrdinalIgnoreCase)
+        || standardError.Contains(
+            "command not found: docker",
+            StringComparison.OrdinalIgnoreCase)
+        || standardError.Contains(
+            "cannot connect to the docker daemon",
+            StringComparison.OrdinalIgnoreCase)
+        || standardError.Contains(
+            "is the docker daemon running",
+            StringComparison.OrdinalIgnoreCase);
 
     private static DockerResult<T> Unsupported<T>() =>
         new DockerResult<T>.Failure(new DockerError(

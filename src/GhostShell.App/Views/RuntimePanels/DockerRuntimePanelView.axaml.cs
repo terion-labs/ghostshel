@@ -95,7 +95,15 @@ public sealed partial class DockerRuntimePanelView : UserControl
 
     public event EventHandler<TerminalRuntimePanelViewModel>? InlineShellTrustHostKeyRequested;
 
+    public event EventHandler<RoutedEventArgs>? DockerInstallGuideRequested;
+
     private DockerRuntimePanelViewModel? ViewModel => DataContext as DockerRuntimePanelViewModel;
+
+    private void OnDockerInstallGuideClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        DockerInstallGuideRequested?.Invoke(this, e);
+    }
 
     private void OnDataContextChanged(object? sender, EventArgs e)
     {

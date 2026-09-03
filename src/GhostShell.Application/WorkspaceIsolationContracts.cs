@@ -577,6 +577,7 @@ public enum WorkspaceIsolationErrorCode
     ExecutableMappingUnavailable = 11,
     PersistentEnvironmentResetRequired = 12,
     SshHostKeyTrustUnavailable = 13,
+    ImageNotBootable = 14,
 }
 
 public enum WorkspaceIsolationRecoveryAction
@@ -634,11 +635,14 @@ public sealed record WorkspaceIsolationError(
             New(code, "workspace_isolation_executable_unmapped", "The host executable has no equivalent inside the workspace isolate.", false,
                 WorkspaceIsolationRecoveryAction.DisableIsolation),
         WorkspaceIsolationErrorCode.PersistentEnvironmentResetRequired =>
-            New(code, "workspace_isolation_reset_required", "The saved isolation settings do not match this workspace's existing persistent environment. Reset it with the platform runtime before reopening; resetting removes installed packages.", false,
+            New(code, "workspace_isolation_reset_required", "The existing workspace environment uses an older or different isolation configuration. Use Recreate environment in workspace settings; recreating removes installed packages and guest-only files, but not host-mounted files.", false,
                 WorkspaceIsolationRecoveryAction.ResetPersistentEnvironment),
         WorkspaceIsolationErrorCode.SshHostKeyTrustUnavailable =>
             New(code, "workspace_isolation_ssh_trust_unavailable", "Verified SSH is unavailable until host-key inspection and trust storage run inside the workspace isolate.", false,
                 WorkspaceIsolationRecoveryAction.DisableIsolation),
+        WorkspaceIsolationErrorCode.ImageNotBootable =>
+            New(code, "workspace_isolation_image_not_bootable", "The selected OCI image cannot boot as a workspace environment. It must provide /sbin/init and support a normal Linux boot.", false,
+                WorkspaceIsolationRecoveryAction.None),
         _ => throw new ArgumentOutOfRangeException(nameof(code), code, null),
     };
 

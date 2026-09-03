@@ -870,13 +870,7 @@ internal sealed partial class GhosttyVtTerminalSession : ITerminalPanelSession
         try
         {
             var snapshot = BuildScreenSnapshotUnsafe(BuildRenderFrameUnsafe());
-            return !RemoteTerminalIdleClassifier.IsAtShellPrompt(
-                snapshot.PlainText,
-                snapshot.CursorRow,
-                snapshot.CursorColumn,
-                snapshot.IsAlternateScreen,
-                snapshot.IsBracketedPasteEnabled,
-                snapshot.IsMouseTrackingEnabled);
+            return !RemoteTerminalIdleClassifier.IsAtShellPrompt(snapshot);
         }
         catch
         {

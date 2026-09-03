@@ -1,3 +1,4 @@
+using System.Text;
 using GhostShell.Application;
 
 namespace GhostShell.Terminal;
@@ -21,15 +22,9 @@ internal static class RemoteTerminalIdleClassifier
                || launch.ShellActivityFallback == TerminalShellActivityFallback.PromptShape;
     }
 
-    public static bool IsAtShellPrompt(
-        string screen,
-        int cursorRow,
-        int cursorColumn,
-        bool isAlternateScreen,
-        bool isBracketedPasteEnabled,
-        bool isMouseTrackingEnabled)
+    public static bool IsAtShellPrompt(TerminalScreenSnapshot snapshot)
     {
-        ArgumentNullException.ThrowIfNull(screen);
+        ArgumentNullException.ThrowIfNull(snapshot);
         // The alternate screen and mouse tracking mean something has taken the
         // terminal over, which is the opposite of sitting at a prompt.
         //
@@ -39,24 +34,15 @@ internal static class RemoteTerminalIdleClassifier
         // It is evidence of a shell waiting for input, not of a program using
         // the screen — and a program using the screen still has to fail the
         // prompt shape below to be called idle.
-        _ = isBracketedPasteEnabled;
-        if (isAlternateScreen
-            || isMouseTrackingEnabled
-            || cursorColumn <= 0)
+        _ = snapshot.IsBracketedPasteEnabled;
+        if (snapshot.IsAlternateScreen
+            || snapshot.IsMouseTrackingEnabled
+            || snapshot.CursorColumn <= 0)
         {
             return false;
         }
 
-        var lines = screen.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
-        var line = cursorRow >= 0 && cursorRow < lines.Length
-            ? lines[cursorRow]
-            : lines.LastOrDefault(candidate => candidate.Length > 0);
-        if (string.IsNullOrEmpty(line))
-        {
-            return false;
-        }
-
-        var cursorText = line[..Math.Min(cursorColumn, line.Length)].TrimEnd();
+        var cursorText = ReadLogicalCursorLine(snapshot).TrimEnd();
         if (cursorText.Length == 0)
         {
             return false;
@@ -82,6 +68,55 @@ internal static class RemoteTerminalIdleClassifier
                 || prefix.EndsWith(']'),
             _ => false,
         };
+    }
+
+    private static string ReadLogicalCursorLine(TerminalScreenSnapshot snapshot)
+    {
+        if (snapshot.CursorRow >= snapshot.StructuredRows.Count)
+        {
+            return string.Empty;
+        }
+
+        var firstRow = snapshot.CursorRow;
+        while (firstRow > 0 && snapshot.StructuredRows[firstRow - 1].IsWrapped)
+        {
+            firstRow--;
+        }
+
+        var text = new StringBuilder(
+            checked(((snapshot.CursorRow - firstRow) * snapshot.Columns) + snapshot.CursorColumn));
+        for (var rowIndex = firstRow; rowIndex <= snapshot.CursorRow; rowIndex++)
+        {
+            var columnLimit = rowIndex == snapshot.CursorRow
+                ? snapshot.CursorColumn
+                : snapshot.Columns;
+            AppendTextThroughColumn(text, snapshot.StructuredRows[rowIndex], columnLimit);
+        }
+
+        return text.ToString();
+    }
+
+    private static void AppendTextThroughColumn(
+        StringBuilder text,
+        TerminalScreenRow row,
+        int columnLimit)
+    {
+        var column = 0;
+        foreach (var cell in row.Cells)
+        {
+            if (cell.Width == 0)
+            {
+                continue;
+            }
+
+            if (column >= columnLimit)
+            {
+                break;
+            }
+
+            text.Append(cell.Text.Length == 0 ? ' ' : cell.Text);
+            column += cell.Width;
+        }
     }
 
     private static bool HasHostPathPrefix(string prefix)

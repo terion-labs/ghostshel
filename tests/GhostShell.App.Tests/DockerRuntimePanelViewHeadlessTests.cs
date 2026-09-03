@@ -385,6 +385,56 @@ public sealed class DockerRuntimePanelViewHeadlessTests
         });
 
     [Fact]
+    public Task RuntimeUnavailableStateOffersDockerInstallationGuide() =>
+        RunHeadlessAsync(async () =>
+        {
+            var client = new PagedLogDockerClient
+            {
+                SnapshotError = new DockerError(
+                    DockerErrorCode.RuntimeUnavailable,
+                    "Docker is not installed in this environment, or its daemon is not running.",
+                    true),
+            };
+            using var panel = new DockerRuntimePanelViewModel(
+                PanelInstanceId.New(),
+                "Docker",
+                client,
+                BuiltInConnections.Local);
+            await panel.Initialization;
+
+            var view = new DockerRuntimePanelView
+            {
+                DataContext = panel,
+            };
+            var window = new Window
+            {
+                Width = 1_200,
+                Height = 700,
+                Content = view,
+            };
+
+            try
+            {
+                var requested = false;
+                view.DockerInstallGuideRequested += (_, _) => requested = true;
+                window.Show();
+                window.UpdateLayout();
+
+                var button = view.FindControl<Button>("DockerInstallGuideButton");
+                Assert.NotNull(button);
+                Assert.True(button.IsEffectivelyVisible);
+                Assert.Equal("Install Docker", button.Content);
+
+                button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.True(requested);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+    [Fact]
     public Task DetailTabsCollapseFromTheDetailHeaderWidth() =>
         RunHeadlessAsync(async () =>
         {
@@ -676,6 +726,8 @@ public sealed class DockerRuntimePanelViewHeadlessTests
 
         public List<(string ContainerId, DockerContainerAction Action)> ContainerActions { get; } = [];
 
+        public DockerError? SnapshotError { get; init; }
+
         public TaskCompletionSource<IReadOnlyList<DockerVolumeUsage>>? VolumeUsageCompletion
         {
             get;
@@ -684,8 +736,15 @@ public sealed class DockerRuntimePanelViewHeadlessTests
 
         public ValueTask<DockerResult<DockerEngineSnapshot>> ReadSnapshotAsync(
             ConnectionProfile connection,
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult<DockerResult<DockerEngineSnapshot>>(
+            CancellationToken cancellationToken)
+        {
+            if (SnapshotError is not null)
+            {
+                return ValueTask.FromResult<DockerResult<DockerEngineSnapshot>>(
+                    new DockerResult<DockerEngineSnapshot>.Failure(SnapshotError));
+            }
+
+            return ValueTask.FromResult<DockerResult<DockerEngineSnapshot>>(
                 new DockerResult<DockerEngineSnapshot>.Success(new DockerEngineSnapshot(
                     new DockerEngineSummary("29.4.0", "linux", "arm64", "1.52"),
                     [new DockerContainerSummary(
@@ -720,6 +779,7 @@ public sealed class DockerRuntimePanelViewHeadlessTests
                         "local",
                         "today")],
                     DateTimeOffset.UtcNow)));
+        }
 
         public async ValueTask<DockerResult<IReadOnlyList<DockerVolumeUsage>>> ReadVolumeUsageAsync(
             ConnectionProfile connection,

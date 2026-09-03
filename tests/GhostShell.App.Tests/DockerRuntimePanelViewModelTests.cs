@@ -553,6 +553,25 @@ public sealed class DockerRuntimePanelViewModelTests
         Assert.Equal("Docker unavailable", panel.IssueTitle);
         Assert.Equal("SSH target is offline.", panel.IssueMessage);
         Assert.Equal("Retry available", panel.StatusText);
+        Assert.False(panel.ShowsDockerInstallHelp);
+    }
+
+    [Fact]
+    public async Task RuntimeUnavailableFailureOffersDockerInstallationHelp()
+    {
+        var client = new FakeDockerEngineClient(new DockerError(
+            DockerErrorCode.RuntimeUnavailable,
+            "Docker is not installed in this environment, or its daemon is not running.",
+            true));
+        using var panel = new DockerRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            "Docker",
+            client,
+            BuiltInConnections.Local);
+
+        await panel.Initialization;
+
+        Assert.True(panel.ShowsDockerInstallHelp);
     }
 
     private static DockerEngineSnapshot Snapshot() => new(
