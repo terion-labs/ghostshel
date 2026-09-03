@@ -77,6 +77,12 @@
                     IsActive="{Binding IsWorkspaceSettingsVisible}"
                     Label="Workspaces &amp; screens" />
                 <components:ShellNavigationItem
+                    AutomationName="Networking settings"
+                    Click="OnNetworkingSettingsClick"
+                    Icon="Globe"
+                    IsActive="{Binding IsNetworkingSettingsVisible}"
+                    Label="Networking" />
+                <components:ShellNavigationItem
                     AutomationName="Keybinding settings"
                     Click="OnKeybindingSettingsClick"
                     Icon="Keyboard"
@@ -157,6 +163,13 @@
                 ResetRequested="OnAppearanceResetRequested"
                 ResetTerminalPaletteRequested="OnAppearanceResetTerminalPaletteRequested"
                 SelectTerminalPaletteRequested="OnSelectTerminalPaletteClick" />
+
+            <Grid
+                x:Name="NetworkingSettingsPage"
+                IsVisible="{Binding IsNetworkingSettingsVisible}">
+              <settingsPages:NetworkingSettingsPageView
+                  DataContext="{Binding NetworkSettings}" />
+            </Grid>
 
             <StackPanel Spacing="{DynamicResource ShellSpaceXl}" IsVisible="{Binding IsWorkspaceSettingsVisible}">
               <Grid ColumnDefinitions="*,Auto">

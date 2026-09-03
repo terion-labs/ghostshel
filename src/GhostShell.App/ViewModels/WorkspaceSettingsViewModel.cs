@@ -364,7 +364,13 @@ public sealed class WorkspaceSettingsViewModel : ObservableObject, IDisposable
                 _activeIsolationImageReference(definition.Id)
                 ?? definition.IsolationImageReference
                 ?? _defaultIsolationImageReference,
-            defaultIsolationImageReference: _defaultIsolationImageReference);
+            defaultIsolationImageReference: _defaultIsolationImageReference,
+            networkConnections:
+                [.. snapshot.NetworkConnections.Select(item => item.Value)],
+            applicationNetworkSettings: snapshot.ApplicationNetworkSettings
+                .SingleOrDefault(item =>
+                    item.Value.Id == ApplicationNetworkSettings.DefaultId)?.Value
+                ?? ApplicationNetworkSettings.Default);
         editor.SetPeers([.. snapshot.Workspaces.Select(item => item.Value)]);
         return editor;
     }

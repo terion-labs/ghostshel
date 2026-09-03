@@ -128,6 +128,9 @@ public sealed partial class MainWindow
     private void OnWorkspaceSettingsClick(object? sender, RoutedEventArgs e) =>
         SetSettingsPage(SettingsPage.Workspaces);
 
+    private void OnNetworkingSettingsClick(object? sender, RoutedEventArgs e) =>
+        SetSettingsPage(SettingsPage.Networking);
+
     private void OnInstallWorkspaceIsolationRuntimeClick(
         object? sender,
         RoutedEventArgs e)

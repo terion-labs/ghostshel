@@ -1,0 +1,350 @@
+<UserControl
+    x:Class="GhostShell.App.Views.SettingsPages.NetworkingSettingsPageView"
+    x:DataType="vm:NetworkSettingsViewModel"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:GhostShell.App.ViewModels"
+    xmlns:components="using:GhostShell.App.Views.Components"
+    xmlns:controls="using:GhostShell.App.Controls"
+    xmlns:icons="using:FluentIcons.Avalonia">
+  <StackPanel Spacing="{DynamicResource ShellSpaceXl}">
+    <components:SettingsPageHeader
+        Heading="Networking"
+        Description="Route application and workspace traffic through reusable proxy or VPN connections." />
+
+    <controls:SettingsGroup
+        Heading="Application default"
+        Description="Workspaces inherit this policy unless they define their own connection list and route.">
+      <StackPanel Margin="{controls:Inset Lg}" Spacing="{DynamicResource ShellSpaceMd}">
+        <controls:SettingRow
+            Label="Use a network connection"
+            Description="Off connects directly while keeping the selected connection for later.">
+          <ToggleSwitch
+              HorizontalAlignment="Right"
+              IsChecked="{Binding Policy.IsEnabled, Mode=TwoWay}"
+              IsEnabled="{Binding Policy.CanEnable}"
+              AutomationProperties.Name="Use an application network connection" />
+        </controls:SettingRow>
+        <controls:SettingRow
+            Label="Active connection"
+            Description="The connection used by application traffic and by workspaces that inherit this policy.">
+          <ComboBox
+              Width="320"
+              ItemsSource="{Binding Policy.AvailableConnections}"
+              SelectedItem="{Binding Policy.SelectedConnection, Mode=TwoWay}"
+              IsEnabled="{Binding Policy.HasAvailableConnections}"
+              AutomationProperties.Name="Application network connection">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:NetworkPolicyConnectionOptionViewModel">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                  <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Grid.Column="1" Classes="Eyebrow" Text="{Binding KindLabel}" />
+                </Grid>
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+        </controls:SettingRow>
+        <controls:SettingRow
+            Label="Kill switch"
+            Description="Block traffic when the selected connection cannot be established. Never fall back to direct networking.">
+          <ToggleSwitch
+              HorizontalAlignment="Right"
+              IsChecked="{Binding Policy.KillSwitchEnabled, Mode=TwoWay}"
+              AutomationProperties.Name="Application network kill switch" />
+        </controls:SettingRow>
+
+        <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
+          <TextBlock Classes="SectionHeading" Text="Connections available to this policy" />
+          <TextBlock
+              Classes="Muted"
+              FontSize="{DynamicResource ShellFontSize10}"
+              Text="Choose every connection that can be selected from the window networking control."
+              TextWrapping="Wrap" />
+          <ItemsControl ItemsSource="{Binding Policy.Connections}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:NetworkPolicyConnectionOptionViewModel">
+                <controls:SurfaceCard
+                    Margin="{controls:Inset Bottom=Sm}"
+                    Padding="{DynamicResource ShellCardPaddingCompact}">
+                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                    <ToggleSwitch
+                        VerticalAlignment="Center"
+                        IsChecked="{Binding IsAvailable, Mode=TwoWay}"
+                        AutomationProperties.Name="{Binding Name, StringFormat=Make {0} available}" />
+                    <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
+                      <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
+                      <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Summary}" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <controls:StatusChip
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        Classes.Warning="{Binding IsMissing}"
+                        Content="{Binding KindLabel}" />
+                  </Grid>
+                </controls:SurfaceCard>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <controls:Callout
+              Tone="Notice"
+              ShowsGlyph="False"
+              Text="Create a proxy or VPN connection below before enabling routed networking."
+              IsVisible="{Binding Policy.HasNoConnections}" />
+          <controls:Callout
+              Tone="Notice"
+              Text="Remove unavailable connections from this policy before saving."
+              IsVisible="{Binding Policy.HasMissingConnections}" />
+        </StackPanel>
+
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+          <TextBlock
+              VerticalAlignment="Center"
+              Classes="Muted"
+              FontSize="{DynamicResource ShellFontSize10}"
+              Text="{Binding Policy.Summary}" />
+          <Button
+              Grid.Column="1"
+              Classes="PrimaryButton"
+              Click="OnSavePolicyClick"
+              Content="Save application networking"
+              IsEnabled="{Binding Policy.CanSave}" />
+        </Grid>
+      </StackPanel>
+    </controls:SettingsGroup>
+
+    <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+        <components:SectionHeader
+            Heading="Network connections"
+            Description="Saved proxy and VPN definitions. Credentials stay in the operating-system vault." />
+        <Button
+            Grid.Column="1"
+            VerticalAlignment="Center"
+            Classes="PrimaryButton"
+            Click="OnAddProfileClick"
+            Content="New connection" />
+      </Grid>
+
+      <controls:Callout
+          Tone="Notice"
+          ShowsGlyph="False"
+          Text="No network connections are saved. Create one to route traffic through a proxy or VPN."
+          IsVisible="{Binding HasNoProfiles}" />
+
+      <ItemsControl ItemsSource="{Binding Profiles}" IsVisible="{Binding HasProfiles}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:NetworkConnectionProfileItemViewModel">
+            <controls:SurfaceCard
+                Margin="{controls:Inset Bottom=Sm}"
+                Padding="{DynamicResource ShellCardPaddingCompact}">
+              <controls:ListItem Title="{Binding Name}" Detail="{Binding Summary}">
+                <controls:ListItem.Leading>
+                  <controls:IdentityTile
+                      TileSize="Small"
+                      Tint="{DynamicResource ShellAccentSoftBrush}"
+                      Foreground="{DynamicResource ShellTextBrush}"
+                      Symbol="Globe" />
+                </controls:ListItem.Leading>
+                <controls:ListItem.Trailing>
+                  <StackPanel Orientation="Horizontal" Spacing="{DynamicResource ShellSpaceSm}">
+                    <controls:StatusChip Shape="Rounded" Tone="Default" Content="{Binding KindLabel}" />
+                    <Button Classes="SecondaryButton" Click="OnEditProfileClick" Content="Edit" />
+                    <Button
+                        Classes="IconButton Danger"
+                        Click="OnDeleteProfileClick"
+                        ToolTip.Tip="Delete network connection"
+                        AutomationProperties.Name="{Binding Name, StringFormat=Delete {0}}">
+                      <icons:SymbolIcon Symbol="Delete" FontSize="13" />
+                    </Button>
+                  </StackPanel>
+                </controls:ListItem.Trailing>
+              </controls:ListItem>
+            </controls:SurfaceCard>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+
+    <controls:SurfaceCard IsVisible="{Binding HasProfileEditor}">
+      <StackPanel
+          x:DataType="vm:NetworkConnectionProfileEditorViewModel"
+          DataContext="{Binding ProfileEditor}"
+          Spacing="{DynamicResource ShellSpaceMd}">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
+          <components:SectionHeader
+              Heading="Connection configuration"
+              Description="Credential values are stored in the operating-system vault and are never written into this connection definition." />
+          <controls:StatusChip
+              Grid.Column="1"
+              VerticalAlignment="Top"
+              Classes.Warning="{Binding !IsValid}"
+              Content="{Binding StatusLabel}" />
+        </Grid>
+
+        <controls:Callout
+            Tone="Notice"
+            Text="{Binding ValidationMessage}"
+            Classes.Warning="{Binding HasValidationError}"
+            IsVisible="{Binding HasValidationError}" />
+
+        <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+          <controls:LabeledField Label="Name">
+            <TextBox Text="{Binding Name, Mode=TwoWay}" PlaceholderText="Office VPN" />
+          </controls:LabeledField>
+          <controls:LabeledField Grid.Column="1" Label="Type">
+            <ComboBox ItemsSource="{Binding KindOptions}" SelectedItem="{Binding SelectedKind, Mode=TwoWay}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:NetworkConnectionKindOption">
+                  <TextBlock Text="{Binding DisplayName}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </controls:LabeledField>
+        </Grid>
+
+        <StackPanel Spacing="{DynamicResource ShellSpaceMd}" IsVisible="{Binding IsProxy}">
+          <Grid ColumnDefinitions="*,2*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+            <controls:LabeledField Label="Protocol">
+              <ComboBox ItemsSource="{Binding ProxyProtocolOptions}" SelectedItem="{Binding SelectedProxyProtocol, Mode=TwoWay}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:NetworkProxyProtocolOption">
+                    <TextBlock Text="{Binding DisplayName}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </controls:LabeledField>
+            <controls:LabeledField Grid.Column="1" Label="Host">
+              <TextBox Text="{Binding Host, Mode=TwoWay}" PlaceholderText="proxy.example.com" />
+            </controls:LabeledField>
+            <controls:LabeledField Grid.Column="2" Label="Port">
+              <TextBox Text="{Binding Port, Mode=TwoWay}" PlaceholderText="1080" />
+            </controls:LabeledField>
+          </Grid>
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+            <controls:LabeledField Label="Username" Hint="Optional. Required when a password credential is set.">
+              <TextBox Text="{Binding Username, Mode=TwoWay}" />
+            </controls:LabeledField>
+            <controls:SettingRow
+                Grid.Column="1"
+                Label="Password credential"
+                Description="Choose Proxy password below to store or replace it.">
+              <controls:StatusChip Shape="Rounded" Tone="Default" Content="{Binding PasswordCredentialState}" />
+            </controls:SettingRow>
+          </Grid>
+        </StackPanel>
+
+        <controls:SettingRow
+            Label="{Binding ConfigurationSecretLabel}"
+            Description="Choose the matching configuration type below to store or replace it."
+            IsVisible="{Binding IsConfigurationFileVpn}">
+          <controls:StatusChip Shape="Rounded" Tone="Default" Content="{Binding ConfigurationCredentialState}" />
+        </controls:SettingRow>
+
+        <StackPanel Spacing="{DynamicResource ShellSpaceMd}" IsVisible="{Binding IsAnyConnect}">
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+            <controls:LabeledField Label="Gateway" Hint="Absolute HTTPS URL.">
+              <TextBox Text="{Binding Gateway, Mode=TwoWay}" PlaceholderText="https://vpn.example.com" />
+            </controls:LabeledField>
+            <controls:LabeledField Grid.Column="1" Label="Authentication group" Hint="Optional gateway group.">
+              <TextBox Text="{Binding AuthenticationGroup, Mode=TwoWay}" />
+            </controls:LabeledField>
+          </Grid>
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+            <controls:LabeledField Label="Username" Hint="Optional.">
+              <TextBox Text="{Binding Username, Mode=TwoWay}" />
+            </controls:LabeledField>
+            <controls:SettingRow
+                Grid.Column="1"
+                Label="Password credential"
+                Description="Choose AnyConnect password below to store or replace it.">
+              <controls:StatusChip Shape="Rounded" Tone="Default" Content="{Binding PasswordCredentialState}" />
+            </controls:SettingRow>
+          </Grid>
+          <controls:SettingRow
+              Label="Client certificate"
+              Description="Choose Client certificate below to store or replace it.">
+            <controls:StatusChip Shape="Rounded" Tone="Default" Content="{Binding ClientCertificateCredentialState}" />
+          </controls:SettingRow>
+        </StackPanel>
+
+        <StackPanel Spacing="{DynamicResource ShellSpaceMd}" IsVisible="{Binding IsTailscale}">
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+            <controls:LabeledField Label="Exit node">
+              <TextBox Text="{Binding ExitNode, Mode=TwoWay}" PlaceholderText="exit-node-name" />
+            </controls:LabeledField>
+            <controls:LabeledField Grid.Column="1" Label="Control server" Hint="Optional HTTPS URL for Headscale or another control server.">
+              <TextBox Text="{Binding ControlServer, Mode=TwoWay}" PlaceholderText="https://headscale.example.com" />
+            </controls:LabeledField>
+          </Grid>
+          <controls:SettingRow
+              Label="Auth key"
+              Description="Choose Tailscale auth key below to store or replace it.">
+            <controls:StatusChip Shape="Rounded" Tone="Default" Content="{Binding AuthKeyCredentialState}" />
+          </controls:SettingRow>
+        </StackPanel>
+
+        <controls:SurfaceCard Tone="Sunken" Padding="{DynamicResource ShellCardPaddingCompact}">
+          <StackPanel
+              x:DataType="vm:NetworkCredentialDraftViewModel"
+              DataContext="{Binding Credential}"
+              Spacing="{DynamicResource ShellSpaceMd}">
+            <components:SectionHeader
+                Heading="Store a credential"
+                Description="Paste a password, client configuration, certificate, or auth key. Saving the connection stores it in the operating-system credential vault. A configured credential is retained until its replacement is saved." />
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+              <controls:LabeledField Label="Credential type">
+                <ComboBox ItemsSource="{Binding Targets}" SelectedItem="{Binding SelectedTarget, Mode=TwoWay}">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:NetworkCredentialTargetOption">
+                      <TextBlock Text="{Binding DisplayName}" />
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </controls:LabeledField>
+              <controls:LabeledField Grid.Column="1" Label="Label" Hint="Shown in Security &amp; secrets.">
+                <TextBox Text="{Binding Label, Mode=TwoWay}" PlaceholderText="Office VPN credential" />
+              </controls:LabeledField>
+            </Grid>
+            <controls:LabeledField Label="Secret value" Hint="This value is cleared from the form after it is added to the connection draft.">
+              <TextBox
+                  AcceptsReturn="True"
+                  MinHeight="88"
+                  PasswordChar="●"
+                  Text="{Binding Value, Mode=TwoWay}"
+                  TextWrapping="NoWrap" />
+            </controls:LabeledField>
+            <Button
+                HorizontalAlignment="Left"
+                Classes="SecondaryButton"
+                Click="OnStoreCredentialClick"
+                Content="Store credential"
+                IsEnabled="{Binding CanStore}" />
+          </StackPanel>
+        </controls:SurfaceCard>
+
+        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+          <TextBlock
+              VerticalAlignment="Center"
+              Classes="Muted"
+              FontSize="{DynamicResource ShellFontSize10}"
+              Text="Configured means the connection has a credential binding; it does not guarantee the credential is available on this computer."
+              TextWrapping="Wrap" />
+          <Button Grid.Column="1" Classes="SecondaryButton" Click="OnCancelProfileClick" Content="Cancel" />
+          <Button
+              Grid.Column="2"
+              Classes="PrimaryButton"
+              Click="OnSaveProfileClick"
+              Content="Save connection"
+              IsEnabled="{Binding CanSave}" />
+        </Grid>
+      </StackPanel>
+    </controls:SurfaceCard>
+
+    <controls:Callout
+        Tone="Notice"
+        ShowsGlyph="False"
+        Text="{Binding OperationStatus}"
+        Classes.Warning="{Binding HasError}"
+        IsVisible="{Binding HasOperationStatus}" />
+  </StackPanel>
+</UserControl>

@@ -272,6 +272,111 @@
             </controls:SettingRow>
           </controls:SettingsGroup>
 
+          <controls:SettingsGroup
+              Heading="Networking"
+              Description="Inherit application networking or give this workspace its own connection list, active route, and kill switch."
+              ControlWidth="470">
+            <controls:SettingRow
+                Label="Override application networking"
+                Description="Off follows the application default. On stores a complete policy for this workspace.">
+              <ToggleSwitch
+                  HorizontalAlignment="Right"
+                  IsChecked="{Binding OverridesNetworkSettings, Mode=TwoWay}"
+                  AutomationProperties.Name="Override application networking for this workspace" />
+            </controls:SettingRow>
+            <controls:SettingRow
+                Label="Inherited route"
+                Description="{Binding InheritedNetworkSummary}"
+                IsVisible="{Binding !OverridesNetworkSettings}">
+              <controls:StatusChip Shape="Rounded" Tone="Default" Content="Application default" />
+            </controls:SettingRow>
+            <controls:SettingRow
+                Label="Use a network connection"
+                Description="Off connects this workspace directly while keeping its selected connection for later."
+                IsVisible="{Binding OverridesNetworkSettings}">
+              <ToggleSwitch
+                  HorizontalAlignment="Right"
+                  IsChecked="{Binding NetworkPolicy.IsEnabled, Mode=TwoWay}"
+                  IsEnabled="{Binding NetworkPolicy.CanEnable}"
+                  AutomationProperties.Name="Use a workspace network connection" />
+            </controls:SettingRow>
+            <controls:SettingRow
+                Label="Active connection"
+                Description="The route used by every panel and connection opened in this workspace."
+                IsVisible="{Binding OverridesNetworkSettings}">
+              <ComboBox
+                  Width="470"
+                  ItemsSource="{Binding NetworkPolicy.AvailableConnections}"
+                  SelectedItem="{Binding NetworkPolicy.SelectedConnection, Mode=TwoWay}"
+                  IsEnabled="{Binding NetworkPolicy.HasAvailableConnections}"
+                  AutomationProperties.Name="Workspace network connection">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:NetworkPolicyConnectionOptionViewModel">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                      <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Grid.Column="1" Classes="Eyebrow" Text="{Binding KindLabel}" />
+                    </Grid>
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </controls:SettingRow>
+            <controls:SettingRow
+                Label="Kill switch"
+                Description="Block traffic if this workspace's selected connection cannot be established. Never fall back to direct networking."
+                IsVisible="{Binding OverridesNetworkSettings}">
+              <ToggleSwitch
+                  HorizontalAlignment="Right"
+                  IsChecked="{Binding NetworkPolicy.KillSwitchEnabled, Mode=TwoWay}"
+                  AutomationProperties.Name="Workspace network kill switch" />
+            </controls:SettingRow>
+            <controls:SettingRow
+                Label="Available connections"
+                Description="Choose every connection that can be selected for this workspace."
+                IsVisible="{Binding OverridesNetworkSettings}">
+              <StackPanel Width="470" Spacing="{DynamicResource ShellSpaceSm}">
+                <ItemsControl ItemsSource="{Binding NetworkPolicy.Connections}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:NetworkPolicyConnectionOptionViewModel">
+                      <Border
+                          Margin="{controls:Inset Bottom=Sm}"
+                          Padding="{DynamicResource ShellCardPaddingCompact}"
+                          Background="{DynamicResource ShellSurfaceRaisedBrush}"
+                          BorderBrush="{DynamicResource ShellBorderBrush}"
+                          BorderThickness="1"
+                          CornerRadius="{DynamicResource ShellInnerCornerRadius}">
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
+                          <CheckBox
+                              VerticalAlignment="Center"
+                              IsChecked="{Binding IsAvailable, Mode=TwoWay}"
+                              AutomationProperties.Name="{Binding Name, StringFormat=Make {0} available in this workspace}" />
+                          <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
+                            <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
+                            <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Summary}" TextWrapping="Wrap" />
+                          </StackPanel>
+                          <controls:StatusChip
+                              Grid.Column="2"
+                              VerticalAlignment="Center"
+                              Classes.Warning="{Binding IsMissing}"
+                              Content="{Binding KindLabel}" />
+                        </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock
+                    Classes="Muted"
+                    FontSize="{DynamicResource ShellFontSize9}"
+                    Text="No network connections are saved. Create one in Settings > Networking."
+                    TextWrapping="Wrap"
+                    IsVisible="{Binding NetworkPolicy.HasNoConnections}" />
+                <controls:Callout
+                    Tone="Notice"
+                    Text="Remove unavailable connections before saving this workspace."
+                    IsVisible="{Binding NetworkPolicy.HasMissingConnections}" />
+              </StackPanel>
+            </controls:SettingRow>
+          </controls:SettingsGroup>
+
           <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
             <components:SectionHeader
                 Heading="Tabs"

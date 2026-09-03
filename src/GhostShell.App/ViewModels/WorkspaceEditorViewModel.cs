@@ -16,6 +16,8 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
     private readonly WorkspaceDefinition _original;
     private readonly IReadOnlyDictionary<ScreenId, ScreenDefinition> _screens;
     private readonly IReadOnlyList<AiProviderProfileDescriptor>? _aiProviders;
+    private readonly IReadOnlyList<NetworkConnectionProfile> _networkConnections;
+    private readonly ApplicationNetworkSettings _applicationNetworkSettings;
     private readonly ObservableCollection<WorkspaceEntryEditorViewModel> _entries = [];
     private readonly ReadOnlyObservableCollection<WorkspaceEntryEditorViewModel> _readOnlyEntries;
     private readonly ObservableCollection<WorkspaceIsolationMountEditorViewModel> _isolationMounts = [];
@@ -29,6 +31,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
     private bool _autoSave;
     private bool _isIsolated;
     private bool _runAgentInIsolation;
+    private bool _overridesNetworkSettings;
     private string _isolationImageReference;
     private readonly string _initialIsolationImageReference;
     private WorkspaceTerminalMultiplexingOption _selectedTerminalMultiplexing;
@@ -88,7 +91,9 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         bool isIsolationAvailable = true,
         string? isolationRuntimeDisplayName = null,
         string? effectiveIsolationImageReference = null,
-        string defaultIsolationImageReference = WorkspaceIsolationImages.Default)
+        string defaultIsolationImageReference = WorkspaceIsolationImages.Default,
+        IReadOnlyList<NetworkConnectionProfile>? networkConnections = null,
+        ApplicationNetworkSettings? applicationNetworkSettings = null)
     {
         _original = workspace ?? throw new ArgumentNullException(nameof(workspace));
         _isIsolationAvailable = isIsolationAvailable;
@@ -108,6 +113,10 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         _autoSave = workspace.AutoSave;
         _isIsolated = workspace.IsIsolated;
         _runAgentInIsolation = workspace.RunAgentInIsolation;
+        _overridesNetworkSettings = workspace.NetworkOverride is not null;
+        _networkConnections = networkConnections ?? [];
+        _applicationNetworkSettings = applicationNetworkSettings
+            ?? ApplicationNetworkSettings.Default;
         DefaultIsolationImageReference = string.IsNullOrWhiteSpace(defaultIsolationImageReference)
             ? throw new ArgumentException(
                 "A default isolation image reference is required.",
@@ -123,6 +132,10 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
             workspace.AgentPolicyOverride,
             AgentProvidersFor(workspace.RunAgentInIsolation));
         AgentPolicy.Changed += OnAgentPolicyChanged;
+        NetworkPolicy = new NetworkPolicyEditorViewModel(
+            _networkConnections,
+            workspace.NetworkOverride ?? _applicationNetworkSettings.Policy);
+        NetworkPolicy.Changed += OnNetworkPolicyChanged;
         TerminalMultiplexingOptions =
         [
             new(null, "Use application setting"),
@@ -194,6 +207,23 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
     public IReadOnlyList<WorkspaceBrowserProfileOption> BrowserProfileOptions { get; }
 
     public SavedScreenAgentPolicyEditorViewModel AgentPolicy { get; private set; }
+
+    public NetworkPolicyEditorViewModel NetworkPolicy { get; private set; }
+
+    public bool OverridesNetworkSettings
+    {
+        get => _overridesNetworkSettings;
+        set
+        {
+            if (SetProperty(ref _overridesNetworkSettings, value))
+            {
+                Changed();
+            }
+        }
+    }
+
+    public string InheritedNetworkSummary =>
+        NetworkPolicySummary(_applicationNetworkSettings.Policy);
 
     public string DefaultIsolationImageReference { get; }
 
@@ -822,6 +852,8 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         var browserProfile = BrowserProfileOptions.Single(option =>
             option.Mode == _original.BrowserProfileOverride);
         var browserProfileChanged = _selectedBrowserProfile != browserProfile;
+        var networkOverrideChanged =
+            _overridesNetworkSettings != (_original.NetworkOverride is not null);
         _name = _original.Name;
         _description = description;
         _accent = accent;
@@ -833,6 +865,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         _isolationImageReference = isolationImage;
         _selectedTerminalMultiplexing = multiplexing;
         _selectedBrowserProfile = browserProfile;
+        _overridesNetworkSettings = _original.NetworkOverride is not null;
         if (nameChanged)
         {
             OnPropertyChanged(nameof(Name));
@@ -902,6 +935,11 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(SelectedBrowserProfile));
         }
 
+        if (networkOverrideChanged)
+        {
+            OnPropertyChanged(nameof(OverridesNetworkSettings));
+        }
+
         AgentPolicy.Changed -= OnAgentPolicyChanged;
         AgentPolicy.Dispose();
         AgentPolicy = new SavedScreenAgentPolicyEditorViewModel(
@@ -909,6 +947,14 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
             AgentProvidersFor(_original.RunAgentInIsolation));
         AgentPolicy.Changed += OnAgentPolicyChanged;
         OnPropertyChanged(nameof(AgentPolicy));
+
+        NetworkPolicy.Changed -= OnNetworkPolicyChanged;
+        NetworkPolicy.Dispose();
+        NetworkPolicy = new NetworkPolicyEditorViewModel(
+            _networkConnections,
+            _original.NetworkOverride ?? _applicationNetworkSettings.Policy);
+        NetworkPolicy.Changed += OnNetworkPolicyChanged;
+        OnPropertyChanged(nameof(NetworkPolicy));
 
         RestoreEntries();
         RestoreIsolationMounts();
@@ -944,6 +990,8 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         ClearIsolationMounts();
         AgentPolicy.Changed -= OnAgentPolicyChanged;
         AgentPolicy.Dispose();
+        NetworkPolicy.Changed -= OnNetworkPolicyChanged;
+        NetworkPolicy.Dispose();
         _disposed = true;
     }
 
@@ -1011,7 +1059,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
             ? _original.IsolationImageReference
             : IsolationImageReference,
         RunAgentInIsolation,
-        _original.NetworkOverride);
+        OverridesNetworkSettings ? NetworkPolicy.CreatePolicy() : null);
 
     private IReadOnlyList<DefinitionValidationIssue> Validate()
     {
@@ -1022,6 +1070,17 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
                 new(
                     DefinitionValidationCode.InvalidAgentPolicy,
                     "Choose an enabled AI provider and a valid default model for this workspace.",
+                    Id.Value),
+            ];
+        }
+
+        if (OverridesNetworkSettings && !NetworkPolicy.IsValid)
+        {
+            return
+            [
+                new(
+                    DefinitionValidationCode.InvalidEntry,
+                    "Remove missing network connections and choose an available route.",
                     Id.Value),
             ];
         }
@@ -1092,6 +1151,13 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
     }
 
     private void OnAgentPolicyChanged(object? sender, EventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        Changed();
+    }
+
+    private void OnNetworkPolicyChanged(object? sender, EventArgs e)
     {
         _ = sender;
         _ = e;
@@ -1232,6 +1298,19 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsolationMountCount));
         OnPropertyChanged(nameof(HasNoIsolationMounts));
         OnPropertyChanged(nameof(CanAddIsolationMount));
+    }
+
+    private string NetworkPolicySummary(NetworkPolicy policy)
+    {
+        if (!policy.IsEnabled || policy.SelectedConnectionId is not { } selectedId)
+        {
+            return "The application default connects directly.";
+        }
+
+        var profile = _networkConnections.SingleOrDefault(item => item.Id == selectedId);
+        return profile is null
+            ? "The application default points to an unavailable connection."
+            : $"The application default uses {profile.Name}.";
     }
 
     private static IReadOnlyList<ScreenConnectionOption> BuildConnectionOptions(

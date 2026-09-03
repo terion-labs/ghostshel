@@ -131,6 +131,8 @@ public sealed partial class SettingsView : UserControl
 
     public event EventHandler<RoutedEventArgs>? McpSettingsRequested;
 
+    public event EventHandler<RoutedEventArgs>? NetworkingSettingsRequested;
+
     public event EventHandler<RoutedEventArgs>? OpenThirdPartyNoticesRequested;
 
     public event EventHandler<RoutedEventArgs>? QuickTerminalSettingsRequested;
@@ -609,6 +611,9 @@ public sealed partial class SettingsView : UserControl
 
     private void OnWorkspaceSettingsClick(object? sender, RoutedEventArgs e) =>
         WorkspaceSettingsRequested?.Invoke(sender, e);
+
+    private void OnNetworkingSettingsClick(object? sender, RoutedEventArgs e) =>
+        NetworkingSettingsRequested?.Invoke(sender, e);
 
     private void OnWorkspaceIsolationChanged(object? sender, RoutedEventArgs e) =>
         WorkspaceIsolationChangedRequested?.Invoke(sender, e);

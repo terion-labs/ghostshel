@@ -54,6 +54,7 @@ public sealed class SettingsViewContractTests
                 "OnKeybindingProfileSelectionChanged",
             ["KeybindingSettingsRequested"] = "OnKeybindingSettingsClick",
             ["McpSettingsRequested"] = "OnMcpSettingsClick",
+            ["NetworkingSettingsRequested"] = "OnNetworkingSettingsClick",
             ["OpenThirdPartyNoticesRequested"] = "OnOpenThirdPartyNoticesClick",
             ["QuickTerminalSettingsRequested"] = "OnQuickTerminalSettingsClick",
             ["RecordKeybindingPrefixRequested"] = "OnRecordKeybindingPrefixClick",
@@ -122,6 +123,31 @@ public sealed class SettingsViewContractTests
                     extractedName,
                     StringComparison.Ordinal));
         }
+    }
+
+    [Fact]
+    public void Networking_settings_keep_secret_references_out_of_user_editors()
+    {
+        var root = LoadSettingsPage("NetworkingSettingsPageView");
+        var attributes = root.Descendants().Attributes().ToArray();
+
+        Assert.DoesNotContain(
+            attributes,
+            attribute => attribute.Value.Contains(
+                "SecretReference",
+                StringComparison.Ordinal));
+        Assert.Contains(
+            attributes,
+            attribute => string.Equals(
+                attribute.Value,
+                "{Binding ConfigurationCredentialState}",
+                StringComparison.Ordinal));
+        Assert.Contains(
+            attributes,
+            attribute => string.Equals(
+                attribute.Value,
+                "{Binding PasswordCredentialState}",
+                StringComparison.Ordinal));
     }
 
     [Fact]
@@ -349,6 +375,20 @@ public sealed class SettingsViewContractTests
         Assert.Equal(
             "OnQuickTerminalSettingsSaveRequested",
             AttributeValue(quickTerminalPage, "SaveRequested"));
+
+        var networkingPage = FindNamedElement(root, "NetworkingSettingsPage");
+        Assert.Equal(
+            "{Binding IsNetworkingSettingsVisible}",
+            AttributeValue(networkingPage, "IsVisible"));
+        var networkingSettings = Assert.Single(
+            networkingPage.Elements(),
+            element => string.Equals(
+                element.Name.LocalName,
+                "NetworkingSettingsPageView",
+                StringComparison.Ordinal));
+        Assert.Equal(
+            "{Binding NetworkSettings}",
+            AttributeValue(networkingSettings, "DataContext"));
 
         var pageHeaders = root.Descendants()
             .Where(element => string.Equals(element.Name.LocalName, "SettingsPageHeader", StringComparison.Ordinal))
