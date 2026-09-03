@@ -27,7 +27,43 @@ public sealed class WorkspaceSettingsViewModelTests
         Assert.Contains(editor.ConnectionOptions, option => option.Id == ConnectionId);
         Assert.Contains(editor.LayoutOptions, option => option.Id == LayoutId);
         Assert.Contains(editor.ScreenOptions, option => option.Id == ScreenId);
+        Assert.Equal([WorkspaceMount], editor.CreateSaveRequest().Definition.IsolationMounts);
         Assert.True(viewModel.HasEditor);
+    }
+
+    [Fact]
+    public void Open_workspace_projects_an_editable_isolation_configuration()
+    {
+        var fixture = CreateCatalog(Snapshot());
+        using var viewModel = new WorkspaceSettingsViewModel(
+            fixture.Catalog,
+            isWorkspaceOpen: key => key == WorkspaceMountOwnerKey);
+
+        Assert.True(viewModel.TryBeginEdit(WorkspaceId, out _, out _));
+
+        var editor = Assert.IsType<WorkspaceEditorViewModel>(viewModel.Editor);
+        Assert.True(editor.CanToggleIsolation);
+        Assert.True(editor.CanAddIsolationMount);
+        Assert.Equal([WorkspaceMount], editor.CreateSaveRequest().Definition.IsolationMounts);
+    }
+
+    [Fact]
+    public void Missing_runtime_name_is_projected_into_the_workspace_editor()
+    {
+        var fixture = CreateCatalog(Snapshot());
+        using var viewModel = new WorkspaceSettingsViewModel(
+            fixture.Catalog,
+            isIsolationAvailable: false,
+            isolationRuntimeDisplayName: "Apple container");
+
+        Assert.True(viewModel.TryBeginCreate(out _, out _));
+
+        var editor = Assert.IsType<WorkspaceEditorViewModel>(viewModel.Editor);
+        Assert.True(editor.CanInstallIsolationRuntime);
+        Assert.Equal(
+            "Install Apple container to enable isolation",
+            editor.IsolationRuntimeRequirementLabel);
+        Assert.Equal("Install Apple container\u2026", editor.InstallIsolationRuntimeLabel);
     }
 
     [Fact]
@@ -102,6 +138,89 @@ public sealed class WorkspaceSettingsViewModelTests
     }
 
     [Fact]
+    public async Task Open_workspace_rejects_a_request_that_changes_host_mounts()
+    {
+        var fixture = CreateCatalog(Snapshot());
+        using var viewModel = new WorkspaceSettingsViewModel(
+            fixture.Catalog,
+            isWorkspaceOpen: key => key == WorkspaceMountOwnerKey);
+        Assert.True(viewModel.TryBeginEdit(WorkspaceId, out _, out _));
+        var current = viewModel.Editor!.CreateSaveRequest();
+        var changedMount = new WorkspaceIsolationMountDefinition(
+            Path.Combine(Path.GetTempPath(), "ghostshell-settings", "changed"),
+            "/changed",
+            IsReadOnly: true);
+        var changed = current with
+        {
+            Definition = CopyWithIsolationMounts(current.Definition, [changedMount]),
+        };
+
+        var result = await viewModel.SaveAsync(changed, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(DefinitionStoreErrorCode.InvalidDefinition, result.Error?.Code);
+        Assert.Contains("Close this workspace", result.Error?.Message, StringComparison.Ordinal);
+        Assert.Null(fixture.Proxy.LastSavedWorkspace);
+        Assert.NotNull(viewModel.Editor);
+    }
+
+    [Fact]
+    public async Task Open_workspace_can_save_changes_outside_the_isolation_boundary()
+    {
+        var fixture = CreateCatalog(Snapshot());
+        using var viewModel = new WorkspaceSettingsViewModel(
+            fixture.Catalog,
+            isWorkspaceOpen: key => key == WorkspaceMountOwnerKey);
+        Assert.True(viewModel.TryBeginEdit(WorkspaceId, out _, out _));
+        viewModel.Editor!.Name = "Renamed while open";
+
+        var result = await viewModel.SaveAsync(CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.Message);
+        Assert.Equal("Renamed while open", fixture.Proxy.LastSavedWorkspace?.Name);
+        Assert.Equal([WorkspaceMount], fixture.Proxy.LastSavedWorkspace?.IsolationMounts);
+    }
+
+    [Fact]
+    public async Task Cold_configuration_save_blocks_a_runtime_reservation_until_persistence_finishes()
+    {
+        var fixture = CreateCatalog(Snapshot());
+        fixture.Proxy.BlockSave = true;
+        var occupancy = new WorkspaceDefinitionOccupancy();
+        using var viewModel = new WorkspaceSettingsViewModel(
+            fixture.Catalog,
+            workspaceDefinitionOccupancy: occupancy);
+        Assert.True(viewModel.TryBeginEdit(WorkspaceId, out _, out _));
+        var current = viewModel.Editor!.CreateSaveRequest();
+        var changedMount = WorkspaceMount with { GuestPath = "/changed" };
+        var changed = current with
+        {
+            Definition = CopyWithIsolationMounts(
+                current.Definition,
+                [changedMount]),
+        };
+
+        var saving = viewModel.SaveAsync(changed, CancellationToken.None).AsTask();
+        await fixture.Proxy.SaveEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var windowId = new WindowInstanceId("settings-race-window");
+        var runtimeId = new WorkspaceInstanceId("settings-race-runtime");
+        Assert.False(occupancy.TryRegisterRuntime(
+            windowId,
+            runtimeId,
+            WorkspaceMountOwnerKey));
+
+        fixture.Proxy.AllowSave.TrySetResult(true);
+        var result = await saving;
+        Assert.True(result.IsSuccess, result.Error?.Message);
+        Assert.True(occupancy.TryRegisterRuntime(
+            windowId,
+            runtimeId,
+            WorkspaceMountOwnerKey));
+        occupancy.Unregister(windowId, runtimeId);
+    }
+
+    [Fact]
     public async Task Create_normalizes_the_name_and_uses_a_null_revision()
     {
         var fixture = CreateCatalog(Snapshot());
@@ -114,6 +233,67 @@ public sealed class WorkspaceSettingsViewModelTests
         Assert.Null(fixture.Proxy.LastSavedWorkspace?.Accent);
         Assert.False(fixture.Proxy.LastSavedWorkspace?.HasExplicitAccent);
         Assert.Null(fixture.Proxy.LastExpectedRevision);
+    }
+
+    [Fact]
+    public async Task Isolation_list_toggle_preserves_mounts_and_definition_fields()
+    {
+        var fixture = CreateCatalog(Snapshot());
+        var stored = fixture.Proxy.CurrentSnapshot.Workspaces.Single();
+        using var viewModel = new WorkspaceSettingsViewModel(fixture.Catalog);
+
+        var result = await viewModel.SetIsolationAsync(
+            WorkspaceId,
+            isIsolated: false,
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.Message);
+        Assert.False(fixture.Proxy.LastSavedWorkspace?.IsIsolated);
+        Assert.Equal([WorkspaceMount], fixture.Proxy.LastSavedWorkspace?.IsolationMounts);
+        Assert.Equal(stored.Value.Name, fixture.Proxy.LastSavedWorkspace?.Name);
+        Assert.Equal(stored.Revision, fixture.Proxy.LastExpectedRevision);
+    }
+
+    [Fact]
+    public async Task Isolation_list_toggle_rejects_an_open_workspace()
+    {
+        var fixture = CreateCatalog(Snapshot());
+        using var viewModel = new WorkspaceSettingsViewModel(
+            fixture.Catalog,
+            isWorkspaceOpen: key => key == WorkspaceMountOwnerKey);
+
+        var result = await viewModel.SetIsolationAsync(
+            WorkspaceId,
+            isIsolated: false,
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("Close this workspace", result.Error?.Message, StringComparison.Ordinal);
+        Assert.Null(fixture.Proxy.LastSavedWorkspace);
+    }
+
+    [Fact]
+    public async Task Isolation_list_toggle_requires_an_available_runtime_when_enabling()
+    {
+        var snapshot = Snapshot();
+        var stored = snapshot.Workspaces.Single();
+        var unisolated = CopyWithIsolation(stored.Value, isIsolated: false);
+        var fixture = CreateCatalog(snapshot with
+        {
+            Workspaces = [Store(unisolated, stored.Revision)],
+        });
+        using var viewModel = new WorkspaceSettingsViewModel(
+            fixture.Catalog,
+            isIsolationAvailable: false);
+
+        var result = await viewModel.SetIsolationAsync(
+            WorkspaceId,
+            isIsolated: true,
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("Install", result.Error?.Message, StringComparison.Ordinal);
+        Assert.Null(fixture.Proxy.LastSavedWorkspace);
     }
 
     [Fact]
@@ -143,6 +323,8 @@ public sealed class WorkspaceSettingsViewModelTests
 
         Assert.True(result is { IsSuccess: true });
         Assert.True(fixture.Proxy.LastSavedWorkspace?.AgentPanelPinned);
+        Assert.True(fixture.Proxy.LastSavedWorkspace?.IsIsolated);
+        Assert.Equal([WorkspaceMount], fixture.Proxy.LastSavedWorkspace?.IsolationMounts);
         Assert.Equal(stored.Value.Name, fixture.Proxy.LastSavedWorkspace?.Name);
         Assert.Equal(stored.Revision, fixture.Proxy.LastExpectedRevision);
     }
@@ -167,6 +349,13 @@ public sealed class WorkspaceSettingsViewModelTests
     private static readonly ConnectionId ConnectionId = new("connection.settings-owner");
     private static readonly LayoutId LayoutId = new("layout.settings-owner");
     private static readonly ScreenId ScreenId = new("screen.settings-owner");
+    private static readonly DefinitionKey WorkspaceMountOwnerKey = new(
+        WorkspaceDefinition.Kind,
+        WorkspaceId.Value);
+    private static readonly WorkspaceIsolationMountDefinition WorkspaceMount = new(
+        Path.Combine(Path.GetTempPath(), "ghostshell-settings", "workspace"),
+        "/workspace",
+        IsReadOnly: false);
 
     private static bool IsDisposed(WorkspaceEditorViewModel editor) =>
         (bool)typeof(WorkspaceEditorViewModel)
@@ -208,7 +397,9 @@ public sealed class WorkspaceSettingsViewModelTests
             "Operations",
             "Production workspace",
             ThemePreference.BronzeFallback.ToString(),
-            []);
+            [],
+            isIsolated: true,
+            isolationMounts: [WorkspaceMount]);
         return DefinitionCatalogSnapshot.Empty with
         {
             Connections = [Store(connection, 3)],
@@ -217,6 +408,48 @@ public sealed class WorkspaceSettingsViewModelTests
             Workspaces = [Store(workspace, WorkspaceRevision)],
         };
     }
+
+    private static WorkspaceDefinition CopyWithIsolationMounts(
+        WorkspaceDefinition current,
+        IReadOnlyList<WorkspaceIsolationMountDefinition> isolationMounts) =>
+        new(
+            current.Id,
+            current.SchemaVersion,
+            current.Name,
+            current.Description,
+            current.Accent,
+            current.Entries,
+            current.AgentPolicyOverride,
+            current.Icon,
+            current.AutoSave,
+            current.Color,
+            current.AgentPanelPinned,
+            current.TerminalMultiplexingOverride,
+            current.BrowserProfileOverride,
+            current.HasExplicitAccent,
+            current.IsIsolated,
+            isolationMounts);
+
+    private static WorkspaceDefinition CopyWithIsolation(
+        WorkspaceDefinition current,
+        bool isIsolated) =>
+        new(
+            current.Id,
+            current.SchemaVersion,
+            current.Name,
+            current.Description,
+            current.Accent,
+            current.Entries,
+            current.AgentPolicyOverride,
+            current.Icon,
+            current.AutoSave,
+            current.Color,
+            current.AgentPanelPinned,
+            current.TerminalMultiplexingOverride,
+            current.BrowserProfileOverride,
+            current.HasExplicitAccent,
+            isIsolated,
+            current.IsolationMounts);
 
     private static StoredDefinition<T> Store<T>(T value, long revision)
         where T : IDurableDefinition =>
@@ -241,6 +474,14 @@ public sealed class WorkspaceSettingsViewModelTests
 
         public bool RejectSave { get; set; }
 
+        public bool BlockSave { get; set; }
+
+        public TaskCompletionSource<bool> SaveEntered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource<bool> AllowSave { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         public WorkspaceDefinition? LastSavedWorkspace { get; private set; }
 
         public long? LastExpectedRevision { get; private set; }
@@ -254,31 +495,37 @@ public sealed class WorkspaceSettingsViewModelTests
                 "get_Snapshot" => CurrentSnapshot,
                 nameof(IDefinitionCatalog.SaveWorkspaceAsync) => SaveWorkspace(
                     (WorkspaceDefinition)args[0]!,
-                    (long?)args[1]),
+                    (long?)args[1],
+                    (CancellationToken)args[2]!),
                 "add_Changed" or "remove_Changed" => null,
                 _ => throw new NotSupportedException(targetMethod.Name),
             };
         }
 
-        private ValueTask<DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>>
+        private async ValueTask<DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>>
             SaveWorkspace(
                 WorkspaceDefinition definition,
-                long? expectedRevision)
+                long? expectedRevision,
+                CancellationToken cancellationToken)
         {
             LastSavedWorkspace = definition;
             LastExpectedRevision = expectedRevision;
-            if (RejectSave)
+            SaveEntered.TrySetResult(true);
+            if (BlockSave)
             {
-                return ValueTask.FromResult(
-                    DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>.Failure(new(
-                        DefinitionStoreErrorCode.RevisionConflict,
-                        "The workspace changed before it could be saved.",
-                        (expectedRevision ?? 0) + 1)));
+                await AllowSave.Task.WaitAsync(cancellationToken);
             }
 
-            return ValueTask.FromResult(
-                DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>.Success(
-                    Store(definition, (expectedRevision ?? 0) + 1)));
+            if (RejectSave)
+            {
+                return DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>.Failure(new(
+                    DefinitionStoreErrorCode.RevisionConflict,
+                    "The workspace changed before it could be saved.",
+                    (expectedRevision ?? 0) + 1));
+            }
+
+            return DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>.Success(
+                Store(definition, (expectedRevision ?? 0) + 1));
         }
     }
 }

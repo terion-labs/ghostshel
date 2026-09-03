@@ -5,7 +5,12 @@ public sealed class WorkspaceDefinitionTests
     [Fact]
     public void Moving_an_entry_changes_order_without_changing_identity()
     {
-        var workspace = CreateWorkspace(
+        var isolationMount = new WorkspaceIsolationMountDefinition(
+            Path.Combine(Path.GetTempPath(), "ghostshell-move"),
+            "/workspace",
+            IsReadOnly: true);
+        var workspace = CreateIsolatedWorkspace(
+            [isolationMount],
             new WorkspaceEntry.ConnectionReference(
                 new WorkspaceEntryId("connection-entry"),
                 new ConnectionId("production")),
@@ -21,6 +26,111 @@ public sealed class WorkspaceDefinitionTests
             reordered.Entries.Select(entry => entry.Id.Value), StringComparer.Ordinal);
         Assert.Equal(workspace.Id, reordered.Id);
         Assert.Equal(workspace.Icon, reordered.Icon);
+        Assert.True(reordered.IsIsolated);
+        Assert.Equal([isolationMount], reordered.IsolationMounts);
+    }
+
+    [Fact]
+    public void Validator_rejects_a_relative_isolation_mount_host_path()
+    {
+        var workspace = CreateIsolatedWorkspace(
+            [new("relative/project", "/workspace", IsReadOnly: true)]);
+
+        var result = WorkspaceValidator.Validate(workspace);
+
+        Assert.Contains(
+            result.Issues,
+            issue => issue.Code == DefinitionValidationCode.InvalidEntry
+                && issue.Message.Contains("absolute host path", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("workspace")]
+    [InlineData("/")]
+    [InlineData("/workspace/../secrets")]
+    [InlineData("/workspace/./nested")]
+    [InlineData("/workspace\0secrets")]
+    [InlineData("/proc")]
+    [InlineData("//proc")]
+    [InlineData("/bin")]
+    [InlineData("/bin/sh")]
+    [InlineData("/sbin")]
+    [InlineData("/usr")]
+    [InlineData("/usr/bin")]
+    [InlineData("/lib")]
+    [InlineData("/etc")]
+    [InlineData("/var")]
+    [InlineData("/run/guest")]
+    [InlineData("/root")]
+    [InlineData("/root/project")]
+    public void Validator_rejects_invalid_isolation_mount_guest_paths(string guestPath)
+    {
+        var workspace = CreateIsolatedWorkspace(
+            [new(AbsoluteHostPath("guest-path"), guestPath, IsReadOnly: true)]);
+
+        var result = WorkspaceValidator.Validate(workspace);
+
+        Assert.Contains(
+            result.Issues,
+            issue => issue.Code == DefinitionValidationCode.InvalidEntry
+                && issue.Message.Contains("absolute guest path", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Validator_rejects_duplicate_isolation_mount_guest_paths()
+    {
+        var workspace = CreateIsolatedWorkspace(
+        [
+            new(AbsoluteHostPath("first"), "/workspace", IsReadOnly: true),
+            new(AbsoluteHostPath("second"), "/workspace", IsReadOnly: false),
+        ]);
+
+        var result = WorkspaceValidator.Validate(workspace);
+
+        Assert.Contains(
+            result.Issues,
+            issue => issue.Code == DefinitionValidationCode.DuplicateId
+                && issue.Message.Contains("/workspace", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Validator_rejects_guest_mount_duplicates_after_path_normalization()
+    {
+        var workspace = CreateIsolatedWorkspace(
+        [
+            new(AbsoluteHostPath("first"), "/workspace", IsReadOnly: true),
+            new(AbsoluteHostPath("second"), "//workspace/", IsReadOnly: false),
+        ]);
+
+        var result = WorkspaceValidator.Validate(workspace);
+
+        Assert.Contains(
+            result.Issues,
+            issue => issue.Code == DefinitionValidationCode.DuplicateId
+                && issue.Message.Contains("/workspace", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Validator_rejects_more_than_the_supported_isolation_mount_count()
+    {
+        var mounts = Enumerable
+            .Range(0, WorkspaceDefinition.MaximumIsolationMountCount + 1)
+            .Select(index => new WorkspaceIsolationMountDefinition(
+                AbsoluteHostPath($"mount-{index}"),
+                $"/mount-{index}",
+                IsReadOnly: true))
+            .ToArray();
+        var workspace = CreateIsolatedWorkspace(mounts);
+
+        var result = WorkspaceValidator.Validate(workspace);
+
+        Assert.Contains(
+            result.Issues,
+            issue => issue.Code == DefinitionValidationCode.InvalidEntry
+                && issue.Message.Contains(
+                    WorkspaceDefinition.MaximumIsolationMountCount.ToString(
+                        System.Globalization.CultureInfo.InvariantCulture),
+                    StringComparison.Ordinal));
     }
 
     [Fact]
@@ -137,13 +247,35 @@ public sealed class WorkspaceDefinitionTests
     }
 
     private static WorkspaceDefinition CreateWorkspace(params WorkspaceEntry[] entries) =>
+        CreateWorkspace(isIsolated: false, entries);
+
+    private static WorkspaceDefinition CreateWorkspace(
+        bool isIsolated,
+        params WorkspaceEntry[] entries) =>
         new(
             new WorkspaceId("operations"),
             WorkspaceDefinition.CurrentSchemaVersion,
             "Operations",
             null,
             "#FF8400",
-            entries);
+            entries,
+            isIsolated: isIsolated);
+
+    private static WorkspaceDefinition CreateIsolatedWorkspace(
+        IReadOnlyList<WorkspaceIsolationMountDefinition> isolationMounts,
+        params WorkspaceEntry[] entries) =>
+        new(
+            new WorkspaceId("operations"),
+            WorkspaceDefinition.CurrentSchemaVersion,
+            "Operations",
+            null,
+            "#FF8400",
+            entries,
+            isIsolated: true,
+            isolationMounts: isolationMounts);
+
+    private static string AbsoluteHostPath(string leaf) =>
+        Path.Combine(Path.GetTempPath(), "ghostshell", leaf);
 
     private static WorkspaceEntry.Tab CreateTabEntry(string id) =>
         new(

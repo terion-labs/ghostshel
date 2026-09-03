@@ -33,6 +33,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         string Detail);
 
     private readonly IDefinitionCatalog _catalog;
+    private DefinitionCatalogSnapshot _presentedCatalogSnapshot =
+        DefinitionCatalogSnapshot.Empty;
+    private readonly WorkspaceDefinitionOccupancy _workspaceDefinitionOccupancy;
     private readonly IConnectionRuntime _connectionRuntime;
     private readonly ISecretVault _secretVault;
     private readonly IFilePanelClient _filePanelClient;
@@ -171,9 +174,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         INativeNotificationService? nativeNotificationService = null,
         AppearancePreviewCoordinator? appearancePreview = null,
         IApplicationUpdateService? applicationUpdateService = null,
-        MainWindowRole role = MainWindowRole.Primary)
+        MainWindowRole role = MainWindowRole.Primary,
+        IWorkspaceIsolationProvider? workspaceIsolationProvider = null,
+        WorkspaceDefinitionOccupancy? workspaceDefinitionOccupancy = null,
+        IWorkspaceIsolationRuntimeInstaller? workspaceIsolationRuntimeInstaller = null)
     {
         SessionClient = sessionClient ?? throw new ArgumentNullException(nameof(sessionClient));
+        _workspaceDefinitionOccupancy = workspaceDefinitionOccupancy
+            ?? new WorkspaceDefinitionOccupancy();
         _uiThreadDispatcher = uiThreadDispatcher ?? AvaloniaUiThreadDispatcher.Instance;
         ApplicationUpdates = new ApplicationUpdateViewModel(
             applicationUpdateService
@@ -204,9 +212,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         AppearanceSettings.PropertyChanged += OnAppearanceSettingsPropertyChanged;
         AppearanceSettings.BackgroundSaveStarting += OnAppearanceBackgroundSaveStarting;
         AppearanceSettings.BackgroundSaveCompleted += OnAppearanceBackgroundSaveCompleted;
+        _workspaceIsolationProvider = workspaceIsolationProvider;
+        _workspaceIsolationRuntimeInstaller = workspaceIsolationRuntimeInstaller;
         WorkspaceSettings = new WorkspaceSettingsViewModel(
             _catalog,
-            () => _aiProviderRuntime?.Profiles ?? []);
+            () => _aiProviderRuntime?.Profiles ?? [],
+            workspaceDefinitionOccupancy: _workspaceDefinitionOccupancy,
+            isIsolationAvailable: _workspaceIsolationProvider is not null,
+            isolationRuntimeDisplayName:
+                _workspaceIsolationRuntimeInstaller?.RuntimeDisplayName);
         WorkspaceSettings.PropertyChanged += OnWorkspaceSettingsPropertyChanged;
         SavedScreenSettings = new SavedScreenSettingsViewModel(
             _catalog,
@@ -1432,6 +1446,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             return;
         }
 
+        if (WorkspaceUsesIsolation(id))
+        {
+            // Agent providers and MCP processes execute in the host process. Starting either
+            // for an isolated workspace would let traffic escape the workspace boundary.
+            AgentChat = null;
+            return;
+        }
+
         if (!_workspaceAgentChats.TryGetValue(id, out var owned))
         {
             var runtime = _agentRuntimeFactory.Create(
@@ -2080,7 +2102,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     public bool IsSettingsVisible => _navigation.IsSettingsVisible;
 
-    public bool IsWorkspaceCanvasVisible => _navigation.IsWorkspaceCanvasVisible;
+    public bool IsWorkspaceCanvasVisible =>
+        _navigation.IsWorkspaceCanvasVisible && !IsWorkspaceIsolationStarting;
 
     public bool IsAppearanceSettingsVisible => _navigation.IsAppearanceSettingsVisible;
 
@@ -2647,10 +2670,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 continue;
             }
 
-            runtime.TerminalMultiplexingMode = definition.TerminalMultiplexingOverride;
-            if (definition.TerminalMultiplexingOverride is { } mode)
+            var mode = definition.IsIsolated || runtime.IsolationBinding is not null
+                ? TerminalMultiplexingMode.Disabled
+                : definition.TerminalMultiplexingOverride;
+            runtime.TerminalMultiplexingMode = mode;
+            if (mode is { } workspaceMode)
             {
-                _workspaceTerminalMultiplexingModes[runtime.Id] = mode;
+                _workspaceTerminalMultiplexingModes[runtime.Id] = workspaceMode;
             }
             else
             {
@@ -2723,6 +2749,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         CancellationToken cancellationToken = default)
     {
         ClearError();
+        if (_shutdownStarted || _runtimeGraphLifetime.IsCancellationRequested)
+        {
+            return false;
+        }
+
+        using var operationLifetime = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            _runtimeGraphLifetime.Token);
+        var operationCancellation = operationLifetime.Token;
         var storedWorkspace = _catalog.Snapshot.Workspaces
             .SingleOrDefault(item => item.Value.Id == workspaceId);
         if (storedWorkspace is null)
@@ -2738,6 +2773,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         // what "switching killed my processes" was.
         if (FindOpenWorkspace(workspace.Key) is { } alreadyOpen)
         {
+            if (!IsolationIntentMatches(alreadyOpen))
+            {
+                SetError(
+                    "Workspace isolation changed while this workspace was open. "
+                    + "Close and reopen it to apply the new isolation setting.");
+                return false;
+            }
+
             // Timed in pieces because the whole of it runs on the thread that
             // draws, and from outside a slow switch is just a frozen window.
             // The autosave flush writes the workspace being left; reactivating
@@ -2745,6 +2788,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             // the snapshot serialises the workspace that is now in front.
             var clock = Stopwatch.StartNew();
             await WorkspaceAutoSave.FlushAsync();
+            if (_shutdownStarted || operationCancellation.IsCancellationRequested)
+            {
+                return false;
+            }
+
             var flushed = clock.ElapsedMilliseconds;
             ReactivateRuntimeWorkspace(alreadyOpen);
             var reactivated = clock.ElapsedMilliseconds;
@@ -2759,26 +2807,89 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             return true;
         }
 
-        await WorkspaceAutoSave.FlushAsync();
-        var runtime = new RuntimeWorkspaceViewModel(
-            WorkspaceInstanceId.New(),
-            workspace.Name,
-            WorkspaceTints.Of(workspace),
-            ResolveWorkspaceConnections(workspace),
-            CurrentAgentPolicyProvenance().WithOverride(
-                workspace.AgentPolicyOverride,
-                workspace.Key,
-                storedWorkspace.Revision),
-            workspace.TerminalMultiplexingOverride);
-        _runtimeSources[runtime.Id] = new RuntimeHistorySource(
-            workspace.Key,
-            workspace.Name);
-        if (runtime.TerminalMultiplexingMode is { } workspaceMultiplexingOverride)
+        var runtimeId = WorkspaceInstanceId.New();
+        if (!_workspaceDefinitionOccupancy.TryRegisterRuntime(
+            WindowId,
+            runtimeId,
+            workspace.Key))
         {
-            _workspaceTerminalMultiplexingModes[runtime.Id] = workspaceMultiplexingOverride;
+            SetError(
+                "This workspace is already opening in this window, or its isolation settings "
+                + "are being saved. Wait for that operation to finish, then try again.");
+            return false;
         }
+
+        if (!TryBeginWorkspaceActivation(
+            out var activationId,
+            out var activationCompletion))
+        {
+            _workspaceDefinitionOccupancy.Unregister(WindowId, runtimeId);
+            return false;
+        }
+
+        var isolation = WorkspaceIsolationPreparation.Host;
+        RuntimeWorkspaceViewModel? runtime = null;
+        if (workspace.IsIsolated)
+        {
+            BeginWorkspaceIsolationStartup(workspace, activationId);
+        }
+
         try
         {
+            isolation = await PrepareWorkspaceIsolationAsync(
+                workspace,
+                operationCancellation);
+            if (!isolation.Succeeded || _shutdownStarted)
+            {
+                return false;
+            }
+
+            operationCancellation.ThrowIfCancellationRequested();
+
+            if (!WorkspaceIsolationConfigurationMatches(workspace))
+            {
+                SetError(
+                    "Workspace isolation or host mounts changed while the workspace was opening. "
+                    + "Open it again to use the saved configuration.");
+                return false;
+            }
+
+            await WorkspaceAutoSave.FlushAsync();
+            if (_shutdownStarted)
+            {
+                return false;
+            }
+
+            if (!WorkspaceIsolationConfigurationMatches(workspace))
+            {
+                SetError(
+                    "Workspace isolation or host mounts changed while the workspace was opening. "
+                    + "Open it again to use the saved configuration.");
+                return false;
+            }
+
+            runtime = new RuntimeWorkspaceViewModel(
+                runtimeId,
+                workspace.Name,
+                WorkspaceTints.Of(workspace),
+                ResolveWorkspaceConnections(workspace),
+                CurrentAgentPolicyProvenance().WithOverride(
+                    workspace.AgentPolicyOverride,
+                    workspace.Key,
+                    storedWorkspace.Revision),
+                workspace.IsIsolated
+                    ? TerminalMultiplexingMode.Disabled
+                    : workspace.TerminalMultiplexingOverride,
+                isolation.Binding);
+            _runtimeSources[runtime.Id] = new RuntimeHistorySource(
+                workspace.Key,
+                workspace.Name);
+            RegisterWorkspaceConnectionRuntime(runtime);
+            if (runtime.TerminalMultiplexingMode is { } workspaceMultiplexingOverride)
+            {
+                _workspaceTerminalMultiplexingModes[runtime.Id] = workspaceMultiplexingOverride;
+            }
+
             foreach (var entry in workspace.Entries)
             {
                 switch (entry)
@@ -2850,7 +2961,21 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             }
 
             runtime.ActiveTab = runtime.Tabs[0];
-            if (!await RegisterRuntimeWorkspaceAsync(runtime, cancellationToken))
+            MarkWorkspaceGraphRegistrationAttempt(runtime.Id);
+            if (!await RegisterRuntimeWorkspaceAsync(runtime, operationCancellation))
+            {
+                return false;
+            }
+
+            if (!WorkspaceIsolationConfigurationMatches(workspace))
+            {
+                SetError(
+                    "Workspace isolation or host mounts changed while the workspace was opening. "
+                    + "The stale runtime was discarded; open it again to use the saved configuration.");
+                return false;
+            }
+
+            if (_shutdownStarted || operationCancellation.IsCancellationRequested)
             {
                 return false;
             }
@@ -2860,9 +2985,55 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             QueueRuntimeRecoverySnapshot();
             return true;
         }
+        catch (OperationCanceledException) when (_runtimeGraphLifetime.IsCancellationRequested)
+        {
+            return false;
+        }
         finally
         {
-            DisposeRuntimeWorkspaceUnlessOwned(runtime);
+            try
+            {
+                var retained = runtime is not null
+                    && _openWorkspaces.Contains(runtime);
+                var graphRollbackConfirmed = true;
+                if (retained)
+                {
+                    RetainWorkspaceGraph(runtime!.Id);
+                }
+                else if (runtime is not null
+                    && RequiresWorkspaceGraphRollback(runtime.Id))
+                {
+                    graphRollbackConfirmed = await TryRollbackWorkspaceGraphAsync(runtime.Id);
+                }
+
+                if (!retained && graphRollbackConfirmed)
+                {
+                    _workspaceDefinitionOccupancy.Unregister(WindowId, runtimeId);
+                }
+
+                if (runtime is not null)
+                {
+                    DisposeRuntimeWorkspaceUnlessOwned(runtime);
+                }
+
+                if (!retained
+                    && graphRollbackConfirmed
+                    && isolation.Binding is { } binding)
+                {
+                    var releaseError = await ReleasePreparedWorkspaceIsolationAsync(
+                        binding,
+                        CancellationToken.None);
+                    if (releaseError is not null)
+                    {
+                        SetError(releaseError.Message);
+                    }
+                }
+            }
+            finally
+            {
+                CompleteWorkspaceIsolationStartup(activationId);
+                CompleteWorkspaceActivation(activationId, activationCompletion);
+            }
         }
     }
 
@@ -3095,7 +3266,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         {
             return await AppendRuntimeTabAsync(
                 workspace,
-                runtime => CreateSavedDatabaseTab(profile),
+                runtime => CreateSavedDatabaseTab(profile, runtime.Id),
                 "database connection tab creation",
                 cancellationToken);
         }
@@ -3127,7 +3298,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         }
     }
 
-    private RuntimeTabViewModel CreateSavedDatabaseTab(DatabaseConnectionProfile profile)
+    private RuntimeTabViewModel CreateSavedDatabaseTab(
+        DatabaseConnectionProfile profile,
+        WorkspaceInstanceId? workspaceId = null)
     {
         var tab = new RuntimeTabViewModel(
             TabInstanceId.New(),
@@ -3137,7 +3310,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             PanelInstanceId.New(),
             profile.Name,
             SavedDatabaseTargetPrefix + profile.Id.Value,
-            recoveredTunnel: null);
+            recoveredTunnel: null,
+            workspaceId: workspaceId);
         AddPanelOrDispose(tab, panel);
         return tab;
     }
@@ -3507,6 +3681,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(snapshots);
+        if (_shutdownStarted || _runtimeGraphLifetime.IsCancellationRequested)
+        {
+            return false;
+        }
+
+        using var operationLifetime = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            _runtimeGraphLifetime.Token);
+        var operationCancellation = operationLifetime.Token;
         var snapshot = snapshots
             .Where(item => string.Equals(item.Key, RuntimeWorkspaceRecoveryCodec.SnapshotKey, StringComparison.Ordinal))
             .OrderByDescending(item => item.UpdatedAt)
@@ -3530,21 +3713,93 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
         if (payload!.Workspace is null)
         {
+            if (_shutdownStarted || operationCancellation.IsCancellationRequested)
+            {
+                return false;
+            }
+
             RuntimeWorkspace = null;
             Route = ShellRoute.Workspace;
             QueueRuntimeRecoverySnapshot();
             return true;
         }
 
+        var runtimeId = WorkspaceInstanceId.New();
+        var recoveredSource = payload.Workspace.HistorySource?.ToHistorySource();
+        var recoveredWorkspaceDefinition = recoveredSource is
+        { SourceDefinition.Kind: var sourceKind }
+            && sourceKind == WorkspaceDefinition.Kind
+                ? recoveredSource.SourceDefinition
+                : (DefinitionKey?)null;
+        if (recoveredWorkspaceDefinition is { } definition
+            && !_workspaceDefinitionOccupancy.TryRegisterRuntime(
+                WindowId,
+                runtimeId,
+                definition))
+        {
+            SetError(
+                "This workspace is already opening in this window, or its isolation settings "
+                + "are being saved. Wait for that operation to finish, then restore again.");
+            return false;
+        }
+
+        if (!TryBeginWorkspaceActivation(
+            out var activationId,
+            out var activationCompletion))
+        {
+            if (recoveredWorkspaceDefinition is not null)
+            {
+                _workspaceDefinitionOccupancy.Unregister(WindowId, runtimeId);
+            }
+
+            return false;
+        }
+
         RuntimeWorkspaceViewModel? runtime = null;
+        WorkspaceIsolationBinding? preparedIsolationBinding = null;
         try
         {
-            runtime = RestoreWorkspace(payload.Workspace);
-            if (!await RegisterRuntimeWorkspaceAsync(runtime, cancellationToken))
+            var isolation = await PrepareRecoveredWorkspaceIsolationAsync(
+                payload.Workspace,
+                operationCancellation);
+            if (!isolation.Succeeded || _shutdownStarted)
+            {
+                return false;
+            }
+
+            preparedIsolationBinding = isolation.Binding;
+            operationCancellation.ThrowIfCancellationRequested();
+            if (!RecoveredWorkspaceIsolationConfigurationMatches(payload.Workspace))
+            {
+                SetError(
+                    "Workspace isolation or host mounts changed while recovery was preparing. "
+                    + "Discard the recovery snapshot or restore it again with the saved configuration.");
+                return false;
+            }
+
+            runtime = RestoreWorkspace(
+                payload.Workspace,
+                runtimeId,
+                isolation.Binding);
+            MarkWorkspaceGraphRegistrationAttempt(runtime.Id);
+            if (!await RegisterRuntimeWorkspaceAsync(runtime, operationCancellation))
             {
                 SecretSafeDiagnosticProjection.WriteStandardError(
                     "recovery.workspace.registration-rejected",
                     SecretSafeDiagnosticKind.Unexpected);
+                return false;
+            }
+
+            if (!RecoveredWorkspaceIsolationConfigurationMatches(payload.Workspace))
+            {
+                SetError(
+                    "Workspace isolation or host mounts changed while recovery was registering. "
+                    + "The stale runtime was discarded; restore it again with the saved configuration.");
+                return false;
+            }
+
+            if (_shutdownStarted || operationCancellation.IsCancellationRequested)
+            {
                 return false;
             }
 
@@ -3588,11 +3843,55 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             SetError("Runtime recovery state could not be applied.");
             return false;
         }
+        catch (OperationCanceledException) when (_runtimeGraphLifetime.IsCancellationRequested)
+        {
+            return false;
+        }
         finally
         {
-            if (runtime is not null)
+            try
             {
-                DisposeRuntimeWorkspaceUnlessOwned(runtime);
+                var retained = runtime is not null
+                    && _openWorkspaces.Contains(runtime);
+                var graphRollbackConfirmed = true;
+                if (retained)
+                {
+                    RetainWorkspaceGraph(runtime!.Id);
+                }
+                else if (runtime is not null
+                    && RequiresWorkspaceGraphRollback(runtime.Id))
+                {
+                    graphRollbackConfirmed = await TryRollbackWorkspaceGraphAsync(runtime.Id);
+                }
+
+                if (!retained
+                    && graphRollbackConfirmed
+                    && recoveredWorkspaceDefinition is not null)
+                {
+                    _workspaceDefinitionOccupancy.Unregister(WindowId, runtimeId);
+                }
+
+                if (runtime is not null)
+                {
+                    DisposeRuntimeWorkspaceUnlessOwned(runtime);
+                }
+
+                if (!retained
+                    && graphRollbackConfirmed
+                    && preparedIsolationBinding is { } binding)
+                {
+                    var releaseError = await ReleasePreparedWorkspaceIsolationAsync(
+                        binding,
+                        CancellationToken.None);
+                    if (releaseError is not null)
+                    {
+                        SetError(releaseError.Message);
+                    }
+                }
+            }
+            finally
+            {
+                CompleteWorkspaceActivation(activationId, activationCompletion);
             }
         }
     }
@@ -3606,6 +3905,133 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         ApplyError(result.Error);
         return result;
     }
+
+    public async ValueTask<DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>>
+        SetWorkspaceIsolationAsync(
+            LauncherWorkspaceViewModel workspace,
+            bool isIsolated,
+            CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+        ClearError();
+        var openInstance = OpenWorkspaceInstance(workspace.Id);
+        if (openInstance is { } instanceId
+            && !await StopWorkspaceForConfigurationRestartAsync(
+                instanceId,
+                cancellationToken))
+        {
+            return WorkspaceConfigurationRestartFailure();
+        }
+
+        var result = await WorkspaceSettings.SetIsolationAsync(
+            workspace.Id,
+            isIsolated,
+            cancellationToken);
+        ApplyError(result.Error);
+        if (openInstance is not null)
+        {
+            // A failed save leaves the durable definition unchanged, so this
+            // also restores the original execution boundary.
+            _ = await OpenWorkspaceAsync(workspace.Id, cancellationToken);
+        }
+
+        return result;
+    }
+
+    public bool WorkspaceEditorConfigurationChangeRequiresRestart(
+        WorkspaceEditorSaveRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var current = _catalog.Snapshot.Workspaces
+            .FirstOrDefault(item => item.Value.Id == request.Definition.Id);
+        return current is not null
+            && FindOpenWorkspace(current.Value.Key) is not null
+            && (current.Value.IsIsolated != request.Definition.IsIsolated
+                || !current.Value.IsolationMounts.SequenceEqual(
+                    request.Definition.IsolationMounts)
+                || !string.Equals(
+                    current.Value.IsolationImageReference,
+                    request.Definition.IsolationImageReference,
+                    StringComparison.Ordinal));
+    }
+
+    public bool WorkspaceEditorImageChangeRebuildsIsolate(
+        WorkspaceEditorSaveRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var current = _catalog.Snapshot.Workspaces
+            .FirstOrDefault(item => item.Value.Id == request.Definition.Id);
+        return current is not null
+            && current.Value.IsIsolated
+            && request.Definition.IsIsolated
+            && !string.Equals(
+                current.Value.IsolationImageReference,
+                request.Definition.IsolationImageReference,
+                StringComparison.Ordinal);
+    }
+
+    public async ValueTask<DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>>
+        SaveWorkspaceEditorRestartingAsync(
+            WorkspaceEditorSaveRequest request,
+            CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var openInstance = OpenWorkspaceInstance(request.Definition.Id);
+        if (openInstance is { } instanceId
+            && !await StopWorkspaceForConfigurationRestartAsync(
+                instanceId,
+                cancellationToken))
+        {
+            return WorkspaceConfigurationRestartFailure();
+        }
+
+        var result = await SaveWorkspaceEditorAsync(request, cancellationToken);
+        if (openInstance is not null)
+        {
+            _ = await OpenWorkspaceAsync(request.Definition.Id, cancellationToken);
+        }
+
+        return result;
+    }
+
+    private async Task<bool> StopWorkspaceForConfigurationRestartAsync(
+        WorkspaceInstanceId instanceId,
+        CancellationToken cancellationToken)
+    {
+        var close = await CloseWorkspaceAsync(
+            instanceId,
+            CloseDecision.Confirm,
+            cancellationToken);
+        if (close is HostResult<CloseScopeResult>.Failure failure)
+        {
+            SetError(failure.Error.Message);
+            return false;
+        }
+
+        if (((HostResult<CloseScopeResult>.Success)close).Value
+            is not CloseScopeResult.Completed completed
+            || completed.Scope != CloseScopeKind.Workspace
+            || !string.Equals(completed.TargetId, instanceId.Value, StringComparison.Ordinal)
+            || completed.Sessions.Any(session => session.Outcome is not (
+                SessionCloseOutcome.GracefullyClosed
+                or SessionCloseOutcome.ForceTerminated
+                or SessionCloseOutcome.AlreadyClosed)))
+        {
+            SetError("The workspace could not be restarted to change isolation configuration.");
+            return false;
+        }
+
+        RemoveRuntimeWorkspace(instanceId);
+        return true;
+    }
+
+    private DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>
+        WorkspaceConfigurationRestartFailure() =>
+        DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>.Failure(
+            new DefinitionStoreError(
+                DefinitionStoreErrorCode.InvalidDefinition,
+                OperationError
+                ?? "The workspace could not be restarted to change isolation configuration."));
 
     public ConnectionEditorViewModel CreateConnectionEditor(ConnectionId? connectionId = null)
         => TerminalConnectionSettings.CreateEditor(connectionId);
@@ -4410,6 +4836,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         CloseDecision decision,
         CancellationToken cancellationToken)
     {
+        var runtimeWorkspace = _openWorkspaces.FirstOrDefault(
+            workspace => workspace.Id == workspaceId);
         var multiplexed = _openWorkspaces
             .Where(workspace => workspace.Id == workspaceId)
             .SelectMany(workspace => workspace.Tabs)
@@ -4422,9 +4850,27 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             cancellationToken);
         RecordRecentSessionCompletions(result);
         if (result is HostResult<CloseScopeResult>.Success
-            { Value: CloseScopeResult.Completed })
+            {
+                Value: CloseScopeResult.Completed completed,
+            })
         {
             QueueMultiplexerTermination(multiplexed);
+            if (decision != CloseDecision.Cancel
+                && completed.Scope == CloseScopeKind.Workspace
+                && string.Equals(
+                    completed.TargetId,
+                    workspaceId.Value,
+                    StringComparison.Ordinal)
+                && completed.Sessions.All(session => session.Outcome is
+                    SessionCloseOutcome.GracefullyClosed
+                    or SessionCloseOutcome.ForceTerminated
+                    or SessionCloseOutcome.AlreadyClosed)
+                && runtimeWorkspace is not null
+                && await ScheduleWorkspaceIsolationCleanup(runtimeWorkspace)
+                    is { } releaseError)
+            {
+                SetError(releaseError.Message);
+            }
         }
         return result;
     }
@@ -4526,11 +4972,36 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         CloseDecision decision,
         CancellationToken cancellationToken)
     {
-        var result = await RuntimeGraph.CloseAsync(
-            CloseScopeRequest.Window(WindowId, decision),
-            cancellationToken);
-        RecordRecentSessionCompletions(result);
-        return result;
+        var keepClosePending = false;
+        try
+        {
+            if (decision != CloseDecision.Cancel)
+            {
+                var activations = BeginWindowCloseActivationDrain();
+                if (activations.Length > 0)
+                {
+                    await Task.WhenAll(activations).WaitAsync(cancellationToken);
+                }
+            }
+
+            var result = await RuntimeGraph.CloseAsync(
+                CloseScopeRequest.Window(WindowId, decision),
+                cancellationToken);
+            RecordRecentSessionCompletions(result);
+            keepClosePending = decision != CloseDecision.Cancel
+                && result is HostResult<CloseScopeResult>.Success
+                {
+                    Value: CloseScopeResult.Completed,
+                };
+            return result;
+        }
+        finally
+        {
+            if (!keepClosePending)
+            {
+                ResumeAfterWindowCloseAttempt();
+            }
+        }
     }
 
     public async ValueTask<HostResult<CloseScopeResult>> CloseFilePanelAsync(
@@ -5196,11 +5667,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             PanelKind.Docker => CreateDockerPanel(
                 PanelInstanceId.New(),
                 title,
-                connection),
+                connection,
+                workspace.Id),
             PanelKind.Git => CreateGitPanel(
                 PanelInstanceId.New(),
                 title,
-                connection),
+                connection,
+                workspaceId: workspace.Id),
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
         };
         return await AddRuntimePanelUnderReceiptAsync(
@@ -5434,7 +5907,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             replacement = CreateDockerPanel(
                 livePanel.Id,
                 livePanel.Title,
-                connection);
+                connection,
+                workspace.Id);
         }
         else if (livePanel is GitRuntimePanelViewModel)
         {
@@ -5447,7 +5921,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             replacement = CreateGitPanel(
                 livePanel.Id,
                 livePanel.Title,
-                connection);
+                connection,
+                workspaceId: workspace.Id);
         }
         else
         {
@@ -5632,7 +6107,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             return false;
         }
 
-        var panel = CreateDatabasePanel(PanelInstanceId.New(), "Database");
+        var panel = CreateDatabasePanel(
+            PanelInstanceId.New(),
+            "Database",
+            workspaceId: workspace.Id);
         return await AddRuntimePanelUnderReceiptAsync(
             workspace,
             tab,
@@ -5658,7 +6136,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             return false;
         }
 
-        var panel = CreateDockerPanel(PanelInstanceId.New(), "Docker");
+        var panel = CreateDockerPanel(
+            PanelInstanceId.New(),
+            "Docker",
+            workspaceId: workspace.Id);
         return await AddRuntimePanelUnderReceiptAsync(
             workspace,
             tab,
@@ -5684,7 +6165,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             return false;
         }
 
-        var panel = CreateGitPanel(PanelInstanceId.New(), "Git");
+        var panel = CreateGitPanel(
+            PanelInstanceId.New(),
+            "Git",
+            workspaceId: workspace.Id);
         return await AddRuntimePanelUnderReceiptAsync(
             workspace,
             tab,
@@ -6282,13 +6766,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                         kind),
                 PanelKind.DatabaseViewer => CreateDatabasePanel(
                     PanelInstanceId.New(),
-                    title),
+                    title,
+                    workspaceId: workspaceId),
                 PanelKind.Docker => CreateDockerPanel(
                     PanelInstanceId.New(),
-                    title),
+                    title,
+                    workspaceId: workspaceId),
                 PanelKind.Git => CreateGitPanel(
                     PanelInstanceId.New(),
-                    title),
+                    title,
+                    workspaceId: workspaceId),
                 _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
             };
             if (kind == PanelKind.Browser
@@ -7024,16 +7511,29 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     /// while "open" is a fact about runtime instances. The join is the
     /// definition key, the same one <see cref="FindOpenWorkspace"/> uses.
     /// </summary>
-    private void RefreshWorkspaceRuntimeFlags()
+    private void RefreshWorkspaceRuntimeFlags() =>
+        RefreshWorkspaceRuntimeFlags(_presentedCatalogSnapshot);
+
+    private void RefreshWorkspaceRuntimeFlags(DefinitionCatalogSnapshot snapshot)
     {
+        var durableIsolationByWorkspace = snapshot.Workspaces.ToDictionary(
+            stored => stored.Value.Id,
+            stored => stored.Value.IsIsolated);
         foreach (var item in Workspaces)
         {
             var runtime = FindOpenWorkspace(
                 new DefinitionKey(WorkspaceDefinition.Kind, item.Id.Value));
             item.IsOpen = runtime is not null;
-            item.IsInFront = runtime is not null && ReferenceEquals(runtime, RuntimeWorkspace);
+            item.IsInFront = _workspaceIsolationStartingWorkspaceId is { } startingId
+                ? item.Id == startingId
+                : runtime is not null && ReferenceEquals(runtime, RuntimeWorkspace);
             item.HasAttention = runtime?.HasAttention == true;
             item.HasAgentActivity = runtime?.HasAgentActivity == true;
+            // An open workspace reports the execution boundary it actually
+            // acquired. Once closed, the tile returns to current durable intent.
+            item.IsIsolated = runtime is not null
+                ? runtime.IsolationBinding is not null
+                : durableIsolationByWorkspace.GetValueOrDefault(item.Id);
         }
 
         OnPropertyChanged(nameof(HasWorkspaceAttention));
@@ -7215,6 +7715,18 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     /// </summary>
     private void BringToFrontOfOpenSet(RuntimeWorkspaceViewModel runtime)
     {
+        if (_runtimeSources.TryGetValue(runtime.Id, out var source))
+        {
+            if (!_workspaceDefinitionOccupancy.TryRegisterRuntime(
+                WindowId,
+                runtime.Id,
+                source.SourceDefinition))
+            {
+                throw new InvalidOperationException(
+                    "The workspace definition is being changed while its runtime activates.");
+            }
+        }
+
         var index = _openWorkspaces.IndexOf(runtime);
         if (index < 0)
         {
@@ -7252,43 +7764,50 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private void CloseRuntimeWorkspace(RuntimeWorkspaceViewModel runtime)
     {
         ArgumentNullException.ThrowIfNull(runtime);
-        var wasActive = ReferenceEquals(RuntimeWorkspace, runtime);
-        _openWorkspaces.Remove(runtime);
-        _runtimeSources.Remove(runtime.Id);
-        _workspaceTerminalMultiplexingModes.Remove(runtime.Id);
-        Notifications.Forget(runtime);
-        if (wasActive)
+        try
         {
-            // The setter disposes what is no longer in the open set, so the
-            // removal above is what makes this a close rather than a switch.
-            RuntimeWorkspace = _openWorkspaces.LastOrDefault();
-            if (RuntimeWorkspace is { } next)
+            var wasActive = ReferenceEquals(RuntimeWorkspace, runtime);
+            _openWorkspaces.Remove(runtime);
+            _workspaceDefinitionOccupancy.Unregister(WindowId, runtime.Id);
+            _runtimeSources.Remove(runtime.Id);
+            _workspaceTerminalMultiplexingModes.Remove(runtime.Id);
+            Notifications.Forget(runtime);
+            if (wasActive)
             {
-                ReactivateRuntimeWorkspace(next);
-            }
-            else
-            {
-                // Nothing left to fall back to, and the rail still has the tile
-                // it was closed from marked as running.
-                RefreshWorkspaceRuntimeFlags();
+                // The setter disposes what is no longer in the open set, so the
+                // removal above is what makes this a close rather than a switch.
+                RuntimeWorkspace = _openWorkspaces.LastOrDefault();
+                if (RuntimeWorkspace is { } next)
+                {
+                    ReactivateRuntimeWorkspace(next);
+                }
+                else
+                {
+                    // Nothing left to fall back to, and the rail still has the tile
+                    // it was closed from marked as running.
+                    RefreshWorkspaceRuntimeFlags();
+                }
+
+                RemoveWorkspaceAgentChat(runtime.Id);
+                return;
             }
 
+            StopTrackingRecovery(runtime);
+            AgentWorkspaceScope.StopTracking(runtime);
+            runtime.DisposePanels();
             RemoveWorkspaceAgentChat(runtime.Id);
-
-            return;
+            RefreshWorkspaceRuntimeFlags();
         }
-
-        StopTrackingRecovery(runtime);
-        AgentWorkspaceScope.StopTracking(runtime);
-        runtime.DisposePanels();
-        RemoveWorkspaceAgentChat(runtime.Id);
-        RefreshWorkspaceRuntimeFlags();
+        finally
+        {
+            _ = ScheduleWorkspaceIsolationCleanup(runtime);
+        }
     }
 
     private void DisposeRuntimeWorkspaceUnlessOwned(
         RuntimeWorkspaceViewModel runtime)
     {
-        if (!ReferenceEquals(RuntimeWorkspace, runtime))
+        if (!_openWorkspaces.Contains(runtime))
         {
             _runtimeSources.Remove(runtime.Id);
             _workspaceTerminalMultiplexingModes.Remove(runtime.Id);
@@ -7875,6 +8394,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     /// </summary>
     internal void RefreshCatalog(DefinitionCatalogSnapshot snapshot)
     {
+        _presentedCatalogSnapshot = snapshot;
         var workspaces = snapshot.Workspaces
             .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
             .Select(item => new LauncherWorkspaceViewModel(
@@ -7888,7 +8408,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 WorkspaceTints.Of(item.Value),
                 Initials(item.Value.Name),
                 WorkspaceIconSymbol(item.Value.Icon),
-                item.Value.Entries.Count))
+                item.Value.Entries.Count,
+                IsolationBadgeFor(item.Value),
+                _workspaceIsolationProvider is not null))
             .ToArray();
         var connections = snapshot.Connections
             .OrderBy(item => item.Value.Name, StringComparer.OrdinalIgnoreCase)
@@ -7933,7 +8455,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         // put them back. Saving the workspace you are working in bumps its
         // revision — which is exactly what autosave does every time a tab is
         // added — and the rail forgot which workspace you were in.
-        RefreshWorkspaceRuntimeFlags();
+        RefreshWorkspaceRuntimeFlags(snapshot);
         // The active runtime does not change when its backing definition is
         // edited. Re-resolve its shell accent from this newly published
         // snapshot so an accent save retints the open workspace immediately.
@@ -8973,11 +9495,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 PanelKind.Docker => CreateDockerPanel(
                     PanelInstanceId.New(),
                     title,
-                    connection),
+                    connection,
+                    workspaceId),
                 PanelKind.Git => CreateGitPanel(
                     PanelInstanceId.New(),
                     title,
-                    connection),
+                    connection,
+                    workspaceId: workspaceId),
                 _ => throw new ArgumentOutOfRangeException(nameof(panel), panel, null),
             };
             AddPanelOrDispose(tab, runtimePanel);
@@ -9049,7 +9573,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     }
 
     private RuntimeWorkspaceViewModel RestoreWorkspace(
-        RuntimeWorkspaceRecoveryPayload recovered)
+        RuntimeWorkspaceRecoveryPayload recovered,
+        WorkspaceInstanceId runtimeId,
+        WorkspaceIsolationBinding? isolationBinding)
     {
         var connectionIds = recovered.ConnectionIds
             .Concat(recovered.Tabs
@@ -9059,17 +9585,21 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             .Select(id => new ConnectionId(id))
             .ToHashSet();
         var runtime = new RuntimeWorkspaceViewModel(
-            WorkspaceInstanceId.New(),
+            runtimeId,
             recovered.Name,
             recovered.Accent,
             [.. Connections.Where(item => connectionIds.Contains(item.Id))],
             recovered.AgentPolicy?.ToProvenance()
                 ?? RuntimeAgentPolicyProvenance.Unconfigured,
-            ResolveRecoveredTerminalMultiplexingOverride(recovered));
+            isolationBinding is null
+                ? ResolveRecoveredTerminalMultiplexingOverride(recovered)
+                : TerminalMultiplexingMode.Disabled,
+            isolationBinding);
         if (recovered.HistorySource?.ToHistorySource() is { } recoveredSource)
         {
             _runtimeSources[runtime.Id] = recoveredSource;
         }
+        RegisterWorkspaceConnectionRuntime(runtime);
         if (runtime.TerminalMultiplexingMode is { } recoveredMultiplexingOverride)
         {
             _workspaceTerminalMultiplexingModes[runtime.Id] = recoveredMultiplexingOverride;
@@ -9091,6 +9621,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         }
         catch
         {
+            _runtimeSources.Remove(runtime.Id);
+            _workspaceTerminalMultiplexingModes.Remove(runtime.Id);
             runtime.DisposePanels();
             throw;
         }
@@ -9231,8 +9763,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 connection: recovered.ConnectionId is { } fileConnectionId
                     ? FindConnection(new ConnectionId(fileConnectionId))
                     : null);
-            panel.Filter = recovered.Filter ?? string.Empty;
-            panel.ShowHidden = recovered.ShowHidden;
+            if (panel is FileRuntimePanelViewModel filePanel)
+            {
+                filePanel.Filter = recovered.Filter ?? string.Empty;
+                filePanel.ShowHidden = recovered.ShowHidden;
+            }
+
             return panel;
         }
 
@@ -9292,7 +9828,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 recovered.ConnectionId is { } tunnelId
                     ? FindConnection(new ConnectionId(tunnelId))
                     : null,
-                deferStoredCredentialAccess: true);
+                deferStoredCredentialAccess: true,
+                workspaceId: workspaceId);
         }
 
         if (recovered.Kind == RuntimePanelRecoveryKind.Docker)
@@ -9310,7 +9847,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 : CreateDockerPanel(
                     PanelInstanceId.New(),
                     recovered.Title,
-                    connection);
+                    connection,
+                    workspaceId);
         }
 
         if (recovered.Kind == RuntimePanelRecoveryKind.Git)
@@ -9329,7 +9867,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                     PanelInstanceId.New(),
                     recovered.Title,
                     connection,
-                    recovered.StartupLocation);
+                    recovered.StartupLocation,
+                    workspaceId);
         }
 
         if (recovered.Kind == RuntimePanelRecoveryKind.Statistics)
@@ -9580,7 +10119,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 PanelInstanceId.New(),
                 title,
                 panel.Startup.Location,
-                panel.ConnectionId is { } tunnelId ? FindConnection(tunnelId) : null);
+                panel.ConnectionId is { } tunnelId ? FindConnection(tunnelId) : null,
+                workspaceId: workspaceId);
         }
 
         if (panel.Kind == ScreenPanelKind.Docker)
@@ -9601,7 +10141,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             return CreateDockerPanel(
                 PanelInstanceId.New(),
                 title,
-                dockerConnection);
+                dockerConnection,
+                workspaceId);
         }
 
         if (panel.Kind == ScreenPanelKind.Git)
@@ -9623,7 +10164,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 PanelInstanceId.New(),
                 title,
                 gitConnection,
-                panel.Startup.Location);
+                panel.Startup.Location,
+                workspaceId);
         }
 
         if (panel.Kind != ScreenPanelKind.Terminal)
@@ -9690,7 +10232,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         return new TerminalRuntimePanelViewModel(
             resolvedPanelId,
             title,
-            _connectionRuntime,
+            ConnectionRuntimeFor(workspaceId),
             connection,
             new SessionOwner(
                 HostMode.Desktop,
@@ -9730,7 +10272,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         return builtIn?.Layer == KeymapLayer.Terminal ? builtIn : null;
     }
 
-    private FileRuntimePanelViewModel CreateFilePanel(
+    private RuntimePanelViewModel CreateFilePanel(
         WorkspaceInstanceId workspaceId,
         TabInstanceId tabId,
         PanelInstanceId panelId,
@@ -9741,6 +10283,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         bool deferInitialization = false,
         ConnectionProfile? connection = null)
     {
+        if (WorkspaceUsesIsolation(workspaceId))
+        {
+            return IsolationBackendUnavailable(
+                panelId,
+                PanelKind.FileViewer,
+                title,
+                "File Viewer");
+        }
+
         connection ??= ConnectionForFileProfile(initialProfileId) ?? LocalConnection();
         var profile = ResolveFileProfile(initialProfileId);
         var hostInitialLocation = initialLocation ?? profile?.Root;
@@ -9807,6 +10358,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         BrowserProfileBinding? profile = null,
         BrowserProfileId? requestedProfileId = null)
     {
+        if (WorkspaceUsesIsolation(workspaceId))
+        {
+            return IsolationBackendUnavailable(
+                panelId,
+                PanelKind.Browser,
+                title,
+                "Browser");
+        }
+
         if (_browserRendererViewFactory is null)
         {
             return new UnavailableRuntimePanelViewModel(
@@ -10002,6 +10562,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         PanelKind kind,
         ConnectionProfile? connection = null)
     {
+        if (WorkspaceUsesIsolation(workspaceId))
+        {
+            return IsolationBackendUnavailable(
+                panelId,
+                kind,
+                title,
+                kind == PanelKind.Statistics ? "Statistics" : "Process monitor");
+        }
+
         connection ??= LocalConnection() ?? BuiltInConnections.Local;
         var owner = new SessionOwner(
             HostMode.Desktop,
@@ -10031,6 +10600,22 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         };
     }
 
+    private bool WorkspaceUsesIsolation(WorkspaceInstanceId workspaceId) =>
+        ConnectionRuntimeFor(workspaceId) is IWorkspaceIsolationTerminalRuntime;
+
+    private static RuntimePanelViewModel IsolationBackendUnavailable(
+        PanelInstanceId panelId,
+        PanelKind kind,
+        string title,
+        string kindLabel) =>
+        new UnavailableRuntimePanelViewModel(
+            panelId,
+            kind,
+            title,
+            kindLabel,
+            "This backend does not yet run inside the workspace isolate. "
+                + "GhostSHELL blocked host execution to preserve the isolation boundary.");
+
     /// <summary>
     /// The Database shell hosts two deliberately different runtimes: pooled,
     /// per-call ADO.NET work and a long-lived Redis session.
@@ -10043,8 +10628,19 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         ConnectionProfile? tunnelConnection = null,
         DatabaseConnectionProfile? savedConnection = null,
         DatabaseObjectId? initialObject = null,
-        bool deferStoredCredentialAccess = false)
+        bool deferStoredCredentialAccess = false,
+        WorkspaceInstanceId? workspaceId = null)
     {
+        if (workspaceId is { } isolatedWorkspaceId
+            && WorkspaceUsesIsolation(isolatedWorkspaceId))
+        {
+            return IsolationBackendUnavailable(
+                panelId,
+                PanelKind.DatabaseViewer,
+                title,
+                "Database");
+        }
+
         var effectiveDriver = savedConnection?.DriverId ?? driverId;
         if (string.Equals(effectiveDriver, RedisDatabase.DriverId, StringComparison.Ordinal))
         {
@@ -10108,8 +10704,19 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
     private RuntimePanelViewModel CreateDockerPanel(
         PanelInstanceId panelId,
         string title,
-        ConnectionProfile? connection = null)
+        ConnectionProfile? connection = null,
+        WorkspaceInstanceId? workspaceId = null)
     {
+        if (workspaceId is { } isolatedWorkspaceId
+            && WorkspaceUsesIsolation(isolatedWorkspaceId))
+        {
+            return IsolationBackendUnavailable(
+                panelId,
+                PanelKind.Docker,
+                title,
+                "Docker");
+        }
+
         if (_dockerEngineClient is null)
         {
             return new UnavailableRuntimePanelViewModel(
@@ -10142,8 +10749,19 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         PanelInstanceId panelId,
         string title,
         ConnectionProfile? connection = null,
-        string? repositoryPath = null)
+        string? repositoryPath = null,
+        WorkspaceInstanceId? workspaceId = null)
     {
+        if (workspaceId is { } isolatedWorkspaceId
+            && WorkspaceUsesIsolation(isolatedWorkspaceId))
+        {
+            return IsolationBackendUnavailable(
+                panelId,
+                PanelKind.Git,
+                title,
+                "Git");
+        }
+
         if (_gitRepositoryClient is null)
         {
             return new UnavailableRuntimePanelViewModel(
@@ -10358,6 +10976,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         DatabaseRuntimePanelViewModel source,
         DatabaseTableDescriptor? databaseObject)
     {
+        var workspaceId = RuntimeWorkspace?.Tabs.Any(tab => tab.Panels.Contains(source)) == true
+            ? RuntimeWorkspace.Id
+            : (WorkspaceInstanceId?)null;
         var title = databaseObject?.DisplayName ?? source.Title;
         if (source.SavedConnectionId is { } profileId
             && FindDatabaseConnection(profileId) is { } profile)
@@ -10367,7 +10988,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 title,
                 tunnelConnection: ResolveDatabaseTunnel(profile),
                 savedConnection: profile,
-                initialObject: databaseObject?.Id);
+                initialObject: databaseObject?.Id,
+                workspaceId: workspaceId);
         }
 
         return CreateDatabasePanel(
@@ -10376,7 +10998,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             source.SelectedDriver.Id,
             source.ConnectionString,
             source.TunnelConnection,
-            initialObject: databaseObject?.Id);
+            initialObject: databaseObject?.Id,
+            workspaceId: workspaceId);
     }
 
     /// <summary>
@@ -10487,7 +11110,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         string title,
         string? target,
         ConnectionProfile? recoveredTunnel,
-        bool deferStoredCredentialAccess = false)
+        bool deferStoredCredentialAccess = false,
+        WorkspaceInstanceId? workspaceId = null)
     {
         if (target?.StartsWith(SavedDatabaseTargetPrefix, StringComparison.Ordinal) == true)
         {
@@ -10511,7 +11135,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 title,
                 tunnelConnection: tunnel,
                 savedConnection: profile,
-                deferStoredCredentialAccess: deferStoredCredentialAccess);
+                deferStoredCredentialAccess: deferStoredCredentialAccess,
+                workspaceId: workspaceId);
         }
 
         var parsed = DatabasePanelTarget.TryParse(target);
@@ -10521,7 +11146,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
             parsed?.DriverId,
             parsed?.ConnectionString,
             recoveredTunnel,
-            deferStoredCredentialAccess: deferStoredCredentialAccess);
+            deferStoredCredentialAccess: deferStoredCredentialAccess,
+            workspaceId: workspaceId);
     }
 
     /// <summary>
@@ -10600,7 +11226,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         var replacement = CreateDatabasePanel(
             panel.Id,
             panel.Title,
-            driverId: profile.DriverId);
+            driverId: profile.DriverId,
+            workspaceId: workspace.Id);
         if (replacement is RedisRuntimePanelViewModel replacementRedis)
         {
             replacementRedis.ApplySavedConnection(
@@ -11379,6 +12006,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         lock (_shutdownGate)
         {
             _shutdownStarted = true;
+            try
+            {
+                _runtimeGraphLifetime.Cancel();
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                SecretSafeDiagnostics.WriteTraceAndStandardError(
+                    "runtime-graph.shutdown-cancellation.failed",
+                    exception);
+            }
             _shutdownTask ??= QuiesceForShutdownCoreAsync();
             shutdown = _shutdownTask;
         }
@@ -11425,35 +12062,110 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
     private async Task QuiesceForShutdownCoreAsync()
     {
-        await DefaultAgentPolicySettings.QuiesceAsync().ConfigureAwait(false);
-
-        if (_agentRuntimeFactory is null)
+        try
         {
-            if (AgentChat is not null)
+            await DefaultAgentPolicySettings.QuiesceAsync().ConfigureAwait(false);
+
+            if (_agentRuntimeFactory is null)
             {
-                await AgentChat.QuiesceAsync(CancellationToken.None).ConfigureAwait(false);
-                AgentChat.Dispose();
+                if (AgentChat is not null)
+                {
+                    await AgentChat.QuiesceAsync(CancellationToken.None).ConfigureAwait(false);
+                    AgentChat.Dispose();
+                }
+            }
+            else
+            {
+                await Task.WhenAll(
+                        _workspaceAgentChats.Values.Select(owned => owned.QuiesceAsync()))
+                    .ConfigureAwait(false);
+            }
+
+            _catalog.Changed -= OnCatalogChanged;
+            _mcpServerDiagnostics?.Changed -= OnMcpServerDiagnosticsChanged;
+
+            FileTransferState.Dispose();
+            TerminalContinuity.Dispose();
+            WorkspaceAutoSave.Seal();
+            RuntimeRecovery.Seal();
+
+            History.SealOperations();
+
+            await RuntimeGraph.QuiesceAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            await FinalizeWorkspaceIsolationShutdownAsync().ConfigureAwait(false);
+        }
+    }
+
+    private async Task FinalizeWorkspaceIsolationShutdownAsync()
+    {
+        try
+        {
+            await AwaitWorkspaceIsolationPreparationsAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            SecretSafeDiagnostics.WriteTraceAndStandardError(
+                "workspace-isolation.shutdown-prepare-drain.failed",
+                exception);
+        }
+
+        try
+        {
+            await AwaitWorkspaceActivationsAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            SecretSafeDiagnostics.WriteTraceAndStandardError(
+                "runtime-graph.shutdown-activation-drain.failed",
+                exception);
+        }
+
+        try
+        {
+            await AwaitWorkspaceIsolationCleanupAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            SecretSafeDiagnostics.WriteTraceAndStandardError(
+                "workspace-isolation.shutdown-cleanup-drain.failed",
+                exception);
+        }
+
+        try
+        {
+            await RetryWorkspaceGraphRollbacksAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            SecretSafeDiagnostics.WriteTraceAndStandardError(
+                "runtime-graph.shutdown-registration-rollback.failed",
+                exception);
+        }
+
+        try
+        {
+            var isolationReleaseErrors = await ReleaseAllWorkspaceIsolationAsync()
+                .ConfigureAwait(false);
+            if (isolationReleaseErrors.Count > 0)
+            {
+                SecretSafeDiagnosticProjection.WriteStandardError(
+                    "workspace-isolation.shutdown-stop.failed",
+                    SecretSafeDiagnosticKind.Unexpected);
             }
         }
-        else
+        catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            await Task.WhenAll(
-                    _workspaceAgentChats.Values.Select(owned => owned.QuiesceAsync()))
-                .ConfigureAwait(false);
+            SecretSafeDiagnostics.WriteTraceAndStandardError(
+                "workspace-isolation.shutdown-release.failed",
+                exception);
         }
-
-        _catalog.Changed -= OnCatalogChanged;
-        _mcpServerDiagnostics?.Changed -= OnMcpServerDiagnosticsChanged;
-
-        FileTransferState.Dispose();
-        TerminalContinuity.Dispose();
-        WorkspaceAutoSave.Seal();
-        RuntimeRecovery.Seal();
-
-        History.SealOperations();
-
-        _runtimeGraphLifetime.Cancel();
-        await RuntimeGraph.QuiesceAsync().ConfigureAwait(false);
+        finally
+        {
+            _workspaceDefinitionOccupancy.UnregisterWindow(WindowId);
+        }
     }
 
     public void Dispose()
@@ -11465,6 +12177,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
 
         _disposed = true;
         _shutdownStarted = true;
+        _workspaceDefinitionOccupancy.UnregisterWindow(WindowId);
         ReleaseAppearanceEditing();
         History.SealOperations();
 

@@ -6,6 +6,8 @@ public sealed record WorkspaceDefinition : IDurableDefinition
 {
     public const int CurrentSchemaVersion = 1;
     public const string DefaultIcon = "workspace";
+    public const int MaximumIsolationMountCount = 32;
+    public const int MaximumIsolationImageReferenceLength = 512;
 
     /// <summary>
     /// The one workspace that always exists. It is seeded on start when absent
@@ -42,7 +44,10 @@ public sealed record WorkspaceDefinition : IDurableDefinition
         bool agentPanelPinned = false,
         TerminalMultiplexingMode? terminalMultiplexingOverride = null,
         WorkspaceBrowserProfileMode? browserProfileOverride = null,
-        bool hasExplicitAccent = false)
+        bool hasExplicitAccent = false,
+        bool isIsolated = false,
+        IReadOnlyList<WorkspaceIsolationMountDefinition>? isolationMounts = null,
+        string? isolationImageReference = null)
     {
         Id = id;
         SchemaVersion = schemaVersion;
@@ -70,6 +75,11 @@ public sealed record WorkspaceDefinition : IDurableDefinition
 
         BrowserProfileOverride = browserProfileOverride;
         HasExplicitAccent = hasExplicitAccent;
+        IsIsolated = isIsolated;
+        IsolationMounts = Array.AsReadOnly(isolationMounts?.ToArray() ?? []);
+        IsolationImageReference = string.IsNullOrWhiteSpace(isolationImageReference)
+            ? null
+            : isolationImageReference.Trim();
     }
 
     public static DefinitionKind Kind => DefinitionKind.Workspace;
@@ -133,6 +143,24 @@ public sealed record WorkspaceDefinition : IDurableDefinition
     public bool AgentPanelPinned { get; }
 
     /// <summary>
+    /// Whether supported workspace processes run inside this workspace's one
+    /// persistent platform isolation environment.
+    /// </summary>
+    public bool IsIsolated { get; }
+
+    /// <summary>
+    /// Host paths made visible to the isolated workspace. An empty collection
+    /// creates a guest-only environment with no host files mounted.
+    /// </summary>
+    public IReadOnlyList<WorkspaceIsolationMountDefinition> IsolationMounts { get; }
+
+    /// <summary>
+    /// The OCI image used to create this workspace's isolate. Null asks the platform
+    /// provider to use its default image while preserving an already-created isolate.
+    /// </summary>
+    public string? IsolationImageReference { get; }
+
+    /// <summary>
     /// Null inherits the application preference. A concrete value makes the
     /// workspace behavior stable even when the global preference changes.
     /// </summary>
@@ -180,7 +208,10 @@ public sealed record WorkspaceDefinition : IDurableDefinition
             AgentPanelPinned,
             TerminalMultiplexingOverride,
             BrowserProfileOverride,
-            HasExplicitAccent);
+            HasExplicitAccent,
+            IsIsolated,
+            IsolationMounts,
+            IsolationImageReference);
     }
 
     public static bool IsValidIcon(string? icon)

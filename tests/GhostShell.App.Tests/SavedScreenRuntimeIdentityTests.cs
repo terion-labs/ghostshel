@@ -1938,6 +1938,73 @@ public sealed class SavedScreenRuntimeIdentityTests
     }
 
     [Fact]
+    public void IsolatedRecoverySnapshotPersistsMountScopeAndRejectsMissingMountMetadata()
+    {
+        var workspaceId = new WorkspaceId("isolated-recovery-workspace");
+        var source = new RuntimeHistorySource(
+            new DefinitionKey(WorkspaceDefinition.Kind, workspaceId.Value),
+            "Isolated recovery workspace");
+        var binding = new WorkspaceIsolationBinding(
+            workspaceId,
+            WorkspaceIsolationProviderKind.AppleContainer,
+            WorkspaceIsolationCapability.StructuredProcessExecution,
+            "isolated-recovery-resource",
+            [new WorkspaceIsolationMount(
+                "/host/projects",
+                "/workspace",
+                isReadOnly: true)],
+            Guid.NewGuid());
+        var workspace = new RuntimeWorkspaceViewModel(
+            WorkspaceInstanceId.New(),
+            "Isolated recovery workspace",
+            "Bronze",
+            [],
+            isolationBinding: binding);
+        var tab = new RuntimeTabViewModel(
+            TabInstanceId.New(),
+            "Recovered tab",
+            "WORKSPACE TAB");
+        tab.AddPanel(new UnavailableRuntimePanelViewModel(
+            PanelInstanceId.New(),
+            PanelKind.Browser,
+            "Unavailable panel",
+            "BROWSER",
+            "The capability is unavailable."));
+        workspace.Tabs.Add(tab);
+        workspace.ActiveTab = tab;
+        var snapshot = new RuntimeRecoverySnapshot(
+            "isolated-run",
+            RuntimeWorkspaceRecoveryCodec.SnapshotKey,
+            RuntimeWorkspaceRecoveryCodec.SchemaVersion,
+            RuntimeWorkspaceRecoveryCodec.Serialize(workspace, source),
+            DateTimeOffset.UtcNow);
+
+        Assert.True(RuntimeWorkspaceRecoveryCodec.TryDeserialize(
+            snapshot,
+            out var recovered,
+            out var error), error);
+        Assert.True(recovered!.Workspace!.IsIsolated);
+        var mount = Assert.Single(recovered.Workspace.IsolationMounts!);
+        Assert.Equal("/host/projects", mount.HostSource);
+        Assert.Equal("/workspace", mount.GuestDestination);
+        Assert.True(mount.IsReadOnly);
+
+        var missingMountsPayload = new RuntimeWindowRecoveryPayload(
+            recovered.Workspace with { IsolationMounts = null });
+        var missingMountsSnapshot = snapshot with
+        {
+            PayloadJson = JsonSerializer.Serialize(
+                missingMountsPayload,
+                RuntimeWorkspaceRecoveryJsonContext.Default.RuntimeWindowRecoveryPayload),
+        };
+        Assert.False(RuntimeWorkspaceRecoveryCodec.TryDeserialize(
+            missingMountsSnapshot,
+            out _,
+            out var missingMountsError));
+        Assert.Contains("invalid", missingMountsError, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Recovery_snapshot_rejects_more_panels_than_a_live_workspace_can_register()
     {
         var workspace = new RuntimeWorkspaceViewModel(

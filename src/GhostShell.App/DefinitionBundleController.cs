@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using GhostShell.App.ViewModels;
 using GhostShell.Application;
 using GhostShell.Core;
 using GhostShell.Docking;
@@ -18,15 +19,19 @@ public sealed class DefinitionBundleController
     private readonly IDefinitionBundleStore _bundleStore;
     private readonly IDefinitionBundlePathPicker _pathPicker;
     private readonly IDefinitionBundleImportRefresh _importRefresh;
+    private readonly WorkspaceDefinitionOccupancy _workspaceDefinitionOccupancy;
 
     public DefinitionBundleController(
         IDefinitionBundleStore bundleStore,
         IDefinitionBundlePathPicker pathPicker,
-        IDefinitionBundleImportRefresh importRefresh)
+        IDefinitionBundleImportRefresh importRefresh,
+        WorkspaceDefinitionOccupancy workspaceDefinitionOccupancy)
     {
         _bundleStore = bundleStore ?? throw new ArgumentNullException(nameof(bundleStore));
         _pathPicker = pathPicker ?? throw new ArgumentNullException(nameof(pathPicker));
         _importRefresh = importRefresh ?? throw new ArgumentNullException(nameof(importRefresh));
+        _workspaceDefinitionOccupancy = workspaceDefinitionOccupancy
+            ?? throw new ArgumentNullException(nameof(workspaceDefinitionOccupancy));
     }
 
     public async ValueTask<DefinitionStoreResult<DefinitionBundleExportReceipt>> ExportAsync(
@@ -180,6 +185,21 @@ public sealed class DefinitionBundleController
             return Failure<DefinitionBundleImportReceipt>(FromIssue(blockingIssue));
         }
 
+        var affectedWorkspaces = plan.Preflight.Bundle.Definitions
+            .Where(document => document.Kind == WorkspaceDefinition.Kind)
+            .Select(document => new DefinitionKey(document.Kind, document.Id))
+            .Distinct()
+            .ToArray();
+        using var workspaceLease = affectedWorkspaces.Length == 0
+            ? null
+            : _workspaceDefinitionOccupancy.TryReserveColdConfigurationEdits(affectedWorkspaces);
+        if (affectedWorkspaces.Length > 0 && workspaceLease is null)
+        {
+            return Failure<DefinitionBundleImportReceipt>(new DefinitionStoreError(
+                DefinitionStoreErrorCode.RevisionConflict,
+                "Close every affected workspace before importing its definition."));
+        }
+
         DefinitionStoreResult<DefinitionImportResult> committed;
         try
         {
@@ -200,23 +220,47 @@ public sealed class DefinitionBundleController
         DefinitionStoreError? reloadError;
         try
         {
-            var reloaded = await _importRefresh.ReloadAsync(cancellationToken)
+            // The commit is already durable. Caller cancellation must not leave the catalog and
+            // workspace launch state disagreeing with the database.
+            var reloaded = await _importRefresh.ReloadAsync(CancellationToken.None)
                 .ConfigureAwait(false);
             reloadError = reloaded.Error;
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
-            // The database commit is already durable. Report the stale presentation separately so
-            // callers refresh instead of retrying the import and repeating replacement work.
             reloadError = new DefinitionStoreError(
                 DefinitionStoreErrorCode.Cancelled,
-                "Definitions were imported, but refreshing the catalog was cancelled.");
+                "Definitions were imported, but refreshing the catalog was cancelled internally.");
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            reloadError = new DefinitionStoreError(
+                DefinitionStoreErrorCode.StorageFailure,
+                "Definitions were imported, but the catalog refresh failed unexpectedly.");
+        }
+
+        var workspacesRemainUnavailable = reloadError is not null
+            && affectedWorkspaces.Length > 0;
+        if (reloadError is null)
+        {
+            _workspaceDefinitionOccupancy.MarkCatalogReconciled();
+        }
+        else if (workspacesRemainUnavailable)
+        {
+            _workspaceDefinitionOccupancy.RetainWorkspaceDefinitionsUntilCatalogReconciled(
+                affectedWorkspaces);
+            reloadError = reloadError with
+            {
+                Message = $"{reloadError.Message} Imported workspaces remain unavailable until "
+                    + "a catalog refresh succeeds or GhostShell restarts.",
+            };
         }
 
         return DefinitionStoreResult<DefinitionBundleImportReceipt>.Success(new(
             committed.Value!.Inserted,
             committed.Value.Replaced,
-            reloadError));
+            reloadError,
+            workspacesRemainUnavailable));
     }
 
     private static async Task WriteBundleAtomicallyAsync(

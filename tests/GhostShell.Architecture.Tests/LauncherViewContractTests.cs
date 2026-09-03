@@ -8,6 +8,20 @@ public sealed class LauncherViewContractTests
     private static readonly ApplicationViewCatalog ApplicationViews =
         ApplicationViewCatalog.Load();
 
+    [Fact]
+    public void Workspace_tiles_receive_the_isolation_state()
+    {
+        var root = Assert.IsType<XElement>(LoadComponent("LauncherView").Root);
+        var tile = Assert.Single(
+            root.Descendants(),
+            element => string.Equals(
+                element.Name.LocalName,
+                "WorkspaceRailTile",
+                StringComparison.Ordinal));
+
+        Assert.Equal("{Binding IsIsolated}", AttributeValue(tile, "IsIsolated"));
+    }
+
     /// <summary>
     /// A saved target is one row, whichever way it can be opened. Listing it
     /// once per supported adapter said the same host four times and buried the

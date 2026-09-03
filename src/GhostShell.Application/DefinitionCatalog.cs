@@ -1449,7 +1449,10 @@ public sealed class DefinitionCatalog : IDefinitionCatalog, IDisposable
                     workspace.AgentPanelPinned,
                     workspace.TerminalMultiplexingOverride,
                     workspace.BrowserProfileOverride,
-                    workspace.HasExplicitAccent),
+                    workspace.HasExplicitAccent,
+                    workspace.IsIsolated,
+                    workspace.IsolationMounts,
+                    workspace.IsolationImageReference),
                 stored.Revision,
                 cancellationToken)
             .ConfigureAwait(false);

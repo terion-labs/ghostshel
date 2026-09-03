@@ -22,12 +22,15 @@ public sealed class LauncherWorkspaceViewModel(
     string accent,
     string initials,
     Symbol iconSymbol,
-    int itemCount) : ObservableObject
+    int itemCount,
+    bool isIsolated = false,
+    bool isIsolationAvailable = true) : ObservableObject
 {
     private bool _isOpen;
     private bool _isInFront;
     private bool _hasAttention;
     private bool _hasAgentActivity;
+    private bool _isIsolated = isIsolated;
 
     public WorkspaceId Id { get; } = id;
 
@@ -44,6 +47,30 @@ public sealed class LauncherWorkspaceViewModel(
     public Symbol IconSymbol { get; } = iconSymbol;
 
     public int ItemCount { get; } = itemCount;
+
+    /// <summary>
+    /// The active execution scope while the workspace is open; otherwise the
+    /// isolation intent saved on its durable definition.
+    /// </summary>
+    public bool IsIsolated
+    {
+        get => _isIsolated;
+        internal set
+        {
+            if (SetProperty(ref _isIsolated, value))
+            {
+                OnPropertyChanged(nameof(CanToggleIsolation));
+            }
+        }
+    }
+
+    /// <summary>
+    /// An unavailable host may only turn an existing portable setting off.
+    /// Open workspaces remain editable because the shell restarts them after
+    /// the user confirms the execution-boundary change.
+    /// </summary>
+    public bool CanToggleIsolation =>
+        isIsolationAvailable || IsIsolated;
 
     /// <summary>The Main workspace always exists; only the rest can go.</summary>
     public bool CanDelete => !string.Equals(
@@ -106,6 +133,7 @@ public sealed class LauncherWorkspaceViewModel(
         && Revision == other.Revision
         && IconSymbol == other.IconSymbol
         && ItemCount == other.ItemCount
+        && IsIsolated == other.IsIsolated
         && string.Equals(Name, other.Name, StringComparison.Ordinal)
         && string.Equals(Description, other.Description, StringComparison.Ordinal)
         && string.Equals(Accent, other.Accent, StringComparison.Ordinal)

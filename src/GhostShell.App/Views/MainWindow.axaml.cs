@@ -39,6 +39,7 @@ public sealed partial class MainWindow : Window
     private CancellationTokenSource? _historyExportLifetime;
     private readonly IDefinitionBundleStore? _definitionBundleStore;
     private readonly IDefinitionCatalog? _definitionCatalog;
+    private readonly WorkspaceDefinitionOccupancy? _workspaceDefinitionOccupancy;
     private readonly IDiagnosticsBundleExporter? _diagnosticsExporter;
     private readonly IDiagnosticsBundleRequestSource? _diagnosticsRequestSource;
     private readonly IDiagnosticsArtifactPresenter? _diagnosticsArtifactPresenter;
@@ -124,6 +125,7 @@ public sealed partial class MainWindow : Window
     public MainWindow(
         IDefinitionBundleStore definitionBundleStore,
         IDefinitionCatalog definitionCatalog,
+        WorkspaceDefinitionOccupancy workspaceDefinitionOccupancy,
         IDiagnosticsBundleExporter diagnosticsExporter,
         IDiagnosticsBundleRequestSource diagnosticsRequestSource,
         IDiagnosticsArtifactPresenter diagnosticsArtifactPresenter,
@@ -135,6 +137,7 @@ public sealed partial class MainWindow : Window
     {
         _definitionBundleStore = definitionBundleStore;
         _definitionCatalog = definitionCatalog;
+        _workspaceDefinitionOccupancy = workspaceDefinitionOccupancy;
         _diagnosticsExporter = diagnosticsExporter;
         _diagnosticsRequestSource = diagnosticsRequestSource;
         _diagnosticsArtifactPresenter = diagnosticsArtifactPresenter;
@@ -733,6 +736,10 @@ public sealed partial class MainWindow : Window
         ViewModel.SetDefinitionBundleStatus(
             receipt.CatalogReloaded
                 ? $"Imported {receipt.Inserted} new and replaced {receipt.Replaced} definitions."
+                : receipt.WorkspacesRemainUnavailable
+                    ? $"Imported {receipt.Inserted} new and replaced {receipt.Replaced} definitions, "
+                        + "but the catalog refresh failed. Imported workspaces remain unavailable "
+                        + "until a catalog refresh succeeds or GhostShell restarts."
                 : $"Imported {receipt.Inserted} new and replaced {receipt.Replaced} definitions, but the catalog refresh failed.");
         if (!receipt.CatalogReloaded)
         {
@@ -1459,9 +1466,18 @@ public sealed partial class MainWindow : Window
     {
         _ = sender;
         _ = e;
-        if (ViewModel.WorkspaceEditor is not null)
+        if (ViewModel.WorkspaceEditor is { } workspaceEditor)
         {
-            _ = await ViewModel.SaveWorkspaceEditorAsync(_lifetime.Token);
+            try
+            {
+                _ = await SaveWorkspaceEditorFromWindowAsync(
+                    workspaceEditor.CreateSaveRequest());
+            }
+            catch (InvalidOperationException exception)
+            {
+                ViewModel.SetError(exception.Message);
+            }
+
             return;
         }
 
@@ -1473,11 +1489,35 @@ public sealed partial class MainWindow : Window
         WorkspaceEditorSaveRequestedEventArgs e)
     {
         _ = sender;
-        var result = await ViewModel.SaveWorkspaceEditorAsync(e.Request, _lifetime.Token);
+        var result = await SaveWorkspaceEditorFromWindowAsync(e.Request);
         if (result.IsSuccess)
         {
             FocusCurrentRoute();
         }
+    }
+
+    private async ValueTask<DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>>
+        SaveWorkspaceEditorFromWindowAsync(WorkspaceEditorSaveRequest request)
+    {
+        if (!ViewModel.WorkspaceEditorConfigurationChangeRequiresRestart(request))
+        {
+            return await ViewModel.SaveWorkspaceEditorAsync(request, _lifetime.Token);
+        }
+
+        if (!await Confirmations.WorkspaceIsolationRestart(
+                    request.Definition.Name,
+                    ViewModel.WorkspaceEditorImageChangeRebuildsIsolate(request))
+                .ShowDialog<bool>(this))
+        {
+            return DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>.Failure(
+                new DefinitionStoreError(
+                    DefinitionStoreErrorCode.Cancelled,
+                    "Workspace isolation change was cancelled."));
+        }
+
+        return await ViewModel.SaveWorkspaceEditorRestartingAsync(
+            request,
+            _lifetime.Token);
     }
 
     /// <summary>
@@ -1526,7 +1566,8 @@ public sealed partial class MainWindow : Window
             return false;
         }
 
-        return (await ViewModel.SaveWorkspaceEditorAsync(_lifetime.Token)).IsSuccess;
+        return (await SaveWorkspaceEditorFromWindowAsync(
+            editor.CreateSaveRequest())).IsSuccess;
     }
 
     private async void OnWorkspaceEditorCancelRequested(
@@ -1553,7 +1594,16 @@ public sealed partial class MainWindow : Window
         if (sender is Control { DataContext: LauncherWorkspaceViewModel workspace })
         {
             var key = new DefinitionKey(WorkspaceDefinition.Kind, workspace.Id.Value);
-            var dialog = ViewModel.IsDefinitionOpen(key)
+            var isOpen = ViewModel.IsDefinitionOpen(key);
+            var dialog = workspace.IsIsolated
+                ? Confirmations.DefinitionDelete(
+                    "Delete isolated workspace?",
+                    isOpen
+                        ? $"“{workspace.Name}” will be removed, while its running tabs and sessions remain alive until they close."
+                        : $"“{workspace.Name}” will be permanently removed from this profile.",
+                    "This does not delete the persistent isolate or its installed packages. Remove the isolate with the platform runtime until GhostSHELL adds reset and delete controls.",
+                    "Delete workspace")
+                : isOpen
                 ? Confirmations.DefinitionDelete(
                     "Delete the open workspace definition?",
                     $"“{workspace.Name}” is currently open. Its running tabs and sessions will remain alive, but this saved workspace can no longer be reopened after they close.",

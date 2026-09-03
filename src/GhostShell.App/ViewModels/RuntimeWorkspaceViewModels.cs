@@ -25,7 +25,8 @@ public sealed class RuntimeWorkspaceViewModel : ObservableObject
         string accent,
         IReadOnlyList<LauncherConnectionViewModel> connections,
         RuntimeAgentPolicyProvenance? agentPolicy = null,
-        TerminalMultiplexingMode? terminalMultiplexingMode = null)
+        TerminalMultiplexingMode? terminalMultiplexingMode = null,
+        WorkspaceIsolationBinding? isolationBinding = null)
     {
         Id = id;
         Name = name;
@@ -33,6 +34,7 @@ public sealed class RuntimeWorkspaceViewModel : ObservableObject
         Connections = new ObservableCollection<LauncherConnectionViewModel>(connections);
         AgentPolicy = agentPolicy ?? RuntimeAgentPolicyProvenance.Unconfigured;
         _terminalMultiplexingMode = terminalMultiplexingMode;
+        IsolationBinding = isolationBinding;
         // A tab in this workspace is governed by this workspace unless it
         // brought a policy of its own. Stated once, here, rather than asked of
         // each of the eight places that build a tab: recovery refuses a
@@ -106,6 +108,12 @@ public sealed class RuntimeWorkspaceViewModel : ObservableObject
     public ObservableCollection<LauncherConnectionViewModel> Connections { get; }
 
     public RuntimeAgentPolicyProvenance AgentPolicy { get; }
+
+    /// <summary>
+    /// The persistent execution boundary captured when this runtime workspace
+    /// opened. Null means the workspace executes on the host.
+    /// </summary>
+    public WorkspaceIsolationBinding? IsolationBinding { get; }
 
     /// <summary>
     /// Null follows the current application preference. A concrete value is
@@ -2986,7 +2994,8 @@ public sealed class TerminalRuntimePanelViewModel : RuntimePanelViewModel, IPane
         IProgress<ConnectionProgress> progress,
         CancellationToken cancellationToken)
     {
-        if (_connectionSecurityRuntime is null
+        if (_connectionRuntime is IWorkspaceIsolationTerminalRuntime
+            || _connectionSecurityRuntime is null
             || _connection.Endpoint is not ConnectionEndpoint.Ssh
             || _connection.HostKeyPolicy == SshHostKeyPolicy.InsecureIgnore)
         {

@@ -65,6 +65,10 @@ public sealed class DefinitionEditSessionViewModelTests
         Assert.Equal(
             workspace.TerminalMultiplexingOverride,
             catalog.WorkspaceSave.Definition.TerminalMultiplexingOverride);
+        Assert.True(catalog.WorkspaceSave.Definition.IsIsolated);
+        Assert.Equal(
+            workspace.IsolationMounts,
+            catalog.WorkspaceSave.Definition.IsolationMounts);
     }
 
     [Fact]
@@ -148,7 +152,15 @@ public sealed class DefinitionEditSessionViewModelTests
             "Operations",
             "Production workspace",
             "#336699",
-            []);
+            [],
+            isIsolated: true,
+            isolationMounts:
+            [
+                new(
+                    Path.Combine(Path.GetTempPath(), "ghostshell-definition-edit"),
+                    "/workspace",
+                    IsReadOnly: false),
+            ]);
 
     private static ScreenDefinition Screen() =>
         new(

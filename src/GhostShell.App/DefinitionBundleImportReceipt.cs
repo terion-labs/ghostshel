@@ -9,7 +9,8 @@ namespace GhostShell.App;
 public sealed record DefinitionBundleImportReceipt(
     int Inserted,
     int Replaced,
-    DefinitionStoreError? ReloadError)
+    DefinitionStoreError? ReloadError,
+    bool WorkspacesRemainUnavailable = false)
 {
     public bool CatalogReloaded => ReloadError is null;
 }

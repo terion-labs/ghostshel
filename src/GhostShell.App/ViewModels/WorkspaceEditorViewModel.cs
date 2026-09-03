@@ -18,12 +18,17 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
     private readonly IReadOnlyList<AiProviderProfileDescriptor>? _aiProviders;
     private readonly ObservableCollection<WorkspaceEntryEditorViewModel> _entries = [];
     private readonly ReadOnlyObservableCollection<WorkspaceEntryEditorViewModel> _readOnlyEntries;
+    private readonly ObservableCollection<WorkspaceIsolationMountEditorViewModel> _isolationMounts = [];
+    private readonly ReadOnlyObservableCollection<WorkspaceIsolationMountEditorViewModel>
+        _readOnlyIsolationMounts;
     private string _name;
     private string _description;
     private string _accent;
     private string _color;
     private string _icon;
     private bool _autoSave;
+    private bool _isIsolated;
+    private string _isolationImageReference;
     private WorkspaceTerminalMultiplexingOption _selectedTerminalMultiplexing;
     private WorkspaceBrowserProfileOption _selectedBrowserProfile;
     private string _iconSearch = string.Empty;
@@ -32,6 +37,8 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
     private IReadOnlyList<DefinitionValidationIssue> _validationIssues = [];
     private string? _lastOperationError;
     private bool _disposed;
+    private readonly bool _isIsolationAvailable;
+    private readonly string? _isolationRuntimeDisplayName;
 
     public static WorkspaceEditorViewModel CreateNew(
         IReadOnlyList<ConnectionProfile> connections,
@@ -75,9 +82,15 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         IReadOnlyList<ScreenDefinition> screens,
         IReadOnlyList<LayoutDefinition> layouts,
         IReadOnlyList<FileProviderProfile> fileProviders,
-        IReadOnlyList<AiProviderProfileDescriptor>? aiProviders = null)
+        IReadOnlyList<AiProviderProfileDescriptor>? aiProviders = null,
+        bool isIsolationAvailable = true,
+        string? isolationRuntimeDisplayName = null)
     {
         _original = workspace ?? throw new ArgumentNullException(nameof(workspace));
+        _isIsolationAvailable = isIsolationAvailable;
+        _isolationRuntimeDisplayName = string.IsNullOrWhiteSpace(isolationRuntimeDisplayName)
+            ? null
+            : isolationRuntimeDisplayName.Trim();
         ArgumentNullException.ThrowIfNull(connections);
         ArgumentNullException.ThrowIfNull(screens);
         ArgumentNullException.ThrowIfNull(layouts);
@@ -89,6 +102,8 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         _color = workspace.Color ?? string.Empty;
         _icon = workspace.Icon;
         _autoSave = workspace.AutoSave;
+        _isIsolated = workspace.IsIsolated;
+        _isolationImageReference = workspace.IsolationImageReference ?? string.Empty;
         _aiProviders = aiProviders;
         AgentPolicy = new SavedScreenAgentPolicyEditorViewModel(
             workspace.AgentPolicyOverride,
@@ -112,12 +127,14 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
             option.Mode == workspace.BrowserProfileOverride);
         _screens = screens.ToDictionary(screen => screen.Id);
         _readOnlyEntries = new(_entries);
+        _readOnlyIsolationMounts = new(_isolationMounts);
 
         ConnectionOptions = BuildConnectionOptions(workspace, connections, screens);
         LayoutOptions = BuildLayoutOptions(workspace, layouts, screens);
         ScreenOptions = BuildScreenOptions(workspace, screens, LayoutOptions);
         FileProviderOptions = BuildFileProviderOptions(workspace, screens, fileProviders);
         RestoreEntries();
+        RestoreIsolationMounts();
         RefreshIconChoices();
         RefreshChoiceSelection();
         PublishState();
@@ -335,6 +352,46 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
     /// <summary>The durable launcher and keyboard traversal order.</summary>
     public ReadOnlyObservableCollection<WorkspaceEntryEditorViewModel> Entries => _readOnlyEntries;
 
+    public ReadOnlyObservableCollection<WorkspaceIsolationMountEditorViewModel> IsolationMounts =>
+        _readOnlyIsolationMounts;
+
+    public int IsolationMountCount => _isolationMounts.Count;
+
+    public bool HasNoIsolationMounts => _isolationMounts.Count == 0;
+
+    public bool CanAddIsolationMount =>
+        _isolationMounts.Count < WorkspaceDefinition.MaximumIsolationMountCount;
+
+    public bool IsIsolationAvailable => _isIsolationAvailable;
+
+    public bool CanToggleIsolation =>
+        IsIsolationAvailable || IsIsolated;
+
+    public bool IsIsolationUnavailable => !IsIsolationAvailable && !IsIsolated;
+
+    public bool CanInstallIsolationRuntime =>
+        IsIsolationUnavailable && _isolationRuntimeDisplayName is not null;
+
+    public string IsolationRuntimeRequirementLabel =>
+        _isolationRuntimeDisplayName is null
+            ? "Workspace isolation unavailable"
+            : $"Install {_isolationRuntimeDisplayName} to enable isolation";
+
+    public string IsolationRuntimeRequirementDescription =>
+        _isolationRuntimeDisplayName is null
+            ? "No workspace isolation runtime is available for this platform."
+            : $"GhostSHELL uses {_isolationRuntimeDisplayName} to create this workspace's persistent isolated environment. Install and start it, then restart GhostSHELL.";
+
+    public string InstallIsolationRuntimeLabel =>
+        _isolationRuntimeDisplayName is null
+            ? "Install isolation runtime"
+            : $"Install {_isolationRuntimeDisplayName}\u2026";
+
+    public string InstallIsolationRuntimeAccessibleName =>
+        _isolationRuntimeDisplayName is null
+            ? "Install workspace isolation runtime"
+            : $"Install {_isolationRuntimeDisplayName} runtime";
+
     public IReadOnlyList<WorkspaceEntryEditorViewModel> ConnectionEntries =>
         [.. _entries.Where(entry => entry.IsConnection)];
 
@@ -450,6 +507,76 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
                 Changed();
             }
         }
+    }
+
+    /// <summary>
+    /// Whether supported workspace processes run inside this workspace's one
+    /// persistent platform isolation environment.
+    /// </summary>
+    public bool IsIsolated
+    {
+        get => _isIsolated;
+        set
+        {
+            if (!CanToggleIsolation)
+            {
+                return;
+            }
+
+            if (SetProperty(ref _isIsolated, value))
+            {
+                OnPropertyChanged(nameof(CanToggleIsolation));
+                OnPropertyChanged(nameof(IsIsolationUnavailable));
+                OnPropertyChanged(nameof(CanInstallIsolationRuntime));
+                Changed();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Empty selects the platform's pinned Ubuntu default. A concrete OCI reference
+    /// makes image choice durable for this workspace.
+    /// </summary>
+    public string IsolationImageReference
+    {
+        get => _isolationImageReference;
+        set
+        {
+            if (SetProperty(ref _isolationImageReference, value))
+            {
+                Changed();
+            }
+        }
+    }
+
+    public void AddIsolationMount()
+    {
+        if (!CanAddIsolationMount)
+        {
+            _ = Reject(
+                $"A workspace cannot define more than {WorkspaceDefinition.MaximumIsolationMountCount} host mounts.");
+            return;
+        }
+
+        var mount = new WorkspaceIsolationMountEditorViewModel(
+            string.Empty,
+            NextGuestMountPath(),
+            isReadOnly: true);
+        AddIsolationMount(mount);
+        Changed();
+    }
+
+    public void RemoveIsolationMount(WorkspaceIsolationMountEditorViewModel mount)
+    {
+        ArgumentNullException.ThrowIfNull(mount);
+        if (!_isolationMounts.Remove(mount))
+        {
+            return;
+        }
+
+        mount.PropertyChanged -= OnIsolationMountChanged;
+        PublishIsolationMountState();
+        Changed();
     }
 
     public bool IsDirty => _isDirty;
@@ -639,6 +766,11 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         var colorChanged = !StringComparer.Ordinal.Equals(_color, color);
         var iconChanged = !StringComparer.Ordinal.Equals(_icon, _original.Icon);
         var autoSaveChanged = _autoSave != _original.AutoSave;
+        var isolationChanged = _isIsolated != _original.IsIsolated;
+        var isolationImage = _original.IsolationImageReference ?? string.Empty;
+        var isolationImageChanged = !StringComparer.Ordinal.Equals(
+            _isolationImageReference,
+            isolationImage);
         var multiplexing = TerminalMultiplexingOptions.Single(option =>
             option.Mode == _original.TerminalMultiplexingOverride);
         var multiplexingChanged = _selectedTerminalMultiplexing != multiplexing;
@@ -651,6 +783,8 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         _color = color;
         _icon = _original.Icon;
         _autoSave = _original.AutoSave;
+        _isIsolated = _original.IsIsolated;
+        _isolationImageReference = isolationImage;
         _selectedTerminalMultiplexing = multiplexing;
         _selectedBrowserProfile = browserProfile;
         if (nameChanged)
@@ -693,6 +827,19 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(AutoSave));
         }
 
+        if (isolationChanged)
+        {
+            OnPropertyChanged(nameof(IsIsolated));
+            OnPropertyChanged(nameof(CanToggleIsolation));
+            OnPropertyChanged(nameof(IsIsolationUnavailable));
+            OnPropertyChanged(nameof(CanInstallIsolationRuntime));
+        }
+
+        if (isolationImageChanged)
+        {
+            OnPropertyChanged(nameof(IsolationImageReference));
+        }
+
         if (multiplexingChanged)
         {
             OnPropertyChanged(nameof(SelectedTerminalMultiplexing));
@@ -713,6 +860,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(AgentPolicy));
 
         RestoreEntries();
+        RestoreIsolationMounts();
         LastOperationError = null;
         SetDirty(false);
         PublishState(entriesChanged: true);
@@ -742,6 +890,7 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         }
 
         ClearEntries();
+        ClearIsolationMounts();
         AgentPolicy.Changed -= OnAgentPolicyChanged;
         AgentPolicy.Dispose();
         _disposed = true;
@@ -801,7 +950,10 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         _original.AgentPanelPinned,
         SelectedTerminalMultiplexing.Mode,
         SelectedBrowserProfile.Mode,
-        !string.IsNullOrWhiteSpace(Accent));
+        !string.IsNullOrWhiteSpace(Accent),
+        IsIsolated,
+        [.. _isolationMounts.Select(mount => mount.Build())],
+        IsolationImageReference);
 
     private IReadOnlyList<DefinitionValidationIssue> Validate()
     {
@@ -874,6 +1026,13 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         Changed();
     }
 
+    private void OnIsolationMountChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        Changed();
+    }
+
     private void OnAgentPolicyChanged(object? sender, EventArgs e)
     {
         _ = sender;
@@ -932,6 +1091,67 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         .Where(item => item.entry.Id == entryId)
         .Select(item => item.index)
         .SingleOrDefault(-1);
+
+    private void RestoreIsolationMounts()
+    {
+        ClearIsolationMounts();
+        foreach (var mount in _original.IsolationMounts)
+        {
+            AddIsolationMount(new WorkspaceIsolationMountEditorViewModel(
+                mount.HostPath,
+                mount.GuestPath,
+                mount.IsReadOnly));
+        }
+
+        PublishIsolationMountState();
+    }
+
+    private void ClearIsolationMounts()
+    {
+        foreach (var mount in _isolationMounts)
+        {
+            mount.PropertyChanged -= OnIsolationMountChanged;
+        }
+
+        _isolationMounts.Clear();
+    }
+
+    private void AddIsolationMount(WorkspaceIsolationMountEditorViewModel mount)
+    {
+        mount.PropertyChanged += OnIsolationMountChanged;
+        _isolationMounts.Add(mount);
+        PublishIsolationMountState();
+    }
+
+    private string NextGuestMountPath()
+    {
+        const string stem = "/workspace";
+        if (_isolationMounts.All(mount =>
+                !string.Equals(mount.GuestPath, stem, StringComparison.Ordinal)))
+        {
+            return stem;
+        }
+
+        for (var suffix = 2; suffix <= WorkspaceDefinition.MaximumIsolationMountCount; suffix++)
+        {
+            var candidate = $"{stem}-{suffix}";
+            if (_isolationMounts.All(mount =>
+                    !string.Equals(mount.GuestPath, candidate, StringComparison.Ordinal)))
+            {
+                return candidate;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private void PublishIsolationMountState()
+    {
+        OnPropertyChanged(nameof(IsolationMounts));
+        OnPropertyChanged(nameof(IsolationMountCount));
+        OnPropertyChanged(nameof(HasNoIsolationMounts));
+        OnPropertyChanged(nameof(CanAddIsolationMount));
+    }
 
     private static IReadOnlyList<ScreenConnectionOption> BuildConnectionOptions(
         WorkspaceDefinition workspace,

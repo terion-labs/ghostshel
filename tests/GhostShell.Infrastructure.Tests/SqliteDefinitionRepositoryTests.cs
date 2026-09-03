@@ -808,6 +808,41 @@ public sealed class SqliteDefinitionRepositoryTests
     }
 
     [Fact]
+    public async Task Workspace_isolation_round_trips_through_the_profile_database()
+    {
+        await using var temporary = TemporaryDatabase.Create();
+        var isolationMount = new WorkspaceIsolationMountDefinition(
+            Path.Combine(Path.GetTempPath(), "ghostshell-sqlite"),
+            "/workspace",
+            IsReadOnly: true);
+        var workspace = new WorkspaceDefinition(
+            new WorkspaceId("isolated-workspace"),
+            WorkspaceDefinition.CurrentSchemaVersion,
+            "Isolated workspace",
+            description: null,
+            accent: null,
+            entries: [],
+            isIsolated: true,
+            isolationMounts: [isolationMount]);
+        var repository = new SqliteDefinitionRepository<WorkspaceDefinition>(
+            temporary.Database,
+            TimeProvider.System);
+
+        var saved = await repository.SaveAsync(workspace, null, CancellationToken.None);
+        Assert.True(saved.IsSuccess, saved.Error?.Message);
+        await temporary.ReopenAsync();
+
+        var restored = await new SqliteDefinitionRepository<WorkspaceDefinition>(
+                temporary.Database,
+                TimeProvider.System)
+            .GetAsync(workspace.Key, CancellationToken.None);
+
+        Assert.True(restored.IsSuccess, restored.Error?.Message);
+        Assert.True(restored.Value!.Value.IsIsolated);
+        Assert.Equal([isolationMount], restored.Value.Value.IsolationMounts);
+    }
+
+    [Fact]
     public async Task SftpProviderProtectsItsSshConnectionDependency()
     {
         await using var temporary = TemporaryDatabase.Create();

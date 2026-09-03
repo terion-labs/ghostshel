@@ -39,6 +39,9 @@ internal sealed class WorkspaceRailTile : TemplatedControl
     public static readonly StyledProperty<bool> IsCurrentProperty =
         AvaloniaProperty.Register<WorkspaceRailTile, bool>(nameof(IsCurrent));
 
+    public static readonly StyledProperty<bool> IsIsolatedProperty =
+        AvaloniaProperty.Register<WorkspaceRailTile, bool>(nameof(IsIsolated));
+
     public static readonly StyledProperty<bool> HasAttentionProperty =
         AvaloniaProperty.Register<WorkspaceRailTile, bool>(nameof(HasAttention));
 
@@ -131,6 +134,12 @@ internal sealed class WorkspaceRailTile : TemplatedControl
     {
         get => GetValue(IsCurrentProperty);
         set => SetValue(IsCurrentProperty, value);
+    }
+
+    public bool IsIsolated
+    {
+        get => GetValue(IsIsolatedProperty);
+        set => SetValue(IsIsolatedProperty, value);
     }
 
     public bool HasAgentActivity

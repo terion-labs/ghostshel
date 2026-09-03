@@ -50,6 +50,40 @@ public sealed class WorkspaceViewContractTests
         };
 
     [Fact]
+    public void Workspace_rail_draws_the_isolation_mark_in_the_free_corner()
+    {
+        var root = Assert.IsType<XElement>(LoadView("WorkspaceView").Root);
+        var tile = Assert.Single(
+            root.Descendants(),
+            element => string.Equals(
+                element.Name.LocalName,
+                "WorkspaceRailTile",
+                StringComparison.Ordinal));
+        Assert.Equal("{Binding IsIsolated}", AttributeValue(tile, "IsIsolated"));
+
+        var designSystem = XDocument.Load(Path.Combine(
+            ApplicationViews.RepositoryRoot,
+            "src",
+            "GhostShell.App",
+            "Styles",
+            "DesignSystem.axaml"));
+        var mask = Assert.Single(
+            designSystem.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "Name"),
+                "PART_IsolationMask",
+                StringComparison.Ordinal));
+        var mark = Assert.Single(
+            mask.Descendants(),
+            element => string.Equals(AttributeValue(element, "Symbol"), "Box", StringComparison.Ordinal));
+        Assert.Equal("Box", AttributeValue(mark, "Symbol"));
+        Assert.Equal("Right", AttributeValue(mask, "HorizontalAlignment"));
+        Assert.Equal("Bottom", AttributeValue(mask, "VerticalAlignment"));
+        Assert.Equal("{TemplateBinding RestingBrush}", AttributeValue(mask, "Background"));
+        Assert.Equal("{TemplateBinding IsIsolated}", AttributeValue(mask, "IsVisible"));
+    }
+
+    [Fact]
     public void Agent_toolbar_robot_pulses_for_a_run_in_any_workspace()
     {
         var root = Assert.IsType<XElement>(LoadView("WorkspaceView").Root);

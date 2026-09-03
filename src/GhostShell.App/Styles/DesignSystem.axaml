@@ -601,6 +601,35 @@
                 IsVisible="{TemplateBinding HasAgentActivity}"
                 Symbol="Bot"
                 ToolTip.Tip="AI agent active in this workspace" />
+            <!-- The badge owns an opaque patch of the tile before drawing the
+                 cube. That patch masks the workspace glyph beneath it, so the
+                 two line icons never merge into one illegible mark. -->
+            <Border
+                Name="PART_IsolationMask"
+                Width="16"
+                Height="16"
+                Margin="{controls:Inset Right=Xs, Bottom=Xs}"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Bottom"
+                Background="{TemplateBinding RestingBrush}"
+                AutomationProperties.Name="Workspace isolation enabled"
+                IsHitTestVisible="False"
+                IsVisible="{TemplateBinding IsIsolated}"
+                ToolTip.Tip="Workspace isolation enabled">
+              <Panel>
+                <Border
+                    Name="PART_IsolationMaskWash"
+                    Background="{TemplateBinding AccentBrush}"
+                    Opacity="0" />
+                <icons:SymbolIcon
+                    Name="PART_Isolation"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    FontSize="{DynamicResource ShellFontSize10}"
+                    Foreground="{TemplateBinding MarkBrush}"
+                    Symbol="Box" />
+              </Panel>
+            </Border>
           </Panel>
         </ControlTemplate>
       </Setter>
@@ -618,6 +647,12 @@
         <Setter Property="Opacity" Value="1" />
       </Style>
       <Style Selector="^:pointerover /template/ Border#PART_Wash">
+        <Setter Property="Opacity" Value="1" />
+      </Style>
+      <Style Selector="^:current /template/ Border#PART_IsolationMaskWash">
+        <Setter Property="Opacity" Value="1" />
+      </Style>
+      <Style Selector="^:pointerover /template/ Border#PART_IsolationMaskWash">
         <Setter Property="Opacity" Value="1" />
       </Style>
       <!-- The tile you are in needs no outline as well: it is already the

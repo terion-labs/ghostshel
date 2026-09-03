@@ -2,6 +2,23 @@ namespace GhostShell.Core;
 
 public static class WorkspaceValidator
 {
+    private static readonly string[] ProviderOwnedGuestPaths =
+    [
+        "/bin",
+        "/boot",
+        "/dev",
+        "/etc",
+        "/lib",
+        "/lib64",
+        "/proc",
+        "/root",
+        "/run",
+        "/sbin",
+        "/sys",
+        "/usr",
+        "/var",
+    ];
+
     public static DefinitionValidationResult Validate(WorkspaceDefinition definition)
     {
         ArgumentNullException.ThrowIfNull(definition);
@@ -68,6 +85,99 @@ public static class WorkspaceValidator
                     + "YOLO is run-local and cannot be persisted.",
                 definition.Id.Value));
         }
+
+        if (definition.IsolationImageReference is { } imageReference
+            && (imageReference.Length > WorkspaceDefinition.MaximumIsolationImageReferenceLength
+                || imageReference.Any(char.IsWhiteSpace)
+                || imageReference.Any(char.IsControl)))
+        {
+            issues.Add(new(
+                DefinitionValidationCode.InvalidEntry,
+                "The workspace isolation image must be a valid OCI image reference without whitespace or control characters.",
+                definition.Id.Value));
+        }
+
+        ValidateIsolationMounts(definition, issues);
+    }
+
+    private static void ValidateIsolationMounts(
+        WorkspaceDefinition definition,
+        ICollection<DefinitionValidationIssue> issues)
+    {
+        if (definition.IsolationMounts.Count > WorkspaceDefinition.MaximumIsolationMountCount)
+        {
+            issues.Add(new(
+                DefinitionValidationCode.InvalidEntry,
+                $"A workspace cannot define more than {WorkspaceDefinition.MaximumIsolationMountCount} isolation mounts.",
+                definition.Id.Value));
+        }
+
+        var normalizedGuestPaths = new List<string>(definition.IsolationMounts.Count);
+        foreach (var mount in definition.IsolationMounts)
+        {
+            if (mount is null
+                || string.IsNullOrWhiteSpace(mount.HostPath)
+                || mount.HostPath.Contains('\0', StringComparison.Ordinal)
+                || !Path.IsPathFullyQualified(mount.HostPath))
+            {
+                issues.Add(new(
+                    DefinitionValidationCode.InvalidEntry,
+                    "Each isolation mount requires an absolute host path.",
+                    definition.Id.Value));
+            }
+
+            if (mount is null
+                || !TryNormalizeGuestMountPath(mount.GuestPath, out var normalizedGuestPath)
+                || IsReservedGuestMountPath(normalizedGuestPath))
+            {
+                issues.Add(new(
+                    DefinitionValidationCode.InvalidEntry,
+                    "Each isolation mount requires an absolute guest path outside system-managed directories.",
+                    definition.Id.Value));
+            }
+            else
+            {
+                normalizedGuestPaths.Add(normalizedGuestPath);
+            }
+        }
+
+        foreach (var duplicate in normalizedGuestPaths
+                     .GroupBy(path => path, StringComparer.Ordinal)
+                     .Where(group => group.Count() > 1))
+        {
+            issues.Add(new(
+                DefinitionValidationCode.DuplicateId,
+                $"Isolation mount guest path '{duplicate.Key}' is used more than once.",
+                definition.Id.Value));
+        }
+    }
+
+    private static bool TryNormalizeGuestMountPath(string? path, out string normalized)
+    {
+        normalized = string.Empty;
+        if (string.IsNullOrWhiteSpace(path)
+            || path[0] != '/'
+            || path.Contains('\0', StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0 || segments.Any(segment => segment is "." or ".."))
+        {
+            return false;
+        }
+
+        normalized = $"/{string.Join('/', segments)}";
+        return true;
+    }
+
+    private static bool IsReservedGuestMountPath(string path)
+    {
+        var normalized = path.TrimEnd('/');
+        return ProviderOwnedGuestPaths.Any(reserved =>
+            string.Equals(normalized, reserved, StringComparison.Ordinal)
+            || normalized.StartsWith($"{reserved}/", StringComparison.Ordinal));
     }
 
     private static void ValidateEntry(

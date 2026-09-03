@@ -187,6 +187,26 @@ public sealed class LauncherViewModelTests
     }
 
     [Fact]
+    public void Workspace_isolation_toggle_requires_only_a_compatible_runtime()
+    {
+        var unavailable = Workspace(
+            "Unavailable",
+            isIsolated: false,
+            isIsolationAvailable: false);
+        var portable = Workspace(
+            "Portable",
+            isIsolated: true,
+            isIsolationAvailable: false);
+
+        Assert.False(unavailable.CanToggleIsolation);
+        Assert.True(portable.CanToggleIsolation);
+
+        portable.IsOpen = true;
+
+        Assert.True(portable.CanToggleIsolation);
+    }
+
+    [Fact]
     public void Dispose_is_idempotent_and_rejects_further_work()
     {
         var sourceCalls = 0;
@@ -204,7 +224,10 @@ public sealed class LauncherViewModelTests
         Assert.Equal(0, sourceCalls);
     }
 
-    private static LauncherWorkspaceViewModel Workspace(string name) =>
+    private static LauncherWorkspaceViewModel Workspace(
+        string name,
+        bool isIsolated = false,
+        bool isIsolationAvailable = true) =>
         new(
             new WorkspaceId(name.ToLowerInvariant()),
             revision: 1,
@@ -213,7 +236,9 @@ public sealed class LauncherViewModelTests
             "#336699",
             "OP",
             Symbol.Window,
-            itemCount: 1);
+            itemCount: 1,
+            isIsolated,
+            isIsolationAvailable);
 
     private static LauncherConnectionViewModel Connection(
         string name,

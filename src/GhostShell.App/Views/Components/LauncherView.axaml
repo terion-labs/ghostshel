@@ -145,6 +145,7 @@
                   Icon="{Binding IconSymbol}"
                   IsRunning="{Binding IsOpen}"
                   IsCurrent="{Binding IsInFront}"
+                  IsIsolated="{Binding IsIsolated}"
                   HasAttention="{Binding HasAttention}"
                   HasAgentActivity="{Binding HasAgentActivity}"
                   OpenRequested="OnOpenWorkspaceClick"

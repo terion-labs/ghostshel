@@ -91,7 +91,11 @@ internal static class Program
                 };
                 var updateShutdown = services
                     .GetRequiredService<DesktopUpdateShutdown>();
-                updateShutdown.Attach(lifetime);
+                updateShutdown.Attach(
+                    lifetime,
+                    cancellationToken => services
+                        .GetRequiredService<GhostShellApplication>()
+                        .PrepareForUpdateRestartAsync(cancellationToken));
                 BrowserEngineRuntime.Configure(BuildAvaloniaApp(services))
                     .SetupWithLifetime(lifetime);
                 nativeNotifications =
@@ -162,6 +166,7 @@ internal static class Program
                 // Startup and finalization failures also converge here before
                 // CEF closes browsers and stops its message pump.
                 TeardownPresentationOrReport(mainWindowViewModel);
+                QuiescePresentationOrReport(services);
                 if (cefInitialized
                     && !BrowserEngineRuntime.Shutdown(
                         services.GetRequiredService<CefBrowserProfileStore>()))
@@ -194,6 +199,26 @@ internal static class Program
         {
             SecretSafeDiagnosticProjection.WriteStandardError(
                 "desktop.presentation-teardown.failed",
+                error);
+            Environment.ExitCode = 1;
+        }
+    }
+
+    private static void QuiescePresentationOrReport(IServiceProvider services)
+    {
+        try
+        {
+            QuiescePresentationAsync(
+                    services.GetRequiredService<QuickTerminalController>(),
+                    services.GetRequiredService<GhostShellApplication>(),
+                    CancellationToken.None)
+                .GetAwaiter()
+                .GetResult();
+        }
+        catch (Exception error)
+        {
+            SecretSafeDiagnosticProjection.WriteStandardError(
+                "desktop.presentation-quiesce.failed",
                 error);
             Environment.ExitCode = 1;
         }
@@ -351,12 +376,13 @@ internal static class Program
         }
 
         var mainWindowViewModel = services.GetRequiredService<MainWindowViewModel>();
+        var application = services.GetRequiredService<GhostShellApplication>();
         // The desktop dispatcher no longer pumps once the classic lifetime returns.
         var completion = await services.GetRequiredService<DesktopRunFinalizer>()
             .FinalizeAsync(
                 cancellationToken => QuiescePresentationAsync(
                     services.GetRequiredService<QuickTerminalController>(),
-                    mainWindowViewModel,
+                    application,
                     cancellationToken),
                 mainWindowViewModel.FlushRecentSessionHistoryAsync,
                 _ => services.GetRequiredService<InMemorySessionHostClient>().DisposeAsync(),
@@ -475,11 +501,11 @@ internal static class Program
 
     private static async Task QuiescePresentationAsync(
         QuickTerminalController quickTerminalController,
-        MainWindowViewModel mainWindowViewModel,
+        GhostShellApplication application,
         CancellationToken cancellationToken)
     {
         quickTerminalController.Dispose();
-        await mainWindowViewModel.QuiesceForShutdownAsync(cancellationToken)
+        await application.QuiesceForShutdownAsync(cancellationToken)
             .ConfigureAwait(false);
     }
 }

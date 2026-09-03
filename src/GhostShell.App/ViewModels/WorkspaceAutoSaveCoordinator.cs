@@ -311,7 +311,10 @@ public sealed class WorkspaceAutoSaveCoordinator : IDisposable
             storedDefinition.AgentPanelPinned,
             storedDefinition.TerminalMultiplexingOverride,
             storedDefinition.BrowserProfileOverride,
-            storedDefinition.HasExplicitAccent);
+            storedDefinition.HasExplicitAccent,
+            storedDefinition.IsIsolated,
+            storedDefinition.IsolationMounts,
+            storedDefinition.IsolationImageReference);
         var unchanged = DefinitionPayloadEquals(definition, storedDefinition)
             && layouts.All(item =>
                 storedLayouts.TryGetValue(item.Definition.Id.Value, out var existing)

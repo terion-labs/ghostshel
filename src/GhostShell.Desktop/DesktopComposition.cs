@@ -125,7 +125,25 @@ public static class DesktopComposition
         });
         services.AddSingleton<IConnectionCredentialBroker, ConnectionCredentialBroker>();
         services.AddSingleton(_ => ConnectionRuntimeOptions.Detect());
-        services.AddSingleton<IConnectionExecutableLocator, PathConnectionExecutableLocator>();
+        var executableLocator = new PathConnectionExecutableLocator();
+        services.AddSingleton<IConnectionExecutableLocator>(executableLocator);
+        if (new WorkspaceIsolationPlatformResolver().ResolveCurrent()
+            is WorkspaceIsolationPlatformSupport.Available
+            {
+                Provider: WorkspaceIsolationProviderKind.AppleContainer,
+            })
+        {
+            services.AddSingleton<IWorkspaceIsolationRuntimeInstaller,
+                AppleContainerRuntimeInstaller>();
+            if (executableLocator.Find("container") is { } containerExecutable)
+            {
+                services.AddSingleton<IWorkspaceIsolationProvider>(_ =>
+                    new AppleContainerWorkspaceIsolationProvider(
+                        imageReference: AppleContainerWorkspaceIsolationProvider.DefaultImageReference,
+                        containerExecutable: containerExecutable));
+            }
+        }
+
         services.AddSingleton<IConnectionCommandRunner, ProcessConnectionCommandRunner>();
         services.AddSingleton<IConnectionRuntimeAdapter, LocalConnectionRuntimeAdapter>();
         services.AddSingleton<IConnectionRuntimeAdapter, SshConnectionRuntimeAdapter>();
@@ -316,6 +334,7 @@ public static class DesktopComposition
         services.AddSingleton<IProductComponentCatalog, DesktopProductComponentCatalog>();
         services.AddSingleton<IBrowserRendererViewFactory, DesktopBrowserRendererViewFactory>();
         services.AddSingleton<AppearancePreviewCoordinator>();
+        services.AddSingleton<WorkspaceDefinitionOccupancy>();
         services.AddSingleton<MainWindowViewModel>();
         services.AddSingleton<MainWindowViewModelFactory>(provider =>
             () => ActivatorUtilities.CreateInstance<MainWindowViewModel>(

@@ -108,6 +108,7 @@
           BrowserSettingsRequested="OnBrowserSettingsClick"
           LockNowRequested="OnLockNowClick"
           ImportDefinitionsRequested="OnImportDefinitionsClick"
+          InstallWorkspaceIsolationRuntimeRequested="OnInstallWorkspaceIsolationRuntimeClick"
           KeybindingPrefixOptionsChangedRequested="OnKeybindingPrefixOptionsChanged"
           KeybindingProfileSelectionChangedRequested="OnKeybindingProfileSelectionChanged"
           KeybindingSettingsRequested="OnKeybindingSettingsClick"
@@ -157,7 +158,8 @@
           TestMcpServerRequested="OnTestMcpServerClick"
           UnbindKeybindingRequested="OnUnbindKeybindingClick"
           UndoDeletedSavedScreenRequested="OnUndoDeletedSavedScreenClick"
-          WorkspaceSettingsRequested="OnWorkspaceSettingsClick" />
+          WorkspaceSettingsRequested="OnWorkspaceSettingsClick"
+          WorkspaceIsolationChangedRequested="OnWorkspaceIsolationChanged" />
     </DataTemplate>
 
     <DataTemplate x:Key="CommandPaletteOverlayTemplate" x:DataType="vm:MainWindowViewModel">
@@ -208,6 +210,7 @@
             x:Name="WorkspaceDefinitionEditor"
             DataContext="{Binding WorkspaceEditor}"
             PickAccentRequested="OnWorkspaceAccentPickRequested"
+            InstallWorkspaceIsolationRuntimeRequested="OnInstallWorkspaceIsolationRuntimeClick"
             SaveRequested="OnWorkspaceEditorSaveRequested"
             CancelRequested="OnWorkspaceEditorCancelRequested"
             WorkspaceSelectionRequested="OnWorkspaceSelectionRequested"
@@ -577,6 +580,21 @@
          content is composited normally inside its panel and does not use this
          airspace layer. -->
     <controls:NativeSurfaceLayer x:Name="NativeSurfaces" />
+
+    <!-- Runtime preparation is a foreground workspace state. It deliberately
+         sits above native surfaces and the route behind it while the requested
+         isolate and its persistent container are brought online. -->
+    <Border
+        ZIndex="1100"
+        Background="{DynamicResource ShellBackgroundBrush}"
+        IsVisible="{Binding IsWorkspaceIsolationStarting}"
+        IsHitTestVisible="True">
+      <controls:StateOverlay
+          Kind="Loading"
+          Heading="{Binding WorkspaceIsolationStartingHeading}"
+          Body="{Binding WorkspaceIsolationStartingBody}"
+          IsVisible="{Binding IsWorkspaceIsolationStarting}" />
+    </Border>
     </Panel>
 
     <!-- Last child of the root grid on purpose: when the shell is locked,

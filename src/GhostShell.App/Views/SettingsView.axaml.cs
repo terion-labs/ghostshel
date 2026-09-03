@@ -120,6 +120,8 @@ public sealed partial class SettingsView : UserControl
 
     public event EventHandler<RoutedEventArgs>? ImportDefinitionsRequested;
 
+    public event EventHandler<RoutedEventArgs>? InstallWorkspaceIsolationRuntimeRequested;
+
     public event EventHandler<RoutedEventArgs>? KeybindingPrefixOptionsChangedRequested;
 
     public event EventHandler<SelectionChangedEventArgs>?
@@ -221,6 +223,8 @@ public sealed partial class SettingsView : UserControl
     public event EventHandler<RoutedEventArgs>? UndoDeletedSavedScreenRequested;
 
     public event EventHandler<RoutedEventArgs>? WorkspaceSettingsRequested;
+
+    public event EventHandler<RoutedEventArgs>? WorkspaceIsolationChangedRequested;
 
     internal void ConfigureAppearanceControls(
         IReadOnlyList<PlatformProfile> platformProfiles,
@@ -487,6 +491,9 @@ public sealed partial class SettingsView : UserControl
     private void OnImportDefinitionsClick(object? sender, RoutedEventArgs e) =>
         ImportDefinitionsRequested?.Invoke(sender, e);
 
+    private void OnInstallWorkspaceIsolationRuntimeClick(object? sender, RoutedEventArgs e) =>
+        InstallWorkspaceIsolationRuntimeRequested?.Invoke(sender, e);
+
     private void OnKeybindingPrefixOptionsChanged(object? sender, RoutedEventArgs e) =>
         KeybindingPrefixOptionsChangedRequested?.Invoke(sender, e);
 
@@ -602,4 +609,7 @@ public sealed partial class SettingsView : UserControl
 
     private void OnWorkspaceSettingsClick(object? sender, RoutedEventArgs e) =>
         WorkspaceSettingsRequested?.Invoke(sender, e);
+
+    private void OnWorkspaceIsolationChanged(object? sender, RoutedEventArgs e) =>
+        WorkspaceIsolationChangedRequested?.Invoke(sender, e);
 }

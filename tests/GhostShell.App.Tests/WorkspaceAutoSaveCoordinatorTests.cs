@@ -26,6 +26,8 @@ public sealed class WorkspaceAutoSaveCoordinatorTests
         var saved = Assert.IsType<WorkspaceDefinition>(recorder.SavedWorkspace);
         Assert.Equal(WorkspaceId, saved.Id);
         Assert.True(saved.AutoSave);
+        Assert.True(saved.IsIsolated);
+        Assert.Equal(stored.Value.IsolationMounts, saved.IsolationMounts);
         Assert.Empty(saved.Entries);
         Assert.Equal(stored.Revision, recorder.ExpectedRevision);
     }
@@ -78,7 +80,15 @@ public sealed class WorkspaceAutoSaveCoordinatorTests
             [new WorkspaceEntry.ConnectionReference(
                 WorkspaceEntryId.New(),
                 new ConnectionId("local"))],
-            autoSave: true);
+            autoSave: true,
+            isIsolated: true,
+            isolationMounts:
+            [
+                new(
+                    Path.Combine(Path.GetTempPath(), "ghostshell-autosave"),
+                    "/workspace",
+                    IsReadOnly: false),
+            ]);
         var stored = new StoredDefinition<WorkspaceDefinition>(
             workspace,
             7,

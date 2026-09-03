@@ -23,6 +23,7 @@ public sealed partial class App : Avalonia.Application
     private readonly ApplicationStartupState? _startupState;
     private readonly IDefinitionCatalog? _definitionCatalog;
     private readonly IDefinitionBundleStore? _definitionBundleStore;
+    private readonly WorkspaceDefinitionOccupancy? _workspaceDefinitionOccupancy;
     private readonly IDiagnosticsBundleExporter? _diagnosticsExporter;
     private readonly IDiagnosticsBundleRequestSource? _diagnosticsRequestSource;
     private readonly IDiagnosticsArtifactPresenter? _diagnosticsArtifactPresenter;
@@ -38,6 +39,7 @@ public sealed partial class App : Avalonia.Application
     private INotifyCollectionChanged? _windowCollection;
     private DispatcherTimer? _applicationIconRefreshTimer;
     private readonly HashSet<MainWindowViewModel> _additionalMainWindowViewModels = [];
+    private bool _desktopExitStarted;
 
     private static readonly string[] AppearanceClasses =
     [
@@ -107,6 +109,7 @@ public sealed partial class App : Avalonia.Application
         ApplicationStartupState startupState,
         IDefinitionCatalog definitionCatalog,
         IDefinitionBundleStore definitionBundleStore,
+        WorkspaceDefinitionOccupancy workspaceDefinitionOccupancy,
         IDiagnosticsBundleExporter diagnosticsExporter,
         IDiagnosticsBundleRequestSource diagnosticsRequestSource,
         IDiagnosticsArtifactPresenter diagnosticsArtifactPresenter,
@@ -123,6 +126,7 @@ public sealed partial class App : Avalonia.Application
         ArgumentNullException.ThrowIfNull(startupState);
         ArgumentNullException.ThrowIfNull(definitionCatalog);
         ArgumentNullException.ThrowIfNull(definitionBundleStore);
+        ArgumentNullException.ThrowIfNull(workspaceDefinitionOccupancy);
         ArgumentNullException.ThrowIfNull(diagnosticsExporter);
         ArgumentNullException.ThrowIfNull(diagnosticsRequestSource);
         ArgumentNullException.ThrowIfNull(diagnosticsArtifactPresenter);
@@ -137,6 +141,7 @@ public sealed partial class App : Avalonia.Application
         _startupState = startupState;
         _definitionCatalog = definitionCatalog;
         _definitionBundleStore = definitionBundleStore;
+        _workspaceDefinitionOccupancy = workspaceDefinitionOccupancy;
         _diagnosticsExporter = diagnosticsExporter;
         _diagnosticsRequestSource = diagnosticsRequestSource;
         _diagnosticsArtifactPresenter = diagnosticsArtifactPresenter;
@@ -194,6 +199,9 @@ public sealed partial class App : Avalonia.Application
             _definitionCatalog
                 ?? throw new InvalidOperationException(
                     "The desktop composition root did not provide the definition catalog."),
+            _workspaceDefinitionOccupancy
+                ?? throw new InvalidOperationException(
+                    "The desktop composition root did not provide workspace occupancy."),
             _diagnosticsExporter
                 ?? throw new InvalidOperationException(
                     "The desktop composition root did not provide the diagnostics exporter."),
@@ -239,6 +247,11 @@ public sealed partial class App : Avalonia.Application
 
     internal void OpenNewWindow()
     {
+        if (_desktopExitStarted)
+        {
+            return;
+        }
+
         var factory = _mainWindowViewModelFactory
             ?? throw new InvalidOperationException(
                 "The desktop composition root did not provide the main window factory.");
@@ -978,6 +991,7 @@ public sealed partial class App : Avalonia.Application
     private void OnDesktopExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)
     {
         _ = e;
+        _desktopExitStarted = true;
         if (sender is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.Exit -= OnDesktopExit;
@@ -999,11 +1013,120 @@ public sealed partial class App : Avalonia.Application
         foreach (var viewModel in _additionalMainWindowViewModels.ToArray())
         {
             viewModel.TeardownPresentationForShutdown();
-            viewModel.Dispose();
         }
 
-        _additionalMainWindowViewModels.Clear();
         _quickTerminalController?.Dispose();
+    }
+
+    /// <summary>
+    /// Drains every main-window runtime after Avalonia has finished pumping its
+    /// dispatcher. Additional windows are application-owned rather than DI-owned,
+    /// so they are disposed here only after their asynchronous shutdown work has
+    /// released sessions and workspace-isolation leases.
+    /// </summary>
+    public async Task QuiesceForShutdownAsync(CancellationToken cancellationToken)
+    {
+        _desktopExitStarted = true;
+        var additionalViewModels = _additionalMainWindowViewModels.ToArray();
+        MainWindowViewModel[] allViewModels = _mainWindowViewModel is { } mainViewModel
+            ? [mainViewModel, .. additionalViewModels]
+            : additionalViewModels;
+        var quiescenceTasks = allViewModels
+            .Select(BeginMainWindowQuiescence)
+            .ToArray();
+        var quiescence = Task.WhenAll(quiescenceTasks);
+        try
+        {
+            await quiescence.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            try
+            {
+                // WaitAsync cancellation only cancels the caller's wait. The owned
+                // shutdown cores must finish before Dispose tears down their state.
+                await quiescence.ConfigureAwait(false);
+            }
+            finally
+            {
+                try
+                {
+                    foreach (var viewModel in additionalViewModels)
+                    {
+                        viewModel.Dispose();
+                    }
+                }
+                finally
+                {
+                    _additionalMainWindowViewModels.Clear();
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Performs the update-restart close while Avalonia still pumps its dispatcher.
+    /// Host scopes close before presentation and isolation are torn down, so a
+    /// terminal cannot retain a graph that points into an already-stopped isolate.
+    /// </summary>
+    public async Task PrepareForUpdateRestartAsync(CancellationToken cancellationToken)
+    {
+        _desktopExitStarted = true;
+        var additionalViewModels = _additionalMainWindowViewModels.ToArray();
+        MainWindowViewModel[] allViewModels = _mainWindowViewModel is { } mainViewModel
+            ? [mainViewModel, .. additionalViewModels]
+            : additionalViewModels;
+        await Task.WhenAll(allViewModels.Select(viewModel =>
+            CloseWindowForUpdateRestartAsync(viewModel, cancellationToken)));
+
+        _mainWindowViewModel?.TeardownPresentationForShutdown();
+        foreach (var viewModel in additionalViewModels)
+        {
+            viewModel.TeardownPresentationForShutdown();
+        }
+
+        _quickTerminalController?.Dispose();
+        await QuiesceForShutdownAsync(cancellationToken);
+    }
+
+    private static async Task CloseWindowForUpdateRestartAsync(
+        MainWindowViewModel viewModel,
+        CancellationToken cancellationToken)
+    {
+        var result = await viewModel.CloseWindowAsync(
+            CloseDecision.Confirm,
+            cancellationToken);
+        if (result is not HostResult<CloseScopeResult>.Success
+            {
+                Value: CloseScopeResult.Completed completed,
+            }
+            || completed.Scope != CloseScopeKind.Window
+            || !string.Equals(
+                completed.TargetId,
+                viewModel.WindowId.Value,
+                StringComparison.Ordinal)
+            || completed.Sessions.Any(session => session.Outcome is not (
+                SessionCloseOutcome.GracefullyClosed
+                or SessionCloseOutcome.ForceTerminated
+                or SessionCloseOutcome.AlreadyClosed)))
+        {
+            throw new InvalidOperationException(
+                "The session host could not close a window for the update restart.");
+        }
+    }
+
+    private static Task BeginMainWindowQuiescence(MainWindowViewModel viewModel)
+    {
+        try
+        {
+            return viewModel.QuiesceForShutdownAsync(CancellationToken.None);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // Preserve a synchronous startup failure as a task so every other
+            // window still begins quiescence and Task.WhenAll reports the fault.
+            return Task.FromException(exception);
+        }
     }
 
     private void OnMainWindowActivated(object? sender, EventArgs e)
@@ -1033,7 +1156,8 @@ public sealed partial class App : Avalonia.Application
         mainWindow.Activated -= OnMainWindowActivated;
         mainWindow.Closed -= OnMainWindowClosed;
         mainWindow.Opened -= OnAdditionalWindowOpened;
-        if (mainWindow.DataContext is MainWindowViewModel viewModel
+        if (!_desktopExitStarted
+            && mainWindow.DataContext is MainWindowViewModel viewModel
             && _additionalMainWindowViewModels.Remove(viewModel))
         {
             viewModel.TeardownPresentationForShutdown();
@@ -1058,14 +1182,16 @@ public sealed partial class App : Avalonia.Application
         _ = e;
         if (sender is not MainWindow owner
             || owner.DataContext is not MainWindowViewModel viewModel
-            || _startupState is null)
+            || _startupState is null
+            || _desktopExitStarted)
         {
             return;
         }
 
         owner.Opened -= OnAdditionalWindowOpened;
         await _startupState.Initialized;
-        if (!_additionalMainWindowViewModels.Contains(viewModel))
+        if (_desktopExitStarted
+            || !_additionalMainWindowViewModels.Contains(viewModel))
         {
             return;
         }
@@ -1085,7 +1211,8 @@ public sealed partial class App : Avalonia.Application
     private async void OnStartupWindowOpened(object? sender, EventArgs e)
     {
         if (sender is not MainWindow owner
-            || _startupState is null)
+            || _startupState is null
+            || _desktopExitStarted)
         {
             return;
         }
@@ -1095,6 +1222,11 @@ public sealed partial class App : Avalonia.Application
         // lock screen; the restore preference and the stored session both live
         // in the database that only exists to us after that.
         await _startupState.Initialized;
+        if (_desktopExitStarted)
+        {
+            return;
+        }
+
         // The history load the window construction queued hit that same
         // closed database; asked again now, it answers.
         _ = MainWindowViewModel.RetryRecentSessionHistoryAsync(CancellationToken.None);

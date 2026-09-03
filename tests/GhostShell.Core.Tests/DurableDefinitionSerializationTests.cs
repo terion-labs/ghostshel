@@ -29,6 +29,10 @@ public sealed class DurableDefinitionSerializationTests
                     new ConnectionId("local"),
                     new PanelStartupBehavior("/work", ["git status"])),
             ]);
+        var isolationMount = new WorkspaceIsolationMountDefinition(
+            Path.Combine(Path.GetTempPath(), "ghostshell-project"),
+            "/workspace",
+            IsReadOnly: true);
         var workspace = new WorkspaceDefinition(
             new WorkspaceId("project"),
             WorkspaceDefinition.CurrentSchemaVersion,
@@ -48,7 +52,10 @@ public sealed class DurableDefinitionSerializationTests
                     layout.Id,
                     screen.Panels),
             ],
-            icon: "server");
+            icon: "server",
+            isIsolated: true,
+            isolationMounts: [isolationMount],
+            isolationImageReference: "registry.example.test/team/dev:2026.09");
 
         var restoredLayout = RoundTrip(layout);
         var restoredScreen = RoundTrip(screen);
@@ -61,6 +68,11 @@ public sealed class DurableDefinitionSerializationTests
         Assert.IsType<WorkspaceEntry.ScreenReference>(restoredWorkspace.Entries[1]);
         Assert.IsType<WorkspaceEntry.Tab>(restoredWorkspace.Entries[2]);
         Assert.Equal("server", restoredWorkspace.Icon);
+        Assert.True(restoredWorkspace.IsIsolated);
+        Assert.Equal([isolationMount], restoredWorkspace.IsolationMounts);
+        Assert.Equal(
+            "registry.example.test/team/dev:2026.09",
+            restoredWorkspace.IsolationImageReference);
     }
 
     [Fact]
@@ -81,6 +93,74 @@ public sealed class DurableDefinitionSerializationTests
         Assert.NotNull(restored);
         Assert.Equal(WorkspaceDefinition.DefaultIcon, restored.Icon);
         Assert.True(WorkspaceValidator.Validate(restored).IsValid);
+    }
+
+    [Fact]
+    public void Workspace_payload_without_isolation_uses_the_backward_compatible_default()
+    {
+        var workspace = new WorkspaceDefinition(
+            new WorkspaceId("legacy-isolation"),
+            WorkspaceDefinition.CurrentSchemaVersion,
+            "Legacy isolation",
+            null,
+            null,
+            []);
+        var payload = JsonNode.Parse(JsonSerializer.Serialize(workspace))!.AsObject();
+        Assert.True(payload.Remove(nameof(WorkspaceDefinition.IsIsolated)));
+
+        var restored = JsonSerializer.Deserialize<WorkspaceDefinition>(payload.ToJsonString());
+
+        Assert.NotNull(restored);
+        Assert.False(restored.IsIsolated);
+    }
+
+    [Fact]
+    public void Workspace_payload_without_isolation_mounts_uses_an_empty_collection()
+    {
+        var workspace = new WorkspaceDefinition(
+            new WorkspaceId("legacy-isolation-mounts"),
+            WorkspaceDefinition.CurrentSchemaVersion,
+            "Legacy isolation mounts",
+            null,
+            null,
+            [],
+            isIsolated: true,
+            isolationMounts:
+            [
+                new(
+                    Path.Combine(Path.GetTempPath(), "ghostshell-legacy"),
+                    "/workspace",
+                    IsReadOnly: false),
+            ]);
+        var payload = JsonNode.Parse(JsonSerializer.Serialize(workspace))!.AsObject();
+        Assert.True(payload.Remove(nameof(WorkspaceDefinition.IsolationMounts)));
+
+        var restored = JsonSerializer.Deserialize<WorkspaceDefinition>(payload.ToJsonString());
+
+        Assert.NotNull(restored);
+        Assert.True(restored.IsIsolated);
+        Assert.Empty(restored.IsolationMounts);
+    }
+
+    [Fact]
+    public void Workspace_payload_without_isolation_image_uses_the_platform_default()
+    {
+        var workspace = new WorkspaceDefinition(
+            new WorkspaceId("legacy-isolation-image"),
+            WorkspaceDefinition.CurrentSchemaVersion,
+            "Legacy isolation image",
+            null,
+            null,
+            [],
+            isIsolated: true,
+            isolationImageReference: "registry.example.test/dev:old");
+        var payload = JsonNode.Parse(JsonSerializer.Serialize(workspace))!.AsObject();
+        Assert.True(payload.Remove(nameof(WorkspaceDefinition.IsolationImageReference)));
+
+        var restored = JsonSerializer.Deserialize<WorkspaceDefinition>(payload.ToJsonString());
+
+        Assert.NotNull(restored);
+        Assert.Null(restored.IsolationImageReference);
     }
 
     [Theory]

@@ -134,12 +134,18 @@ internal sealed class ShellCloseCoordinator(
 
             if (await RunHostCloseAsync(viewModel.CloseWindowAsync))
             {
+                await viewModel.QuiesceForShutdownAsync(CancellationToken.None);
                 _windowCloseApproved = true;
                 presentation.CloseWindow();
             }
         }
         finally
         {
+            if (!_windowCloseApproved)
+            {
+                viewModel.ResumeAfterWindowCloseAttempt();
+            }
+
             _windowCloseInProgress = false;
         }
     }

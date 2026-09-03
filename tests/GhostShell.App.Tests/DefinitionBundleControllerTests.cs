@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using GhostShell.App.ViewModels;
 using GhostShell.Application;
 using GhostShell.Core;
 using GhostShell.Docking;
@@ -276,6 +277,109 @@ public sealed class DefinitionBundleControllerTests
         Assert.Equal("layout-reviewed", Assert.Single(committed.Bundle.Definitions).Id);
     }
 
+    [Theory]
+    [InlineData(DefinitionImportMode.FailOnConflict)]
+    [InlineData(DefinitionImportMode.ReplaceExisting)]
+    public async Task Import_rejects_an_occupied_workspace_in_every_mode_without_partial_reservations(
+        DefinitionImportMode mode)
+    {
+        using var temporary = TemporaryDirectory.Create();
+        var path = temporary.PathFor("workspace-import.json");
+        const string freeWorkspaceId = "workspace-free";
+        const string occupiedWorkspaceId = "workspace-occupied";
+        await WriteBundleAsync(path, Bundle(
+            WorkspaceDocument(freeWorkspaceId),
+            WorkspaceDocument(occupiedWorkspaceId)));
+        var occupancy = new WorkspaceDefinitionOccupancy();
+        var occupiedKey = new DefinitionKey(WorkspaceDefinition.Kind, occupiedWorkspaceId);
+        var occupiedWindow = new WindowInstanceId("bundle-occupied-window");
+        var occupiedRuntime = new WorkspaceInstanceId("bundle-occupied-runtime");
+        Assert.True(occupancy.TryRegisterRuntime(
+            occupiedWindow,
+            occupiedRuntime,
+            occupiedKey));
+        var store = new RecordingBundleStore();
+        var refresh = new RecordingImportRefresh();
+        var controller = CreateController(
+            store,
+            new RecordingPathPicker { ImportPath = path },
+            refresh,
+            occupancy);
+        var plan = (await controller.PreflightImportAsync(
+            mode,
+            CancellationToken.None)).Value!;
+
+        var applied = await controller.ConfirmAndApplyImportAsync(
+            plan,
+            CancellationToken.None);
+
+        Assert.Equal(DefinitionStoreErrorCode.RevisionConflict, applied.Error?.Code);
+        Assert.Contains(
+            "Close every affected workspace",
+            applied.Error?.Message,
+            StringComparison.Ordinal);
+        Assert.Empty(store.Committed);
+        Assert.Equal(0, refresh.Calls);
+
+        var freeWindow = new WindowInstanceId("bundle-free-window");
+        var freeRuntime = new WorkspaceInstanceId("bundle-free-runtime");
+        Assert.True(occupancy.TryRegisterRuntime(
+            freeWindow,
+            freeRuntime,
+            new DefinitionKey(WorkspaceDefinition.Kind, freeWorkspaceId)));
+        occupancy.Unregister(freeWindow, freeRuntime);
+        occupancy.Unregister(occupiedWindow, occupiedRuntime);
+    }
+
+    [Fact]
+    public async Task Replace_import_reserves_affected_workspaces_through_commit_and_reload()
+    {
+        using var temporary = TemporaryDirectory.Create();
+        var path = temporary.PathFor("workspace-import.json");
+        const string workspaceId = "workspace-replaced";
+        await WriteBundleAsync(path, Bundle(WorkspaceDocument(workspaceId)));
+        var store = new RecordingBundleStore
+        {
+            CommitEntered = new(TaskCreationOptions.RunContinuationsAsynchronously),
+            AllowCommit = new(TaskCreationOptions.RunContinuationsAsynchronously),
+            CommitResult = DefinitionStoreResult<DefinitionImportResult>.Success(new(0, 1)),
+        };
+        var refresh = new RecordingImportRefresh
+        {
+            ReloadEntered = new(TaskCreationOptions.RunContinuationsAsynchronously),
+            AllowReload = new(TaskCreationOptions.RunContinuationsAsynchronously),
+        };
+        var occupancy = new WorkspaceDefinitionOccupancy();
+        var controller = CreateController(
+            store,
+            new RecordingPathPicker { ImportPath = path },
+            refresh,
+            occupancy);
+        var plan = (await controller.PreflightImportAsync(
+            DefinitionImportMode.ReplaceExisting,
+            CancellationToken.None)).Value!;
+        var workspaceKey = new DefinitionKey(WorkspaceDefinition.Kind, workspaceId);
+        var windowId = new WindowInstanceId("bundle-racing-window");
+        var runtimeId = new WorkspaceInstanceId("bundle-racing-runtime");
+
+        var applying = controller.ConfirmAndApplyImportAsync(
+            plan,
+            CancellationToken.None).AsTask();
+        await store.CommitEntered!.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(occupancy.TryRegisterRuntime(windowId, runtimeId, workspaceKey));
+
+        store.AllowCommit!.SetResult();
+        await refresh.ReloadEntered!.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(occupancy.TryRegisterRuntime(windowId, runtimeId, workspaceKey));
+
+        refresh.AllowReload!.SetResult();
+        var applied = await applying.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(applied.IsSuccess, applied.Error?.Message);
+        Assert.False(applied.Value!.WorkspacesRemainUnavailable);
+        Assert.True(occupancy.TryRegisterRuntime(windowId, runtimeId, workspaceKey));
+        occupancy.Unregister(windowId, runtimeId);
+    }
+
     [Fact]
     public async Task Commit_failure_is_returned_unchanged_and_does_not_refresh()
     {
@@ -338,7 +442,133 @@ public sealed class DefinitionBundleControllerTests
         Assert.True(applied.IsSuccess);
         Assert.Equal(1, applied.Value!.Inserted);
         Assert.False(applied.Value.CatalogReloaded);
+        Assert.False(applied.Value.WorkspacesRemainUnavailable);
         Assert.Same(reloadError, applied.Value.ReloadError);
+    }
+
+    [Fact]
+    public async Task Workspace_reload_failure_stays_reserved_until_a_later_reconciliation()
+    {
+        using var temporary = TemporaryDirectory.Create();
+        var workspacePath = temporary.PathFor("workspace-import.json");
+        const string workspaceId = "workspace-unreconciled";
+        await WriteBundleAsync(workspacePath, Bundle(WorkspaceDocument(workspaceId)));
+        var reloadError = new DefinitionStoreError(
+            DefinitionStoreErrorCode.StorageUnavailable,
+            "The UI catalog could not reload.");
+        var occupancy = new WorkspaceDefinitionOccupancy();
+        var failedController = CreateController(
+            new RecordingBundleStore
+            {
+                CommitResult = DefinitionStoreResult<DefinitionImportResult>.Success(new(1, 0)),
+            },
+            new RecordingPathPicker { ImportPath = workspacePath },
+            new RecordingImportRefresh
+            {
+                Result = DefinitionStoreResult<Unit>.Failure(reloadError),
+            },
+            occupancy);
+        var failedPlan = (await failedController.PreflightImportAsync(
+            DefinitionImportMode.FailOnConflict,
+            CancellationToken.None)).Value!;
+
+        var imported = await failedController.ConfirmAndApplyImportAsync(
+            failedPlan,
+            CancellationToken.None);
+
+        Assert.True(imported.IsSuccess, imported.Error?.Message);
+        Assert.True(imported.Value!.WorkspacesRemainUnavailable);
+        Assert.Equal(DefinitionStoreErrorCode.StorageUnavailable, imported.Value.ReloadError?.Code);
+        Assert.Contains(
+            "remain unavailable until a catalog refresh succeeds or GhostShell restarts",
+            imported.Value.ReloadError?.Message,
+            StringComparison.Ordinal);
+        var workspaceKey = new DefinitionKey(WorkspaceDefinition.Kind, workspaceId);
+        var windowId = new WindowInstanceId("unreconciled-window");
+        var runtimeId = new WorkspaceInstanceId("unreconciled-runtime");
+        Assert.False(occupancy.TryRegisterRuntime(windowId, runtimeId, workspaceKey));
+        Assert.Null(occupancy.TryReserveColdConfigurationEdit(workspaceKey));
+
+        var reconciliationPath = temporary.PathFor("reconciliation-import.json");
+        await WriteBundleAsync(reconciliationPath, Bundle(Document("layout-reconciliation")));
+        var reconciliationController = CreateController(
+            new RecordingBundleStore(),
+            new RecordingPathPicker { ImportPath = reconciliationPath },
+            new RecordingImportRefresh(),
+            occupancy);
+        var reconciliationPlan = (await reconciliationController.PreflightImportAsync(
+            DefinitionImportMode.FailOnConflict,
+            CancellationToken.None)).Value!;
+
+        var reconciled = await reconciliationController.ConfirmAndApplyImportAsync(
+            reconciliationPlan,
+            CancellationToken.None);
+
+        Assert.True(reconciled.IsSuccess, reconciled.Error?.Message);
+        Assert.True(reconciled.Value!.CatalogReloaded);
+        Assert.True(occupancy.TryRegisterRuntime(windowId, runtimeId, workspaceKey));
+        occupancy.Unregister(windowId, runtimeId);
+    }
+
+    [Fact]
+    public async Task Unexpected_reload_exception_keeps_imported_workspace_unavailable()
+    {
+        using var temporary = TemporaryDirectory.Create();
+        var path = temporary.PathFor("workspace-import.json");
+        const string workspaceId = "workspace-reload-exception";
+        await WriteBundleAsync(path, Bundle(WorkspaceDocument(workspaceId)));
+        var occupancy = new WorkspaceDefinitionOccupancy();
+        var controller = CreateController(
+            new RecordingBundleStore(),
+            new RecordingPathPicker { ImportPath = path },
+            new RecordingImportRefresh
+            {
+                ExceptionToThrow = new IOException("Simulated reload failure."),
+            },
+            occupancy);
+        var plan = (await controller.PreflightImportAsync(
+            DefinitionImportMode.FailOnConflict,
+            CancellationToken.None)).Value!;
+
+        var imported = await controller.ConfirmAndApplyImportAsync(
+            plan,
+            CancellationToken.None);
+
+        Assert.True(imported.IsSuccess, imported.Error?.Message);
+        Assert.True(imported.Value!.WorkspacesRemainUnavailable);
+        Assert.Equal(DefinitionStoreErrorCode.StorageFailure, imported.Value.ReloadError?.Code);
+        Assert.Contains(
+            "remain unavailable until a catalog refresh succeeds or GhostShell restarts",
+            imported.Value.ReloadError?.Message,
+            StringComparison.Ordinal);
+        Assert.False(occupancy.TryRegisterRuntime(
+            new WindowInstanceId("reload-exception-window"),
+            new WorkspaceInstanceId("reload-exception-runtime"),
+            new DefinitionKey(WorkspaceDefinition.Kind, workspaceId)));
+    }
+
+    [Fact]
+    public async Task Durable_commit_finishes_reload_after_caller_cancellation()
+    {
+        using var temporary = TemporaryDirectory.Create();
+        using var cancellation = new CancellationTokenSource();
+        var path = temporary.PathFor("workspace-import.json");
+        await WriteBundleAsync(path, Bundle(WorkspaceDocument("workspace-cancelled-caller")));
+        var refresh = new RecordingImportRefresh();
+        var controller = CreateController(
+            new RecordingBundleStore { AfterCommit = cancellation.Cancel },
+            new RecordingPathPicker { ImportPath = path },
+            refresh);
+        var plan = (await controller.PreflightImportAsync(
+            DefinitionImportMode.FailOnConflict,
+            CancellationToken.None)).Value!;
+
+        var imported = await controller.ConfirmAndApplyImportAsync(plan, cancellation.Token);
+
+        Assert.True(imported.IsSuccess, imported.Error?.Message);
+        Assert.True(imported.Value!.CatalogReloaded);
+        Assert.False(imported.Value.WorkspacesRemainUnavailable);
+        Assert.Equal(CancellationToken.None, refresh.LastCancellationToken);
     }
 
     [Fact]
@@ -380,8 +610,13 @@ public sealed class DefinitionBundleControllerTests
     private static DefinitionBundleController CreateController(
         RecordingBundleStore store,
         RecordingPathPicker picker,
-        RecordingImportRefresh? refresh = null) =>
-        new(store, picker, refresh ?? new RecordingImportRefresh());
+        RecordingImportRefresh? refresh = null,
+        WorkspaceDefinitionOccupancy? occupancy = null) =>
+        new(
+            store,
+            picker,
+            refresh ?? new RecordingImportRefresh(),
+            occupancy ?? new WorkspaceDefinitionOccupancy());
 
     private static PortableDefinitionBundle Bundle(
         params PortableDefinitionDocument[] documents) =>
@@ -402,6 +637,14 @@ public sealed class DefinitionBundleControllerTests
                 ?? $"{{\"id\":{{\"value\":\"{id}\"}},\"schemaVersion\":1,"
                 + $"\"name\":\"Layout {id}\",\"root\":{{\"slotId\":{{\"value\":\"main\"}},"
                 + "\"kind\":0,\"weight\":1}}}");
+
+    private static PortableDefinitionDocument WorkspaceDocument(string id) =>
+        new(
+            WorkspaceDefinition.Kind,
+            id,
+            WorkspaceDefinition.CurrentSchemaVersion,
+            $"Workspace {id}",
+            $"{{\"id\":{{\"value\":\"{id}\"}}}}");
 
     private static DefinitionStoreResult<DefinitionImportPreflight> SuccessfulPreflight(
         PortableDefinitionBundle bundle,
@@ -446,6 +689,12 @@ public sealed class DefinitionBundleControllerTests
         public DefinitionStoreResult<DefinitionImportResult> CommitResult { get; set; } =
             DefinitionStoreResult<DefinitionImportResult>.Success(new(0, 0));
 
+        public TaskCompletionSource? CommitEntered { get; init; }
+
+        public TaskCompletionSource? AllowCommit { get; init; }
+
+        public Action? AfterCommit { get; init; }
+
         public int ExportCalls => Volatile.Read(ref _exportCalls);
 
         public ConcurrentQueue<(PortableDefinitionBundle Bundle, DefinitionImportMode Mode)>
@@ -473,13 +722,20 @@ public sealed class DefinitionBundleControllerTests
             return ValueTask.FromResult(PreflightFactory(bundle, mode));
         }
 
-        public ValueTask<DefinitionStoreResult<DefinitionImportResult>> CommitImportAsync(
+        public async ValueTask<DefinitionStoreResult<DefinitionImportResult>> CommitImportAsync(
             DefinitionImportPreflight preflight,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Committed.Enqueue(preflight);
-            return ValueTask.FromResult(CommitResult);
+            CommitEntered?.TrySetResult();
+            if (AllowCommit is { } allowCommit)
+            {
+                await allowCommit.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            AfterCommit?.Invoke();
+            return CommitResult;
         }
     }
 
@@ -521,14 +777,34 @@ public sealed class DefinitionBundleControllerTests
         public DefinitionStoreResult<Unit> Result { get; init; } =
             DefinitionStoreResult<Unit>.Success(Unit.Value);
 
+        public TaskCompletionSource? ReloadEntered { get; init; }
+
+        public TaskCompletionSource? AllowReload { get; init; }
+
+        public Exception? ExceptionToThrow { get; init; }
+
+        public CancellationToken? LastCancellationToken { get; private set; }
+
         public int Calls => Volatile.Read(ref _calls);
 
-        public ValueTask<DefinitionStoreResult<Unit>> ReloadAsync(
+        public async ValueTask<DefinitionStoreResult<Unit>> ReloadAsync(
             CancellationToken cancellationToken)
         {
+            LastCancellationToken = cancellationToken;
             cancellationToken.ThrowIfCancellationRequested();
             Interlocked.Increment(ref _calls);
-            return ValueTask.FromResult(Result);
+            ReloadEntered?.TrySetResult();
+            if (AllowReload is { } allowReload)
+            {
+                await allowReload.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            if (ExceptionToThrow is { } exception)
+            {
+                throw exception;
+            }
+
+            return Result;
         }
     }
 

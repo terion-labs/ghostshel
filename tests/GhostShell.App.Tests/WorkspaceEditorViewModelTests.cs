@@ -570,6 +570,237 @@ public sealed class WorkspaceEditorViewModelTests
     }
 
     [Fact]
+    public void Isolation_toggle_marks_dirty_persists_and_resets()
+    {
+        using var editor = new WorkspaceEditorViewModel(
+            Workspace([]),
+            4,
+            [],
+            [],
+            []);
+
+        Assert.False(editor.IsIsolated);
+        Assert.False(editor.IsDirty);
+
+        editor.IsIsolated = true;
+
+        Assert.True(editor.IsDirty);
+        Assert.True(editor.CreateSaveRequest().Definition.IsIsolated);
+        Assert.Empty(editor.IsolationMounts);
+
+        editor.Reset();
+
+        Assert.False(editor.IsIsolated);
+        Assert.False(editor.IsDirty);
+    }
+
+    [Fact]
+    public void Isolation_image_can_be_selected_saved_and_reset()
+    {
+        const string original = "registry.example.test/team/dev:old";
+        using var editor = new WorkspaceEditorViewModel(
+            Workspace([], isIsolated: true, isolationImageReference: original),
+            4,
+            [],
+            [],
+            []);
+
+        editor.IsolationImageReference = "registry.example.test/team/dev:new";
+
+        Assert.True(editor.IsDirty);
+        Assert.Equal(
+            "registry.example.test/team/dev:new",
+            editor.CreateSaveRequest().Definition.IsolationImageReference);
+
+        editor.Reset();
+
+        Assert.False(editor.IsDirty);
+        Assert.Equal(original, editor.IsolationImageReference);
+    }
+
+    [Fact]
+    public void First_host_mount_is_explicit_read_only_and_has_no_host_source()
+    {
+        using var editor = new WorkspaceEditorViewModel(
+            Workspace([], isIsolated: true),
+            4,
+            [],
+            [],
+            []);
+
+        editor.AddIsolationMount();
+
+        var mount = Assert.Single(editor.IsolationMounts);
+        Assert.Empty(mount.HostPath);
+        Assert.Equal("/workspace", mount.GuestPath);
+        Assert.True(mount.IsReadOnly);
+    }
+
+    [Fact]
+    public void Isolation_mounts_can_be_added_edited_and_persisted()
+    {
+        var originalMount = new WorkspaceIsolationMountDefinition(
+            AbsoluteHostPath("original"),
+            "/original",
+            IsReadOnly: true);
+        using var editor = new WorkspaceEditorViewModel(
+            Workspace([], isIsolated: true, isolationMounts: [originalMount]),
+            4,
+            [],
+            [],
+            []);
+        var edited = Assert.Single(editor.IsolationMounts);
+
+        edited.HostPath = $"  {AbsoluteHostPath("edited")}  ";
+        edited.GuestPath = "  /workspace  ";
+        edited.IsReadOnly = false;
+        editor.AddIsolationMount();
+        var added = editor.IsolationMounts[1];
+        added.HostPath = AbsoluteHostPath("read-only");
+        added.GuestPath = "/reference";
+
+        var saved = editor.CreateSaveRequest().Definition;
+
+        Assert.True(editor.IsDirty);
+        Assert.Equal(2, editor.IsolationMountCount);
+        Assert.Equal(
+        [
+            new(AbsoluteHostPath("edited"), "/workspace", IsReadOnly: false),
+            new(AbsoluteHostPath("read-only"), "/reference", IsReadOnly: true),
+        ],
+            saved.IsolationMounts);
+    }
+
+    [Fact]
+    public void Removing_an_isolation_mount_persists_and_reset_restores_the_original_mounts()
+    {
+        WorkspaceIsolationMountDefinition[] originalMounts =
+        [
+            new(AbsoluteHostPath("source"), "/source", IsReadOnly: false),
+            new(AbsoluteHostPath("reference"), "/reference", IsReadOnly: true),
+        ];
+        using var editor = new WorkspaceEditorViewModel(
+            Workspace([], isIsolated: true, isolationMounts: originalMounts),
+            4,
+            [],
+            [],
+            []);
+
+        editor.RemoveIsolationMount(editor.IsolationMounts[0]);
+
+        Assert.Equal([originalMounts[1]], editor.CreateSaveRequest().Definition.IsolationMounts);
+        Assert.True(editor.IsDirty);
+
+        editor.Reset();
+
+        Assert.Equal(originalMounts, editor.CreateSaveRequest().Definition.IsolationMounts);
+        Assert.Equal(2, editor.IsolationMountCount);
+        Assert.False(editor.IsDirty);
+    }
+
+    [Fact]
+    public void Running_workspace_draft_allows_isolation_and_mount_changes()
+    {
+        var originalMount = new WorkspaceIsolationMountDefinition(
+            AbsoluteHostPath("locked"),
+            "/workspace",
+            IsReadOnly: false);
+        using var editor = new WorkspaceEditorViewModel(
+            Workspace([], isIsolated: true, isolationMounts: [originalMount]),
+            4,
+            [],
+            [],
+            [],
+            []);
+        var mounted = Assert.Single(editor.IsolationMounts);
+
+        editor.IsIsolated = false;
+        editor.AddIsolationMount();
+        editor.RemoveIsolationMount(mounted);
+        var replacement = Assert.Single(editor.IsolationMounts);
+        replacement.HostPath = AbsoluteHostPath("replacement");
+
+        Assert.False(editor.IsIsolated);
+        Assert.Single(editor.CreateSaveRequest().Definition.IsolationMounts);
+        Assert.DoesNotContain(
+            editor.CreateSaveRequest().Definition.IsolationMounts,
+            mount => mount == originalMount);
+        Assert.True(editor.IsDirty);
+    }
+
+    [Fact]
+    public void Unavailable_platform_cannot_enable_a_new_workspace_isolate()
+    {
+        using var editor = new WorkspaceEditorViewModel(
+            Workspace([]),
+            4,
+            [],
+            [],
+            [],
+            [],
+            aiProviders: null,
+            isIsolationAvailable: false);
+
+        editor.IsIsolated = true;
+
+        Assert.False(editor.IsIsolationAvailable);
+        Assert.False(editor.CanToggleIsolation);
+        Assert.True(editor.IsIsolationUnavailable);
+        Assert.False(editor.IsIsolated);
+        Assert.False(editor.IsDirty);
+    }
+
+    [Fact]
+    public void Missing_runtime_is_named_and_offers_its_install_action()
+    {
+        using var editor = new WorkspaceEditorViewModel(
+            Workspace([]),
+            4,
+            [],
+            [],
+            [],
+            [],
+            aiProviders: null,
+            isIsolationAvailable: false,
+            isolationRuntimeDisplayName: "Apple container");
+
+        Assert.True(editor.CanInstallIsolationRuntime);
+        Assert.Equal(
+            "Install Apple container to enable isolation",
+            editor.IsolationRuntimeRequirementLabel);
+        Assert.Contains(
+            "persistent isolated environment",
+            editor.IsolationRuntimeRequirementDescription,
+            StringComparison.Ordinal);
+        Assert.Equal("Install Apple container\u2026", editor.InstallIsolationRuntimeLabel);
+        Assert.Equal(
+            "Install Apple container runtime",
+            editor.InstallIsolationRuntimeAccessibleName);
+    }
+
+    [Fact]
+    public void Unavailable_platform_can_disable_a_previously_isolated_workspace()
+    {
+        using var editor = new WorkspaceEditorViewModel(
+            Workspace([], isIsolated: true),
+            4,
+            [],
+            [],
+            [],
+            [],
+            aiProviders: null,
+            isIsolationAvailable: false);
+
+        Assert.True(editor.CanToggleIsolation);
+        editor.IsIsolated = false;
+
+        Assert.False(editor.IsIsolated);
+        Assert.False(editor.CanToggleIsolation);
+        Assert.True(editor.IsIsolationUnavailable);
+        Assert.True(editor.IsDirty);
+    }
+
+    [Fact]
     public void Browser_profile_override_can_be_selected_saved_and_reset()
     {
         using var editor = new WorkspaceEditorViewModel(
@@ -599,7 +830,10 @@ public sealed class WorkspaceEditorViewModelTests
         IReadOnlyList<WorkspaceEntry> entries,
         AgentPolicy? policy = null,
         string icon = WorkspaceDefinition.DefaultIcon,
-        WorkspaceBrowserProfileMode? browserProfile = null) => new(
+        WorkspaceBrowserProfileMode? browserProfile = null,
+        bool isIsolated = false,
+        IReadOnlyList<WorkspaceIsolationMountDefinition>? isolationMounts = null,
+        string? isolationImageReference = null) => new(
         new WorkspaceId("workspace"),
         WorkspaceDefinition.CurrentSchemaVersion,
         "Workspace",
@@ -608,7 +842,13 @@ public sealed class WorkspaceEditorViewModelTests
         entries,
         policy,
         icon,
-        browserProfileOverride: browserProfile);
+        browserProfileOverride: browserProfile,
+        isIsolated: isIsolated,
+        isolationMounts: isolationMounts,
+        isolationImageReference: isolationImageReference);
+
+    private static string AbsoluteHostPath(string leaf) =>
+        Path.Combine(Path.GetTempPath(), "ghostshell-editor", leaf);
 
     private static ConnectionProfile LocalConnection(string id) => new(
         new ConnectionId(id),

@@ -65,6 +65,23 @@ internal static class Confirmations
             CancelAutomationName = "Keep editing",
         });
 
+    public static ConfirmationDialog WorkspaceIsolationRestart(
+        string workspaceName,
+        bool rebuildsIsolate = false) =>
+        new(new ConfirmationDialogOptions
+        {
+            Title = "Restart workspace",
+            Heading = $"Restart “{workspaceName}”?",
+            Detail = "Workspace will be restarted to change isolation configuration.",
+            Notice = rebuildsIsolate
+                ? "All workspace connections will stop. Changing the runtime image removes installed packages and guest-only files before the workspace reopens. Host-mounted files are not removed."
+                : "All connections and local terminals running in this workspace will be stopped. The workspace reopens from its saved definition.",
+            NoticeTone = SurfaceTone.Warning,
+            ConfirmLabel = "Restart workspace",
+            ConfirmAutomationName = "Confirm workspace restart",
+            CancelAutomationName = "Cancel workspace restart",
+        });
+
     public static ConfirmationDialog GitDiscardChange(int count, string firstPath)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);

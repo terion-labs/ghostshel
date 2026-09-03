@@ -251,6 +251,10 @@ public sealed class DefinitionCatalogTests
     {
         var fixture = new CatalogFixture();
         var seeded = CreateAlwaysPresentWorkspace(WorkspaceDefinition.DefaultWorkspaceName);
+        var isolationMount = new WorkspaceIsolationMountDefinition(
+            Path.Combine(Path.GetTempPath(), "ghostshell-default-workspace"),
+            "/workspace",
+            IsReadOnly: false);
         fixture.Workspaces.Add(
             new WorkspaceDefinition(
                 seeded.Id,
@@ -263,7 +267,9 @@ public sealed class DefinitionCatalogTests
                 seeded.Icon,
                 autoSave: true,
                 color: "#224466",
-                agentPanelPinned: true),
+                agentPanelPinned: true,
+                isIsolated: true,
+                isolationMounts: [isolationMount]),
             revision: 9);
 
         var result = await fixture.Catalog.InitializeAsync(CancellationToken.None);
@@ -273,6 +279,8 @@ public sealed class DefinitionCatalogTests
         Assert.Null(stored.Value.Accent);
         Assert.True(stored.Value.AutoSave);
         Assert.True(stored.Value.AgentPanelPinned);
+        Assert.True(stored.Value.IsIsolated);
+        Assert.Equal([isolationMount], stored.Value.IsolationMounts);
         Assert.Equal("#224466", stored.Value.Color);
     }
 

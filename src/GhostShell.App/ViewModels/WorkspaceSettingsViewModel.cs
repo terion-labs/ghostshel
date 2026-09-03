@@ -17,15 +17,29 @@ public sealed class WorkspaceSettingsViewModel : ObservableObject, IDisposable
 {
     private readonly IDefinitionCatalog _catalog;
     private readonly Func<IReadOnlyList<AiProviderProfileDescriptor>> _aiProviders;
+    private readonly Func<DefinitionKey, bool> _isWorkspaceOpen;
+    private readonly WorkspaceDefinitionOccupancy? _workspaceDefinitionOccupancy;
+    private readonly bool _isIsolationAvailable;
+    private readonly string? _isolationRuntimeDisplayName;
     private WorkspaceEditorViewModel? _editor;
     private bool _disposed;
 
     public WorkspaceSettingsViewModel(
         IDefinitionCatalog catalog,
-        Func<IReadOnlyList<AiProviderProfileDescriptor>>? aiProviders = null)
+        Func<IReadOnlyList<AiProviderProfileDescriptor>>? aiProviders = null,
+        Func<DefinitionKey, bool>? isWorkspaceOpen = null,
+        WorkspaceDefinitionOccupancy? workspaceDefinitionOccupancy = null,
+        bool isIsolationAvailable = true,
+        string? isolationRuntimeDisplayName = null)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _aiProviders = aiProviders ?? (() => []);
+        _workspaceDefinitionOccupancy = workspaceDefinitionOccupancy;
+        _isIsolationAvailable = isIsolationAvailable;
+        _isolationRuntimeDisplayName = isolationRuntimeDisplayName;
+        _isWorkspaceOpen = workspaceDefinitionOccupancy is null
+            ? isWorkspaceOpen ?? (_ => false)
+            : workspaceDefinitionOccupancy.IsOccupied;
     }
 
     public WorkspaceEditorViewModel? Editor
@@ -147,16 +161,44 @@ public sealed class WorkspaceSettingsViewModel : ObservableObject, IDisposable
             return Fail("The workspace editor changed before the save could begin.");
         }
 
-        var result = await _catalog.SaveWorkspaceAsync(
-            request.Definition,
-            request.ExpectedRevision,
-            cancellationToken);
-        if (result.IsSuccess)
+        var current = _catalog.Snapshot.Workspaces
+            .FirstOrDefault(item => item.Value.Id == request.Definition.Id);
+        IDisposable? coldConfigurationEdit = null;
+        if (current is not null
+            && (current.Value.IsIsolated != request.Definition.IsIsolated
+                || !current.Value.IsolationMounts.SequenceEqual(
+                    request.Definition.IsolationMounts)
+                || !string.Equals(
+                    current.Value.IsolationImageReference,
+                    request.Definition.IsolationImageReference,
+                    StringComparison.Ordinal)))
         {
-            Dismiss();
+            coldConfigurationEdit = _workspaceDefinitionOccupancy?
+                .TryReserveColdConfigurationEdit(current.Value.Key);
+            var blocked = _workspaceDefinitionOccupancy is not null
+                ? coldConfigurationEdit is null
+                : _isWorkspaceOpen(current.Value.Key);
+            if (blocked)
+            {
+                return Fail(
+                    "Close this workspace before changing isolation or host mounts. "
+                    + "Existing processes cannot be moved safely between execution boundaries.");
+            }
         }
 
-        return result;
+        using (coldConfigurationEdit)
+        {
+            var result = await _catalog.SaveWorkspaceAsync(
+                request.Definition,
+                request.ExpectedRevision,
+                cancellationToken);
+            if (result.IsSuccess)
+            {
+                Dismiss();
+            }
+
+            return result;
+        }
     }
 
     public ValueTask<DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>> CreateAsync(
@@ -172,6 +214,65 @@ public sealed class WorkspaceSettingsViewModel : ObservableObject, IDisposable
             accent: null,
             []);
         return _catalog.SaveWorkspaceAsync(definition, null, cancellationToken);
+    }
+
+    public async ValueTask<DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>>
+        SetIsolationAsync(
+            WorkspaceId id,
+            bool isIsolated,
+            CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        var stored = _catalog.Snapshot.Workspaces
+            .SingleOrDefault(item => item.Value.Id == id);
+        if (stored is null)
+        {
+            return Fail("That workspace no longer exists.");
+        }
+
+        if (isIsolated && !_isIsolationAvailable)
+        {
+            return Fail("Install a supported workspace isolation runtime before enabling isolation.");
+        }
+
+        if (stored.Value.IsIsolated == isIsolated)
+        {
+            return DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>.Success(stored);
+        }
+
+        using var coldConfigurationEdit = _workspaceDefinitionOccupancy?
+            .TryReserveColdConfigurationEdit(stored.Value.Key);
+        var blocked = _workspaceDefinitionOccupancy is not null
+            ? coldConfigurationEdit is null
+            : _isWorkspaceOpen(stored.Value.Key);
+        if (blocked)
+        {
+            return Fail("Close this workspace before changing isolation or host mounts.");
+        }
+
+        var current = stored.Value;
+        var updated = new WorkspaceDefinition(
+            current.Id,
+            current.SchemaVersion,
+            current.Name,
+            current.Description,
+            current.Accent,
+            current.Entries,
+            current.AgentPolicyOverride,
+            current.Icon,
+            current.AutoSave,
+            current.Color,
+            current.AgentPanelPinned,
+            current.TerminalMultiplexingOverride,
+            current.BrowserProfileOverride,
+            current.HasExplicitAccent,
+            isIsolated,
+            current.IsolationMounts,
+            current.IsolationImageReference);
+        return await _catalog.SaveWorkspaceAsync(
+            updated,
+            stored.Revision,
+            cancellationToken);
     }
 
     public async ValueTask<DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>?>
@@ -208,7 +309,10 @@ public sealed class WorkspaceSettingsViewModel : ObservableObject, IDisposable
             isPinned,
             current.TerminalMultiplexingOverride,
             current.BrowserProfileOverride,
-            current.HasExplicitAccent);
+            current.HasExplicitAccent,
+            current.IsIsolated,
+            current.IsolationMounts,
+            current.IsolationImageReference);
         return await _catalog.SaveWorkspaceAsync(
             updated,
             stored.Revision,
@@ -238,7 +342,9 @@ public sealed class WorkspaceSettingsViewModel : ObservableObject, IDisposable
             [.. snapshot.Screens.Select(item => item.Value)],
             [.. snapshot.Layouts.Select(item => item.Value)],
             [.. snapshot.FileProviderProfiles.Select(item => item.Value)],
-            _aiProviders());
+            _aiProviders(),
+            isIsolationAvailable: _isIsolationAvailable,
+            isolationRuntimeDisplayName: _isolationRuntimeDisplayName);
         editor.SetPeers([.. snapshot.Workspaces.Select(item => item.Value)]);
         return editor;
     }

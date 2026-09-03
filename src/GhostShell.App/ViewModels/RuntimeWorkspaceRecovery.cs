@@ -9,7 +9,7 @@ namespace GhostShell.App.ViewModels;
 internal static class RuntimeWorkspaceRecoveryCodec
 {
     public const string SnapshotKey = "desktop.main-window";
-    public const int SchemaVersion = 9;
+    public const int SchemaVersion = 10;
 
     private const int MaximumTabs = WorkspaceInstance.MaximumPanelCount;
     private const int MaximumPanelsPerTab = WorkspaceInstance.MaximumPanelCount;
@@ -90,7 +90,13 @@ internal static class RuntimeWorkspaceRecoveryCodec
             historySource is null
                 ? null
                 : RuntimeHistorySourceRecoveryPayload.Capture(historySource),
-            workspace.TerminalMultiplexingMode);
+            workspace.TerminalMultiplexingMode,
+            workspace.IsolationBinding is not null,
+            workspace.IsolationBinding is { } binding
+                ? [.. binding.Mounts.Select(
+                    RuntimeWorkspaceIsolationMountRecoveryPayload.Capture)]
+                : [],
+            workspace.IsolationBinding?.ImageReference);
 
     private static RuntimeTabRecoveryPayload CaptureTab(RuntimeTabViewModel tab) =>
         new(
@@ -198,6 +204,13 @@ internal static class RuntimeWorkspaceRecoveryCodec
                 != workspace.ConnectionIds.Length
             || workspace.TerminalMultiplexingMode is { } terminalMultiplexingMode
                 && !Enum.IsDefined(terminalMultiplexingMode)
+            || !TryValidateIsolationMounts(
+                workspace.IsIsolated,
+                workspace.IsolationMounts)
+            || workspace.IsolationImageReference is { } imageReference
+                && (imageReference.Length > WorkspaceDefinition.MaximumIsolationImageReferenceLength
+                    || imageReference.Any(char.IsWhiteSpace)
+                    || imageReference.Any(char.IsControl))
             || workspace.AgentPolicy is { } workspacePolicy
                 && (!workspacePolicy.TryValidate()
                     || workspacePolicy.Sources.Any(source => string.Equals(source.Kind, ScreenDefinition.Kind.Value, StringComparison.Ordinal)))
@@ -240,6 +253,35 @@ internal static class RuntimeWorkspaceRecoveryCodec
 
         error = null;
         return true;
+    }
+
+    private static bool TryValidateIsolationMounts(
+        bool isIsolated,
+        RuntimeWorkspaceIsolationMountRecoveryPayload[]? mounts)
+    {
+        if (mounts is null)
+        {
+            return !isIsolated;
+        }
+
+        if (mounts.Length > WorkspaceDefinition.MaximumIsolationMountCount
+            || !isIsolated && mounts.Length > 0
+            || mounts.Any(mount => mount is null))
+        {
+            return false;
+        }
+
+        try
+        {
+            _ = new WorkspaceIsolationPrepareRequest(
+                new WorkspaceId("runtime-recovery-validation"),
+                [.. mounts.Select(mount => mount.ToMount())]);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
     }
 
     private static bool TryValidate(
@@ -515,7 +557,25 @@ internal sealed record RuntimeWorkspaceRecoveryPayload(
     RuntimeHistorySourceRecoveryPayload? HistorySource = null,
     // Despite the historical property name, this stores only a concrete
     // workspace override. Null follows the current application preference.
-    TerminalMultiplexingMode? TerminalMultiplexingMode = null);
+    TerminalMultiplexingMode? TerminalMultiplexingMode = null,
+    // Optional-at-the-wire through the default: legacy snapshots restore as
+    // host workspaces, while current isolated snapshots cannot silently do so.
+    bool IsIsolated = false,
+    RuntimeWorkspaceIsolationMountRecoveryPayload[]? IsolationMounts = null,
+    string? IsolationImageReference = null);
+
+internal sealed record RuntimeWorkspaceIsolationMountRecoveryPayload(
+    string HostSource,
+    string GuestDestination,
+    bool IsReadOnly)
+{
+    public static RuntimeWorkspaceIsolationMountRecoveryPayload Capture(
+        WorkspaceIsolationMount mount) =>
+        new(mount.HostSource, mount.GuestDestination, mount.IsReadOnly);
+
+    public WorkspaceIsolationMount ToMount() =>
+        new(HostSource, GuestDestination, IsReadOnly);
+}
 
 internal sealed record RuntimeTabRecoveryPayload(
     string Key,

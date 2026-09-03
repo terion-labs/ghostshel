@@ -54,6 +54,23 @@ public sealed class LauncherListStabilityTests
             Assert.Single(viewModel.ConnectionsPreview).Name);
     }
 
+    [Fact]
+    public void An_isolation_change_reaches_the_workspace_list()
+    {
+        using var viewModel = CreateViewModel(new FixedCatalog(Snapshot("Prod web")));
+        var original = Assert.Single(viewModel.Workspaces);
+        using var watch = new CollectionWatch(viewModel.Workspaces);
+
+        var isolatedSnapshot = Snapshot("Prod web", isIsolated: true);
+        Assert.True(Assert.Single(isolatedSnapshot.Workspaces).Value.IsIsolated);
+        viewModel.RefreshCatalog(isolatedSnapshot);
+
+        Assert.True(watch.Count > 0);
+        var isolated = Assert.Single(viewModel.Workspaces);
+        Assert.NotSame(original, isolated);
+        Assert.True(isolated.IsIsolated);
+    }
+
     private static MainWindowViewModel CreateViewModel(IDefinitionCatalog catalog)
     {
         var files = new EmptyFileClients();
@@ -75,7 +92,9 @@ public sealed class LauncherListStabilityTests
             throw new NotSupportedException(targetMethod?.Name);
     }
 
-    private static DefinitionCatalogSnapshot Snapshot(string connectionName)
+    private static DefinitionCatalogSnapshot Snapshot(
+        string connectionName,
+        bool isIsolated = false)
     {
         var connection = new ConnectionProfile(
             new ConnectionId("prod-web"),
@@ -122,7 +141,8 @@ public sealed class LauncherListStabilityTests
                 new WorkspaceEntry.ConnectionReference(
                     new WorkspaceEntryId("release-connection"),
                     connection.Id),
-            ]);
+            ],
+            isIsolated: isIsolated);
 
         return DefinitionCatalogSnapshot.Empty with
         {

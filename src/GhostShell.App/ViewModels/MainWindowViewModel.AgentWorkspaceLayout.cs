@@ -821,7 +821,11 @@ public sealed partial class MainWindowViewModel
                         AgentWorkspacePanelTitle(kind),
                         kind,
                         connection),
-                PanelKind.Docker => CreateDockerPanel(id, "Docker", connection),
+                PanelKind.Docker => CreateDockerPanel(
+                    id,
+                    "Docker",
+                    connection,
+                    workspace.Id),
                 _ => null,
             };
         }
@@ -849,7 +853,8 @@ public sealed partial class MainWindowViewModel
                     id,
                     "Database",
                     tunnelConnection: ResolveDatabaseTunnel(profile),
-                    savedConnection: profile)
+                    savedConnection: profile,
+                    workspaceId: workspace.Id)
                 : null;
         }
 
@@ -876,8 +881,14 @@ public sealed partial class MainWindowViewModel
                     id,
                     AgentWorkspacePanelTitle(kind),
                     kind),
-            PanelKind.DatabaseViewer => CreateDatabasePanel(id, "Database"),
-            PanelKind.Docker => CreateDockerPanel(id, "Docker"),
+            PanelKind.DatabaseViewer => CreateDatabasePanel(
+                id,
+                "Database",
+                workspaceId: workspace.Id),
+            PanelKind.Docker => CreateDockerPanel(
+                id,
+                "Docker",
+                workspaceId: workspace.Id),
             _ => null,
         };
     }

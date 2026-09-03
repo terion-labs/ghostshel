@@ -1,3 +1,4 @@
+using System.Reflection;
 using GhostShell.Agent.Providers;
 using GhostShell.App;
 using GhostShell.App.ViewModels;
@@ -37,6 +38,41 @@ public sealed class CompositionTests
 
         Assert.Null(services.GetService<IImagePreviewDecoder>());
         Assert.Null(services.GetService<IPdfPreviewRenderer>());
+    }
+
+    [Fact]
+    public async Task Workspace_isolation_provider_requires_a_supported_host_and_installed_runtime()
+    {
+        await using var services = DesktopComposition.CreateServiceProvider();
+
+        var support = new WorkspaceIsolationPlatformResolver().ResolveCurrent();
+        var containerExecutable = services
+            .GetRequiredService<IConnectionExecutableLocator>()
+            .Find("container");
+        var provider = services.GetService<IWorkspaceIsolationProvider>();
+        var installer = services.GetService<IWorkspaceIsolationRuntimeInstaller>();
+
+        if (support is WorkspaceIsolationPlatformSupport.Available)
+        {
+            Assert.IsType<AppleContainerRuntimeInstaller>(installer);
+            if (containerExecutable is not null)
+            {
+                var appleProvider = Assert.IsType<AppleContainerWorkspaceIsolationProvider>(provider);
+                Assert.Equal(WorkspaceIsolationProviderKind.AppleContainer, appleProvider.Kind);
+                Assert.Equal(
+                    WorkspaceIsolationPlatformResolver.AppleContainerCapabilities,
+                    appleProvider.Capabilities);
+            }
+            else
+            {
+                Assert.Null(provider);
+            }
+        }
+        else
+        {
+            Assert.Null(provider);
+            Assert.Null(installer);
+        }
     }
 
     [Fact]
@@ -208,16 +244,26 @@ public sealed class CompositionTests
     public async Task Main_window_factory_creates_independent_presentation_roots()
     {
         await using var services = DesktopComposition.CreateServiceProvider();
+        var occupancy = services.GetRequiredService<WorkspaceDefinitionOccupancy>();
         var primary = services.GetRequiredService<MainWindowViewModel>();
         var factory = services.GetRequiredService<MainWindowViewModelFactory>();
 
         using var first = factory();
         using var second = factory();
+        var occupancyField = typeof(MainWindowViewModel).GetField(
+            "_workspaceDefinitionOccupancy",
+            BindingFlags.Instance | BindingFlags.NonPublic);
 
         Assert.NotSame(primary, first);
         Assert.NotSame(first, second);
         Assert.NotEqual(primary.WindowId, first.WindowId);
         Assert.NotEqual(first.WindowId, second.WindowId);
+        Assert.Same(
+            occupancy,
+            services.GetRequiredService<WorkspaceDefinitionOccupancy>());
+        Assert.Same(occupancy, occupancyField?.GetValue(primary));
+        Assert.Same(occupancy, occupancyField?.GetValue(first));
+        Assert.Same(occupancy, occupancyField?.GetValue(second));
         Assert.Equal(MainWindowRole.Primary, primary.Role);
         Assert.Equal(MainWindowRole.Additional, first.Role);
         Assert.Equal(MainWindowRole.Additional, second.Role);

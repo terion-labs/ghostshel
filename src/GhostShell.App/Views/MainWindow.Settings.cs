@@ -51,12 +51,14 @@ public sealed partial class MainWindow
             AppearanceTextScaleOptions);
 
         if (_definitionBundleStore is not null
-            && _definitionCatalog is not null)
+            && _definitionCatalog is not null
+            && _workspaceDefinitionOccupancy is not null)
         {
             _definitionBundles = new DefinitionBundleController(
                 _definitionBundleStore,
                 new AvaloniaDefinitionBundlePathPicker(this),
-                new DefinitionCatalogImportRefresh(_definitionCatalog));
+                new DefinitionCatalogImportRefresh(_definitionCatalog),
+                _workspaceDefinitionOccupancy);
         }
 
         if (_recentSessionHistoryExporter is not null)
@@ -125,6 +127,52 @@ public sealed partial class MainWindow
 
     private void OnWorkspaceSettingsClick(object? sender, RoutedEventArgs e) =>
         SetSettingsPage(SettingsPage.Workspaces);
+
+    private void OnInstallWorkspaceIsolationRuntimeClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        _ = ViewModel.InstallWorkspaceIsolationRuntime();
+    }
+
+    private async void OnWorkspaceIsolationChanged(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        _ = e;
+        if (sender is not ToggleSwitch
+            {
+                DataContext: LauncherWorkspaceViewModel workspace,
+            } toggle)
+        {
+            return;
+        }
+
+        var requested = toggle.IsChecked == true;
+        if (requested == workspace.IsIsolated)
+        {
+            return;
+        }
+
+        if (workspace.IsOpen
+            && !await Confirmations.WorkspaceIsolationRestart(workspace.Name)
+                .ShowDialog<bool>(this))
+        {
+            toggle.IsChecked = workspace.IsIsolated;
+            return;
+        }
+
+        var result = await ViewModel.SetWorkspaceIsolationAsync(
+            workspace,
+            requested,
+            CancellationToken.None);
+        if (!result.IsSuccess)
+        {
+            toggle.IsChecked = workspace.IsIsolated;
+        }
+    }
 
     private async void OnRestoreSessionsOnStartChanged(
         object? sender,

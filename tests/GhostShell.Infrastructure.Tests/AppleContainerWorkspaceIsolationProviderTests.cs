@@ -1,0 +1,1300 @@
+using System.Text.Json;
+using GhostShell.Application;
+using GhostShell.Core;
+
+namespace GhostShell.Infrastructure.Tests;
+
+public sealed class AppleContainerWorkspaceIsolationProviderTests
+{
+    private const string CurrentVersionJson =
+        """[{"appName":"container","version":"1.0.0","buildType":"release","commit":"abc"}]""";
+    private const string GuestHome = "/home/alice";
+    private static readonly string HostHome =
+        Path.TrimEndingDirectorySeparator(Path.GetTempPath());
+    private static readonly WorkspaceId WorkspaceId = new("workspace-alpha");
+    private static readonly IReadOnlyList<WorkspaceIsolationMount> HomeMounts =
+    [
+        new(HostHome, GuestHome, isReadOnly: false),
+    ];
+
+    [Fact]
+    public async Task Prepare_reuses_and_starts_the_deterministically_named_persistent_container()
+    {
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0, InspectJson()),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0));
+        var provider = Provider(runner);
+
+        var binding = Success(await provider.PrepareAsync(
+            Request(),
+            CancellationToken.None));
+
+        var expectedName = AppleContainerWorkspaceIsolationProvider.ResourceName(WorkspaceId);
+        Assert.Equal(expectedName, binding.ResourceName);
+        Assert.Equal(HomeMounts, binding.Mounts);
+        Assert.Equal(WorkspaceIsolationProviderKind.AppleContainer, binding.Provider);
+        Assert.Equal(
+            ["system", "version", "--format", "json"],
+            runner.Commands[0].Arguments);
+        Assert.Equal(
+            ["system", "start", "--enable-kernel-install", "--timeout", "180"],
+            runner.Commands[1].Arguments);
+        Assert.Null(runner.Commands[1].Timeout);
+        Assert.Equal(["inspect", expectedName], runner.Commands[2].Arguments);
+        Assert.Equal(TimeSpan.FromSeconds(10), runner.Commands[2].Timeout);
+        Assert.Equal(["start", expectedName], runner.Commands[3].Arguments);
+        Assert.Equal(TimeSpan.FromMinutes(2), runner.Commands[3].Timeout);
+        Assert.Equal(["exec", expectedName, "/bin/true"], runner.Commands[4].Arguments);
+        Assert.Equal(TimeSpan.FromSeconds(10), runner.Commands[4].Timeout);
+        Assert.Equal(
+            ["exec", expectedName, "/bin/sh", "-c", "exit 0"],
+            runner.Commands[5].Arguments);
+        Assert.Equal(
+            [
+                "exec",
+                expectedName,
+                "/bin/sh",
+                "-c",
+                "test -d /root && test -w /root",
+            ],
+            runner.Commands[6].Arguments);
+        Assert.DoesNotContain(
+            runner.Commands.SelectMany(command => command.Arguments),
+            argument => string.Equals(argument, "delete", StringComparison.Ordinal)
+                        || string.Equals(argument, "--rm", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Prepare_completes_apple_container_system_setup_before_inspecting_workspace()
+    {
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0, InspectJson()),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0));
+        var provider = Provider(runner);
+
+        _ = Success(await provider.PrepareAsync(Request(), CancellationToken.None));
+
+        Assert.Equal(
+            ["system", "start", "--enable-kernel-install", "--timeout", "180"],
+            runner.Commands[1].Arguments);
+        Assert.Null(runner.Commands[1].Timeout);
+        Assert.Equal(
+            ["inspect", AppleContainerWorkspaceIsolationProvider.ResourceName(WorkspaceId)],
+            runner.Commands[2].Arguments);
+    }
+
+    [Fact]
+    public async Task Prepare_reports_runtime_kernel_and_workspace_steps()
+    {
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0, InspectJson()),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0))
+        {
+            OutputByCommandIndex = new Dictionary<int, IReadOnlyList<string>>
+            {
+                [1] =
+                [
+                    "Launching container-apiserver\n",
+                    "Installing kernel\rDownloading kernel 7%",
+                    "Downloading kernel 84%",
+                    "Verifying kernel archive",
+                    "Unpacking kernel",
+                ],
+            },
+        };
+        var progress = new RecordingProgress<WorkspaceIsolationProgress>();
+        var provider = Provider(runner);
+
+        _ = Success(await provider.PrepareAsync(
+            Request(),
+            progress,
+            CancellationToken.None));
+
+        Assert.Contains(
+            progress.Values,
+            item => item.Status == "Checking the Apple container runtime…");
+        Assert.Contains(
+            progress.Values,
+            item => item.Status == "Downloading the Apple container Linux kernel… 84%");
+        Assert.Contains(
+            progress.Values,
+            item => item.Status == "Verifying the Apple container Linux kernel…");
+        Assert.Contains(
+            progress.Values,
+            item => item.Status == "Unpacking the Apple container Linux kernel…");
+        Assert.Equal("Checking the workspace isolate…", progress.Values[^1].Status);
+    }
+
+    [Fact]
+    public async Task Prepare_creates_each_configured_mount_without_forwarding_the_ssh_agent()
+    {
+        IReadOnlyList<WorkspaceIsolationMount> mounts =
+        [
+            HomeMounts[0],
+            new(Path.GetPathRoot(HostHome)!, "/workspace", isReadOnly: true),
+        ];
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0, InspectJson(mounts)),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0))
+        {
+            OutputByCommandIndex = new Dictionary<int, IReadOnlyList<string>>
+            {
+                [3] = ["[1/2] Fetching image 62% (41 of 56 blobs)"],
+            },
+        };
+        var provider = Provider(runner);
+        var progress = new RecordingProgress<WorkspaceIsolationProgress>();
+
+        var binding = Success(await provider.PrepareAsync(
+            new WorkspaceIsolationPrepareRequest(WorkspaceId, mounts),
+            progress,
+            CancellationToken.None));
+
+        Assert.Equal(
+            [
+                "image",
+                "pull",
+                "--progress",
+                "plain",
+                AppleContainerWorkspaceIsolationProvider.DefaultImageReference,
+            ],
+            runner.Commands[3].Arguments);
+        Assert.Null(runner.Commands[3].Timeout);
+        Assert.Contains(
+            progress.Values,
+            item => item.Status == "Downloading the workspace image…");
+        Assert.Contains(
+            progress.Values,
+            item => item.Status == "Downloading the workspace image… 62%");
+        Assert.Contains(
+            progress.Values,
+            item => item.Status == "Creating the persistent workspace isolate…");
+        var create = runner.Commands[4].Arguments;
+        Assert.Equal("create", create[0]);
+        Assert.Equal(TimeSpan.FromMinutes(5), runner.Commands[4].Timeout);
+        Assert.DoesNotContain("--ssh", create, StringComparer.Ordinal);
+        Assert.Contains("--init", create, StringComparer.Ordinal);
+        Assert.Contains(
+            $"type=bind,source={HostHome},target={GuestHome}",
+            create,
+            StringComparer.Ordinal);
+        Assert.Contains(
+            $"type=bind,source={Path.GetPathRoot(HostHome)},target=/workspace,readonly",
+            create,
+            StringComparer.Ordinal);
+        Assert.Contains(
+            AppleContainerWorkspaceIsolationProvider.DefaultImageReference,
+            create,
+            StringComparer.Ordinal);
+        Assert.Contains("/bin/sleep", create, StringComparer.Ordinal);
+        Assert.Contains("infinity", create, StringComparer.Ordinal);
+        Assert.DoesNotContain("--rm", create, StringComparer.Ordinal);
+        Assert.Equal(binding.ResourceName, create[2]);
+        Assert.Equal(3, create.Count(argument => argument == "--label"));
+        Assert.Contains(
+            $"io.ghostshell.base-image={AppleContainerWorkspaceIsolationProvider.DefaultImageReference}",
+            create,
+            StringComparer.Ordinal);
+        Assert.Contains(
+            create.Zip(create.Skip(1)),
+            pair => pair.First == "--cpus" && pair.Second == "1");
+        Assert.Contains(
+            create.Zip(create.Skip(1)),
+            pair => pair.First == "--memory" && pair.Second == "1G");
+    }
+
+    [Fact]
+    public async Task Prepare_does_not_download_optional_ssh_tools_for_a_local_workspace()
+    {
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0, InspectJson()),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0));
+        var provider = Provider(runner);
+
+        _ = Success(await provider.PrepareAsync(
+            Request(),
+            CancellationToken.None));
+
+        Assert.DoesNotContain(
+            runner.Commands.SelectMany(command => command.Arguments),
+            argument => string.Equals(argument, "apk", StringComparison.Ordinal)
+                        || string.Equals(argument, "openssh-client", StringComparison.Ordinal));
+        Assert.Equal(7, runner.Commands.Count);
+    }
+
+    [Fact]
+    public async Task Prepare_creates_a_new_isolate_from_the_workspace_image()
+    {
+        const string image = "registry.example.test/team/dev:2026.09";
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(
+                0,
+                InspectJson(imageReference: image, baseImageReference: image)),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0));
+        var provider = Provider(runner);
+
+        var binding = Success(await provider.PrepareAsync(
+            new WorkspaceIsolationPrepareRequest(WorkspaceId, HomeMounts, image),
+            CancellationToken.None));
+
+        Assert.Equal(image, binding.ImageReference);
+        Assert.Equal(
+            ["image", "pull", "--progress", "plain", image],
+            runner.Commands[3].Arguments);
+        Assert.Contains(
+            $"io.ghostshell.base-image={image}",
+            runner.Commands[4].Arguments,
+            StringComparer.Ordinal);
+        Assert.Contains(image, runner.Commands[4].Arguments, StringComparer.Ordinal);
+    }
+
+    [Fact]
+    public async Task Prepare_rebuilds_an_inactive_isolate_when_its_image_changes()
+    {
+        const string image = "registry.example.test/team/dev:2026.10";
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0, InspectJson()),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0));
+        var provider = Provider(runner);
+
+        var binding = Success(await provider.PrepareAsync(
+            new WorkspaceIsolationPrepareRequest(WorkspaceId, HomeMounts, image),
+            CancellationToken.None));
+
+        Assert.Equal(image, binding.ImageReference);
+        Assert.Equal(
+            ["stop", "--time", "5", binding.ResourceName],
+            runner.Commands[3].Arguments);
+        Assert.Equal(
+            ["image", "pull", "--progress", "plain", image],
+            runner.Commands[4].Arguments);
+        Assert.Equal(["delete", binding.ResourceName], runner.Commands[5].Arguments);
+        Assert.Equal("create", runner.Commands[6].Arguments[0]);
+        Assert.Contains(image, runner.Commands[6].Arguments, StringComparer.Ordinal);
+    }
+
+    [Fact]
+    public async Task Prepare_rejects_an_outdated_apple_container_runtime()
+    {
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(
+                0,
+                """[{"appName":"container","version":"0.12.3"}]"""));
+        var provider = Provider(runner);
+
+        var failure = Failure(await provider.PrepareAsync(
+            Request(),
+            CancellationToken.None));
+
+        Assert.Equal(WorkspaceIsolationErrorCode.RuntimeVersionTooOld, failure.Code);
+        Assert.Equal(WorkspaceIsolationRecoveryAction.UpdateRuntime, failure.RecoveryAction);
+        Assert.Single(runner.Commands);
+    }
+
+    [Fact]
+    public async Task Prepare_maps_a_missing_cli_to_an_install_runtime_error()
+    {
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.StartFailed(AppleContainerCommandStartFailure.NotFound));
+        var provider = Provider(runner);
+
+        var failure = Failure(await provider.PrepareAsync(
+            Request(),
+            CancellationToken.None));
+
+        Assert.Equal(WorkspaceIsolationErrorCode.RuntimeMissing, failure.Code);
+        Assert.Equal(WorkspaceIsolationRecoveryAction.InstallRuntime, failure.RecoveryAction);
+    }
+
+    [Fact]
+    public async Task Prepare_rejects_a_missing_host_mount_before_invoking_the_runtime()
+    {
+        var runner = new RecordingRunner();
+        var provider = Provider(runner);
+        IReadOnlyList<WorkspaceIsolationMount> mounts =
+        [
+            new(
+                Path.Combine(
+                    Path.GetTempPath(),
+                    "ghostshell-missing-mount-166b7dcc29f34336b84b33e734e5faef"),
+                "/workspace",
+                isReadOnly: false),
+        ];
+
+        var failure = Failure(await provider.PrepareAsync(
+            new WorkspaceIsolationPrepareRequest(WorkspaceId, mounts),
+            CancellationToken.None));
+
+        Assert.Equal(WorkspaceIsolationErrorCode.PrepareFailed, failure.Code);
+        Assert.Empty(runner.Commands);
+    }
+
+    [Fact]
+    public async Task Prepare_rejects_an_existing_file_mount_source_before_runtime_mutation()
+    {
+        var hostFile = Path.GetTempFileName();
+        try
+        {
+            var runner = new RecordingRunner();
+            var provider = Provider(runner);
+
+            var failure = Failure(await provider.PrepareAsync(
+                new WorkspaceIsolationPrepareRequest(
+                    WorkspaceId,
+                    [new WorkspaceIsolationMount(hostFile, "/workspace/config", true)]),
+                CancellationToken.None));
+
+            Assert.Equal(WorkspaceIsolationErrorCode.PrepareFailed, failure.Code);
+            Assert.Empty(runner.Commands);
+        }
+        finally
+        {
+            File.Delete(hostFile);
+        }
+    }
+
+    [Fact]
+    public async Task Prepare_allows_a_guest_only_persistent_environment()
+    {
+        var emptyMounts = Array.Empty<WorkspaceIsolationMount>();
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0, InspectJson(emptyMounts)),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0));
+        var provider = Provider(runner);
+
+        var binding = Success(await provider.PrepareAsync(
+            new WorkspaceIsolationPrepareRequest(WorkspaceId),
+            CancellationToken.None));
+        var launch = Success(provider.CreateExecLaunch(
+            binding,
+            new WorkspaceIsolationProcessRequest(ConnectionKind.Local, "/bin/zsh")));
+
+        Assert.Empty(binding.Mounts);
+        Assert.DoesNotContain("--mount", runner.Commands[4].Arguments, StringComparer.Ordinal);
+        Assert.Contains(
+            launch.Arguments.Zip(launch.Arguments.Skip(1)),
+            pair => pair.First == "--workdir" && pair.Second == "/root");
+    }
+
+    [Theory]
+    [InlineData(false, WorkspaceIsolationErrorCode.Cancelled)]
+    [InlineData(true, WorkspaceIsolationErrorCode.Timeout)]
+    public async Task Prepare_preserves_a_post_create_inspect_interruption(
+        bool timedOut,
+        WorkspaceIsolationErrorCode expectedError)
+    {
+        var inspectInterruption = timedOut
+            ? AppleContainerCommandResult.TimedOut
+            : AppleContainerCommandResult.Cancelled;
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            inspectInterruption,
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(0, "[]"));
+        var provider = Provider(runner);
+
+        var result = Assert.IsType<WorkspaceIsolationResult<WorkspaceIsolationBinding>.Failure>(
+            await provider.PrepareAsync(Request(), CancellationToken.None));
+        var cleanup = Assert.IsType<WorkspaceIsolationBinding>(result.CleanupValue);
+
+        Assert.Equal(expectedError, result.Error.Code);
+        Assert.Equal(
+            ["inspect", AppleContainerWorkspaceIsolationProvider.ResourceName(WorkspaceId)],
+            runner.Commands[5].Arguments);
+        Assert.Equal(6, runner.Commands.Count);
+
+        _ = Success(await provider.StopAsync(cleanup, CancellationToken.None));
+
+        Assert.Equal(
+            ["list", "--all", "--format", "json"],
+            runner.Commands[9].Arguments);
+        Assert.Equal(10, runner.Commands.Count);
+    }
+
+    [Theory]
+    [InlineData(false, WorkspaceIsolationErrorCode.Cancelled)]
+    [InlineData(true, WorkspaceIsolationErrorCode.Timeout)]
+    public async Task Prepare_retains_cleanup_when_create_itself_has_an_ambiguous_outcome(
+        bool timedOut,
+        WorkspaceIsolationErrorCode expectedError)
+    {
+        var ambiguousCreate = timedOut
+            ? AppleContainerCommandResult.TimedOut
+            : AppleContainerCommandResult.Cancelled;
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(0),
+            ambiguousCreate,
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(0, "[]"));
+        var provider = Provider(runner);
+
+        var result = Assert.IsType<WorkspaceIsolationResult<WorkspaceIsolationBinding>.Failure>(
+            await provider.PrepareAsync(Request(), CancellationToken.None));
+        var cleanup = Assert.IsType<WorkspaceIsolationBinding>(result.CleanupValue);
+
+        Assert.Equal(expectedError, result.Error.Code);
+        _ = Success(await provider.StopAsync(cleanup, CancellationToken.None));
+        Assert.Equal(
+            ["list", "--all", "--format", "json"],
+            runner.Commands[9].Arguments);
+    }
+
+    [Fact]
+    public async Task Prepare_retains_cleanup_when_a_failed_create_may_have_reached_the_daemon()
+    {
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(0, "[]"));
+        var provider = Provider(runner);
+
+        var result = Assert.IsType<WorkspaceIsolationResult<WorkspaceIsolationBinding>.Failure>(
+            await provider.PrepareAsync(Request(), CancellationToken.None));
+        var cleanup = Assert.IsType<WorkspaceIsolationBinding>(result.CleanupValue);
+
+        Assert.Equal(WorkspaceIsolationErrorCode.PrepareFailed, result.Error.Code);
+        _ = Success(await provider.StopAsync(cleanup, CancellationToken.None));
+        Assert.Equal(
+            ["list", "--all", "--format", "json"],
+            runner.Commands[9].Arguments);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Prepare_retains_cleanup_when_a_mutating_command_runner_throws(
+        bool duringCreate)
+    {
+        var initialInspect = duringCreate
+            ? AppleContainerCommandResult.Exited(1)
+            : AppleContainerCommandResult.Exited(0, InspectJson());
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            initialInspect,
+            duringCreate
+                ? AppleContainerCommandResult.Exited(0)
+                : AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(1),
+            duringCreate
+                ? AppleContainerCommandResult.Exited(1)
+                : AppleContainerCommandResult.Exited(0, "[]"),
+            AppleContainerCommandResult.Exited(0, "[]"))
+        {
+            ThrowOnCommandIndex = duringCreate ? 4 : 3,
+        };
+        var provider = Provider(runner);
+
+        var result = Assert.IsType<WorkspaceIsolationResult<WorkspaceIsolationBinding>.Failure>(
+            await provider.PrepareAsync(Request(), CancellationToken.None));
+        var cleanup = Assert.IsType<WorkspaceIsolationBinding>(result.CleanupValue);
+
+        Assert.Equal(WorkspaceIsolationErrorCode.PrepareFailed, result.Error.Code);
+        var mutationCommandIndex = duringCreate ? 4 : 3;
+        Assert.Equal(
+            duringCreate ? "create" : "start",
+            runner.Commands[mutationCommandIndex].Arguments[0]);
+        _ = Success(await provider.StopAsync(cleanup, CancellationToken.None));
+        var listCommandIndex = duringCreate ? 9 : 8;
+        Assert.Equal(
+            ["list", "--all", "--format", "json"],
+            runner.Commands[listCommandIndex].Arguments);
+    }
+
+    [Fact]
+    public async Task Prepare_preserves_the_root_filesystem_while_reconfiguring_mounts()
+    {
+        IReadOnlyList<WorkspaceIsolationMount> otherMounts =
+        [
+            new(HostPath("other"), "/workspace", isReadOnly: true),
+        ];
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0, InspectJson(otherMounts)),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(
+                0,
+                InspectJson(
+                    imageReference: SnapshotImageReference())),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0));
+        var provider = Provider(runner);
+        var progress = new RecordingProgress<WorkspaceIsolationProgress>();
+
+        var binding = Success(await provider.PrepareAsync(
+            Request(),
+            progress,
+            CancellationToken.None));
+
+        Assert.Equal(HomeMounts, binding.Mounts);
+        Assert.Equal("stop", runner.Commands[3].Arguments[0]);
+        Assert.Equal("export", runner.Commands[4].Arguments[0]);
+        Assert.Null(runner.Commands[4].Timeout);
+        Assert.Equal("build", runner.Commands[5].Arguments[0]);
+        Assert.Null(runner.Commands[5].Timeout);
+        Assert.Equal("delete", runner.Commands[6].Arguments[0]);
+        Assert.Equal("create", runner.Commands[7].Arguments[0]);
+        Assert.Contains(
+            SnapshotImageReference(),
+            runner.Commands[7].Arguments,
+            StringComparer.Ordinal);
+        Assert.Contains(
+            progress.Values,
+            item => item.Status == "Saving installed packages and guest files…");
+        Assert.Contains(
+            progress.Values,
+            item => item.Status == "Building the preserved workspace image…");
+    }
+
+    [Fact]
+    public async Task Prepare_rejects_an_existing_container_with_an_unexpected_ssh_socket_mount()
+    {
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(
+                0,
+                InspectJson(includeUnexpectedSshSocketMount: true)));
+        var provider = Provider(runner);
+
+        var failure = Failure(await provider.PrepareAsync(Request(), CancellationToken.None));
+
+        Assert.Equal(
+            WorkspaceIsolationErrorCode.PersistentEnvironmentResetRequired,
+            failure.Code);
+        Assert.Equal(3, runner.Commands.Count);
+    }
+
+    [Fact]
+    public async Task Prepare_returns_an_owned_cleanup_lease_when_the_liveness_probe_fails()
+    {
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0, InspectJson()),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(0));
+        var provider = Provider(runner);
+
+        var result = Assert.IsType<WorkspaceIsolationResult<WorkspaceIsolationBinding>.Failure>(
+            await provider.PrepareAsync(Request(), CancellationToken.None));
+        var cleanup = Assert.IsType<WorkspaceIsolationBinding>(result.CleanupValue);
+
+        Assert.Equal(WorkspaceIsolationErrorCode.PrepareFailed, result.Error.Code);
+        Assert.Equal(5, runner.Commands.Count);
+        _ = Success(await provider.StopAsync(cleanup, CancellationToken.None));
+        Assert.Equal(
+            ["stop", "--time", "5", AppleContainerWorkspaceIsolationProvider.ResourceName(WorkspaceId)],
+            runner.Commands[5].Arguments);
+    }
+
+    [Fact]
+    public async Task Prepare_returns_an_owned_cleanup_lease_when_guest_validation_fails()
+    {
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0, InspectJson()),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(0));
+        var provider = Provider(runner);
+
+        var result = Assert.IsType<WorkspaceIsolationResult<WorkspaceIsolationBinding>.Failure>(
+            await provider.PrepareAsync(Request(), CancellationToken.None));
+        var cleanup = Assert.IsType<WorkspaceIsolationBinding>(result.CleanupValue);
+
+        Assert.Equal(WorkspaceIsolationErrorCode.PrepareFailed, result.Error.Code);
+        Assert.Equal(6, runner.Commands.Count);
+        _ = Success(await provider.StopAsync(cleanup, CancellationToken.None));
+        Assert.Equal(
+            ["stop", "--time", "5", AppleContainerWorkspaceIsolationProvider.ResourceName(WorkspaceId)],
+            runner.Commands[6].Arguments);
+    }
+
+    [Fact]
+    public async Task Cleanup_only_lease_cannot_make_a_failed_guest_runtime_reusable()
+    {
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0, InspectJson()),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(0, InspectJson()),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(0));
+        var provider = Provider(runner);
+
+        var first = Assert.IsType<WorkspaceIsolationResult<WorkspaceIsolationBinding>.Failure>(
+            await provider.PrepareAsync(Request(), CancellationToken.None));
+        var cleanup = Assert.IsType<WorkspaceIsolationBinding>(first.CleanupValue);
+        var second = Assert.IsType<WorkspaceIsolationResult<WorkspaceIsolationBinding>.Failure>(
+            await provider.PrepareAsync(Request(), CancellationToken.None));
+
+        Assert.Equal(WorkspaceIsolationErrorCode.PrepareFailed, first.Error.Code);
+        Assert.Equal(WorkspaceIsolationErrorCode.PrepareFailed, second.Error.Code);
+        Assert.Null(second.CleanupValue);
+        Assert.Equal(
+            ["exec", cleanup.ResourceName, "/bin/sh", "-c", "exit 0"],
+            runner.Commands[8].Arguments);
+
+        _ = Success(await provider.StopAsync(cleanup, CancellationToken.None));
+        Assert.Equal(
+            ["stop", "--time", "5", cleanup.ResourceName],
+            runner.Commands[9].Arguments);
+    }
+
+    [Fact]
+    public async Task Prepare_revalidates_the_persistent_spec_before_issuing_another_lease()
+    {
+        IReadOnlyList<WorkspaceIsolationMount> replacementMounts =
+        [
+            new(HostPath("replacement"), "/workspace", isReadOnly: true),
+        ];
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0, InspectJson()),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0, InspectJson(replacementMounts)));
+        var provider = Provider(runner);
+        var request = Request();
+        _ = Success(await provider.PrepareAsync(request, CancellationToken.None));
+
+        var failure = Failure(await provider.PrepareAsync(request, CancellationToken.None));
+
+        Assert.Equal(
+            WorkspaceIsolationErrorCode.PersistentEnvironmentResetRequired,
+            failure.Code);
+        Assert.Equal(
+            ["inspect", AppleContainerWorkspaceIsolationProvider.ResourceName(WorkspaceId)],
+            runner.Commands[7].Arguments);
+        Assert.Equal(8, runner.Commands.Count);
+    }
+
+    [Fact]
+    public async Task Prepare_accepts_new_mounts_after_the_stopped_environment_was_reset_externally()
+    {
+        IReadOnlyList<WorkspaceIsolationMount> replacementMounts =
+        [
+            new(Path.GetPathRoot(HostHome)!, "/replacement", isReadOnly: true),
+        ];
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0, InspectJson()),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0, InspectJson(replacementMounts)),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0));
+        var provider = Provider(runner);
+        var first = Success(await provider.PrepareAsync(Request(), CancellationToken.None));
+        _ = Success(await provider.StopAsync(first, CancellationToken.None));
+
+        var replacement = Success(await provider.PrepareAsync(
+            new WorkspaceIsolationPrepareRequest(WorkspaceId, replacementMounts),
+            CancellationToken.None));
+
+        Assert.Equal(replacementMounts, replacement.Mounts);
+        Assert.Equal("create", runner.Commands[12].Arguments[0]);
+        Assert.Contains(
+            $"type=bind,source={Path.GetPathRoot(HostHome)},target=/replacement,readonly",
+            runner.Commands[12].Arguments,
+            StringComparer.Ordinal);
+    }
+
+    [Fact]
+    public void Local_launch_maps_the_host_shell_and_keeps_each_environment_value_structured()
+    {
+        var provider = Provider(new RecordingRunner());
+        var binding = Binding();
+        var request = new WorkspaceIsolationProcessRequest(
+            ConnectionKind.Local,
+            "/bin/zsh",
+            ["-l"],
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["DANGEROUS"] = "hello; touch /tmp/not-executed",
+                ["ALPHA"] = "value with spaces",
+            },
+            Path.Combine(HostHome, "projects", "ghost shell"),
+            WorkspaceProcessMode.Interactive | WorkspaceProcessMode.AllocateTerminal);
+
+        var launch = Success(provider.CreateExecLaunch(binding, request));
+
+        Assert.Equal("container-test", launch.Executable);
+        Assert.Null(launch.HostWorkingDirectory);
+        Assert.Empty(launch.Environment);
+        Assert.Equal(
+            [
+                "exec",
+                "--interactive",
+                "--tty",
+                "--env",
+                "ALPHA=value with spaces",
+                "--env",
+                "DANGEROUS=hello; touch /tmp/not-executed",
+                "--workdir",
+                "/home/alice/projects/ghost shell",
+                binding.ResourceName,
+                "/bin/sh",
+                "-l",
+            ],
+            launch.Arguments);
+    }
+
+    [Fact]
+    public void Local_launch_maps_through_the_most_specific_host_mount()
+    {
+        var hostRoot = HostPath("mapping");
+        var nestedRoot = Path.Combine(hostRoot, "project");
+        IReadOnlyList<WorkspaceIsolationMount> mounts =
+        [
+            new(hostRoot, "/host", isReadOnly: true),
+            new(nestedRoot, "/workspace", isReadOnly: false),
+        ];
+        var request = new WorkspaceIsolationProcessRequest(
+            ConnectionKind.Local,
+            "/bin/zsh",
+            hostWorkingDirectory: Path.Combine(nestedRoot, "src"));
+
+        var launch = Success(Provider(new RecordingRunner())
+            .CreateExecLaunch(Binding(mounts), request));
+
+        Assert.Contains(
+            launch.Arguments.Zip(launch.Arguments.Skip(1)),
+            pair => pair.First == "--workdir" && pair.Second == "/workspace/src");
+    }
+
+    [Fact]
+    public void Local_launch_rejects_a_working_directory_outside_configured_mounts()
+    {
+        var provider = Provider(new RecordingRunner());
+        foreach (var directory in new[]
+                 {
+                     Path.Combine(HostHome + "-other", "project"),
+                     Path.Combine(
+                         Path.GetPathRoot(HostHome)!,
+                         "ghostshell-isolation-outside"),
+                 })
+        {
+            var request = new WorkspaceIsolationProcessRequest(
+                ConnectionKind.Local,
+                "/bin/zsh",
+                hostWorkingDirectory: directory);
+
+            var failure = Failure(provider.CreateExecLaunch(Binding(), request));
+
+            Assert.Equal(
+                WorkspaceIsolationErrorCode.WorkingDirectoryNotMounted,
+                failure.Code);
+            Assert.Equal(
+                WorkspaceIsolationRecoveryAction.ChooseMountedDirectory,
+                failure.RecoveryAction);
+        }
+    }
+
+    [Fact]
+    public void Explicitly_unverified_ssh_launch_maps_the_darwin_executable_to_the_guest_client()
+    {
+        var provider = Provider(new RecordingRunner());
+        var request = new WorkspaceIsolationProcessRequest(
+            ConnectionKind.Ssh,
+            "/usr/bin/ssh",
+            [
+                "-p",
+                "2222",
+                "-o",
+                "StrictHostKeyChecking=no",
+                "-o",
+                "UserKnownHostsFile=/dev/null",
+                "dev@example.test",
+            ],
+            mode: WorkspaceProcessMode.Interactive | WorkspaceProcessMode.AllocateTerminal);
+
+        var launch = Success(provider.CreateExecLaunch(Binding(), request));
+
+        Assert.Equal(
+            [
+                "exec",
+                "--interactive",
+                "--tty",
+                Binding().ResourceName,
+                "/bin/sh",
+                "-c",
+                "if [ ! -x \"$1\" ]; then export DEBIAN_FRONTEND=noninteractive; if command -v apt-get >/dev/null 2>&1; then apt-get update && apt-get install -y --no-install-recommends openssh-client && rm -rf /var/lib/apt/lists/*; elif command -v apk >/dev/null 2>&1; then apk add --no-cache openssh-client; else echo 'The selected isolate image cannot install OpenSSH.' >&2; exit 127; fi || exit $?; fi; exec \"$@\"",
+                "ghostshell-ssh",
+                "/usr/bin/ssh",
+                "-p",
+                "2222",
+                "-o",
+                "StrictHostKeyChecking=no",
+                "-o",
+                "UserKnownHostsFile=/dev/null",
+                "dev@example.test",
+            ],
+            launch.Arguments);
+    }
+
+    [Theory]
+    [InlineData("yes")]
+    [InlineData("accept-new")]
+    public void Verified_ssh_launch_fails_closed_until_guest_trust_is_implemented(
+        string strictHostKeyChecking)
+    {
+        const string hostKnownHosts =
+            "/Users/alice/Library/Application Support/GhostSHELL/known_hosts";
+        var provider = Provider(new RecordingRunner());
+        var request = new WorkspaceIsolationProcessRequest(
+            ConnectionKind.Ssh,
+            "/usr/bin/ssh",
+            [
+                "-o",
+                $"StrictHostKeyChecking={strictHostKeyChecking}",
+                "-o",
+                $"UserKnownHostsFile=\"{hostKnownHosts}\"",
+                "--",
+                "host.example",
+            ]);
+
+        var failure = Failure(provider.CreateExecLaunch(Binding(), request));
+
+        Assert.Equal(WorkspaceIsolationErrorCode.SshHostKeyTrustUnavailable, failure.Code);
+        Assert.Equal(
+            WorkspaceIsolationRecoveryAction.DisableIsolation,
+            failure.RecoveryAction);
+    }
+
+    [Fact]
+    public void Insecure_ssh_launch_keeps_the_guest_null_known_hosts_device()
+    {
+        var provider = Provider(new RecordingRunner());
+        var request = new WorkspaceIsolationProcessRequest(
+            ConnectionKind.Ssh,
+            "/usr/bin/ssh",
+            ["-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null"]);
+
+        var launch = Success(provider.CreateExecLaunch(Binding(), request));
+
+        Assert.Contains("UserKnownHostsFile=/dev/null", launch.Arguments, StringComparer.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(ConnectionKind.Docker)]
+    [InlineData(ConnectionKind.Wsl)]
+    public void Nested_runtime_launches_are_rejected_until_the_guest_has_a_real_backend(
+        ConnectionKind kind)
+    {
+        var provider = Provider(new RecordingRunner());
+        var request = new WorkspaceIsolationProcessRequest(kind, "host-runtime");
+
+        var failure = Failure(provider.CreateExecLaunch(Binding(), request));
+
+        Assert.Equal(WorkspaceIsolationErrorCode.UnsupportedConnectionKind, failure.Code);
+    }
+
+    [Fact]
+    public void A_host_credential_helper_is_not_mistaken_for_a_guest_executable()
+    {
+        var provider = Provider(new RecordingRunner());
+        var request = new WorkspaceIsolationProcessRequest(
+            ConnectionKind.Ssh,
+            "/Applications/GhostShell.app/Contents/MacOS/GhostShell.Desktop",
+            usesHostCredentialBroker: true);
+
+        var failure = Failure(provider.CreateExecLaunch(Binding(), request));
+
+        Assert.Equal(WorkspaceIsolationErrorCode.HostCredentialBrokerUnavailable, failure.Code);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Stop_is_idempotent_when_the_persistent_container_is_already_stopped(
+        bool stringStatus)
+    {
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0, InspectJson()),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(
+                0,
+                InspectJson(state: "stopped", stringStatus: stringStatus)));
+        var provider = Provider(runner);
+        var binding = Success(await provider.PrepareAsync(
+            Request(),
+            CancellationToken.None));
+
+        var stopped = Success(await provider.StopAsync(binding, CancellationToken.None));
+
+        Assert.Equal(binding, stopped);
+        Assert.Equal(
+            ["inspect", binding.ResourceName],
+            runner.Commands[9].Arguments);
+    }
+
+    [Fact]
+    public async Task Stop_keeps_the_last_lease_when_inspect_reports_a_running_container()
+    {
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0, InspectJson()),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(0, InspectJson(state: "running")),
+            AppleContainerCommandResult.Exited(0));
+        var provider = Provider(runner);
+        var binding = Success(await provider.PrepareAsync(Request(), CancellationToken.None));
+
+        var failure = Failure(await provider.StopAsync(binding, CancellationToken.None));
+        var retry = Success(await provider.StopAsync(binding, CancellationToken.None));
+
+        Assert.Equal(WorkspaceIsolationErrorCode.StopFailed, failure.Code);
+        Assert.Equal(binding, retry);
+        Assert.Equal(
+            ["stop", "--time", "5", binding.ResourceName],
+            runner.Commands[10].Arguments);
+    }
+
+    [Fact]
+    public async Task Stop_failure_keeps_the_last_lease_available_for_retry()
+    {
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0, InspectJson()),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(1),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0));
+        var provider = Provider(runner);
+        var binding = Success(await provider.PrepareAsync(Request(), CancellationToken.None));
+
+        var failure = Failure(await provider.StopAsync(binding, CancellationToken.None));
+        var retry = Success(await provider.StopAsync(binding, CancellationToken.None));
+
+        Assert.Equal(WorkspaceIsolationErrorCode.StopFailed, failure.Code);
+        Assert.Equal(binding, retry);
+        Assert.Equal(
+            ["stop", "--time", "5", binding.ResourceName],
+            runner.Commands[9].Arguments);
+    }
+
+    [Fact]
+    public async Task Shared_workspace_is_stopped_only_after_its_last_distinct_lease_is_released()
+    {
+        var runner = new RecordingRunner(
+            AppleContainerCommandResult.Exited(0, CurrentVersionJson),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0, InspectJson()),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0, InspectJson()),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0),
+            AppleContainerCommandResult.Exited(0));
+        var provider = Provider(runner);
+        var request = Request();
+        var first = Success(await provider.PrepareAsync(request, CancellationToken.None));
+        var second = Success(await provider.PrepareAsync(request, CancellationToken.None));
+
+        Assert.NotEqual(first.LeaseId, second.LeaseId);
+        Assert.Equal(first.ResourceName, second.ResourceName);
+        Assert.Equal(11, runner.Commands.Count);
+        Assert.Equal(
+            ["inspect", first.ResourceName],
+            runner.Commands[7].Arguments);
+        Assert.Equal(
+            ["exec", first.ResourceName, "/bin/true"],
+            runner.Commands[8].Arguments);
+        Assert.Equal(
+            ["exec", first.ResourceName, "/bin/sh", "-c", "exit 0"],
+            runner.Commands[9].Arguments);
+        Assert.Equal(
+            ["exec", first.ResourceName, "/bin/sh", "-c", "test -d /root && test -w /root"],
+            runner.Commands[10].Arguments);
+
+        _ = Success(await provider.StopAsync(first, CancellationToken.None));
+        _ = Success(await provider.StopAsync(first, CancellationToken.None));
+        Assert.Equal(11, runner.Commands.Count);
+
+        _ = Success(await provider.StopAsync(second, CancellationToken.None));
+        Assert.Equal(12, runner.Commands.Count);
+        Assert.Equal(
+            ["stop", "--time", "5", first.ResourceName],
+            runner.Commands[11].Arguments);
+    }
+
+    private static AppleContainerWorkspaceIsolationProvider Provider(RecordingRunner runner) =>
+        new(
+            runner.RunAsync,
+            AppleContainerWorkspaceIsolationProvider.DefaultImageReference,
+            "/bin/sh",
+            ["-l"],
+            "/usr/bin/ssh",
+            "container-test");
+
+    private static WorkspaceIsolationBinding Binding(
+        IReadOnlyList<WorkspaceIsolationMount>? mounts = null) =>
+        new(
+            WorkspaceId,
+            WorkspaceIsolationProviderKind.AppleContainer,
+            WorkspaceIsolationPlatformResolver.AppleContainerCapabilities,
+            AppleContainerWorkspaceIsolationProvider.ResourceName(WorkspaceId),
+            mounts ?? HomeMounts,
+            Guid.Parse("12d2ce38-5abf-456a-b43b-0afb72fc087f"));
+
+    private static WorkspaceIsolationPrepareRequest Request() =>
+        new(WorkspaceId, HomeMounts);
+
+    private static string HostPath(string suffix) =>
+        Path.Combine(Path.GetTempPath(), "ghostshell-isolation-provider", suffix);
+
+    private static string InspectJson(
+        IReadOnlyList<WorkspaceIsolationMount>? mounts = null,
+        string state = "stopped",
+        bool includeUnexpectedSshSocketMount = false,
+        bool stringStatus = false,
+        string? imageReference = null,
+        string? baseImageReference = null)
+    {
+        var name = AppleContainerWorkspaceIsolationProvider.ResourceName(WorkspaceId);
+        var inspectedMounts = (mounts ?? HomeMounts)
+            .Select(mount => (object)new
+            {
+                source = mount.HostSource,
+                destination = mount.GuestDestination,
+                options = MountOptions(mount.IsReadOnly),
+            })
+            .ToList();
+        if (includeUnexpectedSshSocketMount)
+        {
+            inspectedMounts.Add(new
+            {
+                source = HostHome,
+                destination = "/run/host-services/ssh-auth.sock",
+                options = MountOptions(isReadOnly: false),
+            });
+        }
+
+        var labels = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["io.ghostshell.workspace"] = name,
+            ["io.ghostshell.isolation-schema"] = "1",
+        };
+        if (baseImageReference is not null)
+        {
+            labels["io.ghostshell.base-image"] = baseImageReference;
+        }
+
+        return JsonSerializer.Serialize(new[]
+        {
+            new
+            {
+                configuration = new
+                {
+                    id = name,
+                    labels,
+                    image = new
+                    {
+                        reference = imageReference
+                            ?? AppleContainerWorkspaceIsolationProvider.DefaultImageReference,
+                    },
+                    resources = new
+                    {
+                        cpus = 1,
+                        memoryInBytes = 1024UL * 1024UL * 1024UL,
+                    },
+                    ssh = false,
+                    useInit = true,
+                    mounts = inspectedMounts,
+                },
+                status = stringStatus ? (object)state : new { state },
+            },
+        });
+    }
+
+    private static IReadOnlyList<string> MountOptions(bool isReadOnly) =>
+        isReadOnly ? ["ro"] : [];
+
+    private static string SnapshotImageReference() =>
+        $"{AppleContainerWorkspaceIsolationProvider.ResourceName(WorkspaceId)}-state:latest";
+
+    private static T Success<T>(WorkspaceIsolationResult<T> result) =>
+        Assert.IsType<WorkspaceIsolationResult<T>.Success>(result).Value;
+
+    private static WorkspaceIsolationError Failure<T>(WorkspaceIsolationResult<T> result) =>
+        Assert.IsType<WorkspaceIsolationResult<T>.Failure>(result).Error;
+
+    private sealed class RecordingRunner
+    {
+        private readonly Queue<AppleContainerCommandResult> _results;
+
+        public RecordingRunner(params AppleContainerCommandResult[] results) =>
+            _results = new Queue<AppleContainerCommandResult>(results);
+
+        public List<AppleContainerCommand> Commands { get; } = [];
+
+        public int? ThrowOnCommandIndex { get; init; }
+
+        public IReadOnlyDictionary<int, IReadOnlyList<string>> OutputByCommandIndex { get; init; } =
+            new Dictionary<int, IReadOnlyList<string>>();
+
+        public ValueTask<AppleContainerCommandResult> RunAsync(
+            AppleContainerCommand command,
+            CancellationToken cancellationToken)
+        {
+            Commands.Add(command);
+            if (Commands.Count - 1 == ThrowOnCommandIndex)
+            {
+                throw new IOException("The test command runner failed after process start.");
+            }
+
+            if (OutputByCommandIndex.TryGetValue(
+                    Commands.Count - 1,
+                    out var outputChunks))
+            {
+                foreach (var output in outputChunks)
+                {
+                    command.OutputProgress?.Report(output);
+                }
+            }
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return ValueTask.FromResult(AppleContainerCommandResult.Cancelled);
+            }
+
+            if (_results.Count == 0)
+            {
+                throw new InvalidOperationException("No command result was configured for this test.");
+            }
+
+            return ValueTask.FromResult(_results.Dequeue());
+        }
+    }
+
+    private sealed class RecordingProgress<T> : IProgress<T>
+    {
+        public List<T> Values { get; } = [];
+
+        public void Report(T value) => Values.Add(value);
+    }
+}

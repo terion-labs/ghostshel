@@ -59,6 +59,11 @@ public sealed partial class WorkspaceEditorView : UserControl
     /// <summary>Raised when the rail's plus asks for a workspace that does not exist yet.</summary>
     public event EventHandler? CreateWorkspaceRequested;
 
+    /// <summary>
+    /// Asks the platform host to start its workspace-isolation runtime installation flow.
+    /// </summary>
+    public event EventHandler<RoutedEventArgs>? InstallWorkspaceIsolationRuntimeRequested;
+
     public WorkspaceEditorViewModel? Editor => DataContext as WorkspaceEditorViewModel;
 
     public bool FocusInitialControl() =>
@@ -70,6 +75,9 @@ public sealed partial class WorkspaceEditorView : UserControl
 
     private StackPanel SelectedEntryEditorControl =>
         this.FindControl<StackPanel>("SelectedEntryEditor")!;
+
+    private void OnInstallWorkspaceIsolationRuntimeClick(object? sender, RoutedEventArgs e) =>
+        InstallWorkspaceIsolationRuntimeRequested?.Invoke(sender, e);
 
     private void ObserveEditor()
     {
@@ -177,6 +185,23 @@ public sealed partial class WorkspaceEditorView : UserControl
         _ = sender;
         _ = e;
         CreateWorkspaceRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnAddIsolationMountClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        Editor?.AddIsolationMount();
+    }
+
+    private void OnRemoveIsolationMountClick(object? sender, RoutedEventArgs e)
+    {
+        _ = e;
+        if (Editor is { } editor
+            && sender is Control { DataContext: WorkspaceIsolationMountEditorViewModel mount })
+        {
+            editor.RemoveIsolationMount(mount);
+        }
     }
 
     private void SynchronizePeerSelection()

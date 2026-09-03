@@ -152,6 +152,115 @@
             </controls:SettingRow>
           </controls:SettingsGroup>
 
+          <controls:SettingsGroup
+              Heading="Isolation"
+              Description="Isolation runs this workspace inside its own persistent environment, separate from the host and other workspaces."
+              ControlWidth="470">
+            <controls:SettingRow
+                Label="Isolate workspace"
+                Description="Use one persistent Linux environment as this workspace's execution and network boundary. Local terminals run inside it. A connection without an isolate backend is blocked instead of using the host. Installed packages and guest files remain between sessions, and only the host folders below are visible inside.">
+              <ToggleSwitch
+                  HorizontalAlignment="Right"
+                  IsChecked="{Binding IsIsolated, Mode=TwoWay}"
+                  IsEnabled="{Binding CanToggleIsolation}"
+                  AutomationProperties.Name="Isolate workspace" />
+            </controls:SettingRow>
+            <controls:SettingRow
+                Label="{Binding IsolationRuntimeRequirementLabel}"
+                Description="{Binding IsolationRuntimeRequirementDescription}"
+                IsVisible="{Binding IsIsolationUnavailable}">
+              <Button
+                  HorizontalAlignment="Right"
+                  Classes="SecondaryButton"
+                  Click="OnInstallWorkspaceIsolationRuntimeClick"
+                  Content="{Binding InstallIsolationRuntimeLabel}"
+                  IsVisible="{Binding CanInstallIsolationRuntime}"
+                  AutomationProperties.Name="{Binding InstallIsolationRuntimeAccessibleName}" />
+            </controls:SettingRow>
+            <controls:SettingRow
+                Label="Runtime image"
+                Description="New isolates use GhostSHELL's pinned minimal Ubuntu 24.04 image. Enter another Linux OCI image reference for this workspace. Changing the image rebuilds the isolate and removes its installed packages and guest-only files."
+                IsVisible="{Binding IsIsolated}">
+              <TextBox
+                  Width="470"
+                  Text="{Binding IsolationImageReference, Mode=TwoWay}"
+                  PlaceholderText="Ubuntu 24.04 minimal (default)"
+                  AutomationProperties.Name="Workspace isolation OCI image" />
+            </controls:SettingRow>
+            <controls:SettingRow
+                Label="Host mounts"
+                Description="Choose which host directories the isolated workspace can access and where they appear in its filesystem. Saving mount changes restarts an open workspace after confirmation."
+                IsVisible="{Binding IsIsolated}">
+              <StackPanel Width="470" Spacing="{DynamicResource ShellSpaceSm}">
+                <ItemsControl ItemsSource="{Binding IsolationMounts}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:WorkspaceIsolationMountEditorViewModel">
+                      <Border
+                          Margin="{controls:Inset Bottom=Sm}"
+                          Padding="{DynamicResource ShellCardPaddingCompact}"
+                          Background="{DynamicResource ShellSurfaceRaisedBrush}"
+                          BorderBrush="{DynamicResource ShellBorderBrush}"
+                          BorderThickness="1"
+                          CornerRadius="{DynamicResource ShellInnerCornerRadius}">
+                        <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}" RowSpacing="{DynamicResource ShellSpaceXs}">
+                          <controls:LabeledField Label="Host path">
+                            <TextBox
+                                Text="{Binding HostPath, Mode=TwoWay}"
+                                PlaceholderText="/Users/me/projects"
+                                AutomationProperties.Name="Host mount source directory" />
+                          </controls:LabeledField>
+                          <controls:LabeledField Grid.Column="1" Label="Guest path">
+                            <TextBox
+                                Text="{Binding GuestPath, Mode=TwoWay}"
+                                PlaceholderText="/workspace"
+                                AutomationProperties.Name="Host mount guest path" />
+                          </controls:LabeledField>
+                          <Button
+                              Grid.Column="2"
+                              VerticalAlignment="Bottom"
+                              Classes="IconButton Danger"
+                              Click="OnRemoveIsolationMountClick"
+                              AutomationProperties.Name="{Binding RemoveAccessibleName}">
+                            <icons:SymbolIcon Symbol="Delete" FontSize="11" />
+                          </Button>
+                          <CheckBox
+                              Grid.Row="1"
+                              Grid.ColumnSpan="2"
+                              Content="Read only"
+                              IsChecked="{Binding IsReadOnly, Mode=TwoWay}"
+                              AutomationProperties.Name="Mount host path read only" />
+                        </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock
+                    Classes="Muted"
+                    FontSize="{DynamicResource ShellFontSize9}"
+                    Text="No host directories are mounted. The isolate uses guest-only storage until you add one."
+                    TextWrapping="Wrap"
+                    IsVisible="{Binding HasNoIsolationMounts}" />
+                <TextBlock
+                    Classes="Muted"
+                    FontSize="{DynamicResource ShellFontSize9}"
+                    Text="Read-write mounts let processes in the isolate change files in those host directories."
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    Classes="Muted"
+                    FontSize="{DynamicResource ShellFontSize9}"
+                    Text="Changing mounts after first use may require resetting the persistent isolate, which removes installed packages and guest-only files."
+                    TextWrapping="Wrap" />
+                <Button
+                    HorizontalAlignment="Left"
+                    Classes="TextButton Accent"
+                    Click="OnAddIsolationMountClick"
+                    Content="+ Host mount"
+                    IsEnabled="{Binding CanAddIsolationMount}"
+                    AutomationProperties.Name="Add host mount" />
+              </StackPanel>
+            </controls:SettingRow>
+          </controls:SettingsGroup>
+
           <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
             <components:SectionHeader
                 Heading="Tabs"

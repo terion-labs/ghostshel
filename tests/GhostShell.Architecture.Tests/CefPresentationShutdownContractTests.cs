@@ -30,16 +30,21 @@ public sealed class CefPresentationShutdownContractTests
             program,
             "TeardownPresentationOrReport(mainWindowViewModel);",
             finallyBlock);
+        var quiescenceFallback = RequiredIndexOf(
+            program,
+            "QuiescePresentationOrReport(services);",
+            failureFallback);
         var cefShutdown = RequiredIndexOf(
             program,
             "BrowserEngineRuntime.Shutdown(",
-            failureFallback);
+            quiescenceFallback);
 
         Assert.True(exitRegistration < lifetimeStart);
         Assert.True(lifetimeStart < mainThreadFallback);
         Assert.True(mainThreadFallback < finalization);
         Assert.True(finalization < failureFallback);
-        Assert.True(failureFallback < cefShutdown);
+        Assert.True(failureFallback < quiescenceFallback);
+        Assert.True(quiescenceFallback < cefShutdown);
     }
 
     [Fact]
@@ -64,6 +69,45 @@ public sealed class CefPresentationShutdownContractTests
         Assert.True(initialization < chromiumFailure);
         Assert.True(chromiumFailure < lifetime);
         Assert.True(lifetime < desktopFailure);
+    }
+
+    [Fact]
+    public void Desktop_finalization_drains_all_application_windows_before_disposal()
+    {
+        var program = File.ReadAllText(
+            Path.Combine(RepositoryRoot, "src", "GhostShell.Desktop", "Program.cs"));
+        var application = File.ReadAllText(
+            Path.Combine(RepositoryRoot, "src", "GhostShell.App", "App.axaml.cs"));
+
+        Assert.Contains(
+            "await application.QuiesceForShutdownAsync(cancellationToken)",
+            program,
+            StringComparison.Ordinal);
+        var exitHandler = RequiredIndexOf(application, "private void OnDesktopExit(");
+        var exitGuard = RequiredIndexOf(
+            application,
+            "_desktopExitStarted = true;",
+            exitHandler);
+        var asyncQuiescence = RequiredIndexOf(
+            application,
+            "public async Task QuiesceForShutdownAsync(",
+            exitGuard);
+        var additionalDisposal = RequiredIndexOf(
+            application,
+            "viewModel.Dispose();",
+            asyncQuiescence);
+        var closedHandler = RequiredIndexOf(
+            application,
+            "private void OnMainWindowClosed(",
+            additionalDisposal);
+        var closedGuard = RequiredIndexOf(
+            application,
+            "if (!_desktopExitStarted",
+            closedHandler);
+
+        Assert.True(exitGuard < asyncQuiescence);
+        Assert.True(asyncQuiescence < additionalDisposal);
+        Assert.True(additionalDisposal < closedGuard);
     }
 
     private static int RequiredIndexOf(

@@ -20,6 +20,13 @@ public sealed partial class MainWindowViewModel
         }
 
         var destination = _openWorkspaces[destinationPosition];
+        if (!SharesExecutionScope(source, destination))
+        {
+            SetError(
+                "Live tabs and panels cannot move between different workspace isolation scopes.");
+            return false;
+        }
+
         using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
             _runtimeGraphLifetime.Token);
@@ -133,6 +140,13 @@ public sealed partial class MainWindowViewModel
         }
 
         var destination = _openWorkspaces[destinationPosition];
+        if (!SharesExecutionScope(source, destination))
+        {
+            SetError(
+                "Live tabs and panels cannot move between different workspace isolation scopes.");
+            return false;
+        }
+
         if (destination.ActiveTab is not { } destinationTab)
         {
             return false;
