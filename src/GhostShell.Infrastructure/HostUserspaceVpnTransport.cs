@@ -24,6 +24,7 @@ internal sealed class HostUserspaceVpnTransport : IHostUserspaceVpnTransport
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ConnectTimeout = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan ReachabilityTimeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan ReachabilityRetryInterval = TimeSpan.FromMilliseconds(200);
     private static readonly TimeSpan DefaultHealthPollInterval = TimeSpan.FromSeconds(30);
     private const int LoopbackBindAttempts = 3;
     private readonly NetworkConnectionKind _kind;
@@ -216,15 +217,16 @@ internal sealed class HostUserspaceVpnTransport : IHostUserspaceVpnTransport
                         .ConfigureAwait(false);
                     if (listener.Ready)
                     {
-                        if (!await VerifyReachabilityAsync(
+                        var reachability = await VerifyReachabilityAsync(
                                 "WireGuard",
                                 port,
                                 progress,
                                 cancellationToken)
-                            .ConfigureAwait(false))
+                            .ConfigureAwait(false);
+                        if (!reachability.IsReachable)
                         {
                             await running.DisposeAsync().ConfigureAwait(false);
-                            return ReachabilityFailed("WireGuard");
+                            return ReachabilityFailed("WireGuard", reachability.Failure);
                         }
 
                         var directory = temporary.TransferOwnership();
@@ -394,15 +396,20 @@ internal sealed class HostUserspaceVpnTransport : IHostUserspaceVpnTransport
                     .ConfigureAwait(false);
                 if (listener.Ready)
                 {
-                    if (!await VerifyReachabilityAsync(
+                    var reachability = await VerifyReachabilityAsync(
                             "Cisco AnyConnect",
                             port,
                             progress,
                             cancellationToken)
-                        .ConfigureAwait(false))
+                        .ConfigureAwait(false);
+                    if (!reachability.IsReachable)
                     {
+                        var stopped = running.HasExited;
+                        var diagnostic = running.Diagnostic;
                         await running.DisposeAsync().ConfigureAwait(false);
-                        return ReachabilityFailed("Cisco AnyConnect");
+                        return stopped
+                            ? ProcessStopped("Cisco AnyConnect", diagnostic)
+                            : ReachabilityFailed("Cisco AnyConnect", reachability.Failure);
                     }
 
                     var directory = temporary.TransferOwnership();
@@ -604,14 +611,15 @@ internal sealed class HostUserspaceVpnTransport : IHostUserspaceVpnTransport
                 return ConnectionFailed("Tailscale", daemon.Diagnostic);
             }
 
-            if (!await VerifyReachabilityAsync(
+            var reachability = await VerifyReachabilityAsync(
                     "Tailscale",
                     port,
                     progress,
                     cancellationToken)
-                .ConfigureAwait(false))
+                .ConfigureAwait(false);
+            if (!reachability.IsReachable)
             {
-                return ReachabilityFailed("Tailscale");
+                return ReachabilityFailed("Tailscale", reachability.Failure);
             }
 
             var directory = temporary.TransferOwnership();
@@ -737,7 +745,7 @@ internal sealed class HostUserspaceVpnTransport : IHostUserspaceVpnTransport
         }
     }
 
-    private async ValueTask<bool> VerifyReachabilityAsync(
+    private async ValueTask<SocksReachabilityResult> VerifyReachabilityAsync(
         string displayName,
         int socksPort,
         IProgress<NetworkConnectionProgress>? progress,
@@ -747,20 +755,40 @@ internal sealed class HostUserspaceVpnTransport : IHostUserspaceVpnTransport
             $"Verifying {displayName} app-scoped reachability…"));
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(ReachabilityTimeout);
+        var lastResult = new SocksReachabilityResult(
+            SocksReachabilityFailure.TransportFailed);
         try
         {
-            return await _reachabilityProbe.ProbeAsync(socksPort, deadline.Token)
-                .ConfigureAwait(false);
+            while (true)
+            {
+                lastResult = await _reachabilityProbe.ProbeAsync(socksPort, deadline.Token)
+                    .ConfigureAwait(false);
+                if (lastResult.IsReachable || IsDefinitiveProbeFailure(lastResult.Failure))
+                {
+                    return lastResult;
+                }
+
+                await Task.Delay(ReachabilityRetryInterval, deadline.Token)
+                    .ConfigureAwait(false);
+            }
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return false;
+            return lastResult.Failure == SocksReachabilityFailure.TransportFailed
+                ? new(SocksReachabilityFailure.TimedOut)
+                : lastResult;
         }
         catch (Exception exception) when (exception is IOException or SocketException)
         {
-            return false;
+            return new(SocksReachabilityFailure.TransportFailed);
         }
     }
+
+    private static bool IsDefinitiveProbeFailure(SocksReachabilityFailure failure) => failure is
+        SocksReachabilityFailure.SocksHandshakeRejected
+        or SocksReachabilityFailure.DestinationRejected
+        or SocksReachabilityFailure.TlsRejected
+        or SocksReachabilityFailure.InvalidHttpResponse;
 
     private async ValueTask<HostVpnListenerResult> WaitForListenerOrDisposeAsync(
         IHostVpnProcess process,
@@ -856,11 +884,43 @@ internal sealed class HostUserspaceVpnTransport : IHostUserspaceVpnTransport
         retryable: true);
 
     private NetworkConnectionResult<INetworkConnectionSession> ReachabilityFailed(
-        string displayName) => Fail(
+        string displayName,
+        SocksReachabilityFailure failure) => Fail(
         NetworkConnectionErrorCode.RouteUnavailable,
         $"{_kind.ToString().ToLowerInvariant()}_host_reachability_failed",
-        $"{displayName} started but its app-scoped route cannot carry traffic.",
+        DescribeReachabilityFailure(displayName, failure),
         retryable: true);
+
+    private NetworkConnectionResult<INetworkConnectionSession> ProcessStopped(
+        string displayName,
+        string diagnostic) => IsAuthenticationFailure(diagnostic)
+            ? AuthenticationFailed(displayName)
+            : Fail(
+                NetworkConnectionErrorCode.ConnectionFailed,
+                $"{_kind.ToString().ToLowerInvariant()}_host_process_stopped",
+                $"{displayName} stopped while GhostSHELL was testing its app-scoped route. Check the gateway, login group, and server policy.",
+                retryable: true);
+
+    private static string DescribeReachabilityFailure(
+        string displayName,
+        SocksReachabilityFailure failure) =>
+        failure switch
+        {
+            SocksReachabilityFailure.ListenerUnavailable =>
+                $"{displayName}'s local SOCKS5 route stopped before GhostSHELL could test it.",
+            SocksReachabilityFailure.SocksHandshakeRejected =>
+                $"{displayName}'s local SOCKS5 route rejected GhostSHELL's health check.",
+            SocksReachabilityFailure.DestinationRejected =>
+                $"{displayName} connected, but the VPN rejected connections to the public health-check peers. The VPN may allow only internal routes or its gateway may block Internet access.",
+            SocksReachabilityFailure.TlsRejected =>
+                $"{displayName} reached a public health-check peer, but TLS validation failed. Check whether the VPN intercepts TLS traffic.",
+            SocksReachabilityFailure.InvalidHttpResponse =>
+                $"{displayName} reached a public health-check peer, but it returned an invalid response.",
+            SocksReachabilityFailure.TimedOut =>
+                $"{displayName} timed out while reaching the public health-check peers. The VPN may allow only internal routes or its gateway may block Internet access.",
+            _ =>
+                $"{displayName} connected, but traffic failed while crossing its app-scoped route.",
+        };
 
     private static NetworkConnectionResult<INetworkConnectionSession> RuntimeMissing(
         string stableCode,
@@ -979,6 +1039,7 @@ internal sealed class HostUserspaceVpnTransport : IHostUserspaceVpnTransport
     private sealed class HostUserspaceVpnSession : INetworkConnectionSession
     {
         private readonly IReadOnlyList<IHostVpnProcess> _processes;
+        private readonly string _displayName;
         private readonly string _temporaryDirectory;
         private readonly HostVpnProcessRequest? _cleanup;
         private readonly IHostVpnProcessRunner _processRunner;
@@ -1004,6 +1065,7 @@ internal sealed class HostUserspaceVpnTransport : IHostUserspaceVpnTransport
             TimeSpan healthPollInterval)
         {
             _processes = processes;
+            _displayName = displayName;
             _temporaryDirectory = temporaryDirectory;
             _cleanup = cleanup;
             _processRunner = processRunner;
@@ -1110,8 +1172,11 @@ internal sealed class HostUserspaceVpnTransport : IHostUserspaceVpnTransport
                     using var deadline = CancellationTokenSource.CreateLinkedTokenSource(
                         _lifetime.Token);
                     deadline.CancelAfter(ReachabilityTimeout);
-                    if (await _reachabilityProbe.ProbeAsync(_socksPort, deadline.Token)
-                        .ConfigureAwait(false))
+                    var reachability = await _reachabilityProbe.ProbeAsync(
+                            _socksPort,
+                            deadline.Token)
+                        .ConfigureAwait(false);
+                    if (reachability.IsReachable)
                     {
                         continue;
                     }
@@ -1119,7 +1184,7 @@ internal sealed class HostUserspaceVpnTransport : IHostUserspaceVpnTransport
                     Publish(new NetworkConnectionSnapshot(
                         Snapshot.ConnectionId,
                         NetworkConnectionState.Failed,
-                        "The app-scoped VPN can no longer carry workspace traffic."));
+                        DescribeReachabilityFailure(_displayName, reachability.Failure)));
                     return;
                 }
             }

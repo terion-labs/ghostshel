@@ -95,10 +95,10 @@ public sealed class ProxyNetworkConnectionProvider : INetworkConnectionProvider
 
             progress?.Report(new NetworkConnectionProgress(
                 "Verifying proxy route reachability…"));
-            bool reachable;
+            SocksReachabilityResult reachability;
             try
             {
-                reachable = await _reachabilityProbe.ProbeAsync(
+                reachability = await _reachabilityProbe.ProbeAsync(
                         adapter.LocalPort,
                         cancellationToken)
                     .ConfigureAwait(false);
@@ -112,12 +112,12 @@ public sealed class ProxyNetworkConnectionProvider : INetworkConnectionProvider
                     retryable: false);
             }
 
-            if (!reachable)
+            if (!reachability.IsReachable)
             {
                 return Fail(
                     NetworkConnectionErrorCode.ConnectionFailed,
                     "proxy_route_probe_failed",
-                    "The proxy could not carry the reachability check. Check the proxy address, credentials, allowed destinations, and firewall, then try again.",
+                    DescribeProbeFailure(reachability.Failure),
                     retryable: true);
             }
 
@@ -140,6 +140,25 @@ public sealed class ProxyNetworkConnectionProvider : INetworkConnectionProvider
             }
         }
     }
+
+    private static string DescribeProbeFailure(SocksReachabilityFailure failure) =>
+        failure switch
+        {
+            SocksReachabilityFailure.ListenerUnavailable =>
+                "The local proxy adapter stopped before GhostSHELL could test it.",
+            SocksReachabilityFailure.SocksHandshakeRejected =>
+                "The proxy rejected GhostSHELL's SOCKS5 health check.",
+            SocksReachabilityFailure.DestinationRejected =>
+                "The proxy rejected connections to the public health-check peers. Check its allowed destinations and access policy.",
+            SocksReachabilityFailure.TlsRejected =>
+                "Traffic crossed the proxy, but TLS validation failed. Check for TLS interception on the route.",
+            SocksReachabilityFailure.InvalidHttpResponse =>
+                "Traffic crossed the proxy, but the public health-check peer returned an invalid response.",
+            SocksReachabilityFailure.TimedOut =>
+                "The proxy timed out while reaching the public health-check peers. Check its address, firewall, and access policy.",
+            _ =>
+                "The proxy could not carry the public health check. Check its address, credentials, allowed destinations, and firewall.",
+        };
 
     private async ValueTask<NetworkConnectionResult<byte[]>> ResolvePasswordAsync(
         NetworkConnectionId connectionId,

@@ -10,7 +10,29 @@ namespace GhostShell.Infrastructure;
 
 internal interface ISocksReachabilityProbe
 {
-    ValueTask<bool> ProbeAsync(int socksPort, CancellationToken cancellationToken);
+    ValueTask<SocksReachabilityResult> ProbeAsync(
+        int socksPort,
+        CancellationToken cancellationToken);
+}
+
+internal enum SocksReachabilityFailure
+{
+    None,
+    ListenerUnavailable,
+    SocksHandshakeRejected,
+    DestinationRejected,
+    TlsRejected,
+    InvalidHttpResponse,
+    TimedOut,
+    TransportFailed,
+}
+
+internal readonly record struct SocksReachabilityResult(SocksReachabilityFailure Failure)
+{
+    public static SocksReachabilityResult Reachable { get; } =
+        new(SocksReachabilityFailure.None);
+
+    public bool IsReachable => Failure == SocksReachabilityFailure.None;
 }
 
 /// <summary>
@@ -26,27 +48,68 @@ internal sealed class SocksReachabilityProbe : ISocksReachabilityProbe
         IPAddress.Parse("1.0.0.1"),
     ];
 
-    public async ValueTask<bool> ProbeAsync(
+    public async ValueTask<SocksReachabilityResult> ProbeAsync(
         int socksPort,
         CancellationToken cancellationToken)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(socksPort);
+        var lastFailure = SocksReachabilityFailure.TransportFailed;
         foreach (var address in ProbeAddresses)
         {
-            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken);
-            deadline.CancelAfter(AttemptTimeout);
+            var result = await ProbeAddressAsync(socksPort, address, cancellationToken)
+                .ConfigureAwait(false);
+            if (result.IsReachable)
+            {
+                return result;
+            }
+
+            lastFailure = result.Failure;
+            if (lastFailure is SocksReachabilityFailure.ListenerUnavailable
+                or SocksReachabilityFailure.SocksHandshakeRejected)
+            {
+                break;
+            }
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        return new(lastFailure);
+    }
+
+    private static async ValueTask<SocksReachabilityResult> ProbeAddressAsync(
+        int socksPort,
+        IPAddress address,
+        CancellationToken cancellationToken)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken);
+        deadline.CancelAfter(AttemptTimeout);
+        try
+        {
+            using var client = new TcpClient(AddressFamily.InterNetwork)
+            {
+                NoDelay = true,
+            };
             try
             {
-                using var client = new TcpClient(AddressFamily.InterNetwork)
-                {
-                    NoDelay = true,
-                };
                 await client.ConnectAsync(IPAddress.Loopback, socksPort, deadline.Token)
                     .ConfigureAwait(false);
-                var stream = client.GetStream();
-                await ConnectSocksAsync(stream, address, deadline.Token).ConfigureAwait(false);
-                using var secured = new SslStream(stream, leaveInnerStreamOpen: true);
+            }
+            catch (SocketException)
+            {
+                return new(SocksReachabilityFailure.ListenerUnavailable);
+            }
+
+            var stream = client.GetStream();
+            var socksFailure = await ConnectSocksAsync(stream, address, deadline.Token)
+                .ConfigureAwait(false);
+            if (socksFailure != SocksReachabilityFailure.None)
+            {
+                return new(socksFailure);
+            }
+
+            using var secured = new SslStream(stream, leaveInnerStreamOpen: true);
+            try
+            {
                 await secured.AuthenticateAsClientAsync(
                         new SslClientAuthenticationOptions
                         {
@@ -60,35 +123,35 @@ internal sealed class SocksReachabilityProbe : ISocksReachabilityProbe
                         },
                         deadline.Token)
                     .ConfigureAwait(false);
-                var request = Encoding.ASCII.GetBytes(
-                    $"HEAD /cdn-cgi/trace HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n");
-                await secured.WriteAsync(request, deadline.Token).ConfigureAwait(false);
-                await secured.FlushAsync(deadline.Token).ConfigureAwait(false);
-                var prefix = new byte[9];
-                await secured.ReadExactlyAsync(prefix, deadline.Token).ConfigureAwait(false);
-                if (Encoding.ASCII.GetString(prefix).StartsWith(
-                        "HTTP/1.",
-                        StringComparison.Ordinal))
-                {
-                    return true;
-                }
             }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            catch (AuthenticationException)
             {
+                return new(SocksReachabilityFailure.TlsRejected);
             }
-            catch (Exception exception) when (exception is
-                AuthenticationException
-                or IOException
-                or SocketException)
-            {
-            }
-        }
 
-        cancellationToken.ThrowIfCancellationRequested();
-        return false;
+            var request = Encoding.ASCII.GetBytes(
+                $"HEAD /cdn-cgi/trace HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n");
+            await secured.WriteAsync(request, deadline.Token).ConfigureAwait(false);
+            await secured.FlushAsync(deadline.Token).ConfigureAwait(false);
+            var prefix = new byte[9];
+            await secured.ReadExactlyAsync(prefix, deadline.Token).ConfigureAwait(false);
+            return Encoding.ASCII.GetString(prefix).StartsWith(
+                    "HTTP/1.",
+                    StringComparison.Ordinal)
+                ? SocksReachabilityResult.Reachable
+                : new(SocksReachabilityFailure.InvalidHttpResponse);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new(SocksReachabilityFailure.TimedOut);
+        }
+        catch (Exception exception) when (exception is IOException or SocketException)
+        {
+            return new(SocksReachabilityFailure.TransportFailed);
+        }
     }
 
-    private static async ValueTask ConnectSocksAsync(
+    private static async ValueTask<SocksReachabilityFailure> ConnectSocksAsync(
         Stream stream,
         IPAddress address,
         CancellationToken cancellationToken)
@@ -99,7 +162,7 @@ internal sealed class SocksReachabilityProbe : ISocksReachabilityProbe
         await stream.ReadExactlyAsync(greeting, cancellationToken).ConfigureAwait(false);
         if (greeting[0] != 5 || greeting[1] != 0)
         {
-            throw new IOException("The app-scoped VPN rejected the health probe.");
+            return SocksReachabilityFailure.SocksHandshakeRejected;
         }
 
         var addressBytes = address.GetAddressBytes();
@@ -115,7 +178,9 @@ internal sealed class SocksReachabilityProbe : ISocksReachabilityProbe
         await stream.ReadExactlyAsync(response, cancellationToken).ConfigureAwait(false);
         if (response[0] != 5 || response[1] != 0)
         {
-            throw new IOException("The app-scoped VPN could not reach the health peer.");
+            return response[0] == 5
+                ? SocksReachabilityFailure.DestinationRejected
+                : SocksReachabilityFailure.SocksHandshakeRejected;
         }
 
         var addressLength = response[3] switch
@@ -127,11 +192,12 @@ internal sealed class SocksReachabilityProbe : ISocksReachabilityProbe
         };
         if (addressLength <= 0)
         {
-            throw new IOException("The app-scoped VPN returned an invalid health response.");
+            return SocksReachabilityFailure.SocksHandshakeRejected;
         }
 
         var remainder = new byte[addressLength + 2];
         await stream.ReadExactlyAsync(remainder, cancellationToken).ConfigureAwait(false);
+        return SocksReachabilityFailure.None;
     }
 
     private static async ValueTask<int> ReadDomainLengthAsync(

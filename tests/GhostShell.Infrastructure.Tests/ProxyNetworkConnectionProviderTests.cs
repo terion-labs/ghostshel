@@ -391,7 +391,7 @@ public sealed class ProxyNetworkConnectionProviderTests
 
         public bool WaitForCancellation { get; init; }
 
-        public async ValueTask<bool> ProbeAsync(
+        public async ValueTask<SocksReachabilityResult> ProbeAsync(
             int socksPort,
             CancellationToken cancellationToken)
         {
@@ -402,7 +402,9 @@ public sealed class ProxyNetworkConnectionProviderTests
                 await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
             }
 
-            return reachable;
+            return reachable
+                ? SocksReachabilityResult.Reachable
+                : new SocksReachabilityResult(SocksReachabilityFailure.TransportFailed);
         }
     }
 

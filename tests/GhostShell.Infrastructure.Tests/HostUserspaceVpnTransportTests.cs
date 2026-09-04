@@ -294,7 +294,10 @@ public sealed class HostUserspaceVpnTransportTests
         var configuration = new SecretRef("wireguard-unreachable-configuration");
         await StoreSecretAsync(vault, configuration, "[Interface]\nPrivateKey = secret");
         var processes = new RecordingHostVpnProcessRunner();
-        var reachability = new RecordingReachabilityProbe(defaultResult: false);
+        var reachability = new RecordingReachabilityProbe(defaultResult: false)
+        {
+            Failure = SocksReachabilityFailure.DestinationRejected,
+        };
         var transport = Create(
             NetworkConnectionKind.WireGuard,
             vault,
@@ -315,6 +318,77 @@ public sealed class HostUserspaceVpnTransportTests
         Assert.Equal("wireguard_host_reachability_failed", failure.Error.StableCode);
         Assert.Equal(1, reachability.CallCount);
         Assert.True(Assert.Single(processes.Processes).HasExited);
+    }
+
+    [Fact]
+    public async Task AnyConnect_destination_rejection_explains_restricted_vpn_routing()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var state = new TemporaryDirectory();
+        using var vault = new InMemorySecretVault();
+        var processes = new RecordingHostVpnProcessRunner();
+        var reachability = new RecordingReachabilityProbe(defaultResult: false)
+        {
+            Failure = SocksReachabilityFailure.DestinationRejected,
+        };
+        var transport = Create(
+            NetworkConnectionKind.AnyConnect,
+            vault,
+            processes,
+            state.Path,
+            reachability,
+            null,
+            ("openconnect", "/tools/openconnect"),
+            ("ocproxy", "/tools/ocproxy"));
+
+        var result = await transport.ConnectAsync(
+            Request(new NetworkConnectionConfiguration.AnyConnect(
+                new Uri("https://vpn.example.test"),
+                username: "user")),
+            progress: null,
+            CancellationToken.None);
+
+        var failure = Assert.IsType<NetworkConnectionResult<INetworkConnectionSession>.Failure>(
+            result);
+        Assert.Equal(NetworkConnectionErrorCode.RouteUnavailable, failure.Error.Code);
+        Assert.Contains("public health-check peers", failure.Error.Message);
+        Assert.Contains("internal routes", failure.Error.Message);
+        Assert.True(Assert.Single(processes.Processes).HasExited);
+    }
+
+    [Fact]
+    public async Task Startup_reachability_retries_a_transient_transport_failure()
+    {
+        using var state = new TemporaryDirectory();
+        using var vault = new InMemorySecretVault();
+        var configuration = new SecretRef("wireguard-retry-health-configuration");
+        await StoreSecretAsync(vault, configuration, "[Interface]\nPrivateKey = secret");
+        var processes = new RecordingHostVpnProcessRunner();
+        var reachability = new RecordingReachabilityProbe(defaultResult: true)
+        {
+            Failure = SocksReachabilityFailure.TransportFailed,
+        };
+        reachability.Results.Enqueue(false);
+        var transport = Create(
+            NetworkConnectionKind.WireGuard,
+            vault,
+            processes,
+            state.Path,
+            reachability,
+            null,
+            ("wireproxy", "/tools/wireproxy"));
+
+        await using var session = Success(await transport.ConnectAsync(
+            Request(new NetworkConnectionConfiguration.WireGuard(configuration)),
+            progress: null,
+            CancellationToken.None));
+
+        Assert.Equal(NetworkConnectionState.Connected, session.Snapshot.State);
+        Assert.Equal(2, reachability.CallCount);
     }
 
     [Fact]
@@ -351,7 +425,7 @@ public sealed class HostUserspaceVpnTransportTests
 
         var snapshot = await failed.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
-        Assert.Contains("carry", snapshot.Status, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("traffic failed", snapshot.Status, StringComparison.OrdinalIgnoreCase);
         Assert.True(reachability.CallCount >= 2);
     }
 
@@ -389,7 +463,8 @@ public sealed class HostUserspaceVpnTransportTests
             CancellationToken.None);
         await server;
 
-        Assert.False(reachable);
+        Assert.False(reachable.IsReachable);
+        Assert.Equal(SocksReachabilityFailure.DestinationRejected, reachable.Failure);
         Assert.Equal(
             [(IPAddress.Parse("1.1.1.1"), 443), (IPAddress.Parse("1.0.0.1"), 443)],
             destinations);
@@ -541,15 +616,20 @@ public sealed class HostUserspaceVpnTransportTests
 
         public int CallCount { get; private set; }
 
-        public ValueTask<bool> ProbeAsync(
+        public SocksReachabilityFailure Failure { get; init; } =
+            SocksReachabilityFailure.TransportFailed;
+
+        public ValueTask<SocksReachabilityResult> ProbeAsync(
             int socksPort,
             CancellationToken cancellationToken)
         {
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(socksPort);
             cancellationToken.ThrowIfCancellationRequested();
             CallCount++;
-            return ValueTask.FromResult(
-                Results.Count == 0 ? defaultResult : Results.Dequeue());
+            var reachable = Results.Count == 0 ? defaultResult : Results.Dequeue();
+            return ValueTask.FromResult(reachable
+                ? SocksReachabilityResult.Reachable
+                : new SocksReachabilityResult(Failure));
         }
     }
 
