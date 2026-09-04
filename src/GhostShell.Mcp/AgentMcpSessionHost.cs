@@ -1300,7 +1300,7 @@ public sealed class AgentMcpSessionHost :
                 transport.Executable,
                 transport.Arguments,
                 transport.WorkingDirectory,
-                AddProxyEnvironment(environment, connector.LocalProxyEndpoint));
+                AddProxyEnvironment(environment, connector));
         }
 
         var startupEnvironment = environment
@@ -1356,6 +1356,14 @@ public sealed class AgentMcpSessionHost :
         }
 
         var connector = RequireWorkspaceConnector(workspaceId.Value);
+        var proxy = new WebProxy(connector.LocalProxyEndpoint);
+        if (connector.LocalProxyCredentials is { } credentials)
+        {
+            proxy.Credentials = new NetworkCredential(
+                credentials.Username,
+                credentials.Password);
+        }
+
         return new SocketsHttpHandler
         {
             AllowAutoRedirect = false,
@@ -1364,7 +1372,7 @@ public sealed class AgentMcpSessionHost :
             MaxConnectionsPerServer = 4,
             MaxResponseHeadersLength = 32,
             PooledConnectionLifetime = TimeSpan.FromMinutes(5),
-            Proxy = new WebProxy(connector.LocalProxyEndpoint),
+            Proxy = proxy,
             UseCookies = false,
             UseProxy = true,
         };
@@ -1389,9 +1397,16 @@ public sealed class AgentMcpSessionHost :
 
     private static IReadOnlyDictionary<string, string> AddProxyEnvironment(
         IReadOnlyDictionary<string, string> environment,
-        Uri proxyEndpoint)
+        IWorkspaceNetworkConnector connector)
     {
         var routed = new Dictionary<string, string>(environment, StringComparer.Ordinal);
+        var proxyEndpoint = connector.LocalProxyCredentials is { } credentials
+            ? new UriBuilder(connector.LocalProxyEndpoint)
+            {
+                UserName = credentials.Username,
+                Password = credentials.Password,
+            }.Uri
+            : connector.LocalProxyEndpoint;
         routed.Remove("NO_PROXY");
         routed.Remove("no_proxy");
         foreach (var name in new[]

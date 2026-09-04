@@ -18,7 +18,7 @@ public sealed class HostWorkspaceSocksProxyTests
         var destinationPort = ((IPEndPoint)destination.LocalEndpoint).Port;
         var echo = EchoOnceAsync(destination);
         await using var proxy = new HostWorkspaceSocksProxy();
-        using var client = await OpenAsync(proxy.LocalPort, "127.0.0.1", destinationPort);
+        using var client = await OpenAsync(proxy, "127.0.0.1", destinationPort);
 
         await client.GetStream().WriteAsync("ping"u8.ToArray());
         var reply = new byte[4];
@@ -39,7 +39,7 @@ public sealed class HostWorkspaceSocksProxyTests
         proxy.Apply(WorkspaceNetworkEgress.ViaProxy(
             new Uri($"socks5://127.0.0.1:{upstreamPort}")));
 
-        using var client = await OpenAsync(proxy.LocalPort, "service.example", 9443);
+        using var client = await OpenAsync(proxy, "service.example", 9443);
 
         Assert.Equal(("service.example", 9443), await observed);
     }
@@ -52,14 +52,148 @@ public sealed class HostWorkspaceSocksProxyTests
         using var client = new TcpClient();
         await client.ConnectAsync(IPAddress.Loopback, proxy.LocalPort);
         var stream = client.GetStream();
-        await stream.WriteAsync(new byte[] { 5, 1, 0 });
-        var greeting = new byte[2];
-        await ReadRequiredAsync(stream, greeting);
+        await AuthenticateAsync(stream, proxy.LocalProxyCredentials);
         await stream.WriteAsync(new byte[] { 5, 1, 0, 3, 1, (byte)'x', 0, 80 });
         var response = new byte[10];
         await ReadRequiredAsync(stream, response);
 
         Assert.Equal((byte)2, response[1]);
+    }
+
+    [Fact]
+    public async Task Unauthenticated_socks_client_cannot_borrow_workspace_route()
+    {
+        await using var proxy = new HostWorkspaceSocksProxy();
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, proxy.LocalPort);
+        var stream = client.GetStream();
+        await stream.WriteAsync(new byte[] { 5, 1, 0 });
+        var response = new byte[2];
+        await ReadRequiredAsync(stream, response);
+
+        Assert.Equal(new byte[] { 5, 255 }, response);
+    }
+
+    [Fact]
+    public async Task Another_workspaces_socks_credentials_are_rejected()
+    {
+        await using var owner = new HostWorkspaceSocksProxy();
+        await using var other = new HostWorkspaceSocksProxy();
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, owner.LocalPort);
+        var stream = client.GetStream();
+        await stream.WriteAsync(new byte[] { 5, 1, 2 });
+        var greeting = new byte[2];
+        await ReadRequiredAsync(stream, greeting);
+        Assert.Equal(new byte[] { 5, 2 }, greeting);
+        var username = Encoding.UTF8.GetBytes(other.LocalProxyCredentials.Username);
+        var password = Encoding.UTF8.GetBytes(other.LocalProxyCredentials.Password);
+        byte[] authentication =
+        [
+            1,
+            checked((byte)username.Length),
+            .. username,
+            checked((byte)password.Length),
+            .. password,
+        ];
+        await stream.WriteAsync(authentication);
+        var response = new byte[2];
+        await ReadRequiredAsync(stream, response);
+
+        Assert.Equal(new byte[] { 1, 1 }, response);
+    }
+
+    [Fact]
+    public async Task Http_connect_requires_workspace_credentials()
+    {
+        await using var proxy = new HostWorkspaceSocksProxy();
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, proxy.LocalPort);
+        await client.GetStream().WriteAsync(
+            "CONNECT example.test:443 HTTP/1.1\r\nHost: example.test:443\r\n\r\n"u8.ToArray());
+        using var reader = new StreamReader(client.GetStream(), Encoding.ASCII);
+
+        Assert.Equal(
+            "HTTP/1.1 407 Proxy Authentication Required",
+            await reader.ReadLineAsync());
+    }
+
+    [Fact]
+    public async Task Authenticated_http_connect_reaches_destination()
+    {
+        using var destination = new TcpListener(IPAddress.Loopback, 0);
+        destination.Start();
+        var destinationPort = ((IPEndPoint)destination.LocalEndpoint).Port;
+        var echo = EchoOnceAsync(destination);
+        await using var proxy = new HostWorkspaceSocksProxy();
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, proxy.LocalPort);
+        var token = Convert.ToBase64String(Encoding.UTF8.GetBytes(
+            $"{proxy.LocalProxyCredentials.Username}:{proxy.LocalProxyCredentials.Password}"));
+        await client.GetStream().WriteAsync(Encoding.ASCII.GetBytes(
+            $"CONNECT 127.0.0.1:{destinationPort} HTTP/1.1\r\n"
+            + $"Host: 127.0.0.1:{destinationPort}\r\n"
+            + $"Proxy-Authorization: Basic {token}\r\n\r\n"));
+        using var reader = new StreamReader(
+            client.GetStream(),
+            Encoding.ASCII,
+            detectEncodingFromByteOrderMarks: false,
+            leaveOpen: true);
+        Assert.Equal("HTTP/1.1 200 Connection Established", await reader.ReadLineAsync());
+        Assert.Equal(string.Empty, await reader.ReadLineAsync());
+
+        await client.GetStream().WriteAsync("ping"u8.ToArray());
+        var reply = new byte[4];
+        await ReadRequiredAsync(client.GetStream(), reply);
+
+        Assert.Equal("pong", Encoding.ASCII.GetString(reply));
+        await echo;
+    }
+
+    [Fact]
+    public async Task Authenticated_http_request_is_forwarded_without_proxy_credentials()
+    {
+        using var destination = new TcpListener(IPAddress.Loopback, 0);
+        destination.Start();
+        var destinationPort = ((IPEndPoint)destination.LocalEndpoint).Port;
+        var observed = ObserveHttpRequestAsync(destination);
+        await using var proxy = new HostWorkspaceSocksProxy();
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, proxy.LocalPort);
+        var token = Convert.ToBase64String(Encoding.UTF8.GetBytes(
+            $"{proxy.LocalProxyCredentials.Username}:{proxy.LocalProxyCredentials.Password}"));
+        await client.GetStream().WriteAsync(Encoding.ASCII.GetBytes(
+            $"GET http://127.0.0.1:{destinationPort}/status?full=1 HTTP/1.1\r\n"
+            + $"Host: 127.0.0.1:{destinationPort}\r\n"
+            + "Connection: keep-alive\r\n"
+            + $"Proxy-Authorization: Basic {token}\r\n\r\n"));
+        using var reader = new StreamReader(client.GetStream(), Encoding.ASCII);
+
+        Assert.Equal("HTTP/1.1 204 No Content", await reader.ReadLineAsync());
+        var forwarded = await observed;
+        Assert.StartsWith(
+            "GET /status?full=1 HTTP/1.1\r\n",
+            forwarded,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("Proxy-Authorization", forwarded, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("keep-alive", forwarded, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Connection: close\r\n", forwarded, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Workspace_proxy_credentials_are_unique_and_redacted()
+    {
+        await using var first = new HostWorkspaceSocksProxy();
+        await using var second = new HostWorkspaceSocksProxy();
+
+        Assert.NotEqual(
+            first.LocalProxyCredentials.Password,
+            second.LocalProxyCredentials.Password,
+            StringComparer.Ordinal);
+        Assert.DoesNotContain(
+            first.LocalProxyCredentials.Password,
+            first.LocalProxyCredentials.ToString(),
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -91,18 +225,15 @@ public sealed class HostWorkspaceSocksProxyTests
     }
 
     private static async Task<TcpClient> OpenAsync(
-        int proxyPort,
+        HostWorkspaceSocksProxy proxy,
         string host,
         int port)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var client = new TcpClient();
-        await client.ConnectAsync(IPAddress.Loopback, proxyPort, timeout.Token);
+        await client.ConnectAsync(IPAddress.Loopback, proxy.LocalPort, timeout.Token);
         var stream = client.GetStream();
-        await stream.WriteAsync(new byte[] { 5, 1, 0 }, timeout.Token);
-        var greeting = new byte[2];
-        await ReadRequiredAsync(stream, greeting, timeout.Token);
-        Assert.Equal(new byte[] { 5, 0 }, greeting);
+        await AuthenticateAsync(stream, proxy.LocalProxyCredentials, timeout.Token);
         var hostBytes = Encoding.ASCII.GetBytes(host);
         var request = new byte[7 + hostBytes.Length];
         request[0] = 5;
@@ -119,6 +250,29 @@ public sealed class HostWorkspaceSocksProxyTests
         await ReadRequiredAsync(stream, response, timeout.Token);
         Assert.Equal((byte)0, response[1]);
         return client;
+    }
+
+    private static async Task AuthenticateAsync(
+        Stream stream,
+        WorkspaceNetworkProxyCredentials credentials,
+        CancellationToken cancellationToken = default)
+    {
+        await stream.WriteAsync(new byte[] { 5, 1, 2 }, cancellationToken);
+        var greeting = new byte[2];
+        await ReadRequiredAsync(stream, greeting, cancellationToken);
+        Assert.Equal(new byte[] { 5, 2 }, greeting);
+        var username = Encoding.UTF8.GetBytes(credentials.Username);
+        var password = Encoding.UTF8.GetBytes(credentials.Password);
+        var request = new byte[3 + username.Length + password.Length];
+        request[0] = 1;
+        request[1] = checked((byte)username.Length);
+        username.CopyTo(request, 2);
+        request[2 + username.Length] = checked((byte)password.Length);
+        password.CopyTo(request, 3 + username.Length);
+        await stream.WriteAsync(request, cancellationToken);
+        var response = new byte[2];
+        await ReadRequiredAsync(stream, response, cancellationToken);
+        Assert.Equal(new byte[] { 1, 0 }, response);
     }
 
     private static async Task EchoOnceAsync(TcpListener listener)
@@ -146,6 +300,31 @@ public sealed class HostWorkspaceSocksProxyTests
         await ReadRequiredAsync(stream, port);
         await stream.WriteAsync(new byte[] { 5, 0, 0, 1, 0, 0, 0, 0, 0, 0 });
         return (Encoding.ASCII.GetString(host), BinaryPrimitives.ReadUInt16BigEndian(port));
+    }
+
+    private static async Task<string> ObserveHttpRequestAsync(TcpListener listener)
+    {
+        using var client = await listener.AcceptTcpClientAsync();
+        var stream = client.GetStream();
+        var bytes = new List<byte>();
+        while (bytes.Count < 4096)
+        {
+            var next = new byte[1];
+            await ReadRequiredAsync(stream, next);
+            bytes.Add(next[0]);
+            if (bytes.Count >= 4
+                && bytes[^4] == '\r'
+                && bytes[^3] == '\n'
+                && bytes[^2] == '\r'
+                && bytes[^1] == '\n')
+            {
+                break;
+            }
+        }
+
+        await stream.WriteAsync(
+            "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"u8.ToArray());
+        return Encoding.ASCII.GetString([.. bytes]);
     }
 
     private static Task ReadRequiredAsync(

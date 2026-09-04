@@ -16,10 +16,46 @@ public interface IWorkspaceNetworkConnector
     /// </summary>
     Uri LocalProxyEndpoint { get; }
 
+    /// <summary>
+    /// Per-workspace credentials required by the loopback SOCKS broker.
+    /// Implementations backed by a third-party proxy may return <see langword="null"/>.
+    /// </summary>
+    WorkspaceNetworkProxyCredentials? LocalProxyCredentials => null;
+
+    /// <summary>
+    /// Loopback proxy endpoint suitable for the embedded Chromium renderer.
+    /// The built-in workspace broker exposes HTTP CONNECT here because Chromium
+    /// does not support authenticated SOCKS5 proxies.
+    /// </summary>
+    Uri BrowserProxyEndpoint => LocalProxyEndpoint;
+
     ValueTask<Stream> ConnectTcpAsync(
         string host,
         int port,
         CancellationToken cancellationToken);
+}
+
+public sealed class WorkspaceNetworkProxyCredentials
+{
+    public WorkspaceNetworkProxyCredentials(string username, string password)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentException.ThrowIfNullOrWhiteSpace(password);
+        if (username.IndexOf('\0') >= 0 || password.IndexOf('\0') >= 0)
+        {
+            throw new ArgumentException(
+                "Workspace proxy credentials cannot contain null characters.");
+        }
+
+        Username = username;
+        Password = password;
+    }
+
+    public string Username { get; }
+
+    public string Password { get; }
+
+    public override string ToString() => "Workspace network proxy credentials";
 }
 
 public sealed class WorkspaceNetworkBlockedException : IOException

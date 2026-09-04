@@ -32,8 +32,31 @@ internal static class WorkspaceSocksProxyCommand
             return 2;
         }
 
+        var proxy = Environment.GetEnvironmentVariable("ALL_PROXY");
+        if (!Uri.TryCreate(proxy, UriKind.Absolute, out var proxyUri)
+            || proxyUri.Port != proxyPort
+            || string.IsNullOrEmpty(proxyUri.UserInfo))
+        {
+            return 2;
+        }
+
+        var userInfo = proxyUri.UserInfo.Split(':', 2);
+        if (userInfo.Length != 2)
+        {
+            return 2;
+        }
+
+        var credentials = new GhostShell.Application.WorkspaceNetworkProxyCredentials(
+            Uri.UnescapeDataString(userInfo[0]),
+            Uri.UnescapeDataString(userInfo[1]));
+
         await using var stream = await WorkspaceSocksClient
-            .ConnectAsync(proxyPort, host, targetPort, cancellationToken)
+            .ConnectAsync(
+                proxyPort,
+                credentials,
+                host,
+                targetPort,
+                cancellationToken)
             .ConfigureAwait(false);
         var standardInput = Console.OpenStandardInput();
         var standardOutput = Console.OpenStandardOutput();

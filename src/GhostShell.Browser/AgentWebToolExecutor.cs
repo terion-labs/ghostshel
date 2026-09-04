@@ -19,7 +19,6 @@ public sealed class AgentWebToolExecutor(
                 AgentWebToolErrorCode.Unavailable);
         }
 
-        var proxyPort = connector.LocalProxyEndpoint.Port;
         return request switch
         {
             AgentHttpFetchRequest fetch =>
@@ -27,11 +26,11 @@ public sealed class AgentWebToolExecutor(
                     .FetchAsync(fetch, cancellationToken)
                     .ConfigureAwait(false),
             AgentWebReadRequest read =>
-                await new CefAgentWebReader(proxyPort)
+                await new CefAgentWebReader(connector)
                     .ReadAsync(read, cancellationToken)
                     .ConfigureAwait(false),
             AgentWebSearchRequest search =>
-                Map(await new CefAgentWebSearchExecutor(proxyPort)
+                Map(await new CefAgentWebSearchExecutor(connector)
                     .SearchAsync(search, cancellationToken)
                     .ConfigureAwait(false)),
             _ => new AgentWebToolExecutionResult.Failed(

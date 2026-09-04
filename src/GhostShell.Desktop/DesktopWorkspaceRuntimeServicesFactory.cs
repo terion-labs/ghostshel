@@ -34,7 +34,9 @@ internal sealed class DesktopWorkspaceRuntimeServicesFactory(
         if (request.IsolationBinding is not { } binding)
         {
             var gateway = new HostWorkspaceSocksProxy();
-            request.NetworkEgressState.SetLocalProxyEndpoint(gateway.LocalProxyEndpoint);
+            request.NetworkEgressState.SetLocalProxyEndpoint(
+                gateway.LocalProxyEndpoint,
+                gateway.LocalProxyCredentials);
             var hostBackends = request.HostServices.Backends;
             var hostExecutor = new ConnectionCommandExecutor(
                 request.ConnectionRuntime,

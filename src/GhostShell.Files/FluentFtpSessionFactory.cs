@@ -47,6 +47,11 @@ internal sealed class FluentFtpSessionFactory(
             {
                 ProxyHost = networkConnector.LocalProxyEndpoint.Host,
                 ProxyPort = networkConnector.LocalProxyEndpoint.Port,
+                ProxyCredentials = networkConnector.LocalProxyCredentials is { } proxyCredentials
+                    ? new NetworkCredential(
+                        proxyCredentials.Username,
+                        proxyCredentials.Password)
+                    : null,
                 FtpHost = options.Host,
                 FtpPort = options.Port,
                 FtpCredentials = credentials,

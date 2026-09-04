@@ -30,6 +30,9 @@ internal sealed class HostWorkspaceSocksProxy :
         LocalProxyEndpoint = new Uri(
             $"socks5://127.0.0.1:{LocalPort}",
             UriKind.Absolute);
+        BrowserProxyEndpoint = new Uri(
+            $"http://127.0.0.1:{LocalPort}",
+            UriKind.Absolute);
         _acceptLoop = AcceptLoopAsync();
     }
 
@@ -39,11 +42,21 @@ internal sealed class HostWorkspaceSocksProxy :
 
     public Uri LocalProxyEndpoint { get; }
 
+    public WorkspaceNetworkProxyCredentials LocalProxyCredentials { get; } =
+        WorkspaceLoopbackProxyProtocol.CreateCredentials();
+
+    public Uri BrowserProxyEndpoint { get; }
+
     public ValueTask<Stream> ConnectTcpAsync(
         string host,
         int port,
         CancellationToken cancellationToken) =>
-        WorkspaceSocksClient.ConnectAsync(LocalPort, host, port, cancellationToken);
+        WorkspaceSocksClient.ConnectAsync(
+            LocalPort,
+            LocalProxyCredentials,
+            host,
+            port,
+            cancellationToken);
 
     public void Apply(WorkspaceNetworkEgress egress)
     {
@@ -137,9 +150,12 @@ internal sealed class HostWorkspaceSocksProxy :
             cancellationToken = routeCancellation.Token;
             client.NoDelay = true;
             var downstream = client.GetStream();
-            var destination = await ReadRequestAsync(downstream, cancellationToken)
+            var request = await WorkspaceLoopbackProxyProtocol.AuthenticateAndReadAsync(
+                    downstream,
+                    LocalProxyCredentials,
+                    cancellationToken)
                 .ConfigureAwait(false);
-            if (destination is null)
+            if (request is null)
             {
                 return;
             }
@@ -147,7 +163,12 @@ internal sealed class HostWorkspaceSocksProxy :
             var egress = route.Egress;
             if (egress == WorkspaceNetworkEgress.Blocked)
             {
-                await ReplyAsync(downstream, 2, cancellationToken).ConfigureAwait(false);
+                await WorkspaceLoopbackProxyProtocol.ReplyAsync(
+                        downstream,
+                        request.Value.Protocol,
+                        2,
+                        cancellationToken)
+                    .ConfigureAwait(false);
                 return;
             }
 
@@ -157,8 +178,8 @@ internal sealed class HostWorkspaceSocksProxy :
             {
                 var endpoint = egress.ProxyEndpoint;
                 await upstreamClient.ConnectAsync(
-                        endpoint?.Host ?? destination.Value.Host,
-                        endpoint?.Port ?? destination.Value.Port,
+                        endpoint?.Host ?? request.Value.Host,
+                        endpoint?.Port ?? request.Value.Port,
                         cancellationToken)
                     .ConfigureAwait(false);
                 var upstream = upstreamClient.GetStream();
@@ -166,20 +187,39 @@ internal sealed class HostWorkspaceSocksProxy :
                 {
                     await ConnectSocksAsync(
                             upstream,
-                            destination.Value,
+                            new Destination(request.Value.Host, request.Value.Port),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                if (request.Value.InitialPayload is { } initialPayload)
+                {
+                    await upstream.WriteAsync(initialPayload, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                if (request.Value.AcknowledgeConnection)
+                {
+                    await WorkspaceLoopbackProxyProtocol.ReplyAsync(
+                            downstream,
+                            request.Value.Protocol,
+                            0,
                             cancellationToken)
                         .ConfigureAwait(false);
                 }
 
                 successReplyStarted = true;
-                await ReplyAsync(downstream, 0, cancellationToken).ConfigureAwait(false);
                 await PumpAsync(downstream, upstream, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is IOException or SocketException)
             {
                 if (!successReplyStarted)
                 {
-                    await TryReplyFailureAsync(downstream, cancellationToken).ConfigureAwait(false);
+                    await TryReplyFailureAsync(
+                            downstream,
+                            request.Value.Protocol,
+                            cancellationToken)
+                        .ConfigureAwait(false);
                 }
             }
         }
@@ -191,47 +231,6 @@ internal sealed class HostWorkspaceSocksProxy :
         {
             return (_egress, _routeLifetime.Token);
         }
-    }
-
-    private static async ValueTask<Destination?> ReadRequestAsync(
-        Stream stream,
-        CancellationToken cancellationToken)
-    {
-        var greeting = new byte[2];
-        if (!await ReadExactlyAsync(stream, greeting, cancellationToken).ConfigureAwait(false)
-            || greeting[0] != 5)
-        {
-            return null;
-        }
-
-        var methods = new byte[greeting[1]];
-        if (!await ReadExactlyAsync(stream, methods, cancellationToken).ConfigureAwait(false)
-            || !methods.Contains((byte)0))
-        {
-            await stream.WriteAsync(new byte[] { 5, 255 }, cancellationToken)
-                .ConfigureAwait(false);
-            return null;
-        }
-
-        await stream.WriteAsync(new byte[] { 5, 0 }, cancellationToken).ConfigureAwait(false);
-        var request = new byte[4];
-        if (!await ReadExactlyAsync(stream, request, cancellationToken).ConfigureAwait(false)
-            || request[0] != 5
-            || request[1] != 1)
-        {
-            return null;
-        }
-
-        var host = await ReadHostAsync(stream, request[3], cancellationToken)
-            .ConfigureAwait(false);
-        var port = new byte[2];
-        if (host is null
-            || !await ReadExactlyAsync(stream, port, cancellationToken).ConfigureAwait(false))
-        {
-            return null;
-        }
-
-        return new Destination(host, BinaryPrimitives.ReadUInt16BigEndian(port));
     }
 
     private static async ValueTask ConnectSocksAsync(
@@ -314,34 +313,6 @@ internal sealed class HostWorkspaceSocksProxy :
         return request;
     }
 
-    private static async ValueTask<string?> ReadHostAsync(
-        Stream stream,
-        byte addressType,
-        CancellationToken cancellationToken)
-    {
-        var length = addressType switch
-        {
-            1 => 4,
-            4 => 16,
-            3 => await ReadByteAsync(stream, cancellationToken).ConfigureAwait(false),
-            _ => 0,
-        };
-        if (length <= 0)
-        {
-            return null;
-        }
-
-        var bytes = new byte[length];
-        if (!await ReadExactlyAsync(stream, bytes, cancellationToken).ConfigureAwait(false))
-        {
-            return null;
-        }
-
-        return addressType == 3
-            ? Encoding.ASCII.GetString(bytes)
-            : new IPAddress(bytes).ToString();
-    }
-
     private static async Task PumpAsync(
         Stream downstream,
         Stream upstream,
@@ -362,19 +333,19 @@ internal sealed class HostWorkspaceSocksProxy :
         }
     }
 
-    private static ValueTask ReplyAsync(
-        Stream stream,
-        byte status,
-        CancellationToken cancellationToken) =>
-        stream.WriteAsync(new byte[] { 5, status, 0, 1, 0, 0, 0, 0, 0, 0 }, cancellationToken);
-
     private static async ValueTask TryReplyFailureAsync(
         Stream stream,
+        WorkspaceLoopbackProxyProtocol.Protocol protocol,
         CancellationToken cancellationToken)
     {
         try
         {
-            await ReplyAsync(stream, 1, cancellationToken).ConfigureAwait(false);
+            await WorkspaceLoopbackProxyProtocol.ReplyAsync(
+                    stream,
+                    protocol,
+                    1,
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is IOException or SocketException)
         {

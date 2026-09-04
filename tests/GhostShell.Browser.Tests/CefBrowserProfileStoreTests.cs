@@ -647,7 +647,8 @@ public sealed class CefBrowserProfileStoreTests
 
         public CefBrowserView CreateView(
             BrowserProfileBinding profile,
-            IBrowserProfileAuthenticationResolver? authenticationResolver) =>
+            IBrowserProfileAuthenticationResolver? authenticationResolver,
+            IWorkspaceProxyAuthenticationResolver? proxyAuthenticationResolver) =>
             throw new NotSupportedException(
                 "The profile-store tests do not create native browser views.");
 

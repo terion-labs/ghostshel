@@ -10,11 +10,13 @@ internal static class WorkspaceSocksClient
 {
     public static async ValueTask<Stream> ConnectAsync(
         int proxyPort,
+        WorkspaceNetworkProxyCredentials credentials,
         string host,
         int port,
         CancellationToken cancellationToken)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(proxyPort, 1);
+        ArgumentNullException.ThrowIfNull(credentials);
         ArgumentException.ThrowIfNullOrWhiteSpace(host);
         ArgumentOutOfRangeException.ThrowIfLessThan(port, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(port, 65_535);
@@ -24,7 +26,7 @@ internal static class WorkspaceSocksClient
             await client.ConnectAsync(IPAddress.Loopback, proxyPort, cancellationToken)
                 .ConfigureAwait(false);
             var stream = new OwnedTcpStream(client);
-            await ConnectSocks5Async(stream, host, port, cancellationToken)
+            await ConnectSocks5Async(stream, credentials, host, port, cancellationToken)
                 .ConfigureAwait(false);
             return stream;
         }
@@ -37,17 +39,42 @@ internal static class WorkspaceSocksClient
 
     private static async ValueTask ConnectSocks5Async(
         Stream stream,
+        WorkspaceNetworkProxyCredentials credentials,
         string host,
         int port,
         CancellationToken cancellationToken)
     {
-        await stream.WriteAsync(new byte[] { 5, 1, 0 }, cancellationToken)
+        await stream.WriteAsync(new byte[] { 5, 1, 2 }, cancellationToken)
             .ConfigureAwait(false);
         var greeting = new byte[2];
         await ReadRequiredAsync(stream, greeting, cancellationToken).ConfigureAwait(false);
-        if (greeting[0] != 5 || greeting[1] != 0)
+        if (greeting[0] != 5 || greeting[1] != 2)
         {
             throw new IOException("The workspace SOCKS proxy rejected the connection.");
+        }
+
+        var username = Encoding.UTF8.GetBytes(credentials.Username);
+        var password = Encoding.UTF8.GetBytes(credentials.Password);
+        if (username.Length is 0 or > 255 || password.Length is 0 or > 255)
+        {
+            throw new IOException("The workspace SOCKS credentials are invalid.");
+        }
+
+        var authentication = new byte[3 + username.Length + password.Length];
+        authentication[0] = 1;
+        authentication[1] = (byte)username.Length;
+        username.CopyTo(authentication, 2);
+        authentication[2 + username.Length] = (byte)password.Length;
+        password.CopyTo(authentication, 3 + username.Length);
+        await stream.WriteAsync(authentication, cancellationToken).ConfigureAwait(false);
+        Array.Clear(authentication);
+        Array.Clear(password);
+        var authenticationReply = new byte[2];
+        await ReadRequiredAsync(stream, authenticationReply, cancellationToken)
+            .ConfigureAwait(false);
+        if (authenticationReply[0] != 1 || authenticationReply[1] != 0)
+        {
+            throw new IOException("The workspace SOCKS proxy rejected its credentials.");
         }
 
         await stream.WriteAsync(EncodeDestination(host, port), cancellationToken)

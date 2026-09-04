@@ -46,7 +46,7 @@
         </controls:SettingRow>
         <controls:SettingRow
             Label="Kill switch"
-            Description="Block traffic when the selected connection cannot be established. Never fall back to direct networking.">
+            Description="Block GhostSHELL-routed traffic when the selected connection fails. Host programs can ignore proxy settings; use workspace isolation when every process must be blocked.">
           <ToggleSwitch
               HorizontalAlignment="Right"
               IsChecked="{Binding Policy.KillSwitchEnabled, Mode=TwoWay}"

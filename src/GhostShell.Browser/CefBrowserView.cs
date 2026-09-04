@@ -24,6 +24,7 @@ internal sealed partial class CefBrowserView : IEmbeddedBrowserView
     private readonly CefBrowserContentPolicy _contentPolicy;
     private readonly BrowserProfileBinding? _profile;
     private readonly IBrowserProfileAuthenticationResolver? _authenticationResolver;
+    private readonly IWorkspaceProxyAuthenticationResolver? _proxyAuthenticationResolver;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Grid _view;
     private readonly CefAgentCursorOverlay _agentCursorOverlay;
@@ -50,11 +51,13 @@ internal sealed partial class CefBrowserView : IEmbeddedBrowserView
         CefRequestContext? requestContext = null,
         CefBrowserContentPolicy contentPolicy = CefBrowserContentPolicy.Ordinary,
         BrowserProfileBinding? profile = null,
-        IBrowserProfileAuthenticationResolver? authenticationResolver = null)
+        IBrowserProfileAuthenticationResolver? authenticationResolver = null,
+        IWorkspaceProxyAuthenticationResolver? proxyAuthenticationResolver = null)
     {
         _contentPolicy = contentPolicy;
         _profile = profile;
         _authenticationResolver = authenticationResolver;
+        _proxyAuthenticationResolver = proxyAuthenticationResolver;
         _webView = new CefWebView
         {
             Url = BrowserAddress.Blank.Value.AbsoluteUri,
@@ -1440,8 +1443,34 @@ internal sealed partial class CefBrowserView : IEmbeddedBrowserView
         AuthRequestEventArgs args)
     {
         _ = sender;
-        if (_disposed
-            || _profile is null
+        if (_disposed)
+        {
+            args.Cancel();
+            return;
+        }
+
+        var challenge = new BrowserAuthenticationChallenge(
+            args.IsProxy,
+            args.Host,
+            args.Port,
+            args.Realm,
+            args.Scheme);
+        if (args.IsProxy)
+        {
+            var proxyCredentials = _proxyAuthenticationResolver?.Resolve(challenge);
+            if (proxyCredentials is null)
+            {
+                args.Cancel();
+            }
+            else
+            {
+                args.Continue(proxyCredentials.Username, proxyCredentials.Password);
+            }
+
+            return;
+        }
+
+        if (_profile is null
             || _authenticationResolver is null
             || _profile.Definition.Authentication is null)
         {
@@ -1456,12 +1485,7 @@ internal sealed partial class CefBrowserView : IEmbeddedBrowserView
             deadline.CancelAfter(TimeSpan.FromSeconds(15));
             var credentials = await _authenticationResolver.ResolveAsync(
                     _profile,
-                    new BrowserAuthenticationChallenge(
-                        args.IsProxy,
-                        args.Host,
-                        args.Port,
-                        args.Realm,
-                        args.Scheme),
+                    challenge,
                     deadline.Token)
                 .ConfigureAwait(false);
             if (credentials is null || _disposed)

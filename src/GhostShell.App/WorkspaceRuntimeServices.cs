@@ -119,11 +119,23 @@ public sealed class WorkspaceRuntimeServices(
         get
         {
             var egress = NetworkEgress;
-            return egress == WorkspaceNetworkEgress.Blocked
-                ? null
-                : networkConnector?.LocalProxyEndpoint
-                    ?? egress.ProxyEndpoint
-                    ?? NetworkRoute.ProxyUri;
+            if (egress == WorkspaceNetworkEgress.Blocked)
+            {
+                return null;
+            }
+
+            if (networkConnector is { } connector)
+            {
+                return connector.LocalProxyCredentials is { } credentials
+                    ? new UriBuilder(connector.LocalProxyEndpoint)
+                    {
+                        UserName = credentials.Username,
+                        Password = credentials.Password,
+                    }.Uri
+                    : connector.LocalProxyEndpoint;
+            }
+
+            return egress.ProxyEndpoint ?? NetworkRoute.ProxyUri;
         }
     }
 
@@ -156,6 +168,7 @@ public sealed class WorkspaceNetworkEgressState : IWorkspaceNetworkEgressSink
     private readonly object _gate = new();
     private WorkspaceNetworkEgress _current = WorkspaceNetworkEgress.Direct;
     private Uri? _localProxyEndpoint;
+    private WorkspaceNetworkProxyCredentials? _localProxyCredentials;
 
     public WorkspaceNetworkEgress Current
     {
@@ -179,12 +192,26 @@ public sealed class WorkspaceNetworkEgressState : IWorkspaceNetworkEgressSink
         }
     }
 
-    public void SetLocalProxyEndpoint(Uri endpoint)
+    public WorkspaceNetworkProxyCredentials? LocalProxyCredentials
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _localProxyCredentials;
+            }
+        }
+    }
+
+    public void SetLocalProxyEndpoint(
+        Uri endpoint,
+        WorkspaceNetworkProxyCredentials? credentials = null)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
         lock (_gate)
         {
             _localProxyEndpoint = endpoint;
+            _localProxyCredentials = credentials;
         }
     }
 

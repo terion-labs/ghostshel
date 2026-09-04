@@ -97,6 +97,8 @@ internal sealed class WorkspaceNetworkConnectionRuntime(
             return result;
         }
 
+        proxy = WithCredentials(proxy, egressState.LocalProxyCredentials);
+
         var environment = new Dictionary<string, string>(launch.Environment, StringComparer.Ordinal)
         {
             ["ALL_PROXY"] = proxy.AbsoluteUri,
@@ -106,6 +108,8 @@ internal sealed class WorkspaceNetworkConnectionRuntime(
             ["https_proxy"] = proxy.AbsoluteUri,
             ["http_proxy"] = proxy.AbsoluteUri,
         };
+        environment.Remove("NO_PROXY");
+        environment.Remove("no_proxy");
         var arguments = launch.Arguments;
         if (profile.Endpoint is ConnectionEndpoint.Ssh ssh
             && WorkspaceSshProxyCommand.TryCreate(proxy, ssh, out var proxyCommand))
@@ -137,6 +141,22 @@ internal sealed class WorkspaceNetworkConnectionRuntime(
                 plan.SecretRequirements,
                 plan.Warnings,
                 plan.IsSecretBrokerPrepared));
+    }
+
+    private static Uri WithCredentials(
+        Uri endpoint,
+        WorkspaceNetworkProxyCredentials? credentials)
+    {
+        if (credentials is null)
+        {
+            return endpoint;
+        }
+
+        return new UriBuilder(endpoint)
+        {
+            UserName = credentials.Username,
+            Password = credentials.Password,
+        }.Uri;
     }
 
     private static class WorkspaceSshProxyCommand

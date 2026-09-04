@@ -25,6 +25,7 @@ internal static class SshNetConnectionInfoFactory
         }
 
         var proxy = networkConnector.LocalProxyEndpoint;
+        var proxyCredentials = networkConnector.LocalProxyCredentials;
         return new ConnectionInfo(
             endpoint.Host,
             endpoint.Port,
@@ -32,8 +33,8 @@ internal static class SshNetConnectionInfoFactory
             ProxyTypes.Socks5,
             proxy.Host,
             proxy.Port,
-            proxyUsername: null,
-            proxyPassword: null,
+            proxyUsername: proxyCredentials?.Username,
+            proxyPassword: proxyCredentials?.Password,
             authentication);
     }
 }

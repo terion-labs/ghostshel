@@ -20,9 +20,7 @@ public sealed class WorkspaceIsolationSelectedRouteTests
         await client.ConnectAsync(IPAddress.Loopback, proxy.LocalPort, timeout.Token);
         var stream = client.GetStream();
 
-        await stream.WriteAsync(new byte[] { 5, 1, 0 }, timeout.Token);
-        var greeting = new byte[2];
-        await stream.ReadExactlyAsync(greeting, timeout.Token);
+        await AuthenticateAsync(stream, proxy.LocalProxyCredentials, timeout.Token);
         var host = Encoding.ASCII.GetBytes("example.com");
         byte[] request = [5, 1, 0, 3, checked((byte)host.Length), .. host, 0, 80];
         await stream.WriteAsync(request, timeout.Token);
@@ -52,9 +50,7 @@ public sealed class WorkspaceIsolationSelectedRouteTests
         await client.ConnectAsync(IPAddress.Loopback, proxy.LocalPort, timeout.Token);
         var stream = client.GetStream();
 
-        await stream.WriteAsync(new byte[] { 5, 1, 0 }, timeout.Token);
-        var greeting = new byte[2];
-        await stream.ReadExactlyAsync(greeting, timeout.Token);
+        await AuthenticateAsync(stream, proxy.LocalProxyCredentials, timeout.Token);
         var host = Encoding.ASCII.GetBytes("example.com");
         byte[] request = [5, 1, 0, 3, checked((byte)host.Length), .. host, 1, 187];
         await stream.WriteAsync(request, timeout.Token);
@@ -98,6 +94,31 @@ public sealed class WorkspaceIsolationSelectedRouteTests
         new ConnectionStartup(),
         ConnectionKeepAlive.Disabled,
         SshHostKeyPolicy.InsecureIgnore);
+
+    private static async Task AuthenticateAsync(
+        Stream stream,
+        WorkspaceNetworkProxyCredentials credentials,
+        CancellationToken cancellationToken)
+    {
+        await stream.WriteAsync(new byte[] { 5, 1, 2 }, cancellationToken);
+        var greeting = new byte[2];
+        await stream.ReadExactlyAsync(greeting, cancellationToken);
+        Assert.Equal(new byte[] { 5, 2 }, greeting);
+        var username = Encoding.UTF8.GetBytes(credentials.Username);
+        var password = Encoding.UTF8.GetBytes(credentials.Password);
+        byte[] authentication =
+        [
+            1,
+            checked((byte)username.Length),
+            .. username,
+            checked((byte)password.Length),
+            .. password,
+        ];
+        await stream.WriteAsync(authentication, cancellationToken);
+        var reply = new byte[2];
+        await stream.ReadExactlyAsync(reply, cancellationToken);
+        Assert.Equal(new byte[] { 1, 0 }, reply);
+    }
 
     private static async Task ServeThenResetSocksConnectionAsync(
         TcpListener listener,

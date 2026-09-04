@@ -28,6 +28,8 @@ public sealed class WorkspaceNetworkConnectionRuntimeTests
         Assert.Equal(proxy.ProxyEndpoint?.AbsoluteUri, plan.Launch.Environment["HTTPS_PROXY"]);
         Assert.Equal(proxy.ProxyEndpoint?.AbsoluteUri, plan.Launch.Environment["HTTP_PROXY"]);
         Assert.Equal("kept", plan.Launch.Environment["EXISTING"]);
+        Assert.False(plan.Launch.Environment.ContainsKey("NO_PROXY"));
+        Assert.False(plan.Launch.Environment.ContainsKey("no_proxy"));
     }
 
     [Fact]
@@ -53,7 +55,9 @@ public sealed class WorkspaceNetworkConnectionRuntimeTests
     public async Task Host_ssh_launch_uses_the_workspace_socks_helper()
     {
         var state = new WorkspaceNetworkEgressState();
-        state.SetLocalProxyEndpoint(new Uri("socks5://127.0.0.1:45124"));
+        state.SetLocalProxyEndpoint(
+            new Uri("socks5://127.0.0.1:45124"),
+            new WorkspaceNetworkProxyCredentials("workspace", "secret"));
         var runtime = new WorkspaceNetworkConnectionRuntime(
             new StubRuntime(),
             state,
@@ -71,7 +75,7 @@ public sealed class WorkspaceNetworkConnectionRuntimeTests
             plan.Launch.Arguments[1],
             StringComparison.Ordinal);
         Assert.Equal(
-            "socks5://127.0.0.1:45124/",
+            "socks5://workspace:secret@127.0.0.1:45124/",
             plan.Launch.Environment["ALL_PROXY"]);
     }
 
@@ -200,6 +204,8 @@ public sealed class WorkspaceNetworkConnectionRuntimeTests
                         environment: new Dictionary<string, string>(StringComparer.Ordinal)
                         {
                             ["EXISTING"] = "kept",
+                            ["NO_PROXY"] = "example.test",
+                            ["no_proxy"] = "localhost",
                         }),
                     ConnectionAuthenticationMode.None,
                     profile.HostKeyPolicy,

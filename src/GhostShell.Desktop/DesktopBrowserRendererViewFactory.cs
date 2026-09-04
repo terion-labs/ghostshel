@@ -88,12 +88,10 @@ internal sealed class DesktopBrowserRendererViewFactory(
         {
             return networkConnector is null
                 ? CreateView(profileStore.AcquireLocal(profile))
-                : await CreateThroughSocksProxyAsync(
-                        networkConnector.LocalProxyEndpoint.Port,
-                        networkConnector.LocalProxyEndpoint.AbsoluteUri,
-                        profile,
-                        cancellationToken)
-                    .ConfigureAwait(true);
+                : CreateView(profileStore.AcquireRouted(
+                    profile,
+                    networkConnector.LocalProxyEndpoint.AbsoluteUri,
+                    networkConnector));
         }
 
         if (connection.Endpoint is not ConnectionEndpoint.Ssh)
