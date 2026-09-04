@@ -6,9 +6,9 @@ using GhostShell.Core;
 namespace GhostShell.Infrastructure;
 
 /// <summary>
-/// Attaches one supported VPN client to a workspace isolate's own network namespace.
-/// Host placement is deliberately rejected until that VPN has a userspace transport;
-/// this provider never changes host routes or host network interfaces.
+/// Attaches one supported VPN client inside a workspace isolate or delegates host
+/// placement to an app-scoped userspace transport. Neither path changes host routes
+/// or host network interfaces.
 /// </summary>
 public sealed class IsolatedVpnConnectionProvider : INetworkConnectionProvider
 {
@@ -29,24 +29,35 @@ public sealed class IsolatedVpnConnectionProvider : INetworkConnectionProvider
         """;
 
     private readonly ISecretVault _secretVault;
-    private readonly IWorkspaceIsolationProvider _isolationProvider;
+    private readonly IWorkspaceIsolationProvider? _isolationProvider;
     private readonly IWorkspaceIsolationCommandRunner _commandRunner;
     private readonly TimeSpan _healthPollInterval;
+    private readonly IHostUserspaceVpnTransport? _hostTransport;
 
     public IsolatedVpnConnectionProvider(
         NetworkConnectionKind kind,
         ISecretVault secretVault,
-        IWorkspaceIsolationProvider isolationProvider)
-        : this(kind, secretVault, isolationProvider, new WorkspaceIsolationCommandRunner())
+        IWorkspaceIsolationProvider? isolationProvider)
+        : this(
+            kind,
+            secretVault,
+            isolationProvider,
+            new WorkspaceIsolationCommandRunner(),
+            healthPollInterval: null,
+            hostTransport: new HostUserspaceVpnTransport(
+                kind,
+                secretVault,
+                new PathConnectionExecutableLocator()))
     {
     }
 
     internal IsolatedVpnConnectionProvider(
         NetworkConnectionKind kind,
         ISecretVault secretVault,
-        IWorkspaceIsolationProvider isolationProvider,
+        IWorkspaceIsolationProvider? isolationProvider,
         IWorkspaceIsolationCommandRunner commandRunner,
-        TimeSpan? healthPollInterval = null)
+        TimeSpan? healthPollInterval = null,
+        IHostUserspaceVpnTransport? hostTransport = null)
     {
         if (kind is not (
                 NetworkConnectionKind.WireGuard
@@ -59,9 +70,9 @@ public sealed class IsolatedVpnConnectionProvider : INetworkConnectionProvider
 
         Kind = kind;
         _secretVault = secretVault ?? throw new ArgumentNullException(nameof(secretVault));
-        _isolationProvider = isolationProvider
-            ?? throw new ArgumentNullException(nameof(isolationProvider));
+        _isolationProvider = isolationProvider;
         _commandRunner = commandRunner ?? throw new ArgumentNullException(nameof(commandRunner));
+        _hostTransport = hostTransport;
         _healthPollInterval = healthPollInterval ?? DefaultHealthPollInterval;
         if (_healthPollInterval <= TimeSpan.Zero)
         {
@@ -91,16 +102,31 @@ public sealed class IsolatedVpnConnectionProvider : INetworkConnectionProvider
 
         if (request.Placement is WorkspaceNetworkPlacement.HostPlacement)
         {
-            return Fail(
-                NetworkConnectionErrorCode.RouteUnavailable,
-                $"{StablePrefix}_host_userspace_unavailable",
-                $"{DisplayName} is available only in an isolated workspace until its userspace host transport is implemented.",
-                retryable: false);
+            if (_hostTransport is null)
+            {
+                return Fail(
+                    NetworkConnectionErrorCode.RouteUnavailable,
+                    $"{StablePrefix}_host_userspace_unavailable",
+                    $"{DisplayName} does not have an app-scoped userspace transport in this build.",
+                    retryable: false);
+            }
+
+            return await _hostTransport.ConnectAsync(request, progress, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         if (request.Placement is not WorkspaceNetworkPlacement.IsolatedPlacement isolated)
         {
             throw new ArgumentOutOfRangeException(nameof(request), request.Placement, null);
+        }
+
+        if (_isolationProvider is null)
+        {
+            return Fail(
+                NetworkConnectionErrorCode.RuntimeMissing,
+                $"{StablePrefix}_isolation_runtime_unavailable",
+                $"{DisplayName} cannot start because the workspace isolation runtime is unavailable.",
+                retryable: false);
         }
 
         const WorkspaceIsolationCapability requiredCapabilities =
@@ -263,6 +289,39 @@ public sealed class IsolatedVpnConnectionProvider : INetworkConnectionProvider
 
             return NetworkConnectionResult<INetworkConnectionSession>.Fail(
                 MapAttachFailure(plan, attachResult));
+        }
+
+        progress?.Report(new NetworkConnectionProgress(
+            $"Verifying {preflight.DisplayName} workspace reachability…"));
+        var initialHealth = await RunLaunchAsync(
+                health,
+                ReadOnlyMemory<byte>.Empty,
+                HealthTimeout,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (initialHealth is NetworkConnectionResult<WorkspaceIsolationCommandResult>.Failure
+            initialHealthFailure)
+        {
+            if (!await TryCleanupAsync(cleanup).ConfigureAwait(false))
+            {
+                return CleanupFailed();
+            }
+
+            return NetworkConnectionResult<INetworkConnectionSession>.Fail(
+                initialHealthFailure.Error);
+        }
+
+        var initialHealthResult =
+            ((NetworkConnectionResult<WorkspaceIsolationCommandResult>.Success)initialHealth).Value;
+        if (initialHealthResult.ExitCode != 0)
+        {
+            if (!await TryCleanupAsync(cleanup).ConfigureAwait(false))
+            {
+                return CleanupFailed();
+            }
+
+            return NetworkConnectionResult<INetworkConnectionSession>.Fail(
+                MapHealthFailure(initialHealthResult.ExitCode));
         }
 
         progress?.Report(new NetworkConnectionProgress($"{preflight.DisplayName} is connected."));
@@ -575,6 +634,16 @@ public sealed class IsolatedVpnConnectionProvider : INetworkConnectionProvider
         string script,
         IReadOnlyList<string> arguments)
     {
+        if (_isolationProvider is null)
+        {
+            return NetworkConnectionResult<WorkspaceProcessLaunch>.Fail(
+                Error(
+                    NetworkConnectionErrorCode.RuntimeMissing,
+                    $"{StablePrefix}_isolation_runtime_unavailable",
+                    "The workspace isolation runtime is unavailable.",
+                    retryable: false));
+        }
+
         var result = _isolationProvider.CreateExecLaunch(
             binding,
             new WorkspaceIsolationProcessRequest(
@@ -643,6 +712,11 @@ public sealed class IsolatedVpnConnectionProvider : INetworkConnectionProvider
         IsolatedVpnPreflight preflight,
         int exitCode) => exitCode switch
         {
+            68 => Error(
+                NetworkConnectionErrorCode.RuntimeMissing,
+                $"{StablePrefix}_health_probe_runtime_missing",
+                "Workspace VPN health checks require curl in the workspace environment.",
+                retryable: false),
             69 => Error(
                 NetworkConnectionErrorCode.RuntimeMissing,
                 $"{StablePrefix}_runtime_missing",
@@ -659,6 +733,25 @@ public sealed class IsolatedVpnConnectionProvider : INetworkConnectionProvider
                 $"The workspace environment could not verify {preflight.DisplayName}.",
                 retryable: true),
         };
+
+    private NetworkConnectionError MapHealthFailure(int exitCode) => exitCode switch
+    {
+        64 => Error(
+            NetworkConnectionErrorCode.RouteUnavailable,
+            $"{StablePrefix}_full_route_unavailable",
+            $"{DisplayName} does not provide a full workspace route.",
+            retryable: true),
+        65 => Error(
+            NetworkConnectionErrorCode.RouteUnavailable,
+            $"{StablePrefix}_reachability_failed",
+            $"{DisplayName} is connected but cannot carry workspace traffic.",
+            retryable: true),
+        _ => Error(
+            NetworkConnectionErrorCode.ConnectionFailed,
+            $"{StablePrefix}_health_check_failed",
+            $"{DisplayName} stopped before workspace reachability could be verified.",
+            retryable: true),
+    };
 
     private NetworkConnectionError MapAttachFailure(
         IsolatedVpnConnectionPlan plan,
@@ -905,9 +998,12 @@ public sealed class IsolatedVpnConnectionProvider : INetworkConnectionProvider
                         continue;
                     }
 
-                    PublishHealthFailure(result.ExitCode == 64
-                        ? $"{_displayName} no longer provides a full workspace route."
-                        : $"{_displayName} stopped in the workspace environment.");
+                    PublishHealthFailure(result.ExitCode switch
+                    {
+                        64 => $"{_displayName} no longer provides a full workspace route.",
+                        65 => $"{_displayName} can no longer carry workspace traffic.",
+                        _ => $"{_displayName} stopped in the workspace environment.",
+                    });
                     return;
                 }
             }

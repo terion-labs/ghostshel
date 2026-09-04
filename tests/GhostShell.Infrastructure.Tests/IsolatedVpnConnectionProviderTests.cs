@@ -166,6 +166,34 @@ public sealed class IsolatedVpnConnectionProviderTests
     }
 
     [Fact]
+    public async Task Missing_health_probe_runtime_is_reported_before_secret_access()
+    {
+        using var vault = new InMemorySecretVault();
+        var isolation = new RecordingIsolationProvider();
+        var commands = new RecordingCommandRunner();
+        commands.Enqueue(new WorkspaceIsolationCommandResult(68, string.Empty, string.Empty));
+        var provider = new IsolatedVpnConnectionProvider(
+            NetworkConnectionKind.WireGuard,
+            vault,
+            isolation,
+            commands);
+
+        var result = await provider.ConnectAsync(
+            Request(
+                ConfigurationWithoutStoredSecret(NetworkConnectionKind.WireGuard),
+                WorkspaceNetworkPlacement.Isolated(isolation.Binding)),
+            progress: null,
+            CancellationToken.None);
+
+        var failure = Assert.IsType<NetworkConnectionResult<INetworkConnectionSession>.Failure>(
+            result);
+        Assert.Equal(NetworkConnectionErrorCode.RuntimeMissing, failure.Error.Code);
+        Assert.Equal("wireguard_health_probe_runtime_missing", failure.Error.StableCode);
+        Assert.Contains("curl", failure.Error.Message, StringComparison.Ordinal);
+        Assert.Single(commands.Launches);
+    }
+
+    [Fact]
     public async Task WireGuard_configuration_is_resolved_from_its_network_connection_scope()
     {
         using var vault = new InMemorySecretVault();
@@ -322,6 +350,52 @@ public sealed class IsolatedVpnConnectionProviderTests
             request => request.Arguments[1].Contains(
                 "has_non_tunnel_default 6",
                 StringComparison.Ordinal));
+        Assert.Contains(
+            isolation.Requests,
+            request => request.Arguments[1].Contains(
+                    "curl --interface \"$iface\"",
+                    StringComparison.Ordinal)
+                && request.Arguments[1].Contains(
+                    "--noproxy '*'",
+                    StringComparison.Ordinal)
+                && request.Arguments[1].Contains(
+                    "https://1.1.1.1/cdn-cgi/trace",
+                    StringComparison.Ordinal)
+                && request.Arguments[1].Contains(
+                    "https://1.0.0.1/cdn-cgi/trace",
+                    StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Unreachable_route_is_rejected_before_the_session_is_connected()
+    {
+        using var vault = new InMemorySecretVault();
+        var configuration = await ConfigurationAsync(NetworkConnectionKind.WireGuard, vault);
+        var isolation = new RecordingIsolationProvider();
+        var commands = new RecordingCommandRunner();
+        commands.EnqueueSuccess();
+        commands.EnqueueSuccess();
+        commands.EnqueueSuccess();
+        commands.EnqueueSuccess();
+        commands.Enqueue(new WorkspaceIsolationCommandResult(65, string.Empty, string.Empty));
+        commands.EnqueueSuccess();
+        var provider = new IsolatedVpnConnectionProvider(
+            NetworkConnectionKind.WireGuard,
+            vault,
+            isolation,
+            commands);
+
+        var result = await provider.ConnectAsync(
+            Request(configuration, WorkspaceNetworkPlacement.Isolated(isolation.Binding)),
+            progress: null,
+            CancellationToken.None);
+
+        var failure = Assert.IsType<NetworkConnectionResult<INetworkConnectionSession>.Failure>(
+            result);
+        Assert.Equal(NetworkConnectionErrorCode.RouteUnavailable, failure.Error.Code);
+        Assert.Equal("wireguard_reachability_failed", failure.Error.StableCode);
+        Assert.Contains("cannot carry", failure.Error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("wg-quick down", commands.Scripts.Last(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -335,7 +409,8 @@ public sealed class IsolatedVpnConnectionProviderTests
         commands.EnqueueSuccess();
         commands.EnqueueSuccess();
         commands.EnqueueSuccess();
-        commands.Enqueue(new WorkspaceIsolationCommandResult(70, string.Empty, string.Empty));
+        commands.EnqueueSuccess();
+        commands.Enqueue(new WorkspaceIsolationCommandResult(65, string.Empty, string.Empty));
         var provider = new IsolatedVpnConnectionProvider(
             NetworkConnectionKind.WireGuard,
             vault,
@@ -359,7 +434,7 @@ public sealed class IsolatedVpnConnectionProviderTests
         var snapshot = await failed.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
         Assert.Equal(NetworkConnectionState.Failed, snapshot.State);
-        Assert.Contains("stopped", snapshot.Status, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("carry", snapshot.Status, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -369,6 +444,7 @@ public sealed class IsolatedVpnConnectionProviderTests
         var configuration = await ConfigurationAsync(NetworkConnectionKind.OpenVpn, vault);
         var isolation = new RecordingIsolationProvider();
         var commands = new RecordingCommandRunner();
+        commands.EnqueueSuccess();
         commands.EnqueueSuccess();
         commands.EnqueueSuccess();
         commands.EnqueueSuccess();

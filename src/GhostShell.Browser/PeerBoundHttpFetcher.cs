@@ -19,14 +19,9 @@ internal sealed class PeerBoundHttpFetcher
     private readonly Func<IPAddress, int, CancellationToken, ValueTask<Stream>>
         _connect;
 
-    public PeerBoundHttpFetcher()
-        : this(ResolveSystemAsync, ConnectSocketAsync)
-    {
-    }
-
     internal PeerBoundHttpFetcher(IWorkspaceNetworkConnector connector)
         : this(
-            ResolveSystemAsync,
+            new WorkspaceRoutedDnsResolver(connector).ResolveAsync,
             (address, port, cancellationToken) => connector.ConnectTcpAsync(
                 address.ToString(),
                 port,
@@ -164,7 +159,10 @@ internal sealed class PeerBoundHttpFetcher
                 addresses = await _resolveHost(host, cancellationToken)
                     .ConfigureAwait(false);
             }
-            catch (Exception exception) when (exception is SocketException or ArgumentException)
+            catch (Exception exception) when (exception is
+                ArgumentException
+                or IOException
+                or SocketException)
             {
                 throw new DnsFailureException(exception);
             }
@@ -314,32 +312,6 @@ internal sealed class PeerBoundHttpFetcher
         }
 
         throw new HttpRequestException("The response character set is unsupported.");
-    }
-
-    private static async ValueTask<IPAddress[]> ResolveSystemAsync(
-        string host,
-        CancellationToken cancellationToken) =>
-        await Dns.GetHostAddressesAsync(host, cancellationToken).ConfigureAwait(false);
-
-    private static async ValueTask<Stream> ConnectSocketAsync(
-        IPAddress address,
-        int port,
-        CancellationToken cancellationToken)
-    {
-        var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp)
-        {
-            NoDelay = true,
-        };
-        try
-        {
-            await socket.ConnectAsync(address, port, cancellationToken).ConfigureAwait(false);
-            return new NetworkStream(socket, ownsSocket: true);
-        }
-        catch
-        {
-            socket.Dispose();
-            throw;
-        }
     }
 
     private static AgentWebToolExecutionResult Failed(AgentWebToolErrorCode code) =>

@@ -150,11 +150,12 @@ public static class DesktopComposition
         {
             services.AddSingleton<IWorkspaceIsolationEgressGuard,
                 WorkspaceIsolationEgressGuard>();
-            AddIsolatedVpnProvider(services, NetworkConnectionKind.WireGuard);
-            AddIsolatedVpnProvider(services, NetworkConnectionKind.OpenVpn);
-            AddIsolatedVpnProvider(services, NetworkConnectionKind.AnyConnect);
-            AddIsolatedVpnProvider(services, NetworkConnectionKind.Tailscale);
         }
+
+        AddVpnProvider(services, NetworkConnectionKind.WireGuard);
+        AddVpnProvider(services, NetworkConnectionKind.OpenVpn);
+        AddVpnProvider(services, NetworkConnectionKind.AnyConnect);
+        AddVpnProvider(services, NetworkConnectionKind.Tailscale);
 
         services.AddSingleton<IWorkspaceNetworkRuntime>(provider =>
             new WorkspaceNetworkRuntime(
@@ -386,7 +387,7 @@ public static class DesktopComposition
         });
     }
 
-    private static void AddIsolatedVpnProvider(
+    private static void AddVpnProvider(
         IServiceCollection services,
         NetworkConnectionKind kind)
     {
@@ -394,7 +395,7 @@ public static class DesktopComposition
             new IsolatedVpnConnectionProvider(
                 kind,
                 provider.GetRequiredService<ISecretVault>(),
-                provider.GetRequiredService<IWorkspaceIsolationProvider>()));
+                provider.GetService<IWorkspaceIsolationProvider>()));
     }
 
     private static HostOperatingSystem CurrentOperatingSystem() =>

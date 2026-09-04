@@ -65,11 +65,17 @@ internal static class IsolatedVpnConnectionPlans
         + "! as_root kill -0 \"$process\" >/dev/null 2>&1; }; "
         + "remove_interface() { iface=$1; if in_vpn ip link show dev \"$iface\" >/dev/null 2>&1; "
         + "then in_vpn ip link delete \"$iface\" >/dev/null 2>&1 || return 1; fi; "
-        + "! in_vpn ip link show dev \"$iface\" >/dev/null 2>&1; }; ";
+        + "! in_vpn ip link show dev \"$iface\" >/dev/null 2>&1; }; "
+        + "probe_routed_reachability() { iface=$1; "
+        + "for url in https://1.1.1.1/cdn-cgi/trace https://1.0.0.1/cdn-cgi/trace; do "
+        + "in_vpn curl --interface \"$iface\" --noproxy '*' --proto '=https' --fail --silent "
+        + "--show-error --connect-timeout 3 --max-time 6 --output /dev/null \"$url\" "
+        + "&& return 0; done; return 65; }; ";
 
     private const string PrivilegePreflight =
         "if [ \"$(id -u)\" -ne 0 ]; then command -v sudo >/dev/null 2>&1 || exit 77; "
-        + "sudo -n true >/dev/null 2>&1 || exit 77; fi; ";
+        + "sudo -n true >/dev/null 2>&1 || exit 77; fi; "
+        + "command -v curl >/dev/null 2>&1 || exit 68; ";
 
     private const string WireGuardPreflight =
         PrivilegePreflight
@@ -107,6 +113,7 @@ internal static class IsolatedVpnConnectionPlans
         iface=$1
         in_vpn wg show "$iface" >/dev/null 2>&1 || exit 70
         require_full_route "$iface"
+        probe_routed_reachability "$iface"
         """;
 
     private const string WireGuardCleanup = RootFunction + """
@@ -162,6 +169,7 @@ internal static class IsolatedVpnConnectionPlans
         process_is_expected "$dir/openvpn.pid" openvpn || exit 70
         in_vpn ip link show dev "$iface" >/dev/null 2>&1 || exit 70
         require_full_route "$iface"
+        probe_routed_reachability "$iface"
         """;
 
     private const string OpenVpnCleanup = RootFunction + """
@@ -197,6 +205,7 @@ internal static class IsolatedVpnConnectionPlans
         process_is_expected "$dir/openconnect.pid" openconnect || exit 70
         in_vpn ip link show dev "$iface" >/dev/null 2>&1 || exit 70
         require_full_route "$iface"
+        probe_routed_reachability "$iface"
         """;
 
     private const string AnyConnectCleanup = RootFunction + """
@@ -294,6 +303,7 @@ internal static class IsolatedVpnConnectionPlans
             | grep -Eq '"BackendState"[[:space:]]*:[[:space:]]*"Running"' || exit 70
         in_vpn ip link show dev "$iface" >/dev/null 2>&1 || exit 70
         require_full_route "$iface"
+        probe_routed_reachability "$iface"
         """;
 
     private const string TailscaleCleanup = RootFunction + """
