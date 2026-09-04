@@ -136,6 +136,18 @@ public sealed class WorkspaceSettingsViewModel : ObservableObject, IDisposable
 
     public void Dismiss() => Editor = null;
 
+    public void ApplyCatalog(DefinitionCatalogSnapshot snapshot)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(snapshot);
+        Editor?.ApplyNetworkCatalog(
+            [.. snapshot.NetworkConnections.Select(item => item.Value)],
+            snapshot.ApplicationNetworkSettings
+                .SingleOrDefault(item =>
+                    item.Value.Id == ApplicationNetworkSettings.DefaultId)?.Value
+                ?? ApplicationNetworkSettings.Default);
+    }
+
     public async ValueTask<DefinitionStoreResult<StoredDefinition<WorkspaceDefinition>>>
         SaveAsync(CancellationToken cancellationToken)
     {

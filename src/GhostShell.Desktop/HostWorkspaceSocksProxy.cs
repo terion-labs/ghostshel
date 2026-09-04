@@ -209,6 +209,13 @@ internal sealed class HostWorkspaceSocksProxy :
                 }
 
                 successReplyStarted = true;
+                if (request.Value.Protocol == WorkspaceLoopbackProxyProtocol.Protocol.HttpForward)
+                {
+                    upstreamClient.Client.Shutdown(SocketShutdown.Send);
+                    await upstream.CopyToAsync(downstream, cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+
                 await PumpAsync(downstream, upstream, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is IOException or SocketException)

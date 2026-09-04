@@ -128,7 +128,7 @@ public sealed class NetworkSettingsViewModelTests
         var vault = Vault();
         using var viewModel = new NetworkSettingsViewModel(fixture.Catalog, vault.Vault);
         var item = Assert.Single(viewModel.Profiles);
-        viewModel.BeginEditProfile(item);
+        await viewModel.BeginEditProfileAsync(item, CancellationToken.None);
         viewModel.ProfileEditor!.Name = "Office proxy updated";
 
         Assert.True(await viewModel.SaveProfileAsync(CancellationToken.None));
@@ -148,6 +148,43 @@ public sealed class NetworkSettingsViewModelTests
     }
 
     [Fact]
+    public async Task Application_policy_derives_available_connections_from_the_global_catalog()
+    {
+        var secondId = new NetworkConnectionId("second-proxy");
+        var first = Profile(new NetworkConnectionConfiguration.Proxy(
+            NetworkProxyProtocol.Socks5,
+            "proxy.example.test",
+            1080));
+        var second = Profile(
+            new NetworkConnectionConfiguration.Proxy(
+                NetworkProxyProtocol.Http,
+                "second.example.test",
+                8080),
+            secondId,
+            "Second proxy");
+        var storedSettings = Store(new ApplicationNetworkSettings(
+            ApplicationNetworkSettings.DefaultId,
+            ApplicationNetworkSettings.CurrentSchemaVersion,
+            "Application networking",
+            new NetworkPolicy([first.Id], first.Id, false, true)), 4);
+        var fixture = Catalog(DefinitionCatalogSnapshot.Empty with
+        {
+            NetworkConnections = [Store(first, 2), Store(second, 3)],
+            ApplicationNetworkSettings = [storedSettings],
+        });
+        var vault = Vault();
+        using var viewModel = new NetworkSettingsViewModel(fixture.Catalog, vault.Vault);
+
+        Assert.Equal(2, viewModel.Policy.AvailableConnections.Count);
+        Assert.All(viewModel.Policy.Connections, option => Assert.True(option.IsAvailable));
+
+        Assert.True(await viewModel.SavePolicyAsync(CancellationToken.None));
+        Assert.Equal(
+            [first.Id, second.Id],
+            fixture.Proxy.LastSettings?.Policy.Connections);
+    }
+
+    [Fact]
     public async Task Storing_a_network_credential_keeps_only_its_reference_in_the_profile()
     {
         var fixture = Catalog(DefinitionCatalogSnapshot.Empty);
@@ -163,6 +200,14 @@ public sealed class NetworkSettingsViewModelTests
 
         Assert.True(await viewModel.StoreCredentialAsync(CancellationToken.None));
         Assert.Empty(vault.Proxy.CreateRequests);
+        var pending = Assert.IsType<NetworkCredentialOption>(
+            editor.SelectedConfigurationCredential);
+        Assert.Equal(NetworkCredentialOptionState.Pending, pending.State);
+        Assert.Equal("Office WireGuard · Ready to store", pending.DisplayName);
+        Assert.Contains(
+            "Stored when the connection is saved",
+            pending.Detail,
+            StringComparison.Ordinal);
         Assert.True(await viewModel.SaveProfileAsync(CancellationToken.None));
 
         var request = Assert.Single(vault.Proxy.CreateRequests);
@@ -195,7 +240,9 @@ public sealed class NetworkSettingsViewModelTests
         });
         var vault = Vault();
         using var viewModel = new NetworkSettingsViewModel(fixture.Catalog, vault.Vault);
-        viewModel.BeginEditProfile(Assert.Single(viewModel.Profiles));
+        await viewModel.BeginEditProfileAsync(
+            Assert.Single(viewModel.Profiles),
+            CancellationToken.None);
         var editor = Assert.IsType<NetworkConnectionProfileEditorViewModel>(
             viewModel.ProfileEditor);
         editor.Credential.Label = "Replacement proxy password";
@@ -247,18 +294,205 @@ public sealed class NetworkSettingsViewModelTests
     }
 
     [Fact]
-    public void Imported_detached_credentials_are_presented_as_configured_not_stored()
+    public void A_bound_credential_without_metadata_is_presented_as_unavailable()
     {
         var editor = new NetworkConnectionProfileEditorViewModel(
             Profile(new NetworkConnectionConfiguration.WireGuard(
                 new SecretRef("detached-import-reference"))),
             expectedRevision: 3);
 
-        Assert.Equal("Configured", editor.ConfigurationCredentialState);
+        var selected = Assert.IsType<NetworkCredentialOption>(
+            editor.SelectedConfigurationCredential);
+        Assert.Equal(
+            NetworkCredentialOptionState.MetadataUnavailable,
+            selected.State);
+        Assert.Equal("Credential metadata unavailable", selected.DisplayName);
         Assert.DoesNotContain(
-            "Stored",
-            editor.ConfigurationCredentialState,
+            "detached-import-reference",
+            selected.DisplayName,
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Editing_a_profile_lists_same_scope_credentials_and_selects_the_bound_label()
+    {
+        var bound = new SecretRef("wireguard-office");
+        var spare = new SecretRef("wireguard-backup");
+        var storedProfile = Store(Profile(
+            new NetworkConnectionConfiguration.WireGuard(bound)), 7);
+        var fixture = Catalog(DefinitionCatalogSnapshot.Empty with
+        {
+            NetworkConnections = [storedProfile],
+        });
+        var vault = Vault();
+        vault.Proxy.Metadata.AddRange(
+        [
+            Metadata(bound, "Office WireGuard", SecretKind.Other, ProxyId),
+            Metadata(spare, "Backup WireGuard", SecretKind.Other, ProxyId),
+            Metadata(
+                new SecretRef("other-profile-config"),
+                "Other connection",
+                SecretKind.Other,
+                new NetworkConnectionId("other-profile")),
+            Metadata(
+                new SecretRef("same-profile-password"),
+                "Proxy password",
+                SecretKind.Password,
+                ProxyId),
+        ]);
+        using var viewModel = new NetworkSettingsViewModel(fixture.Catalog, vault.Vault);
+
+        await viewModel.BeginEditProfileAsync(
+            Assert.Single(viewModel.Profiles),
+            CancellationToken.None);
+
+        var request = Assert.Single(vault.Proxy.ListRequests);
+        Assert.Equal(SecretScopeKind.NetworkConnection, request.Scope?.Kind);
+        Assert.Equal(ProxyId.Value, request.Scope?.OwnerId);
+        Assert.Equal(SecretUseKind.UserManagement, request.Purpose.Kind);
+        Assert.Equal(ProxyId.Value, request.Purpose.TargetId);
+        var editor = Assert.IsType<NetworkConnectionProfileEditorViewModel>(
+            viewModel.ProfileEditor);
+        Assert.Equal(2, editor.ConfigurationCredentialOptions.Count);
+        Assert.Contains(editor.ConfigurationCredentialOptions, option =>
+            option.Reference == spare && option.DisplayName == "Backup WireGuard · Configuration");
+        Assert.DoesNotContain(editor.ConfigurationCredentialOptions, option =>
+            option.Label is "Other connection" or "Proxy password");
+        var selected = Assert.IsType<NetworkCredentialOption>(
+            editor.SelectedConfigurationCredential);
+        Assert.Equal(bound, selected.Reference);
+        Assert.Equal("Office WireGuard · Configuration", selected.DisplayName);
+        Assert.Contains("OS vault", selected.Detail, StringComparison.Ordinal);
+        Assert.Contains("Updated", selected.Detail, StringComparison.Ordinal);
+
+        editor.SelectedConfigurationCredential = editor.ConfigurationCredentialOptions
+            .Single(option => option.Reference == spare);
+        var saved = Assert.IsType<NetworkConnectionConfiguration.WireGuard>(
+            editor.CreateSaveRequest().Profile.Configuration);
+        Assert.Equal(spare, saved.ConfigurationSecret);
+    }
+
+    [Fact]
+    public async Task Missing_bound_metadata_is_explicit_after_the_vault_list_completes()
+    {
+        var storedProfile = Store(Profile(
+            new NetworkConnectionConfiguration.WireGuard(
+                new SecretRef("missing-wireguard"))), 7);
+        var fixture = Catalog(DefinitionCatalogSnapshot.Empty with
+        {
+            NetworkConnections = [storedProfile],
+        });
+        var vault = Vault();
+        using var viewModel = new NetworkSettingsViewModel(fixture.Catalog, vault.Vault);
+
+        await viewModel.BeginEditProfileAsync(
+            Assert.Single(viewModel.Profiles),
+            CancellationToken.None);
+
+        var selected = Assert.IsType<NetworkCredentialOption>(
+            viewModel.ProfileEditor?.SelectedConfigurationCredential);
+        Assert.Equal(NetworkCredentialOptionState.Unavailable, selected.State);
+        Assert.Equal("Credential unavailable", selected.DisplayName);
+        Assert.Contains("not found", selected.Detail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Testing_a_draft_uses_a_temporary_host_route_and_cleans_pending_credentials()
+    {
+        var fixture = Catalog(DefinitionCatalogSnapshot.Empty);
+        var vault = Vault();
+        var runtime = new RecordingNetworkRuntime(new WorkspaceNetworkSnapshot(
+            WorkspaceNetworkState.Connected,
+            WorkspaceNetworkEgress.ViaProxy(new Uri("socks5://127.0.0.1:49152")),
+            ProxyId));
+        using var viewModel = new NetworkSettingsViewModel(
+            fixture.Catalog,
+            vault.Vault,
+            runtime);
+        viewModel.BeginCreateProfile();
+        var editor = Assert.IsType<NetworkConnectionProfileEditorViewModel>(
+            viewModel.ProfileEditor);
+        editor.SelectedKind = editor.KindOptions.Single(option =>
+            option.Kind == NetworkConnectionKind.WireGuard);
+        editor.Credential.Label = "Office WireGuard";
+        editor.Credential.Value = "private configuration";
+        Assert.True(await viewModel.StoreCredentialAsync(CancellationToken.None));
+
+        Assert.True(await viewModel.TestProfileAsync(CancellationToken.None));
+
+        var request = Assert.Single(runtime.Requests);
+        Assert.IsType<WorkspaceNetworkPlacement.HostPlacement>(request.Placement);
+        Assert.True(request.InitialPolicy.Policy.IsEnabled);
+        Assert.False(request.InitialPolicy.Policy.KillSwitchEnabled);
+        Assert.Equal(editor.Id, request.InitialPolicy.Policy.SelectedConnectionId);
+        var tested = Assert.Single(request.InitialPolicy.Connections);
+        var configuration = Assert.IsType<NetworkConnectionConfiguration.WireGuard>(
+            tested.Configuration);
+        Assert.Equal(
+            Assert.Single(vault.Proxy.CreateRequests).Reference,
+            configuration.ConfigurationSecret);
+        Assert.Equal(
+            configuration.ConfigurationSecret,
+            Assert.Single(vault.Proxy.DeleteRequests).Reference);
+        Assert.True(runtime.LastSession?.IsDisposed);
+        Assert.Null(fixture.Proxy.LastProfile);
+        Assert.Equal("Connection succeeded", viewModel.ProfileTestStatus);
+        Assert.False(viewModel.ProfileTestHasError);
+
+        Assert.True(await viewModel.SaveProfileAsync(CancellationToken.None));
+        Assert.Equal(2, vault.Proxy.CreateRequests.Count);
+    }
+
+    [Fact]
+    public async Task Testing_an_invalid_draft_does_not_open_the_runtime()
+    {
+        var fixture = Catalog(DefinitionCatalogSnapshot.Empty);
+        var vault = Vault();
+        var runtime = new RecordingNetworkRuntime(WorkspaceNetworkSnapshot.Direct);
+        using var viewModel = new NetworkSettingsViewModel(
+            fixture.Catalog,
+            vault.Vault,
+            runtime);
+        viewModel.BeginCreateProfile();
+
+        Assert.False(await viewModel.TestProfileAsync(CancellationToken.None));
+
+        Assert.Empty(runtime.Requests);
+        Assert.Equal("Validation failed", viewModel.ProfileTestStatus);
+        Assert.True(viewModel.ProfileTestHasError);
+    }
+
+    [Fact]
+    public async Task Testing_reports_the_runtime_failure_and_disposes_the_route()
+    {
+        var fixture = Catalog(DefinitionCatalogSnapshot.Empty);
+        var vault = Vault();
+        var runtime = new RecordingNetworkRuntime(new WorkspaceNetworkSnapshot(
+            WorkspaceNetworkState.Failed,
+            WorkspaceNetworkEgress.Direct,
+            ProxyId,
+            new NetworkConnectionError(
+                NetworkConnectionErrorCode.ConnectionFailed,
+                "test_route_failed",
+                "The gateway rejected the connection.",
+                retryable: true)));
+        using var viewModel = new NetworkSettingsViewModel(
+            fixture.Catalog,
+            vault.Vault,
+            runtime);
+        viewModel.BeginCreateProfile();
+        var editor = Assert.IsType<NetworkConnectionProfileEditorViewModel>(
+            viewModel.ProfileEditor);
+        editor.Name = "Office HTTP proxy";
+        editor.Host = "proxy.example.test";
+        editor.Port = "8080";
+
+        Assert.False(await viewModel.TestProfileAsync(CancellationToken.None));
+
+        Assert.Equal("Test failed", viewModel.ProfileTestStatus);
+        Assert.Equal("The gateway rejected the connection.", viewModel.ProfileTestDetail);
+        Assert.True(viewModel.ProfileTestHasError);
+        Assert.True(runtime.LastSession?.IsDisposed);
     }
 
     [Fact]
@@ -268,6 +502,13 @@ public sealed class NetworkSettingsViewModelTests
             NetworkProxyProtocol.Socks5,
             "proxy.example.test",
             1080));
+        var second = Profile(
+            new NetworkConnectionConfiguration.Proxy(
+                NetworkProxyProtocol.Http,
+                "second.example.test",
+                8080),
+            new NetworkConnectionId("second-proxy"),
+            "Second proxy");
         var appSettings = new ApplicationNetworkSettings(
             ApplicationNetworkSettings.DefaultId,
             ApplicationNetworkSettings.CurrentSchemaVersion,
@@ -280,7 +521,7 @@ public sealed class NetworkSettingsViewModelTests
             [],
             [],
             fileProviders: [],
-            networkConnections: [profile],
+            networkConnections: [profile, second],
             applicationNetworkSettings: appSettings);
 
         Assert.False(editor.OverridesNetworkSettings);
@@ -289,10 +530,83 @@ public sealed class NetworkSettingsViewModelTests
         editor.OverridesNetworkSettings = true;
         var saved = Assert.IsType<NetworkPolicy>(
             editor.CreateSaveRequest().Definition.NetworkOverride);
-        Assert.Equal(appSettings.Policy.Connections, saved.Connections);
+        Assert.Equal([profile.Id, second.Id], saved.Connections);
         Assert.Equal(profile.Id, saved.SelectedConnectionId);
         Assert.True(saved.IsEnabled);
         Assert.True(saved.KillSwitchEnabled);
+    }
+
+    [Fact]
+    public void Workspace_editor_preserves_an_explicit_connection_subset()
+    {
+        var first = Profile(new NetworkConnectionConfiguration.Proxy(
+            NetworkProxyProtocol.Socks5,
+            "proxy.example.test",
+            1080));
+        var second = Profile(
+            new NetworkConnectionConfiguration.Proxy(
+                NetworkProxyProtocol.Http,
+                "second.example.test",
+                8080),
+            new NetworkConnectionId("second-proxy"),
+            "Second proxy");
+        var workspacePolicy = new NetworkPolicy([second.Id], second.Id, true, true);
+        using var editor = new WorkspaceEditorViewModel(
+            Workspace(workspacePolicy),
+            4,
+            [],
+            [],
+            [],
+            fileProviders: [],
+            networkConnections: [first, second],
+            applicationNetworkSettings: ApplicationNetworkSettings.Default);
+
+        var saved = Assert.IsType<NetworkPolicy>(
+            editor.CreateSaveRequest().Definition.NetworkOverride);
+        Assert.Equal([second.Id], saved.Connections);
+        Assert.Equal(second.Id, saved.SelectedConnectionId);
+    }
+
+    [Fact]
+    public void Open_workspace_override_editor_refreshes_when_a_global_profile_is_added()
+    {
+        var first = Profile(new NetworkConnectionConfiguration.Proxy(
+            NetworkProxyProtocol.Socks5,
+            "proxy.example.test",
+            1080));
+        var second = Profile(
+            new NetworkConnectionConfiguration.Proxy(
+                NetworkProxyProtocol.Http,
+                "second.example.test",
+                8080),
+            new NetworkConnectionId("second-proxy"),
+            "Second proxy");
+        var workspace = Workspace(new NetworkPolicy(
+            [first.Id],
+            first.Id,
+            isEnabled: true,
+            killSwitchEnabled: true));
+        var fixture = Catalog(DefinitionCatalogSnapshot.Empty with
+        {
+            NetworkConnections = [Store(first, 1)],
+            Workspaces = [Store(workspace, 2)],
+        });
+        using var settings = new WorkspaceSettingsViewModel(fixture.Catalog);
+        Assert.True(settings.TryBeginEdit(workspace.Id, out _, out _));
+
+        var updated = fixture.Proxy.CurrentSnapshot with
+        {
+            NetworkConnections = [Store(first, 1), Store(second, 1)],
+        };
+        fixture.Proxy.CurrentSnapshot = updated;
+        settings.ApplyCatalog(updated);
+
+        Assert.Equal(2, settings.Editor!.NetworkPolicy.Connections.Count);
+        Assert.True(settings.Editor.NetworkPolicy.Connections
+            .Single(option => option.Id == first.Id).IsAvailable);
+        Assert.False(settings.Editor.NetworkPolicy.Connections
+            .Single(option => option.Id == second.Id).IsAvailable);
+        Assert.Equal(first.Id, settings.Editor.NetworkPolicy.SelectedConnection?.Id);
     }
 
     [Fact]
@@ -333,10 +647,12 @@ public sealed class NetworkSettingsViewModelTests
     }
 
     private static NetworkConnectionProfile Profile(
-        NetworkConnectionConfiguration configuration) => new(
-        ProxyId,
+        NetworkConnectionConfiguration configuration,
+        NetworkConnectionId? id = null,
+        string name = "Office proxy") => new(
+        id ?? ProxyId,
         NetworkConnectionProfile.CurrentSchemaVersion,
-        "Office proxy",
+        name,
         configuration);
 
     private static WorkspaceDefinition Workspace(NetworkPolicy? networkOverride) => new(
@@ -351,6 +667,19 @@ public sealed class NetworkSettingsViewModelTests
     private static StoredDefinition<T> Store<T>(T value, long revision)
         where T : IDurableDefinition =>
         new(value, revision, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
+
+    private static SecretMetadata Metadata(
+        SecretRef reference,
+        string label,
+        SecretKind kind,
+        NetworkConnectionId ownerId) => new(
+        reference,
+        label,
+        kind,
+        new SecretScope(SecretScopeKind.NetworkConnection, ownerId.Value),
+        SecretVaultPersistenceKind.OsProtectedPersistent,
+        DateTimeOffset.UnixEpoch,
+        new DateTimeOffset(2026, 9, 4, 10, 30, 0, TimeSpan.Zero));
 
     private static CatalogFixture Catalog(DefinitionCatalogSnapshot snapshot)
     {
@@ -374,11 +703,61 @@ public sealed class NetworkSettingsViewModelTests
         ISecretVault Vault,
         RecordingVaultProxy Proxy);
 
+    private sealed class RecordingNetworkRuntime(
+        WorkspaceNetworkSnapshot snapshot) : IWorkspaceNetworkRuntime
+    {
+        public List<WorkspaceNetworkOpenRequest> Requests { get; } = [];
+
+        public RecordingNetworkSession? LastSession { get; private set; }
+
+        public ValueTask<IWorkspaceNetworkSession> OpenAsync(
+            WorkspaceNetworkOpenRequest request,
+            IProgress<NetworkConnectionProgress>? progress,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Requests.Add(request);
+            progress?.Report(new NetworkConnectionProgress("Checking the route…"));
+            LastSession = new RecordingNetworkSession(snapshot);
+            return ValueTask.FromResult<IWorkspaceNetworkSession>(LastSession);
+        }
+    }
+
+    private sealed class RecordingNetworkSession(
+        WorkspaceNetworkSnapshot snapshot) : IWorkspaceNetworkSession
+    {
+        public WorkspaceNetworkSnapshot Snapshot { get; } = snapshot;
+
+        public bool IsDisposed { get; private set; }
+
+        public event EventHandler<WorkspaceNetworkSnapshot>? Changed
+        {
+            add { }
+            remove { }
+        }
+
+        public ValueTask<NetworkConnectionResult<WorkspaceNetworkSnapshot>> ApplyAsync(
+            WorkspaceNetworkPolicyUpdate update,
+            IProgress<NetworkConnectionProgress>? progress,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public ValueTask DisposeAsync()
+        {
+            IsDisposed = true;
+            return ValueTask.CompletedTask;
+        }
+    }
+
     public class RecordingVaultProxy : DispatchProxy
     {
         public List<CreateSecretRequest> CreateRequests { get; } = [];
 
         public List<DeleteSecretRequest> DeleteRequests { get; } = [];
+
+        public List<ListSecretMetadataRequest> ListRequests { get; } = [];
+
+        public List<SecretMetadata> Metadata { get; } = [];
 
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
         {
@@ -413,6 +792,19 @@ public sealed class NetworkSettingsViewModelTests
             {
                 DeleteRequests.Add(deleteRequest);
                 return ValueTask.FromResult(SecretVaultResult<Unit>.Succeed(Unit.Value));
+            }
+
+            if (targetMethod?.Name == nameof(ISecretVault.ListMetadataAsync)
+                && args is
+                [
+                    ListSecretMetadataRequest listRequest,
+                    CancellationToken,
+                ])
+            {
+                ListRequests.Add(listRequest);
+                return ValueTask.FromResult(
+                    SecretVaultResult<IReadOnlyList<SecretMetadata>>.Succeed(
+                        [.. Metadata]));
             }
 
             return targetMethod?.Name switch

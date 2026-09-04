@@ -348,7 +348,7 @@ public sealed class HostUserspaceVpnTransportTests
                 await stream.WriteAsync(new byte[] { 5, 1, 0, 1, 0, 0, 0, 0, 0, 0 });
             }
         });
-        var probe = new HostVpnReachabilityProbe();
+        var probe = new SocksReachabilityProbe();
 
         var reachable = await probe.ProbeAsync(
             ((IPEndPoint)listener.LocalEndpoint).Port,
@@ -381,7 +381,7 @@ public sealed class HostUserspaceVpnTransportTests
         ISecretVault vault,
         IHostVpnProcessRunner processes,
         string stateRoot,
-        IHostVpnReachabilityProbe reachabilityProbe,
+        ISocksReachabilityProbe reachabilityProbe,
         TimeSpan? healthPollInterval,
         params (string Name, string Path)[] executables) =>
         new(
@@ -499,7 +499,7 @@ public sealed class HostUserspaceVpnTransportTests
     }
 
     private sealed class RecordingReachabilityProbe(bool defaultResult) :
-        IHostVpnReachabilityProbe
+        ISocksReachabilityProbe
     {
         public Queue<bool> Results { get; } = [];
 

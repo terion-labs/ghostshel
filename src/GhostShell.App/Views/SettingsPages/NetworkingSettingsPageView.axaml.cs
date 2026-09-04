@@ -20,13 +20,13 @@ public sealed partial class NetworkingSettingsPageView : UserControl
         ViewModel?.BeginCreateProfile();
     }
 
-    private void OnEditProfileClick(object? sender, RoutedEventArgs e)
+    private async void OnEditProfileClick(object? sender, RoutedEventArgs e)
     {
         _ = e;
         if (ViewModel is { } viewModel
             && sender is Control { DataContext: NetworkConnectionProfileItemViewModel item })
         {
-            viewModel.BeginEditProfile(item);
+            await viewModel.BeginEditProfileAsync(item, CancellationToken.None);
         }
     }
 
@@ -57,6 +57,16 @@ public sealed partial class NetworkingSettingsPageView : UserControl
         if (ViewModel is { } viewModel)
         {
             await viewModel.StoreCredentialAsync(CancellationToken.None);
+        }
+    }
+
+    private async void OnTestProfileClick(object? sender, RoutedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        if (ViewModel is { } viewModel)
+        {
+            await viewModel.TestProfileAsync(CancellationToken.None);
         }
     }
 

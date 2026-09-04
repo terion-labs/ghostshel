@@ -166,6 +166,7 @@ public sealed class HostWorkspaceSocksProxyTests
             $"GET http://127.0.0.1:{destinationPort}/status?full=1 HTTP/1.1\r\n"
             + $"Host: 127.0.0.1:{destinationPort}\r\n"
             + "Connection: keep-alive\r\n"
+            + "Proxy-Connection: keep-alive\r\n"
             + $"Proxy-Authorization: Basic {token}\r\n\r\n"));
         using var reader = new StreamReader(client.GetStream(), Encoding.ASCII);
 
@@ -176,6 +177,7 @@ public sealed class HostWorkspaceSocksProxyTests
             forwarded,
             StringComparison.Ordinal);
         Assert.DoesNotContain("Proxy-Authorization", forwarded, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Proxy-Connection", forwarded, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("keep-alive", forwarded, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Connection: close\r\n", forwarded, StringComparison.OrdinalIgnoreCase);
     }

@@ -7,21 +7,28 @@ namespace GhostShell.Infrastructure;
 public sealed class ProxyNetworkConnectionProvider : INetworkConnectionProvider
 {
     private readonly IWorkspaceTcpConnector _connector;
+    private readonly ISocksReachabilityProbe _reachabilityProbe;
     private readonly ISecretVault _secretVault;
 
     public ProxyNetworkConnectionProvider(
         ISecretVault secretVault,
         IWorkspaceIsolationProvider? isolationProvider = null)
-        : this(secretVault, new WorkspaceTcpConnector(isolationProvider))
+        : this(
+            secretVault,
+            new WorkspaceTcpConnector(isolationProvider),
+            new SocksReachabilityProbe())
     {
     }
 
     internal ProxyNetworkConnectionProvider(
         ISecretVault secretVault,
-        IWorkspaceTcpConnector connector)
+        IWorkspaceTcpConnector connector,
+        ISocksReachabilityProbe reachabilityProbe)
     {
         _secretVault = secretVault ?? throw new ArgumentNullException(nameof(secretVault));
         _connector = connector ?? throw new ArgumentNullException(nameof(connector));
+        _reachabilityProbe = reachabilityProbe
+            ?? throw new ArgumentNullException(nameof(reachabilityProbe));
     }
 
     public NetworkConnectionKind Kind => NetworkConnectionKind.Proxy;
@@ -63,29 +70,69 @@ public sealed class ProxyNetworkConnectionProvider : INetworkConnectionProvider
         }
 
         byte[]? passwordBytes = ((NetworkConnectionResult<byte[]>.Success)password).Value;
+        ProxySocksAdapter? adapter = null;
         try
         {
-            var adapter = new ProxySocksAdapter(
-                _connector,
-                request.Placement,
-                proxy,
-                proxy.PasswordSecret is null ? null : passwordBytes);
-            passwordBytes = null;
+            try
+            {
+                adapter = new ProxySocksAdapter(
+                    _connector,
+                    request.Placement,
+                    proxy,
+                    proxy.PasswordSecret is null ? null : passwordBytes);
+                passwordBytes = null;
+            }
+            catch (Exception exception) when (exception is
+                IOException or System.Net.Sockets.SocketException)
+            {
+                return Fail(
+                    NetworkConnectionErrorCode.ConnectionFailed,
+                    "proxy_adapter_start_failed",
+                    "The local proxy adapter could not be started.",
+                    retryable: true);
+            }
+
+            progress?.Report(new NetworkConnectionProgress(
+                "Verifying proxy route reachability…"));
+            bool reachable;
+            try
+            {
+                reachable = await _reachabilityProbe.ProbeAsync(
+                        adapter.LocalPort,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return Fail(
+                    NetworkConnectionErrorCode.Cancelled,
+                    "proxy_route_probe_cancelled",
+                    "Proxy route testing was cancelled.",
+                    retryable: false);
+            }
+
+            if (!reachable)
+            {
+                return Fail(
+                    NetworkConnectionErrorCode.ConnectionFailed,
+                    "proxy_route_probe_failed",
+                    "The proxy could not carry the reachability check. Check the proxy address, credentials, allowed destinations, and firewall, then try again.",
+                    retryable: true);
+            }
+
             INetworkConnectionSession session = new ProxySession(
                 request.Connection.Id,
                 adapter);
+            adapter = null;
             return NetworkConnectionResult<INetworkConnectionSession>.Succeed(session);
-        }
-        catch (Exception exception) when (exception is IOException or System.Net.Sockets.SocketException)
-        {
-            return Fail(
-                NetworkConnectionErrorCode.ConnectionFailed,
-                "proxy_adapter_start_failed",
-                "The local proxy adapter could not be started.",
-                retryable: true);
         }
         finally
         {
+            if (adapter is not null)
+            {
+                await adapter.DisposeAsync().ConfigureAwait(false);
+            }
+
             if (passwordBytes is not null)
             {
                 CryptographicOperations.ZeroMemory(passwordBytes);

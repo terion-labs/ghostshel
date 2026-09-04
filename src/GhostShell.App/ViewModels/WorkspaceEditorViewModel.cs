@@ -16,8 +16,8 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
     private readonly WorkspaceDefinition _original;
     private readonly IReadOnlyDictionary<ScreenId, ScreenDefinition> _screens;
     private readonly IReadOnlyList<AiProviderProfileDescriptor>? _aiProviders;
-    private readonly IReadOnlyList<NetworkConnectionProfile> _networkConnections;
-    private readonly ApplicationNetworkSettings _applicationNetworkSettings;
+    private IReadOnlyList<NetworkConnectionProfile> _networkConnections;
+    private ApplicationNetworkSettings _applicationNetworkSettings;
     private readonly ObservableCollection<WorkspaceEntryEditorViewModel> _entries = [];
     private readonly ReadOnlyObservableCollection<WorkspaceEntryEditorViewModel> _readOnlyEntries;
     private readonly ObservableCollection<WorkspaceIsolationMountEditorViewModel> _isolationMounts = [];
@@ -134,7 +134,10 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         AgentPolicy.Changed += OnAgentPolicyChanged;
         NetworkPolicy = new NetworkPolicyEditorViewModel(
             _networkConnections,
-            workspace.NetworkOverride ?? _applicationNetworkSettings.Policy);
+            NetworkPolicyResolver.Resolve(
+                _applicationNetworkSettings,
+                workspace,
+                _networkConnections));
         NetworkPolicy.Changed += OnNetworkPolicyChanged;
         TerminalMultiplexingOptions =
         [
@@ -952,7 +955,10 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
         NetworkPolicy.Dispose();
         NetworkPolicy = new NetworkPolicyEditorViewModel(
             _networkConnections,
-            _original.NetworkOverride ?? _applicationNetworkSettings.Policy);
+            NetworkPolicyResolver.Resolve(
+                _applicationNetworkSettings,
+                _original,
+                _networkConnections));
         NetworkPolicy.Changed += OnNetworkPolicyChanged;
         OnPropertyChanged(nameof(NetworkPolicy));
 
@@ -978,6 +984,47 @@ public sealed class WorkspaceEditorViewModel : ObservableObject, IDisposable
     }
 
     public void ClearOperationError() => LastOperationError = null;
+
+    public void ApplyNetworkCatalog(
+        IReadOnlyList<NetworkConnectionProfile> networkConnections,
+        ApplicationNetworkSettings applicationNetworkSettings)
+    {
+        ArgumentNullException.ThrowIfNull(networkConnections);
+        ArgumentNullException.ThrowIfNull(applicationNetworkSettings);
+        var previous = NetworkPolicy;
+        NetworkPolicy policy;
+        if (OverridesNetworkSettings)
+        {
+            var available = previous.Connections
+                .Where(option => option.IsAvailable)
+                .Select(option => option.Id)
+                .ToArray();
+            var selected = previous.SelectedConnection?.Id;
+            policy = new NetworkPolicy(
+                available,
+                selected,
+                previous.IsEnabled && selected is not null,
+                previous.KillSwitchEnabled);
+        }
+        else
+        {
+            policy = NetworkPolicyResolver.ResolveApplication(
+                applicationNetworkSettings.Policy,
+                networkConnections);
+        }
+
+        _networkConnections = [.. networkConnections];
+        _applicationNetworkSettings = applicationNetworkSettings;
+        previous.Changed -= OnNetworkPolicyChanged;
+        NetworkPolicy = new NetworkPolicyEditorViewModel(
+            _networkConnections,
+            policy,
+            isDirty: previous.IsDirty);
+        NetworkPolicy.Changed += OnNetworkPolicyChanged;
+        previous.Dispose();
+        OnPropertyChanged(nameof(NetworkPolicy));
+        PublishState();
+    }
 
     public void Dispose()
     {

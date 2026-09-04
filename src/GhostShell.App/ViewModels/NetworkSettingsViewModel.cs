@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Text;
 using GhostShell.Application;
 using GhostShell.Core;
@@ -23,6 +24,7 @@ public sealed class NetworkSettingsViewModel : ObservableObject, IDisposable
 {
     private readonly IDefinitionCatalog _catalog;
     private readonly ISecretVault _secretVault;
+    private readonly IWorkspaceNetworkRuntime? _workspaceNetworkRuntime;
     private readonly Dictionary<NetworkCredentialTarget, PendingNetworkCredential>
         _pendingCredentials = [];
     private NetworkConnectionProfileEditorViewModel? _profileEditor;
@@ -32,14 +34,23 @@ public sealed class NetworkSettingsViewModel : ObservableObject, IDisposable
     private string _profileCatalogIdentity = string.Empty;
     private string? _operationStatus;
     private bool _hasError;
+    private bool _isTestingProfile;
+    private string _profileTestStatus = "Not tested";
+    private string _profileTestDetail =
+        "Tests the current draft through an app-scoped connection without saving it.";
+    private bool _profileTestHasError;
+    private CancellationTokenSource? _profileTestCancellation;
+    private Task<bool>? _profileTestTask;
     private bool _disposed;
 
     public NetworkSettingsViewModel(
         IDefinitionCatalog catalog,
-        ISecretVault secretVault)
+        ISecretVault secretVault,
+        IWorkspaceNetworkRuntime? workspaceNetworkRuntime = null)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _secretVault = secretVault ?? throw new ArgumentNullException(nameof(secretVault));
+        _workspaceNetworkRuntime = workspaceNetworkRuntime;
         _policy = new([], NetworkPolicy.Direct);
         _applicationSettingsName = ApplicationNetworkSettings.Default.Name;
         ApplyCatalog(_catalog.Snapshot);
@@ -56,14 +67,57 @@ public sealed class NetworkSettingsViewModel : ObservableObject, IDisposable
         get => _profileEditor;
         private set
         {
+            var previous = _profileEditor;
             if (SetProperty(ref _profileEditor, value))
             {
+                previous?.PropertyChanged -= OnProfileEditorPropertyChanged;
+                value?.PropertyChanged += OnProfileEditorPropertyChanged;
+
                 OnPropertyChanged(nameof(HasProfileEditor));
+                OnPropertyChanged(nameof(CanTestProfile));
+                ResetProfileTestPresentation();
             }
         }
     }
 
     public bool HasProfileEditor => ProfileEditor is not null;
+
+    public bool IsTestingProfile
+    {
+        get => _isTestingProfile;
+        private set
+        {
+            if (SetProperty(ref _isTestingProfile, value))
+            {
+                OnPropertyChanged(nameof(ProfileTestActionLabel));
+                OnPropertyChanged(nameof(CanTestProfile));
+            }
+        }
+    }
+
+    public string ProfileTestActionLabel =>
+        IsTestingProfile ? "Cancel test" : "Test connection";
+
+    public bool CanTestProfile => IsTestingProfile
+        || (_workspaceNetworkRuntime is not null && ProfileEditor?.IsValid == true);
+
+    public string ProfileTestStatus
+    {
+        get => _profileTestStatus;
+        private set => SetProperty(ref _profileTestStatus, value);
+    }
+
+    public string ProfileTestDetail
+    {
+        get => _profileTestDetail;
+        private set => SetProperty(ref _profileTestDetail, value);
+    }
+
+    public bool ProfileTestHasError
+    {
+        get => _profileTestHasError;
+        private set => SetProperty(ref _profileTestHasError, value);
+    }
 
     public bool CanStoreCredentials =>
         _secretVault.Availability.CanPersist
@@ -112,6 +166,12 @@ public sealed class NetworkSettingsViewModel : ObservableObject, IDisposable
     public void BeginCreateProfile()
     {
         ThrowIfDisposed();
+        if (IsTestingProfile)
+        {
+            Fail("Cancel the connection test before creating another connection.");
+            return;
+        }
+
         if (ProfileEditor is not null)
         {
             Fail("Save or cancel the open network connection before creating another one.");
@@ -122,10 +182,18 @@ public sealed class NetworkSettingsViewModel : ObservableObject, IDisposable
         ClearStatus();
     }
 
-    public void BeginEditProfile(NetworkConnectionProfileItemViewModel item)
+    public async ValueTask BeginEditProfileAsync(
+        NetworkConnectionProfileItemViewModel item,
+        CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(item);
+        if (IsTestingProfile)
+        {
+            Fail("Cancel the connection test before editing another connection.");
+            return;
+        }
+
         if (ProfileEditor is not null)
         {
             Fail("Save or cancel the open network connection before editing another one.");
@@ -140,13 +208,61 @@ public sealed class NetworkSettingsViewModel : ObservableObject, IDisposable
             return;
         }
 
-        ProfileEditor = new(stored.Value, stored.Revision);
+        var editor = new NetworkConnectionProfileEditorViewModel(
+            stored.Value,
+            stored.Revision);
+        editor.BeginCredentialMetadataLoad();
+        ProfileEditor = editor;
         ClearStatus();
+
+        SecretVaultResult<IReadOnlyList<SecretMetadata>> result;
+        try
+        {
+            result = await _secretVault.ListMetadataAsync(
+                new ListSecretMetadataRequest(
+                    NetworkCredentialScope(item.Id),
+                    new SecretUsePurpose(
+                        SecretUseKind.UserManagement,
+                        item.Id.Value)),
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            editor.MarkCredentialMetadataUnavailable();
+            return;
+        }
+        catch (Exception)
+        {
+            editor.MarkCredentialMetadataUnavailable();
+            Warn("The operating-system vault could not provide credential metadata for this connection.");
+            return;
+        }
+
+        if (!ReferenceEquals(ProfileEditor, editor))
+        {
+            return;
+        }
+
+        if (result is SecretVaultResult<IReadOnlyList<SecretMetadata>>.Failure failure)
+        {
+            editor.MarkCredentialMetadataUnavailable();
+            Warn(failure.Error.Message);
+            return;
+        }
+
+        var metadata =
+            ((SecretVaultResult<IReadOnlyList<SecretMetadata>>.Success)result).Value;
+        editor.ApplyCredentialMetadata(metadata);
     }
 
     public async ValueTask CancelProfileEditAsync(CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
+        if (IsTestingProfile)
+        {
+            await CancelProfileTestAsync();
+        }
+
         var cleanupFailures = await DiscardPendingCredentialsAsync(cancellationToken);
         ProfileEditor = null;
         if (cleanupFailures == 0)
@@ -162,6 +278,11 @@ public sealed class NetworkSettingsViewModel : ObservableObject, IDisposable
     public async ValueTask<bool> SaveProfileAsync(CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
+        if (IsTestingProfile)
+        {
+            return Fail("Cancel the connection test before saving the connection.");
+        }
+
         if (ProfileEditor is null)
         {
             return Fail("Open a network connection before saving it.");
@@ -242,6 +363,11 @@ public sealed class NetworkSettingsViewModel : ObservableObject, IDisposable
     public async ValueTask<bool> StoreCredentialAsync(CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
+        if (IsTestingProfile)
+        {
+            return Fail("Cancel the connection test before changing credentials.");
+        }
+
         if (ProfileEditor is not { Credential.SelectedTarget: { } target } editor
             || !editor.Credential.CanStore)
         {
@@ -278,10 +404,84 @@ public sealed class NetworkSettingsViewModel : ObservableObject, IDisposable
                 editor.Credential.Label,
                 target.Kind,
                 material));
-        editor.ApplyCredential(target.Target, reference);
+        editor.ApplyCredential(
+            target.Target,
+            reference,
+            editor.Credential.Label,
+            target.Kind);
         editor.Credential.ClearValue();
         Succeed($"{target.DisplayName} is ready. Save the connection to store it in the credential vault.");
         return true;
+    }
+
+    public async ValueTask<bool> TestProfileAsync(CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        if (_profileTestTask is { } running)
+        {
+            _profileTestCancellation?.Cancel();
+            _ = await running;
+            return false;
+        }
+
+        if (_workspaceNetworkRuntime is null)
+        {
+            SetProfileTestFailure(
+                "Test unavailable",
+                "The app-scoped networking runtime is unavailable in this build.");
+            return false;
+        }
+
+        if (ProfileEditor is not { } editor)
+        {
+            SetProfileTestFailure(
+                "Test unavailable",
+                "Open a network connection before testing it.");
+            return false;
+        }
+
+        NetworkConnectionProfile profile;
+        try
+        {
+            profile = editor.CreateSaveRequest().Profile;
+        }
+        catch (InvalidOperationException exception)
+        {
+            SetProfileTestFailure("Validation failed", exception.Message);
+            return false;
+        }
+
+        if (editor.Credential.CanStore)
+        {
+            SetProfileTestFailure(
+                "Credential not added",
+                "Add the entered credential to the connection draft before testing.");
+            return false;
+        }
+
+        var operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _profileTestCancellation = operation;
+        IsTestingProfile = true;
+        ProfileTestHasError = false;
+        ProfileTestStatus = "Testing connection";
+        ProfileTestDetail = "Preparing credentials…";
+        var task = RunProfileTestAsync(editor, profile, operation.Token);
+        _profileTestTask = task;
+        try
+        {
+            return await task;
+        }
+        finally
+        {
+            if (ReferenceEquals(_profileTestTask, task))
+            {
+                _profileTestTask = null;
+                _profileTestCancellation = null;
+                IsTestingProfile = false;
+            }
+
+            operation.Dispose();
+        }
     }
 
     public async ValueTask<bool> DeleteProfileAsync(
@@ -290,6 +490,11 @@ public sealed class NetworkSettingsViewModel : ObservableObject, IDisposable
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(item);
+        if (IsTestingProfile)
+        {
+            return Fail("Cancel the connection test before deleting a connection.");
+        }
+
         var stored = _catalog.Snapshot.NetworkConnections
             .SingleOrDefault(candidate => candidate.Value.Id == item.Id);
         if (stored is null)
@@ -335,7 +540,9 @@ public sealed class NetworkSettingsViewModel : ObservableObject, IDisposable
         NetworkPolicy policy;
         try
         {
-            policy = Policy.CreatePolicy();
+            policy = NetworkPolicyResolver.ResolveApplication(
+                Policy.CreatePolicy(),
+                [.. _catalog.Snapshot.NetworkConnections.Select(item => item.Value)]);
         }
         catch (InvalidOperationException exception)
         {
@@ -383,7 +590,9 @@ public sealed class NetworkSettingsViewModel : ObservableObject, IDisposable
         if (policyRevisionChanged || profilesChanged)
         {
             var preserveDraft = !policyRevisionChanged && Policy.IsDirty && Policy.IsValid;
-            var policy = preserveDraft ? Policy.CreatePolicy() : settings.Policy;
+            var policy = NetworkPolicyResolver.ResolveApplication(
+                preserveDraft ? Policy.CreatePolicy() : settings.Policy,
+                [.. snapshot.NetworkConnections.Select(item => item.Value)]);
             Policy = new(
                 [.. snapshot.NetworkConnections.Select(item => item.Value)],
                 policy,
@@ -409,9 +618,150 @@ public sealed class NetworkSettingsViewModel : ObservableObject, IDisposable
         }
 
         _disposed = true;
+        _profileTestCancellation?.Cancel();
         DisposePendingCredentials();
         ProfileEditor = null;
         Policy.Dispose();
+    }
+
+    private async Task<bool> RunProfileTestAsync(
+        NetworkConnectionProfileEditorViewModel editor,
+        NetworkConnectionProfile profile,
+        CancellationToken cancellationToken)
+    {
+        IWorkspaceNetworkSession? session = null;
+        var succeeded = false;
+        var acceptsProgress = true;
+        try
+        {
+            var credentialError = await StorePendingCredentialsAsync(
+                profile,
+                cancellationToken);
+            if (credentialError is not null)
+            {
+                SetProfileTestFailure("Credential unavailable", credentialError);
+                return false;
+            }
+
+            var policy = new NetworkPolicy(
+                [profile.Id],
+                profile.Id,
+                isEnabled: true,
+                killSwitchEnabled: false);
+            var update = new WorkspaceNetworkPolicyUpdate(policy, [profile]);
+            var progress = new Progress<NetworkConnectionProgress>(item =>
+            {
+                if (acceptsProgress
+                    && ReferenceEquals(ProfileEditor, editor)
+                    && IsTestingProfile)
+                {
+                    ProfileTestStatus = "Testing connection";
+                    ProfileTestDetail = item.Status;
+                }
+            });
+            session = await _workspaceNetworkRuntime!.OpenAsync(
+                new WorkspaceNetworkOpenRequest(
+                    WorkspaceInstanceId.New(),
+                    update,
+                    WorkspaceNetworkPlacement.Host),
+                progress,
+                cancellationToken);
+            acceptsProgress = false;
+            var snapshot = session.Snapshot;
+            if (snapshot.State == WorkspaceNetworkState.Connected)
+            {
+                ProfileTestHasError = false;
+                ProfileTestStatus = "Connection succeeded";
+                ProfileTestDetail =
+                    "The app-scoped route connected and passed its reachability check.";
+                succeeded = true;
+            }
+            else
+            {
+                SetProfileTestFailure(
+                    "Test failed",
+                    snapshot.Error?.Message
+                    ?? "The networking runtime did not establish the connection.");
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            acceptsProgress = false;
+            SetProfileTestFailure(
+                "Test cancelled",
+                "The connection test was cancelled and its temporary route was removed.");
+        }
+        catch (Exception)
+        {
+            acceptsProgress = false;
+            SetProfileTestFailure(
+                "Test failed",
+                "The networking runtime could not complete the connection test.");
+        }
+        finally
+        {
+            acceptsProgress = false;
+            if (session is not null)
+            {
+                try
+                {
+                    await session.DisposeAsync();
+                }
+                catch (Exception)
+                {
+                    succeeded = false;
+                    SetProfileTestFailure(
+                        "Cleanup failed",
+                        "The test route could not be removed cleanly. Restart GhostSHELL before using this connection.");
+                }
+            }
+
+            var cleanupFailures = await ResetStoredPendingCredentialsAsync(
+                CancellationToken.None);
+            if (cleanupFailures > 0)
+            {
+                succeeded = false;
+                SetProfileTestFailure(
+                    "Credential cleanup failed",
+                    "A temporary test credential could not be removed from the operating-system vault. Cancel the draft to retry cleanup.");
+            }
+        }
+
+        return succeeded;
+    }
+
+    private async Task CancelProfileTestAsync()
+    {
+        var task = _profileTestTask;
+        _profileTestCancellation?.Cancel();
+        if (task is not null)
+        {
+            _ = await task;
+        }
+    }
+
+    private void OnProfileEditorPropertyChanged(
+        object? sender,
+        PropertyChangedEventArgs e)
+    {
+        _ = sender;
+        _ = e;
+        OnPropertyChanged(nameof(CanTestProfile));
+    }
+
+    private void ResetProfileTestPresentation()
+    {
+        ProfileTestHasError = false;
+        ProfileTestStatus = "Not tested";
+        ProfileTestDetail =
+            "Tests the current draft through an app-scoped connection without saving it.";
+    }
+
+    private void SetProfileTestFailure(string status, string detail)
+    {
+        ProfileTestHasError = true;
+        ProfileTestStatus = status;
+        ProfileTestDetail = detail;
     }
 
     private void ReplaceProfiles(

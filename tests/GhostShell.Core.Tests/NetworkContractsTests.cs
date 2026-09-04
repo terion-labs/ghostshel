@@ -99,6 +99,7 @@ public sealed class NetworkContractsTests
     [Fact]
     public void Workspace_override_replaces_the_complete_application_policy()
     {
+        var secondId = new NetworkConnectionId("second-proxy");
         var application = new ApplicationNetworkSettings(
             ApplicationNetworkSettings.DefaultId,
             ApplicationNetworkSettings.CurrentSchemaVersion,
@@ -106,9 +107,65 @@ public sealed class NetworkContractsTests
             new NetworkPolicy([ProxyId], ProxyId, true, true));
         var directWorkspace = Workspace(networkOverride: NetworkPolicy.Direct);
         var inheritedWorkspace = Workspace(networkOverride: null);
+        var connections = new[]
+        {
+            Profile(ProxyId, "Office proxy"),
+            Profile(secondId, "Second proxy"),
+        };
 
-        Assert.Same(NetworkPolicy.Direct, NetworkPolicyResolver.Resolve(application, directWorkspace));
-        Assert.Same(application.Policy, NetworkPolicyResolver.Resolve(application, inheritedWorkspace));
+        Assert.Same(
+            NetworkPolicy.Direct,
+            NetworkPolicyResolver.Resolve(application, directWorkspace, connections));
+        var inherited = NetworkPolicyResolver.Resolve(
+            application,
+            inheritedWorkspace,
+            connections);
+        Assert.Equal([ProxyId, secondId], inherited.Connections);
+        Assert.Equal(ProxyId, inherited.SelectedConnectionId);
+        Assert.True(inherited.IsEnabled);
+        Assert.True(inherited.KillSwitchEnabled);
+    }
+
+    [Fact]
+    public void Application_policy_replaces_a_missing_selection_and_supports_the_full_catalog()
+    {
+        var connections = Enumerable.Range(0, 33)
+            .Select(index =>
+            {
+                var id = new NetworkConnectionId($"proxy-{index}");
+                return Profile(id, $"Proxy {index}");
+            })
+            .ToArray();
+        var stalePolicy = new NetworkPolicy(
+            [new NetworkConnectionId("removed-proxy")],
+            new NetworkConnectionId("removed-proxy"),
+            isEnabled: true,
+            killSwitchEnabled: true);
+
+        var resolved = NetworkPolicyResolver.ResolveApplication(stalePolicy, connections);
+
+        Assert.Equal(33, resolved.Connections.Count);
+        Assert.Equal(connections[0].Id, resolved.SelectedConnectionId);
+        Assert.True(resolved.IsEnabled);
+        Assert.True(resolved.KillSwitchEnabled);
+    }
+
+    [Fact]
+    public void Application_policy_disables_when_no_global_connections_remain()
+    {
+        var staleId = new NetworkConnectionId("removed-proxy");
+        var stalePolicy = new NetworkPolicy(
+            [staleId],
+            staleId,
+            isEnabled: true,
+            killSwitchEnabled: true);
+
+        var resolved = NetworkPolicyResolver.ResolveApplication(stalePolicy, []);
+
+        Assert.Empty(resolved.Connections);
+        Assert.Null(resolved.SelectedConnectionId);
+        Assert.False(resolved.IsEnabled);
+        Assert.True(resolved.KillSwitchEnabled);
     }
 
     [Fact]
@@ -150,6 +207,15 @@ public sealed class NetworkContractsTests
         null,
         [],
         networkOverride: networkOverride);
+
+    private static NetworkConnectionProfile Profile(NetworkConnectionId id, string name) => new(
+        id,
+        NetworkConnectionProfile.CurrentSchemaVersion,
+        name,
+        new NetworkConnectionConfiguration.Proxy(
+            NetworkProxyProtocol.Socks5,
+            $"{id.Value}.example.test",
+            1080));
 
     private static T RoundTrip<T>(T value)
     {

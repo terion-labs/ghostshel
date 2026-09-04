@@ -240,6 +240,19 @@ internal sealed class WorkspaceIsolationSocksProxy :
                         cancellationToken)
                     .ConfigureAwait(false);
             }
+
+            if (request.Value.Protocol == WorkspaceLoopbackProxyProtocol.Protocol.HttpForward)
+            {
+                process.StandardInput.Close();
+                await process.StandardOutput.BaseStream
+                    .CopyToAsync(stream, cancellationToken)
+                    .ConfigureAwait(false);
+                TryKill(process);
+                await stream.DisposeAsync().ConfigureAwait(false);
+                process.Dispose();
+                return;
+            }
+
             using var cancellation = cancellationToken.Register(() =>
             {
                 client.Dispose();
@@ -310,6 +323,13 @@ internal sealed class WorkspaceIsolationSocksProxy :
             }
 
             successReplyStarted = true;
+            if (request.Protocol == WorkspaceLoopbackProxyProtocol.Protocol.HttpForward)
+            {
+                upstreamClient.Client.Shutdown(SocketShutdown.Send);
+                await upstream.CopyToAsync(downstream, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
             using var cancellation = cancellationToken.Register(() =>
             {
                 client.Dispose();

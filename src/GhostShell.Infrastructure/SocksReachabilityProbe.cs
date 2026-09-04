@@ -8,16 +8,16 @@ using System.Text;
 
 namespace GhostShell.Infrastructure;
 
-internal interface IHostVpnReachabilityProbe
+internal interface ISocksReachabilityProbe
 {
     ValueTask<bool> ProbeAsync(int socksPort, CancellationToken cancellationToken);
 }
 
 /// <summary>
-/// Proves that a host userspace VPN's SOCKS listener can carry TLS and HTTP to a public peer.
+/// Proves that a loopback SOCKS route can carry TLS and HTTP to a public peer.
 /// All remote destinations are IP literals, so the probe cannot invoke the host resolver.
 /// </summary>
-internal sealed class HostVpnReachabilityProbe : IHostVpnReachabilityProbe
+internal sealed class SocksReachabilityProbe : ISocksReachabilityProbe
 {
     private static readonly TimeSpan AttemptTimeout = TimeSpan.FromSeconds(6);
     private static readonly IPAddress[] ProbeAddresses =

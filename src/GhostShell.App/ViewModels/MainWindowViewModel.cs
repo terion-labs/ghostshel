@@ -234,7 +234,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
                 ?? WorkspaceIsolationImages.Default,
             activeIsolationImageReference: ActiveIsolationImageReference);
         WorkspaceSettings.PropertyChanged += OnWorkspaceSettingsPropertyChanged;
-        NetworkSettings = new NetworkSettingsViewModel(_catalog, secretVault);
+        NetworkSettings = new NetworkSettingsViewModel(
+            _catalog,
+            secretVault,
+            workspaceNetworkRuntime);
         SavedScreenSettings = new SavedScreenSettingsViewModel(
             _catalog,
             () => _aiProviderRuntime?.Profiles ?? []);
@@ -8652,6 +8655,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable,
         AppearanceSettings.ApplyCatalog(snapshot);
         BrowserProfileSettingsEditor.ApplyCatalog(snapshot);
         NetworkSettings.ApplyCatalog(snapshot);
+        WorkspaceSettings.ApplyCatalog(snapshot);
         RefreshOpenWorkspaceNetworkPolicies(snapshot);
         RefreshBrowserPanelProfileOptions(snapshot);
         OnPropertyChanged(nameof(PanelConnectionOptions));

@@ -82,18 +82,23 @@ public sealed partial class MainWindowViewModel
             .Select(stored => stored.Value)
             .SingleOrDefault()
             ?? ApplicationNetworkSettings.Default;
+        var connections = snapshot.NetworkConnections
+            .Select(stored => stored.Value)
+            .ToArray();
         if (!_runtimeSources.TryGetValue(workspace.Id, out var source)
             || source.SourceDefinition.Kind != WorkspaceDefinition.Kind)
         {
-            return applicationSettings.Policy;
+            return NetworkPolicyResolver.ResolveApplication(
+                applicationSettings.Policy,
+                connections);
         }
 
         var definition = snapshot.Workspaces
             .FirstOrDefault(stored => stored.Value.Key == source.SourceDefinition)
             ?.Value;
         return definition is null
-            ? applicationSettings.Policy
-            : NetworkPolicyResolver.Resolve(applicationSettings, definition);
+            ? NetworkPolicyResolver.ResolveApplication(applicationSettings.Policy, connections)
+            : NetworkPolicyResolver.Resolve(applicationSettings, definition, connections);
     }
 
     private static IReadOnlyList<NetworkConnectionProfile> NetworkProfilesFor(

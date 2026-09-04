@@ -74,6 +74,38 @@ public sealed class MainWindowRuntimeGraphIntegrationTests
     }
 
     [Fact]
+    public async Task Inherited_workspace_network_control_includes_every_global_connection()
+    {
+        var first = NetworkProfile("first-global-network", "First proxy");
+        var second = NetworkProfile("second-global-network", "Second proxy");
+        var snapshot = CreateCatalogSnapshot() with
+        {
+            NetworkConnections = [Store(first), Store(second)],
+            ApplicationNetworkSettings =
+            [
+                Store(new ApplicationNetworkSettings(
+                    ApplicationNetworkSettings.DefaultId,
+                    ApplicationNetworkSettings.CurrentSchemaVersion,
+                    "Application networking",
+                    new NetworkPolicy([first.Id], first.Id, false, true))),
+            ],
+        };
+        var networkRuntime = new RecordingWorkspaceNetworkRuntime();
+        var (client, _) = CreateSessionClient();
+        using var viewModel = CreateViewModel(
+            client,
+            snapshot,
+            workspaceNetworkRuntime: networkRuntime);
+
+        Assert.True(await viewModel.OpenWorkspaceAsync(WorkspaceId));
+
+        var request = Assert.Single(networkRuntime.Requests);
+        Assert.Equal([first.Id, second.Id], request.InitialPolicy.Policy.Connections);
+        Assert.Equal([first, second], request.InitialPolicy.Connections);
+        Assert.Equal(2, viewModel.WorkspaceNetwork.Connections.Count);
+    }
+
+    [Fact]
     public async Task ClosingConnectingPanelCancelsStalledHostStartupBeforeReturning()
     {
         var snapshot = CreateCatalogSnapshot();

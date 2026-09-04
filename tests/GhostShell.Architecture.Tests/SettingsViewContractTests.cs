@@ -140,13 +140,19 @@ public sealed class SettingsViewContractTests
             attributes,
             attribute => string.Equals(
                 attribute.Value,
-                "{Binding ConfigurationCredentialState}",
+                "{Binding SelectedConfigurationCredential, Mode=TwoWay}",
                 StringComparison.Ordinal));
         Assert.Contains(
             attributes,
             attribute => string.Equals(
                 attribute.Value,
-                "{Binding PasswordCredentialState}",
+                "{Binding SelectedPasswordCredential, Mode=TwoWay}",
+                StringComparison.Ordinal));
+        Assert.Contains(
+            root.Descendants(),
+            element => string.Equals(
+                AttributeValue(element, "Click"),
+                "OnTestProfileClick",
                 StringComparison.Ordinal));
     }
 

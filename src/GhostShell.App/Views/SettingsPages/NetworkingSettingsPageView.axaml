@@ -7,6 +7,18 @@
     xmlns:components="using:GhostShell.App.Views.Components"
     xmlns:controls="using:GhostShell.App.Controls"
     xmlns:icons="using:FluentIcons.Avalonia">
+  <UserControl.Resources>
+    <DataTemplate x:Key="NetworkCredentialOptionTemplate" x:DataType="vm:NetworkCredentialOption">
+      <StackPanel Spacing="{DynamicResource ShellSpaceXs}">
+        <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+        <TextBlock
+            Classes="Muted"
+            FontSize="{DynamicResource ShellFontSize9}"
+            Text="{Binding Detail}"
+            TextTrimming="CharacterEllipsis" />
+      </StackPanel>
+    </DataTemplate>
+  </UserControl.Resources>
   <StackPanel Spacing="{DynamicResource ShellSpaceXl}">
     <components:SettingsPageHeader
         Heading="Networking"
@@ -53,48 +65,11 @@
               AutomationProperties.Name="Application network kill switch" />
         </controls:SettingRow>
 
-        <StackPanel Spacing="{DynamicResource ShellSpaceSm}">
-          <TextBlock Classes="SectionHeading" Text="Connections available to this policy" />
-          <TextBlock
-              Classes="Muted"
-              FontSize="{DynamicResource ShellFontSize10}"
-              Text="Choose every connection that can be selected from the window networking control."
-              TextWrapping="Wrap" />
-          <ItemsControl ItemsSource="{Binding Policy.Connections}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="vm:NetworkPolicyConnectionOptionViewModel">
-                <controls:SurfaceCard
-                    Margin="{controls:Inset Bottom=Sm}"
-                    Padding="{DynamicResource ShellCardPaddingCompact}">
-                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-                    <ToggleSwitch
-                        VerticalAlignment="Center"
-                        IsChecked="{Binding IsAvailable, Mode=TwoWay}"
-                        AutomationProperties.Name="{Binding Name, StringFormat=Make {0} available}" />
-                    <StackPanel Grid.Column="1" Spacing="{DynamicResource ShellSpaceXs}">
-                      <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
-                      <TextBlock Classes="Muted" FontSize="{DynamicResource ShellFontSize9}" Text="{Binding Summary}" TextWrapping="Wrap" />
-                    </StackPanel>
-                    <controls:StatusChip
-                        Grid.Column="2"
-                        VerticalAlignment="Center"
-                        Classes.Warning="{Binding IsMissing}"
-                        Content="{Binding KindLabel}" />
-                  </Grid>
-                </controls:SurfaceCard>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-          <controls:Callout
-              Tone="Notice"
-              ShowsGlyph="False"
-              Text="Create a proxy or VPN connection below before enabling routed networking."
-              IsVisible="{Binding Policy.HasNoConnections}" />
-          <controls:Callout
-              Tone="Notice"
-              Text="Remove unavailable connections from this policy before saving."
-              IsVisible="{Binding Policy.HasMissingConnections}" />
-        </StackPanel>
+        <controls:Callout
+            Tone="Notice"
+            ShowsGlyph="False"
+            Text="Create a proxy or VPN connection below before enabling routed networking."
+            IsVisible="{Binding Policy.HasNoConnections}" />
 
         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
           <TextBlock
@@ -166,10 +141,11 @@
     </StackPanel>
 
     <controls:SurfaceCard IsVisible="{Binding HasProfileEditor}">
-      <StackPanel
-          x:DataType="vm:NetworkConnectionProfileEditorViewModel"
-          DataContext="{Binding ProfileEditor}"
-          Spacing="{DynamicResource ShellSpaceMd}">
+      <StackPanel Spacing="{DynamicResource ShellSpaceMd}">
+        <StackPanel
+            x:DataType="vm:NetworkConnectionProfileEditorViewModel"
+            DataContext="{Binding ProfileEditor}"
+            Spacing="{DynamicResource ShellSpaceMd}">
         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource ShellSpaceMd}">
           <components:SectionHeader
               Heading="Connection configuration"
@@ -227,17 +203,27 @@
             <controls:SettingRow
                 Grid.Column="1"
                 Label="Password credential"
-                Description="Choose Proxy password below to store or replace it.">
-              <controls:StatusChip Shape="Rounded" Tone="Default" Content="{Binding PasswordCredentialState}" />
+                Description="Select a stored password or add a replacement below.">
+              <ComboBox
+                  Width="340"
+                  ItemTemplate="{StaticResource NetworkCredentialOptionTemplate}"
+                  ItemsSource="{Binding PasswordCredentialOptions}"
+                  SelectedItem="{Binding SelectedPasswordCredential, Mode=TwoWay}"
+                  AutomationProperties.Name="Proxy password credential" />
             </controls:SettingRow>
           </Grid>
         </StackPanel>
 
         <controls:SettingRow
             Label="{Binding ConfigurationSecretLabel}"
-            Description="Choose the matching configuration type below to store or replace it."
+            Description="Select a stored configuration or add a replacement below."
             IsVisible="{Binding IsConfigurationFileVpn}">
-          <controls:StatusChip Shape="Rounded" Tone="Default" Content="{Binding ConfigurationCredentialState}" />
+          <ComboBox
+              Width="340"
+              ItemTemplate="{StaticResource NetworkCredentialOptionTemplate}"
+              ItemsSource="{Binding ConfigurationCredentialOptions}"
+              SelectedItem="{Binding SelectedConfigurationCredential, Mode=TwoWay}"
+              AutomationProperties.Name="VPN configuration credential" />
         </controls:SettingRow>
 
         <StackPanel Spacing="{DynamicResource ShellSpaceMd}" IsVisible="{Binding IsAnyConnect}">
@@ -256,14 +242,24 @@
             <controls:SettingRow
                 Grid.Column="1"
                 Label="Password credential"
-                Description="Choose AnyConnect password below to store or replace it.">
-              <controls:StatusChip Shape="Rounded" Tone="Default" Content="{Binding PasswordCredentialState}" />
+                Description="Select a stored password or add a replacement below.">
+              <ComboBox
+                  Width="340"
+                  ItemTemplate="{StaticResource NetworkCredentialOptionTemplate}"
+                  ItemsSource="{Binding PasswordCredentialOptions}"
+                  SelectedItem="{Binding SelectedPasswordCredential, Mode=TwoWay}"
+                  AutomationProperties.Name="AnyConnect password credential" />
             </controls:SettingRow>
           </Grid>
           <controls:SettingRow
               Label="Client certificate"
-              Description="Choose Client certificate below to store or replace it.">
-            <controls:StatusChip Shape="Rounded" Tone="Default" Content="{Binding ClientCertificateCredentialState}" />
+              Description="Select a stored certificate or add a replacement below.">
+            <ComboBox
+                Width="340"
+                ItemTemplate="{StaticResource NetworkCredentialOptionTemplate}"
+                ItemsSource="{Binding ClientCertificateCredentialOptions}"
+                SelectedItem="{Binding SelectedClientCertificateCredential, Mode=TwoWay}"
+                AutomationProperties.Name="AnyConnect client certificate credential" />
           </controls:SettingRow>
         </StackPanel>
 
@@ -278,8 +274,13 @@
           </Grid>
           <controls:SettingRow
               Label="Auth key"
-              Description="Choose Tailscale auth key below to store or replace it.">
-            <controls:StatusChip Shape="Rounded" Tone="Default" Content="{Binding AuthKeyCredentialState}" />
+              Description="Select a stored auth key or add a replacement below.">
+            <ComboBox
+                Width="340"
+                ItemTemplate="{StaticResource NetworkCredentialOptionTemplate}"
+                ItemsSource="{Binding AuthKeyCredentialOptions}"
+                SelectedItem="{Binding SelectedAuthKeyCredential, Mode=TwoWay}"
+                AutomationProperties.Name="Tailscale auth key credential" />
           </controls:SettingRow>
         </StackPanel>
 
@@ -322,21 +323,39 @@
           </StackPanel>
         </controls:SurfaceCard>
 
-        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="{DynamicResource ShellSpaceSm}">
-          <TextBlock
-              VerticalAlignment="Center"
-              Classes="Muted"
-              FontSize="{DynamicResource ShellFontSize10}"
-              Text="Configured means the connection has a credential binding; it does not guarantee the credential is available on this computer."
-              TextWrapping="Wrap" />
-          <Button Grid.Column="1" Classes="SecondaryButton" Click="OnCancelProfileClick" Content="Cancel" />
-          <Button
-              Grid.Column="2"
-              Classes="PrimaryButton"
-              Click="OnSaveProfileClick"
-              Content="Save connection"
-              IsEnabled="{Binding CanSave}" />
-        </Grid>
+      </StackPanel>
+
+      <controls:Callout
+          Margin="{controls:Inset Top=Md}"
+          Tone="Notice"
+          Title="{Binding ProfileTestStatus}"
+          Text="{Binding ProfileTestDetail}"
+          Classes.Warning="{Binding ProfileTestHasError}" />
+
+      <Grid
+          Margin="{controls:Inset Top=Md}"
+          ColumnDefinitions="*,Auto,Auto,Auto"
+          ColumnSpacing="{DynamicResource ShellSpaceSm}">
+        <TextBlock
+            VerticalAlignment="Center"
+            Classes="Muted"
+            FontSize="{DynamicResource ShellFontSize10}"
+            Text="Only credentials stored for this network connection appear in its lists."
+            TextWrapping="Wrap" />
+        <Button
+            Grid.Column="1"
+            Classes="SecondaryButton"
+            Click="OnTestProfileClick"
+            Content="{Binding ProfileTestActionLabel}"
+            IsEnabled="{Binding CanTestProfile}" />
+        <Button Grid.Column="2" Classes="SecondaryButton" Click="OnCancelProfileClick" Content="Cancel" />
+        <Button
+            Grid.Column="3"
+            Classes="PrimaryButton"
+            Click="OnSaveProfileClick"
+            Content="Save connection"
+            IsEnabled="{Binding ProfileEditor.CanSave}" />
+      </Grid>
       </StackPanel>
     </controls:SurfaceCard>
 

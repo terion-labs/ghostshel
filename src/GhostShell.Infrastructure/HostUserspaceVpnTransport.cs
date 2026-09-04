@@ -30,7 +30,7 @@ internal sealed class HostUserspaceVpnTransport : IHostUserspaceVpnTransport
     private readonly ISecretVault _secretVault;
     private readonly IConnectionExecutableLocator _executableLocator;
     private readonly IHostVpnProcessRunner _processRunner;
-    private readonly IHostVpnReachabilityProbe _reachabilityProbe;
+    private readonly ISocksReachabilityProbe _reachabilityProbe;
     private readonly TimeSpan _healthPollInterval;
     private readonly string _persistentStateRoot;
 
@@ -44,7 +44,7 @@ internal sealed class HostUserspaceVpnTransport : IHostUserspaceVpnTransport
             executableLocator,
             new HostUserspaceVpnProcessRunner(),
             Path.Combine(GhostShellDataPaths.CreateDefault().DataDirectory, "vpn-state"),
-            new HostVpnReachabilityProbe())
+            new SocksReachabilityProbe())
     {
     }
 
@@ -54,7 +54,7 @@ internal sealed class HostUserspaceVpnTransport : IHostUserspaceVpnTransport
         IConnectionExecutableLocator executableLocator,
         IHostVpnProcessRunner processRunner,
         string persistentStateRoot,
-        IHostVpnReachabilityProbe? reachabilityProbe = null,
+        ISocksReachabilityProbe? reachabilityProbe = null,
         TimeSpan? healthPollInterval = null)
     {
         if (kind is not (
@@ -71,7 +71,7 @@ internal sealed class HostUserspaceVpnTransport : IHostUserspaceVpnTransport
         _executableLocator = executableLocator
             ?? throw new ArgumentNullException(nameof(executableLocator));
         _processRunner = processRunner ?? throw new ArgumentNullException(nameof(processRunner));
-        _reachabilityProbe = reachabilityProbe ?? new HostVpnReachabilityProbe();
+        _reachabilityProbe = reachabilityProbe ?? new SocksReachabilityProbe();
         _healthPollInterval = healthPollInterval ?? DefaultHealthPollInterval;
         if (_healthPollInterval <= TimeSpan.Zero)
         {
@@ -981,7 +981,7 @@ internal sealed class HostUserspaceVpnTransport : IHostUserspaceVpnTransport
         private readonly string _temporaryDirectory;
         private readonly HostVpnProcessRequest? _cleanup;
         private readonly IHostVpnProcessRunner _processRunner;
-        private readonly IHostVpnReachabilityProbe _reachabilityProbe;
+        private readonly ISocksReachabilityProbe _reachabilityProbe;
         private readonly int _socksPort;
         private readonly TimeSpan _healthPollInterval;
         private readonly CancellationTokenSource _lifetime = new();
@@ -999,7 +999,7 @@ internal sealed class HostUserspaceVpnTransport : IHostUserspaceVpnTransport
             string temporaryDirectory,
             HostVpnProcessRequest? cleanup,
             IHostVpnProcessRunner processRunner,
-            IHostVpnReachabilityProbe reachabilityProbe,
+            ISocksReachabilityProbe reachabilityProbe,
             TimeSpan healthPollInterval)
         {
             _processes = processes;

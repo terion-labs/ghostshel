@@ -19,7 +19,7 @@ public sealed class ProxyNetworkConnectionProviderTests
         upstream.Start();
         var upstreamPort = ((IPEndPoint)upstream.LocalEndpoint).Port;
         var observed = ServeSocksUpstreamAsync(upstream);
-        var provider = new ProxyNetworkConnectionProvider(vault);
+        var provider = CreateProvider(vault);
 
         await using var session = Success(await provider.ConnectAsync(
             Request(new NetworkConnectionConfiguration.Proxy(
@@ -62,7 +62,7 @@ public sealed class ProxyNetworkConnectionProviderTests
         upstream.Start();
         var upstreamPort = ((IPEndPoint)upstream.LocalEndpoint).Port;
         var observed = ServeHttpUpstreamAsync(upstream);
-        var provider = new ProxyNetworkConnectionProvider(vault);
+        var provider = CreateProvider(vault);
         await using var session = Success(await provider.ConnectAsync(
             Request(new NetworkConnectionConfiguration.Proxy(
                 NetworkProxyProtocol.Http,
@@ -86,7 +86,7 @@ public sealed class ProxyNetworkConnectionProviderTests
     public async Task Missing_password_is_a_typed_configuration_failure()
     {
         using var vault = new InMemorySecretVault();
-        var provider = new ProxyNetworkConnectionProvider(vault);
+        var provider = CreateProvider(vault);
 
         var result = await provider.ConnectAsync(
             Request(new NetworkConnectionConfiguration.Proxy(
@@ -107,7 +107,7 @@ public sealed class ProxyNetworkConnectionProviderTests
     public async Task Isolated_proxy_is_rejected_before_credential_access()
     {
         using var vault = new InMemorySecretVault();
-        var provider = new ProxyNetworkConnectionProvider(vault);
+        var provider = CreateProvider(vault);
         var profile = new NetworkConnectionProfile(
             ConnectionId,
             NetworkConnectionProfile.CurrentSchemaVersion,
@@ -142,6 +142,98 @@ public sealed class ProxyNetworkConnectionProviderTests
         Assert.Equal("proxy_isolated_routing_unavailable", failure.Error.StableCode);
         Assert.False(failure.Error.Retryable);
     }
+
+    [Fact]
+    public async Task Connected_result_requires_successful_end_to_end_route_probe()
+    {
+        using var vault = new InMemorySecretVault();
+        var probe = new RecordingSocksReachabilityProbe(reachable: true);
+        var progress = new RecordingProgress<NetworkConnectionProgress>();
+        var provider = CreateProvider(vault, probe);
+
+        await using var session = Success(await provider.ConnectAsync(
+            Request(new NetworkConnectionConfiguration.Proxy(
+                NetworkProxyProtocol.Socks5,
+                "proxy.example",
+                1080)),
+            progress,
+            CancellationToken.None));
+
+        Assert.Equal(NetworkConnectionState.Connected, session.Snapshot.State);
+        Assert.Single(probe.Ports);
+        Assert.Contains(
+            progress.Items,
+            item => item.Status.Contains("reachability", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Unreachable_route_returns_actionable_failure_and_closes_adapter()
+    {
+        using var vault = new InMemorySecretVault();
+        var probe = new RecordingSocksReachabilityProbe(reachable: false);
+        var provider = CreateProvider(vault, probe);
+
+        var result = await provider.ConnectAsync(
+            Request(new NetworkConnectionConfiguration.Proxy(
+                NetworkProxyProtocol.Socks5,
+                "proxy.example",
+                1080)),
+            progress: null,
+            CancellationToken.None);
+
+        var failure = Assert.IsType<NetworkConnectionResult<INetworkConnectionSession>.Failure>(
+            result);
+        Assert.Equal(NetworkConnectionErrorCode.ConnectionFailed, failure.Error.Code);
+        Assert.Equal("proxy_route_probe_failed", failure.Error.StableCode);
+        Assert.True(failure.Error.Retryable);
+        Assert.Contains("address", failure.Error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("credentials", failure.Error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("allowed destinations", failure.Error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("firewall", failure.Error.Message, StringComparison.OrdinalIgnoreCase);
+
+        using var client = new TcpClient();
+        await Assert.ThrowsAsync<SocketException>(async () =>
+            await client.ConnectAsync(IPAddress.Loopback, Assert.Single(probe.Ports)));
+    }
+
+    [Fact]
+    public async Task Cancelled_probe_returns_typed_failure_and_closes_adapter()
+    {
+        using var vault = new InMemorySecretVault();
+        var probe = new RecordingSocksReachabilityProbe(reachable: true)
+        {
+            WaitForCancellation = true,
+        };
+        var provider = CreateProvider(vault, probe);
+        using var cancellation = new CancellationTokenSource();
+
+        var connecting = provider.ConnectAsync(
+                Request(new NetworkConnectionConfiguration.Proxy(
+                    NetworkProxyProtocol.Socks5,
+                    "proxy.example",
+                    1080)),
+                progress: null,
+                cancellation.Token)
+            .AsTask();
+        await probe.Started.Task;
+        await cancellation.CancelAsync();
+        var result = await connecting;
+
+        var failure = Assert.IsType<NetworkConnectionResult<INetworkConnectionSession>.Failure>(
+            result);
+        Assert.Equal(NetworkConnectionErrorCode.Cancelled, failure.Error.Code);
+        Assert.Equal("proxy_route_probe_cancelled", failure.Error.StableCode);
+        using var client = new TcpClient();
+        await Assert.ThrowsAsync<SocketException>(async () =>
+            await client.ConnectAsync(IPAddress.Loopback, Assert.Single(probe.Ports)));
+    }
+
+    private static ProxyNetworkConnectionProvider CreateProvider(
+        ISecretVault vault,
+        ISocksReachabilityProbe? reachabilityProbe = null) => new(
+        vault,
+        new WorkspaceTcpConnector(isolationProvider: null),
+        reachabilityProbe ?? new RecordingSocksReachabilityProbe(reachable: true));
 
     private static NetworkConnectionStartRequest Request(
         NetworkConnectionConfiguration.Proxy configuration) => new(
@@ -251,4 +343,36 @@ public sealed class ProxyNetworkConnectionProviderTests
 
     private static T Success<T>(SecretVaultResult<T> result) =>
         Assert.IsType<SecretVaultResult<T>.Success>(result).Value;
+
+    private sealed class RecordingSocksReachabilityProbe(bool reachable) :
+        ISocksReachabilityProbe
+    {
+        public List<int> Ports { get; } = [];
+
+        public TaskCompletionSource Started { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public bool WaitForCancellation { get; init; }
+
+        public async ValueTask<bool> ProbeAsync(
+            int socksPort,
+            CancellationToken cancellationToken)
+        {
+            Ports.Add(socksPort);
+            Started.TrySetResult();
+            if (WaitForCancellation)
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+
+            return reachable;
+        }
+    }
+
+    private sealed class RecordingProgress<T> : IProgress<T>
+    {
+        public List<T> Items { get; } = [];
+
+        public void Report(T value) => Items.Add(value);
+    }
 }

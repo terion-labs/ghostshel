@@ -8,8 +8,6 @@ namespace GhostShell.Core;
 /// </summary>
 public sealed record NetworkPolicy
 {
-    public const int MaximumConnectionCount = 32;
-
     public static NetworkPolicy Direct { get; } = new([], null, false, false);
 
     public NetworkPolicy(
@@ -62,13 +60,6 @@ public sealed record NetworkPolicy
         if (connections is null || connections.Count == 0)
         {
             return Array.AsReadOnly(Array.Empty<NetworkConnectionId>());
-        }
-
-        if (connections.Count > MaximumConnectionCount)
-        {
-            throw new ArgumentException(
-                $"A network policy cannot contain more than {MaximumConnectionCount} connections.",
-                nameof(connections));
         }
 
         var snapshot = connections.ToArray();

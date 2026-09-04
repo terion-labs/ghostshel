@@ -28,11 +28,12 @@ Network connections are reusable durable definitions. The first supported config
 Configuration payloads and credentials that can contain secrets are stored in the secret
 vault. Durable definitions contain only `SecretRef` values.
 
-The application stores one complete `NetworkPolicy`. A workspace stores either no override,
-which inherits that policy, or one complete replacement. A policy contains an ordered set of
-available connections, a remembered selection, an enabled flag, and a kill-switch flag.
-Only one connection can be active. Connection chaining and ordered fallback are not part of
-this design.
+The application stores one `NetworkPolicy`, but its available connections are derived from the
+global network-connection catalog rather than maintained as a second allow-list. A workspace
+stores either no override, which inherits that application policy and the global catalog, or one
+complete replacement with its own connection subset. A policy also contains a remembered
+selection, an enabled flag, and a kill-switch flag. Only one connection can be active. Connection
+chaining and ordered fallback are not part of this design.
 
 Disabling networking uses the direct route and retains the remembered selection. If an enabled
 connection fails and the kill switch is off, the workspace may use its direct route. If the
