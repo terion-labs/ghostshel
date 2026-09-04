@@ -216,7 +216,8 @@ public sealed record NetworkConnectionStartRequest
         WorkspaceInstanceId workspaceId,
         NetworkConnectionProfile connection,
         WorkspaceNetworkPlacement placement,
-        bool killSwitchEnabled)
+        bool killSwitchEnabled,
+        SecretMaterial? transientPassword = null)
     {
         if (string.IsNullOrWhiteSpace(workspaceId.Value))
         {
@@ -227,6 +228,7 @@ public sealed record NetworkConnectionStartRequest
         Connection = connection ?? throw new ArgumentNullException(nameof(connection));
         Placement = placement ?? throw new ArgumentNullException(nameof(placement));
         KillSwitchEnabled = killSwitchEnabled;
+        TransientPassword = transientPassword;
     }
 
     public WorkspaceInstanceId WorkspaceId { get; }
@@ -236,6 +238,47 @@ public sealed record NetworkConnectionStartRequest
     public WorkspaceNetworkPlacement Placement { get; }
 
     public bool KillSwitchEnabled { get; }
+
+    /// <summary>
+    /// Session-only password owned by the caller. Providers may read it only while
+    /// <see cref="INetworkConnectionProvider.ConnectAsync"/> is running and must copy
+    /// anything they need before that call returns.
+    /// </summary>
+    public SecretMaterial? TransientPassword { get; }
+}
+
+public sealed record NetworkPasswordPromptRequest
+{
+    public NetworkPasswordPromptRequest(
+        NetworkConnectionId connectionId,
+        string connectionName)
+    {
+        if (string.IsNullOrWhiteSpace(connectionId.Value))
+        {
+            throw new ArgumentException(
+                "A network connection ID is required.",
+                nameof(connectionId));
+        }
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectionName);
+        ConnectionId = connectionId;
+        ConnectionName = connectionName.Trim();
+    }
+
+    public NetworkConnectionId ConnectionId { get; }
+
+    public string ConnectionName { get; }
+}
+
+/// <summary>
+/// Presentation boundary for a password that the user chose not to store. Successful
+/// material is owned by the caller and must be disposed after the connection attempt.
+/// </summary>
+public interface INetworkPasswordPrompt
+{
+    ValueTask<NetworkConnectionResult<SecretMaterial>> RequestPasswordAsync(
+        NetworkPasswordPromptRequest request,
+        CancellationToken cancellationToken);
 }
 
 public interface INetworkConnectionSession : IAsyncDisposable

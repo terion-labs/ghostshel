@@ -26,7 +26,11 @@ Network connections are reusable durable definitions. The first supported config
 - Tailscale through a selected exit node.
 
 Configuration payloads and credentials that can contain secrets are stored in the secret
-vault. Durable definitions contain only `SecretRef` values.
+vault. Durable definitions contain only `SecretRef` values. Storing a password is optional:
+when a proxy or AnyConnect profile has no password reference, every connection attempt prompts
+for the password and keeps it only for that attempt. The same path is used by connection tests.
+The transient password is passed to the selected host or isolated provider in memory, copied only
+for startup when required, and cleared after the provider has consumed it.
 
 The application stores one `NetworkPolicy`, but its available connections are derived from the
 global network-connection catalog rather than maintained as a second allow-list. A workspace

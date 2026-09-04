@@ -111,7 +111,7 @@ internal sealed class HostUserspaceVpnTransport : IHostUserspaceVpnTransport
                 "App-scoped OpenVPN requires OpenVPN 3 Core connected to a userspace IP stack. This build does not yet include that native adapter; installing the OpenVPN CLI alone is not sufficient.",
                 retryable: false)),
             NetworkConnectionKind.AnyConnect => ConnectAnyConnectAsync(
-                request.Connection,
+                request,
                 progress,
                 cancellationToken),
             NetworkConnectionKind.Tailscale => ConnectTailscaleAsync(
@@ -252,10 +252,11 @@ internal sealed class HostUserspaceVpnTransport : IHostUserspaceVpnTransport
 
     private async ValueTask<NetworkConnectionResult<INetworkConnectionSession>>
         ConnectAnyConnectAsync(
-            NetworkConnectionProfile profile,
+            NetworkConnectionStartRequest request,
             IProgress<NetworkConnectionProgress>? progress,
             CancellationToken cancellationToken)
     {
+        var profile = request.Connection;
         if (profile.Configuration is not NetworkConnectionConfiguration.AnyConnect configuration)
         {
             return InvalidConfiguration("Cisco AnyConnect");
@@ -275,15 +276,6 @@ internal sealed class HostUserspaceVpnTransport : IHostUserspaceVpnTransport
             return RuntimeMissing(
                 "anyconnect_host_userspace_runtime_missing",
                 "Install both openconnect and ocproxy and make them available on PATH. GhostSHELL uses OpenConnect's script-tun mode, so no host TUN interface or route is created.");
-        }
-
-        if (configuration.PasswordSecret is null && configuration.ClientCertificateSecret is null)
-        {
-            return Fail(
-                NetworkConnectionErrorCode.AuthenticationRequired,
-                "anyconnect_host_credentials_required",
-                "Cisco AnyConnect needs a stored password or client certificate for unattended app-scoped connection.",
-                retryable: false);
         }
 
         byte[]? password = null;
@@ -307,6 +299,15 @@ internal sealed class HostUserspaceVpnTransport : IHostUserspaceVpnTransport
                 }
 
                 password = ((NetworkConnectionResult<byte[]>.Success)resolved).Value;
+            }
+            else if (request.TransientPassword is { } transientPassword)
+            {
+                password = GC.AllocateUninitializedArray<byte>(transientPassword.Length);
+                transientPassword.CopyTo(password);
+            }
+
+            if (password is not null)
+            {
                 standardInput = new byte[password.Length + 1];
                 password.CopyTo(standardInput, 0);
                 standardInput[^1] = (byte)'\n';

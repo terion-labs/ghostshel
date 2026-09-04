@@ -62,6 +62,7 @@ public sealed class ProxyNetworkConnectionProvider : INetworkConnectionProvider
         var password = await ResolvePasswordAsync(
                 request.Connection.Id,
                 proxy.PasswordSecret,
+                request.TransientPassword,
                 cancellationToken)
             .ConfigureAwait(false);
         if (password is NetworkConnectionResult<byte[]>.Failure secretFailure)
@@ -79,7 +80,7 @@ public sealed class ProxyNetworkConnectionProvider : INetworkConnectionProvider
                     _connector,
                     request.Placement,
                     proxy,
-                    proxy.PasswordSecret is null ? null : passwordBytes);
+                    passwordBytes.Length == 0 ? null : passwordBytes);
                 passwordBytes = null;
             }
             catch (Exception exception) when (exception is
@@ -143,11 +144,19 @@ public sealed class ProxyNetworkConnectionProvider : INetworkConnectionProvider
     private async ValueTask<NetworkConnectionResult<byte[]>> ResolvePasswordAsync(
         NetworkConnectionId connectionId,
         SecretRef? passwordReference,
+        SecretMaterial? transientPassword,
         CancellationToken cancellationToken)
     {
         if (passwordReference is null)
         {
-            return NetworkConnectionResult<byte[]>.Succeed([]);
+            if (transientPassword is null)
+            {
+                return NetworkConnectionResult<byte[]>.Succeed([]);
+            }
+
+            var transientBytes = GC.AllocateUninitializedArray<byte>(transientPassword.Length);
+            transientPassword.CopyTo(transientBytes);
+            return NetworkConnectionResult<byte[]>.Succeed(transientBytes);
         }
 
         SecretVaultResult<SecretMaterial> resolved;

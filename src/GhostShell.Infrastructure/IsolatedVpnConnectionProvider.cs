@@ -141,12 +141,6 @@ public sealed class IsolatedVpnConnectionProvider : INetworkConnectionProvider
                 retryable: false);
         }
 
-        var invalid = ValidateConfiguration(request.Connection.Configuration);
-        if (invalid is not null)
-        {
-            return NetworkConnectionResult<INetworkConnectionSession>.Fail(invalid);
-        }
-
         var preflight = IsolatedVpnConnectionPlans.Preflight(Kind);
         progress?.Report(new NetworkConnectionProgress(
             $"Checking {preflight.DisplayName} in the workspace environment…"));
@@ -174,7 +168,7 @@ public sealed class IsolatedVpnConnectionProvider : INetworkConnectionProvider
 
         progress?.Report(new NetworkConnectionProgress(
             $"Preparing {preflight.DisplayName} configuration…"));
-        var planResult = await ResolvePlanAsync(request.Connection, cancellationToken)
+        var planResult = await ResolvePlanAsync(request, cancellationToken)
             .ConfigureAwait(false);
         if (planResult is NetworkConnectionResult<ResolvedVpnPlan>.Failure planFailure)
         {
@@ -346,26 +340,11 @@ public sealed class IsolatedVpnConnectionProvider : INetworkConnectionProvider
         _ => throw new ArgumentOutOfRangeException(nameof(Kind), Kind, null),
     };
 
-    private NetworkConnectionError? ValidateConfiguration(
-        NetworkConnectionConfiguration configuration)
-    {
-        if (configuration is NetworkConnectionConfiguration.AnyConnect
-            { PasswordSecret: null, ClientCertificateSecret: null })
-        {
-            return Error(
-                NetworkConnectionErrorCode.AuthenticationRequired,
-                "anyconnect_credentials_required",
-                "Cisco AnyConnect requires a password or client certificate for unattended workspace attachment.",
-                retryable: false);
-        }
-
-        return null;
-    }
-
     private async ValueTask<NetworkConnectionResult<ResolvedVpnPlan>> ResolvePlanAsync(
-        NetworkConnectionProfile profile,
+        NetworkConnectionStartRequest request,
         CancellationToken cancellationToken)
     {
+        var profile = request.Connection;
         var token = TokenFor(profile.Id);
         var directory = DirectoryFor(profile.Id);
         var interfaceName = WorkspaceIsolationNetworkNames.TunnelInterface(profile.Id);
@@ -401,6 +380,7 @@ public sealed class IsolatedVpnConnectionProvider : INetworkConnectionProvider
                         anyConnect,
                         directory,
                         interfaceName,
+                        request.TransientPassword,
                         cancellationToken)
                     .ConfigureAwait(false),
             NetworkConnectionConfiguration.Tailscale tailscale =>
@@ -451,6 +431,7 @@ public sealed class IsolatedVpnConnectionProvider : INetworkConnectionProvider
         NetworkConnectionConfiguration.AnyConnect configuration,
         string directory,
         string interfaceName,
+        SecretMaterial? transientPassword,
         CancellationToken cancellationToken)
     {
         var values = new List<byte[]>(2);
@@ -471,6 +452,12 @@ public sealed class IsolatedVpnConnectionProvider : INetworkConnectionProvider
             }
 
             password = ((NetworkConnectionResult<byte[]>.Success)result).Value;
+            values.Add(password);
+        }
+        else if (transientPassword is not null)
+        {
+            password = GC.AllocateUninitializedArray<byte>(transientPassword.Length);
+            transientPassword.CopyTo(password);
             values.Add(password);
         }
 

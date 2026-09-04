@@ -203,7 +203,7 @@
             <controls:SettingRow
                 Grid.Column="1"
                 Label="Password credential"
-                Description="Select a stored password or add a replacement below.">
+                Description="Select a stored password, or prompt whenever this connection starts.">
               <ComboBox
                   Width="340"
                   ItemTemplate="{StaticResource NetworkCredentialOptionTemplate}"
@@ -242,7 +242,7 @@
             <controls:SettingRow
                 Grid.Column="1"
                 Label="Password credential"
-                Description="Select a stored password or add a replacement below.">
+                Description="Select a stored password, or prompt whenever this connection starts.">
               <ComboBox
                   Width="340"
                   ItemTemplate="{StaticResource NetworkCredentialOptionTemplate}"

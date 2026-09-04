@@ -63,6 +63,28 @@ public sealed class NetworkSettingsViewModelTests
     }
 
     [Fact]
+    public void Password_profiles_offer_a_session_only_prompt_instead_of_requiring_storage()
+    {
+        var editor = new NetworkConnectionProfileEditorViewModel
+        {
+            Name = "Office VPN",
+            Gateway = "https://vpn.example.test",
+            Username = "alice",
+        };
+        editor.SelectedKind = editor.KindOptions.Single(option =>
+            option.Kind == NetworkConnectionKind.AnyConnect);
+
+        var prompt = Assert.IsType<NetworkCredentialOption>(
+            editor.SelectedPasswordCredential);
+        var profile = editor.CreateSaveRequest().Profile;
+
+        Assert.Equal(NetworkCredentialOptionState.Prompt, prompt.State);
+        Assert.Equal("Prompt on each connection", prompt.DisplayName);
+        Assert.Null(Assert.IsType<NetworkConnectionConfiguration.AnyConnect>(
+            profile.Configuration).PasswordSecret);
+    }
+
+    [Fact]
     public void Policy_editor_keeps_selection_inside_the_available_connection_list()
     {
         var first = Profile(new NetworkConnectionConfiguration.Proxy(

@@ -11,7 +11,8 @@ public interface IWorkspaceIsolationEgressGuard
         WorkspaceInstanceId workspaceId,
         WorkspaceIsolationBinding binding,
         NetworkConnectionProfile connection,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        SecretMaterial? transientPassword = null);
 
     ValueTask<NetworkConnectionResult<Unit>> DisarmAsync(
         WorkspaceInstanceId workspaceId,
@@ -517,7 +518,8 @@ public sealed class WorkspaceIsolationEgressGuard : IWorkspaceIsolationEgressGua
         WorkspaceInstanceId workspaceId,
         WorkspaceIsolationBinding binding,
         NetworkConnectionProfile connection,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        SecretMaterial? transientPassword = null)
     {
         Validate(workspaceId, binding);
         ArgumentNullException.ThrowIfNull(connection);
@@ -527,6 +529,7 @@ public sealed class WorkspaceIsolationEgressGuard : IWorkspaceIsolationEgressGua
                     binding,
                     connection.Id,
                     proxy,
+                    transientPassword,
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -560,6 +563,7 @@ public sealed class WorkspaceIsolationEgressGuard : IWorkspaceIsolationEgressGua
         WorkspaceIsolationBinding binding,
         NetworkConnectionId connectionId,
         NetworkConnectionConfiguration.Proxy proxy,
+        SecretMaterial? transientPassword,
         CancellationToken cancellationToken)
     {
         if (proxy.Protocol == NetworkProxyProtocol.Https
@@ -576,6 +580,7 @@ public sealed class WorkspaceIsolationEgressGuard : IWorkspaceIsolationEgressGua
         var password = await ResolveProxyPasswordAsync(
                 connectionId,
                 proxy.PasswordSecret,
+                transientPassword,
                 cancellationToken)
             .ConfigureAwait(false);
         if (password is NetworkConnectionResult<byte[]>.Failure secretFailure)
@@ -628,11 +633,19 @@ public sealed class WorkspaceIsolationEgressGuard : IWorkspaceIsolationEgressGua
     private async ValueTask<NetworkConnectionResult<byte[]>> ResolveProxyPasswordAsync(
         NetworkConnectionId connectionId,
         SecretRef? passwordReference,
+        SecretMaterial? transientPassword,
         CancellationToken cancellationToken)
     {
         if (passwordReference is null)
         {
-            return NetworkConnectionResult<byte[]>.Succeed([]);
+            if (transientPassword is null)
+            {
+                return NetworkConnectionResult<byte[]>.Succeed([]);
+            }
+
+            var transientBytes = GC.AllocateUninitializedArray<byte>(transientPassword.Length);
+            transientPassword.CopyTo(transientBytes);
+            return NetworkConnectionResult<byte[]>.Succeed(transientBytes);
         }
 
         if (_secretVault is null)

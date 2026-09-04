@@ -59,15 +59,27 @@ public sealed class WorkspaceNetworkContractsTests
     public void Provider_contract_receives_the_workspace_placement()
     {
         var profile = Profile();
+        using var password = SecretMaterial.CopyFrom("session-password"u8);
         var request = new NetworkConnectionStartRequest(
             new WorkspaceInstanceId("running-workspace"),
             profile,
             WorkspaceNetworkPlacement.Host,
-            killSwitchEnabled: true);
+            killSwitchEnabled: true,
+            password);
 
         Assert.Same(profile, request.Connection);
         Assert.IsType<WorkspaceNetworkPlacement.HostPlacement>(request.Placement);
         Assert.True(request.KillSwitchEnabled);
+        Assert.Same(password, request.TransientPassword);
+    }
+
+    [Fact]
+    public void Password_prompt_request_normalizes_its_display_name()
+    {
+        var request = new NetworkPasswordPromptRequest(ConnectionId, "  Work VPN  ");
+
+        Assert.Equal(ConnectionId, request.ConnectionId);
+        Assert.Equal("Work VPN", request.ConnectionName);
     }
 
     private static NetworkConnectionProfile Profile() => new(

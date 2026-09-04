@@ -83,6 +83,41 @@ public sealed class ProxyNetworkConnectionProviderTests
     }
 
     [Fact]
+    public async Task Http_adapter_uses_a_session_only_password_when_none_is_stored()
+    {
+        using var vault = new InMemorySecretVault();
+        using var upstream = new TcpListener(IPAddress.Loopback, 0);
+        upstream.Start();
+        var upstreamPort = ((IPEndPoint)upstream.LocalEndpoint).Port;
+        var observed = ServeHttpUpstreamAsync(upstream);
+        var provider = CreateProvider(vault);
+        var password = SecretMaterial.CopyFrom("session-password"u8);
+        var result = await provider.ConnectAsync(
+            Request(
+                new NetworkConnectionConfiguration.Proxy(
+                    NetworkProxyProtocol.Http,
+                    "127.0.0.1",
+                    upstreamPort,
+                    "proxy-user"),
+                password),
+            progress: null,
+            CancellationToken.None);
+        password.Dispose();
+
+        await using var session = Success(result);
+        using var client = await ConnectAdapterAsync(session);
+        await NegotiateAdapterAsync(client.GetStream(), "private.example", 443);
+        var requestHeader = await observed;
+
+        var encoded = Convert.ToBase64String(
+            Encoding.UTF8.GetBytes("proxy-user:session-password"));
+        Assert.Contains(
+            $"Proxy-Authorization: Basic {encoded}",
+            requestHeader,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Missing_password_is_a_typed_configuration_failure()
     {
         using var vault = new InMemorySecretVault();
@@ -236,7 +271,8 @@ public sealed class ProxyNetworkConnectionProviderTests
         reachabilityProbe ?? new RecordingSocksReachabilityProbe(reachable: true));
 
     private static NetworkConnectionStartRequest Request(
-        NetworkConnectionConfiguration.Proxy configuration) => new(
+        NetworkConnectionConfiguration.Proxy configuration,
+        SecretMaterial? transientPassword = null) => new(
         new WorkspaceInstanceId("workspace-test"),
         new NetworkConnectionProfile(
             ConnectionId,
@@ -244,7 +280,8 @@ public sealed class ProxyNetworkConnectionProviderTests
             "Test proxy",
             configuration),
         WorkspaceNetworkPlacement.Host,
-        killSwitchEnabled: false);
+        killSwitchEnabled: false,
+        transientPassword);
 
     private static async Task<TcpClient> ConnectAdapterAsync(INetworkConnectionSession session)
     {

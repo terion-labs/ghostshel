@@ -1,3 +1,4 @@
+using System.Text;
 using GhostShell.Application;
 using GhostShell.Core;
 
@@ -37,6 +38,108 @@ public sealed class WorkspaceNetworkRuntimeTests
         Assert.Equal(WorkspaceNetworkState.Connected, session.Snapshot.State);
         Assert.Equal(ConnectionId, session.Snapshot.SelectedConnectionId);
         Assert.Equal(provider.Session.Egress, session.Snapshot.Egress);
+    }
+
+    [Fact]
+    public async Task Unstored_AnyConnect_password_is_prompted_for_each_new_connection()
+    {
+        var provider = new RecordingProvider(NetworkConnectionKind.AnyConnect);
+        var prompt = new RecordingPasswordPrompt("session-password");
+        var runtime = new WorkspaceNetworkRuntime(
+            [provider],
+            passwordPrompt: prompt);
+        var profile = AnyConnectProfile();
+        var request = Request(
+            new NetworkPolicy([ConnectionId], ConnectionId, true, false),
+            [profile]);
+
+        await using var first = await runtime.OpenAsync(
+            request,
+            progress: null,
+            CancellationToken.None);
+        await using var second = await runtime.OpenAsync(
+            request,
+            progress: null,
+            CancellationToken.None);
+
+        Assert.Equal(2, prompt.Requests.Count);
+        Assert.All(
+            provider.Passwords,
+            password => Assert.Equal("session-password", Encoding.UTF8.GetString(password!)));
+        Assert.True(provider.LastRequest?.TransientPassword?.IsDisposed);
+    }
+
+    [Fact]
+    public async Task Stored_AnyConnect_password_does_not_open_the_password_prompt()
+    {
+        var provider = new RecordingProvider(NetworkConnectionKind.AnyConnect);
+        var prompt = new RecordingPasswordPrompt("unused");
+        var runtime = new WorkspaceNetworkRuntime(
+            [provider],
+            passwordPrompt: prompt);
+        var profile = AnyConnectProfile(new SecretRef("stored-password"));
+
+        await using var session = await runtime.OpenAsync(
+            Request(
+                new NetworkPolicy([ConnectionId], ConnectionId, true, false),
+                [profile]),
+            progress: null,
+            CancellationToken.None);
+
+        Assert.Empty(prompt.Requests);
+        Assert.Null(provider.Passwords.Single());
+    }
+
+    [Fact]
+    public async Task Cancelling_the_password_prompt_does_not_start_the_provider()
+    {
+        var provider = new RecordingProvider(NetworkConnectionKind.AnyConnect);
+        var prompt = new RecordingPasswordPrompt("unused", cancel: true);
+        var runtime = new WorkspaceNetworkRuntime(
+            [provider],
+            passwordPrompt: prompt);
+        var profile = AnyConnectProfile();
+
+        await using var session = await runtime.OpenAsync(
+            Request(
+                new NetworkPolicy([ConnectionId], ConnectionId, true, false),
+                [profile]),
+            progress: null,
+            CancellationToken.None);
+
+        Assert.Equal(WorkspaceNetworkState.Failed, session.Snapshot.State);
+        Assert.Equal(NetworkConnectionErrorCode.Cancelled, session.Snapshot.Error?.Code);
+        Assert.Equal(0, provider.ConnectCount);
+    }
+
+    [Fact]
+    public async Task Unstored_isolated_proxy_password_is_passed_to_the_guest_guard()
+    {
+        var guard = new RecordingEgressGuard();
+        var prompt = new RecordingPasswordPrompt("proxy-password");
+        var runtime = new WorkspaceNetworkRuntime(
+            [],
+            guard,
+            prompt);
+        var profile = new NetworkConnectionProfile(
+            ConnectionId,
+            NetworkConnectionProfile.CurrentSchemaVersion,
+            "Authenticated proxy",
+            new NetworkConnectionConfiguration.Proxy(
+                NetworkProxyProtocol.Socks5,
+                "proxy.example.test",
+                1080,
+                username: "proxy-user"));
+
+        await using var session = await runtime.OpenAsync(
+            IsolatedRequest(
+                new NetworkPolicy([ConnectionId], ConnectionId, true, false),
+                [profile]),
+            progress: null,
+            CancellationToken.None);
+
+        Assert.Equal("proxy-password", Encoding.UTF8.GetString(guard.TransientPassword!));
+        Assert.Single(prompt.Requests);
     }
 
     [Fact]
@@ -575,6 +678,16 @@ public sealed class WorkspaceNetworkRuntimeTests
         "Test WireGuard",
         new NetworkConnectionConfiguration.WireGuard(new SecretRef("wireguard-config")));
 
+    private static NetworkConnectionProfile AnyConnectProfile(
+        SecretRef? password = null) => new(
+        ConnectionId,
+        NetworkConnectionProfile.CurrentSchemaVersion,
+        "Test AnyConnect",
+        new NetworkConnectionConfiguration.AnyConnect(
+            new Uri("https://vpn.example.test"),
+            username: "test-user",
+            passwordSecret: password));
+
     private static WorkspaceIsolationBinding Binding(string resourceName = "test-isolate") => new(
         new WorkspaceId("workspace-definition"),
         new WorkspaceIsolationProviderId("test-isolation"),
@@ -599,6 +712,8 @@ public sealed class WorkspaceNetworkRuntimeTests
 
         public NetworkConnectionStartRequest? LastRequest { get; private set; }
 
+        public List<byte[]?> Passwords { get; } = [];
+
         public ValueTask<NetworkConnectionResult<INetworkConnectionSession>> ConnectAsync(
             NetworkConnectionStartRequest request,
             IProgress<NetworkConnectionProgress>? progress,
@@ -607,6 +722,16 @@ public sealed class WorkspaceNetworkRuntimeTests
             cancellationToken.ThrowIfCancellationRequested();
             ConnectCount++;
             LastRequest = request;
+            if (request.TransientPassword is { } transientPassword)
+            {
+                var bytes = new byte[transientPassword.Length];
+                transientPassword.CopyTo(bytes);
+                Passwords.Add(bytes);
+            }
+            else
+            {
+                Passwords.Add(null);
+            }
             if (failConnect)
             {
                 return ValueTask.FromResult(
@@ -642,14 +767,22 @@ public sealed class WorkspaceNetworkRuntimeTests
 
         public bool EnforceBeforeArmFailure { get; init; }
 
+        public byte[]? TransientPassword { get; private set; }
+
         public ValueTask<WorkspaceIsolationEgressGuardArmResult> ArmAsync(
             WorkspaceInstanceId workspaceId,
             WorkspaceIsolationBinding binding,
             NetworkConnectionProfile connection,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            SecretMaterial? transientPassword = null)
         {
             cancellationToken.ThrowIfCancellationRequested();
             ArmCount++;
+            if (transientPassword is not null)
+            {
+                TransientPassword = new byte[transientPassword.Length];
+                transientPassword.CopyTo(TransientPassword);
+            }
             return ValueTask.FromResult(FailArm
                 ? WorkspaceIsolationEgressGuardArmResult.Failed(
                     new NetworkConnectionError(
@@ -679,6 +812,35 @@ public sealed class WorkspaceNetworkRuntimeTests
             }
 
             return ValueTask.FromResult(NetworkConnectionResult<Unit>.Succeed(Unit.Value));
+        }
+    }
+
+    private sealed class RecordingPasswordPrompt(
+        string password,
+        bool cancel = false) : INetworkPasswordPrompt
+    {
+        public List<NetworkPasswordPromptRequest> Requests { get; } = [];
+
+        public ValueTask<NetworkConnectionResult<SecretMaterial>> RequestPasswordAsync(
+            NetworkPasswordPromptRequest request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Requests.Add(request);
+            if (cancel)
+            {
+                return ValueTask.FromResult(
+                    NetworkConnectionResult<SecretMaterial>.Fail(
+                        new NetworkConnectionError(
+                            NetworkConnectionErrorCode.Cancelled,
+                            "test_password_cancelled",
+                            "The test password prompt was cancelled.",
+                            retryable: true)));
+            }
+
+            return ValueTask.FromResult(
+                NetworkConnectionResult<SecretMaterial>.Succeed(
+                    SecretMaterial.CopyFrom(Encoding.UTF8.GetBytes(password))));
         }
     }
 

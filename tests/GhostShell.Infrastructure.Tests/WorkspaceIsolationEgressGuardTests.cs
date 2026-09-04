@@ -226,6 +226,36 @@ public sealed class WorkspaceIsolationEgressGuardTests
     }
 
     [Fact]
+    public async Task Authenticated_proxy_accepts_a_session_only_password()
+    {
+        var isolation = new RecordingIsolationProvider();
+        var commands = new RecordingCommandRunner();
+        var guard = new WorkspaceIsolationEgressGuard(isolation, commands);
+        using var password = SecretMaterial.CopyFrom("session-password"u8);
+        var profile = new NetworkConnectionProfile(
+            ConnectionId,
+            NetworkConnectionProfile.CurrentSchemaVersion,
+            "Authenticated proxy",
+            new NetworkConnectionConfiguration.Proxy(
+                NetworkProxyProtocol.Socks5,
+                "proxy.example.com",
+                1080,
+                username: "proxy-user"));
+
+        var result = await guard.ArmAsync(
+            WorkspaceInstanceId,
+            isolation.Binding,
+            profile,
+            CancellationToken.None,
+            password);
+
+        Assert.True(result.IsEnforced);
+        var configuration = Encoding.UTF8.GetString(Assert.Single(commands.StandardInputs));
+        Assert.Contains("login = \"proxy-user\";", configuration, StringComparison.Ordinal);
+        Assert.Contains("password = \"session-password\";", configuration, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Missing_proxy_runtime_names_the_required_guest_packages()
     {
         var isolation = new RecordingIsolationProvider();

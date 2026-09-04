@@ -19,6 +19,7 @@ public sealed record NetworkConnectionProfileSaveRequest(
 public enum NetworkCredentialOptionState
 {
     None,
+    Prompt,
     Available,
     Pending,
     Unavailable,
@@ -38,6 +39,7 @@ public sealed record NetworkCredentialOption(
     public string DisplayName => State switch
     {
         NetworkCredentialOptionState.None => "No stored credential",
+        NetworkCredentialOptionState.Prompt => "Prompt on each connection",
         NetworkCredentialOptionState.Available => $"{Label} · {KindLabel}",
         NetworkCredentialOptionState.Pending => $"{Label} · Ready to store",
         NetworkCredentialOptionState.Unavailable => "Credential unavailable",
@@ -50,6 +52,8 @@ public sealed record NetworkCredentialOption(
     public string Detail => State switch
     {
         NetworkCredentialOptionState.None => "Do not use a credential for this field.",
+        NetworkCredentialOptionState.Prompt =>
+            "The password is used for that connection only and is not stored.",
         NetworkCredentialOptionState.Available =>
             $"{KindLabel} · {PersistenceLabel} · Updated {UpdatedLabel}",
         NetworkCredentialOptionState.Pending =>
@@ -64,6 +68,7 @@ public sealed record NetworkCredentialOption(
     };
 
     public bool IsAvailable => State is NetworkCredentialOptionState.None
+        or NetworkCredentialOptionState.Prompt
         or NetworkCredentialOptionState.Available
         or NetworkCredentialOptionState.Pending;
 
@@ -663,7 +668,10 @@ public sealed class NetworkConnectionProfileEditorViewModel : ObservableObject
 
         if (!isRequired)
         {
-            options.Insert(0, NoCredential());
+            options.Insert(0, target is NetworkCredentialTarget.ProxyPassword
+                or NetworkCredentialTarget.AnyConnectPassword
+                    ? PromptForPassword()
+                    : NoCredential());
         }
 
         return options.AsReadOnly();
@@ -684,6 +692,14 @@ public sealed class NetworkConnectionProfileEditorViewModel : ObservableObject
         SecretVaultPersistenceKind.None,
         null,
         NetworkCredentialOptionState.None);
+
+    private static NetworkCredentialOption PromptForPassword() => new(
+        null,
+        "Prompt on each connection",
+        SecretKind.Password,
+        SecretVaultPersistenceKind.None,
+        null,
+        NetworkCredentialOptionState.Prompt);
 
     private static NetworkCredentialOption? SelectedCredential(
         IReadOnlyList<NetworkCredentialOption> options,

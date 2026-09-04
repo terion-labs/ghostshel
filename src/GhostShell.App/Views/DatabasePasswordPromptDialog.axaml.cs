@@ -1,3 +1,4 @@
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -24,6 +25,7 @@ public sealed partial class DatabasePasswordPromptDialog : Window
     {
         Title = $"{connectionName} password";
         PromptTitle.Text = $"{connectionName} password";
+        AutomationProperties.SetName(PasswordInput, $"{connectionName} password");
         if (canSavePassword)
         {
             PromptDescription.Text =

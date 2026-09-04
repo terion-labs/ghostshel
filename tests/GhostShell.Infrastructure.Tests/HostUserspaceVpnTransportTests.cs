@@ -118,6 +118,40 @@ public sealed class HostUserspaceVpnTransportTests
     }
 
     [Fact]
+    public async Task AnyConnect_accepts_a_session_only_password()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var state = new TemporaryDirectory();
+        using var vault = new InMemorySecretVault();
+        using var password = SecretMaterial.CopyFrom("session-password"u8);
+        var processes = new RecordingHostVpnProcessRunner();
+        var transport = Create(
+            NetworkConnectionKind.AnyConnect,
+            vault,
+            processes,
+            state.Path,
+            ("openconnect", "/tools/openconnect"),
+            ("ocproxy", "/tools/ocproxy"));
+
+        await using var session = Success(await transport.ConnectAsync(
+            Request(
+                new NetworkConnectionConfiguration.AnyConnect(
+                    new Uri("https://vpn.example.test"),
+                    username: "user"),
+                password),
+            progress: null,
+            CancellationToken.None));
+
+        var started = Assert.Single(processes.Starts);
+        Assert.Contains("--passwd-on-stdin", started.Arguments, StringComparer.Ordinal);
+        Assert.Equal("session-password\n", Encoding.UTF8.GetString(started.StandardInput.Span));
+    }
+
+    [Fact]
     public async Task Tailscale_uses_a_private_userspace_daemon_and_preserves_its_identity()
     {
         if (OperatingSystem.IsWindows())
@@ -394,7 +428,8 @@ public sealed class HostUserspaceVpnTransportTests
             healthPollInterval);
 
     private static NetworkConnectionStartRequest Request(
-        NetworkConnectionConfiguration configuration) => new(
+        NetworkConnectionConfiguration configuration,
+        SecretMaterial? transientPassword = null) => new(
         WorkspaceId,
         new NetworkConnectionProfile(
             ConnectionId,
@@ -402,7 +437,8 @@ public sealed class HostUserspaceVpnTransportTests
             "Host VPN",
             configuration),
         WorkspaceNetworkPlacement.Host,
-        killSwitchEnabled: false);
+        killSwitchEnabled: false,
+        transientPassword);
 
     private static async Task StoreSecretAsync(
         InMemorySecretVault vault,

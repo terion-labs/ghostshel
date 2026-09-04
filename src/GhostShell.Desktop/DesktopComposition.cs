@@ -146,6 +146,7 @@ public static class DesktopComposition
             new ProxyNetworkConnectionProvider(
                 provider.GetRequiredService<ISecretVault>(),
                 provider.GetService<IWorkspaceIsolationProvider>()));
+        services.AddSingleton<INetworkPasswordPrompt, AvaloniaNetworkPasswordPrompt>();
         if (hasWorkspaceIsolationProvider)
         {
             services.AddSingleton<IWorkspaceIsolationEgressGuard,
@@ -160,7 +161,8 @@ public static class DesktopComposition
         services.AddSingleton<IWorkspaceNetworkRuntime>(provider =>
             new WorkspaceNetworkRuntime(
                 provider.GetServices<INetworkConnectionProvider>(),
-                provider.GetService<IWorkspaceIsolationEgressGuard>()));
+                provider.GetService<IWorkspaceIsolationEgressGuard>(),
+                provider.GetRequiredService<INetworkPasswordPrompt>()));
         services.AddSingleton<WorkspaceNetworkRouteRegistry>();
         services.AddSingleton<IWorkspaceNetworkRouteResolver>(provider =>
             provider.GetRequiredService<WorkspaceNetworkRouteRegistry>());

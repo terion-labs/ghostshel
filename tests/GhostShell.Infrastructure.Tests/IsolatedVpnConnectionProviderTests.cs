@@ -225,11 +225,12 @@ public sealed class IsolatedVpnConnectionProviderTests
     }
 
     [Fact]
-    public async Task AnyConnect_requires_unattended_credentials_before_running_OpenConnect()
+    public async Task AnyConnect_accepts_a_session_only_password()
     {
         using var vault = new InMemorySecretVault();
         var isolation = new RecordingIsolationProvider();
         var commands = new RecordingCommandRunner();
+        using var password = SecretMaterial.CopyFrom("session-password"u8);
         var provider = new IsolatedVpnConnectionProvider(
             NetworkConnectionKind.AnyConnect,
             vault,
@@ -239,16 +240,20 @@ public sealed class IsolatedVpnConnectionProviderTests
         var result = await provider.ConnectAsync(
             Request(
                 new NetworkConnectionConfiguration.AnyConnect(
-                    new Uri("https://vpn.example.test")),
-                WorkspaceNetworkPlacement.Isolated(isolation.Binding)),
+                    new Uri("https://vpn.example.test"),
+                    username: "test-user"),
+                WorkspaceNetworkPlacement.Isolated(isolation.Binding),
+                password),
             progress: null,
             CancellationToken.None);
 
-        var failure = Assert.IsType<NetworkConnectionResult<INetworkConnectionSession>.Failure>(
-            result);
-        Assert.Equal(NetworkConnectionErrorCode.AuthenticationRequired, failure.Error.Code);
-        Assert.Equal("anyconnect_credentials_required", failure.Error.StableCode);
-        Assert.Empty(commands.Launches);
+        await using var session = Success(result);
+        Assert.Contains(
+            commands.StandardInputs,
+            input => Encoding.UTF8.GetString(input) == "session-password");
+        Assert.DoesNotContain(
+            commands.Launches.SelectMany(launch => launch.Arguments),
+            argument => argument.Contains("session-password", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -522,7 +527,8 @@ public sealed class IsolatedVpnConnectionProviderTests
 
     private static NetworkConnectionStartRequest Request(
         NetworkConnectionConfiguration configuration,
-        WorkspaceNetworkPlacement placement) => new(
+        WorkspaceNetworkPlacement placement,
+        SecretMaterial? transientPassword = null) => new(
         new WorkspaceInstanceId("running-workspace"),
         new NetworkConnectionProfile(
             ConnectionId,
@@ -530,7 +536,8 @@ public sealed class IsolatedVpnConnectionProviderTests
             "Test VPN",
             configuration),
         placement,
-        killSwitchEnabled: false);
+        killSwitchEnabled: false,
+        transientPassword);
 
     private static SecretScope Scope() =>
         new(SecretScopeKind.NetworkConnection, ConnectionId.Value);
@@ -565,6 +572,8 @@ public sealed class IsolatedVpnConnectionProviderTests
 
         public List<WorkspaceProcessLaunch> Launches { get; } = [];
 
+        public List<byte[]> StandardInputs { get; } = [];
+
         public IReadOnlyList<string> Scripts =>
             [.. Launches.Select(launch => launch.Arguments[1])];
 
@@ -581,6 +590,7 @@ public sealed class IsolatedVpnConnectionProviderTests
             CancellationToken cancellationToken)
         {
             Launches.Add(launch);
+            StandardInputs.Add(standardInput.ToArray());
             if (ThrowCancellation)
             {
                 throw new OperationCanceledException(cancellationToken);

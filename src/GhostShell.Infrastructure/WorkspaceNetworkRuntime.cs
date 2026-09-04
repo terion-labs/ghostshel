@@ -16,10 +16,12 @@ public sealed class WorkspaceNetworkRuntime : IWorkspaceNetworkRuntime
     private readonly IReadOnlyDictionary<NetworkConnectionKind, INetworkConnectionProvider>
         _providers;
     private readonly IWorkspaceIsolationEgressGuard? _isolationEgressGuard;
+    private readonly INetworkPasswordPrompt? _passwordPrompt;
 
     public WorkspaceNetworkRuntime(
         IEnumerable<INetworkConnectionProvider> providers,
-        IWorkspaceIsolationEgressGuard? isolationEgressGuard = null)
+        IWorkspaceIsolationEgressGuard? isolationEgressGuard = null,
+        INetworkPasswordPrompt? passwordPrompt = null)
     {
         ArgumentNullException.ThrowIfNull(providers);
         var byKind = new Dictionary<NetworkConnectionKind, INetworkConnectionProvider>();
@@ -36,6 +38,7 @@ public sealed class WorkspaceNetworkRuntime : IWorkspaceNetworkRuntime
 
         _providers = byKind;
         _isolationEgressGuard = isolationEgressGuard;
+        _passwordPrompt = passwordPrompt;
     }
 
     public async ValueTask<IWorkspaceNetworkSession> OpenAsync(
@@ -58,7 +61,8 @@ public sealed class WorkspaceNetworkRuntime : IWorkspaceNetworkRuntime
             request.WorkspaceId,
             request.Placement,
             _providers,
-            _isolationEgressGuard);
+            _isolationEgressGuard,
+            _passwordPrompt);
         _ = await session.ApplyAsync(
                 request.InitialPolicy,
                 progress,
@@ -102,7 +106,8 @@ public sealed class WorkspaceNetworkRuntime : IWorkspaceNetworkRuntime
                             request.WorkspaceId,
                             request.Placement,
                             _providers,
-                            _isolationEgressGuard));
+                            _isolationEgressGuard,
+                            _passwordPrompt));
                     _sharedSessions.Add(key, entry);
                     initialize = true;
                 }
@@ -269,6 +274,7 @@ public sealed class WorkspaceNetworkRuntime : IWorkspaceNetworkRuntime
         private readonly IReadOnlyDictionary<NetworkConnectionKind, INetworkConnectionProvider>
             _providers;
         private readonly IWorkspaceIsolationEgressGuard? _isolationEgressGuard;
+        private readonly INetworkPasswordPrompt? _passwordPrompt;
         private INetworkConnectionSession? _connection;
         private ConnectionCleanupFailure? _unresolvedCleanupFailure;
         private NetworkPolicy _policy = NetworkPolicy.Direct;
@@ -281,12 +287,14 @@ public sealed class WorkspaceNetworkRuntime : IWorkspaceNetworkRuntime
             WorkspaceInstanceId workspaceId,
             WorkspaceNetworkPlacement placement,
             IReadOnlyDictionary<NetworkConnectionKind, INetworkConnectionProvider> providers,
-            IWorkspaceIsolationEgressGuard? isolationEgressGuard)
+            IWorkspaceIsolationEgressGuard? isolationEgressGuard,
+            INetworkPasswordPrompt? passwordPrompt)
         {
             _workspaceId = workspaceId;
             _placement = placement;
             _providers = providers;
             _isolationEgressGuard = isolationEgressGuard;
+            _passwordPrompt = passwordPrompt;
         }
 
         public WorkspaceNetworkSnapshot Snapshot
@@ -347,6 +355,17 @@ public sealed class WorkspaceNetworkRuntime : IWorkspaceNetworkRuntime
                     return FailCleanup(replacementCleanupFailure);
                 }
 
+                using var transientPassword = await RequestPasswordAsync(
+                        selected,
+                        progress,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (transientPassword.Result is
+                    NetworkConnectionResult<SecretMaterial>.Failure passwordFailure)
+                {
+                    return Fail(selectedId, passwordFailure.Error);
+                }
+
                 var isolatedProxy = IsIsolatedProxy(selected);
                 var needsGuard = isolatedProxy
                     || (update.Policy.KillSwitchEnabled
@@ -361,7 +380,10 @@ public sealed class WorkspaceNetworkRuntime : IWorkspaceNetworkRuntime
                 }
                 else
                 {
-                    var armed = await ArmGuardAsync(selected, cancellationToken)
+                    var armed = await ArmGuardAsync(
+                            selected,
+                            transientPassword.Material,
+                            cancellationToken)
                         .ConfigureAwait(false);
                     if (armed is NetworkConnectionResult<Unit>.Failure armFailure)
                     {
@@ -404,7 +426,8 @@ public sealed class WorkspaceNetworkRuntime : IWorkspaceNetworkRuntime
                                     _workspaceId,
                                     selected,
                                     _placement,
-                                    update.Policy.KillSwitchEnabled),
+                                    update.Policy.KillSwitchEnabled,
+                                    transientPassword.Material),
                                 progress,
                                 cancellationToken)
                             .ConfigureAwait(false);
@@ -466,6 +489,61 @@ public sealed class WorkspaceNetworkRuntime : IWorkspaceNetworkRuntime
             {
                 _changeGate.Release();
             }
+        }
+
+        private async ValueTask<TransientPasswordResult> RequestPasswordAsync(
+            NetworkConnectionProfile connection,
+            IProgress<NetworkConnectionProgress>? progress,
+            CancellationToken cancellationToken)
+        {
+            if (!RequiresPasswordPrompt(connection.Configuration))
+            {
+                return new(null, null);
+            }
+
+            if (_passwordPrompt is null)
+            {
+                return new(
+                    NetworkConnectionResult<SecretMaterial>.Fail(
+                        new NetworkConnectionError(
+                            NetworkConnectionErrorCode.AuthenticationRequired,
+                            "network_password_prompt_unavailable",
+                            $"{connection.Name} needs a password for this connection.",
+                            retryable: true)),
+                    null);
+            }
+
+            progress?.Report(new NetworkConnectionProgress("Waiting for password…"));
+            var result = await _passwordPrompt.RequestPasswordAsync(
+                    new NetworkPasswordPromptRequest(connection.Id, connection.Name),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return result switch
+            {
+                NetworkConnectionResult<SecretMaterial>.Success success =>
+                    new(result, success.Value),
+                _ => new(result, null),
+            };
+        }
+
+        private static bool RequiresPasswordPrompt(
+            NetworkConnectionConfiguration configuration) =>
+            configuration switch
+            {
+                NetworkConnectionConfiguration.Proxy { Username: not null, PasswordSecret: null } => true,
+                NetworkConnectionConfiguration.AnyConnect { PasswordSecret: null } => true,
+                _ => false,
+            };
+
+        private sealed class TransientPasswordResult(
+            NetworkConnectionResult<SecretMaterial>? result,
+            SecretMaterial? material) : IDisposable
+        {
+            public NetworkConnectionResult<SecretMaterial>? Result { get; } = result;
+
+            public SecretMaterial? Material { get; } = material;
+
+            public void Dispose() => Material?.Dispose();
         }
 
         public async ValueTask DisposeAsync()
@@ -555,6 +633,7 @@ public sealed class WorkspaceNetworkRuntime : IWorkspaceNetworkRuntime
 
         private async ValueTask<NetworkConnectionResult<Unit>> ArmGuardAsync(
             NetworkConnectionProfile selected,
+            SecretMaterial? transientPassword,
             CancellationToken cancellationToken)
         {
             if (_placement is not WorkspaceNetworkPlacement.IsolatedPlacement isolated)
@@ -580,7 +659,8 @@ public sealed class WorkspaceNetworkRuntime : IWorkspaceNetworkRuntime
                     _workspaceId,
                     isolated.Binding,
                     selected,
-                    cancellationToken)
+                    cancellationToken,
+                    transientPassword)
                 .ConfigureAwait(false);
             _guardArmed = result.IsEnforced;
             return result.Error is null
