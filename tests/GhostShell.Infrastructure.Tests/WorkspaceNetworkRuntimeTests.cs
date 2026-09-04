@@ -39,23 +39,58 @@ public sealed class WorkspaceNetworkRuntimeTests
         Assert.Equal(provider.Session.Egress, session.Snapshot.Egress);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Missing_provider_does_not_claim_unenforced_blocked_egress(bool killSwitch)
+    [Fact]
+    public async Task Missing_provider_falls_back_to_direct_without_a_kill_switch()
     {
         var runtime = new WorkspaceNetworkRuntime([]);
         var profile = Profile();
 
         await using var session = await runtime.OpenAsync(
             Request(
-                new NetworkPolicy([ConnectionId], ConnectionId, true, killSwitch),
+                new NetworkPolicy([ConnectionId], ConnectionId, true, false),
                 [profile]),
             progress: null,
             CancellationToken.None);
 
         Assert.Equal(WorkspaceNetworkState.Failed, session.Snapshot.State);
         Assert.Equal(WorkspaceNetworkEgress.Direct, session.Snapshot.Egress);
+    }
+
+    [Fact]
+    public async Task Missing_provider_blocks_a_host_workspace_with_a_kill_switch()
+    {
+        var runtime = new WorkspaceNetworkRuntime([]);
+        var profile = Profile();
+
+        await using var session = await runtime.OpenAsync(
+            Request(
+                new NetworkPolicy([ConnectionId], ConnectionId, true, true),
+                [profile]),
+            progress: null,
+            CancellationToken.None);
+
+        Assert.Equal(WorkspaceNetworkState.Blocked, session.Snapshot.State);
+        Assert.Equal(WorkspaceNetworkEgress.Blocked, session.Snapshot.Egress);
+    }
+
+    [Fact]
+    public async Task Provider_failure_blocks_a_kill_switched_host_workspace()
+    {
+        var provider = new RecordingProvider();
+        var runtime = new WorkspaceNetworkRuntime([provider]);
+        var profile = Profile();
+        await using var session = await runtime.OpenAsync(
+            Request(
+                new NetworkPolicy([ConnectionId], ConnectionId, true, true),
+                [profile]),
+            progress: null,
+            CancellationToken.None);
+
+        provider.Session.Publish(NetworkConnectionState.Failed, "Proxy stopped.");
+
+        Assert.Equal(WorkspaceNetworkState.Blocked, session.Snapshot.State);
+        Assert.Equal(WorkspaceNetworkEgress.Blocked, session.Snapshot.Egress);
+        Assert.Equal("Proxy stopped.", session.Snapshot.Error?.Message);
     }
 
     [Fact]
@@ -242,6 +277,78 @@ public sealed class WorkspaceNetworkRuntimeTests
         Assert.Equal(WorkspaceNetworkState.Connected, session.Snapshot.State);
         Assert.Equal(0, guard.ArmCount);
         Assert.False(provider.LastRequest?.KillSwitchEnabled);
+    }
+
+    [Fact]
+    public async Task Isolated_proxy_is_enforced_in_the_guest_without_starting_host_provider()
+    {
+        var provider = new RecordingProvider();
+        var guard = new RecordingEgressGuard();
+        var runtime = new WorkspaceNetworkRuntime([provider], guard);
+        var profile = Profile();
+        await using var session = await runtime.OpenAsync(
+            IsolatedRequest(
+                new NetworkPolicy([ConnectionId], ConnectionId, true, false),
+                [profile]),
+            progress: null,
+            CancellationToken.None);
+
+        Assert.Equal(WorkspaceNetworkState.Connected, session.Snapshot.State);
+        Assert.Equal(WorkspaceNetworkEgress.Attached, session.Snapshot.Egress);
+        Assert.Equal(1, guard.ArmCount);
+        Assert.Equal(0, provider.ConnectCount);
+
+        var result = await session.ApplyAsync(
+            new WorkspaceNetworkPolicyUpdate(NetworkPolicy.Direct, [profile]),
+            progress: null,
+            CancellationToken.None);
+
+        Assert.IsType<NetworkConnectionResult<WorkspaceNetworkSnapshot>.Success>(result);
+        Assert.Equal(1, guard.DisarmCount);
+        Assert.Equal(WorkspaceNetworkState.Direct, session.Snapshot.State);
+    }
+
+    [Fact]
+    public async Task Failed_isolated_proxy_setup_restores_direct_route_without_a_kill_switch()
+    {
+        var guard = new RecordingEgressGuard { FailArm = true };
+        var runtime = new WorkspaceNetworkRuntime([], guard);
+        var profile = Profile();
+        await using var session = await runtime.OpenAsync(
+            IsolatedRequest(
+                new NetworkPolicy([ConnectionId], ConnectionId, true, false),
+                [profile]),
+            progress: null,
+            CancellationToken.None);
+
+        Assert.Equal(WorkspaceNetworkState.Failed, session.Snapshot.State);
+        Assert.Equal(WorkspaceNetworkEgress.Direct, session.Snapshot.Egress);
+        Assert.Equal(1, guard.ArmCount);
+        Assert.Equal(1, guard.DisarmCount);
+    }
+
+    [Fact]
+    public async Task Uncertain_isolated_proxy_failure_stays_blocked_when_cleanup_fails()
+    {
+        var guard = new RecordingEgressGuard
+        {
+            FailArm = true,
+            EnforceBeforeArmFailure = true,
+            FailDisarm = true,
+        };
+        var runtime = new WorkspaceNetworkRuntime([], guard);
+        var profile = Profile();
+        await using var session = await runtime.OpenAsync(
+            IsolatedRequest(
+                new NetworkPolicy([ConnectionId], ConnectionId, true, false),
+                [profile]),
+            progress: null,
+            CancellationToken.None);
+
+        Assert.Equal(WorkspaceNetworkState.Blocked, session.Snapshot.State);
+        Assert.Equal(WorkspaceNetworkEgress.Blocked, session.Snapshot.Egress);
+        Assert.Equal(1, guard.ArmCount);
+        Assert.Equal(1, guard.DisarmCount);
     }
 
     [Fact]

@@ -347,8 +347,10 @@ public sealed class WorkspaceNetworkRuntime : IWorkspaceNetworkRuntime
                     return FailCleanup(replacementCleanupFailure);
                 }
 
-                var needsGuard = update.Policy.KillSwitchEnabled
-                    && IsIsolatedVpn(selected.ConnectionKind);
+                var isolatedProxy = IsIsolatedProxy(selected);
+                var needsGuard = isolatedProxy
+                    || (update.Policy.KillSwitchEnabled
+                        && IsIsolatedVpn(selected.ConnectionKind));
                 if (!needsGuard)
                 {
                     var disarmed = await DisarmGuardAsync(cancellationToken).ConfigureAwait(false);
@@ -363,11 +365,27 @@ public sealed class WorkspaceNetworkRuntime : IWorkspaceNetworkRuntime
                         .ConfigureAwait(false);
                     if (armed is NetworkConnectionResult<Unit>.Failure armFailure)
                     {
+                        if (isolatedProxy && !update.Policy.KillSwitchEnabled)
+                        {
+                            var disarmed = await DisarmGuardAsync(cancellationToken)
+                                .ConfigureAwait(false);
+                            if (disarmed is NetworkConnectionResult<Unit>.Failure disarmFailure)
+                            {
+                                return FailGuardRelease(disarmFailure.Error);
+                            }
+                        }
+
                         return Fail(selectedId, armFailure.Error);
                     }
                 }
 
-                if (!_providers.TryGetValue(selected.ConnectionKind, out var provider))
+                NetworkConnectionResult<INetworkConnectionSession> connected;
+                if (isolatedProxy)
+                {
+                    connected = NetworkConnectionResult<INetworkConnectionSession>.Succeed(
+                        new GuardAttachedConnectionSession(selectedId));
+                }
+                else if (!_providers.TryGetValue(selected.ConnectionKind, out var provider))
                 {
                     return Fail(
                         selectedId,
@@ -377,29 +395,30 @@ public sealed class WorkspaceNetworkRuntime : IWorkspaceNetworkRuntime
                             $"The {selected.ConnectionKind} network provider is not available.",
                             retryable: false));
                 }
-
-                NetworkConnectionResult<INetworkConnectionSession> connected;
-                try
+                else
                 {
-                    connected = await provider.ConnectAsync(
-                            new NetworkConnectionStartRequest(
-                                _workspaceId,
-                                selected,
-                                _placement,
-                                update.Policy.KillSwitchEnabled),
-                            progress,
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    return Fail(
-                        selectedId,
-                        new NetworkConnectionError(
-                            NetworkConnectionErrorCode.Cancelled,
-                            "network_connection_cancelled",
-                            "The network connection was cancelled.",
-                            retryable: false));
+                    try
+                    {
+                        connected = await provider.ConnectAsync(
+                                new NetworkConnectionStartRequest(
+                                    _workspaceId,
+                                    selected,
+                                    _placement,
+                                    update.Policy.KillSwitchEnabled),
+                                progress,
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        return Fail(
+                            selectedId,
+                            new NetworkConnectionError(
+                                NetworkConnectionErrorCode.Cancelled,
+                                "network_connection_cancelled",
+                                "The network connection was cancelled.",
+                                retryable: false));
+                    }
                 }
 
                 if (connected is NetworkConnectionResult<INetworkConnectionSession>.Failure failure)
@@ -481,7 +500,7 @@ public sealed class WorkspaceNetworkRuntime : IWorkspaceNetworkRuntime
             NetworkConnectionId selectedId,
             NetworkConnectionError error)
         {
-            var snapshot = _policy.KillSwitchEnabled && _guardArmed
+            var snapshot = _guardArmed || ShouldPublishBlockedEgress()
                 ? new WorkspaceNetworkSnapshot(
                     WorkspaceNetworkState.Blocked,
                     WorkspaceNetworkEgress.Blocked,
@@ -519,7 +538,7 @@ public sealed class WorkspaceNetworkRuntime : IWorkspaceNetworkRuntime
         private NetworkConnectionResult<WorkspaceNetworkSnapshot> FailCleanup(
             ConnectionCleanupFailure failure)
         {
-            var snapshot = _guardArmed
+            var snapshot = _guardArmed || ShouldPublishBlockedEgress()
                 ? new WorkspaceNetworkSnapshot(
                     WorkspaceNetworkState.Blocked,
                     WorkspaceNetworkEgress.Blocked,
@@ -607,6 +626,10 @@ public sealed class WorkspaceNetworkRuntime : IWorkspaceNetworkRuntime
             or NetworkConnectionKind.AnyConnect
             or NetworkConnectionKind.Tailscale;
 
+        private bool IsIsolatedProxy(NetworkConnectionProfile connection) =>
+            _placement is WorkspaceNetworkPlacement.IsolatedPlacement
+            && connection.Configuration is NetworkConnectionConfiguration.Proxy;
+
         private async ValueTask<ConnectionCleanupFailure?> StopCurrentAsync()
         {
             INetworkConnectionSession? connection;
@@ -666,7 +689,7 @@ public sealed class WorkspaceNetworkRuntime : IWorkspaceNetworkRuntime
                 {
                     NetworkConnectionState.Connecting => new WorkspaceNetworkSnapshot(
                         WorkspaceNetworkState.Connecting,
-                        _policy.KillSwitchEnabled && _guardArmed
+                        ShouldPublishBlockedEgress()
                             ? WorkspaceNetworkEgress.Blocked
                             : WorkspaceNetworkEgress.Direct,
                         providerSnapshot.ConnectionId),
@@ -677,7 +700,7 @@ public sealed class WorkspaceNetworkRuntime : IWorkspaceNetworkRuntime
                     NetworkConnectionState.Disconnecting
                         or NetworkConnectionState.Disconnected
                         or NetworkConnectionState.Failed =>
-                        _policy.KillSwitchEnabled && _guardArmed
+                        ShouldPublishBlockedEgress()
                         ? new WorkspaceNetworkSnapshot(
                             WorkspaceNetworkState.Blocked,
                             WorkspaceNetworkEgress.Blocked,
@@ -720,11 +743,45 @@ public sealed class WorkspaceNetworkRuntime : IWorkspaceNetworkRuntime
         private static bool CleanupMayRemainActive(NetworkConnectionError error) =>
             error.StableCode.EndsWith("_cleanup_failed", StringComparison.Ordinal);
 
+        private bool ShouldPublishBlockedEgress() =>
+            _policy.KillSwitchEnabled
+            && (_placement is WorkspaceNetworkPlacement.HostPlacement || _guardArmed);
+
         private static NetworkConnectionError LostConnectionError(
             NetworkConnectionSnapshot providerSnapshot) => new(
             NetworkConnectionErrorCode.ConnectionFailed,
             "network_connection_lost",
             providerSnapshot.Status ?? "The network connection was lost.",
             retryable: true);
+
+        private sealed class GuardAttachedConnectionSession(
+            NetworkConnectionId connectionId) : INetworkConnectionSession
+        {
+            private NetworkConnectionSnapshot _snapshot = new(
+                connectionId,
+                NetworkConnectionState.Connected,
+                "The proxy is enforced inside the workspace environment.");
+            private int _disposed;
+
+            public NetworkConnectionSnapshot Snapshot => _snapshot;
+
+            public WorkspaceNetworkEgress Egress => WorkspaceNetworkEgress.Attached;
+
+            public event EventHandler<NetworkConnectionSnapshot>? Changed;
+
+            public ValueTask DisposeAsync()
+            {
+                if (Interlocked.Exchange(ref _disposed, 1) == 0)
+                {
+                    _snapshot = new NetworkConnectionSnapshot(
+                        connectionId,
+                        NetworkConnectionState.Disconnected);
+                    Changed?.Invoke(this, _snapshot);
+                    Changed = null;
+                }
+
+                return ValueTask.CompletedTask;
+            }
+        }
     }
 }
